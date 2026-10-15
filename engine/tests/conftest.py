@@ -1,4 +1,5 @@
 """測試共用工具：合成影片產生器與 fixture 路徑。"""
+import functools
 import json
 import os
 import subprocess
@@ -68,11 +69,16 @@ def zh_detector(zh_profile):
     return Detector(zh_profile)
 
 
+@functools.lru_cache(maxsize=None)
+def _zh_profile_cached():
+    from apexhl.profile import load_profile
+    return load_profile(ZH_DIR)
+
+
 def load_fixture(name):
     """讀取 fixtures/zh-TW 下的 PNG（banner 在上、spec 在下垂直拼接）→ (banner, spec)。"""
     import cv2
-    from apexhl.profile import load_profile
-    p = load_profile(ZH_DIR)
+    p = _zh_profile_cached()
     img = None
     for sub in ("pos", "neg"):
         f = FIXTURES / "zh-TW" / sub / name

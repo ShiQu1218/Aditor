@@ -249,7 +249,7 @@ def test_stderr_flood_no_deadlock(tmp_path, zh_profile, monkeypatch):
   - `detect.Detector(profile: Profile, h_scale: float = 1.0)`；`Detector.detect(banner_bgr, spec_bgr) -> FrameResult`；`Detector.best_scale_score(banner_bgr, scale: float) -> float`（給 calibrate 用：該比例下所有關鍵字的最高分）。
 - 演算法（§5.2）：banner 依 `h_scale` 水平縮放後求 `white_mask`；依序比對 `squad_wipe` → `assist` → `knock` → `elim`（`TM_CCOEFF_NORMED`，分數 ≥ 該關鍵字 `threshold` 即命中）；`assist` 命中時在其右側搜尋 `knock`/`elim` 決定 `assist_knock`/`assist_elim`（都找不到時視為 `assist_elim`，`score` 取 assist 分數）；`knock` 時在第一行下方搜尋 `damage` 設 `damage_line`。名字指紋：取關鍵字右緣到同一行 `white_mask ∪ red_mask` 的連續文字區塊（遇到超過 `1.5 × 字高` 的空白即停止，以排除 `+150`），裁邊後縮放成高 16 的 0/1 陣列，寬度依比例。`spectating`：`spec_templates` 任一分數 ≥ threshold。
 
-- [ ] **Step 1: 寫失敗測試**（讀取 `fixtures/zh-TW/labels.json`）
+- [x] **Step 1: 寫失敗測試**（讀取 `fixtures/zh-TW/labels.json`）
 
 ```python
 def test_positive_fixtures(zh_detector, labeled):
@@ -283,11 +283,11 @@ def test_stacked_banner(zh_detector, labeled):   # Task 2 證實不會堆疊時�
 
 （`sig_similar` 於本 Task 先在 `detect.py` 內提供 `name_sig_similarity(a: NameSig, b: NameSig) -> float`；`derive.sig_similar` 於 Task 7 包裝它。）
 
-- [ ] **Step 2: 確認失敗**
-- [ ] **Step 3: 實作 `detect.py`**
-- [ ] **Step 4: 確認通過**；若因閾值不通過，只允許調整 `profile.json` 數值，並在 commit 訊息說明。
-- [ ] **Step 5: 加一個效能測試**：`test_detect_speed`——對 1 張 fixture 連續 `detect` 200 次，平均 < 3ms。
-- [ ] **Step 6: Commit** `feat(engine): template-matching frame detector`
+- [x] **Step 2: 確認失敗**
+- [x] **Step 3: 實作 `detect.py`**
+- [x] **Step 4: 確認通過**；若因閾值不通過，只允許調整 `profile.json` 數值，並在 commit 訊息說明。
+- [x] **Step 5: 加一個效能測試**：`test_detect_speed`——對 1 張 fixture 連續 `detect` 200 次，平均 < 3ms。
+- [x] **Step 6: Commit** `feat(engine): template-matching frame detector`
 
 ---
 

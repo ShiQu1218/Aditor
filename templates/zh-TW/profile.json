@@ -62,6 +62,6 @@
       "threshold": 0.75
     }
   ],
-  "name_sig_threshold": 0.8,
+  "name_sig_threshold": 0.38,
   "dedupe_window": 90
 }
