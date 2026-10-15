@@ -1,10 +1,13 @@
 """每支影片的水平比例校準（spec §5.1）：處理拉伸解析度。"""
 from __future__ import annotations
 
+import threading
+
 import numpy as np
 
 from .decode import FPS, FrameStream
 from .detect import Detector
+from .errors import Cancelled
 from .models import VideoInfo
 from .profile import Profile
 
@@ -21,13 +24,16 @@ def scan_scales(frames: list[np.ndarray], detector: Detector) -> float:
 
 
 def _collect(path: str, profile: Profile, detector: Detector, start: float,
-             budget: float, limit: float | None) -> tuple[list[np.ndarray], float]:
+             budget: float, limit: float | None,
+             cancel: threading.Event | None = None) -> tuple[list[np.ndarray], float]:
     """從 start 解碼最多 budget 秒（且不超過時間 limit），回傳 (命中 banner, 實際掃描秒數)。"""
     hits: list[np.ndarray] = []
     scanned = 0.0
     stream = FrameStream(path, profile, start=start)
     try:
         for t, banner, spec in stream:
+            if cancel is not None and cancel.is_set():
+                raise Cancelled()
             if (limit is not None and t >= limit) or scanned >= budget:
                 break
             scanned += 1.0 / FPS
@@ -41,13 +47,14 @@ def _collect(path: str, profile: Profile, detector: Detector, start: float,
 
 
 def calibrate(path: str, info: VideoInfo, profile: Profile, *,
-              max_scan_seconds: float = 600.0) -> float:
+              max_scan_seconds: float = 600.0,
+              cancel: threading.Event | None = None) -> float:
     """從 duration/2 起解碼（到尾端後從 0 繼續，總計最多 max_scan_seconds），
     以 scale=1.0 收集命中畫格，再回傳最佳水平比例；一張都沒有則 1.0。"""
     detector = Detector(profile)
     mid = info.duration / 2
-    hits, scanned = _collect(path, profile, detector, mid, max_scan_seconds, None)
+    hits, scanned = _collect(path, profile, detector, mid, max_scan_seconds, None, cancel)
     if len(hits) < WANTED_HITS and mid > 0 and scanned < max_scan_seconds:
-        more, _ = _collect(path, profile, detector, 0.0, max_scan_seconds - scanned, mid)
+        more, _ = _collect(path, profile, detector, 0.0, max_scan_seconds - scanned, mid, cancel)
         hits += more[:WANTED_HITS - len(hits)]
     return scan_scales(hits, detector)

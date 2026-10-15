@@ -11,6 +11,7 @@ from .cache import (cache_path, load_cache, merge_clips, merge_reanalysis,
                     needs_reanalysis, save_cache)
 from .calibrate import calibrate
 from .decode import FrameStream
+from .errors import Cancelled
 from .derive import derive, sig_similar
 from .detect import Detector
 from .events import EventTracker
@@ -24,8 +25,7 @@ PROGRESS_INTERVAL = 0.25  # on_progress 至多每 0.25 秒（實際時間）一�
 DEDUPE_DT = 1.0
 
 
-class Cancelled(Exception):
-    pass
+Cancelled = Cancelled  # 重新匯出：apexhl.analyze.Cancelled
 
 
 def _noop(t: float, duration: float) -> None:
@@ -113,7 +113,7 @@ def analyze(path: str, profile: Profile, *, cache_dir: Path, beside: bool = Fals
         base_raw = old.get("base_events")  # 重新分析前的舊事件（含使用者狀態），完成時合併
         start = max(0.0, float(old["analysis"].get("progress_t", 0.0)) - RESUME_BACK)
     else:
-        h_scale = calibrate(path, info, profile)
+        h_scale = None  # 於 base_events 備妥後校準（可被取消）
         done_events, done_spec = [], []
         base_raw = None
         if old is not None:
@@ -122,6 +122,15 @@ def analyze(path: str, profile: Profile, *, cache_dir: Path, beside: bool = Fals
         start = 0.0
     base_events = [Event.from_dict(e) for e in base_raw] if base_raw else []
     manual_clips = merge_clips(old_clips, [])
+    if h_scale is None:
+        try:
+            h_scale = calibrate(path, info, profile, cancel=cancel)
+        except Cancelled:
+            doc = _make_doc(info, profile, "partial", 0.0, 1.0, [], [], manual_clips)
+            if base_events:
+                doc["base_events"] = [e.to_dict() for e in base_events]
+            _save(cp, doc, cache_dir)
+            raise
 
     detector = Detector(profile, h_scale)
     tracker = EventTracker(profile, resume_start=start if resuming and start > 0 else None)

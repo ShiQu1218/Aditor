@@ -118,3 +118,15 @@ def test_progress_throttled_and_final(tmp_path, zh_profile):
     az.analyze(str(v), zh_profile, cache_dir=tmp_path / "cache", on_progress=lambda t, d: calls.append((t, d)))
     assert calls[-1][0] == pytest.approx(calls[-1][1])
     assert len(calls) < 6 * 4 + 2  # 少於逐格呼叫
+
+
+def test_cancel_during_calibration_leaves_partial(tmp_path, zh_profile):
+    from apexhl.errors import Cancelled
+    assert az.Cancelled is Cancelled
+    v = make_video(tmp_path, "plain.mp4", 6)
+    cancel = threading.Event()
+    cancel.set()
+    with pytest.raises(az.Cancelled):
+        az.analyze(str(v), zh_profile, cache_dir=tmp_path / "cache", cancel=cancel)
+    doc = load_cache(cache_path(str(v), tmp_path / "cache"))
+    assert doc["analysis"]["status"] == "partial" and doc["analysis"]["progress_t"] == 0.0

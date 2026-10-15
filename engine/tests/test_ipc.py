@@ -50,15 +50,6 @@ class Proc:
         return rc
 
 
-@pytest.fixture
-def proc():
-    p = Proc()
-    assert p.get()["type"] == "ready"
-    yield p
-    if p.p.poll() is None:
-        p.p.kill()
-
-
 def test_ipc_ready_probe_and_error(tmp_path):
     p = Proc()
     ready = p.get()
@@ -84,7 +75,7 @@ def test_ipc_ready_probe_and_error(tmp_path):
 
 
 def test_ipc_busy_and_cancel(tmp_path, knock_banner_png):
-    v = make_video(tmp_path, "long.mp4", 60, overlay=(knock_banner_png, [(30.0, 40.0)]))
+    v = make_video(tmp_path, "long.mp4", 240, overlay=(knock_banner_png, [(120.0, 130.0)]))
     p = Proc()
     p.get()
     args = {"path": str(v), "profile_dir": str(ZH_DIR), "cache_dir": str(tmp_path / "c")}
@@ -93,7 +84,7 @@ def test_ipc_busy_and_cancel(tmp_path, knock_banner_png):
     busy = p.until(lambda m: m.get("id") == "b")
     assert busy["type"] == "error" and busy["code"] == "busy"
     prog = p.until(lambda m: m.get("id") == "a" and m["type"] == "progress")
-    assert prog["duration"] == pytest.approx(60, abs=1)
+    assert prog["duration"] == pytest.approx(240, abs=1)
     p.send({"id": "c", "cmd": "cancel", "args": {"target": "a"}})
     end = p.until(lambda m: m.get("id") == "a" and m["type"] in ("error", "result"))
     assert end["type"] == "error" and end["code"] == "cancelled"
@@ -127,4 +118,17 @@ def test_ipc_autoclip_roundtrip():
                                                  "profile_dir": str(ZH_DIR)}})
     d = p.get()["data"]["events"]
     assert [e["counted_reason"] for e in d] == ["spectating", "spectating", "first"]
+    assert p.close() == 0
+
+
+def test_ipc_no_false_busy_after_terminal_line(tmp_path):
+    v = make_video(tmp_path, "s.mp4", 3)
+    p = Proc()
+    p.get()
+    args = {"path": str(v), "profile_dir": str(ZH_DIR), "cache_dir": str(tmp_path / "c"), "force": True}
+    for i in range(3):
+        rid = f"a{i}"
+        p.send({"id": rid, "cmd": "analyze", "args": args})
+        end = p.until(lambda m: m.get("id") == rid and m["type"] in ("error", "result"))
+        assert end["type"] == "result", end  # 收到終結訊息後立即重送，不得 busy
     assert p.close() == 0

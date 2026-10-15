@@ -115,15 +115,19 @@ class Server:
             self._error(rid, e)
 
     def _run(self, rid, handler, args, cancel) -> None:
+        # 先釋放 busy 狀態再送終結訊息，避免客戶端立刻重送時誤判 busy
         try:
             data = handler(rid, args, cancel)
+            self._release(cancel)
             self.send({"id": rid, "type": "result", "data": data})
         except Exception as e:  # noqa: BLE001
+            self._release(cancel)
             self._error(rid, e)
-        finally:
-            if cancel is not None:
-                with self._state:
-                    self._current = None
+
+    def _release(self, cancel) -> None:
+        if cancel is not None:
+            with self._state:
+                self._current = None
 
     # --- 指令 ---
     def _cancel(self, rid, args: dict) -> None:

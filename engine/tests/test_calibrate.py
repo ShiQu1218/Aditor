@@ -25,3 +25,25 @@ def test_calibrate_no_hits_returns_one(tmp_path, zh_profile):
     p = make_video(tmp_path, "v.mp4", 4)
     info = VideoInfo(str(p), 4.0, 1920, 1080, "h264", 0.0, p.stat().st_size, 0.0)
     assert calibrate.calibrate(str(p), info, zh_profile, max_scan_seconds=10) == 1.0
+
+
+def test_calibrate_cancel_raises_and_closes_stream(tmp_path, zh_profile, monkeypatch):
+    import threading
+    from conftest import make_video
+    from apexhl.errors import Cancelled
+    from apexhl.models import VideoInfo
+    p = make_video(tmp_path, "v.mp4", 6)
+    info = VideoInfo(str(p), 6.0, 1920, 1080, "h264", 0.0, p.stat().st_size, 0.0)
+    closed = []
+    real = calibrate.FrameStream
+
+    class Spy(real):
+        def close(self):
+            closed.append(True)
+            super().close()
+    monkeypatch.setattr(calibrate, "FrameStream", Spy)
+    ev = threading.Event()
+    ev.set()
+    with pytest.raises(Cancelled):
+        calibrate.calibrate(str(p), info, zh_profile, cancel=ev)
+    assert closed
