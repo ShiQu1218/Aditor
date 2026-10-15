@@ -1,0 +1,72 @@
+{
+  "video": "07-13 17-33-52 的 600-826 秒（-c copy，約 226 秒）",
+  "note": "每個事件皆人工目視核對橫幅；全片以 2 fps 逐格掃描，無漏判。162.5 的實際橫幅首次清楚出現約 161.5，引擎因名字指紋受藍色載具電弧干擾，延遲到 162.5 才成立（已知限制）。",
+  "events": [
+    {
+      "t": 3.5,
+      "type": "assist_knock",
+      "name": "[PXX]—叶知秋"
+    },
+    {
+      "t": 6.0,
+      "type": "assist_elim",
+      "name": "[PXX]—叶知秋"
+    },
+    {
+      "t": 14.25,
+      "type": "assist_knock",
+      "name": "陈平安"
+    },
+    {
+      "t": 21.0,
+      "type": "assist_elim",
+      "name": "陈平安"
+    },
+    {
+      "t": 136.25,
+      "type": "knock",
+      "name": "DEWYANE（觀戰中）"
+    },
+    {
+      "t": 138.75,
+      "type": "squad_wipe",
+      "name": "DEWYANE"
+    },
+    {
+      "t": 152.0,
+      "type": "assist_knock",
+      "name": "艾瑟兒9316"
+    },
+    {
+      "t": 162.5,
+      "type": "assist_elim",
+      "name": "艾瑟兒9316"
+    },
+    {
+      "t": 172.75,
+      "type": "knock",
+      "name": "ALCA TORDA"
+    },
+    {
+      "t": 175.25,
+      "type": "elim",
+      "name": "ALCA TORDA"
+    },
+    {
+      "t": 184.5,
+      "type": "assist_knock",
+      "name": "艾瑟兒9316"
+    },
+    {
+      "t": 192.5,
+      "type": "assist_elim",
+      "name": "艾瑟兒9316"
+    }
+  ],
+  "spectating": [
+    {
+      "start": 120.5,
+      "end": 138.0
+    }
+  ]
+}

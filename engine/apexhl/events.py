@@ -53,6 +53,14 @@ class EventTracker:
         self._feed_banner(t, r)
         self._feed_spec(t, r)
 
+    def snapshot(self) -> tuple[list[Event], list[SpecInterval]]:
+        """目前進度的事件與觀戰區間複本（不結束串流；進行中且已達 2 秒的觀戰區間一併列入）。"""
+        events = [Event.from_dict(e.to_dict()) for e in self._events]
+        intervals = [SpecInterval(i.start, i.end) for i in self._intervals]
+        if self._spec_first is not None and self._spec_n >= SPEC_MIN_FRAMES:
+            intervals.append(SpecInterval(self._spec_first, self._spec_last + STEP))
+        return events, intervals
+
     def finish(self) -> tuple[list[Event], list[SpecInterval]]:
         self._flush_spec()
         return self._events, self._intervals

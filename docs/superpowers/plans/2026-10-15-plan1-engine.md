@@ -471,7 +471,7 @@ def test_merge_clips_keeps_manual():
     - 啟動時先送 `{"type":"ready","engine_version": ENGINE_VERSION}`
   - CLI：`python -m apexhl analyze <video> --profile-dir templates/zh-TW --cache-dir <dir> [--force] [--no-hwaccel] [--out file.json]`，進度印到 stderr。
 
-- [ ] **Step 1: 寫失敗測試**
+- [x] **Step 1: 寫失敗測試**
 
 ```python
 def test_analyze_synthetic_no_events(tmp_path, zh_profile):   # testsrc2 影片 → events == [] 且 status == "done"
@@ -487,9 +487,9 @@ def test_ipc_autoclip_roundtrip():
 # test_golden.py：APEXHL_GOLDEN_VIDEO 不存在則 skip；結果與 engine/tests/golden/expected.json 比對（事件 type 與 t ±0.5）
 ```
 
-- [ ] **Step 2: 確認失敗** → **Step 3: 實作** → **Step 4: 確認通過**
-- [ ] **Step 5: 製作黃金短片**：從長片截 3–5 分鐘含多種事件的片段（`ffmpeg -ss … -t … -c copy`）存到 `E:\` 以外的本機路徑（例如 `D:\Develop\apexhl-samples\golden.mp4`，不進 git），跑 CLI，**人工逐一核對**事件後存成 `engine/tests/golden/expected.json`；設定 `APEXHL_GOLDEN_VIDEO` 後跑 `test_golden.py` 通過。
-- [ ] **Step 6: Commit** `feat(engine): analyze pipeline with resume, CLI and JSON Lines IPC`
+- [x] **Step 2: 確認失敗** → **Step 3: 實作** → **Step 4: 確認通過**
+- [x] **Step 5: 製作黃金短片**：從長片截 3–5 分鐘含多種事件的片段（`ffmpeg -ss … -t … -c copy`）存到 `E:\` 以外的本機路徑（例如 `D:\Develop\apexhl-samples\golden.mp4`，不進 git），跑 CLI，**人工逐一核對**事件後存成 `engine/tests/golden/expected.json`；設定 `APEXHL_GOLDEN_VIDEO` 後跑 `test_golden.py` 通過。
+- [x] **Step 6: Commit** `feat(engine): analyze pipeline with resume, CLI and JSON Lines IPC`
 
 ---
 

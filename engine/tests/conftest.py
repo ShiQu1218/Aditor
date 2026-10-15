@@ -122,3 +122,16 @@ def pos_banners(labels):
             continue
         out.append(load_fixture(n)[0])
     return out
+
+
+@pytest.fixture
+def knock_banner_png(tmp_path):
+    """把正例擊倒 fixture 裁成上方 180 列（只有 banner，供 make_video overlay 使用）。"""
+    import cv2
+    src = FIXTURES / "zh-TW" / "pos" / "knock_a007700.png"
+    img = cv2.imdecode(np.fromfile(str(src), dtype=np.uint8), cv2.IMREAD_COLOR)
+    out = tmp_path / "knock_banner.png"
+    ok, buf = cv2.imencode(".png", img[:180])
+    assert ok
+    buf.tofile(str(out))
+    return out
