@@ -35,6 +35,9 @@ export function ViewerPage({ videoPath, onBack, onSendToProject }: ViewerPagePro
   const [isAutoClipOpen, setIsAutoClipOpen] = useState(false)
   const [showAddEventModal, setShowAddEventModal] = useState(false)
   const [addEventType, setAddEventType] = useState<EventType>('knock')
+  const [proxyPath, setProxyPath] = useState<string | null>(null)
+  const [suggestProxy, setSuggestProxy] = useState(false)
+  const [isGeneratingProxy, setIsGeneratingProxy] = useState(false)
 
   const initialDoc: CacheDoc = {
     version: 1,
@@ -87,12 +90,38 @@ export function ViewerPage({ videoPath, onBack, onSendToProject }: ViewerPagePro
           console.error('Failed to analyze/load cache:', err)
         }
       }
+
+      // Check for proxy file
+      // @ts-ignore
+      if (window.api?.proxy?.get) {
+        // @ts-ignore
+        const p = await window.api.proxy.get(videoPath)
+        if (!cancelled && p) {
+          setProxyPath(p)
+        }
+      }
     }
     load()
     return () => {
       cancelled = true
     }
   }, [videoPath])
+
+  const handleGenerateProxy = async () => {
+    setIsGeneratingProxy(true)
+    try {
+      // @ts-ignore
+      const p = await window.api?.proxy?.generate?.(videoPath)
+      if (p) {
+        setProxyPath(p)
+        setSuggestProxy(false)
+      }
+    } catch (err) {
+      console.error('Failed to generate proxy:', err)
+    } finally {
+      setIsGeneratingProxy(false)
+    }
+  }
 
   // Debounced auto-save when dirty
   useEffect(() => {
@@ -300,6 +329,40 @@ export function ViewerPage({ videoPath, onBack, onSendToProject }: ViewerPagePro
       <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
         {/* Left: Video + Timeline + Controls */}
         <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0, padding: 16, gap: 12 }}>
+          {/* Proxy suggestion banner */}
+          {suggestProxy && !proxyPath && (
+            <div
+              style={{
+                backgroundColor: 'rgba(56, 189, 248, 0.15)',
+                border: '1px solid #38bdf8',
+                borderRadius: 6,
+                padding: '8px 12px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                fontSize: 13
+              }}
+            >
+              <span>{i18n.viewer.suggestProxyDesc}</span>
+              <button
+                onClick={handleGenerateProxy}
+                disabled={isGeneratingProxy}
+                style={{
+                  padding: '4px 10px',
+                  backgroundColor: '#38bdf8',
+                  color: '#000',
+                  border: 'none',
+                  borderRadius: 4,
+                  cursor: isGeneratingProxy ? 'default' : 'pointer',
+                  fontWeight: 600,
+                  fontSize: 12
+                }}
+              >
+                {isGeneratingProxy ? '產生中...' : i18n.viewer.generateProxy}
+              </button>
+            </div>
+          )}
+
           {/* Video player box */}
           <div
             style={{
@@ -315,7 +378,7 @@ export function ViewerPage({ videoPath, onBack, onSendToProject }: ViewerPagePro
           >
             <video
               ref={videoRef}
-              src={`file://${videoPath.replace(/\\/g, '/')}`}
+              src={`file://${(proxyPath || videoPath).replace(/\\/g, '/')}`}
               onTimeUpdate={() => {
                 if (videoRef.current) {
                   setCurrentTime(videoRef.current.currentTime)

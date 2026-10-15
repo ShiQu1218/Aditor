@@ -147,4 +147,25 @@ export function registerIpcHandlers(
     }
     return false
   })
+
+  ipcMain.handle('proxy:get', async (_, videoPath: string) => {
+    const { proxyPath } = await import('./proxy')
+    const p = proxyPath(videoPath)
+    return fs.existsSync(p) ? p : null
+  })
+
+  ipcMain.handle('proxy:generate', async (_, videoPath: string) => {
+    const { generateProxy } = await import('./proxy')
+    return generateProxy(videoPath)
+  })
+
+  ipcMain.handle('proxy:delete', async (_, videoPath: string) => {
+    const { proxyPath } = await import('./proxy')
+    const p = proxyPath(videoPath)
+    if (fs.existsSync(p)) {
+      fs.unlinkSync(p)
+      return true
+    }
+    return false
+  })
 }

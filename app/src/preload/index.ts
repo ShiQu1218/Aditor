@@ -37,6 +37,11 @@ const api = {
   cache: {
     load: (path: string) => ipcRenderer.invoke('cache:load', path),
     save: (doc: unknown) => ipcRenderer.invoke('cache:save', doc)
+  },
+  proxy: {
+    get: (videoPath: string) => ipcRenderer.invoke('proxy:get', videoPath),
+    generate: (videoPath: string) => ipcRenderer.invoke('proxy:generate', videoPath),
+    delete: (videoPath: string) => ipcRenderer.invoke('proxy:delete', videoPath)
   }
 }
 

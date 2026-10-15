@@ -35,5 +35,7 @@
 - **Vitest**: 32 passed (viewer state reducer, event corrections retention, clip replacements, time utilities)
 - **Manual GUI check TODO**: In desktop UI, open an Exports video in Viewer, verify clicking event marker seeks to ~8 seconds before event, AI autoclip dialog produces clips, and deleting an event persists across reopen. (Automated tests verify reducer, canvas hit-test, and cache synchronization).
 
-
-
+### Task 5: 播放相容性檢查與代理檔
+- **Status**: Completed
+- **Vitest**: 38 passed (container & codec checks, MediaCapabilities wrapper, proxy args generation with 960x540 and -g 30, encoder priority selection)
+- **Manual GUI check TODO**: In desktop UI, open an AV1 or unsupported format video to see the "建議產生代理檔" banner; click to generate proxy and verify playback seamlessly switches to the proxy file while keeping timeline times unchanged.
