@@ -1,6 +1,5 @@
 import React, { forwardRef } from 'react'
-import { EngineEvent } from '../../shared/types'
-import { isCounted } from '../../shared/types'
+import { EngineEvent, isCounted } from '../../shared/types'
 import { formatTime } from '../../shared/time'
 import { shapeFor } from '../timeline/eventShapes'
 import { X } from '../components/icons'

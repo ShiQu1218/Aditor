@@ -57,6 +57,21 @@ function makeTestDoc(): CacheDoc {
 }
 
 describe('viewerReducer', () => {
+  it('derived merges only counted fields into the CURRENT events (delete and override during await survive)', () => {
+    const base = { doc: makeTestDoc(), selected: new Set<string>(), filter: new Set<EventType>(), clips: [], dirty: false }
+    let s: ViewerState = viewerReducer(base, { type: 'setOverride', id: 'e1', value: true })
+    s = viewerReducer(s, { type: 'deleteEvent', id: 'e2' })
+    // 回應來自 setOverride 之前的快照：e1 未被覆寫、e2 未刪除
+    const stale = makeTestDoc().events.map((e) => ({ ...e, counted: false, counted_reason: 'dup' }))
+    s = viewerReducer(s, { type: 'derived', events: stale })
+    const e1 = s.doc.events.find((e) => e.id === 'e1')!
+    const e2 = s.doc.events.find((e) => e.id === 'e2')!
+    expect(s.doc.events).toHaveLength(2)
+    expect(e1.counted_override).toBe(true)
+    expect(e1.counted_reason).toBe('dup')
+    expect(e2.deleted).toBe(true)
+  })
+
   it('deleteEvent marks deleted, keeps event', () => {
     const initialState: ViewerState = {
       doc: makeTestDoc(),

@@ -1,5 +1,6 @@
 import { CacheDoc, Clip, ClipStatus, EngineEvent, EventType } from '../../shared/types'
 import { mergeOnReanalyze, normalizeClips } from '../../shared/clips'
+import { mergeDerived } from '../studio/eventActions'
 
 export interface ViewerState {
   doc: CacheDoc
@@ -198,9 +199,10 @@ export function viewerReducer(state: ViewerState, action: ViewerAction): ViewerS
     }
 
     case 'derived': {
+      // 只把推導欄位（counted／counted_reason）合併進「目前」事件，不整批取代（避免蓋掉 await 期間的編輯）
       return {
         ...state,
-        doc: { ...state.doc, events: action.events }
+        doc: { ...state.doc, events: mergeDerived(state.doc.events, action.events) }
       }
     }
 

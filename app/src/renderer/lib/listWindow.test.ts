@@ -46,4 +46,14 @@ describe('listWindow', () => {
     expect(bottom.padBottom).toBe(0)
     expect(bottom.start).toBe(984)
   })
+
+  test('listWindow virtualizes as soon as count = 201 (VIRTUALIZE_MIN + 1)', () => {
+    const w = listWindow({ count: VIRTUALIZE_MIN + 1, rowHeight: 44, scrollTop: 0, viewHeight: 440, overscan: 6 })
+    expect(w.start).toBe(0)
+    expect(w.end).toBe(16) // 10 可視 + 6 overscan
+    expect(w.padTop).toBe(0)
+    expect(w.padBottom).toBe((201 - 16) * 44)
+    // 恰好 200 筆仍是完整範圍
+    expect(listWindow({ count: VIRTUALIZE_MIN, rowHeight: 44, scrollTop: 0, viewHeight: 440, overscan: 6 }).end).toBe(200)
+  })
 })

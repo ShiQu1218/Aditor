@@ -38,6 +38,7 @@ import {
   planSuggestions,
   removeProjectItems
 } from './highlights'
+import { createLatestGate, planBatchDelete, planBoxSelect, planDeleteEvents } from './eventActions'
 import { EventsTab } from './EventsTab'
 import { HighlightsTab } from './HighlightsTab'
 import { NoticeBar } from './NoticeBar'
@@ -197,6 +198,11 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
   // 選取集合的最新快照（框選 Toast 的〔建立合輯〕在稍後才執行）
   const selectedRef = useRef(state.selected)
   selectedRef.current = state.selected
+
+  // 文件的最新快照與 derive 序號閘門（亂序回應丟棄）
+  const docRef = useRef(state.doc)
+  docRef.current = state.doc
+  const deriveGate = useRef(createLatestGate())
 
   // 片段的最新快照（建議合併在 await 之後才執行，不能閉包舊值）
   const clipsRef = useRef(state.clips)
@@ -369,12 +375,6 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
     () => state.doc.events.filter((e) => state.filter.has(e.type as EventType)),
     [state.doc.events, state.filter]
   )
-
-  // 事件分頁開啟時確保游標落在清單內（roving tabindex 的第一站）
-  useEffect(() => {
-    if (tab !== 'ev') return
-    setEvCursorId((prev) => (prev && evFiltered.some((e) => e.id === prev) ? prev : evFiltered[0]?.id ?? null))
-  }, [tab, evFiltered])
 
   /* ---------------- 播放控制 ---------------- */
 
@@ -862,16 +862,24 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
     })
   }, [state.doc.events, duration, videoPath, apply, toast])
 
+  /** Delete（事件區）：有勾選刪勾選的；沒有勾選則刪游標列。〔復原〕同時還原選取。 */
   const handleDeleteSelected = useCallback(() => {
-    const ids = [...state.selected]
+    const ids = planDeleteEvents(state.selected, evCursorId, state.doc.events)
     if (ids.length === 0) return
-    for (const id of ids) dispatch({ type: 'deleteEvent', id })
+    const plan = planBatchDelete(ids, state.selected)
+    for (const id of plan.ids) dispatch({ type: 'deleteEvent', id })
     dispatch({ type: 'setSelection', ids: [], mode: 'replace' })
     toast({
-      message: i18n.studio.toast.deletedEvents.replace('{n}', String(ids.length)),
-      action: { label: i18n.studio.toast.undo, run: () => ids.forEach((id) => dispatch({ type: 'restoreEvent', id })) }
+      message: i18n.studio.toast.deletedEvents.replace('{n}', String(plan.ids.length)),
+      action: {
+        label: i18n.studio.toast.undo,
+        run: () => {
+          plan.ids.forEach((id) => dispatch({ type: 'restoreEvent', id }))
+          dispatch({ type: 'setSelection', ids: plan.undoSelection, mode: 'replace' })
+        }
+      }
     })
-  }, [state.selected, toast])
+  }, [state.selected, state.doc.events, evCursorId, toast])
 
   const handleDeleteEvent = useCallback(
     (id: string) => {
@@ -897,12 +905,16 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
       dispatch({ type: 'setOverride', id, value })
       const api = window.api
       if (!api?.engine?.derive) return
-      const events = state.doc.events.map((e) => (e.id === id ? { ...e, counted_override: value } : e))
+      // 以最新事件為快照；回應只合併 counted／counted_reason（見 mergeDerived／reducer），
+      // 且亂序到達的舊回應依序號丟棄，await 期間的刪除或 override 編輯不會被蓋掉
+      const events = docRef.current.events.map((e) => (e.id === id ? { ...e, counted_override: value } : e))
+      const ticket = deriveGate.current.next()
       void (async () => {
         try {
-          const res = (await api.engine.derive({ events, spectating: state.doc.spectating })) as {
+          const res = (await api.engine.derive({ events, spectating: docRef.current.spectating })) as {
             events: EngineEvent[]
           } | null
+          if (!deriveGate.current.isLatest(ticket)) return
           if (res?.events) {
             dispatch({ type: 'derived', events: res.events })
             toast({ message: i18n.studio.toast.derived })
@@ -912,13 +924,15 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
         }
       })()
     },
-    [state.doc.events, state.doc.spectating, toast]
+    [toast]
   )
 
   /** 框選（時間軸拖曳空白）：Shift／Ctrl＝加選，否則取代；完成 Toast〔建立合輯〕。 */
   const handleBoxSelect = useCallback(
     (ids: string[], t1: number, t2: number, additive: boolean) => {
-      dispatch({ type: 'setSelection', ids, mode: additive ? 'add' : 'replace' })
+      const plan = planBoxSelect(ids, additive)
+      if (!plan) return // 框到 0 個事件：不 Toast、不清除既有選取
+      dispatch({ type: 'setSelection', ids, mode: plan.mode })
       setTab('ev')
       toast({
         message: i18n.studio.toast.boxSelected
@@ -1237,6 +1251,18 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
     }
     return best
   }, [state.doc.events, currentTime])
+
+  // 事件分頁開啟時確保游標落在清單內（roving tabindex 的第一站）；預設落在播放頭事件，沒有則第一筆
+  useEffect(() => {
+    if (tab !== 'ev') return
+    setEvCursorId((prev) => {
+      if (prev && evFiltered.some((e) => e.id === prev)) return prev
+      const cur = activeEvent && evFiltered.find((e) => e.id === activeEvent.id)
+      return cur?.id ?? evFiltered[0]?.id ?? null
+    })
+    // activeEvent 隨播放頭變動，不應反覆重設游標：只在開啟分頁與篩選變動時評估
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, evFiltered])
 
   const prevActiveId = useRef<string | null>(null)
   useEffect(() => {
