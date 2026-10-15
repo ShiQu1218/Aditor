@@ -505,9 +505,9 @@ def test_ipc_autoclip_roundtrip():
   - `tools/evaluate.py --truth truth.json --pred cache.json [--tolerance 1.5] [--types knock]`：以真值與預測的配對時間差中位數估計系統性偏移並扣除後，以貪婪最近配對計算各類型召回率／精確率，列出漏抓／誤抓時間點（`HH:MM:SS`）。核心函式 `evaluate(truth: list[tuple[float,str]], pred: list[tuple[float,str]], tolerance: float) -> Report` 可單元測試。
   - `tools/benchmark.py <video> [--seconds 600]`：分別以 hwaccel 開／關分析前 N 秒，輸出「影片秒數 / 實際秒數」倍速。
 
-- [ ] **Step 1: 寫 `evaluate` 的失敗測試**：完全一致 → 1.0/1.0；全部偏移 +0.8 秒 → 估計偏移 0.8 且 1.0/1.0；一個漏抓、一個誤抓的數值正確。
-- [ ] **Step 2: 實作三個工具並通過測試**
-- [ ] **Step 3: 實跑**：對 `E:\Outplayed\Outplayed\Apex Legends` 下兩支 10 月長片執行 truth、analyze、evaluate；對 `..._18-26-50-167.mp4` 執行 benchmark。
-- [ ] **Step 4: 調校**：只調 `profile.json` 閾值與 ROI（必要時補範本），直到 `knock` 召回率與精確率 ≥ 95% 或確認無法達成並記錄原因；每次調整後重跑全部 pytest。
-- [ ] **Step 5: 寫 `docs/accuracy-report.md`**：各類型指標、估計偏移、倍速（hwaccel 開／關）、剩餘誤判類型分析。
-- [ ] **Step 6: Commit** `feat(tools): truth export, evaluation, benchmark; tune zh-TW profile`
+- [x] **Step 1: 寫 `evaluate` 的失敗測試**：完全一致 → 1.0/1.0；全部偏移 +0.8 秒 → 估計偏移 0.8 且 1.0/1.0；一個漏抓、一個誤抓的數值正確。
+- [x] **Step 2: 實作三個工具並通過測試**
+- [x] **Step 3: 實跑**：對 `E:\Outplayed\Outplayed\Apex Legends` 下兩支 10 月長片執行 truth、analyze、evaluate；對 `..._18-26-50-167.mp4` 執行 benchmark。
+- [x] **Step 4: 調校**：只調 `profile.json` 閾值與 ROI（必要時補範本），直到 `knock` 召回率與精確率 ≥ 95% 或確認無法達成並記錄原因；每次調整後重跑全部 pytest。
+- [x] **Step 5: 寫 `docs/accuracy-report.md`**：各類型指標、估計偏移、倍速（hwaccel 開／關）、剩餘誤判類型分析。
+- [x] **Step 6: Commit** `feat(tools): truth export, evaluation, benchmark; tune zh-TW profile`
