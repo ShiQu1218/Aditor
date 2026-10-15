@@ -396,7 +396,7 @@ def test_manual_event_without_sig_counted(): # name_sig=None 的 manual knock �
 - Produces: `autoclip.auto_clips(events: list[Event], params: AutoClipParams, duration: float) -> list[Clip]`（只使用 `is_counted` 為真的事件；`Clip.origin="ai"`；`Clip.id = f"c{int(start*1000)}"`；依 start 排序）。
 - 演算法（§5.4），切割規則補充：在群內**最大**相鄰間隔處切成兩個子群，各自遞迴；不合併的重疊片段交界設為重疊區中點。
 
-- [ ] **Step 1: 寫失敗測試**（以事件時間列表建構）
+- [x] **Step 1: 寫失敗測試**（以事件時間列表建構）
 
 ```python
 P = AutoClipParams()   # gap=20, n=3, before=8, after=4, max_len=90
@@ -410,8 +410,8 @@ def test_overlap_no_merge_midpoint(): # 合併後 > 90 → 前段 end == 後段 
 def test_uses_final_counted():  # counted_override=False 的事件不計入
 ```
 
-- [ ] **Step 2: 確認失敗** → **Step 3: 實作** → **Step 4: 確認通過**
-- [ ] **Step 5: Commit** `feat(engine): auto clip grouping`
+- [x] **Step 2: 確認失敗** → **Step 3: 實作** → **Step 4: 確認通過**
+- [x] **Step 5: Commit** `feat(engine): auto clip grouping`
 
 ---
 
