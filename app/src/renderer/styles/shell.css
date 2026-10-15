@@ -1,5 +1,5 @@
 /* 外框：56px 圖示欄 + 主區 */
-.app { display: grid; grid-template-columns: var(--rail-w) 1fr; height: 100vh; min-width: 760px; }
+.app { display: grid; grid-template-columns: var(--rail-w) 1fr; height: 100vh; min-width: 760px; position: relative; }
 .app-main { min-width: 0; min-height: 0; overflow: auto; position: relative; }
 
 .rail { background: var(--bg-rail); border-right: 1px solid var(--line); display: flex; flex-direction: column; align-items: center; padding: 10px 0; gap: 4px; }
@@ -24,3 +24,38 @@
 .overlay-host { position: fixed; inset: 0; z-index: 100; background: var(--bg-scrim); display: grid; place-items: center; }
 
 .placeholder-page { padding: var(--sp-6); color: var(--text-2); }
+
+/* 佇列環形進度（圖示欄與佇列條共用；--p = 0–100） */
+.ring {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: conic-gradient(var(--accent-bright) calc(var(--p, 0) * 1%), var(--line-strong) 0);
+  display: grid;
+  place-items: center;
+}
+
+/* 分析佇列浮層（圖示欄旁；strip 變體由佇列條容器定位） */
+.qpop {
+  position: absolute;
+  left: calc(var(--rail-w) + 12px);
+  bottom: 76px;
+  width: 380px;
+  z-index: 95;
+  background: var(--bg-popover);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-pop);
+  padding: 14px 16px;
+}
+.qpop.strip { left: 0; right: auto; top: calc(100% + 6px); bottom: auto; width: 440px; z-index: 30; }
+.qpop-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px; }
+.qpop-head h3 { flex: 1; font-family: var(--font-display); font-size: var(--fs-body-lg); font-weight: var(--fw-bold); }
+.qpop .dim { color: var(--text-3); font-size: var(--fs-small); }
+.qpop-empty { color: var(--text-3); font-size: var(--fs-small); padding: 6px 0; }
+.qrow { display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; padding: 8px 0; border-bottom: 1px solid var(--line); align-items: center; }
+.qrow:last-child { border-bottom: 0; }
+.qname { min-width: 0; }
+.qtitle { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: var(--fw-bold); }
+.qrow .bar { grid-column: 1 / -1; height: 3px; background: var(--bg-active); border-radius: 2px; overflow: hidden; }
+.qrow .bar i { display: block; height: 100%; background: var(--accent-bright); }

@@ -66,6 +66,16 @@ export const i18n = {
       removeConfirm: '確定要從影片庫移除「{name}」嗎？（不會刪除影片檔案）'
     }
   },
+  queue: {
+    title: '分析佇列',
+    oneAtATime: '一次分析一支',
+    analyzing: '正在分析 {i}/{n}',
+    analyzingPct: '分析中 {n}%',
+    view: '檢視佇列',
+    cancel: '取消',
+    empty: '沒有進行中的分析',
+    waiting: '等待分析'
+  },
   timeline: {
     densityHint: '密度檢視 · {n} 個事件 · 放大（Ctrl +／滾輪）顯示個別圖示',
     spectating: '觀戰（不計入）',

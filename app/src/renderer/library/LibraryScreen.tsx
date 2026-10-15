@@ -3,6 +3,7 @@ import type { LibraryEntry } from '../../main/library'
 import { DropOverlay } from './DropOverlay'
 import { EmptyState } from './EmptyState'
 import { LibraryToolbar } from './LibraryToolbar'
+import { QueueStrip } from './QueueStrip'
 import { VideoCard, fileName } from './VideoCard'
 import { VirtualGrid } from './VirtualGrid'
 import { groupByDate } from '../lib/groupByDate'
@@ -175,6 +176,7 @@ export function LibraryScreen({ onSelectVideo, onOpenSettings }: LibraryScreenPr
             counts={counts}
             searchRef={searchRef}
           />
+          <QueueStrip />
           {filtered.length === 0 ? (
             <div className="lib-noresults">
               <h2>{t.noResults.title}</h2>

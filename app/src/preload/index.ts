@@ -22,6 +22,9 @@ const api = {
     toggleFavorite: (path: string) => ipcRenderer.invoke('library:toggleFavorite', path),
     selectFiles: () => ipcRenderer.invoke('library:selectFiles'),
     selectFolder: () => ipcRenderer.invoke('library:selectFolder'),
+    getWatchFolders: () => ipcRenderer.invoke('library:getWatchFolders'),
+    addWatchFolder: () => ipcRenderer.invoke('library:addWatchFolder'),
+    removeWatchFolder: (dir: string) => ipcRenderer.invoke('library:removeWatchFolder', dir),
     onUpdated: (callback: () => void) => {
       const handler = () => callback()
       ipcRenderer.on('library:updated', handler)

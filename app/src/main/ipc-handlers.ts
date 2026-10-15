@@ -10,6 +10,7 @@ import { executeExportJobs } from './export/run'
 import { hasOpenH264, downloadOpenH264 } from './codecs'
 import { loadCacheDoc, saveCacheDoc } from './cache-io'
 import { SettingsStore } from './settings'
+import { WatchManager } from './watch'
 import { Settings } from '../shared/settings'
 import { ProjectItem } from '../renderer/editor/project'
 
@@ -39,7 +40,8 @@ export function registerIpcHandlers(
   queue: AnalysisQueue,
   getWindows: () => BrowserWindow[],
   engine?: EngineClient,
-  settings?: SettingsStore
+  settings?: SettingsStore,
+  watch?: WatchManager
 ): void {
   const broadcastUpdated = () => {
     for (const win of getWindows()) {
@@ -117,6 +119,40 @@ export function registerIpcHandlers(
     }
     return []
   })
+
+  if (watch) {
+    const watchStatus = (): { dirs: string[]; missing: string[] } => ({ dirs: watch.list(), missing: watch.missing() })
+
+    watch.on('update', () => {
+      broadcastUpdated()
+    })
+
+    ipcMain.handle('library:getWatchFolders', () => watchStatus())
+
+    ipcMain.handle('library:addWatchFolder', async (event) => {
+      const win = BrowserWindow.fromWebContents(event.sender)
+      const res = await dialog.showOpenDialog(win || (undefined as unknown as BrowserWindow), {
+        title: '選擇要監看的資料夾（新影片自動匯入）',
+        properties: ['openDirectory']
+      })
+      if (res.canceled || res.filePaths.length === 0) {
+        return { ok: false, canceled: true, ...watchStatus() }
+      }
+      try {
+        await watch.add(res.filePaths[0])
+        broadcastUpdated()
+        return { ok: true, ...watchStatus() }
+      } catch (err) {
+        return { ok: false, error: (err as Error).message, ...watchStatus() }
+      }
+    })
+
+    ipcMain.handle('library:removeWatchFolder', async (_, dir: string) => {
+      await watch.remove(dir)
+      broadcastUpdated()
+      return { ok: true, ...watchStatus() }
+    })
+  }
 
   ipcMain.handle('queue:enqueue', (_, videoPath: string) => {
     queue.enqueue(videoPath)

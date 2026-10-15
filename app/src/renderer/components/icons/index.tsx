@@ -18,7 +18,8 @@ import {
   ImageOff,
   X,
   FolderOpen,
-  Loader2
+  Loader2,
+  ChevronDown
 } from 'lucide-react'
 
 export {
@@ -39,7 +40,8 @@ export {
   ImageOff,
   X,
   FolderOpen,
-  Loader2
+  Loader2,
+  ChevronDown
 }
 
 /** 品牌 logo（六角形＋十字），顏色跟隨 currentColor */

@@ -133,6 +133,30 @@
 .drop-overlay div { font-family: var(--font-display); font-size: var(--fs-h2); font-weight: var(--fw-bold); color: var(--accent-bright); text-align: center; }
 .drop-overlay .drop-sub { font-size: var(--fs-body-lg); font-weight: var(--fw-regular); color: var(--text-2); }
 
+/* ---- 佇列條（分析中／等待） ---- */
+.queue-strip-wrap { position: relative; flex: none; padding: 0 var(--sp-6) 8px; }
+.queue-strip {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: var(--r-md);
+  background: var(--bg-surface);
+  border: 1px solid var(--line);
+  color: var(--text-1);
+  font-size: var(--fs-body);
+  cursor: pointer;
+  text-align: left;
+}
+.queue-strip:hover { border-color: var(--line-strong); }
+.queue-strip:focus-visible { box-shadow: var(--focus-ring); }
+.queue-strip-text { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.queue-strip .muted { color: var(--text-2); }
+.queue-strip .dim { color: var(--text-3); font-size: var(--fs-small); }
+.queue-strip .bar { flex: 1; max-width: 360px; height: 4px; border-radius: 2px; background: var(--bg-active); overflow: hidden; }
+.queue-strip .bar i { display: block; height: 100%; background: var(--accent-bright); }
+
 /* ---- 影片卡片 ---- */
 .vcard {
   position: relative;

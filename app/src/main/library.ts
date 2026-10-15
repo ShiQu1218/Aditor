@@ -21,7 +21,7 @@ export interface LibraryEntry {
   codec?: string
 }
 
-const SUPPORTED_EXTS = new Set(['.mp4', '.mkv', '.mov', '.webm'])
+export const SUPPORTED_EXTS = new Set(['.mp4', '.mkv', '.mov', '.webm'])
 
 export function normalizePath(p: string): string {
   return path.resolve(p).toLowerCase().replace(/\\/g, '/')
@@ -152,14 +152,21 @@ export class Library {
   }
 }
 
-export function watchFolder(dir: string, onAdd: (paths: string[]) => void): FSWatcher {
+export interface WatchFolderOptions {
+  /** 檔案大小需穩定的毫秒數（預設 5000，維持既有行為） */
+  stabilityMs?: number
+  /** 大小檢查的輪詢間隔毫秒數（預設 500） */
+  pollMs?: number
+}
+
+export function watchFolder(dir: string, onAdd: (paths: string[]) => void, opts: WatchFolderOptions = {}): FSWatcher {
   const watcher = chokidar.watch(dir, {
     ignored: /(^|[\/\\])\../, // ignore dotfiles
     persistent: true,
     ignoreInitial: true,
     awaitWriteFinish: {
-      stabilityThreshold: 5000,
-      pollInterval: 500
+      stabilityThreshold: opts.stabilityMs ?? 5000,
+      pollInterval: opts.pollMs ?? 500
     }
   })
 

@@ -4,6 +4,7 @@ import { EngineClient } from './engine'
 import { Library } from './library'
 import { AnalysisQueue } from './queue'
 import { SettingsStore } from './settings'
+import { WatchManager } from './watch'
 import { registerIpcHandlers } from './ipc-handlers'
 import { appDataDir, cacheDir, engineCommand, ffmpegExecutable } from '../shared/paths'
 
@@ -12,6 +13,7 @@ let engineClient: EngineClient | null = null
 let library: Library | null = null
 let queue: AnalysisQueue | null = null
 let settingsStore: SettingsStore | null = null
+let watchManager: WatchManager | null = null
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -67,7 +69,11 @@ async function initEngineAndServices(): Promise<void> {
     cacheDir: cacheDir()
   })
 
-  registerIpcHandlers(library, queue, () => (mainWindow ? [mainWindow] : []), engineClient, settingsStore)
+  // 監看資料夾：依設定恢復；新影片自動匯入（autoAnalyze 開啟時排入佇列）
+  watchManager = new WatchManager({ library, queue, settings: settingsStore })
+  watchManager.start()
+
+  registerIpcHandlers(library, queue, () => (mainWindow ? [mainWindow] : []), engineClient, settingsStore, watchManager)
 
   ipcMain.handle('engine:probe', async (_, videoPath: string) => {
     return engineClient?.request('probe', { path: videoPath }).promise
@@ -106,6 +112,7 @@ app.whenReady().then(async () => {
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
+    watchManager?.stop()
     engineClient?.stop()
     app.quit()
   }

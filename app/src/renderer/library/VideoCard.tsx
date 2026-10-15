@@ -2,11 +2,16 @@ import React, { useEffect, useRef, useState } from 'react'
 import type { LibraryEntry } from '../../main/library'
 import type { VideoInfo } from '../../shared/types'
 import { formatTime } from '../../shared/time'
+import { formatEta } from '../../shared/eta'
 import { containerCodecSupported } from '../media/playability'
+import { useEtaTracker } from '../hooks/useEtaTracker'
 import { i18n } from '../i18n/zh-TW'
 import { AlertTriangle, ImageOff, MoreHorizontal, RefreshCw, Star, Trash2 } from '../components/icons'
 
 const t = i18n.library.card
+
+/** 供 hook 的穩定空陣列（非 analyzing 卡片不追蹤 ETA） */
+const NO_ENTRIES: LibraryEntry[] = []
 
 export interface VideoCardProps {
   entry: LibraryEntry
@@ -60,6 +65,8 @@ function VideoCardView({ entry, onOpen, onToggleFavorite, onRemove, onRetry }: V
   const done = entry.status === 'done'
   const error = entry.status === 'error'
   const statusText = done ? '' : error ? t.error : entry.status === 'analyzing' ? t.analyzing : t.waiting
+  const etas = useEtaTracker(entry.status === 'analyzing' ? [entry] : NO_ENTRIES)
+  const eta = etas.get(entry.path) ?? null
 
   useEffect(() => {
     if (!menuOpen) return
@@ -195,6 +202,7 @@ function VideoCardView({ entry, onOpen, onToggleFavorite, onRemove, onRetry }: V
             <div className="vcard-overlay" role="status">
               <div>
                 {t.progressText.replace('{n}', String(Math.round((entry.progress ?? 0) * 100)))}
+                {eta != null ? ` · ${formatEta(eta)}` : ''}
                 <small>{t.openBlocked}</small>
               </div>
             </div>
