@@ -3,6 +3,7 @@ import { join, resolve } from 'path'
 import { EngineClient } from './engine'
 import { Library } from './library'
 import { AnalysisQueue } from './queue'
+import { SettingsStore } from './settings'
 import { registerIpcHandlers } from './ipc-handlers'
 import { appDataDir, cacheDir, engineCommand, ffmpegExecutable } from '../shared/paths'
 
@@ -10,6 +11,7 @@ let mainWindow: BrowserWindow | null = null
 let engineClient: EngineClient | null = null
 let library: Library | null = null
 let queue: AnalysisQueue | null = null
+let settingsStore: SettingsStore | null = null
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -58,12 +60,14 @@ async function initEngineAndServices(): Promise<void> {
   const profileDir = join(root, 'templates', 'zh-TW')
 
   library = new Library(join(appDataDir(), 'library.json'))
+  // 啟動時讀取設定；無檔案＝首次使用者，採預設值（行為與舊版相同）
+  settingsStore = new SettingsStore(join(appDataDir(), 'settings.json'))
   queue = new AnalysisQueue(engineClient, library, {
     profileDir,
     cacheDir: cacheDir()
   })
 
-  registerIpcHandlers(library, queue, () => (mainWindow ? [mainWindow] : []), engineClient)
+  registerIpcHandlers(library, queue, () => (mainWindow ? [mainWindow] : []), engineClient, settingsStore)
 
   ipcMain.handle('engine:probe', async (_, videoPath: string) => {
     return engineClient?.request('probe', { path: videoPath }).promise

@@ -49,6 +49,17 @@ const api = {
     save: (filePath: string, content: string) => ipcRenderer.invoke('project:save', filePath, content),
     load: (filePath: string) => ipcRenderer.invoke('project:load', filePath)
   },
+  settings: {
+    get: () => ipcRenderer.invoke('settings:get'),
+    set: (partial: unknown) => ipcRenderer.invoke('settings:set', partial),
+    onChanged: (callback: (settings: unknown) => void) => {
+      const handler = (_: unknown, data: unknown) => callback(data)
+      ipcRenderer.on('settings:changed', handler)
+      return () => {
+        ipcRenderer.removeListener('settings:changed', handler)
+      }
+    }
+  },
   export: {
     detectEncoders: () => ipcRenderer.invoke('export:detectEncoders'),
     selectOutDir: () => ipcRenderer.invoke('export:selectOutDir'),
