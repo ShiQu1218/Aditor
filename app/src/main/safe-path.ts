@@ -28,3 +28,16 @@ export async function fileExistsSafe(p: unknown, stat: StatFn = fs.promises.stat
     return false
   }
 }
+
+/**
+ * 來自 renderer／設定檔（不受信任）的目錄路徑是否可安全使用：
+ * 字串、無 NUL、長度合理、絕對路徑；Windows 上必須帶磁碟機代號且不得為 UNC／網路／裝置路徑。
+ */
+export function isSafeLocalDirPath(p: unknown): p is string {
+  if (typeof p !== 'string' || p.length === 0 || p.length > 4096 || p.includes('\0')) return false
+  if (process.platform === 'win32') {
+    if (p.startsWith('\\\\') || p.startsWith('//') || p.startsWith('\\/') || p.startsWith('/\\')) return false
+    if (!/^[A-Za-z]:[\\/]/.test(p)) return false
+  }
+  return path.isAbsolute(p)
+}

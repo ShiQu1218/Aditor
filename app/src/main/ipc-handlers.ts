@@ -5,8 +5,7 @@ import { Library, normalizePath } from './library'
 import { AnalysisQueue } from './queue'
 import { EngineClient } from './engine'
 import { detectEncoders } from './export/encoders'
-import { buildJobs, estimateOutputBytes, escapeConcatPath, StreamProbe } from './export/plan'
-import { executeExportJobs } from './export/run'
+import { createExportService, registerExportHandlers } from './export/export-ipc'
 import { hasOpenH264, downloadOpenH264 } from './codecs'
 import { cacheFilePath, loadCacheDoc, saveCacheDoc } from './cache-io'
 import { SettingsStore } from './settings'
@@ -56,7 +55,7 @@ export function registerIpcHandlers(
   watch?: WatchManager,
   projectStore?: ProjectStore,
   onProjectFlushDone?: () => void
-): void {
+): { cancelExport: () => Promise<void> } {
   // library:updated 最多每 500 ms 一次（前緣＋尾端，最後一次更新必定送達）；
   // 夾帶佇列的真實狀態（正在分析／排隊／進度／開始時間），renderer 不必為了佇列再拉整份 entries
   const sendUpdated = () => {
@@ -338,88 +337,11 @@ export function registerIpcHandlers(
     return res.canceled || res.filePaths.length === 0 ? null : res.filePaths[0]
   })
 
-  ipcMain.handle(
-    'export:run',
-    async (
-      event,
-      opts: {
-        items: ProjectItem[]
-        mode: 'separate' | 'concat'
-        quality: 'copy' | 'precise'
-        encoder?: string
-        outDir: string
-        baseName: string
-      }
-    ) => {
-      try {
-        const probes = new Map<string, StreamProbe>()
-        for (const item of opts.items) {
-          if (!probes.has(item.source)) {
-            let probeInfo: StreamProbe = {
-              vcodec: 'h264',
-              width: 1920,
-              height: 1080,
-              fps: 60,
-              pix_fmt: 'yuv420p',
-              acodec: 'aac',
-              sample_rate: 48000,
-              channels: 2
-            }
-            if (engine) {
-              try {
-                const info = (await engine.request('probe', { path: item.source }).promise) as any
-                if (info) {
-                  probeInfo = {
-                    ...probeInfo,
-                    vcodec: info.codec || 'h264',
-                    width: info.width || 1920,
-                    height: info.height || 1080
-                  }
-                }
-              } catch {}
-            }
-            probes.set(item.source, probeInfo)
-          }
-        }
-
-        const { jobs, notices } = buildJobs(opts.items, opts, probes)
-        const estimatedBytes = estimateOutputBytes(opts.items, opts.quality, probes)
-        let totalDur = 0
-        for (const item of opts.items) {
-          totalDur += Math.max(0, item.end - item.start)
-        }
-
-        let concatListContent: string | undefined
-        if (opts.mode === 'concat') {
-          const lines: string[] = []
-          for (const item of opts.items) {
-            lines.push(`file ${escapeConcatPath(item.source)}`)
-            lines.push(`inpoint ${item.start.toFixed(3)}`)
-            lines.push(`outpoint ${item.end.toFixed(3)}`)
-          }
-          concatListContent = lines.join('\n') + '\n'
-        }
-
-        const win = BrowserWindow.fromWebContents(event.sender)
-        const outputs = await executeExportJobs(
-          jobs,
-          totalDur,
-          opts.outDir,
-          estimatedBytes,
-          concatListContent,
-          (progress) => {
-            if (win && !win.isDestroyed()) {
-              win.webContents.send('export:progress', progress)
-            }
-          }
-        )
-
-        return { ok: true, outputs, notices }
-      } catch (err) {
-        return { ok: false, error: (err as Error).message }
-      }
-    }
-  )
+  // 匯出：start／cancel／diskSpace（驗證、單一匯出、視窗關閉即取消都在 export-ipc.ts）
+  const exportService = createExportService({
+    probe: engine ? (source) => engine.request('probe', { path: source }).promise : undefined
+  })
+  registerExportHandlers(ipcMain, exportService)
 
   if (settings) {
     settings.onChange((current) => {
@@ -434,4 +356,6 @@ export function registerIpcHandlers(
 
     ipcMain.handle('settings:set', (_, partial: Partial<Settings>) => settings.set(partial))
   }
+
+  return { cancelExport: () => exportService.cancelAndWait() }
 }

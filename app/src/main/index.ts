@@ -17,6 +17,7 @@ let queue: AnalysisQueue | null = null
 let settingsStore: SettingsStore | null = null
 let watchManager: WatchManager | null = null
 let closeGate: ReturnType<typeof createCloseGate> | null = null
+let cancelExport: (() => Promise<void>) | null = null
 /** renderer 未回應 flush 時最多等多久才關閉視窗 */
 const CLOSE_FLUSH_TIMEOUT_MS = 1500
 
@@ -47,6 +48,8 @@ function createWindow(): void {
   win.on('close', (e) => closeGate?.onClose(e))
   win.on('closed', () => {
     closeGate = null
+    // 視窗關閉：進行中的匯出一併取消，ffmpeg 不會變成孤兒（webContents 'destroyed' 也會觸發同一個取消）
+    void cancelExport?.()
   })
 
   mainWindow.on('ready-to-show', () => {
@@ -96,7 +99,8 @@ async function initEngineAndServices(): Promise<void> {
   // 專案自動儲存：`%APPDATA%\ApexHighlighter\projects\<id>.json`
   const projectStore = new ProjectStore(join(appDataDir(), 'projects'))
 
-  registerIpcHandlers(library, queue, () => (mainWindow ? [mainWindow] : []), engineClient, settingsStore, watchManager, projectStore, () => closeGate?.ack())
+  const handlers = registerIpcHandlers(library, queue, () => (mainWindow ? [mainWindow] : []), engineClient, settingsStore, watchManager, projectStore, () => closeGate?.ack())
+  cancelExport = handlers.cancelExport
 
   ipcMain.handle('engine:probe', async (_, videoPath: string) => {
     return engineClient?.request('probe', { path: videoPath }).promise
@@ -131,6 +135,10 @@ app.whenReady().then(async () => {
   app.on('activate', function () {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
+})
+
+app.on('before-quit', () => {
+  void cancelExport?.()
 })
 
 app.on('window-all-closed', () => {

@@ -1,5 +1,6 @@
 import path from 'path'
 import { ProjectItem } from '../../renderer/editor/project'
+import { estimateOutputBytes as estimateBytes } from '../../shared/exportEstimate'
 
 export interface StreamProbe {
   vcodec: string
@@ -91,16 +92,9 @@ export function escapeConcatPath(filePath: string): string {
 export function estimateOutputBytes(
   items: ProjectItem[],
   quality: 'copy' | 'precise',
-  probes: Map<string, StreamProbe>
+  _probes?: Map<string, StreamProbe>
 ): number {
-  let totalDur = 0
-  for (const item of items) {
-    totalDur += Math.max(0, item.end - item.start)
-  }
-
-  // 30 Mbps for high quality / copy, 12 Mbps for transcode
-  const bytesPerSecond = quality === 'copy' ? (30 * 1024 * 1024) / 8 : (12 * 1024 * 1024) / 8
-  return Math.ceil(totalDur * bytesPerSecond)
+  return estimateBytes({ items }, quality)
 }
 
 export function buildJobs(

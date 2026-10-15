@@ -98,7 +98,12 @@ const api = {
     selectOutDir: () => ipcRenderer.invoke('export:selectOutDir'),
     openh264Status: () => ipcRenderer.invoke('export:openh264Status'),
     downloadOpenH264: () => ipcRenderer.invoke('export:downloadOpenH264'),
-    run: (opts: unknown) => ipcRenderer.invoke('export:run', opts),
+    start: (opts: unknown) => ipcRenderer.invoke('export:start', opts),
+    /** 舊名稱，與 start 相同頻道（匯出抽屜改版前的 ExportDialog 仍在用） */
+    run: (opts: unknown) => ipcRenderer.invoke('export:start', opts),
+    /** 中止進行中的匯出（ffmpeg 與子程序一併終止、刪除未完成的輸出） */
+    cancel: () => ipcRenderer.invoke('export:cancel'),
+    diskSpace: (dir: string) => ipcRenderer.invoke('export:diskSpace', dir),
     onProgress: (callback: (data: unknown) => void) => {
       const handler = (_: unknown, data: unknown) => callback(data)
       ipcRenderer.on('export:progress', handler)
