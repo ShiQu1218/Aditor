@@ -75,3 +75,87 @@ describe('AutosaveController', () => {
     expect(save).not.toHaveBeenCalled()
   })
 })
+
+describe('AutosaveController flush and hold', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  test('flush writes pending immediately through the async save; nothing pending is a no-op', () => {
+    const save = vi.fn()
+    const c = new AutosaveController({ delayMs: 500, save })
+    c.flush()
+    expect(save).not.toHaveBeenCalled()
+    c.update(p2)
+    c.flush()
+    expect(save).toHaveBeenCalledWith(p2)
+    vi.advanceTimersByTime(1000)
+    expect(save).toHaveBeenCalledTimes(1)
+  })
+
+  test('flushSync uses saveSync (blocking close-time path) and cancels the timer', () => {
+    const save = vi.fn()
+    const saveSync = vi.fn()
+    const c = new AutosaveController({ delayMs: 500, save, saveSync })
+    c.update(p2)
+    vi.advanceTimersByTime(100) // 關閉發生在去抖視窗內
+    c.flushSync()
+    expect(saveSync).toHaveBeenCalledWith(p2)
+    expect(save).not.toHaveBeenCalled()
+    vi.advanceTimersByTime(1000)
+    expect(save).not.toHaveBeenCalled()
+  })
+
+  test('flushSync swallows saveSync errors and falls back to save when no saveSync given', () => {
+    const c = new AutosaveController({
+      delayMs: 500,
+      save: vi.fn(),
+      saveSync: () => {
+        throw new Error('ipc down')
+      }
+    })
+    c.update(p1)
+    expect(() => c.flushSync()).not.toThrow()
+    const save = vi.fn()
+    const d = new AutosaveController({ delayMs: 500, save })
+    d.update(p1)
+    d.flushSync()
+    expect(save).toHaveBeenCalledWith(p1)
+  })
+
+  test('while held, updates are kept but never written; release writes the latest once', () => {
+    const save = vi.fn()
+    const c = new AutosaveController({ delayMs: 500, save, held: true })
+    c.update(p1)
+    c.update(p2)
+    vi.advanceTimersByTime(5000)
+    expect(save).not.toHaveBeenCalled()
+    c.setHeld(false)
+    expect(save).toHaveBeenCalledTimes(1)
+    expect(save).toHaveBeenCalledWith(p2)
+    c.setHeld(false)
+    expect(save).toHaveBeenCalledTimes(1)
+  })
+
+  test('release with autosave disabled drops the pending edit', () => {
+    const save = vi.fn()
+    const c = new AutosaveController({ delayMs: 500, save, held: true })
+    c.update(p1)
+    c.setEnabled(false)
+    c.setHeld(false)
+    vi.advanceTimersByTime(5000)
+    expect(save).not.toHaveBeenCalled()
+  })
+
+  test('flushSync ignores hold so a close never loses an edit', () => {
+    const saveSync = vi.fn()
+    const c = new AutosaveController({ delayMs: 500, save: vi.fn(), saveSync, held: true })
+    c.update(p1)
+    c.flushSync()
+    expect(saveSync).toHaveBeenCalledWith(p1)
+  })
+})
+

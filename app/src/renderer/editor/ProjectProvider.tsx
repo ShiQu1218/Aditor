@@ -1,24 +1,25 @@
 import React, {
   createContext,
-  useCallback,
   useContext,
   useEffect,
   useMemo,
   useRef,
-  useState
+  useState,
+  useSyncExternalStore
 } from 'react'
+import { Project, ProjectItem, createProject, deserializeProject } from './project'
 import {
-  Project,
-  ProjectItem,
-  createProject,
-  deserializeProject,
-  serializeProject
-} from './project'
-import { History } from './history'
-import { ProjectWithId, createRefreshGate, missingItemIds, newProjectId, restoreLastProject, validateSources } from './projectIo'
-import { useAutosave } from './useAutosave'
+  ProjectWithId,
+  createRefreshGate,
+  missingItemIds,
+  newProjectId,
+  restoreLastProject,
+  serializeProjectFile,
+  validateSources
+} from './projectIo'
+import { ProjectSession, SaveState, createSessionIo } from './projectSession'
 
-export type SaveState = 'saved' | 'saving' | 'error'
+export type { SaveState }
 
 export interface ProjectContextValue {
   /** 目前專案（含檔案 id）。 */
@@ -31,11 +32,11 @@ export interface ProjectContextValue {
   apply: (next: Project) => void
   undo: () => void
   redo: () => void
-  /** 開新專案（新的 id 與空的 undo 歷史）。 */
+  /** 開新專案（新的 id 與空的 undo 歷史；第一次編輯前不寫入磁碟）。 */
   newProject: () => void
-  /** 從磁碟開啟專案檔（`.apexproj.json`）。 */
+  /** 從磁碟開啟專案檔（`.apexproj.json`）；一律指派新的專案 id。 */
   openFile: () => Promise<void>
-  /** 另存專案檔到磁碟；回傳實際儲存路徑（取消或失敗時 null，供 Toast 文案）。 */
+  /** 另存專案檔到磁碟（不含內部 id）；回傳實際儲存路徑（取消或失敗時 null，供 Toast 文案）。 */
   saveFile: () => Promise<string | null>
   /** 自動儲存狀態（Task 13 顯示用）。 */
   saveState: SaveState
@@ -62,79 +63,50 @@ function createInitialProject(): ProjectWithId {
 }
 
 /**
- * 專案狀態的唯一來源：undo 歷史＋去抖自動儲存（main 的 ProjectStore）＋
- * 啟動還原（settings.lastProjectId）與開啟／另存檔案對話框。
- * 自動儲存開關讀取 settings.projectAutosave，設定變更時即時連動。
+ * 專案狀態的 React 外殼：所有邏輯（undo 歷史、去抖儲存、saveState、啟動還原排序）在
+ * `ProjectSession`／`ProjectBoot`（純 TS、可單元測試）；這裡只負責訂閱並接上 IPC 與視窗事件：
+ * - 啟動：先載入設定（得知 autosave 開關）再還原上次專案；還原不會蓋掉還原前的編輯
+ * - 關閉：`beforeunload`／`pagehide` 以 sendSync 同步送出最新專案；main 關窗前也會要求 flush
+ * - 開啟／另存檔案對話框
  */
 export function ProjectProvider({ children }: { children: React.ReactNode }): JSX.Element {
-  const [project, setProject] = useState<ProjectWithId>(createInitialProject)
-  const projectRef = useRef<ProjectWithId>(project)
-  const historyRef = useRef<History<ProjectWithId> | null>(null)
-  if (historyRef.current === null) {
-    historyRef.current = new History<ProjectWithId>(project)
+  const sessionRef = useRef<ProjectSession | null>(null)
+  if (sessionRef.current === null) {
+    sessionRef.current = new ProjectSession({ initial: createInitialProject(), io: createSessionIo(window.api) })
   }
-
-  const [autosaveEnabled, setAutosaveEnabled] = useState(false)
-  const [saveState, setSaveState] = useState<SaveState>('saved')
-  const [lastSavedAt, setLastSavedAt] = useState<number | null>(null)
+  const session = sessionRef.current
+  const state = useSyncExternalStore(session.subscribe, session.getState, session.getState)
   const [lastMissingSources, setLastMissingSources] = useState<string[]>([])
 
-  const commit = useCallback((next: ProjectWithId) => {
-    projectRef.current = next
-    setProject(next)
-  }, [])
-
-  // 自動儲存：寫入 ProjectStore 並記下 lastProjectId（下次啟動還原用）
-  const saveSnapshot = useCallback(async (snapshot: ProjectWithId) => {
-    const api = window.api
-    if (!api?.projects) return
-    setSaveState('saving')
-    try {
-      await api.projects.save(snapshot)
-      await api.settings?.set({ lastProjectId: snapshot.id })
-      setSaveState('saved')
-      setLastSavedAt(Date.now())
-    } catch {
-      setSaveState('error')
-    }
-  }, [])
-
-  useAutosave(project, { delayMs: 500, enabled: autosaveEnabled, save: saveSnapshot })
-
-  // 啟動：讀取設定（autosave 開關）並還原上次專案
+  // 啟動：先載入設定，再還原上次專案（結果由 session 決定是否套用）
   useEffect(() => {
     let cancelled = false
+    const api = window.api
+    if (!api) {
+      session.settingsLoaded(undefined)
+      return
+    }
+    session.startBoot()
     const boot = async (): Promise<void> => {
-      const api = window.api
-      if (!api) return
+      let settings: { projectAutosave?: unknown; lastProjectId?: string | null } | null = null
       try {
-        const settings = await api.settings?.get()
-        if (!cancelled) {
-          setAutosaveEnabled(settings && typeof settings.projectAutosave === 'boolean' ? settings.projectAutosave : true)
-        }
+        settings = (await api.settings?.get()) ?? null
       } catch {
-        if (!cancelled) setAutosaveEnabled(true)
+        settings = null
       }
+      if (cancelled) return
+      session.settingsLoaded(settings?.projectAutosave)
 
       const restored = await restoreLastProject({
-        getSettings: async () => {
-          try {
-            return await api.settings.get()
-          } catch {
-            return null
-          }
-        },
+        getSettings: async () => settings,
         loadProject: (id: string) => api.projects.load(id)
       })
-      if (cancelled || !restored) return
-      historyRef.current = new History<ProjectWithId>(restored)
-      projectRef.current = restored
-      setProject(restored)
-      setSaveState('saved')
+      if (cancelled) return
+      if (!session.restored(restored) || !restored) return
       // 還原的專案也要檢查來源是否仍存在（缺失片段警示且不可預覽）
       try {
         const { missing } = await validateSources(restored, (source) => api.library.fileExists(source))
-        if (!cancelled && projectRef.current === restored) setLastMissingSources(missing)
+        if (!cancelled && session.getState().project === restored) setLastMissingSources(missing)
       } catch {
         /* 檢查失敗不阻擋使用 */
       }
@@ -143,98 +115,96 @@ export function ProjectProvider({ children }: { children: React.ReactNode }): JS
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [session])
 
   // 設定面板切換「專案自動儲存」時即時連動
   useEffect(() => {
     const off = window.api?.settings?.onChanged?.((s: unknown) => {
       const settings = s as { projectAutosave?: unknown } | null
-      if (settings && typeof settings.projectAutosave === 'boolean') {
-        setAutosaveEnabled(settings.projectAutosave)
-      }
+      if (settings && typeof settings.projectAutosave === 'boolean') session.settingsLoaded(settings.projectAutosave)
     })
     return () => {
       off?.()
     }
-  }, [])
+  }, [session])
 
-  const apply = useCallback(
-    (next: Project) => {
-      const current = projectRef.current
-      const withId: ProjectWithId = {
-        ...next,
-        id: (next as Partial<ProjectWithId>).id ?? current.id
+  // 關閉視窗：同步送出最新專案（阻塞到 main 寫完）；main 在 close 事件也會要求 flush 並等待 ack
+  useEffect(() => {
+    const flush = (): void => session.flushSync()
+    window.addEventListener('beforeunload', flush)
+    window.addEventListener('pagehide', flush)
+    const offRequest = window.api?.projects?.onFlushRequest?.(() => {
+      session.flushSync()
+      window.api?.projects?.flushDone?.()
+    })
+    return () => {
+      window.removeEventListener('beforeunload', flush)
+      window.removeEventListener('pagehide', flush)
+      offRequest?.()
+      session.flushSync()
+    }
+  }, [session])
+
+  const actions = useMemo(
+    () => ({
+      apply: (next: Project) => session.apply(next),
+      undo: () => session.undo(),
+      redo: () => session.redo(),
+      newProject: () => {
+        setLastMissingSources([])
+        session.newProject()
       }
-      historyRef.current?.push(withId)
-      commit(withId)
-    },
-    [commit]
+    }),
+    [session]
   )
 
-  const undo = useCallback(() => {
-    const history = historyRef.current
-    if (!history?.canUndo) return
-    commit(history.undo())
-  }, [commit])
-
-  const redo = useCallback(() => {
-    const history = historyRef.current
-    if (!history?.canRedo) return
-    commit(history.redo())
-  }, [commit])
-
-  const newProject = useCallback(() => {
-    const fresh = createInitialProject()
-    historyRef.current = new History<ProjectWithId>(fresh)
-    setLastMissingSources([])
-    setSaveState('saved')
-    setLastSavedAt(null)
-    commit(fresh)
-  }, [commit])
-
-  const openFile = useCallback(async () => {
-    const api = window.api
-    if (!api) return
-    const filePath = await api.project?.showOpenDialog?.()
-    if (!filePath) return
-    const content = await api.project?.load?.(filePath)
-    if (typeof content !== 'string') {
-      setSaveState('error')
-      return
-    }
-    try {
-      const parsed = deserializeProject(content)
-      const withId: ProjectWithId = {
-        ...parsed,
-        id: (parsed as Partial<ProjectWithId>).id || newProjectId()
+  const openFile = useMemo(
+    () => async (): Promise<void> => {
+      const api = window.api
+      if (!api) return
+      const filePath = await api.project?.showOpenDialog?.()
+      if (!filePath) return
+      const content = await api.project?.load?.(filePath)
+      if (typeof content !== 'string') {
+        session.setSaveError()
+        return
       }
-      const { missing } = await validateSources(withId, (source) => api.library.fileExists(source))
-      historyRef.current = new History<ProjectWithId>(withId)
-      setLastMissingSources(missing)
-      setSaveState('saved')
-      commit(withId)
-    } catch {
-      setSaveState('error')
-    }
-  }, [commit])
+      try {
+        // 驗證形狀；id 由 session 指派新的（檔案內的 id 一律忽略）
+        const parsed = deserializeProject(content)
+        setLastMissingSources([])
+        session.openProject(parsed)
+        const opened = session.getState().project
+        const { missing } = await validateSources(opened, (source) => api.library.fileExists(source))
+        if (session.getState().project === opened) setLastMissingSources(missing)
+      } catch {
+        session.setSaveError()
+      }
+    },
+    [session]
+  )
 
-  const saveFile = useCallback(async (): Promise<string | null> => {
-    const api = window.api
-    if (!api) return null
-    const snapshot = projectRef.current
-    const filePath = await api.project?.showSaveDialog?.(`${snapshot.name}.apexproj.json`)
-    if (!filePath) return null
-    setSaveState('saving')
-    try {
-      const ok = await api.project?.save?.(filePath, serializeProject(snapshot))
-      setSaveState(ok ? 'saved' : 'error')
-      if (ok) setLastSavedAt(Date.now())
-      return ok ? filePath : null
-    } catch {
-      setSaveState('error')
-      return null
-    }
-  }, [])
+  const saveFile = useMemo(
+    () => async (): Promise<string | null> => {
+      const api = window.api
+      if (!api) return null
+      const snapshot = session.getState().project
+      const filePath = await api.project?.showSaveDialog?.(`${snapshot.name}.apexproj.json`)
+      if (!filePath) return null
+      session.setSaving()
+      try {
+        // 匯出檔不帶內部 id，兩份副本才不會共用同一個 id
+        const ok = await api.project?.save?.(filePath, serializeProjectFile(snapshot))
+        if (ok) session.setSaved()
+        else session.setSaveError()
+        return ok ? filePath : null
+      } catch {
+        session.setSaveError()
+        return null
+      }
+    },
+    [session]
+  )
 
   // 視窗取回焦點：重新檢查來源檔（節流 2 秒），讓缺失標記不致過時
   useEffect(() => {
@@ -242,11 +212,11 @@ export function ProjectProvider({ children }: { children: React.ReactNode }): JS
     let cancelled = false
     const onFocus = (): void => {
       const api = window.api
-      const snapshot = projectRef.current
+      const snapshot = session.getState().project
       if (!api?.library?.fileExists || snapshot.items.length === 0 || !gate()) return
       void validateSources(snapshot, (source) => api.library.fileExists(source))
         .then(({ missing }) => {
-          if (!cancelled && projectRef.current === snapshot) setLastMissingSources(missing)
+          if (!cancelled && session.getState().project === snapshot) setLastMissingSources(missing)
         })
         .catch(() => {})
     }
@@ -255,45 +225,25 @@ export function ProjectProvider({ children }: { children: React.ReactNode }): JS
       cancelled = true
       window.removeEventListener('focus', onFocus)
     }
-  }, [])
+  }, [session])
 
-  const missingIds = useMemo(() => missingItemIds(project, lastMissingSources), [project, lastMissingSources])
-
-  const canUndo = historyRef.current?.canUndo ?? false
-  const canRedo = historyRef.current?.canRedo ?? false
+  const missingIds = useMemo(() => missingItemIds(state.project, lastMissingSources), [state.project, lastMissingSources])
 
   const value = useMemo<ProjectContextValue>(
     () => ({
-      project,
-      items: project.items,
-      canUndo,
-      canRedo,
-      apply,
-      undo,
-      redo,
-      newProject,
+      project: state.project,
+      items: state.items,
+      canUndo: state.canUndo,
+      canRedo: state.canRedo,
+      ...actions,
       openFile,
       saveFile,
-      saveState,
-      lastSavedAt,
+      saveState: state.saveState,
+      lastSavedAt: state.lastSavedAt,
       lastMissingSources,
       missingItemIds: missingIds
     }),
-    [
-      project,
-      canUndo,
-      canRedo,
-      apply,
-      undo,
-      redo,
-      newProject,
-      openFile,
-      saveFile,
-      saveState,
-      lastSavedAt,
-      lastMissingSources,
-      missingIds
-    ]
+    [state, actions, openFile, saveFile, lastMissingSources, missingIds]
   )
 
   return <ProjectContext.Provider value={value}>{children}</ProjectContext.Provider>

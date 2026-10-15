@@ -42,26 +42,50 @@ export interface ValidationResult {
   missing: string[]
 }
 
+export interface ValidateOptions {
+  /** 同時檢查的路徑數上限（預設 4）。 */
+  concurrency?: number
+  /** 單一路徑的逾時（ms，預設 3000）；逾時視為缺失，避免離線磁碟卡住載入。 */
+  timeoutMs?: number
+}
+
+/** 逾時視為 false；保證不丟錯。 */
+function existsWithTimeout(exists: (s: string) => Promise<boolean>, source: string, timeoutMs: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(false), timeoutMs)
+    Promise.resolve()
+      .then(() => exists(source))
+      .then(
+        (v) => resolve(v === true),
+        () => resolve(false)
+      )
+      .finally(() => clearTimeout(timer))
+  })
+}
+
 /**
  * 以 `exists`（主程序 `library:fileExists`）檢查專案所有來源是否存在；
- * 檢查失敗（IPC 錯誤）視為缺失。缺少來源的片段由 Task 13 的 UI 標示。
+ * 有限並行（預設 4）、單一路徑逾時（預設 3 秒）；檢查失敗（IPC 錯誤）或逾時視為缺失。
+ * 缺少來源的片段由 Task 13 的 UI 標示。
  */
 export async function validateSources(
   project: Project,
-  exists: (source: string) => Promise<boolean>
+  exists: (source: string) => Promise<boolean>,
+  opts: ValidateOptions = {}
 ): Promise<ValidationResult> {
   const sources = [...new Set(project.items.map((item) => item.source))]
-  const missing: string[] = []
-  for (const source of sources) {
-    let found = false
-    try {
-      found = await exists(source)
-    } catch {
-      found = false
+  const limit = Math.max(1, opts.concurrency ?? 4)
+  const timeoutMs = opts.timeoutMs ?? 3000
+  const found: boolean[] = new Array(sources.length).fill(false)
+  let next = 0
+  const worker = async (): Promise<void> => {
+    while (next < sources.length) {
+      const i = next++
+      found[i] = await existsWithTimeout(exists, sources[i], timeoutMs)
     }
-    if (!found) missing.push(source)
   }
-  return { missing }
+  await Promise.all(Array.from({ length: Math.min(limit, sources.length) }, worker))
+  return { missing: sources.filter((_, i) => !found[i]) }
 }
 
 function normSource(p: string): string {
@@ -86,4 +110,11 @@ export function createRefreshGate(minMs: number, now: () => number = Date.now): 
     last = t
     return true
   }
+}
+
+/** 匯出成檔案（`.apexproj.json`）的內容：去掉內部 id，兩份副本才不會共用同一個 id。 */
+export function serializeProjectFile(p: ProjectWithId): string {
+  const { id: _id, ...rest } = p
+  void _id
+  return JSON.stringify(rest, null, 2)
 }

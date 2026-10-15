@@ -55,6 +55,43 @@ describe('validateSources', () => {
   })
 })
 
+describe('validateSources concurrency and timeout', () => {
+  const many = (n: number) =>
+    createProject(
+      'P',
+      Array.from({ length: n }, (_, i) => ({ id: `i${i}`, source: `C:/v/${i}.mp4`, start: 0, end: 1 }))
+    )
+
+  test('checks concurrently but never above the limit, keeps source order', async () => {
+    let active = 0
+    let peak = 0
+    const { missing } = await validateSources(
+      many(10),
+      async (s) => {
+        active++
+        peak = Math.max(peak, active)
+        await new Promise((r) => setTimeout(r, 5))
+        active--
+        return Number(s.match(/(\d+)\.mp4/)![1]) % 2 === 0
+      },
+      { concurrency: 3 }
+    )
+    expect(peak).toBe(3)
+    expect(missing).toEqual(['C:/v/1.mp4', 'C:/v/3.mp4', 'C:/v/5.mp4', 'C:/v/7.mp4', 'C:/v/9.mp4'])
+  })
+
+  test('a hanging check times out and counts as missing without blocking the rest', async () => {
+    const started = Date.now()
+    const { missing } = await validateSources(
+      many(5),
+      (s) => (s.endsWith('2.mp4') ? new Promise<boolean>(() => {}) : Promise.resolve(true)),
+      { concurrency: 2, timeoutMs: 30 }
+    )
+    expect(missing).toEqual(['C:/v/2.mp4'])
+    expect(Date.now() - started).toBeLessThan(1000)
+  })
+})
+
 describe('newProjectId', () => {
   test('is path-safe and unique', () => {
     const a = newProjectId()
