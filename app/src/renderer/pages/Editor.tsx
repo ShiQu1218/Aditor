@@ -15,6 +15,7 @@ import {
 } from '../editor/project'
 import { History } from '../editor/history'
 import { formatTime } from '../../shared/time'
+import { ExportDialog } from '../components/ExportDialog'
 
 interface EditorPageProps {
   initialProject?: Project
@@ -29,6 +30,7 @@ export const EditorPage: React.FC<EditorPageProps> = ({
 }) => {
   const [history] = useState(() => new History<Project>(initialProject || createProject()))
   const [project, setProject] = useState<Project>(history.current)
+  const [showExportModal, setShowExportModal] = useState(false)
   const [selectedId, setSelectedId] = useState<string | null>(
     project.items.length > 0 ? project.items[0].id : null
   )
@@ -222,7 +224,10 @@ export const EditorPage: React.FC<EditorPageProps> = ({
             儲存專案
           </button>
           <button
-            onClick={() => onOpenExport && onOpenExport(project)}
+            onClick={() => {
+              setShowExportModal(true)
+              onOpenExport?.(project)
+            }}
             style={{ background: '#228be6', color: '#fff', border: 'none', borderRadius: 4, padding: '6px 16px', fontWeight: 'bold', cursor: 'pointer' }}
           >
             匯出專案...
@@ -405,6 +410,10 @@ export const EditorPage: React.FC<EditorPageProps> = ({
           })}
         </div>
       </div>
+
+      {showExportModal && (
+        <ExportDialog project={project} onClose={() => setShowExportModal(false)} />
+      )}
     </div>
   )
 }

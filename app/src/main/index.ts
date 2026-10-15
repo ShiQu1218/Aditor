@@ -56,7 +56,7 @@ async function initEngineAndServices(): Promise<void> {
     cacheDir: cacheDir()
   })
 
-  registerIpcHandlers(library, queue, () => (mainWindow ? [mainWindow] : []))
+  registerIpcHandlers(library, queue, () => (mainWindow ? [mainWindow] : []), engineClient)
 
   ipcMain.handle('engine:probe', async (_, videoPath: string) => {
     return engineClient?.request('probe', { path: videoPath }).promise

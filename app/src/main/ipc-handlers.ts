@@ -3,6 +3,12 @@ import fs from 'fs'
 import path from 'path'
 import { Library } from './library'
 import { AnalysisQueue } from './queue'
+import { EngineClient } from './engine'
+import { detectEncoders } from './export/encoders'
+import { buildJobs, estimateOutputBytes, escapeConcatPath, StreamProbe } from './export/plan'
+import { executeExportJobs } from './export/run'
+import { hasOpenH264, downloadOpenH264 } from './codecs'
+import { ProjectItem } from '../renderer/editor/project'
 
 const VIDEO_EXTS = new Set(['.mp4', '.mkv', '.mov', '.webm'])
 
@@ -28,7 +34,8 @@ function findVideosInDir(dir: string): string[] {
 export function registerIpcHandlers(
   library: Library,
   queue: AnalysisQueue,
-  getWindows: () => BrowserWindow[]
+  getWindows: () => BrowserWindow[],
+  engine?: EngineClient
 ): void {
   const broadcastUpdated = () => {
     for (const win of getWindows()) {
@@ -213,4 +220,108 @@ export function registerIpcHandlers(
     }
     return null
   })
+
+  ipcMain.handle('export:detectEncoders', async () => {
+    return detectEncoders()
+  })
+
+  ipcMain.handle('export:openh264Status', async () => {
+    return { installed: hasOpenH264() }
+  })
+
+  ipcMain.handle('export:downloadOpenH264', async () => {
+    return downloadOpenH264()
+  })
+
+  ipcMain.handle('export:selectOutDir', async (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    const res = await dialog.showOpenDialog(win || (undefined as unknown as BrowserWindow), {
+      title: '選擇匯出目標資料夾',
+      properties: ['openDirectory', 'createDirectory']
+    })
+    return res.canceled || res.filePaths.length === 0 ? null : res.filePaths[0]
+  })
+
+  ipcMain.handle(
+    'export:run',
+    async (
+      event,
+      opts: {
+        items: ProjectItem[]
+        mode: 'separate' | 'concat'
+        quality: 'copy' | 'precise'
+        encoder?: string
+        outDir: string
+        baseName: string
+      }
+    ) => {
+      try {
+        const probes = new Map<string, StreamProbe>()
+        for (const item of opts.items) {
+          if (!probes.has(item.source)) {
+            let probeInfo: StreamProbe = {
+              vcodec: 'h264',
+              width: 1920,
+              height: 1080,
+              fps: 60,
+              pix_fmt: 'yuv420p',
+              acodec: 'aac',
+              sample_rate: 48000,
+              channels: 2
+            }
+            if (engine) {
+              try {
+                const info = (await engine.request('probe', { path: item.source }).promise) as any
+                if (info) {
+                  probeInfo = {
+                    ...probeInfo,
+                    vcodec: info.codec || 'h264',
+                    width: info.width || 1920,
+                    height: info.height || 1080
+                  }
+                }
+              } catch {}
+            }
+            probes.set(item.source, probeInfo)
+          }
+        }
+
+        const { jobs, notices } = buildJobs(opts.items, opts, probes)
+        const estimatedBytes = estimateOutputBytes(opts.items, opts.quality, probes)
+        let totalDur = 0
+        for (const item of opts.items) {
+          totalDur += Math.max(0, item.end - item.start)
+        }
+
+        let concatListContent: string | undefined
+        if (opts.mode === 'concat') {
+          const lines: string[] = []
+          for (const item of opts.items) {
+            lines.push(`file ${escapeConcatPath(item.source)}`)
+            lines.push(`inpoint ${item.start.toFixed(3)}`)
+            lines.push(`outpoint ${item.end.toFixed(3)}`)
+          }
+          concatListContent = lines.join('\n') + '\n'
+        }
+
+        const win = BrowserWindow.fromWebContents(event.sender)
+        const outputs = await executeExportJobs(
+          jobs,
+          totalDur,
+          opts.outDir,
+          estimatedBytes,
+          concatListContent,
+          (progress) => {
+            if (win && !win.isDestroyed()) {
+              win.webContents.send('export:progress', progress)
+            }
+          }
+        )
+
+        return { ok: true, outputs, notices }
+      } catch (err) {
+        return { ok: false, error: (err as Error).message }
+      }
+    }
+  )
 }

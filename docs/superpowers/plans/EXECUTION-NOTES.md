@@ -44,3 +44,8 @@
 - **Status**: Completed
 - **Vitest**: 49 passed (pure project manipulation: split, move, duplicate, trimItem, totalDuration, History undo/redo/limit stack)
 - **Manual GUI check TODO**: In desktop UI, select clips in Viewer and press Ctrl+E to navigate to Editor; verify sequential preview player smoothly switches segments, split cuts at current time, trim adjusts start/end, and Ctrl+Z/Y undos/redos operations.
+
+### Task 7: 匯出
+- **Status**: Completed
+- **Vitest**: 58 passed (extraSecondsForCopy, concatCompatibility check, copy/precise ffmpeg job generation, encoder priority, escapeConcatPath, disk space verification)
+- **Manual GUI check TODO**: In desktop UI, export clips from an Exports video in both "每段各一檔（快速無損）" and "合輯（精準）" modes, verifying output files exist and match expected duration via ffprobe.

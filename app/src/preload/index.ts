@@ -48,6 +48,20 @@ const api = {
     showOpenDialog: () => ipcRenderer.invoke('project:showOpenDialog'),
     save: (filePath: string, content: string) => ipcRenderer.invoke('project:save', filePath, content),
     load: (filePath: string) => ipcRenderer.invoke('project:load', filePath)
+  },
+  export: {
+    detectEncoders: () => ipcRenderer.invoke('export:detectEncoders'),
+    selectOutDir: () => ipcRenderer.invoke('export:selectOutDir'),
+    openh264Status: () => ipcRenderer.invoke('export:openh264Status'),
+    downloadOpenH264: () => ipcRenderer.invoke('export:downloadOpenH264'),
+    run: (opts: unknown) => ipcRenderer.invoke('export:run', opts),
+    onProgress: (callback: (data: unknown) => void) => {
+      const handler = (_: unknown, data: unknown) => callback(data)
+      ipcRenderer.on('export:progress', handler)
+      return () => {
+        ipcRenderer.removeListener('export:progress', handler)
+      }
+    }
   }
 }
 
