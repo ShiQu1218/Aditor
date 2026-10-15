@@ -158,7 +158,7 @@ describe('Escape swallowing', () => {
   /** 簡易 window：先跑 capture 監聽，再跑 bubble 監聽，遵守 stopPropagation */
   function fakeWindow(): {
     win: Pick<Window, 'addEventListener' | 'removeEventListener'>
-    press: (key: string) => { defaultPrevented: boolean }
+    press: (key: string, opts?: { isComposing?: boolean; keyCode?: number }) => { defaultPrevented: boolean }
   } {
     const cap = new Set<L>()
     const bub = new Set<L>()
@@ -166,12 +166,12 @@ describe('Escape swallowing', () => {
       addEventListener: (_t: string, fn: L, capture?: boolean) => void (capture ? cap : bub).add(fn),
       removeEventListener: (_t: string, fn: L, capture?: boolean) => void (capture ? cap : bub).delete(fn)
     } as unknown as Pick<Window, 'addEventListener' | 'removeEventListener'>
-    const press = (key: string): { defaultPrevented: boolean } => {
+    const press = (key: string, opts?: { isComposing?: boolean; keyCode?: number }): { defaultPrevented: boolean } => {
       let stopped = false
       const e = {
         key,
-        keyCode: 27,
-        isComposing: false,
+        keyCode: opts?.keyCode ?? 27,
+        isComposing: opts?.isComposing ?? false,
         target: null,
         defaultPrevented: false,
         preventDefault() {
@@ -234,6 +234,35 @@ describe('Escape swallowing', () => {
     detach()
     press('Escape')
     expect(cancel).not.toHaveBeenCalled()
+  })
+
+  test('Escape during IME composition neither cancels the gesture nor is intercepted', () => {
+    for (const opts of [{ isComposing: true }, { keyCode: 229 }]) {
+      const { win, press } = fakeWindow()
+      const cancel = vi.fn()
+      attachGestureEscape(win, () => 'box', cancel)
+      const e = press('Escape', opts)
+      expect(cancel).not.toHaveBeenCalled()
+      expect(e.defaultPrevented).toBe(false)
+    }
+  })
+
+  test('after a real Escape cancels the gesture, the next Escape passes through', () => {
+    const { win, press } = fakeWindow()
+    let phase: IState['phase'] = 'box'
+    const cancel = vi.fn(() => {
+      phase = 'idle'
+    })
+    attachGestureEscape(win, () => phase, cancel)
+
+    const first = press('Escape')
+    expect(cancel).toHaveBeenCalledTimes(1)
+    expect(first.defaultPrevented).toBe(true)
+
+    // 手勢已取消（phase = idle），第二次 Escape 不得再被攔截
+    const second = press('Escape')
+    expect(cancel).toHaveBeenCalledTimes(1)
+    expect(second.defaultPrevented).toBe(false)
   })
 })
 

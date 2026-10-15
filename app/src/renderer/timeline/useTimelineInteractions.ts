@@ -93,7 +93,8 @@ export function swallowEscape(phase: IState['phase']): boolean {
 
 /**
  * 以捕獲階段監聽 Esc：僅在確實有手勢可取消時才 preventDefault＋stopPropagation，
- * 其餘情況原樣放行。回傳解除函式。
+ * 其餘情況原樣放行。輸入法組字中的 Escape（isComposing／keyCode 229）不取消手勢、不攔截。
+ * 回傳解除函式。
  */
 export function attachGestureEscape(
   target: Pick<Window, 'addEventListener' | 'removeEventListener'>,
@@ -101,6 +102,7 @@ export function attachGestureEscape(
   cancel: () => void
 ): () => void {
   const onKey = (e: KeyboardEvent): void => {
+    if (e.isComposing || e.keyCode === 229) return
     if (e.key !== 'Escape' || !swallowEscape(getPhase())) return
     cancel()
     e.preventDefault()
