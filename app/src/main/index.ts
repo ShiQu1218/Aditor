@@ -70,7 +70,8 @@ async function initEngineAndServices(): Promise<void> {
   })
 
   ipcMain.handle('engine:analyze', async (event, args: Record<string, unknown>) => {
-    const req = engineClient?.request('analyze', args, (progress) => {
+    // renderer 只知道影片路徑；引擎需要的 profile_dir／cache_dir 由主程序補上（命中快取時直接回傳）
+    const req = engineClient?.request('analyze', { profile_dir: profileDir, cache_dir: cacheDir(), ...args }, (progress) => {
       event.sender.send('engine:progress', progress)
     })
     return req?.promise
@@ -82,7 +83,7 @@ async function initEngineAndServices(): Promise<void> {
   })
 
   ipcMain.handle('engine:derive', async (_, args: Record<string, unknown>) => {
-    return engineClient?.request('derive', args).promise
+    return engineClient?.request('derive', { profile_dir: profileDir, ...args }).promise
   })
 
   ipcMain.handle('engine:autoclip', async (_, args: Record<string, unknown>) => {
