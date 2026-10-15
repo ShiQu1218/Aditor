@@ -38,3 +38,15 @@ def test_load_profile_missing_key(tmp_path):
     (d / "profile.json").write_text(json.dumps(doc), encoding="utf-8")
     with pytest.raises(ProfileError, match="banner_roi"):
         load_profile(d)
+
+
+def test_profile_line_defaults_and_override(tmp_path):
+    p = load_profile(MIN)
+    assert p.line1_rows == (50, 108) and p.damage_depth == 40  # 未提供時用預設
+    d = tmp_path / "p"
+    shutil.copytree(MIN, d)
+    doc = json.loads((d / "profile.json").read_text(encoding="utf-8"))
+    doc.update(line1_rows=[10, 70], damage_depth=25)
+    (d / "profile.json").write_text(json.dumps(doc), encoding="utf-8")
+    q = load_profile(d)
+    assert q.line1_rows == (10, 70) and q.damage_depth == 25

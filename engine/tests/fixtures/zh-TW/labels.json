@@ -356,7 +356,7 @@
  },
  "knock_b003050.png": {
   "damage_line": true,
-  "enemy": null,
+  "enemy": "零影2010",
   "kind": "knock",
   "spectating": false,
   "src": "Apex Legends_07-13-2026_17-33-52-100.mp4",

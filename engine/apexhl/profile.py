@@ -27,6 +27,8 @@ class Profile:
     spec_templates: list[KeywordSpec]
     name_sig_threshold: float
     dedupe_window: float
+    line1_rows: tuple[int, int] = (50, 108)  # 第一行關鍵字在 banner 內的垂直搜尋帶 [y0, y1)
+    damage_depth: int = 40  # 傷害行搜尋：第一行下緣往下多少列
     dir: Path = field(default_factory=Path)
 
 
@@ -55,7 +57,9 @@ def load_profile(dir: Path) -> Profile:
             spec_roi=tuple(int(x) for x in doc["spec_roi"]),
             white=doc["white"], red=doc["red"], keywords=keywords, spec_templates=specs,
             name_sig_threshold=float(doc["name_sig_threshold"]),
-            dedupe_window=float(doc["dedupe_window"]), dir=dir)
+            dedupe_window=float(doc["dedupe_window"]),
+            line1_rows=tuple(int(x) for x in doc.get("line1_rows", (50, 108))),
+            damage_depth=int(doc.get("damage_depth", 40)), dir=dir)
     except (KeyError, TypeError, ValueError) as e:
         raise ProfileError(f"profile.json 欄位內容錯誤：{e!r}") from e
     for spec in [*keywords.values(), *specs]:

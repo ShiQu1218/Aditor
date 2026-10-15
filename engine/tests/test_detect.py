@@ -4,8 +4,8 @@ import time
 import numpy as np
 import pytest
 
-from apexhl.detect import Detector, name_sig_similarity, red_mask, white_mask
-from apexhl.models import FrameResult
+from apexhl.detect import Detector, name_sig_similarity, red_mask, same_name, white_mask
+from apexhl.models import FrameResult, NameSig
 from conftest import load_fixture
 
 # 各類型畫面上「合法同時出現」的關鍵字；其餘關鍵字都應明顯低於勝出的關鍵字
@@ -95,46 +95,67 @@ def _sig(det, name):
     return det.detect(*load_fixture(name)).name_sig
 
 
-def _similar(det, prof, a, b):
-    sa, sb = _sig(det, a), _sig(det, b)
-    assert sa is not None and sb is not None, (a, b)
-    ratio = abs(sa.width - sb.width) / max(sa.width, sb.width)
-    return name_sig_similarity(sa, sb) >= prof.name_sig_threshold and ratio < 0.15
+# 已知限制：白字名（助攻，消滅）右側有亮背景雜線時指紋寬度被拉長（比差 39%）
+_KNOWN_BAD_PAIR = ("assist_elim_b009250.png", "elim_b027375.png")
 
 
-# 同一敵人（「我回来了孩子们」，來源 17-17-13）的紅字（擊倒／已消滅）× 白字（助攻）跨顏色配對
-_CROSS_COLOR_PAIRS = [
-    ("knock_a005000.png", "assist_knock_a007150.png"),
-    ("knock_a005000.png", "assist_elim_a007400.png"),
-    ("elim_a005375.png", "assist_knock_a007150.png"),
-    ("elim_a005375.png", "assist_elim_a007400.png"),
-]
-
-
-@pytest.mark.parametrize("a,b", _CROSS_COLOR_PAIRS)
-def test_name_sig_same_enemy_across_colors(zh_detector, zh_profile, a, b):
-    assert _similar(zh_detector, zh_profile, a, b), (a, b)
-
-
-def test_name_sig_same_enemy_same_type(zh_detector, zh_profile):
-    # DEWYANE：兩格相鄰的擊倒、不同影片的已消滅 × 擊倒
-    assert _similar(zh_detector, zh_profile, "knock_b073650.png", "knock_b073750.png")
-    assert _similar(zh_detector, zh_profile, "elim_a058000.png", "knock_b073650.png")
-
-
-@pytest.mark.xfail(strict=True, reason="已知限制：白字名（助攻，消滅）右側有亮背景雜線時指紋寬度被拉長")
-def test_name_sig_known_noisy_pair(zh_detector, zh_profile):
-    assert _similar(zh_detector, zh_profile, "assist_elim_b009250.png", "elim_b027375.png")
-
-
-def test_name_sig_different_enemies_are_dissimilar(zh_detector, zh_profile, labeled):
+def _enemy_pairs(det, labeled):
+    """從 labels.json 自動列舉所有同敵人／不同敵人配對（有 enemy、非淡入、非 squad_wipe）。"""
     items = [(n, lab["enemy"]) for n, lab in labeled(kind_not_null=True, exclude_fadein=True)
              if lab["enemy"] and lab["kind"] != "squad_wipe"]
-    assert len(items) >= 20
+    sigs = {n: _sig(det, n) for n, _ in items}
+    same, diff = [], []
     for i, (na, ea) in enumerate(items):
         for nb, eb in items[i + 1:]:
-            if ea != eb:
-                assert not _similar(zh_detector, zh_profile, na, nb), (na, nb)
+            (same if ea == eb else diff).append((na, nb, sigs[na], sigs[nb]))
+    return same, diff
+
+
+def test_name_sig_same_enemy_pairs(zh_detector, zh_profile, labeled):
+    same, _ = _enemy_pairs(zh_detector, labeled)
+    assert len(same) >= 15
+    cross = 0
+    for na, nb, sa, sb in same:
+        if (na, nb) == _KNOWN_BAD_PAIR or (nb, na) == _KNOWN_BAD_PAIR:
+            assert not same_name(sa, sb, zh_profile.name_sig_threshold)  # 見 xfail 說明；改善時請移除
+            continue
+        assert same_name(sa, sb, zh_profile.name_sig_threshold), (na, nb)
+        red = [n.startswith(("knock", "elim")) for n in (na, nb)]  # 紅字名：擊倒、已消滅
+        cross += red[0] != red[1]
+    assert cross >= 4  # 含紅字×白字的跨顏色配對
+
+
+@pytest.mark.xfail(strict=True, reason="已知限制：白字名右側有亮背景雜線時指紋寬度被拉長")
+def test_name_sig_known_noisy_pair(zh_detector, zh_profile):
+    assert same_name(_sig(zh_detector, _KNOWN_BAD_PAIR[0]), _sig(zh_detector, _KNOWN_BAD_PAIR[1]),
+                     zh_profile.name_sig_threshold)
+
+
+def test_name_sig_different_enemy_pairs(zh_detector, zh_profile, labeled):
+    _, diff = _enemy_pairs(zh_detector, labeled)
+    assert len(diff) >= 300
+    for na, nb, sa, sb in diff:
+        assert not same_name(sa, sb, zh_profile.name_sig_threshold), (na, nb)
+
+
+def test_name_sig_threshold_margins(zh_detector, zh_profile, labeled):
+    """實測（task-4-report）：同敵人（寬度閘門內）最小 0.412、不同敵人（寬度閘門內）最大 0.228。"""
+    thr = zh_profile.name_sig_threshold
+    same, diff = _enemy_pairs(zh_detector, labeled)
+
+    def gated(pairs):
+        return [name_sig_similarity(a, b) for _, _, a, b in pairs
+                if abs(a.width - b.width) / max(a.width, b.width) < 0.15]
+    assert max(gated(diff)) < thr - 0.05
+    assert min(gated(same)) > thr + 0.02
+
+
+def test_same_name_edge_cases(zh_detector, zh_profile, labeled):
+    sa = _sig(zh_detector, "knock_b073650.png")
+    assert not same_name(None, sa, 0.0) and not same_name(sa, None, 0.0)
+    assert same_name(sa, sa, zh_profile.name_sig_threshold)
+    wide = NameSig(sa.width * 2, np.tile(sa.bits, (1, 2)))
+    assert not same_name(sa, wide, -1.0)  # 寬度比差 ≥15% 一律不同
 
 
 def test_name_sig_shape(zh_detector, labeled):

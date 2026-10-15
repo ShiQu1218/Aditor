@@ -8,10 +8,6 @@ from .models import FrameResult, NameSig
 from .profile import Profile
 
 _ROW_PAD = 6  # 關鍵字所在列上下容許的偏移（像素）
-# 第一行關鍵字在 banner 內的垂直搜尋帶（spec §3：提示不堆疊，第一行位置固定，範本頂端 y=66）。
-# 只限制搜尋範圍以加速，上下各留約 16 px 容許。
-_LINE1_ROWS = (50, 108)
-_DAMAGE_DEPTH = 40  # 傷害行搜尋：第一行下緣往下多少列
 
 
 def _imread_gray(path) -> np.ndarray:
@@ -66,6 +62,16 @@ def _ink_box(mask: np.ndarray, pad: int = 8, rows_limit: tuple[int, int] | None 
             min(w, int(cols[-1]) + 1 + pad), min(h, int(rows[-1]) + 1 + pad))
 
 
+def same_name(a: NameSig | None, b: NameSig | None, threshold: float) -> bool:
+    """兩個名字指紋是否屬於同一敵人：任一為 None → False；寬度比差 ≥ 15% → False；
+    否則相關係數 ≥ threshold（profile.name_sig_threshold）。"""
+    if a is None or b is None:
+        return False
+    if abs(a.width - b.width) / max(a.width, b.width) >= 0.15:
+        return False
+    return name_sig_similarity(a, b) >= threshold
+
+
 def _match(mask: np.ndarray, tpl: np.ndarray, box=None) -> tuple[float, int, int]:
     """回傳 (最高分, x, y)，座標為 mask 座標。box 限定搜尋範圍；範圍比範本小視為無命中。"""
     ox = oy = 0
@@ -107,7 +113,8 @@ class Detector:
         return max(self._score(wm, k) for k in self.tpl)
 
     def _score(self, wm: np.ndarray, key: str) -> float:
-        rows = _LINE1_ROWS if key != "damage" else (_LINE1_ROWS[0], _LINE1_ROWS[1] + _DAMAGE_DEPTH)
+        r0, r1 = self.profile.line1_rows
+        rows = (r0, r1) if key != "damage" else (r0, r1 + self.profile.damage_depth)
         return _match(wm, self.tpl[key], _ink_box(wm, rows_limit=rows))[0]
 
     def _hit(self, wm: np.ndarray, key: str, box):
@@ -202,7 +209,7 @@ class Detector:
         spectating = self._spectating(spec_bgr)
         banner = self._scaled(banner_bgr, self.h_scale)
         wm = white_mask(banner, self.profile)
-        box = _ink_box(wm, rows_limit=_LINE1_ROWS)
+        box = _ink_box(wm, rows_limit=self.profile.line1_rows)
 
         def result(kind, score=0.0, x=0, damage=False, sig=None):
             return FrameResult(kind, score, x, damage, sig, spectating)
@@ -244,7 +251,7 @@ class Detector:
             if vetoed():
                 return result(None)
             s, x, y = hit
-            dmg = _match(wm, self.tpl["damage"], (box[0], y + h, box[2], min(wm.shape[0], y + h + _DAMAGE_DEPTH)))[0] >= self.thr["damage"]
+            dmg = _match(wm, self.tpl["damage"], (box[0], y + h, box[2], min(wm.shape[0], y + h + self.profile.damage_depth)))[0] >= self.thr["damage"]
             sig = self._name_sig(banner, wm, x + self.tpl["knock"].shape[1], y, h, True)
             return result("knock", s, x, dmg, sig)
 
