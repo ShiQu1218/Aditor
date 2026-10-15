@@ -25,3 +25,15 @@ export function routeTimeUpdate(i: {
   if (i.previewSrc !== null) return i.loadedSrc === i.previewSrc ? 'preview' : 'ignore'
   return i.loadedSrc === i.sourceSrc ? 'source' : 'ignore'
 }
+
+/**
+ * <video> 載入失敗：待套用的 seek 一律作廢（否則會套到下一個成功載入的檔案上），
+ * 已載入標記清空、播放旗標歸 false。
+ */
+export function onVideoError(_i: { loadedSrc: string | null; pending: { t: number; play: boolean } | null }): {
+  loadedSrc: null
+  pending: null
+  playing: false
+} {
+  return { loadedSrc: null, pending: null, playing: false }
+}

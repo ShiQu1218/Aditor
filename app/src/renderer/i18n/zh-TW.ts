@@ -303,6 +303,7 @@ export const i18n = {
       itemAria: '片段 {i} {label} {time}',
       missing: '來源影片不存在',
       missingToast: '來源影片不存在，無法預覽',
+      restMissingToast: '後續片段的來源檔案不存在',
       missingHint: '無法預覽',
       stepperStart: '起點',
       stepperEnd: '終點',

@@ -14,6 +14,8 @@ interface PlayerStageProps {
   onTimeUpdate: (t: number) => void
   onLoadedMetadata: () => void
   onPlayingChange: (playing: boolean) => void
+  onEnded: () => void
+  onError: () => void
 }
 
 /** 播放器舞台：模式膠囊（左上）、近 90 秒計數（右上）、影片本體。 */
@@ -27,7 +29,9 @@ export function PlayerStage({
   onTogglePlay,
   onTimeUpdate,
   onLoadedMetadata,
-  onPlayingChange
+  onPlayingChange,
+  onEnded,
+  onError
 }: PlayerStageProps): JSX.Element {
   return (
     <div className="stage">
@@ -47,6 +51,8 @@ export function PlayerStage({
         onEmptied={() => onPlayingChange(false)}
         onPlay={() => onPlayingChange(true)}
         onPause={() => onPlayingChange(false)}
+        onEnded={onEnded}
+        onError={onError}
       />
     </div>
   )

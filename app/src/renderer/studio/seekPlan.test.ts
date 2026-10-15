@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { fileUrl, planSeek, routeTimeUpdate } from './seekPlan'
+import { fileUrl, onVideoError, planSeek, routeTimeUpdate } from './seekPlan'
 
 describe('fileUrl', () => {
   test('converts backslashes', () => expect(fileUrl('C:\\v\\a.mp4')).toBe('file://C:/v/a.mp4'))
@@ -34,5 +34,18 @@ describe('routeTimeUpdate', () => {
   })
   test('project mode: ignores updates until the previewed file is loaded', () => {
     expect(routeTimeUpdate({ previewSrc: foreign, sourceSrc: src, loadedSrc: src, pending: false })).toBe('ignore')
+  })
+})
+
+describe('onVideoError', () => {
+  const a = 'file://C:/v/a.mp4'
+  test('clears the pending seek, the loaded marker and the playing flag', () => {
+    const r = onVideoError({ loadedSrc: a, pending: { t: 12, play: true } })
+    expect(r).toEqual({ loadedSrc: null, pending: null, playing: false })
+  })
+  test('afterwards time updates are ignored and seeks defer (no stale pending applied to the next file)', () => {
+    const r = onVideoError({ loadedSrc: a, pending: { t: 3, play: false } })
+    expect(routeTimeUpdate({ previewSrc: null, sourceSrc: a, loadedSrc: r.loadedSrc, pending: r.pending !== null })).toBe('ignore')
+    expect(planSeek({ loadedSrc: r.loadedSrc, wantedSrc: a })).toBe('defer')
   })
 })

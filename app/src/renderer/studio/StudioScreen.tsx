@@ -14,7 +14,7 @@ import { useToast } from '../shell/ToastHost'
 import { useOverlay } from '../shell/OverlayHost'
 import { useProject } from '../editor/ProjectProvider'
 import { addItems, duplicateItem, moveItem, Project, ProjectItem, removeItem, splitItem, trimItem } from '../editor/project'
-import { nextAfter } from '../editor/sequence'
+import { nextAfter, nextPlayableItem } from '../editor/sequence'
 import { ExportDialog } from '../components/ExportDialog'
 import { RefreshCw, ZoomIn, ZoomOut } from '../components/icons'
 import { checkSmooth, PlayabilityResult } from '../media/playability'
@@ -53,7 +53,7 @@ import { NoticeAction, proxyBusyNotice, studioNotice, StudioNotice } from './not
 import { createAnnouncer } from './liveAnnouncer'
 import { guardCommand, SourceEditCommand } from './modeGuard'
 import { isAnyOverlayOpen, OverlayState, topOverlay } from './overlays'
-import { fileUrl, planSeek, routeTimeUpdate } from './seekPlan'
+import { fileUrl, onVideoError, planSeek, routeTimeUpdate } from './seekPlan'
 import { loadStudioDoc } from './studioLoader'
 
 interface StudioScreenProps {
@@ -383,6 +383,19 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
   modeRef.current = mode
   const speedRef = useRef(speed)
   speedRef.current = speed
+
+  /** 專案模式守衛：來源文件編輯類動作（含 Toast〔復原〕／〔建立合輯〕）在專案模式一律忽略並提示。 */
+  const guarded = useCallback(
+    <A extends unknown[]>(cmd: Command | SourceEditCommand, fn: (...a: A) => void) =>
+      (...a: A): void => {
+        if (guardCommand(modeRef.current.mode, cmd) === 'blocked') {
+          toast({ message: i18n.studio.toast.sourceOnlyEdit })
+          return
+        }
+        fn(...a)
+      },
+    [toast]
+  )
   /** 來源播放頭的即時值（專案預覽期間保持不動） */
   const currentTimeRef = useRef(0)
   /** 目前 <video> 已載入完成的 src（loadedmetadata 後才有值；換檔時清空） */
@@ -527,6 +540,57 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
     [seekTo]
   )
 
+  const missingRef = useRef(missingItemIds)
+  missingRef.current = missingItemIds
+  /** 已為某片段觸發過換段（避免 timeupdate／影格回呼／ended 對同一段重複換） */
+  const advancedForRef = useRef<string | null>(null)
+
+  /** 離開 item 往下一段：跳過來源缺失的片段；全缺失或沒有下一段就暫停（缺失時 Toast）。 */
+  const advanceFrom = useCallback(
+    (item: ProjectItem): void => {
+      if (advancedForRef.current === item.id) return
+      advancedForRef.current = item.id
+      const r = nextPlayableItem(projectRef.current, item.id, missingRef.current)
+      if (r.kind === 'item') {
+        dispatchMode({ type: 'playItem', item: r.item })
+        return
+      }
+      videoRef.current?.pause()
+      if (r.kind === 'allMissing') toast({ message: i18n.studio.track.restMissingToast })
+    },
+    [toast]
+  )
+
+  /** 播放時間 t 已到片段尾端 → 換段（可跨影片）。 */
+  const advanceIfEnded = useCallback(
+    (item: ProjectItem, t: number): void => {
+      const step = nextAfter(projectRef.current, item.id, t, missingRef.current)
+      if (step.kind === 'continue') return
+      advanceFrom(item)
+    },
+    [advanceFrom]
+  )
+
+  const handlePlayingChange = useCallback((playing: boolean): void => {
+    if (playing) advancedForRef.current = null // 使用者重新播放：允許再次在片段尾端暫停／換段
+    setIsPlaying(playing)
+  }, [])
+
+  /** <video> 播到實際檔尾：片段尾端超出影片長度時也要能接續，不可卡住。 */
+  const handleVideoEnded = useCallback((): void => {
+    const item = previewRef.current.item
+    if (item && loadedSrcRef.current === videoSrcRef.current) advanceFrom(item)
+  }, [advanceFrom])
+
+  /** 載入失敗：作廢待套用 seek 與已載入標記，播放旗標歸 false。 */
+  const handleVideoError = useCallback((): void => {
+    const r = onVideoError({ loadedSrc: loadedSrcRef.current, pending: pendingSeekRef.current })
+    loadedSrcRef.current = r.loadedSrc
+    pendingSeekRef.current = r.pending
+    setIsPlaying(r.playing)
+    if (previewRef.current.item) toast({ message: i18n.studio.track.missingToast })
+  }, [toast])
+
   // 播放頭時間：來源時間與專案預覽時間分流（見 routeTimeUpdate）；專案模式依序接續
   const handleTimeUpdate = useCallback((t: number) => {
     const item = previewRef.current.item
@@ -544,20 +608,51 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
     }
     setPreviewTime(t)
     if (!item) return
-    const step = nextAfter(projectRef.current, item.id, t)
-    if (step.kind === 'continue') return
-    if (step.kind === 'next') dispatchMode({ type: 'playItem', item: step.item })
-    else videoRef.current?.pause()
-  }, [])
+    advanceIfEnded(item, t)
+  }, [advanceIfEnded])
 
   // 進入／切換預覽片段：載入後 seek 到片段起點並播放（spec §3.5）
   useEffect(() => {
     if (!previewItem) return
+    advancedForRef.current = null
     const start = Math.max(0, previewItem.start)
     setPreviewTime(start)
     requestSeek(start, videoSrc, true)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [previewItem?.id, previewItem?.start])
+
+  // 片段尾端檢查：timeupdate 約每 250 ms 才觸發一次，另以影格回呼（無則 100 ms 計時器）補強，
+  // 播放中才排程、每次只比較一個數字，CPU 成本可忽略。
+  useEffect(() => {
+    const el = videoRef.current
+    const item = previewItem
+    if (!el || !item) return
+    const check = (): void => {
+      if (loadedSrcRef.current !== videoSrcRef.current || pendingSeekRef.current) return
+      if (el.currentTime >= item.end) advanceFrom(item)
+    }
+    type Rvfc = HTMLVideoElement & {
+      requestVideoFrameCallback?: (cb: () => void) => number
+      cancelVideoFrameCallback?: (id: number) => void
+    }
+    const v = el as Rvfc
+    if (typeof v.requestVideoFrameCallback === 'function') {
+      let id = 0
+      let stopped = false
+      const loop = (): void => {
+        if (stopped) return
+        check()
+        id = v.requestVideoFrameCallback!(loop)
+      }
+      id = v.requestVideoFrameCallback(loop)
+      return () => {
+        stopped = true
+        v.cancelVideoFrameCallback?.(id)
+      }
+    }
+    const timer = window.setInterval(check, 100)
+    return () => window.clearInterval(timer)
+  }, [previewItem, advanceFrom])
 
   /* ---------------- 模式膠囊／脈絡 ---------------- */
 
@@ -692,13 +787,13 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
       message: i18n.studio.toast.addedProject.replace('{sec}', String(Math.round(clip.end - clip.start))),
       action: {
         label: i18n.studio.toast.undo,
-        run: () => {
+        run: guarded('supercut', () => {
           apply(res.undo(projectRef.current))
           dispatch({ type: 'removeClip', id: clip.id })
-        }
+        })
       }
     })
-  }, [mode.mode, splitProjectAtPlayhead, sourcePlayTime, duration, videoPath, apply, toast])
+  }, [mode.mode, splitProjectAtPlayhead, sourcePlayTime, duration, videoPath, apply, toast, guarded])
 
   /** 處理完目前建議後，把作用中卡片移到下一個建議（以處理前的清單計算）。 */
   const advanceActive = useCallback(
@@ -731,10 +826,10 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
           ),
           action: {
             label: i18n.studio.toast.undo,
-            run: () => {
+            run: guarded('supercut', () => {
               apply(undo.project(projectRef.current))
               dispatch({ type: undo.clipStatus === 'suggested' ? 'restoreClip' : 'acceptClip', id: clip.id })
-            }
+            })
           }
         })
       } else {
@@ -742,7 +837,7 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
       }
       advanceActive(clip.id)
     },
-    [videoPath, apply, toast, advanceActive]
+    [videoPath, apply, toast, advanceActive, guarded]
   )
 
   /** 略過建議（卡片／Delete）：標記已略過，Toast〔復原〕回到建議。 */
@@ -751,11 +846,11 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
       dispatch({ type: 'skipClip', id: clip.id })
       toast({
         message: i18n.studio.toast.skipped,
-        action: { label: i18n.studio.toast.undo, run: () => dispatch({ type: 'restoreClip', id: clip.id }) }
+        action: { label: i18n.studio.toast.undo, run: guarded('supercut', () => dispatch({ type: 'restoreClip', id: clip.id })) }
       })
       advanceActive(clip.id)
     },
-    [toast, advanceActive]
+    [toast, advanceActive, guarded]
   )
 
   /** 取消略過，回到建議狀態（不顯示 Toast）。 */
@@ -775,14 +870,14 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
         message: i18n.studio.toast.removedFromProject,
         action: {
           label: i18n.studio.toast.undo,
-          run: () => {
+          run: guarded('supercut', () => {
             if (items.length > 0) apply(addItems(projectRef.current, items))
             dispatch(manual ? { type: 'addClip', clip } : { type: 'acceptClip', id: clip.id })
-          }
+          })
         }
       })
     },
-    [videoPath, apply, toast]
+    [videoPath, apply, toast, guarded]
   )
 
   /** 全部加入（Ctrl+E／底欄）：以幂等的 planAddAll 加入，重複觸發不會產生重複片段；單一 Toast〔復原〕。 */
@@ -798,13 +893,13 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
       message: i18n.studio.toast.addedProject.replace('{sec}', String(secs)),
       action: {
         label: i18n.studio.toast.undo,
-        run: () => {
+        run: guarded('supercut', () => {
           apply(removeProjectItems(projectRef.current, plan.addedIds))
           for (const c of suggested) dispatch({ type: 'restoreClip', id: c.id })
-        }
+        })
       }
     })
-  }, [state.clips, videoPath, apply, toast])
+  }, [state.clips, videoPath, apply, toast, guarded])
 
   /** 加入建議（Enter）：只處理目前作用中的建議。 */
   const handleAcceptSuggestion = useCallback(() => {
@@ -854,13 +949,13 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
       message: i18n.studio.toast.addedProject.replace('{sec}', String(secs)),
       action: {
         label: i18n.studio.toast.undo,
-        run: () => {
+        run: guarded('supercut', () => {
           if (addedIds.length > 0) apply(removeProjectItems(projectRef.current, addedIds))
           for (const c of clips) dispatch({ type: 'removeClip', id: c.id })
-        }
+        })
       }
     })
-  }, [state.doc.events, duration, videoPath, apply, toast])
+  }, [state.doc.events, duration, videoPath, apply, toast, guarded])
 
   /** Delete（事件區）：有勾選刪勾選的；沒有勾選則刪游標列。〔復原〕同時還原選取。 */
   const handleDeleteSelected = useCallback(() => {
@@ -873,13 +968,13 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
       message: i18n.studio.toast.deletedEvents.replace('{n}', String(plan.ids.length)),
       action: {
         label: i18n.studio.toast.undo,
-        run: () => {
+        run: guarded('deleteEvent', () => {
           plan.ids.forEach((id) => dispatch({ type: 'restoreEvent', id }))
           dispatch({ type: 'setSelection', ids: plan.undoSelection, mode: 'replace' })
-        }
+        })
       }
     })
-  }, [state.selected, state.doc.events, evCursorId, toast])
+  }, [state.selected, state.doc.events, evCursorId, toast, guarded])
 
   const handleDeleteEvent = useCallback(
     (id: string) => {
@@ -893,7 +988,7 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
       }
       toast({
         message: i18n.studio.toast.deletedEvents.replace('{n}', '1'),
-        action: { label: i18n.studio.toast.undo, run: () => dispatch({ type: 'restoreEvent', id }) }
+        action: { label: i18n.studio.toast.undo, run: guarded('deleteEvent', () => dispatch({ type: 'restoreEvent', id })) }
       })
     },
     [toast]
@@ -924,7 +1019,7 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
         }
       })()
     },
-    [toast]
+    [toast, guarded]
   )
 
   /** 框選（時間軸拖曳空白）：Shift／Ctrl＝加選，否則取代；完成 Toast〔建立合輯〕。 */
@@ -938,10 +1033,10 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
         message: i18n.studio.toast.boxSelected
           .replace('{n}', String(ids.length))
           .replace('{range}', `${formatTime(t1)}–${formatTime(t2)}`),
-        action: { label: i18n.studio.ev.supercut, run: runSupercut }
+        action: { label: i18n.studio.ev.supercut, run: guarded('supercut', runSupercut) }
       })
     },
-    [toast, runSupercut]
+    [toast, runSupercut, guarded]
   )
 
   /** ↑↓：精華分頁移動建議卡；事件分頁移動游標（到底環繞）。 */
@@ -1132,17 +1227,6 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
 
   /* ---------------- 專案模式守衛（來源文件編輯類指令一律忽略＋Toast 提示） ---------------- */
 
-  const guarded = useCallback(
-    <A extends unknown[]>(cmd: Command | SourceEditCommand, fn: (...a: A) => void) =>
-      (...a: A): void => {
-        if (guardCommand(modeRef.current.mode, cmd) === 'blocked') {
-          toast({ message: i18n.studio.toast.sourceOnlyEdit })
-          return
-        }
-        fn(...a)
-      },
-    [toast]
-  )
   const openAddEvent = useCallback(() => setAddEventAt(sourcePlayTime()), [sourcePlayTime])
   const gAddEvent = useMemo(() => guarded('addEvent', openAddEvent), [guarded, openAddEvent])
   const gSupercut = useMemo(() => guarded('supercut', runSupercut), [guarded, runSupercut])
@@ -1338,7 +1422,9 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
             onTogglePlay={togglePlay}
             onTimeUpdate={handleTimeUpdate}
             onLoadedMetadata={handleLoadedMetadata}
-            onPlayingChange={setIsPlaying}
+            onPlayingChange={handlePlayingChange}
+            onEnded={handleVideoEnded}
+            onError={handleVideoError}
           />
 
           <TransportBar

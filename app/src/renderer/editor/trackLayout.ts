@@ -57,3 +57,15 @@ export function trimFromDrag(
   const end = clamp(item.end + delta, Math.max(item.start + MIN_LEN, 0), duration)
   return { start: item.start, end: round3(end) }
 }
+
+function samePath(a: string, b: string): boolean {
+  return a.replace(/[\\]/g, '/').toLowerCase() === b.replace(/[\\]/g, '/').toLowerCase()
+}
+
+/**
+ * 把手拖曳的終點上界：只有「開啟的影片」知道長度；其他來源的長度未知 → Infinity
+ * （不得用開啟影片的長度去夾別的來源）。
+ */
+export function trimUpperBound(itemSource: string, openVideo: string, openDuration: number): number {
+  return samePath(itemSource, openVideo) && openDuration > 0 ? openDuration : Infinity
+}

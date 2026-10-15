@@ -4,7 +4,7 @@ import { i18n } from '../i18n/zh-TW'
 import { ChevronDown, Copy, FilePlus2, FolderOpen, Redo2, Save, Scissors, Trash2, Undo2 } from '../components/icons'
 import type { Project, ProjectItem } from '../editor/project'
 import type { SaveState } from '../editor/ProjectProvider'
-import { dropIndex, itemWidth, trimFromDrag } from '../editor/trackLayout'
+import { dropIndex, itemWidth, trimFromDrag, trimUpperBound } from '../editor/trackLayout'
 import { sourceBadge } from '../editor/sourceColors'
 
 export interface ProjectTrackProps {
@@ -119,7 +119,7 @@ export function ProjectTrack(props: ProjectTrackProps): JSX.Element {
   const [newDlgOpen, setNewDlgOpen] = useState(false)
 
   const trackRef = useRef<HTMLDivElement>(null)
-  const trimRef = useRef<{ item: ProjectItem; edge: 'start' | 'end'; startX: number; pxPerSec: number; moved: boolean } | null>(null)
+  const trimRef = useRef<{ item: ProjectItem; edge: 'start' | 'end'; startX: number; pxPerSec: number; upper: number; moved: boolean } | null>(null)
   const orderRef = useRef<{ id: string; startX: number; dragging: boolean } | null>(null)
   const insertRef = useRef<number | null>(null)
   const suppressClickRef = useRef(false)
@@ -182,7 +182,7 @@ export function ProjectTrack(props: ProjectTrackProps): JSX.Element {
     const card = e.currentTarget.closest('.pclip') as HTMLElement | null
     const width = card?.offsetWidth ?? itemWidth(item.end - item.start)
     const len = Math.max(0.001, item.end - item.start)
-    trimRef.current = { item: { ...item }, edge, startX: e.clientX, pxPerSec: width / len, moved: false }
+    trimRef.current = { item: { ...item }, edge, startX: e.clientX, pxPerSec: width / len, upper: trimUpperBound(item.source, videoPath, videoDuration), moved: false }
     suppressClickRef.current = true
     try {
       e.currentTarget.setPointerCapture(e.pointerId)
@@ -190,7 +190,7 @@ export function ProjectTrack(props: ProjectTrackProps): JSX.Element {
       /* 指標已失效（例如合成事件）：仍可拖曳，只是沒有鎖定 */
     }
     setTrimDrag({ id: item.id, edge, start: item.start, end: item.end })
-  }, [])
+  }, [videoPath, videoDuration])
 
   const handleTrimMove = useCallback(
     (e: React.PointerEvent<HTMLElement>) => {
@@ -198,10 +198,10 @@ export function ProjectTrack(props: ProjectTrackProps): JSX.Element {
       if (!d) return
       const dx = e.clientX - d.startX
       if (Math.abs(dx) > 2) d.moved = true
-      const next = trimFromDrag(d.item, d.edge, dx, d.pxPerSec, videoDuration)
+      const next = trimFromDrag(d.item, d.edge, dx, d.pxPerSec, d.upper)
       setTrimDrag({ id: d.item.id, edge: d.edge, start: next.start, end: next.end })
     },
-    [videoDuration]
+    []
   )
 
   const handleTrimEnd = useCallback(
@@ -212,10 +212,10 @@ export function ProjectTrack(props: ProjectTrackProps): JSX.Element {
       if (!d) return
       const dx = e.clientX - d.startX
       if (!d.moved) return
-      const next = trimFromDrag(d.item, d.edge, dx, d.pxPerSec, videoDuration)
+      const next = trimFromDrag(d.item, d.edge, dx, d.pxPerSec, d.upper)
       onTrim(d.item.id, d.edge, d.edge === 'start' ? next.start : next.end)
     },
-    [videoDuration, onTrim]
+    [onTrim]
   )
 
   const handleTrimCancel = useCallback(() => {

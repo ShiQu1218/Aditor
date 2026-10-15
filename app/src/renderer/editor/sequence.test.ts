@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 import { Project, ProjectItem } from './project'
-import { nextAfter } from './sequence'
+import { nextAfter, nextPlayableItem } from './sequence'
 
 const item = (id: string, source: string, start: number, end: number): ProjectItem => ({
   id,
@@ -47,5 +47,31 @@ describe('sequence', () => {
     }
     // 不同來源的下一段播完 → 專案結束
     expect(nextAfter(project, 'b', 12)).toEqual({ kind: 'end' })
+  })
+})
+
+describe('nextPlayableItem', () => {
+  const project: Project = {
+    version: 1,
+    name: 'p',
+    items: [item('a', 'v1.mp4', 0, 10), item('b', 'gone.mp4', 0, 5), item('c', 'v2.mp4', 3, 9), item('d', 'v1.mp4', 20, 30)]
+  }
+  test('returns the immediately following item when nothing is missing', () => {
+    expect(nextPlayableItem(project, 'a', new Set())).toEqual({ kind: 'item', item: project.items[1] })
+  })
+  test('skips missing sources and crosses videos', () => {
+    expect(nextPlayableItem(project, 'a', new Set(['b']))).toEqual({ kind: 'item', item: project.items[2] })
+  })
+  test('all remaining missing → allMissing', () => {
+    expect(nextPlayableItem(project, 'a', new Set(['b', 'c', 'd']))).toEqual({ kind: 'allMissing' })
+  })
+  test('last item (or unknown id) → end', () => {
+    expect(nextPlayableItem(project, 'd', new Set())).toEqual({ kind: 'end' })
+    expect(nextPlayableItem(project, 'zzz', new Set())).toEqual({ kind: 'end' })
+  })
+  test('nextAfter skips missing items and reports allMissing', () => {
+    expect(nextAfter(project, 'a', 10, new Set(['b']))).toEqual({ kind: 'next', item: project.items[2] })
+    expect(nextAfter(project, 'c', 9, new Set(['d']))).toEqual({ kind: 'allMissing' })
+    expect(nextAfter(project, 'a', 5, new Set(['b']))).toEqual({ kind: 'continue' })
   })
 })
