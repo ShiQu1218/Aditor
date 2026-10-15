@@ -1,0 +1,115 @@
+/* Apex Highlighter — design tokens (可直接搬進 app/src/renderer/styles/tokens.css)
+   來源與依據見 docs/superpowers/specs/2026-10-16-ui-redesign.md §1、§4 */
+:root {
+  /* 表面（Outplayed 基底 #131313，疊白色透明度形成層級） */
+  --bg-app: #131313;
+  --bg-rail: #0d0d0e;
+  --bg-surface: #1b1b1d;
+  --bg-raised: #242427;
+  --bg-input: #0f0f10;
+  --bg-hover: rgba(255, 255, 255, 0.06);
+  --bg-active: rgba(255, 255, 255, 0.1);
+  --bg-scrim: rgba(0, 0, 0, 0.62);
+  --bg-popover: #1f1f22; /* 不透明，不使用 backdrop-filter */
+  --line: rgba(255, 255, 255, 0.08);
+  --line-strong: rgba(255, 255, 255, 0.16);
+
+  /* 文字 */
+  --text-1: #f6f6f6;
+  --text-2: #b6b6b6;
+  --text-3: #9a9a9a; /* 對 #131313 6.0、#1b1b1d 5.6、#242427 5.0、#2c2c30 4.6 */
+  --text-disabled: #6c6c6c;
+
+  /* 品牌色：Apex 紅（填色用 --accent，深底上的文字/線條用 --accent-bright） */
+  --accent: #d92e25;
+  --accent-hover: #c22820; /* hover/press 變暗：白字 5.8:1（舊 #EE3A30 僅 3.97） */
+  --accent-press: #a8231c;
+  --accent-bright: #ff5348;
+  --accent-soft: rgba(217, 46, 37, 0.16);
+  --on-accent: #ffffff;
+
+  /* 狀態色 */
+  --favorite: #ffd500;
+  --success: #34d399;
+  --warning: #ffd500;
+  --danger: #ff7a93; /* 錯誤專用粉紅，與品牌紅區隔 */
+  --info: #38bdf8;
+
+  /* 事件類型（形狀＋顏色＋圖示三重編碼，不單靠顏色） */
+  --ev-knock: #ff8a2b; /* 圓形 · 十字準星（與品牌紅 ΔE 35.6） */
+  --ev-assist-knock: #38bdf8; /* 六角形 · 加號 */
+  --ev-assist-elim: #2dd4bf; /* 菱形 · 叉號 */
+  --ev-elim: #f2e65a; /* 方形 · 骷髏 */
+  --ev-squad-wipe: #b66dff; /* 星形 · 星芒 */
+  --ev-uncounted-alpha: 0.65; /* 不計入：空心環＋65% 不透明（環 ≥3:1） */
+
+  /* 時間軸 */
+  --tl-bg: #101011;
+  --tl-ruler: #828282;
+  --tl-spectating-fill: rgba(168, 168, 168, 0.14);
+  --tl-spectating-hatch: rgba(168, 168, 168, 0.3);
+  --tl-unanalyzed: rgba(255, 213, 0, 0.1);
+  --tl-heat: 143, 163, 191; /* 藍灰，不使用品牌紅；alpha 0.3–0.9 */
+  --tl-clip-suggest-line: rgba(255, 255, 255, 0.85); /* AI 建議：白色虛線 */
+  --tl-clip-suggest-fill: rgba(255, 255, 255, 0.08);
+  --tl-clip-line: #f6f6f6; /* 已加入／手動：白色實線 2px＋勾選角標 */
+  --tl-clip-fill: rgba(255, 255, 255, 0.16);
+  --tl-playhead: #ffffff;
+
+  /* 字型 */
+  --font-display: 'Montserrat', 'Noto Sans TC', 'Microsoft JhengHei UI', 'Segoe UI', sans-serif;
+  --font-ui: 'Lato', 'Noto Sans TC', 'Microsoft JhengHei UI', 'Segoe UI', sans-serif;
+  --font-mono: 'Cascadia Mono', 'Consolas', 'Microsoft JhengHei UI', monospace;
+  --lh-body: 1.5; /* 中文內文 */
+  --lh-tight: 1.35; /* 中文標題 */
+  --fs-caption: 11px;
+  --fs-small: 12px;
+  --fs-body: 13px;
+  --fs-body-lg: 14px;
+  --fs-subtitle: 16px;
+  --fs-title: 18px;
+  --fs-h2: 22px;
+  --fs-h1: 26px;
+  --fs-display: 40px;
+  --fw-regular: 400;
+  --fw-bold: 700;
+  --fw-heavy: 900;
+
+  /* 間距（4px 基準） */
+  --sp-0: 2px;
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-8: 32px;
+  --sp-12: 48px;
+
+  /* 圓角（3 為 Outplayed 預設、10 為其 --corner） */
+  --r-xs: 3px;
+  --r-sm: 6px;
+  --r-md: 10px;
+  --r-pill: 999px;
+
+  /* 版面 */
+  --rail-w: 56px;
+  --topbar-h: 52px;
+  --aside-w: 380px;
+  --tl-source-h: 132px;
+  --tl-project-h: 92px;
+  --card-min: 280px;
+
+  /* 動態 */
+  --dur-fast: 150ms;
+  --dur-base: 250ms;
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --shadow-pop: 0 8px 24px rgba(0, 0, 0, 0.5); /* 僅限小型浮層 */
+  --focus-ring: 0 0 0 2px rgba(255, 255, 255, 0.6);
+}
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-fast: 0ms;
+    --dur-base: 0ms;
+  }
+}

@@ -1,0 +1,279 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Apex Highlighter UI Mock</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lato:wght@400;700;900&family=Montserrat:wght@500;700;900&display=swap">
+<link rel="stylesheet" href="css/tokens.css">
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+<div class="app">
+  <!-- 左側圖示欄 -->
+  <nav class="rail" aria-label="主導覽">
+    <svg class="logo" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"><path d="M16 2l12 7v14l-12 7-12-7V9z"/><path d="M16 9v14 M9 16h14"/></svg>
+    <button class="rail-btn active" data-go="library" data-tip="影片庫" aria-label="影片庫"><svg class="ic lg" data-ic="grid"></svg></button>
+    <button class="rail-btn" data-go="studio" data-tip="工作室（精華＋專案）" aria-label="工作室"><svg class="ic lg" data-ic="film"></svg><span class="badge" id="rail-proj">3</span></button>
+    <div class="rail-spacer"></div>
+    <button class="rail-btn" id="rail-queue" data-tip="分析佇列" aria-label="分析佇列"><span class="ring" style="--p:42"></span></button>
+    <button class="rail-btn" id="rail-kbd" data-tip="快捷鍵 (?)" aria-label="快捷鍵"><svg class="ic lg" data-ic="kbd"></svg></button>
+    <button class="rail-btn" data-go="settings" data-tip="設定" aria-label="設定"><svg class="ic lg" data-ic="sliders"></svg></button>
+  </nav>
+
+  <div class="main" id="main">
+    <!-- ===== 影片庫 ===== -->
+    <section class="screen active" id="s-library">
+      <header class="topbar">
+        <h1>影片庫</h1>
+        <div class="grow"></div>
+        <button class="btn" id="btn-folder"><svg class="ic" data-ic="folder"></svg>匯入資料夾</button>
+        <button class="btn primary" id="btn-import"><svg class="ic" data-ic="plus"></svg>匯入影片</button>
+      </header>
+      <div class="lib-body" id="lib-body">
+        <div class="lib-tools">
+          <div class="search"><svg class="ic" data-ic="search"></svg><input placeholder="依檔名搜尋" id="lib-search"><kbd>Ctrl F</kbd></div>
+          <span class="sep"></span>
+          <button class="chip on" data-lf="all">全部 <span class="n" id="n-all"></span></button>
+          <button class="chip" data-lf="fav"><svg class="ic sm" data-ic="star"></svg>收藏 <kbd>Ctrl D</kbd></button>
+          <button class="chip" data-lf="knock"><span class="evt knock" style="width:16px;height:16px"><svg class="ic" data-ic="g_knock"></svg></span>含擊倒</button>
+          <button class="chip" data-lf="assist"><span class="evt assist_knock" style="width:16px;height:16px"><svg class="ic" data-ic="g_assist"></svg></span>含助攻</button>
+          <button class="chip" data-lf="hl"><svg class="ic sm" data-ic="sparkles"></svg>有精華 <span class="pill accent slant" style="height:16px">新</span></button>
+          <span class="watch-chip"><span class="dot"></span>監看中：D:\Outplayed\Apex Legends 等 2 個資料夾 <button class="btn ghost sm" data-go="settings">管理</button></span>
+        </div>
+        <div class="queue-strip" id="queue-strip">
+          <span class="ring" style="--p:42"></span>
+          <div><b>正在分析 1/3</b> <span class="muted">Apex Legends_07-13-2026_17-50-59-50.mp4</span></div>
+          <div class="bar"><i style="width:42%"></i></div>
+          <span class="muted">42% · 約剩 6 分</span>
+          <span class="grow" style="flex:1"></span>
+          <span class="dim">檢視佇列</span><svg class="ic sm dim" data-ic="chev"></svg>
+        </div>
+        <div id="lib-groups"></div>
+        <div class="empty hidden" id="lib-empty">
+          <div class="box">
+            <svg class="ic" style="width:56px;height:56px;color:var(--accent-bright)" data-ic="film"></svg>
+            <h2>把 Apex 錄影拖進來</h2>
+            <p class="muted">支援 mp4 / mkv / mov / webm。新影片會自動排入分析，一次分析一支。</p>
+            <div class="steps">
+              <div class="step"><i>1</i><b>匯入</b>拖放檔案，或指定監看資料夾</div>
+              <div class="step"><i>2</i><b>自動分析</b>標出擊倒、助攻與多殺精華</div>
+              <div class="step"><i>3</i><b>挑選匯出</b>確認精華、微調、匯出</div>
+            </div>
+            <button class="btn primary"><svg class="ic" data-ic="plus"></svg>匯入影片</button>
+            <button class="btn" style="margin-left:6px"><svg class="ic" data-ic="folder"></svg>設定監看資料夾</button>
+          </div>
+        </div>
+        <div class="drop-overlay" id="drop-ov"><div>放開滑鼠以匯入影片<br><span style="font-size:14px;font-weight:400;color:var(--text-2)">將加入影片庫並自動排入分析</span></div></div>
+      </div>
+    </section>
+
+    <!-- ===== 工作室 ===== -->
+    <section class="screen" id="s-studio">
+      <header class="topbar">
+        <button class="btn ghost icon" data-go="library" title="返回影片庫"><svg class="ic" data-ic="back"></svg></button>
+        <div style="min-width:0">
+          <h1 style="font-size:var(--fs-body-lg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis" id="st-name"></h1>
+          <div class="dim" style="font-size:var(--fs-small)" id="st-meta"></div>
+        </div>
+        <span id="st-status"></span>
+        <div class="grow"></div>
+        <button class="btn" id="btn-ac"><svg class="ic" data-ic="sparkles"></svg>AI 自動剪輯<svg class="ic sm" data-ic="chev"></svg></button>
+        <button class="btn" id="btn-quick" title="快速剪輯 Ctrl+Q"><svg class="ic" data-ic="scissors"></svg>快速剪輯 <kbd>Ctrl Q</kbd></button>
+        <button class="btn primary" id="btn-export"><svg class="ic" data-ic="export"></svg>匯出 <span id="exp-n" class="pill" style="background:rgba(0,0,0,.25);color:#fff">3</span></button>
+        <button class="btn ghost icon" id="btn-aside" title="顯示／隱藏側欄"><svg class="ic" data-ic="queue"></svg></button>
+      </header>
+      <div class="studio" id="studio">
+        <div class="studio-left">
+          <div class="ctx-banner" id="ctx-banner"></div>
+          <div id="st-notice"></div>
+          <div class="stage-wrap">
+            <div class="stage" id="stage">
+              <div class="scene s1" id="stage-scene"><img class="banner" id="stage-banner" alt=""></div>
+              <div class="hud"><span class="mode-pill" id="mode-pill"><i></i><span>來源 · 17-17-13</span></span><span class="pill warn hidden" id="spec-pill"><svg class="ic sm" data-ic="eyeoff"></svg>觀戰中</span></div>
+              <div class="counter" id="stage-counter"></div>
+              <button class="big-play" id="big-play"><svg class="ic" data-ic="play"></svg></button>
+            </div>
+          </div>
+          <div class="transport">
+            <button class="play" id="btn-play" title="播放／暫停 (Space)"><svg class="ic" data-ic="play"></svg></button>
+            <button class="btn ghost icon" id="btn-prev" title="上一個精華 (Ctrl+←)"><svg class="ic" data-ic="prev"></svg></button>
+            <button class="btn ghost icon" id="btn-next" title="下一個精華 (Ctrl+→)"><svg class="ic" data-ic="next"></svg></button>
+            <span class="time" id="time">0:00 / 13:42</span>
+            <button class="btn sm" id="btn-speed" title="切換速度 (S)">1×</button>
+            <div class="grow"></div>
+            <div class="filters" id="filters"></div>
+            <button class="btn sm" id="btn-addev" title="新增事件 (M)"><svg class="ic sm" data-ic="plus"></svg>事件 <kbd>M</kbd></button>
+          </div>
+          <div class="dock">
+            <div class="lane source-lane">
+              <div class="lane-label">來源<small id="src-sub">13:42</small></div>
+              <div class="tl-wrap" id="tl-wrap" tabindex="0" role="application" aria-label="來源時間軸：方向鍵移動、+/- 縮放">
+                <canvas id="tl"></canvas>
+                <div class="playhead" id="playhead"></div>
+                <div class="tooltip" id="tl-tip"></div>
+                <div class="boxsel" id="boxsel"></div>
+                <div class="tl-tools">
+                  <button class="btn icon sm" id="z-out" title="縮小 (Ctrl -)"><svg class="ic sm" data-ic="zout"></svg></button>
+                  <button class="btn sm" id="z-reset" title="重設縮放 (Ctrl 0)">1×</button>
+                  <button class="btn icon sm" id="z-in" title="放大 (Ctrl +)"><svg class="ic sm" data-ic="zin"></svg></button>
+                </div>
+              </div>
+            </div>
+            <div class="lane project-lane" id="project-lane">
+              <div class="lane-label">專案<small id="proj-sub">2:14</small></div>
+              <div class="plane">
+                <div class="plane-head">
+                  <button class="btn ghost icon sm" id="p-fold" title="展開／收合專案軌" aria-label="展開或收合專案軌"><svg class="ic sm" data-ic="chev"></svg></button>
+                  <input class="pname" id="pname" value="我的精華專案" aria-label="專案名稱">
+                  <span id="proj-info"></span>
+                  <span class="sub-save" id="saved"><i></i>已自動儲存</span>
+                  <span class="grow"></span>
+                  <span class="insp" id="insp"></span>
+                  <button class="btn ghost icon sm" id="p-split" title="在播放頭分割 (專案模式 Ctrl+Q)" aria-label="分割"><svg class="ic sm" data-ic="scissors"></svg></button>
+                  <button class="btn ghost icon sm" id="p-dup" title="複製片段 (Ctrl+D)" aria-label="複製"><svg class="ic sm" data-ic="copy"></svg></button>
+                  <button class="btn ghost icon sm" id="p-del" title="刪除片段 (Delete，可復原)" aria-label="刪除"><svg class="ic sm" data-ic="trash"></svg></button>
+                  <button class="btn ghost icon sm" id="p-undo" title="復原 (Ctrl+Z)" aria-label="復原"><svg class="ic sm" data-ic="undo"></svg></button>
+                  <button class="btn ghost icon sm" id="p-redo" title="重做 (Ctrl+Y)" aria-label="重做"><svg class="ic sm" data-ic="redo"></svg></button>
+                  <button class="btn ghost sm" id="p-new">新專案</button>
+                  <button class="btn ghost sm" id="p-open" title="開啟 .apexproj.json 專案檔">開啟檔案</button>
+                  <button class="btn ghost sm" id="p-save" title="另存為 .apexproj.json（Ctrl+S）">另存檔案</button>
+                </div>
+                <div class="track" id="track" tabindex="0" role="list" aria-label="專案片段"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <aside class="aside" id="aside">
+          <div class="tabs">
+            <button class="tab active" data-tab="hl" role="tab"><svg class="ic sm" data-ic="sparkles"></svg>精華<span class="n" id="n-hl">3</span></button>
+            <button class="tab" data-tab="ev" role="tab"><svg class="ic sm" data-ic="flag"></svg>事件<span class="n" id="n-ev">19</span></button>
+          </div>
+          <div class="tab-body" id="tab-body" tabindex="0"></div>
+          <div class="aside-foot" id="aside-foot"></div>
+        </aside>
+      </div>
+    </section>
+
+    <!-- ===== 設定 ===== -->
+    <section class="screen" id="s-settings">
+      <header class="topbar"><h1>設定</h1></header>
+      <div class="settings">
+        <nav class="set-nav" role="tablist" aria-label="設定分類" aria-orientation="vertical">
+          <button class="set-cat active" role="tab" data-cat="a"><svg class="ic" data-ic="film"></svg><span>影片與分析</span></button>
+          <button class="set-cat" role="tab" data-cat="b"><svg class="ic" data-ic="scissors"></svg><span>預覽與剪輯</span></button>
+          <button class="set-cat" role="tab" data-cat="c"><svg class="ic" data-ic="export"></svg><span>匯出與關於</span></button>
+        </nav>
+        <div class="set-pane">
+          <div class="search"><svg class="ic" data-ic="search"></svg><input id="set-search" placeholder="搜尋設定" aria-label="搜尋設定"><kbd>Ctrl F</kbd></div>
+          <div class="wrap" id="set-wrap">
+            <div class="dim hidden" id="set-none" style="padding:40px 0">沒有符合的設定</div>
+            <div class="setcard" data-cat="a"><h3>影片來源</h3>
+              <div class="setrow"><div>監看資料夾<small>D:\Outplayed\Apex Legends　·　E:\Captures\Apex（新影片自動匯入並排入分析）</small></div><button class="btn sm"><svg class="ic sm" data-ic="plus"></svg>新增資料夾</button></div>
+              <div class="setrow"><div>新影片自動分析<small>關閉後只匯入，需手動按「分析」</small></div><button class="switch on" aria-label="新影片自動分析"></button></div>
+            </div>
+            <div class="setcard" data-cat="a"><h3>分析與效能</h3>
+              <div class="setrow"><div>解碼方式<small>硬體解碼失敗時會自動改用軟體解碼並提示</small></div><select class="select" style="width:180px"><option>自動（硬體優先）</option><option>強制軟體解碼</option></select></div>
+              <div class="setrow"><div>快取位置<small>預設存在 %APPDATA%\ApexHighlighter\cache，不寫入 Outplayed 目錄</small></div><select class="select" style="width:180px"><option>App 資料夾</option><option>影片旁（.apexhl.json）</option></select></div>
+              <div class="setrow"><div>低效能模式<span class="newtag">新</span><small>關閉動畫、縮圖改為靜態、時間軸熱度條降為 60 格</small></div><button class="switch" aria-label="低效能模式"></button></div>
+            </div>
+            <div class="setcard" data-cat="b"><h3>預覽與代理檔</h3>
+              <div class="setrow"><div>播放不流暢時建議產生代理檔<small>以 mediaCapabilities 判斷；匯出一律使用原始檔</small></div><button class="switch on" aria-label="建議代理檔"></button></div>
+              <div class="setrow"><div>代理檔佔用 2.4 GB（3 個檔案）<small>刪除後需要時可重新產生</small></div><button class="btn sm danger">刪除全部代理檔</button></div>
+            </div>
+            <div class="setcard" data-cat="b"><h3>剪輯預設值</h3>
+              <div class="setrow"><div>事件前／後秒數（快速剪輯、合輯）<small>預設 8 秒前、4 秒後</small></div><span class="insp"><span class="stepper"><button>−</button><span>8s</span><button>+</button></span><span class="stepper"><button>−</button><span>4s</span><button>+</button></span></span></div>
+              <div class="setrow"><div>AI 自動剪輯預設參數<small>n=3、gap=20s、max_len=90s（在「AI 自動剪輯」浮層可臨時調整）</small></div><button class="btn sm">編輯預設值</button></div>
+              <div class="setrow"><div>開啟影片時自動產生精華建議<span class="newtag">新</span><small>以預設參數執行一次，僅放上建議框，不會自動加入專案</small></div><button class="switch on" aria-label="自動產生建議"></button></div>
+              <div class="setrow"><div>專案自動儲存<span class="newtag">新</span><small>每次修改後自動存到 %APPDATA%\ApexHighlighter\projects\，「另存檔案」只用於分享</small></div><button class="switch on" aria-label="專案自動儲存"></button></div>
+            </div>
+            <div class="setcard" data-cat="c"><h3>匯出</h3>
+              <div class="setrow"><div>預設輸出資料夾</div><button class="btn sm"><svg class="ic sm" data-ic="folder"></svg>D:\Videos\Apex</button></div>
+              <div class="setrow"><div>可用編碼器<small>NVENC ✓　QSV ✗　AMF ✗</small></div><button class="btn sm">重新偵測</button></div>
+              <div class="setrow"><div>OpenH264（CPU 編碼）<small>已安裝 Cisco 官方 DLL；僅在沒有硬體編碼器時使用</small></div><button class="btn sm">重新下載</button></div>
+            </div>
+            <div class="setcard" data-cat="c"><h3>關於</h3>
+              <div class="setrow"><div>Apex Highlighter 0.1.0　·　引擎 0.1.0　·　範本 zh-TW@1<small>MIT 授權。隨附 LGPL 版 ffmpeg。</small></div><button class="btn sm">第三方授權</button></div>
+              <div class="setrow"><div>商標聲明<small>Apex Legends 為 Electronic Arts／Respawn 之商標，與本專案無關。</small></div><span></span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== 自動剪輯浮層 ===== -->
+    <div class="pop" id="pop-ac" style="top:58px;right:190px">
+      <h3 style="font-family:var(--font-display);font-size:var(--fs-subtitle)">AI 自動剪輯</h3>
+      <p class="muted" style="margin:2px 0 14px">只會在時間軸放上「建議框」，由你確認後才加入專案。</p>
+      <div class="field"><label>最少殺敵數 n</label><input type="number" id="ac-n" min="1" max="10" value="3"><input type="range" id="ac-n-r" min="1" max="10" value="3"><small>群內計入事件數達到 n 才成立</small></div>
+      <div class="field"><label>相鄰最大間隔 gap（秒）</label><input type="number" id="ac-gap" min="5" max="60" value="20"><input type="range" id="ac-gap-r" min="5" max="60" value="20"></div>
+      <div class="field"><label>首殺前 before（秒）</label><input type="number" id="ac-before" min="0" max="30" value="8"><input type="range" id="ac-before-r" min="0" max="30" value="8"></div>
+      <div class="field"><label>末殺後 after（秒）</label><input type="number" id="ac-after" min="0" max="30" value="4"><input type="range" id="ac-after-r" min="0" max="30" value="4"></div>
+      <div class="field"><label>片段最長 max_len（秒）</label><input type="number" id="ac-max" min="15" max="300" value="90"><input type="range" id="ac-max-r" min="15" max="300" value="90"></div>
+      <div class="preview-line" id="ac-prev"></div>
+      <div class="foot" style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">
+        <button class="btn ghost sm" id="ac-reset">重設預設值</button>
+        <button class="btn sm" data-close="pop-ac">取消</button>
+        <button class="btn primary sm" id="ac-apply">套用（取代現有建議）</button>
+      </div>
+    </div>
+
+    <!-- ===== 匯出抽屜 ===== -->
+    <div class="drawer" id="drawer">
+      <div class="drawer-head"><h3>匯出專案</h3><button class="btn ghost icon" id="dr-close"><svg class="ic" data-ic="x"></svg></button></div>
+      <div class="drawer-body" id="dr-body"></div>
+      <div class="drawer-foot" id="dr-foot"></div>
+    </div>
+
+    <!-- 分析佇列浮層 -->
+    <div class="pop qpop" id="qpop">
+      <div style="display:flex;align-items:center;margin-bottom:6px"><h3 style="flex:1;font-family:var(--font-display);font-size:var(--fs-body-lg)">分析佇列</h3><span class="dim">一次分析一支</span></div>
+      <div id="qlist"></div>
+    </div>
+  </div>
+</div>
+
+<!-- 對話框 -->
+<div class="scrim" id="dlg-addev">
+  <div class="dialog" style="width:360px">
+    <h3>於播放頭新增事件</h3><div class="sub">時間 <b class="mono" id="addev-t">0:00</b>　·　新增後會重跑計入推導</div>
+    <div class="radio-list" id="addev-list"></div>
+    <div class="foot"><button class="btn" data-close="dlg-addev">取消</button><button class="btn primary" id="addev-ok">新增事件 <kbd style="color:#fff">Enter</kbd></button></div>
+  </div>
+</div>
+<div class="scrim" id="dlg-h264">
+  <div class="dialog">
+    <h3>需要下載 Cisco OpenH264</h3>
+    <div class="sub">這台電腦沒有可用的硬體編碼器（NVENC／QSV／AMF），「精準重新編碼」需要 OpenH264。</div>
+    <p class="muted">為符合授權，本程式不隨附 OpenH264。同意後，會從 Cisco 官方網址 <span class="mono">ciscobinary.openh264.org</span> 下載官方 DLL（約 0.5 MB）。畫質會略低於硬體編碼。</p>
+    <p class="muted" style="margin-top:8px">你也可以改選「快速無損」，不需要任何編碼器。</p>
+    <div class="foot"><button class="btn" data-close="dlg-h264">改用快速無損</button><button class="btn primary" data-close="dlg-h264">同意並下載</button></div>
+  </div>
+</div>
+<div class="scrim" id="dlg-newproj">
+  <div class="dialog" style="width:400px">
+    <h3>建立新專案？</h3>
+    <div class="sub">目前專案「我的精華專案」有 <b id="np-n">3</b> 段，已自動儲存在 %APPDATA%\ApexHighlighter\projects\，之後可從「開啟檔案」或專案清單找回。尚未另存成 .apexproj.json 檔案。</div>
+    <div class="foot"><button class="btn" data-close="dlg-newproj">取消</button><button class="btn" id="np-save">另存檔案後新增</button><button class="btn primary" id="np-ok">直接新增</button></div>
+  </div>
+</div>
+<div class="scrim" id="dlg-kbd">
+  <div class="dialog" style="width:680px">
+    <h3>快捷鍵</h3><div class="sub">標示 <span class="newtag" style="margin:0">新</span> 者為沿用 Outplayed 習慣、現行版本尚未提供</div>
+    <div class="sc-grid" id="sc-grid"></div>
+    <div class="foot"><button class="btn" data-close="dlg-kbd">關閉 <kbd>Esc</kbd></button></div>
+  </div>
+</div>
+
+<div class="toast-host" id="toasts"></div>
+<div class="mockbar" id="mockbar">
+  <button class="tog" id="mb-tog">Mock 狀態 ▾</button>
+  <span>影片庫</span><button data-mock="lib-full">有影片</button><button data-mock="lib-empty">空</button><button data-mock="lib-drag">拖放</button>
+  <span>工作室</span><button data-mock="st-ready">完成</button><button data-mock="st-long">300 事件</button><button data-mock="st-error">錯誤</button><button data-mock="st-proxy">代理檔建議</button>
+  <span>匯出</span><button data-mock="ex-config">設定</button><button data-mock="ex-run">進行中</button><button data-mock="ex-done">完成</button><button data-mock="ex-err">失敗</button>
+</div>
+<script src="js/data.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
