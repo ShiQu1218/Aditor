@@ -1,0 +1,12 @@
+engine/.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+*.mp4
+*.mkv
+*.mov
+node_modules/
+dist/
+out/
+build/

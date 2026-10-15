@@ -1,0 +1,64 @@
+from __future__ import annotations
+
+import json
+from dataclasses import dataclass, field
+from pathlib import Path
+
+
+class ProfileError(Exception):
+    pass
+
+
+@dataclass(frozen=True)
+class KeywordSpec:
+    file: str
+    threshold: float
+
+
+@dataclass
+class Profile:
+    lang: str
+    templates_version: str
+    banner_roi: tuple[int, int, int, int]
+    spec_roi: tuple[int, int, int, int]
+    white: dict
+    red: dict
+    keywords: dict[str, KeywordSpec]
+    spec_templates: list[KeywordSpec]
+    name_sig_threshold: float
+    dedupe_window: float
+    dir: Path = field(default_factory=Path)
+
+
+_REQUIRED = ["lang", "templates_version", "banner_roi", "spec_roi", "white", "red",
+             "keywords", "spec_templates", "name_sig_threshold", "dedupe_window"]
+
+
+def load_profile(dir: Path) -> Profile:
+    dir = Path(dir)
+    pj = dir / "profile.json"
+    if not pj.exists():
+        raise ProfileError(f"profile.json 不存在：{pj}")
+    try:
+        doc = json.loads(pj.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as e:
+        raise ProfileError(f"profile.json 格式錯誤：{e}") from e
+    for k in _REQUIRED:
+        if k not in doc:
+            raise ProfileError(f"profile.json 缺少欄位：{k}")
+    try:
+        keywords = {k: KeywordSpec(v["file"], float(v["threshold"])) for k, v in doc["keywords"].items()}
+        specs = [KeywordSpec(v["file"], float(v["threshold"])) for v in doc["spec_templates"]]
+        p = Profile(
+            lang=doc["lang"], templates_version=doc["templates_version"],
+            banner_roi=tuple(int(x) for x in doc["banner_roi"]),
+            spec_roi=tuple(int(x) for x in doc["spec_roi"]),
+            white=doc["white"], red=doc["red"], keywords=keywords, spec_templates=specs,
+            name_sig_threshold=float(doc["name_sig_threshold"]),
+            dedupe_window=float(doc["dedupe_window"]), dir=dir)
+    except (KeyError, TypeError, ValueError) as e:
+        raise ProfileError(f"profile.json 欄位內容錯誤：{e!r}") from e
+    for spec in [*keywords.values(), *specs]:
+        if not (dir / spec.file).exists():
+            raise ProfileError(f"範本檔遺失：{spec.file}")
+    return p

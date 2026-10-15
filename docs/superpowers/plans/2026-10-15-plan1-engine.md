@@ -92,8 +92,8 @@ tools/
   - `probe.probe(path: str) -> VideoInfo`（ffprobe 失敗 raise `ProbeError`）、`probe.keyframes(path: str) -> list[float]`（以 `ffprobe -skip_frame nokey -select_streams v:0 -show_entries frame=pts_time` 取得，已扣除 start_time）、`probe.is_16x9(w: int, h: int) -> bool`。
   - `conftest.make_video(tmp_path, name, duration, *, start_time=0.0, vfr=False, marks: list[tuple[float, float]] = []) -> Path`：用 ffmpeg `testsrc2` 產生 1920×1080 H.264 影片；`marks` 為 `(t_start, t_end)`，在這些時間於 banner ROI 中央畫實心白框（`drawbox ... enable='between(t,a,b)'`）；`start_time` 以 `-output_ts_offset` 達成；`vfr=True` 以 `setpts` 抖動產生可變幀率。
 
-- [ ] **Step 1: 建立骨架**：`git` 已初始化；建立 `.gitignore`（`engine/.venv/`、`__pycache__/`、`*.mp4`、`*.mkv`、`node_modules/`、`dist/`、`out/`）、`engine/pyproject.toml`（套件 `apexhl`，依賴 `opencv-python`, `numpy`；dev 依賴 `pytest`），以 `py -3.14 -m venv engine/.venv` 建立環境並 `pip install -e engine[dev]`。
-- [ ] **Step 2: 寫失敗測試**
+- [x] **Step 1: 建立骨架**：`git` 已初始化；建立 `.gitignore`（`engine/.venv/`、`__pycache__/`、`*.mp4`、`*.mkv`、`node_modules/`、`dist/`、`out/`）、`engine/pyproject.toml`（套件 `apexhl`，依賴 `opencv-python`, `numpy`；dev 依賴 `pytest`），以 `py -3.14 -m venv engine/.venv` 建立環境並 `pip install -e engine[dev]`。
+- [x] **Step 2: 寫失敗測試**
 
 ```python
 # test_models.py
@@ -134,10 +134,10 @@ def test_ffbin_env_override(monkeypatch, tmp_path):
     with pytest.raises(FileNotFoundError): ffbin.ffmpeg()
 ```
 
-- [ ] **Step 3: 確認失敗**：`.venv/Scripts/python -m pytest tests -v` → 匯入錯誤。
-- [ ] **Step 4: 實作** `ffbin.py`、`models.py`、`profile.py`（本 Task 只需能載入，先以 `tests/fixtures/profile_min/` 內的最小 profile 做 `test_load_profile_missing_file` 測試：缺 PNG 時 `ProfileError` 訊息包含檔名）、`probe.py`、`conftest.make_video`。
-- [ ] **Step 5: 確認通過**：`.venv/Scripts/python -m pytest tests -v` 全數 PASS。
-- [ ] **Step 6: Commit** `feat(engine): scaffold package, models, profile loader, probe`
+- [x] **Step 3: 確認失敗**：`.venv/Scripts/python -m pytest tests -v` → 匯入錯誤。
+- [x] **Step 4: 實作** `ffbin.py`、`models.py`、`profile.py`（本 Task 只需能載入，先以 `tests/fixtures/profile_min/` 內的最小 profile 做 `test_load_profile_missing_file` 測試：缺 PNG 時 `ProfileError` 訊息包含檔名）、`probe.py`、`conftest.make_video`。
+- [x] **Step 5: 確認通過**：`.venv/Scripts/python -m pytest tests -v` 全數 PASS。
+- [x] **Step 6: Commit** `feat(engine): scaffold package, models, profile loader, probe`
 
 ---
 

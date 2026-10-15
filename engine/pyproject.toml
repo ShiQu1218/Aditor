@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "apexhl"
+version = "0.1.0"
+description = "Apex Highlighter 分析引擎"
+requires-python = ">=3.11"
+dependencies = ["opencv-python", "numpy"]
+
+[project.optional-dependencies]
+dev = ["pytest", "pytest-timeout"]
+tools = ["ccl_chromium_reader"]
+
+[tool.setuptools.packages.find]
+include = ["apexhl*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+timeout = 120
