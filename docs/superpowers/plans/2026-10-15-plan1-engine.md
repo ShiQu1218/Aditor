@@ -336,7 +336,7 @@ def test_scan_scales_empty(zh_detector):
   - 觀戰連續 ≥ 2 秒（8 格）才成立，區間為 `[第一格 t, 最後一格 t + 0.25]`；
   - `Event.id = f"a{int(round(t*1000))}"`，`source="auto"`，`name_sig` 以 `NameSig.to_b64()` 存入。
 
-- [ ] **Step 1: 寫失敗測試**（以 `FrameResult` 序列餵入，輔助函式 `seq("..KK KK..", kind="knock")` 以字元表示每 0.25 秒一格）
+- [x] **Step 1: 寫失敗測試**（以 `FrameResult` 序列餵入，輔助函式 `seq("..KK KK..", kind="knock")` 以字元表示每 0.25 秒一格）
 
 ```python
 def test_two_frame_minimum():           # 單格命中不成立
@@ -349,8 +349,8 @@ def test_resume_continuation_skipped():  # resume_start=10.0，第一格(10.0)�
 def test_spectating_interval():          # 9 格觀戰 → [t0, t0+2.25]；7 格 → 無區間
 ```
 
-- [ ] **Step 2: 確認失敗** → **Step 3: 實作** → **Step 4: 確認通過**
-- [ ] **Step 5: Commit** `feat(engine): streaming event tracker`
+- [x] **Step 2: 確認失敗** → **Step 3: 實作** → **Step 4: 確認通過**
+- [x] **Step 5: Commit** `feat(engine): streaming event tracker`
 
 ---
 
