@@ -168,4 +168,49 @@ export function registerIpcHandlers(
     }
     return false
   })
+
+  ipcMain.handle('project:showSaveDialog', async (event, defaultName?: string) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    const res = await dialog.showSaveDialog(win || (undefined as unknown as BrowserWindow), {
+      title: '儲存剪輯專案',
+      defaultPath: defaultName || 'project.apexproj.json',
+      filters: [{ name: 'Apex Highlighter Project', extensions: ['apexproj.json', 'json'] }]
+    })
+    return res.canceled ? null : res.filePath
+  })
+
+  ipcMain.handle('project:showOpenDialog', async (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    const res = await dialog.showOpenDialog(win || (undefined as unknown as BrowserWindow), {
+      title: '開啟剪輯專案',
+      properties: ['openFile'],
+      filters: [{ name: 'Apex Highlighter Project', extensions: ['apexproj.json', 'json'] }]
+    })
+    return res.canceled || res.filePaths.length === 0 ? null : res.filePaths[0]
+  })
+
+  ipcMain.handle('project:save', async (_, filePath: string, content: string) => {
+    try {
+      const dir = path.dirname(filePath)
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true })
+      }
+      fs.writeFileSync(filePath, content, 'utf-8')
+      return true
+    } catch (err) {
+      console.error('Failed to save project:', err)
+      return false
+    }
+  })
+
+  ipcMain.handle('project:load', async (_, filePath: string) => {
+    try {
+      if (fs.existsSync(filePath)) {
+        return fs.readFileSync(filePath, 'utf-8')
+      }
+    } catch (err) {
+      console.error('Failed to load project:', err)
+    }
+    return null
+  })
 }

@@ -42,6 +42,12 @@ const api = {
     get: (videoPath: string) => ipcRenderer.invoke('proxy:get', videoPath),
     generate: (videoPath: string) => ipcRenderer.invoke('proxy:generate', videoPath),
     delete: (videoPath: string) => ipcRenderer.invoke('proxy:delete', videoPath)
+  },
+  project: {
+    showSaveDialog: (defaultName?: string) => ipcRenderer.invoke('project:showSaveDialog', defaultName),
+    showOpenDialog: () => ipcRenderer.invoke('project:showOpenDialog'),
+    save: (filePath: string, content: string) => ipcRenderer.invoke('project:save', filePath, content),
+    load: (filePath: string) => ipcRenderer.invoke('project:load', filePath)
   }
 }
 

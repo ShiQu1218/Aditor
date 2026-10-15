@@ -39,3 +39,8 @@
 - **Status**: Completed
 - **Vitest**: 38 passed (container & codec checks, MediaCapabilities wrapper, proxy args generation with 960x540 and -g 30, encoder priority selection)
 - **Manual GUI check TODO**: In desktop UI, open an AV1 or unsupported format video to see the "建議產生代理檔" banner; click to generate proxy and verify playback seamlessly switches to the proxy file while keeping timeline times unchanged.
+
+### Task 6: 剪輯專案
+- **Status**: Completed
+- **Vitest**: 49 passed (pure project manipulation: split, move, duplicate, trimItem, totalDuration, History undo/redo/limit stack)
+- **Manual GUI check TODO**: In desktop UI, select clips in Viewer and press Ctrl+E to navigate to Editor; verify sequential preview player smoothly switches segments, split cuts at current time, trim adjusts start/end, and Ctrl+Z/Y undos/redos operations.
