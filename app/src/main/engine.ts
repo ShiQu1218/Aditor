@@ -1,0 +1,254 @@
+import { spawn, ChildProcess } from 'child_process'
+import { EventEmitter } from 'events'
+
+export class EngineError extends Error {
+  code: string
+  constructor(code: string, message: string) {
+    super(message)
+    this.name = 'EngineError'
+    this.code = code
+  }
+}
+
+interface PendingRequest {
+  id: string
+  resolve: (value: unknown) => void
+  reject: (reason: unknown) => void
+  onProgress?: (p: { t: number; duration: number }) => void
+}
+
+export interface EngineClientOptions {
+  command: string
+  args: string[]
+  env?: Record<string, string>
+}
+
+export class EngineClient extends EventEmitter {
+  private opts: EngineClientOptions
+  private proc: ChildProcess | null = null
+  private stdoutBuf = ''
+  private pending = new Map<string, PendingRequest>()
+  private reqSeq = 0
+  private engineVersion = ''
+  private readyResolve: ((val: { engineVersion: string }) => void) | null = null
+  private readyReject: ((err: Error) => void) | null = null
+  private readyPromise: Promise<{ engineVersion: string }> | null = null
+  private isStopping = false
+  private crashTimes: number[] = []
+  private maxCrashesInWindow = 3
+  private crashWindowMs = 60000
+
+  constructor(opts: EngineClientOptions) {
+    super()
+    this.opts = opts
+  }
+
+  async start(): Promise<{ engineVersion: string }> {
+    this.isStopping = false
+    return this._spawn()
+  }
+
+  private _spawn(): Promise<{ engineVersion: string }> {
+    if (this.readyPromise) {
+      return this.readyPromise
+    }
+
+    this.readyPromise = new Promise<{ engineVersion: string }>((resolve, reject) => {
+      this.readyResolve = resolve
+      this.readyReject = reject
+
+      try {
+        const p = spawn(this.opts.command, this.opts.args, {
+          env: { ...process.env, ...this.opts.env },
+          stdio: ['pipe', 'pipe', 'pipe']
+        })
+        this.proc = p
+
+        p.stdout?.on('data', (chunk: Buffer) => {
+          this._onData(chunk)
+        })
+
+        p.stderr?.on('data', (chunk: Buffer) => {
+          // Keep for debugging/logging
+          const msg = chunk.toString('utf-8')
+          if (process.env.DEBUG_ENGINE) {
+            console.error('[Engine stderr]', msg)
+          }
+        })
+
+        p.on('error', (err) => {
+          if (this.readyReject) {
+            this.readyReject(err)
+            this.readyResolve = null
+            this.readyReject = null
+          }
+        })
+
+        p.on('close', (code) => {
+          this._onClose(code)
+        })
+      } catch (err) {
+        reject(err)
+      }
+    })
+
+    return this.readyPromise
+  }
+
+  private _onData(chunk: Buffer): void {
+    this.stdoutBuf += chunk.toString('utf-8')
+    let nlIdx: number
+    while ((nlIdx = this.stdoutBuf.indexOf('\n')) !== -1) {
+      const line = this.stdoutBuf.slice(0, nlIdx).trim()
+      this.stdoutBuf = this.stdoutBuf.slice(nlIdx + 1)
+      if (!line) continue
+      this._handleLine(line)
+    }
+  }
+
+  private _handleLine(line: string): void {
+    let msg: Record<string, unknown>
+    try {
+      msg = JSON.parse(line)
+    } catch {
+      return
+    }
+
+    if (msg.type === 'ready') {
+      this.engineVersion = String(msg.engine_version || '')
+      if (this.readyResolve) {
+        this.readyResolve({ engineVersion: this.engineVersion })
+        this.readyResolve = null
+        this.readyReject = null
+      }
+      return
+    }
+
+    const id = msg.id as string
+    if (!id) return
+    const req = this.pending.get(id)
+    if (!req) return
+
+    if (msg.type === 'progress') {
+      if (req.onProgress) {
+        req.onProgress({
+          t: Number(msg.t || 0),
+          duration: Number(msg.duration || 0)
+        })
+      }
+    } else if (msg.type === 'result') {
+      this.pending.delete(id)
+      req.resolve(msg.data)
+    } else if (msg.type === 'error') {
+      this.pending.delete(id)
+      req.reject(new EngineError(String(msg.code || 'internal'), String(msg.message || 'unknown error')))
+    }
+  }
+
+  private _onClose(_code: number | null): void {
+    this.proc = null
+    this.readyPromise = null
+
+    if (this.readyReject) {
+      this.readyReject(new EngineError('engine_crashed', 'Engine closed before ready'))
+      this.readyResolve = null
+      this.readyReject = null
+    }
+
+    // Reject all pending requests
+    const pendingList = Array.from(this.pending.values())
+    this.pending.clear()
+    for (const req of pendingList) {
+      req.reject(new EngineError('engine_crashed', 'Engine process crashed unexpectedly'))
+    }
+
+    if (this.isStopping) {
+      return
+    }
+
+    // Record crash
+    const now = Date.now()
+    this.crashTimes.push(now)
+    this.crashTimes = this.crashTimes.filter((t) => now - t <= this.crashWindowMs)
+
+    this.emit('crash')
+
+    if (this.crashTimes.length < this.maxCrashesInWindow) {
+      // Auto restart
+      this._spawn().catch(() => {})
+    }
+  }
+
+  request<T>(
+    cmd: string,
+    args: object,
+    onProgress?: (p: { t: number; duration: number }) => void
+  ): { id: string; promise: Promise<T> } {
+    const id = `req_${Date.now()}_${++this.reqSeq}`
+
+    const promise = new Promise<T>((resolve, reject) => {
+      // Check if dead due to repeated crashes
+      const now = Date.now()
+      this.crashTimes = this.crashTimes.filter((t) => now - t <= this.crashWindowMs)
+      if (this.crashTimes.length >= this.maxCrashesInWindow && !this.proc) {
+        return reject(
+          new EngineError('engine_crashed', 'Engine has crashed 3 times in 60s and will not restart')
+        )
+      }
+
+      const sendReq = () => {
+        if (!this.proc || !this.proc.stdin || this.proc.stdin.destroyed) {
+          return reject(new EngineError('engine_crashed', 'Engine process not available'))
+        }
+        this.pending.set(id, {
+          id,
+          resolve: resolve as (val: unknown) => void,
+          reject,
+          onProgress
+        })
+        const line = JSON.stringify({ id, cmd, args }) + '\n'
+        this.proc.stdin.write(line, 'utf-8', (err) => {
+          if (err) {
+            this.pending.delete(id)
+            reject(err)
+          }
+        })
+      }
+
+      if (!this.proc || this.readyResolve) {
+        // Still starting or need restart
+        this._spawn()
+          .then(() => sendReq())
+          .catch(reject)
+      } else {
+        sendReq()
+      }
+    })
+
+    return { id, promise }
+  }
+
+  cancel(targetId: string): void {
+    if (!this.proc || !this.proc.stdin || this.proc.stdin.destroyed) return
+    const cancelId = `cancel_${Date.now()}_${++this.reqSeq}`
+    const line = JSON.stringify({ id: cancelId, cmd: 'cancel', args: { target: targetId } }) + '\n'
+    this.proc.stdin.write(line, 'utf-8')
+  }
+
+  async stop(): Promise<void> {
+    this.isStopping = true
+    if (this.proc) {
+      const p = this.proc
+      this.proc = null
+      return new Promise<void>((resolve) => {
+        p.on('close', () => resolve())
+        try {
+          p.stdin?.end()
+          p.kill()
+        } catch {
+          resolve()
+        }
+      })
+    }
+  }
+}
