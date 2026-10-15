@@ -28,12 +28,12 @@ export function genLong(extraRandom = 0): { events: EngineEvent[]; duration: num
             ? 'elim'
             : 'squad_wipe'
   }
-  const raw: { t: number; type: EventType; score: number }[] = []
+  const raw: { t: number; type: EventType; score: number; dmg: boolean }[] = []
   const push = (t: number, big: boolean): void => {
     const type = big ? 'knock' : pick()
     const score = 0.8 + r() * 0.19
-    if (type === 'knock') r() // dmg 旗標（保持亂數序列與 mock 一致）
-    raw.push({ t: Math.round(t * 4) / 4, type, score })
+    const dmg = type === 'knock' && r() > 0.4 // 與 mock 相同：傷害線旗標
+    raw.push({ t: Math.round(t * 4) / 4, type, score, dmg })
   }
   for (let f = 0; f < 46; f++) {
     const n = f % 7 === 0 ? 7 : f % 3 === 0 ? 5 : 3 + Math.floor(r() * 2)
@@ -55,7 +55,7 @@ export function genLong(extraRandom = 0): { events: EngineEvent[]; duration: num
       t: e.t,
       type: e.type,
       score: e.score,
-      damage_line: false,
+      damage_line: e.dmg,
       name_sig: null,
       counted,
       counted_reason: inSpec ? 'spectating' : wipe ? 'not_counting_type' : dup ? 'duplicate' : 'first',

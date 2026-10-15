@@ -1,0 +1,68 @@
+/* 時間軸塢（canvas 靜態層＋DOM 播放頭／框選／tooltip）。顏色一律來自 tokens.css */
+.tl-wrap {
+  position: relative;
+  width: 100%;
+  background: var(--tl-bg);
+  overflow: hidden;
+  user-select: none;
+  outline: none;
+}
+.tl-wrap:focus-visible {
+  box-shadow: inset var(--focus-ring);
+}
+.tl-wrap canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.tl-playhead {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 0;
+  z-index: 3;
+  pointer-events: none;
+  will-change: transform;
+}
+.tl-playhead::before {
+  content: '';
+  position: absolute;
+  left: -1px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--tl-playhead);
+}
+.tl-playhead::after {
+  content: '';
+  position: absolute;
+  left: -5px;
+  top: 0;
+  border: 5px solid transparent;
+  border-top-color: var(--tl-playhead);
+  border-bottom: 0;
+}
+.tl-boxsel {
+  position: absolute;
+  top: 38px;
+  bottom: 6px;
+  z-index: 2;
+  pointer-events: none;
+  background: var(--bg-active);
+  border: 1px solid var(--line-strong);
+}
+.tl-tip {
+  position: absolute;
+  z-index: 6;
+  padding: var(--sp-1) var(--sp-2);
+  border-radius: var(--r-xs);
+  background: var(--bg-popover);
+  border: 1px solid var(--line-strong);
+  color: var(--text-1);
+  font-size: var(--fs-small);
+  pointer-events: none;
+  white-space: nowrap;
+}

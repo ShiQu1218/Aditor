@@ -1,5 +1,6 @@
 import React, { useReducer, useEffect, useRef, useState, useCallback } from 'react'
 import { viewerReducer, ViewerState } from '../viewer/state'
+import { longFixtureRequested } from '../dev/fixture'
 import { TimelineCanvas } from '../timeline/TimelineCanvas'
 import { EventList } from '../components/EventList'
 import { ClipList } from '../components/ClipList'
@@ -78,6 +79,11 @@ export function ViewerPage({ videoPath, onBack, onSendToProject }: ViewerPagePro
   useEffect(() => {
     let cancelled = false
     const load = async () => {
+      if (longFixtureRequested()) {
+        const { buildLongDoc } = await import('../dev/longFixture')
+        if (!cancelled) dispatch({ type: 'analysisResult', doc: buildLongDoc(videoPath) })
+        return
+      }
       // @ts-ignore
       if (window.api?.engine?.analyze) {
         try {
@@ -194,6 +200,16 @@ export function ViewerPage({ videoPath, onBack, onSendToProject }: ViewerPagePro
     }
     setActiveTab('clips')
   }, [state.selected, state.doc.events, duration])
+
+  // 框選：加選 or 取代目前選取（舊 reducer 只有 toggle，故以差集逐一切換）
+  const handleBoxSelect = useCallback(
+    (ids: string[], _t1: number, _t2: number, additive: boolean) => {
+      const want = new Set(additive ? [...state.selected, ...ids] : ids)
+      for (const id of want) if (!state.selected.has(id)) dispatch({ type: 'toggleSelectEvent', id })
+      for (const id of state.selected) if (!want.has(id)) dispatch({ type: 'toggleSelectEvent', id })
+    },
+    [state.selected]
+  )
 
   const handleAutoClipGenerate = useCallback(
     async (params: AutoClipParams) => {
@@ -475,6 +491,11 @@ export function ViewerPage({ videoPath, onBack, onSendToProject }: ViewerPagePro
             onSeek={seekTo}
             onSelectEvent={(ev) => seekTo(Math.max(0, ev.t - 8))}
             onUpdateClip={(clip) => dispatch({ type: 'updateClip', clip })}
+            selected={state.selected}
+            onToggleSelect={(id) => dispatch({ type: 'toggleSelectEvent', id })}
+            onBoxSelect={handleBoxSelect}
+            getPlayTime={() => videoRef.current?.currentTime ?? 0}
+            playing={isPlaying}
           />
         </div>
 

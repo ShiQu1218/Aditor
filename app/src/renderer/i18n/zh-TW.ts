@@ -28,6 +28,30 @@ export const i18n = {
       assist: '助攻'
     }
   },
+  timeline: {
+    densityHint: '密度檢視 · {n} 個事件 · 放大（Ctrl +／滾輪）顯示個別圖示',
+    spectating: '觀戰（不計入）',
+    clipAi: 'AI',
+    types: {
+      knock: '擊倒',
+      assist_knock: '助攻擊倒',
+      assist_elim: '助攻消滅',
+      elim: '已消滅',
+      squad_wipe: '小隊抹殺'
+    },
+    counted: '計入',
+    uncounted: '不計入',
+    reasons: {
+      first: '首次',
+      duplicate: '重複敵人',
+      spectating: '觀戰中',
+      not_counting_type: '小隊抹殺不計',
+      manual: '手動'
+    },
+    forced: '強制',
+    densityTip: '{n} 個事件 · {time}（計入 {c}）',
+    clusterTip: '{n} 個事件 · {from}–{to} · 點擊放大'
+  },
   viewer: {
     back: '返回影片庫',
     events: '事件清單',

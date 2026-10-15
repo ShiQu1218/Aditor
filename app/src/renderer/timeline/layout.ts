@@ -3,7 +3,10 @@ import { View, timeToX, xToTime } from './model'
 
 export const MIN_PX_PER_EVENT = 8
 export const CLUSTER_PX = 22
+const MIN_ZOOM_SPAN = 20
 const EDGE_MARGIN_PX = 14
+/** 群集 x 方向最大延伸（避免連鎖間距 <22px 的事件串成一顆超長膠囊） */
+export const CLUSTER_MAX_PX = 6 * CLUSTER_PX
 
 export interface LayoutItem {
   x: number
@@ -67,6 +70,7 @@ export function layoutTimeline(
   const items: LayoutItem[] = []
   let cur: EngineEvent[] = []
   let sumX = 0
+  let firstX = 0
   let lastX = 0
   const flush = (): void => {
     if (cur.length === 0) return
@@ -74,13 +78,14 @@ export function layoutTimeline(
   }
   for (const e of visible) {
     const x = timeToX(e.t, view)
-    if (cur.length > 0 && x - lastX < CLUSTER_PX) {
+    if (cur.length > 0 && x - lastX < CLUSTER_PX && x - firstX <= CLUSTER_MAX_PX) {
       cur.push(e)
       sumX += x
     } else {
       flush()
       cur = [e]
       sumX = x
+      firstX = x
     }
     lastX = x
   }
@@ -88,11 +93,19 @@ export function layoutTimeline(
   return { mode: 'icons', items, visibleCount }
 }
 
+/**
+ * 放大到群集：永不縮小。span = clamp(max(20, 群集跨度×1.5), 20, 目前 span×0.6)；
+ * 目前 span 已 ≤ 20 s 或群集為空時原樣回傳。
+ */
 export function zoomToCluster(item: { events: EngineEvent[] }, view: View): View {
-  const ts = item.events.map((e) => e.t)
-  const lo = Math.min(...ts)
-  const hi = Math.max(...ts)
-  const span = Math.min(view.duration, Math.max(20, (hi - lo) * 3))
+  if (item.events.length === 0 || view.span <= MIN_ZOOM_SPAN) return view
+  let lo = Infinity
+  let hi = -Infinity
+  for (const e of item.events) {
+    if (e.t < lo) lo = e.t
+    if (e.t > hi) hi = e.t
+  }
+  const span = Math.max(MIN_ZOOM_SPAN, Math.min((hi - lo) * 1.5, view.span * 0.6))
   const center = (lo + hi) / 2
   const start = Math.max(0, Math.min(Math.max(0, view.duration - span), center - span / 2))
   return { ...view, start, span }
