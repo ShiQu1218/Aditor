@@ -158,12 +158,12 @@ def test_ffbin_env_override(monkeypatch, tmp_path):
   - `templates/zh-TW/profile.json`，鍵與 Task 1 的 `Profile` 一致，`templates_version: "zh-TW@1"`；`keywords` 至少含 `squad_wipe`（小隊抹殺）、`assist`（助攻）、`knock`（擊倒）、`damage`（造成）；`elim`（消滅）——「助攻，消滅」中的「消滅」字形即可作為 `elim` 範本。
   - `labels.json`：`{ "<fixture檔名>": {"kind": "knock"|...|null, "damage_line": bool, "spectating": bool, "enemy": "<名字或 null>"} }`。
 
-- [ ] **Step 1: 實作 `extract_templates.py`**（dump 使用 `fps=4,scale=1920:1080,crop=...` 並以 `-f image2`）。
-- [ ] **Step 2: 從 `E:\Outplayed\Outplayed\Exports\*.mp4` dump 寬鬆 ROI `560,700,800,180`**，用 `sheet` 目視，找出各類提示畫格。已知 `Project 63_...mp4` 含「小隊抹殺」「助攻，擊倒」「助攻，消滅」，`Project 60_...mp4` 第 2.5–5 秒含「擊倒 土豆 / 造成 60 點傷害」。
-- [ ] **Step 3: 查證 §3 待查證項目**，對原始長片 `E:\Outplayed\Outplayed\Apex Legends\Apex Legends_10-13-2026_16-46-44-410\Apex Legends_10-13-2026_18-26-50-167.mp4`（約 100 分鐘）以 `--fps 1` 分段 dump 整個畫面縮圖（`--roi 0,0,1920,1080` 搭配縮放或 sheet）找出：(a) 兩個提示同時出現時的版面；(b) 自己死亡後觀戰的畫面、觀戰固定字樣與位置；(c) 擊倒紅字與助攻白字的名字字型粗細是否相同；(d) 以 `probe.keyframes` 量測關鍵影格間距。
-- [ ] **Step 4: 決定最終 `banner_roi` 與 `spec_roi`**（banner 需容納堆疊；`spec_roi` 寬度 ≤ banner 寬度），裁出關鍵字範本（只含字形、緊貼邊界、以白字遮罩後的二值圖儲存）與觀戰字樣範本，寫 `profile.json`（閾值先填 0.75，Task 11 再調整）。
-- [ ] **Step 5: 建立 fixtures**：banner+spec 大小的 PNG，正例每類 ≥ 3 張（含淡入動畫第一格 1 張，標為 `kind` 正確但測試允許漏判）、堆疊 ≥ 1 張（若存在）、反例 ≥ 15 張（跑圖、物品欄、死亡畫面、觀戰、爆炸火光、大廳），填寫 `labels.json`。
-- [ ] **Step 6: 寫測試並通過**
+- [x] **Step 1: 實作 `extract_templates.py`**（dump 使用 `fps=4,scale=1920:1080,crop=...` 並以 `-f image2`）。
+- [x] **Step 2: 從 `E:\Outplayed\Outplayed\Exports\*.mp4` dump 寬鬆 ROI `560,700,800,180`**，用 `sheet` 目視，找出各類提示畫格。已知 `Project 63_...mp4` 含「小隊抹殺」「助攻，擊倒」「助攻，消滅」，`Project 60_...mp4` 第 2.5–5 秒含「擊倒 土豆 / 造成 60 點傷害」。
+- [x] **Step 3: 查證 §3 待查證項目**，對原始長片 `E:\Outplayed\Outplayed\Apex Legends\Apex Legends_10-13-2026_16-46-44-410\Apex Legends_10-13-2026_18-26-50-167.mp4`（約 100 分鐘）以 `--fps 1` 分段 dump 整個畫面縮圖（`--roi 0,0,1920,1080` 搭配縮放或 sheet）找出：(a) 兩個提示同時出現時的版面；(b) 自己死亡後觀戰的畫面、觀戰固定字樣與位置；(c) 擊倒紅字與助攻白字的名字字型粗細是否相同；(d) 以 `probe.keyframes` 量測關鍵影格間距。
+- [x] **Step 4: 決定最終 `banner_roi` 與 `spec_roi`**（banner 需容納堆疊；`spec_roi` 寬度 ≤ banner 寬度），裁出關鍵字範本（只含字形、緊貼邊界、以白字遮罩後的二值圖儲存）與觀戰字樣範本，寫 `profile.json`（閾值先填 0.75，Task 11 再調整）。
+- [x] **Step 5: 建立 fixtures**：banner+spec 大小的 PNG，正例每類 ≥ 3 張（含淡入動畫第一格 1 張，標為 `kind` 正確但測試允許漏判）、堆疊 ≥ 1 張（若存在）、反例 ≥ 15 張（跑圖、物品欄、死亡畫面、觀戰、爆炸火光、大廳），填寫 `labels.json`。
+- [x] **Step 6: 寫測試並通過**
 
 ```python
 def test_zh_profile_loads():
@@ -174,8 +174,8 @@ def test_zh_profile_loads():
     assert p.spec_roi[2] <= w
 ```
 
-- [ ] **Step 7: 回寫 spec §3**：把每個「待查證」改成查證結論（附證據：影片名＋時間點）。
-- [ ] **Step 8: Commit** `feat(templates): add zh-TW profile, templates, fixtures; record §3 findings`
+- [x] **Step 7: 回寫 spec §3**：把每個「待查證」改成查證結論（附證據：影片名＋時間點）。
+- [x] **Step 8: Commit** `feat(templates): add zh-TW profile, templates, fixtures; record §3 findings`
 
 ---
 

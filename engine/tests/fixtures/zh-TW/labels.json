@@ -1,0 +1,742 @@
+{
+ "assist_elim_a007400.png": {
+  "damage_line": false,
+  "enemy": "我回来了孩子们",
+  "kind": "assist_elim",
+  "spectating": false,
+  "src": "Apex Legends_07-13-2026_17-17-13-950.mp4",
+  "t": 74.0
+ },
+ "assist_elim_a052000.png": {
+  "damage_line": false,
+  "enemy": "RTCAN",
+  "kind": "assist_elim",
+  "spectating": false,
+  "src": "Apex Legends_07-13-2026_17-17-13-950.mp4",
+  "t": 520.0
+ },
+ "assist_elim_b009250.png": {
+  "damage_line": false,
+  "enemy": "カジュアル民族",
+  "kind": "assist_elim",
+  "spectating": false,
+  "src": "Apex Legends_07-13-2026_17-33-52-100.mp4",
+  "t": 92.5
+ },
+ "assist_elim_b017300.png": {
+  "damage_line": false,
+  "enemy": "牧□红莉栖",
+  "kind": "assist_elim",
+  "spectating": false,
+  "src": "Apex Legends_07-13-2026_17-33-52-100.mp4",
+  "t": 173.0
+ },
+ "assist_elim_c007200.png": {
+  "damage_line": false,
+  "enemy": "艾瑟兒7099",
+  "kind": "assist_elim",
+  "spectating": false,
+  "src": "Apex Legends_07-13-2026_17-50-59-50.mp4",
+  "t": 72.0
+ },
+ "assist_elim_d064150.png": {
+  "damage_line": false,
+  "enemy": "朽木",
+  "kind": "assist_elim",
+  "spectating": false,
+  "src": "Apex Legends_07-13-2026_18-3-35-350.mp4",
+  "t": 641.5
+ },
+ "assist_knock_a007150.png": {
+  "damage_line": false,
+  "enemy": "我回来了孩子们",
+  "kind": "assist_knock",
+  "spectating": false,
+  "src": "Apex Legends_07-13-2026_17-17-13-950.mp4",
+  "t": 71.5
+ },
+ "assist_knock_a015900.png": {
+  "damage_line": false,
+  "enemy": "GG爆",
+  "kind": "assist_knock",
+  "spectating": false,
+  "src": "Apex Legends_07-13-2026_17-17-13-950.mp4",
+  "t": 159.0
+ },
+ "assist_knock_b018300.png": {
+  "damage_line": false,
+  "enemy": "幻象7769",
+  "kind": "assist_knock",
+  "spectating": false,
+  "src": "Apex Legends_07-13-2026_17-33-52-100.mp4",
+  "t": 183.0
+ },
+ "assist_knock_b025050.png": {
+  "damage_line": false,
+  "enemy": "幻象7769",
+  "kind": "assist_knock",
+  "spectating": false,
+  "src": "Apex Legends_07-13-2026_17-33-52-100.mp4",
+  "t": 250.5
+ },
+ "assist_knock_d013550.png": {
+  "damage_line": false,
+  "enemy": "神区化龙",
+  "kind": "assist_knock",
+  "spectating": false,
+  "src": "Apex Legends_07-13-2026_18-3-35-350.mp4",
+  "t": 135.5
+ },
+ "assist_knock_d057250.png": {
+  "damage_line": false,
+  "enemy": "ALCA TORDA",
+  "kind": "assist_knock",
+  "spectating": false,
+  "src": "Apex Legends_07-13-2026_18-3-35-350.mp4",
+  "t": 572.5
+ },
+ "assist_knock_fadein_a007075.png": {
+  "damage_line": false,
+  "enemy": "我回来了孩子们",
+  "fadein": true,
+  "kind": "assist_knock",
+  "spectating": false,
+  "src": "Apex Legends_07-13-2026_17-17-13-950.mp4",
+  "t": 70.75
+ },
+ "champion_banner_b080000.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "Apex Legends_07-13-2026_17-33-52-100.mp4",
+  "t": 800,
+  "tag": "champion_banner"
+ },
+ "dark_a067600.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "Apex Legends_07-13-2026_17-17-13-950.mp4",
+  "t": 676,
+  "tag": "dark"
+ },
+ "death_summary_a027500.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "Apex Legends_07-13-2026_17-17-13-950.mp4",
+  "t": 275,
+  "tag": "death_summary"
+ },
+ "downed_bleedout_b071900.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "Apex Legends_07-13-2026_17-33-52-100.mp4",
+  "t": 719,
+  "tag": "downed_bleedout"
+ },
+ "downed_bleedout_b072000.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "Apex Legends_07-13-2026_17-33-52-100.mp4",
+  "t": 720,
+  "tag": "downed_bleedout"
+ },
+ "downed_self_revive_a010000.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "Apex Legends_07-13-2026_17-17-13-950.mp4",
+  "t": 100,
+  "tag": "downed_self_revive"
+ },
+ "downed_self_revive_a026000.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "Apex Legends_07-13-2026_17-17-13-950.mp4",
+  "t": 260,
+  "tag": "downed_self_revive"
+ },
+ "drop_map_a038000.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "Apex Legends_07-13-2026_17-17-13-950.mp4",
+  "t": 380,
+  "tag": "drop_map"
+ },
+ "elim_a005375.png": {
+  "damage_line": false,
+  "enemy": "我回来了孩子们",
+  "kind": "elim",
+  "spectating": false,
+  "src": "Apex Legends_07-13-2026_17-17-13-950.mp4",
+  "t": 53.75
+ },
+ "elim_a058000.png": {
+  "damage_line": false,
+  "enemy": "DEWYANE",
+  "kind": "elim",
+  "spectating": false,
+  "src": "Apex Legends_07-13-2026_17-17-13-950.mp4",
+  "t": 580.0
+ },
+ "elim_b010400.png": {
+  "damage_line": false,
+  "enemy": "DEWYANE",
+  "kind": "elim",
+  "spectating": false,
+  "src": "Apex Legends_07-13-2026_17-33-52-100.mp4",
+  "t": 104.0
+ },
+ "elim_b027375.png": {
+  "damage_line": false,
+  "enemy": "カジュアル民族",
+  "kind": "elim",
+  "spectating": false,
+  "src": "Apex Legends_07-13-2026_17-33-52-100.mp4",
+  "t": 273.75
+ },
+ "elim_b046075.png": {
+  "damage_line": false,
+  "enemy": "陈平安",
+  "kind": "elim",
+  "spectating": false,
+  "src": "Apex Legends_07-13-2026_17-33-52-100.mp4",
+  "t": 460.75
+ },
+ "elim_c009875.png": {
+  "damage_line": false,
+  "enemy": "日月不相见",
+  "kind": "elim",
+  "spectating": false,
+  "src": "Apex Legends_07-13-2026_17-50-59-50.mp4",
+  "t": 98.75
+ },
+ "elim_c020375.png": {
+  "damage_line": false,
+  "enemy": "[QAQ]偶尔躲躲乌云L",
+  "kind": "elim",
+  "spectating": false,
+  "src": "Apex Legends_07-13-2026_17-50-59-50.mp4",
+  "t": 203.75
+ },
+ "elim_c063400.png": {
+  "damage_line": false,
+  "enemy": "大列巴瞬间出炉",
+  "kind": "elim",
+  "spectating": false,
+  "src": "Apex Legends_07-13-2026_17-50-59-50.mp4",
+  "t": 634.0
+ },
+ "elim_d008800.png": {
+  "damage_line": false,
+  "enemy": "调戏男模被打",
+  "kind": "elim",
+  "spectating": false,
+  "src": "Apex Legends_07-13-2026_18-3-35-350.mp4",
+  "t": 88.0
+ },
+ "emote_hint_b081800.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "Apex Legends_07-13-2026_17-33-52-100.mp4",
+  "t": 818,
+  "tag": "emote_hint"
+ },
+ "enemy_squad_down_a057250.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "Apex Legends_07-13-2026_17-17-13-950.mp4",
+  "t": 572.5,
+  "tag": "enemy_squad_down"
+ },
+ "enemy_squad_down_b022150.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "Apex Legends_07-13-2026_17-33-52-100.mp4",
+  "t": 221.5,
+  "tag": "enemy_squad_down"
+ },
+ "enemy_squad_down_b034000.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "Apex Legends_07-13-2026_17-33-52-100.mp4",
+  "t": 340,
+  "tag": "enemy_squad_down"
+ },
+ "enemy_squad_down_b064000.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "Apex Legends_07-13-2026_17-33-52-100.mp4",
+  "t": 640,
+  "tag": "enemy_squad_down"
+ },
+ "enemy_squad_down_c037800.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "Apex Legends_07-13-2026_17-50-59-50.mp4",
+  "t": 378,
+  "tag": "enemy_squad_down"
+ },
+ "enemy_squad_down_d031000.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "Apex Legends_07-13-2026_18-3-35-350.mp4",
+  "t": 310,
+  "tag": "enemy_squad_down"
+ },
+ "enemy_squad_down_d057000.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "Apex Legends_07-13-2026_18-3-35-350.mp4",
+  "t": 570,
+  "tag": "enemy_squad_down"
+ },
+ "inventory_b057250.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "Apex Legends_07-13-2026_17-33-52-100.mp4",
+  "t": 572.5,
+  "tag": "inventory"
+ },
+ "item_hud_c033500.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "Apex Legends_07-13-2026_17-50-59-50.mp4",
+  "t": 335,
+  "tag": "item_hud"
+ },
+ "knock_a005000.png": {
+  "damage_line": true,
+  "enemy": "我回来了孩子们",
+  "kind": "knock",
+  "spectating": false,
+  "src": "Apex Legends_07-13-2026_17-17-13-950.mp4",
+  "t": 50.0
+ },
+ "knock_a007700.png": {
+  "damage_line": true,
+  "enemy": "FPS_XUEXG",
+  "kind": "knock",
+  "spectating": false,
+  "src": "Apex Legends_07-13-2026_17-17-13-950.mp4",
+  "t": 77.0
+ },
+ "knock_b003050.png": {
+  "damage_line": true,
+  "enemy": null,
+  "kind": "knock",
+  "spectating": false,
+  "src": "Apex Legends_07-13-2026_17-33-52-100.mp4",
+  "t": 30.5
+ },
+ "knock_b073650.png": {
+  "damage_line": true,
+  "enemy": "DEWYANE",
+  "kind": "knock",
+  "spectating": true,
+  "src": "Apex Legends_07-13-2026_17-33-52-100.mp4",
+  "t": 736.5
+ },
+ "knock_b073750.png": {
+  "damage_line": true,
+  "enemy": "DEWYANE",
+  "kind": "knock",
+  "spectating": true,
+  "src": "Apex Legends_07-13-2026_17-33-52-100.mp4",
+  "t": 737.5
+ },
+ "knock_c006850.png": {
+  "damage_line": true,
+  "enemy": "尖尖碰碰拳",
+  "kind": "knock",
+  "spectating": false,
+  "src": "Apex Legends_07-13-2026_17-50-59-50.mp4",
+  "t": 68.5
+ },
+ "knock_d008550.png": {
+  "damage_line": true,
+  "enemy": "调戏男模被打",
+  "kind": "knock",
+  "spectating": false,
+  "src": "Apex Legends_07-13-2026_18-3-35-350.mp4",
+  "t": 85.5
+ },
+ "knock_fadein_a004900.png": {
+  "damage_line": true,
+  "enemy": "我回来了孩子们",
+  "fadein": true,
+  "kind": "knock",
+  "spectating": false,
+  "src": "Apex Legends_07-13-2026_17-17-13-950.mp4",
+  "t": 49.0
+ },
+ "knock_fadein_b002925.png": {
+  "damage_line": true,
+  "enemy": null,
+  "fadein": true,
+  "kind": "knock",
+  "spectating": false,
+  "src": "Apex Legends_07-13-2026_17-33-52-100.mp4",
+  "t": 29.25
+ },
+ "lobby_champion_a034500.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "Apex Legends_07-13-2026_17-17-13-950.mp4",
+  "t": 345,
+  "tag": "lobby_champion"
+ },
+ "lobby_tutorial_a033000.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "Apex Legends_07-13-2026_17-17-13-950.mp4",
+  "t": 330,
+  "tag": "lobby_tutorial"
+ },
+ "orange_flash_a067400.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "Apex Legends_07-13-2026_17-17-13-950.mp4",
+  "t": 674,
+  "tag": "orange_flash"
+ },
+ "parachute_a002000.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "Apex Legends_07-13-2026_17-17-13-950.mp4",
+  "t": 20,
+  "tag": "parachute"
+ },
+ "pickup_notice_b057000.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "Apex Legends_07-13-2026_17-33-52-100.mp4",
+  "t": 570,
+  "tag": "pickup_notice"
+ },
+ "red_flash_a067800.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "Apex Legends_07-13-2026_17-17-13-950.mp4",
+  "t": 678,
+  "tag": "red_flash"
+ },
+ "running_a045000.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "Apex Legends_07-13-2026_17-17-13-950.mp4",
+  "t": 450,
+  "tag": "running"
+ },
+ "running_b016000.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "Apex Legends_07-13-2026_17-33-52-100.mp4",
+  "t": 160,
+  "tag": "running"
+ },
+ "running_b056750.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "Apex Legends_07-13-2026_17-33-52-100.mp4",
+  "t": 567.5,
+  "tag": "running"
+ },
+ "running_b068500.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "Apex Legends_07-13-2026_17-33-52-100.mp4",
+  "t": 685,
+  "tag": "running"
+ },
+ "running_b068800.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "Apex Legends_07-13-2026_17-33-52-100.mp4",
+  "t": 688,
+  "tag": "running"
+ },
+ "self_revive_a015000.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "Apex Legends_07-13-2026_17-17-13-950.mp4",
+  "t": 150,
+  "tag": "self_revive"
+ },
+ "spectating_a015500.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": true,
+  "src": "Apex Legends_07-13-2026_17-17-13-950.mp4",
+  "t": 155,
+  "tag": "spectating"
+ },
+ "spectating_a026600.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": true,
+  "src": "Apex Legends_07-13-2026_17-17-13-950.mp4",
+  "t": 266,
+  "tag": "spectating"
+ },
+ "spectating_a028500.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": true,
+  "src": "Apex Legends_07-13-2026_17-17-13-950.mp4",
+  "t": 285,
+  "tag": "spectating"
+ },
+ "spectating_a030000.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": true,
+  "src": "Apex Legends_07-13-2026_17-17-13-950.mp4",
+  "t": 300,
+  "tag": "spectating"
+ },
+ "spectating_a030500.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": true,
+  "src": "Apex Legends_07-13-2026_17-17-13-950.mp4",
+  "t": 305,
+  "tag": "spectating"
+ },
+ "spectating_a062500.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": true,
+  "src": "Apex Legends_07-13-2026_17-17-13-950.mp4",
+  "t": 625,
+  "tag": "spectating"
+ },
+ "spectating_b072600.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": true,
+  "src": "Apex Legends_07-13-2026_17-33-52-100.mp4",
+  "t": 726,
+  "tag": "spectating"
+ },
+ "spectating_b073000.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": true,
+  "src": "Apex Legends_07-13-2026_17-33-52-100.mp4",
+  "t": 730,
+  "tag": "spectating"
+ },
+ "spectating_b073050.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": true,
+  "src": "Apex Legends_07-13-2026_17-33-52-100.mp4",
+  "t": 730.5,
+  "tag": "spectating"
+ },
+ "spectating_b073100.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": true,
+  "src": "Apex Legends_07-13-2026_17-33-52-100.mp4",
+  "t": 731,
+  "tag": "spectating"
+ },
+ "spectating_b073200.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": true,
+  "src": "Apex Legends_07-13-2026_17-33-52-100.mp4",
+  "t": 732,
+  "tag": "spectating"
+ },
+ "spectating_b073300.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": true,
+  "src": "Apex Legends_07-13-2026_17-33-52-100.mp4",
+  "t": 733,
+  "tag": "spectating"
+ },
+ "spectating_deathcam_a026200.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": true,
+  "src": "Apex Legends_07-13-2026_17-17-13-950.mp4",
+  "t": 262,
+  "tag": "spectating_deathcam"
+ },
+ "spectating_deathcam_b012000.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": true,
+  "src": "Apex Legends_07-13-2026_17-33-52-100.mp4",
+  "t": 120,
+  "tag": "spectating_deathcam"
+ },
+ "spectating_poi_notice_a027000.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": true,
+  "src": "Apex Legends_07-13-2026_17-17-13-950.mp4",
+  "t": 270,
+  "tag": "spectating_poi_notice"
+ },
+ "squad_hud_e001050.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "Exports/Project 63_09-29-2026_18-15-17-467.mp4",
+  "t": 10.5,
+  "tag": "squad_hud"
+ },
+ "squad_hud_e002550.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "Exports/Project 63_09-29-2026_18-15-17-467.mp4",
+  "t": 25.5,
+  "tag": "squad_hud"
+ },
+ "squad_summary_a069500.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "Apex Legends_07-13-2026_17-17-13-950.mp4",
+  "t": 695,
+  "tag": "squad_summary"
+ },
+ "squad_wipe_a066500.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": "squad_wipe",
+  "spectating": false,
+  "src": "Apex Legends_07-13-2026_17-17-13-950.mp4",
+  "t": 665.0
+ },
+ "squad_wipe_b039400.png": {
+  "damage_line": false,
+  "enemy": "[YQG]我区体化了",
+  "kind": "squad_wipe",
+  "spectating": false,
+  "src": "Apex Legends_07-13-2026_17-33-52-100.mp4",
+  "t": 394.0
+ },
+ "squad_wipe_b073950.png": {
+  "damage_line": false,
+  "enemy": "DEWYANE",
+  "kind": "squad_wipe",
+  "spectating": false,
+  "src": "Apex Legends_07-13-2026_17-33-52-100.mp4",
+  "t": 739.5
+ },
+ "squad_wipe_c049975.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": "squad_wipe",
+  "spectating": false,
+  "src": "Apex Legends_07-13-2026_17-50-59-50.mp4",
+  "t": 499.75
+ },
+ "squad_wipe_c053200.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": "squad_wipe",
+  "spectating": false,
+  "src": "Apex Legends_07-13-2026_17-50-59-50.mp4",
+  "t": 532.0
+ },
+ "squad_wipe_d014100.png": {
+  "damage_line": false,
+  "enemy": "调戏男模被打",
+  "kind": "squad_wipe",
+  "spectating": false,
+  "src": "Apex Legends_07-13-2026_18-3-35-350.mp4",
+  "t": 141.0
+ },
+ "vehicle_hud_b068400.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "Apex Legends_07-13-2026_17-33-52-100.mp4",
+  "t": 684,
+  "tag": "vehicle_hud"
+ }
+}
