@@ -7,6 +7,7 @@ import { SettingsStore } from './settings'
 import { WatchManager } from './watch'
 import { ProjectStore } from './projects'
 import { registerIpcHandlers } from './ipc-handlers'
+import { createCloseGate } from './project-ipc'
 import { appDataDir, cacheDir, engineCommand, ffmpegExecutable, profileDir } from '../shared/paths'
 
 let mainWindow: BrowserWindow | null = null
@@ -15,6 +16,9 @@ let library: Library | null = null
 let queue: AnalysisQueue | null = null
 let settingsStore: SettingsStore | null = null
 let watchManager: WatchManager | null = null
+let closeGate: ReturnType<typeof createCloseGate> | null = null
+/** renderer 未回應 flush 時最多等多久才關閉視窗 */
+const CLOSE_FLUSH_TIMEOUT_MS = 1500
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -29,6 +33,20 @@ function createWindow(): void {
       sandbox: false,
       contextIsolation: true
     }
+  })
+
+  // 關閉前先請 renderer 立即寫入最新專案（beforeunload 的 sendSync 之外的第二道保險）；
+  // 收到 flushDone 或逾時才真正關閉
+  const win = mainWindow
+  closeGate = createCloseGate({
+    request: () => win.webContents.send('projects:flushRequest'),
+    close: () => win.close(),
+    timeoutMs: CLOSE_FLUSH_TIMEOUT_MS,
+    rendererAlive: () => !win.isDestroyed() && !win.webContents.isDestroyed() && !win.webContents.isCrashed()
+  })
+  win.on('close', (e) => closeGate?.onClose(e))
+  win.on('closed', () => {
+    closeGate = null
   })
 
   mainWindow.on('ready-to-show', () => {
@@ -78,7 +96,7 @@ async function initEngineAndServices(): Promise<void> {
   // 專案自動儲存：`%APPDATA%\ApexHighlighter\projects\<id>.json`
   const projectStore = new ProjectStore(join(appDataDir(), 'projects'))
 
-  registerIpcHandlers(library, queue, () => (mainWindow ? [mainWindow] : []), engineClient, settingsStore, watchManager, projectStore)
+  registerIpcHandlers(library, queue, () => (mainWindow ? [mainWindow] : []), engineClient, settingsStore, watchManager, projectStore, () => closeGate?.ack())
 
   ipcMain.handle('engine:probe', async (_, videoPath: string) => {
     return engineClient?.request('probe', { path: videoPath }).promise

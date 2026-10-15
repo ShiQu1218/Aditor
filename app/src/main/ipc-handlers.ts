@@ -11,7 +11,9 @@ import { hasOpenH264, downloadOpenH264 } from './codecs'
 import { cacheFilePath, loadCacheDoc, saveCacheDoc } from './cache-io'
 import { SettingsStore } from './settings'
 import { WatchManager } from './watch'
-import { ProjectStore, StoredProject } from './projects'
+import { ProjectStore } from './projects'
+import { registerProjectHandlers } from './project-ipc'
+import { fileExistsSafe } from './safe-path'
 import { DEFAULT_SETTINGS, Settings } from '../shared/settings'
 import { cacheDir, profileDir } from '../shared/paths'
 import { computeHlCount, createHlGuard, createSerialQueue, hlForSavedDoc } from './hl'
@@ -52,7 +54,8 @@ export function registerIpcHandlers(
   engine?: EngineClient,
   settings?: SettingsStore,
   watch?: WatchManager,
-  projectStore?: ProjectStore
+  projectStore?: ProjectStore,
+  onProjectFlushDone?: () => void
 ): void {
   // library:updated 最多每 500 ms 一次（前緣＋尾端，最後一次更新必定送達）；
   // 夾帶佇列的真實狀態（正在分析／排隊／進度／開始時間），renderer 不必為了佇列再拉整份 entries
@@ -138,13 +141,8 @@ export function registerIpcHandlers(
     return []
   })
 
-  ipcMain.handle('library:fileExists', (_, videoPath: string) => {
-    try {
-      return fs.existsSync(videoPath)
-    } catch {
-      return false
-    }
-  })
+  // 路徑可能來自不受信任的專案檔：只接受本機絕對路徑＋影片副檔名的一般檔案（拒絕 UNC／裝置路徑，不碰網路）
+  ipcMain.handle('library:fileExists', (_, videoPath: unknown) => fileExistsSafe(videoPath))
 
   // 惰性「N 精華」（spec §7.4）：卡片首次進入視窗且已分析完成、尚無記錄時，
   // 讀取既有快取（無副作用、絕不觸發 analyze；沒有快取＝略過）後以預設參數呼叫 autoclip，
@@ -218,19 +216,7 @@ export function registerIpcHandlers(
   }
 
   if (projectStore) {
-    ipcMain.handle('projects:save', async (_, p: StoredProject) => {
-      await projectStore.save(p)
-      return true
-    })
-
-    ipcMain.handle('projects:load', async (_, id: string) => projectStore.load(id))
-
-    ipcMain.handle('projects:list', async () => projectStore.list())
-
-    ipcMain.handle('projects:remove', async (_, id: string) => {
-      await projectStore.remove(id)
-      return true
-    })
+    registerProjectHandlers(ipcMain, projectStore, settings, onProjectFlushDone)
   }
 
   ipcMain.handle('queue:enqueue', (_, videoPath: string) => {

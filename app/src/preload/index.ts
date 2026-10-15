@@ -68,7 +68,19 @@ const api = {
     save: (project: unknown) => ipcRenderer.invoke('projects:save', project),
     load: (id: string) => ipcRenderer.invoke('projects:load', id),
     list: () => ipcRenderer.invoke('projects:list'),
-    remove: (id: string) => ipcRenderer.invoke('projects:remove', id)
+    remove: (id: string) => ipcRenderer.invoke('projects:remove', id),
+    /** 關閉視窗時用：阻塞到 main 已把專案寫入磁碟（同時記下 lastProjectId）。 */
+    flushSync: (project: unknown): boolean => ipcRenderer.sendSync('projects:flushSync', project) === true,
+    /** main 在關閉視窗前要求立即 flush。 */
+    onFlushRequest: (callback: () => void) => {
+      const handler = () => callback()
+      ipcRenderer.on('projects:flushRequest', handler)
+      return () => {
+        ipcRenderer.removeListener('projects:flushRequest', handler)
+      }
+    },
+    /** 通知 main：flush 完成，可以關閉視窗。 */
+    flushDone: () => ipcRenderer.send('projects:flushDone')
   },
   settings: {
     get: () => ipcRenderer.invoke('settings:get'),
