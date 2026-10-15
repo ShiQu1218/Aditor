@@ -109,3 +109,39 @@ def test_spectating_split_by_gap():
     frames = [(i * 0.25, fr(spec=(i != 9))) for i in range(20)]
     _, sp = run(frames)
     assert [(s.start, s.end) for s in sp] == [(0.0, 2.25), (2.5, 5.0)]
+
+
+def test_aggregates_cover_frames_before_establishment():
+    a = sig(1)
+    frames = [(0.0, fr("knock", name=a, score=0.95, damage=True)),
+              (0.25, fr("knock", score=0.7)), (0.5, fr("knock", score=0.6))]
+    ev, _ = run(frames)
+    assert len(ev) == 1
+    assert ev[0].score == 0.95 and ev[0].damage_line is True
+    assert ev[0].name_sig == a.to_b64()
+
+
+def test_isolated_onset_frame_sets_t():
+    ev, _ = run(seq("K.KK"))
+    assert [e.t for e in ev] == [0.0]
+
+
+def test_no_consecutive_pair_no_event():
+    ev, _ = run(seq("K.K.K"))
+    assert ev == []
+
+
+def test_pair_then_gap_t_unchanged():
+    ev, _ = run(seq("KK.K"))
+    assert [e.t for e in ev] == [0.0]
+
+
+def test_kind_change_lone_first_frame_not_established():
+    frames = seq("KKK", kind="knock") + seq("E", kind="elim", t0=0.75) + seq("..", t0=1.0)
+    ev, _ = run(frames)
+    assert [e.type for e in ev] == ["knock"]
+
+
+def test_resume_continuation_with_one_frame_gap():
+    ev, _ = run(seq("K.KK", t0=10.0), resume_start=10.0)
+    assert ev == []

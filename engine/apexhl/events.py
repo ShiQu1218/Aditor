@@ -11,16 +11,31 @@ _EPS = 1e-6
 
 
 class _Run:
-    """同一個提示（kind + 名字）的連續命中。"""
+    """同一個提示（kind + 名字）的連續命中；彙整整段 run 的所有命中格。"""
 
     def __init__(self, t: float, r: FrameResult, suppressed: bool):
         self.kind = r.kind
+        self.first_t = t
         self.last_t = t
-        self.streak_start = t
-        self.streak = 1
+        self.streak = 1  # 目前連續命中格數
+        self.has_pair = False  # 是否出現過連續 2 格
         self.last_sig: NameSig | None = r.name_sig
+        self.first_sig: NameSig | None = r.name_sig
+        self.score = r.score
+        self.damage = r.damage_line
         self.suppressed = suppressed
         self.event: Event | None = None
+
+    def add(self, t: float, r: FrameResult) -> None:
+        self.streak = self.streak + 1 if t - self.last_t < STEP + _EPS else 1
+        self.has_pair = self.has_pair or self.streak >= 2
+        self.last_t = t
+        self.score = max(self.score, r.score)
+        self.damage = self.damage or r.damage_line
+        if r.name_sig is not None:
+            self.last_sig = r.name_sig
+            if self.first_sig is None:
+                self.first_sig = r.name_sig
 
 
 class EventTracker:
@@ -48,18 +63,17 @@ class EventTracker:
         if r.kind is None:
             return
         if run is not None and t - run.last_t - STEP < GAP - _EPS and self._continues(run, r):
-            if t - run.last_t < STEP + _EPS:
-                run.streak += 1
-            else:
-                run.streak, run.streak_start = 1, t
-            run.last_t = t
-            if r.name_sig is not None:
-                run.last_sig = r.name_sig
-            if run.event is not None:
-                self._update(run.event, r)
-            elif run.streak >= 2 and not run.suppressed:
-                run.event = self._make(run.streak_start, r)
-                self._events.append(run.event)
+            run.add(t, r)
+            if run.has_pair and not run.suppressed:
+                if run.event is None:
+                    run.event = Event(id=f"a{int(round(run.first_t * 1000))}", t=run.first_t,
+                                      type=run.kind, score=run.score,
+                                      damage_line=run.damage, name_sig=None)
+                    self._events.append(run.event)
+                run.event.score = run.score
+                run.event.damage_line = run.damage
+                if run.first_sig is not None:
+                    run.event.name_sig = run.first_sig.to_b64()
             return
         suppressed = (self._resume_start is not None
                       and abs(t - self._resume_start) < _EPS)
@@ -71,19 +85,6 @@ class EventTracker:
         if run.last_sig is not None and r.name_sig is not None:
             return same_name(run.last_sig, r.name_sig, self._threshold)
         return True
-
-    @staticmethod
-    def _make(t: float, r: FrameResult) -> Event:
-        return Event(id=f"a{int(round(t * 1000))}", t=t, type=r.kind, score=r.score,
-                     damage_line=r.damage_line,
-                     name_sig=r.name_sig.to_b64() if r.name_sig is not None else None)
-
-    @staticmethod
-    def _update(ev: Event, r: FrameResult) -> None:
-        ev.score = max(ev.score, r.score)
-        ev.damage_line = ev.damage_line or r.damage_line
-        if ev.name_sig is None and r.name_sig is not None:
-            ev.name_sig = r.name_sig.to_b64()
 
     # --- 觀戰 ---
     def _feed_spec(self, t: float, r: FrameResult) -> None:
