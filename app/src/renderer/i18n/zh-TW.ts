@@ -94,5 +94,52 @@ export const shellI18n = {
     mainNav: '主要導覽'
   },
   settings: { title: '設定', placeholder: '設定頁面即將推出。' },
+  keymap: {
+    scope: {
+      global: '全域',
+      studio: '工作室',
+      source: '來源時間軸',
+      hl: '精華清單',
+      ev: '事件清單',
+      proj: '專案軌',
+      library: '影片庫',
+      settings: '設定'
+    },
+    cmd: {
+      play: '播放／暫停',
+      speed: '切換播放速度',
+      prevEvent: '上一個事件',
+      nextEvent: '下一個事件',
+      seekBack: '倒退 5 秒',
+      seekFwd: '前進 5 秒',
+      zoomIn: '時間軸放大',
+      zoomOut: '時間軸縮小',
+      zoomReset: '時間軸縮放重設',
+      quickOrSplit: '快速剪輯（專案模式：在播放頭分割）',
+      addEvent: '新增事件',
+      setStart: '目前片段起點＝播放頭',
+      setEnd: '目前片段終點＝播放頭',
+      supercut: '選取事件建立合輯',
+      addAllToProject: '加入專案（全部建議）',
+      acceptSuggestion: '加入目前建議',
+      skipSuggestion: '略過目前建議',
+      deleteSelectedEvents: '刪除選取事件',
+      deleteProjectItem: '刪除選取片段',
+      duplicateItem: '複製選取片段',
+      moveItemLeft: '選取片段往前移',
+      moveItemRight: '選取片段往後移',
+      playItem: '播放該片段',
+      undo: '復原',
+      redo: '重做',
+      saveProjectFile: '另存專案檔',
+      openExport: '開啟匯出抽屜',
+      toggleAside: '顯示／隱藏側欄',
+      backToSource: '返回來源模式',
+      closeOverlay: '關閉浮層／清除選取',
+      showShortcuts: '快捷鍵說明',
+      focusSearch: '聚焦搜尋',
+      toggleFavoriteFilter: '切換只顯示收藏'
+    }
+  },
   legacyEditor: '舊專案編輯'
 }

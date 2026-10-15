@@ -5,7 +5,7 @@ import { EventList } from '../components/EventList'
 import { ClipList } from '../components/ClipList'
 import { EventTypeFilter } from '../components/EventTypeFilter'
 import { AutoClipDialog } from '../components/AutoClipDialog'
-import { useShortcuts } from '../hooks/useShortcuts'
+import { useKeymap } from '../hooks/useShortcuts'
 import { createClipAt, supercut } from '../timeline/clips'
 import { nextEvent } from '../timeline/model'
 import { formatTime, toCurrentTime } from '../../shared/time'
@@ -224,14 +224,14 @@ export function ViewerPage({ videoPath, onBack, onSendToProject }: ViewerPagePro
   }
 
   // Bind shortcuts
-  useShortcuts({
-    onPlayPause: togglePlay,
-    onCycleSpeed: cycleSpeed,
-    onPrevEvent: handlePrevEvent,
-    onNextEvent: handleNextEvent,
-    onQuickClip: handleQuickClip,
-    onAddEvent: () => setShowAddEventModal(true),
-    onSendToProject: () => onSendToProject?.(state.clips)
+  useKeymap({
+    play: togglePlay,
+    speed: cycleSpeed,
+    prevEvent: handlePrevEvent,
+    nextEvent: handleNextEvent,
+    quickOrSplit: handleQuickClip,
+    addEvent: () => setShowAddEventModal(true),
+    addAllToProject: () => onSendToProject?.(state.clips)
   })
 
   return (
