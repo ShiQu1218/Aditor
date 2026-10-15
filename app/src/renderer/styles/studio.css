@@ -250,38 +250,8 @@
 .tl-zoom .icon-btn { width: 26px; height: 26px; }
 .tl-zoom .ic { width: 14px; height: 14px; }
 
-/* ---- 專案軌（本任務唯讀占位） ---- */
-.studio-track {
-  flex: none;
-  display: flex;
-  flex-direction: column;
-  gap: var(--sp-2);
-  padding: var(--sp-2) var(--sp-3);
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
-  background: var(--bg-surface);
-}
-.track-bar { display: flex; align-items: center; gap: var(--sp-2); font-size: var(--fs-small); }
-.track-title { font-weight: var(--fw-bold); }
-.track-actions { display: flex; align-items: center; gap: 2px; margin-left: var(--sp-2); }
-.track-spacer { flex: 1; }
-.track-items { display: flex; align-items: stretch; gap: 6px; overflow-x: auto; min-height: 44px; }
-.track-chip {
-  flex: none;
-  min-width: 140px;
-  padding: 5px 10px;
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
-  background: var(--bg-raised);
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  font-size: var(--fs-caption);
-  cursor: pointer;
-}
-.track-chip:hover { background: var(--bg-hover); }
-.track-chip.on { border-color: var(--accent); }
-.track-chip-src { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* ---- 專案軌 ---- */
+/* 樣式在 projectTrack.css（Task 13 完整取代唯讀占位） */
 
 /* ---- 側欄 ---- */
 .studio-aside {

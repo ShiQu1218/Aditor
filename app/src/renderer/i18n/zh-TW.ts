@@ -123,18 +123,6 @@ export const i18n = {
     suggestProxyDesc: '偵測到您的系統解碼效能較低，建議產生代理檔以獲得更流暢的預覽。',
     generateProxy: '產生代理檔'
   },
-  editor: {
-    title: '剪輯專案',
-    empty: '專案內尚無片段，請在檢視器中選取片段後按 Ctrl+E 加入。',
-    export: '匯出影片',
-    split: '分割片段',
-    delete: '刪除',
-    duplicate: '複製',
-    undo: '復原 (Ctrl+Z)',
-    redo: '重做 (Ctrl+Y)',
-    saveProject: '儲存專案',
-    loadProject: '載入專案'
-  },
   studio: {
     back: '返回影片庫',
     openBlocked: '分析完成後才能開啟',
@@ -186,7 +174,12 @@ export const i18n = {
       deletedEvents: '已刪除 {n} 個事件',
       copied: '已複製錯誤訊息',
       derived: '已重新推導計入結果',
-      boxSelected: '框選了 {n} 個事件（{range}）'
+      boxSelected: '框選了 {n} 個事件（{range}）',
+      deletedItem: '已刪除專案片段',
+      newProject: '已建立新專案；舊專案已自動儲存，可從「開啟檔案」或專案清單找回',
+      savedAs: '已另存為 {name}（專案本身已自動儲存）',
+      noSuggestions: '沒有待加入的片段',
+      splitHint: '請先在專案軌選取片段，並把播放頭移到片段內部'
     },
     meta: {
       events: '{n} 個事件'
@@ -275,16 +268,40 @@ export const i18n = {
       itemCount: '{n} 段',
       total: '總長 {time}',
       empty: '尚無片段，從精華或事件加入',
-      legacy: '舊專案頁',
-      addFromSource: '＋從來源加入',
-      sources: '共 {n} 支影片',
-      newProject: '新專案',
-      openFile: '開啟專案',
-      saveFile: '另存專案',
+      addFromSource: '從來源加入',
+      addKey: 'Ctrl E',
       addAll: '全部加入',
       addAllKey: 'Ctrl E',
-      undo: '復原',
-      redo: '重做'
+      sources: '來自 {n} 支影片',
+      nameLabel: '專案名稱',
+      collapse: '展開或收合專案軌',
+      split: '分割',
+      splitTitle: '在播放頭分割（專案模式 Ctrl+Q）',
+      duplicate: '複製片段 (Ctrl+D)',
+      delete: '刪除片段 (Delete，可復原)',
+      undo: '復原 (Ctrl+Z)',
+      redo: '重做 (Ctrl+Y)',
+      newProject: '新專案',
+      openFile: '開啟檔案',
+      saveFile: '另存檔案',
+      saved: '已自動儲存',
+      saving: '儲存中…',
+      saveError: '儲存失敗',
+      itemAria: '片段 {i} {label} {time}',
+      missing: '來源影片不存在',
+      missingToast: '來源影片不存在，無法預覽',
+      missingHint: '無法預覽',
+      stepperStart: '起點',
+      stepperEnd: '終點',
+      stepperDec: '−0.5 秒',
+      stepperInc: '+0.5 秒'
+    },
+    newProjectDlg: {
+      title: '建立新專案？',
+      body: '目前專案「{name}」有 {n} 段，已自動儲存在 %APPDATA%\\ApexHighlighter\\projects\\，之後可從「開啟檔案」或專案清單找回。尚未另存成 .apexproj.json 檔案。',
+      cancel: '取消',
+      saveThenNew: '另存檔案後新增',
+      directNew: '直接新增'
     },
     addEvent: {
       title: '新增事件（{time}）',
@@ -389,6 +406,5 @@ export const shellI18n = {
       listPrev: '上一項',
       listNext: '下一項'
     }
-  },
-  legacyEditor: '舊專案編輯'
+  }
 }

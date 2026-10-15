@@ -34,7 +34,8 @@ import {
   Redo2,
   FilePlus2,
   Save,
-  Check
+  Check,
+  Copy
 } from 'lucide-react'
 
 export {
@@ -71,7 +72,8 @@ export {
   Redo2,
   FilePlus2,
   Save,
-  Check
+  Check,
+  Copy
 }
 
 /** 品牌 logo（六角形＋十字），顏色跟隨 currentColor */

@@ -15,7 +15,7 @@ import {
   serializeProject
 } from './project'
 import { History } from './history'
-import { ProjectWithId, newProjectId, restoreLastProject, validateSources } from './projectIo'
+import { ProjectWithId, missingItemIds, newProjectId, restoreLastProject, validateSources } from './projectIo'
 import { useAutosave } from './useAutosave'
 
 export type SaveState = 'saved' | 'saving' | 'error'
@@ -35,14 +35,16 @@ export interface ProjectContextValue {
   newProject: () => void
   /** 從磁碟開啟專案檔（`.apexproj.json`）。 */
   openFile: () => Promise<void>
-  /** 另存專案檔到磁碟。 */
-  saveFile: () => Promise<void>
+  /** 另存專案檔到磁碟；回傳實際儲存路徑（取消或失敗時 null，供 Toast 文案）。 */
+  saveFile: () => Promise<string | null>
   /** 自動儲存狀態（Task 13 顯示用）。 */
   saveState: SaveState
   /** 最近一次成功寫入的 timestamp（ms）。 */
   lastSavedAt: number | null
   /** 開啟檔案時檢查到的缺失來源（Task 13 顯示用）。 */
   lastMissingSources: string[]
+  /** 來源缺失的片段 id（由 lastMissingSources 衍生，不進專案檔；UI 警示且不可預覽）。 */
+  missingItemIds: ReadonlySet<string>
 }
 
 const ProjectContext = createContext<ProjectContextValue | null>(null)
@@ -129,6 +131,13 @@ export function ProjectProvider({ children }: { children: React.ReactNode }): JS
       projectRef.current = restored
       setProject(restored)
       setSaveState('saved')
+      // 還原的專案也要檢查來源是否仍存在（缺失片段警示且不可預覽）
+      try {
+        const { missing } = await validateSources(restored, (source) => api.library.fileExists(source))
+        if (!cancelled && projectRef.current === restored) setLastMissingSources(missing)
+      } catch {
+        /* 檢查失敗不阻擋使用 */
+      }
     }
     void boot()
     return () => {
@@ -209,21 +218,25 @@ export function ProjectProvider({ children }: { children: React.ReactNode }): JS
     }
   }, [commit])
 
-  const saveFile = useCallback(async () => {
+  const saveFile = useCallback(async (): Promise<string | null> => {
     const api = window.api
-    if (!api) return
+    if (!api) return null
     const snapshot = projectRef.current
     const filePath = await api.project?.showSaveDialog?.(`${snapshot.name}.apexproj.json`)
-    if (!filePath) return
+    if (!filePath) return null
     setSaveState('saving')
     try {
       const ok = await api.project?.save?.(filePath, serializeProject(snapshot))
       setSaveState(ok ? 'saved' : 'error')
       if (ok) setLastSavedAt(Date.now())
+      return ok ? filePath : null
     } catch {
       setSaveState('error')
+      return null
     }
   }, [])
+
+  const missingIds = useMemo(() => missingItemIds(project, lastMissingSources), [project, lastMissingSources])
 
   const canUndo = historyRef.current?.canUndo ?? false
   const canRedo = historyRef.current?.canRedo ?? false
@@ -242,7 +255,8 @@ export function ProjectProvider({ children }: { children: React.ReactNode }): JS
       saveFile,
       saveState,
       lastSavedAt,
-      lastMissingSources
+      lastMissingSources,
+      missingItemIds: missingIds
     }),
     [
       project,
@@ -256,7 +270,8 @@ export function ProjectProvider({ children }: { children: React.ReactNode }): JS
       saveFile,
       saveState,
       lastSavedAt,
-      lastMissingSources
+      lastMissingSources,
+      missingIds
     ]
   )
 

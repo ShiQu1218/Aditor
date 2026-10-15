@@ -6,7 +6,7 @@ import { shellI18n } from '../i18n/zh-TW'
 export type RailView = 'library' | 'studio' | 'settings'
 
 interface RailProps {
-  /** 目前頁面；legacy-editor 視為屬於工作室 */
+  /** 目前頁面 */
   active: RailView | null
   projectCount: number
   onNavigate: (v: RailView) => void

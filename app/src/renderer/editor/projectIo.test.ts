@@ -1,5 +1,5 @@
 import { describe, expect, test, vi } from 'vitest'
-import { newProjectId, restoreLastProject, validateSources } from './projectIo'
+import { missingItemIds, newProjectId, restoreLastProject, validateSources } from './projectIo'
 import { createProject } from './project'
 
 describe('restoreLastProject', () => {
@@ -61,5 +61,25 @@ describe('newProjectId', () => {
     const b = newProjectId()
     expect(a).toMatch(/^p_[A-Za-z0-9_-]+$/)
     expect(a).not.toBe(b)
+  })
+})
+
+describe('missingItemIds', () => {
+  const project = createProject('P', [
+    { id: 'a', source: 'C:\\v\\a.mp4', start: 0, end: 1 },
+    { id: 'b', source: 'C:/v/B.mp4', start: 0, end: 1 },
+    { id: 'c', source: 'C:/v/a.mp4', start: 5, end: 6 }
+  ])
+
+  test('flags every item whose source is missing (case/slash-insensitive)', () => {
+    const ids = missingItemIds(project, ['c:/v/a.mp4'])
+    expect([...ids].sort()).toEqual(['a', 'c'])
+  })
+
+  test('empty missing list flags nothing; does not mutate project', () => {
+    const before = JSON.stringify(project)
+    expect(missingItemIds(project, []).size).toBe(0)
+    missingItemIds(project, ['C:/v/B.mp4'])
+    expect(JSON.stringify(project)).toBe(before)
   })
 })

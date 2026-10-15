@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import '../styles/studio.css'
+import '../styles/projectTrack.css'
 import { AutoClipParams, CacheDoc, Clip, EngineEvent, EventType } from '../../shared/types'
 import { formatTime, toCurrentTime } from '../../shared/time'
 import { DEFAULT_SETTINGS } from '../../shared/settings'
@@ -8,12 +9,14 @@ import { createClipAt, supercut } from '../timeline/clips'
 import { nextEvent } from '../timeline/model'
 import { TimelineCanvas, TimelineHandle } from '../timeline/TimelineCanvas'
 import { useKeymap } from '../hooks/useShortcuts'
+import { useMediaQuery } from '../hooks/useMediaQuery'
 import { useToast } from '../shell/ToastHost'
 import { useOverlay } from '../shell/OverlayHost'
 import { useProject } from '../editor/ProjectProvider'
-import { addItems, Project, ProjectItem, totalDuration } from '../editor/project'
+import { addItems, duplicateItem, moveItem, Project, ProjectItem, removeItem, splitItem, trimItem } from '../editor/project'
+import { nextAfter } from '../editor/sequence'
 import { ExportDialog } from '../components/ExportDialog'
-import { FilePlus2, FolderOpen, Redo2, RefreshCw, Save, Undo2, ZoomIn, ZoomOut } from '../components/icons'
+import { RefreshCw, ZoomIn, ZoomOut } from '../components/icons'
 import { checkSmooth, PlayabilityResult } from '../media/playability'
 import { longFixtureRequested } from '../dev/fixture'
 import { i18n } from '../i18n/zh-TW'
@@ -24,6 +27,7 @@ import { ContextBanner } from './ContextBanner'
 import {
   acceptToProject,
   applyAutoClip,
+  clipTitle,
   findItemsForClip,
   isSuggested,
   nextSuggestion,
@@ -35,6 +39,7 @@ import { EventsTab } from './EventsTab'
 import { HighlightsTab } from './HighlightsTab'
 import { NoticeBar } from './NoticeBar'
 import { PlayerStage } from './PlayerStage'
+import { ProjectTrack } from './ProjectTrack'
 import { StudioHeader } from './StudioHeader'
 import { TransportBar } from './TransportBar'
 import { chipCounts, nearCount, toggleFilter } from './chips'
@@ -44,7 +49,6 @@ import { NoticeAction, studioNotice, StudioNotice } from './notices'
 interface StudioScreenProps {
   videoPath: string
   onBack: () => void
-  onOpenLegacyEditor: () => void
 }
 
 const DEFAULT_FILTER = new Set<EventType>(['knock', 'assist_knock', 'assist_elim', 'elim', 'squad_wipe'])
@@ -52,6 +56,11 @@ const DEFAULT_PLAYABILITY: PlayabilityResult = { supported: true, smooth: true, 
 
 function baseName(p: string): string {
   return p.split(/[/\\]/).pop() ?? p
+}
+
+/** 路徑正規化（來源比對：片段是否屬於目前開啟的影片）。 */
+function normPath(p: string): string {
+  return p.replace(/\\/g, '/').toLowerCase()
 }
 
 function initialDoc(videoPath: string): CacheDoc {
@@ -94,11 +103,24 @@ function initViewerState(videoPath: string): ViewerState {
 }
 
 /**
- * 工作室（spec §3.2）：播放器＋傳輸列＋來源時間軸＋專案軌（本任務為唯讀占位）＋側欄。
+ * 工作室（spec §3.2）：播放器＋傳輸列＋來源時間軸＋專案軌＋側欄。
  * 模式膠囊／脈絡橫幅、狀態列（引擎異常、代理檔建議）、事件篩選 chip 帶計數。
+ * 專案軌（Track 13）：片段卡、拖曳重排、把手微調、軌頭操作與新專案對話框。
  */
-export function StudioScreen({ videoPath, onBack, onOpenLegacyEditor }: StudioScreenProps): JSX.Element {
-  const { project, apply, undo, redo, canUndo, canRedo, newProject, openFile, saveFile } = useProject()
+export function StudioScreen({ videoPath, onBack }: StudioScreenProps): JSX.Element {
+  const {
+    project,
+    apply,
+    undo,
+    redo,
+    canUndo,
+    canRedo,
+    newProject,
+    openFile,
+    saveFile,
+    saveState,
+    missingItemIds
+  } = useProject()
   const toast = useToast()
   const overlay = useOverlay()
 
@@ -117,8 +139,16 @@ export function StudioScreen({ videoPath, onBack, onOpenLegacyEditor }: StudioSc
   const [activeClipId, setActiveClipId] = useState<string | null>(null)
   /** 事件清單鍵盤游標（roving tabindex；↑↓ 移動） */
   const [evCursorId, setEvCursorId] = useState<string | null>(null)
-  /** 設定快照（自動放置建議與浮層預設參數）；尚未讀到時以 DEFAULT_SETTINGS 為準 */
-  const [settings, setSettings] = useState<{ autoSuggestOnOpen: boolean; autoclip: AutoClipParams } | null>(null)
+  /** 專案軌選取片段（Alt+←/→、Ctrl+D、Delete、Enter 作用對象） */
+  const [selProjId, setSelProjId] = useState<string | null>(null)
+  /** 新專案對話框開啟中（暫停全域 keymap） */
+  const [projDlgOpen, setProjDlgOpen] = useState(false)
+  /** 設定快照（自動放置建議、浮層預設參數、專案軌收合）；尚未讀到時以 DEFAULT_SETTINGS 為準 */
+  const [settings, setSettings] = useState<{
+    autoSuggestOnOpen: boolean
+    autoclip: AutoClipParams
+    projectTrackCollapsed: 'auto' | boolean
+  } | null>(null)
 
   const [reloadKey, setReloadKey] = useState(0)
   const [blocked, setBlocked] = useState(false)
@@ -133,6 +163,15 @@ export function StudioScreen({ videoPath, onBack, onOpenLegacyEditor }: StudioSc
   const previewItem = currentItem(mode, project)
   const foreign = isForeign(mode, project)
 
+  // 專案軌收合：'auto' 依視窗高度（≤800px 收合）；使用者切換後記進 settings
+  const autoCollapse = useMediaQuery('(max-height: 800px)')
+  const collapsePref = settings?.projectTrackCollapsed ?? DEFAULT_SETTINGS.projectTrackCollapsed
+  const projCollapsed = collapsePref === 'auto' ? autoCollapse : collapsePref
+
+  // 供 timeupdate 讀取（避免每幀重建 callback）
+  const previewRef = useRef<{ item: ProjectItem | null }>({ item: null })
+  previewRef.current = { item: previewItem }
+
   // 專案狀態的最新快照（Toast〔復原〕在觸發後才執行，不能閉包舊值）
   const projectRef = useRef(project)
   projectRef.current = project
@@ -143,10 +182,6 @@ export function StudioScreen({ videoPath, onBack, onOpenLegacyEditor }: StudioSc
 
   // 自動放置建議每個工作階段只做一次（避免 autoclip 無結果時重複呼叫）
   const autoPlaced = useRef(false)
-
-  // 供 timeupdate 讀取（避免每幀重建 callback）
-  const previewRef = useRef<{ item: ProjectItem | null; items: ProjectItem[] }>({ item: null, items: [] })
-  previewRef.current = { item: previewItem, items: project.items }
 
   /* ---------------- 載入（沿用 Viewer 的 cache.load／engine.analyze 與去抖儲存） ---------------- */
 
@@ -212,7 +247,7 @@ export function StudioScreen({ videoPath, onBack, onOpenLegacyEditor }: StudioSc
 
   /* ---------------- 設定與自動放置建議 ---------------- */
 
-  // 讀取設定（自動放置開關與 AI 預設參數）；浮層與自動放置共用
+  // 讀取設定（自動放置開關、AI 預設參數與專案軌收合）；浮層與自動放置共用
   useEffect(() => {
     let cancelled = false
     void (async () => {
@@ -220,20 +255,30 @@ export function StudioScreen({ videoPath, onBack, onOpenLegacyEditor }: StudioSc
       if (!api?.settings?.get) {
         setSettings({
           autoSuggestOnOpen: DEFAULT_SETTINGS.autoSuggestOnOpen,
-          autoclip: DEFAULT_SETTINGS.autoclip
+          autoclip: DEFAULT_SETTINGS.autoclip,
+          projectTrackCollapsed: DEFAULT_SETTINGS.projectTrackCollapsed
         })
         return
       }
       try {
         const s = await api.settings.get()
         if (cancelled) return
+        const pref = s?.projectTrackCollapsed
         setSettings({
           autoSuggestOnOpen:
             typeof s?.autoSuggestOnOpen === 'boolean' ? s.autoSuggestOnOpen : DEFAULT_SETTINGS.autoSuggestOnOpen,
-          autoclip: s?.autoclip ?? DEFAULT_SETTINGS.autoclip
+          autoclip: s?.autoclip ?? DEFAULT_SETTINGS.autoclip,
+          projectTrackCollapsed:
+            pref === true || pref === false || pref === 'auto' ? pref : DEFAULT_SETTINGS.projectTrackCollapsed
         })
       } catch {
-        if (!cancelled) setSettings({ autoSuggestOnOpen: false, autoclip: DEFAULT_SETTINGS.autoclip })
+        if (!cancelled) {
+          setSettings({
+            autoSuggestOnOpen: false,
+            autoclip: DEFAULT_SETTINGS.autoclip,
+            projectTrackCollapsed: DEFAULT_SETTINGS.projectTrackCollapsed
+          })
+        }
       }
     })()
     return () => {
@@ -337,14 +382,14 @@ export function StudioScreen({ videoPath, onBack, onOpenLegacyEditor }: StudioSc
     [mode.mode, seekTo]
   )
 
-  // 播放頭時間：專案模式在片段結尾自動接下一段
+  // 播放頭時間：專案模式依序接續（跨影片續播），最後一段播完即暫停
   const handleTimeUpdate = useCallback((t: number) => {
     setCurrentTime(t)
-    const { item, items } = previewRef.current
-    if (!item || t < item.end - 1e-3) return
-    const idx = items.findIndex((i) => i.id === item.id)
-    const next = idx >= 0 ? items[idx + 1] : undefined
-    if (next) dispatchMode({ type: 'playItem', item: next })
+    const item = previewRef.current.item
+    if (!item) return
+    const step = nextAfter(projectRef.current, item.id, t)
+    if (step.kind === 'continue') return
+    if (step.kind === 'next') dispatchMode({ type: 'playItem', item: step.item })
     else videoRef.current?.pause()
   }, [])
 
@@ -379,6 +424,27 @@ export function StudioScreen({ videoPath, onBack, onOpenLegacyEditor }: StudioSc
     const item = m.item.replace('{i}', String(previewIndex)).replace('{n}', String(project.items.length))
     return `${m.project} · ${item} · ${formatTime(previewItem.start)}–${formatTime(previewItem.end)}`
   }, [mode.mode, previewItem, previewIndex, project.items.length, videoPath])
+
+  /** 目前片段內的播放進度（專案模式卡片進度條）。 */
+  const previewProgress = useMemo(() => {
+    if (!previewItem) return 0
+    const len = Math.max(1e-6, previewItem.end - previewItem.start)
+    return Math.max(0, Math.min(1, (currentTime - previewItem.start) / len))
+  }, [previewItem, currentTime])
+
+  /** 片段標籤：目前影片內有對應片段時用「N 殺精華」等，否則通用標題。 */
+  const labelOf = useCallback(
+    (item: ProjectItem): string => {
+      if (normPath(item.source) === normPath(videoPath)) {
+        const clip = state.clips.find(
+          (c) => Math.abs(c.start - item.start) < 1e-3 && Math.abs(c.end - item.end) < 1e-3
+        )
+        if (clip) return clipTitle(clip, state.doc.events)
+      }
+      return i18n.studio.hl.genericTitle
+    },
+    [state.clips, state.doc.events, videoPath]
+  )
 
   const spectatingNow = useMemo(
     () => state.doc.spectating.some((s) => currentTime >= s.start && currentTime <= s.end),
@@ -443,10 +509,32 @@ export function StudioScreen({ videoPath, onBack, onOpenLegacyEditor }: StudioSc
 
   /* ---------------- 編輯操作 ---------------- */
 
+  /** 分割（Ctrl+Q／軌頭剪刀，專案模式）：播放頭需在目前播放片段內（±0.5 秒邊界）。 */
+  const splitProjectAtPlayhead = useCallback(() => {
+    const item = previewRef.current.item
+    const t = videoRef.current?.currentTime ?? currentTime
+    if (mode.mode !== 'project' || !item || t <= item.start + 0.5 || t >= item.end - 0.5) {
+      toast({ message: i18n.studio.toast.splitHint })
+      return
+    }
+    const next = splitItem(projectRef.current, item.id, t)
+    if (next === projectRef.current) {
+      toast({ message: i18n.studio.toast.splitHint })
+      return
+    }
+    apply(next)
+    const at = next.items.findIndex((i) => i.id === item.id)
+    const second = at >= 0 ? next.items[at + 1] : undefined
+    if (second) {
+      setSelProjId(second.id)
+      dispatchMode({ type: 'playItem', item: second })
+    }
+  }, [mode.mode, currentTime, apply, toast])
+
   /** 快速剪輯（Ctrl+Q，來源模式）：建立手動片段並同步加入專案（spec §3.6）。 */
   const handleQuickOrSplit = useCallback(() => {
     if (mode.mode === 'project') {
-      // Task 13：在播放頭分割目前選取的專案片段
+      splitProjectAtPlayhead()
       return
     }
     const clip = createClipAt(currentTime, 8, 4, duration)
@@ -465,7 +553,7 @@ export function StudioScreen({ videoPath, onBack, onOpenLegacyEditor }: StudioSc
         }
       }
     })
-  }, [mode.mode, currentTime, duration, videoPath, apply, toast])
+  }, [mode.mode, splitProjectAtPlayhead, currentTime, duration, videoPath, apply, toast])
 
   /** 處理完目前建議後，把作用中卡片移到下一個建議（以處理前的清單計算）。 */
   const advanceActive = useCallback(
@@ -723,6 +811,154 @@ export function StudioScreen({ videoPath, onBack, onOpenLegacyEditor }: StudioSc
     [state.clips]
   )
 
+  /* ---------------- 專案軌操作（Task 13） ---------------- */
+
+  // 片段增減時維護選取：專案由空→有自動選第一段；選取片段消失（刪除／換專案）時清除
+  const prevItemCount = useRef(0)
+  useEffect(() => {
+    const n = project.items.length
+    if (prevItemCount.current === 0 && n > 0) setSelProjId(project.items[0].id)
+    else if (selProjId !== null && !project.items.some((i) => i.id === selProjId)) setSelProjId(null)
+    prevItemCount.current = n
+  }, [project.items, selProjId])
+
+  /** 播放片段（卡片點擊／Enter）：缺失來源只 Toast，不進專案模式。 */
+  const playProjectItem = useCallback(
+    (item: ProjectItem) => {
+      if (missingItemIds.has(item.id)) {
+        toast({ message: i18n.studio.track.missingToast })
+        return
+      }
+      dispatchMode({ type: 'playItem', item })
+    },
+    [missingItemIds, toast]
+  )
+
+  /** 把手／步進微調：同影片夾在影片長度內；其他來源無長度資訊不設上界。 */
+  const trimProjectItem = useCallback(
+    (id: string, edge: 'start' | 'end', t: number) => {
+      const item = projectRef.current.items.find((i) => i.id === id)
+      const sameVideo = item ? normPath(item.source) === normPath(videoPath) : true
+      apply(trimItem(projectRef.current, id, edge, t, sameVideo ? duration : undefined))
+    },
+    [apply, videoPath, duration]
+  )
+
+  const moveProjectItem = useCallback(
+    (id: string, toIndex: number) => {
+      apply(moveItem(projectRef.current, id, toIndex))
+    },
+    [apply]
+  )
+
+  const renameProject = useCallback(
+    (name: string) => {
+      apply({ ...projectRef.current, name })
+    },
+    [apply]
+  )
+
+  /** 複製選取片段（Ctrl+D／軌頭）：選取複本（接在本尊之後）。 */
+  const duplicateSelectedItem = useCallback(() => {
+    const id = selProjId
+    if (!id) return
+    const before = new Set(projectRef.current.items.map((i) => i.id))
+    const next = duplicateItem(projectRef.current, id)
+    if (next === projectRef.current) return
+    apply(next)
+    const clone = next.items.find((i) => !before.has(i.id))
+    if (clone) setSelProjId(clone.id)
+  }, [selProjId, apply])
+
+  /** 刪除選取片段（Delete／軌頭）：Toast〔復原〕＝undo（移除剛推入的歷史）。 */
+  const deleteSelectedItem = useCallback(() => {
+    const id = selProjId
+    if (!id) return
+    apply(removeItem(projectRef.current, id))
+    setSelProjId(null)
+    toast({
+      message: i18n.studio.toast.deletedItem,
+      action: { label: i18n.studio.toast.undo, run: undo }
+    })
+  }, [selProjId, apply, toast, undo])
+
+  /** ←/→：移動選取片段（無選取時選第一／最後一段）。 */
+  const selectProjectItem = useCallback(
+    (dir: 1 | -1) => {
+      const items = projectRef.current.items
+      if (items.length === 0) return
+      const at = selProjId ? items.findIndex((i) => i.id === selProjId) : -1
+      const next = at < 0 ? (dir === 1 ? 0 : items.length - 1) : Math.max(0, Math.min(items.length - 1, at + dir))
+      setSelProjId(items[next].id)
+    },
+    [selProjId]
+  )
+
+  /** Alt+←/→：選取片段前移／後移一格。 */
+  const shiftSelectedItem = useCallback(
+    (dir: 1 | -1) => {
+      const id = selProjId
+      if (!id) return
+      const items = projectRef.current.items
+      const at = items.findIndex((i) => i.id === id)
+      const to = at + dir
+      if (at < 0 || to < 0 || to >= items.length) return
+      apply(moveItem(projectRef.current, id, to))
+    },
+    [selProjId, apply]
+  )
+
+  /** Enter：播放選取片段。 */
+  const playSelectedItem = useCallback(() => {
+    const item = selProjId ? projectRef.current.items.find((i) => i.id === selProjId) : undefined
+    if (item) playProjectItem(item)
+  }, [selProjId, playProjectItem])
+
+  /** 收合／展開專案軌：記進 settings.projectTrackCollapsed（布林，覆蓋 'auto'）。 */
+  const toggleProjCollapsed = useCallback(() => {
+    const next = !projCollapsed
+    void window.api?.settings?.set?.({ projectTrackCollapsed: next })
+    setSettings((prev) => (prev ? { ...prev, projectTrackCollapsed: next } : prev))
+  }, [projCollapsed])
+
+  /** 〔新專案〕：空專案不動作；有片段時開對話框（spec §3.7）。 */
+  const requestNewProject = useCallback(() => {
+    if (projectRef.current.items.length === 0) return
+    setProjDlgOpen(true)
+  }, [])
+
+  /** 對話框確認：saveFirst＝先另存檔案（取消則中止）。 */
+  const handleNewProjectConfirmed = useCallback(
+    (saveFirst: boolean) => {
+      void (async () => {
+        if (saveFirst) {
+          const saved = await saveFile()
+          if (!saved) return
+        }
+        newProject()
+        setSelProjId(null)
+        prevItemCount.current = 0
+        toast({ message: i18n.studio.toast.newProject })
+      })()
+    },
+    [saveFile, newProject, toast]
+  )
+
+  /** 另存檔案（Ctrl+S／軌頭）：成功才 Toast（顯示檔名）。 */
+  const handleSaveProjectFile = useCallback(() => {
+    void (async () => {
+      const saved = await saveFile()
+      if (saved) toast({ message: i18n.studio.toast.savedAs.replace('{name}', baseName(saved)) })
+    })()
+  }, [saveFile, toast])
+
+  /** ＋從來源加入：加入第一段待確認建議（mock 行為）；沒有時 Toast。 */
+  const addFirstSuggestion = useCallback(() => {
+    const clip = state.clips.find(isSuggested)
+    if (clip) acceptClip(clip)
+    else toast({ message: i18n.studio.toast.noSuggestions })
+  }, [state.clips, acceptClip, toast])
+
   /* ---------------- keymap（spec §3.2.7） ---------------- */
 
   useKeymap(
@@ -751,15 +987,22 @@ export function StudioScreen({ videoPath, onBack, onOpenLegacyEditor }: StudioSc
           state.doc.events.find((e) => e.id === id) ?? evFiltered.find((e) => e.id === evCursorId)
         if (ev) handleSelectEvent(ev)
       },
+      playItem: playSelectedItem,
+      deleteProjectItem: deleteSelectedItem,
+      duplicateItem: duplicateSelectedItem,
+      moveItemLeft: () => shiftSelectedItem(-1),
+      moveItemRight: () => shiftSelectedItem(1),
+      selectPrevItem: () => selectProjectItem(-1),
+      selectNextItem: () => selectProjectItem(1),
       undo,
       redo,
-      saveProjectFile: () => void saveFile(),
+      saveProjectFile: handleSaveProjectFile,
       openExport: handleOpenExport,
       toggleAside: () => setAsideOpen((v) => !v),
       backToSource,
       closeOverlay: clearSelection
     },
-    { screen: 'studio', mode: mode.mode, enabled: addEventAt === null && !autoClipOpen }
+    { screen: 'studio', mode: mode.mode, enabled: addEventAt === null && !autoClipOpen && !projDlgOpen }
   )
 
   /* ---------------- aria-live（朗讀目前事件／選取數） ---------------- */
@@ -897,55 +1140,37 @@ export function StudioScreen({ videoPath, onBack, onOpenLegacyEditor }: StudioSc
             </div>
           </div>
 
-          <section className="studio-track" data-zone="proj" aria-label={i18n.studio.track.title}>
-            <div className="track-bar">
-              <span className="track-title">{i18n.studio.track.title}</span>
-              <span className="dim">
-                {i18n.studio.track.itemCount.replace('{n}', String(project.items.length))} ·{' '}
-                {i18n.studio.track.total.replace('{time}', formatTime(totalDuration(project)))}
-              </span>
-              <div className="track-actions">
-                <button type="button" className="icon-btn" aria-label={i18n.studio.track.undo} disabled={!canUndo} onClick={undo}>
-                  <Undo2 className="ic" />
-                </button>
-                <button type="button" className="icon-btn" aria-label={i18n.studio.track.redo} disabled={!canRedo} onClick={redo}>
-                  <Redo2 className="ic" />
-                </button>
-                <button type="button" className="icon-btn" aria-label={i18n.studio.track.newProject} onClick={newProject}>
-                  <FilePlus2 className="ic" />
-                </button>
-                <button type="button" className="icon-btn" aria-label={i18n.studio.track.openFile} onClick={() => void openFile()}>
-                  <FolderOpen className="ic" />
-                </button>
-                <button type="button" className="icon-btn" aria-label={i18n.studio.track.saveFile} onClick={() => void saveFile()}>
-                  <Save className="ic" />
-                </button>
-                <button type="button" className="btn-ghost" onClick={onOpenLegacyEditor}>
-                  {i18n.studio.track.legacy}
-                </button>
-              </div>
-            </div>
-            <div className="track-items" role="list">
-              {project.items.length === 0 ? (
-                <span className="dim">{i18n.studio.track.empty}</span>
-              ) : (
-                project.items.map((it) => (
-                  <div
-                    key={it.id}
-                    role="listitem"
-                    tabIndex={0}
-                    className={`track-chip${previewItem?.id === it.id ? ' on' : ''}`}
-                    onClick={() => dispatchMode({ type: 'playItem', item: it })}
-                  >
-                    <span className="mono">
-                      {formatTime(it.start)}–{formatTime(it.end)}
-                    </span>
-                    <span className="track-chip-src dim">{baseName(it.source)}</span>
-                  </div>
-                ))
-              )}
-            </div>
-          </section>
+          <ProjectTrack
+            project={project}
+            collapsed={projCollapsed}
+            onToggleCollapsed={toggleProjCollapsed}
+            selectedId={selProjId}
+            onSelect={setSelProjId}
+            currentId={mode.mode === 'project' && previewItem ? previewItem.id : null}
+            progress={previewProgress}
+            labelOf={labelOf}
+            missingIds={missingItemIds}
+            saveState={saveState}
+            videoPath={videoPath}
+            videoDuration={duration}
+            onPlay={playProjectItem}
+            onMissing={() => toast({ message: i18n.studio.track.missingToast })}
+            onTrim={trimProjectItem}
+            onMove={moveProjectItem}
+            onRename={renameProject}
+            onSplit={splitProjectAtPlayhead}
+            onDuplicate={duplicateSelectedItem}
+            onDelete={deleteSelectedItem}
+            onUndo={undo}
+            onRedo={redo}
+            canUndo={canUndo}
+            canRedo={canRedo}
+            onNewProject={handleNewProjectConfirmed}
+            onOpenFile={() => void openFile()}
+            onSaveFile={handleSaveProjectFile}
+            onAddFromSource={addFirstSuggestion}
+            onDialogOpenChange={setProjDlgOpen}
+          />
         </div>
 
         {asideOpen && (

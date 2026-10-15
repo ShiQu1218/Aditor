@@ -63,3 +63,16 @@ export async function validateSources(
   }
   return { missing }
 }
+
+function normSource(p: string): string {
+  return p.replace(/[\\]/g, '/').toLowerCase()
+}
+
+/**
+ * 由缺失來源推得「缺失片段」id 集合（衍生值，不寫入專案檔）：
+ * 來源路徑以斜線／大小寫不敏感比對；UI 以此標示警示並禁止預覽。
+ */
+export function missingItemIds(project: Project, missing: readonly string[]): ReadonlySet<string> {
+  const gone = new Set(missing.map(normSource))
+  return new Set(project.items.filter((i) => gone.has(normSource(i.source))).map((i) => i.id))
+}
