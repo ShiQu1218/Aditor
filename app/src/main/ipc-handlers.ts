@@ -14,7 +14,8 @@ import { WatchManager } from './watch'
 import { ProjectStore, StoredProject } from './projects'
 import { DEFAULT_SETTINGS, Settings } from '../shared/settings'
 import { cacheDir, profileDir } from '../shared/paths'
-import { computeHlCount } from './hl'
+import { computeHlCount, createSerialQueue, hlFromClips } from './hl'
+import type { CacheDoc, Clip } from '../shared/types'
 import { ProjectItem } from '../renderer/editor/project'
 
 const VIDEO_EXTS = new Set(['.mp4', '.mkv', '.mov', '.webm'])
@@ -133,20 +134,26 @@ export function registerIpcHandlers(
   })
 
   // 惰性「N 精華」（spec §7.4）：卡片首次進入視窗且已分析完成、尚無記錄時，
-  // 主程序以預設參數呼叫 autoclip 並把數字快取進 library.json（不動快取檔格式）。
-  ipcMain.handle('library:computeHl', async (_, videoPath: string) => {
-    const entry = library.getEntries().find((e) => normalizePath(e.path) === normalizePath(videoPath))
-    if (!entry || entry.status !== 'done' || entry.hl !== undefined) return entry?.hl ?? null
+  // 讀取既有快取（無副作用、絕不觸發 analyze；沒有快取＝略過）後以預設參數呼叫 autoclip，
+  // 數字快取進 library.json。請求並行度 1、同一影片去重，避免捲動時 N 張卡片同時打引擎。
+  const hlQueue = createSerialQueue<number | null>()
+  ipcMain.handle('library:computeHl', (_, videoPath: string) => {
+    const find = () => library.getEntries().find((e) => normalizePath(e.path) === normalizePath(videoPath))
+    const first = find()
+    if (!first || first.status !== 'done' || first.hl !== undefined) return first?.hl ?? null
     if (!engine) return null
-    const params = settings?.get().autoclip ?? DEFAULT_SETTINGS.autoclip
-    const count = await computeHlCount((cmd, args) => engine.request<unknown>(cmd, args).promise, videoPath, params, {
-      profile_dir: profileDir(app.isPackaged),
-      cache_dir: cacheDir()
+    return hlQueue.run(normalizePath(videoPath), async () => {
+      const entry = find()
+      if (!entry || entry.status !== 'done') return null
+      if (entry.hl !== undefined) return entry.hl
+      const doc = loadCacheDoc(cacheFilePath(videoPath, cacheDir())) as CacheDoc | null
+      const params = settings?.get().autoclip ?? DEFAULT_SETTINGS.autoclip
+      const count = await computeHlCount((cmd, args) => engine.request<unknown>(cmd, args).promise, doc, params)
+      if (count === null) return null
+      library.update(videoPath, { hl: count })
+      broadcastUpdated()
+      return count
     })
-    if (count === null) return null
-    library.update(videoPath, { hl: count })
-    broadcastUpdated()
-    return count
   })
 
   if (watch) {
@@ -214,7 +221,16 @@ export function registerIpcHandlers(
   // 由影片路徑推得快取檔（無副作用、不啟動分析）；工作室載入用
   ipcMain.handle('cache:loadByVideo', async (_, videoPath: string) => loadCacheDoc(cacheFilePath(videoPath, cacheDir())))
 
-  ipcMain.handle('cache:save', async (_, doc: { cache_path: string }) => saveCacheDoc(doc))
+  // 工作室存檔時同步影片庫的「N 精華」（目前待確認建議數；沒有 AI 片段則清除，交給惰性重算）
+  ipcMain.handle('cache:save', async (_, doc: { cache_path: string; video?: { path?: string }; clips?: Clip[] }) => {
+    const ok = saveCacheDoc(doc)
+    const videoPath = doc?.video?.path
+    if (ok && videoPath && library.getEntries().some((e) => normalizePath(e.path) === normalizePath(videoPath))) {
+      library.update(videoPath, { hl: hlFromClips(doc.clips) })
+      broadcastUpdated()
+    }
+    return ok
+  })
 
   ipcMain.handle('proxy:get', async (_, videoPath: string) => {
     const { proxyPath } = await import('./proxy')

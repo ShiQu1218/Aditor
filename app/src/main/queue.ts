@@ -112,7 +112,9 @@ export class AnalysisQueue extends EventEmitter {
         counts: { knock, assist },
         durationSec: duration,
         thumb,
-        codec: doc.video?.codec
+        codec: doc.video?.codec,
+        // 重新分析完成：引擎文件只含手動片段，舊的 N 精華作廢，交給惰性計算重算
+        hl: undefined
       })
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)

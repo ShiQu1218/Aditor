@@ -133,4 +133,18 @@ describe('AnalysisQueue', () => {
     // assist: 5 (assist_knock) + 6 (assist_elim) = 2
     expect(entry?.counts).toEqual({ knock: 2, assist: 2 })
   })
+  it('completed (re-)analysis invalidates the cached hl count', async () => {
+    const engineMock = {
+      request: () => ({ id: 'r', promise: Promise.resolve({ video: { duration: 10 }, events: [] }) }),
+      cancel: () => {}
+    } as unknown as EngineClient
+    lib.add(['D:/Videos/h.mp4'])
+    lib.update('D:/Videos/h.mp4', { status: 'done', hl: 5 })
+    const queue = new AnalysisQueue(engineMock, lib, { profileDir: '/profile', cacheDir: '/cache' })
+    queue.enqueue('D:/Videos/h.mp4')
+    await new Promise((r) => setTimeout(r, 50))
+    const e = lib.getEntries().find((x) => x.path === 'D:/Videos/h.mp4')
+    expect(e?.status).toBe('done')
+    expect(e?.hl).toBeUndefined()
+  })
 })
