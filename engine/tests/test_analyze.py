@@ -170,3 +170,179 @@ def test_combine_events_does_not_dedupe_new_against_new(zh_profile):
     # 既有 vs 新仍會去重
     out = _combine_events([ev("a1", 10.0)], [ev("b1", 10.5)], 0.32)
     assert [e.id for e in out] == ["a1"]
+
+
+# ---- 切段平行解碼（jobs） ----
+
+def test_plan_segments_overlap_and_last_segment():
+    segs = az.plan_segments(60.0, 3, min_len=5.0)
+    assert segs == [(0.0, 20.0), (20.0, 40.0), (40.0, 60.0)]
+    sg = [az._Seg(a, b, i == 2, 60.0) for i, (a, b) in enumerate(segs)]
+    assert [x.dec_end for x in sg] == [25.0, 45.0, None]  # 與下一段重疊 5 秒，最後一段到片尾
+
+
+def test_plan_segments_boundaries_on_quarter_grid():
+    segs = az.plan_segments(100.0, 3)
+    assert all((a / 0.25) == pytest.approx(round(a / 0.25)) for a, _ in segs)
+    assert segs[0][0] == 0.0 and segs[-1][1] == 100.0
+    assert all(a[1] == b[0] for a, b in zip(segs, segs[1:]))
+
+
+def test_plan_segments_short_duration_reduces_jobs_to_min_len():
+    assert len(az.plan_segments(100.0, 4)) == 3      # 每段 >= 30 秒
+    assert len(az.plan_segments(59.0, 4)) == 1
+    assert az.plan_segments(20.0, 4) == [(0.0, 20.0)]
+    assert len(az.plan_segments(300.0, 4)) == 4
+
+
+def test_auto_jobs(monkeypatch):
+    monkeypatch.setattr(az.os, "cpu_count", lambda: 16)
+    assert az.auto_jobs(True) == 4 and az.auto_jobs(False) == 1
+    monkeypatch.setattr(az.os, "cpu_count", lambda: 8)
+    assert az.auto_jobs(True) == 2
+    monkeypatch.setattr(az.os, "cpu_count", lambda: 2)
+    assert az.auto_jobs(True) == 1
+    monkeypatch.setattr(az.os, "cpu_count", lambda: None)
+    assert az.auto_jobs(True) == 1
+
+
+def _ev(i, t, typ="knock", sig=None):
+    from apexhl.models import Event
+    return Event(id=i, t=t, type=typ, score=0.9, damage_line=False, name_sig=sig)
+
+
+def test_segment_merge_keeps_one_cross_segment_duplicate():
+    from apexhl.analyze import _combine_events
+    seg0 = [_ev("a1", 21.0)]
+    seg1 = [_ev("b1", 21.25), _ev("b2", 30.0)]
+    out = _combine_events(_combine_events([], seg0, 0.32), seg1, 0.32)
+    assert [e.id for e in out] == ["a1", "b2"]
+
+
+def test_segment_merge_keeps_same_segment_close_events():
+    from apexhl.analyze import _combine_events
+    out = _combine_events([], [_ev("a1", 10.0), _ev("a2", 10.5)], 0.32)
+    assert [e.id for e in out] == ["a1", "a2"]
+    # 另一段不含它們：兩個都保留；另一段重複者只吃掉對應的那個
+    out = _combine_events(out, [_ev("b1", 10.25)], 0.32)
+    assert [e.id for e in out] == ["a1", "a2"]
+
+
+@pytest.fixture(scope="module")
+def multi_video(tmp_path_factory):
+    import cv2
+    import numpy as np
+    from conftest import FIXTURES
+    d = tmp_path_factory.mktemp("multi")
+    src = FIXTURES / "zh-TW" / "pos" / "knock_a007700.png"
+    img = cv2.imdecode(np.fromfile(str(src), dtype=np.uint8), cv2.IMREAD_COLOR)
+    ok, buf = cv2.imencode(".png", img[:180])
+    png = d / "b.png"
+    buf.tofile(str(png))
+    # jobs=3 → 邊界 20、40；提示 (19,22) 與 (39,42) 跨邊界，(24,26) 落在重疊區
+    spans = [(5.0, 7.0), (19.0, 22.0), (24.0, 26.0), (39.0, 42.0), (55.0, 57.0)]
+    return make_video(d, "多段.mp4", 60, overlay=(png, spans))
+
+
+def _knocks(doc):
+    return [(e["type"], e["t"]) for e in doc["events"]]
+
+
+def test_parallel_matches_single(tmp_path, zh_profile, multi_video):
+    single = az.analyze(str(multi_video), zh_profile, cache_dir=tmp_path / "c1", jobs=1)
+    par = az.analyze(str(multi_video), zh_profile, cache_dir=tmp_path / "c3", jobs=3)
+    a, b = _knocks(single), _knocks(par)
+    assert len(a) == 5, a
+    assert len(a) == len(b)
+    for (ta, xa), (tb, xb) in zip(a, b):
+        assert ta == tb and xa == pytest.approx(xb, abs=0.3)
+    assert par["analysis"]["status"] == "done" and "segments" not in par["analysis"]
+
+
+class _Seg3Harness:
+    """包住 FrameStream：記錄所有串流；seg0 完成後 seg2 才觸發取消，seg1 卡到取消為止。"""
+
+    def __init__(self, cancel):
+        self.cancel = cancel
+        self.inners = []
+        self.calls = []
+        self.seg0_done = threading.Event()
+
+    def __call__(self, *a, **k):
+        inner = FrameStream(*a, **k)
+        self.inners.append(inner)
+        start = k.get("start", 0.0)
+        self.calls.append((start, k.get("end")))
+        h = self
+
+        class W:
+            def __iter__(s):
+                for t, b, sp in inner:
+                    if start == 0.0:
+                        yield t, b, sp
+                        continue
+                    if start >= 40 and t >= start + 3:
+                        h.seg0_done.wait(60)
+                        if t >= start + 5:
+                            h.cancel.set()
+                    elif start >= 20 and t >= start + 10:
+                        for _ in range(600):
+                            if h.cancel.is_set():
+                                break
+                            threading.Event().wait(0.1)
+                    yield t, b, sp
+                if start == 0.0:
+                    h.seg0_done.set()
+
+            def close(s):
+                inner.close()
+        return W()
+
+
+@pytest.mark.timeout(240)
+def test_parallel_cancel_leaves_segments_and_resume_reruns_only_unfinished(
+        tmp_path, zh_profile, multi_video, monkeypatch):
+    full = az.analyze(str(multi_video), zh_profile, cache_dir=tmp_path / "full", jobs=3)
+    cache = tmp_path / "cache"
+    cancel = threading.Event()
+    harness = _Seg3Harness(cancel)
+    with monkeypatch.context() as m:
+        m.setattr(az, "FrameStream", harness)
+        with pytest.raises(az.Cancelled):
+            az.analyze(str(multi_video), zh_profile, cache_dir=cache, cancel=cancel, jobs=3)
+    assert len(harness.inners) == 3
+    assert all(i._proc is not None and i._proc.poll() is not None for i in harness.inners)  # 無殘留 ffmpeg
+    part = load_cache(cache_path(str(multi_video), cache))
+    a = part["analysis"]
+    assert a["status"] == "partial" and len(a["segments"]) == 3
+    segs = a["segments"]
+    assert segs[0]["progress_t"] == pytest.approx(25.0)  # seg0 已完成（含 5 秒重疊）
+    assert segs[1]["progress_t"] < 45.0 and segs[2]["progress_t"] < 60.0
+    assert [(s["start"], s["end"]) for s in segs] == [(0.0, 20.0), (20.0, 40.0), (40.0, 60.0)]
+
+    calls = []
+    real = FrameStream
+
+    def spy(*a, **k):
+        calls.append((k.get("start"), k.get("end")))
+        return real(*a, **k)
+    monkeypatch.setattr(az, "FrameStream", spy)
+    monkeypatch.setattr(az, "calibrate", lambda *a, **k: pytest.fail("不應重新校準"))
+    doc = az.analyze(str(multi_video), zh_profile, cache_dir=cache, jobs=3)
+    calls.sort(key=lambda c: c[0])
+    assert len(calls) == 2  # 只重跑 seg1、seg2，seg0 已完成
+    assert calls[0] == (pytest.approx(max(20.0, segs[1]["progress_t"] - 5.0)), 45.0)
+    assert calls[1] == (pytest.approx(max(40.0, segs[2]["progress_t"] - 5.0)), None)
+    assert doc["analysis"]["status"] == "done"
+    x, y = _knocks(full), _knocks(doc)
+    assert len(x) == len(y) == 5
+    for (ta, xa), (tb, xb) in zip(x, y):
+        assert ta == tb and xa == pytest.approx(xb, abs=0.3)
+
+
+def test_ipc_jobs_validation():
+    from apexhl import ipc
+    assert ipc._jobs(None) is None and ipc._jobs(3) == 3
+    for bad in (0, -1, "2", True, 1.5):
+        with pytest.raises(ipc.BadRequest):
+            ipc._jobs(bad)

@@ -7,12 +7,13 @@ import pytest
 EXPECTED = Path(__file__).parent / "golden" / "expected.json"
 
 
-def test_golden(tmp_path, zh_profile):
+@pytest.mark.parametrize("jobs", [1, None], ids=["jobs1", "auto"])
+def test_golden(tmp_path, zh_profile, jobs):
     video = os.environ.get("APEXHL_GOLDEN_VIDEO")
     if not video or not Path(video).exists():
         pytest.skip("未設定 APEXHL_GOLDEN_VIDEO")
     from apexhl.analyze import analyze
-    doc = analyze(video, zh_profile, cache_dir=tmp_path)
+    doc = analyze(video, zh_profile, cache_dir=tmp_path, jobs=jobs)
     got = [(e["type"], e["t"]) for e in doc["events"]]
     exp = json.loads(EXPECTED.read_text(encoding="utf-8"))["events"]
     assert len(got) == len(exp), (got, exp)

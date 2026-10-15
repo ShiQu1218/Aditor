@@ -44,6 +44,14 @@ def _arg(args: dict, key: str):
     return args[key]
 
 
+def _jobs(v):
+    if v is None:
+        return None
+    if isinstance(v, bool) or not isinstance(v, int) or v < 1:
+        raise BadRequest("jobs 必須是正整數")
+    return v
+
+
 class Server:
     def __init__(self, inp, out):
         self._in = inp
@@ -153,7 +161,7 @@ class Server:
 
         return analyze(path, profile, cache_dir=cache_dir, beside=bool(args.get("beside", False)),
                        force=bool(args.get("force", False)), on_progress=progress, cancel=cancel,
-                       hwaccel=bool(args.get("hwaccel", True)))
+                       hwaccel=bool(args.get("hwaccel", True)), jobs=_jobs(args.get("jobs")))
 
     def _derive(self, rid, args, cancel):
         try:

@@ -18,7 +18,7 @@ def _cmd_analyze(a) -> int:
         print(f"\r分析中 {t:8.1f} / {duration:.1f} 秒 ({pct:5.1f}%)", end="", file=sys.stderr, flush=True)
 
     doc = analyze(a.video, profile, cache_dir=Path(a.cache_dir), force=a.force,
-                  on_progress=progress, hwaccel=not a.no_hwaccel)
+                  on_progress=progress, hwaccel=not a.no_hwaccel, jobs=a.jobs)
     print(file=sys.stderr)
     if a.out:
         Path(a.out).write_text(json.dumps(doc, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -38,6 +38,7 @@ def main(argv: list[str] | None = None) -> int:
     an.add_argument("--cache-dir", required=True)
     an.add_argument("--force", action="store_true")
     an.add_argument("--no-hwaccel", action="store_true")
+    an.add_argument("--jobs", type=int, default=None, help="切段平行解碼的段數（預設自動）")
     an.add_argument("--out")
     sub.add_parser("ipc", help="JSON Lines IPC 伺服器")
     for s in (sys.stdout, sys.stderr):
