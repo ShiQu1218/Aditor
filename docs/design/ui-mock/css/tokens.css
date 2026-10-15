@@ -17,13 +17,13 @@
   /* 文字 */
   --text-1: #f6f6f6;
   --text-2: #b6b6b6;
-  --text-3: #828282;
+  --text-3: #9a9a9a; /* 對 #131313 6.0、#1b1b1d 5.6、#242427 5.0、#2c2c30 4.6 */
   --text-disabled: #6c6c6c;
 
   /* 品牌色：Apex 紅（填色用 --accent，深底上的文字/線條用 --accent-bright） */
   --accent: #d92e25;
-  --accent-hover: #ee3a30;
-  --accent-press: #b8251d;
+  --accent-hover: #c22820; /* hover/press 變暗：白字 5.8:1（舊 #EE3A30 僅 3.97） */
+  --accent-press: #a8231c;
   --accent-bright: #ff5348;
   --accent-soft: rgba(217, 46, 37, 0.16);
   --on-accent: #ffffff;
@@ -32,16 +32,16 @@
   --favorite: #ffd500;
   --success: #34d399;
   --warning: #ffd500;
-  --danger: #ff6b6b;
+  --danger: #ff7a93; /* 錯誤專用粉紅，與品牌紅區隔 */
   --info: #38bdf8;
 
   /* 事件類型（形狀＋顏色＋圖示三重編碼，不單靠顏色） */
-  --ev-knock: #ff5a36; /* 圓形 · 十字準星 */
-  --ev-assist-knock: #38bdf8; /* 圓角方形 · 加號 */
-  --ev-assist-elim: #2dd4bf; /* 菱形 · 加號 */
-  --ev-elim: #ffc93c; /* 圓形 · 骷髏 */
-  --ev-squad-wipe: #b66dff; /* 六角形 · 星芒 */
-  --ev-uncounted-alpha: 0.4; /* 不計入：淡色＋空心環 */
+  --ev-knock: #ff8a2b; /* 圓形 · 十字準星（與品牌紅 ΔE 35.6） */
+  --ev-assist-knock: #38bdf8; /* 六角形 · 加號 */
+  --ev-assist-elim: #2dd4bf; /* 菱形 · 叉號 */
+  --ev-elim: #f2e65a; /* 方形 · 骷髏 */
+  --ev-squad-wipe: #b66dff; /* 星形 · 星芒 */
+  --ev-uncounted-alpha: 0.65; /* 不計入：空心環＋65% 不透明（環 ≥3:1） */
 
   /* 時間軸 */
   --tl-bg: #101011;
@@ -49,17 +49,19 @@
   --tl-spectating-fill: rgba(168, 168, 168, 0.14);
   --tl-spectating-hatch: rgba(168, 168, 168, 0.3);
   --tl-unanalyzed: rgba(255, 213, 0, 0.1);
-  --tl-heat: 217, 46, 37; /* rgb，搭配 alpha 0.15–0.75 */
+  --tl-heat: 143, 163, 191; /* 藍灰，不使用品牌紅；alpha 0.3–0.9 */
   --tl-clip-suggest-line: rgba(255, 255, 255, 0.85); /* AI 建議：白色虛線 */
   --tl-clip-suggest-fill: rgba(255, 255, 255, 0.08);
-  --tl-clip-line: #ff5348; /* 已採用／手動：品牌紅實線 */
-  --tl-clip-fill: rgba(217, 46, 37, 0.22);
+  --tl-clip-line: #f6f6f6; /* 已加入／手動：白色實線 2px＋勾選角標 */
+  --tl-clip-fill: rgba(255, 255, 255, 0.16);
   --tl-playhead: #ffffff;
 
   /* 字型 */
   --font-display: 'Montserrat', 'Noto Sans TC', 'Microsoft JhengHei UI', 'Segoe UI', sans-serif;
   --font-ui: 'Lato', 'Noto Sans TC', 'Microsoft JhengHei UI', 'Segoe UI', sans-serif;
   --font-mono: 'Cascadia Mono', 'Consolas', 'Microsoft JhengHei UI', monospace;
+  --lh-body: 1.5; /* 中文內文 */
+  --lh-tight: 1.35; /* 中文標題 */
   --fs-caption: 11px;
   --fs-small: 12px;
   --fs-body: 13px;
@@ -94,7 +96,7 @@
   --rail-w: 56px;
   --topbar-h: 52px;
   --aside-w: 380px;
-  --tl-source-h: 120px;
+  --tl-source-h: 132px;
   --tl-project-h: 92px;
   --card-min: 280px;
 

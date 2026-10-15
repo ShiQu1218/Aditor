@@ -34,15 +34,16 @@ const ICONS = {
   swap: 'M7 4l-4 4 4 4 M3 8h14 M17 20l4-4-4-4 M21 16H7',
   // 事件字形（時間軸 canvas 與 DOM 共用）
   g_knock: 'M17 12a5 5 0 1 1-10 0a5 5 0 0 1 10 0z M12 3v4 M12 17v4 M3 12h4 M17 12h4',
-  g_assist: 'M12 6v12 M6 12h12',
+  g_assist: 'M12 5v14 M5 12h14',
+  g_x: 'M7 7l10 10 M17 7L7 17',
   g_skull: 'M12 4a7 7 0 0 0-4 12.7V19h8v-2.3A7 7 0 0 0 12 4z M9.5 11.5h.01 M14.5 11.5h.01',
   g_burst: 'M12 3l2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5z'
 };
 const TYPES = {
-  knock: { label: '擊倒', glyph: 'g_knock', color: '#ff5a36' },
+  knock: { label: '擊倒', glyph: 'g_knock', color: '#ff8a2b' },
   assist_knock: { label: '助攻擊倒', glyph: 'g_assist', color: '#38bdf8' },
-  assist_elim: { label: '助攻消滅', glyph: 'g_assist', color: '#2dd4bf' },
-  elim: { label: '已消滅', glyph: 'g_skull', color: '#ffc93c' },
+  assist_elim: { label: '助攻消滅', glyph: 'g_x', color: '#2dd4bf' },
+  elim: { label: '已消滅', glyph: 'g_skull', color: '#f2e65a' },
   squad_wipe: { label: '小隊抹殺', glyph: 'g_burst', color: '#b66dff' }
 };
 const REASONS = { first: '首次', duplicate: '重複敵人', spectating: '觀戰中', not_counting_type: '小隊抹殺不計', manual: '手動' };
@@ -56,12 +57,13 @@ const LIBRARY = [
   { id: 'v4', name: 'Apex Legends_07-13-2026_18-3-35-350.mp4', date: '2026-07-13', time: '18:03', dur: 807, res: '1916×1080', status: 'pending', scene: 's4' },
   { id: 'v5', name: 'Apex Legends_10-13-2026_20-14-07-420.mp4', date: '2026-10-13', time: '20:14', dur: 6022, res: '1916×1080', codec: 'AV1', status: 'pending', scene: 's5', proxyHint: true },
   { id: 'v6', name: 'Apex Legends_10-13-2026_22-41-18-800.mp4', date: '2026-10-13', time: '22:41', dur: 1260, res: '1916×1080', codec: 'AV1', status: 'done', knock: 15, assist: 6, hl: 4, fav: false, scene: 's6', proxyHint: true, banner: 'elim_a005375' },
+  { id: 'v8', name: 'Apex Legends_10-13-2026_16-45-41-533.mp4', date: '2026-10-13', time: '16:45', dur: 8240, res: '1916×1080', codec: 'AV1', status: 'done', knock: 118, assist: 41, hl: 24, fav: false, scene: 's3', proxyHint: true, banner: 'knock_d008550' },
   { id: 'v7', name: 'Apex Legends_10-14-2026_19-02-44-310.mp4', date: '2026-10-14', time: '19:02', dur: 0, res: '', status: 'error', err: '無法讀取影片：ffprobe 回報檔案損壞（moov atom not found）', scene: 's2' }
 ];
 
 /* 工作室：單支影片 17-17-13（822 秒） */
-const VIDEO = { id: 'v1', name: LIBRARY[0].name, duration: 822, codec: 'H.264', res: '1916×1080' };
-const EVENTS = [
+let VIDEO = { id: 'v1', name: LIBRARY[0].name, duration: 822, codec: 'H.264', res: '1916×1080' };
+let EVENTS = [
   { id: 'e1', t: 50.0, type: 'knock', score: 0.93, dmg: true, counted: true, reason: 'first', ov: null, src: 'auto' },
   { id: 'e2', t: 53.75, type: 'elim', score: 0.88, counted: false, reason: 'duplicate', ov: null, src: 'auto' },
   { id: 'e3', t: 64.5, type: 'assist_knock', score: 0.9, counted: true, reason: 'first', ov: null, src: 'auto' },
@@ -82,7 +84,7 @@ const EVENTS = [
   { id: 'e18', t: 736.5, type: 'knock', score: 0.89, counted: false, reason: 'spectating', ov: null, src: 'auto' },
   { id: 'e19', t: 739.5, type: 'squad_wipe', score: 0.9, counted: false, reason: 'spectating', ov: null, src: 'auto' }
 ];
-const SPECTATING = [{ start: 726.0, end: 740.5 }];
+let SPECTATING = [{ start: 726.0, end: 740.5 }];
 const PROJECT_SEED = [
   { id: 'p1', video: 'v1', vname: '17-17-13', start: 42.0, end: 82.25, label: '4 殺精華', scene: 's1', banner: 'knock_a005000' },
   { id: 'p2', video: 'v2', vname: '17-33-52', start: 131.0, end: 168.5, label: '3 殺精華', scene: 's2', banner: 'squad_wipe_a066500' },
@@ -93,3 +95,31 @@ const QUEUE = [
   { name: 'Apex Legends_10-13-2026_20-14-07-420.mp4', p: 0.18, eta: '約剩 41 分', state: '等待（一次分析一支）' },
   { name: 'Apex Legends_07-13-2026_18-3-35-350.mp4', p: 0, eta: '', state: '等待' }
 ];
+
+/* 2 小時長片驗收資料集：約 300 個事件（確定性偽隨機） */
+function genLong() {
+  let seed = 7;
+  const r = () => (seed = (seed * 1664525 + 1013904223) % 4294967296) / 4294967296;
+  const dur = 8240.5;
+  const spec = [{ start: 2650, end: 2702 }, { start: 5120, end: 5181 }, { start: 7905, end: 7962 }];
+  const pick = () => { const x = r(); return x < 0.5 ? 'knock' : x < 0.62 ? 'assist_knock' : x < 0.72 ? 'assist_elim' : x < 0.9 ? 'elim' : 'squad_wipe'; };
+  const ev = [];
+  const push = (t, big) => {
+    const type = big ? 'knock' : pick();
+    ev.push({ t: Math.round(t * 4) / 4, type, score: 0.8 + r() * 0.19, dmg: type === 'knock' && r() > 0.4 });
+  };
+  for (let f = 0; f < 46; f++) {
+    const n = f % 7 === 0 ? 7 : f % 3 === 0 ? 5 : 3 + Math.floor(r() * 2);
+    let t = 120 + f * ((dur - 300) / 46) + r() * 60;
+    for (let i = 0; i < n; i++) { t += 3 + r() * 13; push(t, i === 0); }
+  }
+  for (let i = 0; i < 100; i++) push(60 + r() * (dur - 120), false);
+  ev.sort((a, b) => a.t - b.t);
+  const out = ev.map((e, i) => {
+    const inSpec = spec.some((s) => e.t >= s.start && e.t <= s.end);
+    const wipe = e.type === 'squad_wipe';
+    const dup = !inSpec && !wipe && r() > 0.82;
+    return { id: 'L' + i, t: e.t, type: e.type, score: e.score, dmg: e.dmg, counted: !inSpec && !wipe && !dup, reason: inSpec ? 'spectating' : wipe ? 'not_counting_type' : dup ? 'duplicate' : 'first', ov: null, src: 'auto' };
+  });
+  return { events: out, spec, video: { id: 'v8', name: LIBRARY.find((v) => v.id === 'v8').name, duration: dur, codec: 'AV1', res: '1916×1080' } };
+}
