@@ -179,6 +179,9 @@ export const i18n = {
     },
     toast: {
       added: '已加入專案',
+      addedProject: '已加入專案（{sec} 秒）',
+      skipped: '已略過這段建議',
+      removedFromProject: '已移出專案片段',
       undo: '復原',
       deletedEvents: '已刪除 {n} 個事件',
       copied: '已複製錯誤訊息'
@@ -194,6 +197,43 @@ export const i18n = {
       hl: '精華',
       ev: '事件',
       asideLabel: '精華與事件'
+    },
+    hl: {
+      title: '{n} 殺精華',
+      quickTitle: '快速剪輯',
+      genericTitle: '精華片段',
+      badgeSuggested: 'AI 建議',
+      badgeAccepted: 'AI 精華',
+      badgeManual: '手動',
+      pending: '{n} 項待確認',
+      focusHint: '焦點清單時：Enter 加入、Delete 略過、↑↓ 移動',
+      compact: '精簡',
+      large: '大圖',
+      preview: '預覽',
+      accept: '加入',
+      accepted: '已加入',
+      skip: '略過',
+      restore: '復原',
+      remove: '移出',
+      stale: '來源事件已更新',
+      empty: '找不到符合條件的精華',
+      emptyHint: '可調整 AI 參數，或改用事件分頁建立合輯。',
+      tuneParams: '調整 AI 參數',
+      projectSummary: '專案已有 {n} 段 · 總長 {time}'
+    },
+    autoClipPopover: {
+      title: 'AI 自動剪輯',
+      desc: '只會在時間軸上放「建議框」，由你確認後才加入專案。',
+      n: '最少殺敵數 n',
+      gap: '相鄰最大間隔 gap（秒）',
+      before: '首殺前 before（秒）',
+      after: '末殺後 after（秒）',
+      maxLen: '片段最長 max_len（秒）',
+      estimate: '預計產生 {n} 段 · 共 {time}',
+      estimating: '計算中…',
+      reset: '重設預設值',
+      cancel: '取消',
+      apply: '套用（取代現有建議）'
     },
     transport: {
       play: '播放',

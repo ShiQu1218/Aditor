@@ -77,6 +77,32 @@ function VideoCardView({ entry, onOpen, onToggleFavorite, onRemove, onRetry }: V
     return () => window.removeEventListener('mousedown', close)
   }, [menuOpen])
 
+  // 惰性「N 精華」（spec §7.4）：卡片首次進入視窗、分析完成且尚無記錄時，請主程序以預設參數計算
+  const wantHl = done && entry.hl === undefined
+  useEffect(() => {
+    if (!wantHl) return
+    const el = rootRef.current
+    if (!el) return
+    let requested = false
+    const request = (): void => {
+      if (requested) return
+      requested = true
+      void window.api?.library?.computeHl?.(entry.path)
+    }
+    if (typeof IntersectionObserver === 'undefined') {
+      request()
+      return
+    }
+    const io = new IntersectionObserver((observed) => {
+      if (observed.some((o) => o.isIntersecting)) {
+        request()
+        io.disconnect()
+      }
+    })
+    io.observe(el)
+    return () => io.disconnect()
+  }, [wantHl, entry.path])
+
   const onKeyDown = (e: React.KeyboardEvent): void => {
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault()

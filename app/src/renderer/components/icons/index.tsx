@@ -33,7 +33,8 @@ import {
   Undo2,
   Redo2,
   FilePlus2,
-  Save
+  Save,
+  Check
 } from 'lucide-react'
 
 export {
@@ -69,7 +70,8 @@ export {
   Undo2,
   Redo2,
   FilePlus2,
-  Save
+  Save,
+  Check
 }
 
 /** 品牌 logo（六角形＋十字），顏色跟隨 currentColor */

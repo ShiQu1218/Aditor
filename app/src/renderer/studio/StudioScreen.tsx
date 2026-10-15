@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import '../styles/studio.css'
-import { AutoClipParams, CacheDoc, EventType } from '../../shared/types'
+import { AutoClipParams, CacheDoc, Clip, EventType } from '../../shared/types'
 import { formatTime, toCurrentTime } from '../../shared/time'
+import { DEFAULT_SETTINGS } from '../../shared/settings'
 import { viewerReducer, ViewerState } from '../viewer/state'
 import { createClipAt, supercut } from '../timeline/clips'
 import { nextEvent } from '../timeline/model'
@@ -10,28 +11,28 @@ import { useKeymap } from '../hooks/useShortcuts'
 import { useToast } from '../shell/ToastHost'
 import { useOverlay } from '../shell/OverlayHost'
 import { useProject } from '../editor/ProjectProvider'
-import { addItems, ProjectItem, totalDuration } from '../editor/project'
+import { addItems, Project, ProjectItem, totalDuration } from '../editor/project'
 import { EventList } from '../components/EventList'
-import { ClipList } from '../components/ClipList'
-import { AutoClipDialog } from '../components/AutoClipDialog'
 import { ExportDialog } from '../components/ExportDialog'
-import {
-  FilePlus2,
-  FolderOpen,
-  ListVideo,
-  Redo2,
-  RefreshCw,
-  Save,
-  Sparkles,
-  Undo2,
-  ZoomIn,
-  ZoomOut
-} from '../components/icons'
+import { FilePlus2, FolderOpen, Redo2, RefreshCw, Save, Undo2, ZoomIn, ZoomOut } from '../components/icons'
 import { checkSmooth, PlayabilityResult } from '../media/playability'
 import { longFixtureRequested } from '../dev/fixture'
 import { i18n } from '../i18n/zh-TW'
 import { AddEventDialog } from './AddEventDialog'
+import { Aside } from './Aside'
+import { AutoClipPopover } from './AutoClipPopover'
 import { ContextBanner } from './ContextBanner'
+import {
+  acceptToProject,
+  applyAutoClip,
+  findItemsForClip,
+  isSuggested,
+  nextSuggestion,
+  removeProjectItems,
+  shouldAutoPlace,
+  toSuggestions
+} from './highlights'
+import { HighlightsTab } from './HighlightsTab'
 import { NoticeBar } from './NoticeBar'
 import { PlayerStage } from './PlayerStage'
 import { StudioHeader } from './StudioHeader'
@@ -113,6 +114,9 @@ export function StudioScreen({ videoPath, onBack, onOpenLegacyEditor }: StudioSc
   const [asideOpen, setAsideOpen] = useState(true)
   const [addEventAt, setAddEventAt] = useState<number | null>(null)
   const [autoClipOpen, setAutoClipOpen] = useState(false)
+  const [activeClipId, setActiveClipId] = useState<string | null>(null)
+  /** 設定快照（自動放置建議與浮層預設參數）；尚未讀到時以 DEFAULT_SETTINGS 為準 */
+  const [settings, setSettings] = useState<{ autoSuggestOnOpen: boolean; autoclip: AutoClipParams } | null>(null)
 
   const [reloadKey, setReloadKey] = useState(0)
   const [blocked, setBlocked] = useState(false)
@@ -126,6 +130,13 @@ export function StudioScreen({ videoPath, onBack, onOpenLegacyEditor }: StudioSc
   const duration = state.doc.video?.duration || 100
   const previewItem = currentItem(mode, project)
   const foreign = isForeign(mode, project)
+
+  // 專案狀態的最新快照（Toast〔復原〕在觸發後才執行，不能閉包舊值）
+  const projectRef = useRef(project)
+  projectRef.current = project
+
+  // 自動放置建議每個工作階段只做一次（避免 autoclip 無結果時重複呼叫）
+  const autoPlaced = useRef(false)
 
   // 供 timeupdate 讀取（避免每幀重建 callback）
   const previewRef = useRef<{ item: ProjectItem | null; items: ProjectItem[] }>({ item: null, items: [] })
@@ -192,6 +203,66 @@ export function StudioScreen({ videoPath, onBack, onOpenLegacyEditor }: StudioSc
     }, 1000)
     return () => clearTimeout(timer)
   }, [state.dirty, state.doc])
+
+  /* ---------------- 設定與自動放置建議 ---------------- */
+
+  // 讀取設定（自動放置開關與 AI 預設參數）；浮層與自動放置共用
+  useEffect(() => {
+    let cancelled = false
+    void (async () => {
+      const api = window.api
+      if (!api?.settings?.get) {
+        setSettings({
+          autoSuggestOnOpen: DEFAULT_SETTINGS.autoSuggestOnOpen,
+          autoclip: DEFAULT_SETTINGS.autoclip
+        })
+        return
+      }
+      try {
+        const s = await api.settings.get()
+        if (cancelled) return
+        setSettings({
+          autoSuggestOnOpen:
+            typeof s?.autoSuggestOnOpen === 'boolean' ? s.autoSuggestOnOpen : DEFAULT_SETTINGS.autoSuggestOnOpen,
+          autoclip: s?.autoclip ?? DEFAULT_SETTINGS.autoclip
+        })
+      } catch {
+        if (!cancelled) setSettings({ autoSuggestOnOpen: false, autoclip: DEFAULT_SETTINGS.autoclip })
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  // 開啟影片自動放置 AI 建議（spec §3.2.6）：每個工作階段一次；分析結果未載入或引擎不可用時不消耗機會
+  useEffect(() => {
+    if (!settings || autoPlaced.current) return
+    if (state.doc.events.length === 0) return
+    if (!shouldAutoPlace(state.doc, settings)) return
+    const api = window.api
+    if (!api?.engine?.autoclip) return
+    autoPlaced.current = true
+    void (async () => {
+      try {
+        const res = await api.engine.autoclip({ events: state.doc.events, params: settings.autoclip, duration })
+        if (Array.isArray(res?.clips) && res.clips.length > 0) {
+          dispatch({ type: 'setAiClips', clips: toSuggestions(res.clips) })
+          setTab('hl')
+        }
+      } catch (err) {
+        console.error('Failed to auto-place AI suggestions:', err)
+      }
+    })()
+  }, [settings, state.doc, duration])
+
+  // 精華分頁開啟時確保有作用中卡片（roving tabindex 的第一站）
+  useEffect(() => {
+    if (tab !== 'hl') return
+    setActiveClipId((prev) =>
+      prev && state.clips.some((c) => c.id === prev) ? prev : nextSuggestion(state.clips, null, 1)
+    )
+  }, [tab, state.clips])
 
   /* ---------------- 播放控制 ---------------- */
 
@@ -354,23 +425,142 @@ export function StudioScreen({ videoPath, onBack, onOpenLegacyEditor }: StudioSc
 
   /* ---------------- 編輯操作 ---------------- */
 
+  /** 快速剪輯（Ctrl+Q，來源模式）：建立手動片段並同步加入專案（spec §3.6）。 */
   const handleQuickOrSplit = useCallback(() => {
     if (mode.mode === 'project') {
       // Task 13：在播放頭分割目前選取的專案片段
       return
     }
-    dispatch({ type: 'addClip', clip: createClipAt(currentTime, 8, 4, duration) })
-  }, [mode.mode, currentTime, duration])
-
-  const handleAddAll = useCallback(() => {
-    if (state.clips.length === 0) return
-    const items = state.clips.map((c) => ({ source: videoPath, start: c.start, end: c.end }))
-    apply(addItems(project, items))
+    const clip = createClipAt(currentTime, 8, 4, duration)
+    dispatch({ type: 'addClip', clip })
+    setTab('hl')
+    const res = acceptToProject(clip, videoPath, projectRef.current)
+    if (res.added.length === 0) return
+    apply(addItems(projectRef.current, res.added))
     toast({
-      message: i18n.studio.toast.added,
-      action: { label: i18n.studio.toast.undo, run: undo }
+      message: i18n.studio.toast.addedProject.replace('{sec}', String(Math.round(clip.end - clip.start))),
+      action: {
+        label: i18n.studio.toast.undo,
+        run: () => {
+          apply(res.undo(projectRef.current))
+          dispatch({ type: 'removeClip', id: clip.id })
+        }
+      }
     })
-  }, [state.clips, videoPath, project, apply, toast, undo])
+  }, [mode.mode, currentTime, duration, videoPath, apply, toast])
+
+  /** 處理完目前建議後，把作用中卡片移到下一個建議（以處理前的清單計算）。 */
+  const advanceActive = useCallback(
+    (fromId: string) => {
+      setActiveClipId(nextSuggestion(state.clips, fromId, 1))
+    },
+    [state.clips]
+  )
+
+  /** 預覽片段：退出專案模式並跳到片段起點。 */
+  const previewClip = useCallback(
+    (clip: Clip) => {
+      if (mode.mode === 'project') dispatchMode({ type: 'seekSource' })
+      seekTo(Math.max(0, clip.start))
+    },
+    [mode.mode, seekTo]
+  )
+
+  /** 加入建議（卡片／Enter）：加入專案、標記已加入、Toast〔復原〕。 */
+  const acceptClip = useCallback(
+    (clip: Clip) => {
+      const res = acceptToProject(clip, videoPath, projectRef.current)
+      if (res.added.length > 0) apply(addItems(projectRef.current, res.added))
+      dispatch({ type: 'acceptClip', id: clip.id })
+      toast({
+        message: i18n.studio.toast.addedProject.replace('{sec}', String(Math.round(Math.max(0, clip.end - clip.start)))),
+        action:
+          res.added.length > 0
+            ? { label: i18n.studio.toast.undo, run: () => apply(res.undo(projectRef.current)) }
+            : undefined
+      })
+      advanceActive(clip.id)
+    },
+    [videoPath, apply, toast, advanceActive]
+  )
+
+  /** 略過建議（卡片／Delete）：標記已略過，Toast〔復原〕回到建議。 */
+  const skipClip = useCallback(
+    (clip: Clip) => {
+      dispatch({ type: 'skipClip', id: clip.id })
+      toast({
+        message: i18n.studio.toast.skipped,
+        action: { label: i18n.studio.toast.undo, run: () => dispatch({ type: 'restoreClip', id: clip.id }) }
+      })
+      advanceActive(clip.id)
+    },
+    [toast, advanceActive]
+  )
+
+  /** 取消略過，回到建議狀態（不顯示 Toast）。 */
+  const restoreClip = useCallback((clip: Clip) => {
+    dispatch({ type: 'restoreClip', id: clip.id })
+  }, [])
+
+  /** 移出專案：AI 片段回到建議、手動片段從清單移除；Toast〔復原〕還原兩者。 */
+  const removeFromProject = useCallback(
+    (clip: Clip) => {
+      const ids = findItemsForClip(clip, videoPath, projectRef.current)
+      const items = projectRef.current.items.filter((i) => ids.includes(i.id))
+      if (items.length > 0) apply(removeProjectItems(projectRef.current, ids))
+      const manual = clip.origin === 'manual'
+      dispatch(manual ? { type: 'removeClip', id: clip.id } : { type: 'restoreClip', id: clip.id })
+      toast({
+        message: i18n.studio.toast.removedFromProject,
+        action: {
+          label: i18n.studio.toast.undo,
+          run: () => {
+            if (items.length > 0) apply(addItems(projectRef.current, items))
+            dispatch(manual ? { type: 'addClip', clip } : { type: 'acceptClip', id: clip.id })
+          }
+        }
+      })
+    },
+    [videoPath, apply, toast]
+  )
+
+  /** 全部加入（Ctrl+E／底欄）：所有待確認建議一次加入專案，單一 Toast〔復原〕。 */
+  const addAllSuggestions = useCallback(() => {
+    const suggested = state.clips.filter(isSuggested)
+    if (suggested.length === 0) return
+    let next: Project = projectRef.current
+    const addedIds: string[] = []
+    for (const c of suggested) {
+      const res = acceptToProject(c, videoPath, next)
+      if (res.added.length > 0) next = addItems(next, res.added)
+      for (const it of res.added) addedIds.push(it.id)
+    }
+    apply(next)
+    for (const c of suggested) dispatch({ type: 'acceptClip', id: c.id })
+    const secs = Math.round(suggested.reduce((sum, c) => sum + Math.max(0, c.end - c.start), 0))
+    toast({
+      message: i18n.studio.toast.addedProject.replace('{sec}', String(secs)),
+      action: {
+        label: i18n.studio.toast.undo,
+        run: () => {
+          if (addedIds.length > 0) apply(removeProjectItems(projectRef.current, addedIds))
+          for (const c of suggested) dispatch({ type: 'restoreClip', id: c.id })
+        }
+      }
+    })
+  }, [state.clips, videoPath, apply, toast])
+
+  /** 加入建議（Enter）：只處理目前作用中的建議。 */
+  const handleAcceptSuggestion = useCallback(() => {
+    const clip = state.clips.find((c) => c.id === activeClipId)
+    if (clip && isSuggested(clip)) acceptClip(clip)
+  }, [state.clips, activeClipId, acceptClip])
+
+  /** 略過建議（Delete）：只處理目前作用中的建議。 */
+  const handleSkipSuggestion = useCallback(() => {
+    const clip = state.clips.find((c) => c.id === activeClipId)
+    if (clip && isSuggested(clip)) skipClip(clip)
+  }, [state.clips, activeClipId, skipClip])
 
   const handleSupercut = useCallback(() => {
     if (state.selected.size === 0) return
@@ -417,21 +607,13 @@ export function StudioScreen({ videoPath, onBack, onOpenLegacyEditor }: StudioSc
     overlay.open(<ExportDialog project={project} onClose={overlay.close} />)
   }, [overlay, project])
 
-  const handleAutoClipGenerate = useCallback(
-    async (params: AutoClipParams): Promise<void> => {
-      const api = window.api
-      if (!api?.engine?.autoclip) return
-      try {
-        const res = await api.engine.autoclip({ events: state.doc.events, params, duration })
-        if (res?.clips) {
-          dispatch({ type: 'setAiClips', clips: res.clips })
-          setTab('hl')
-        }
-      } catch (err) {
-        console.error('Failed to run autoclip:', err)
-      }
+  /** 浮層套用：只取代 suggested／skipped 的 AI 片段（保留已加入與手動）並寫回快取。 */
+  const handleApplyAutoClip = useCallback(
+    (clips: Clip[]) => {
+      dispatch({ type: 'applyClips', clips: applyAutoClip(state.clips, clips) })
+      setTab('hl')
     },
-    [state.doc.events, duration]
+    [state.clips]
   )
 
   /* ---------------- keymap（spec §3.2.7） ---------------- */
@@ -450,7 +632,15 @@ export function StudioScreen({ videoPath, onBack, onOpenLegacyEditor }: StudioSc
       quickOrSplit: handleQuickOrSplit,
       addEvent: () => setAddEventAt(videoRef.current?.currentTime ?? currentTime),
       supercut: handleSupercut,
-      addAllToProject: handleAddAll,
+      addAllToProject: addAllSuggestions,
+      acceptSuggestion: handleAcceptSuggestion,
+      skipSuggestion: handleSkipSuggestion,
+      listPrev: () => {
+        if (tab === 'hl') setActiveClipId((prev) => nextSuggestion(state.clips, prev, -1))
+      },
+      listNext: () => {
+        if (tab === 'hl') setActiveClipId((prev) => nextSuggestion(state.clips, prev, 1))
+      },
       deleteSelectedEvents: handleDeleteSelected,
       seekSelectedEvent: () => {
         const id = [...state.selected][0]
@@ -465,7 +655,7 @@ export function StudioScreen({ videoPath, onBack, onOpenLegacyEditor }: StudioSc
       backToSource,
       closeOverlay: clearSelection
     },
-    { screen: 'studio', mode: mode.mode, enabled: addEventAt === null }
+    { screen: 'studio', mode: mode.mode, enabled: addEventAt === null && !autoClipOpen }
   )
 
   /* ---------------- aria-live（朗讀目前事件／選取數） ---------------- */
@@ -525,7 +715,7 @@ export function StudioScreen({ videoPath, onBack, onOpenLegacyEditor }: StudioSc
         exportCount={project.items.length}
         asideOpen={asideOpen}
         onBack={onBack}
-        onAutoClip={() => setAutoClipOpen(true)}
+        onAutoClip={() => setAutoClipOpen((v) => !v)}
         onQuick={handleQuickOrSplit}
         onExport={handleOpenExport}
         onToggleAside={() => setAsideOpen((v) => !v)}
@@ -630,10 +820,6 @@ export function StudioScreen({ videoPath, onBack, onOpenLegacyEditor }: StudioSc
                   {i18n.studio.track.legacy}
                 </button>
               </div>
-              <div className="track-spacer" />
-              <button type="button" className="btn-accent" onClick={handleAddAll} disabled={state.clips.length === 0}>
-                {i18n.studio.track.addAll} <kbd>{i18n.studio.track.addAllKey}</kbd>
-              </button>
             </div>
             <div className="track-items" role="list">
               {project.items.length === 0 ? (
@@ -659,39 +845,28 @@ export function StudioScreen({ videoPath, onBack, onOpenLegacyEditor }: StudioSc
         </div>
 
         {asideOpen && (
-          <aside className={`studio-aside${foreign ? ' grayed' : ''}`} aria-label={i18n.studio.tabs.asideLabel}>
-            <div className="aside-tabs" role="tablist">
-              <button
-                type="button"
-                role="tab"
-                aria-selected={tab === 'hl'}
-                className={`aside-tab${tab === 'hl' ? ' on' : ''}`}
-                onClick={() => setTab('hl')}
-              >
-                <Sparkles className="ic sm" /> {i18n.studio.tabs.hl} {state.clips.length}
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={tab === 'ev'}
-                className={`aside-tab${tab === 'ev' ? ' on' : ''}`}
-                onClick={() => setTab('ev')}
-              >
-                <ListVideo className="ic sm" /> {i18n.studio.tabs.ev} {eventCount}
-              </button>
-            </div>
+          <Aside
+            tab={tab}
+            onTab={setTab}
+            hlCount={state.clips.length}
+            evCount={eventCount}
+            grayed={foreign}
+          >
             {tab === 'hl' ? (
-              <div className="aside-panel" data-zone="hl" role="tabpanel">
-                {state.clips.length === 0 ? (
-                  <p className="dim">{i18n.studio.shelves.hlPlaceholder}</p>
-                ) : (
-                  <ClipList
-                    clips={state.clips}
-                    onPlayClip={(c) => seekTo(c.start)}
-                    onRemoveClip={(id) => dispatch({ type: 'removeClip', id })}
-                  />
-                )}
-              </div>
+              <HighlightsTab
+                clips={state.clips}
+                events={state.doc.events}
+                activeId={activeClipId}
+                onActiveChange={setActiveClipId}
+                onPreview={previewClip}
+                onAccept={acceptClip}
+                onSkip={skipClip}
+                onRestore={restoreClip}
+                onRemove={removeFromProject}
+                onTuneParams={() => setAutoClipOpen(true)}
+                project={project}
+                onAddAll={addAllSuggestions}
+              />
             ) : (
               <div className="aside-panel" data-zone="ev" role="tabpanel">
                 {state.doc.events.length === 0 ? (
@@ -709,11 +884,19 @@ export function StudioScreen({ videoPath, onBack, onOpenLegacyEditor }: StudioSc
                 )}
               </div>
             )}
-          </aside>
+          </Aside>
         )}
       </div>
 
-      <AutoClipDialog isOpen={autoClipOpen} onClose={() => setAutoClipOpen(false)} onGenerate={handleAutoClipGenerate} />
+      {autoClipOpen && (
+        <AutoClipPopover
+          defaults={settings?.autoclip ?? DEFAULT_SETTINGS.autoclip}
+          events={state.doc.events}
+          duration={duration}
+          onClose={() => setAutoClipOpen(false)}
+          onApply={handleApplyAutoClip}
+        />
+      )}
 
       {addEventAt !== null && (
         <AddEventDialog

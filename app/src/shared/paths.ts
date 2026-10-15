@@ -18,6 +18,14 @@ export function codecsDir(): string {
   return path.join(appDataDir(), 'codecs')
 }
 
+/** 分析範本目錄（`profile_dir`）：開發＝repo 的 `templates/zh-TW`，打包＝resources 下同名目錄。 */
+export function profileDir(isPackaged: boolean): string {
+  const root = isPackaged
+    ? (process as unknown as { resourcesPath?: string }).resourcesPath || path.join(__dirname, '..', '..')
+    : path.resolve(__dirname, '../../..')
+  return path.join(root, 'templates', 'zh-TW')
+}
+
 export function engineCommand(isPackaged: boolean): {
   command: string
   args: string[]

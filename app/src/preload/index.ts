@@ -26,6 +26,7 @@ const api = {
     addWatchFolder: () => ipcRenderer.invoke('library:addWatchFolder'),
     removeWatchFolder: (dir: string) => ipcRenderer.invoke('library:removeWatchFolder', dir),
     fileExists: (path: string) => ipcRenderer.invoke('library:fileExists', path),
+    computeHl: (path: string) => ipcRenderer.invoke('library:computeHl', path),
     onUpdated: (callback: () => void) => {
       const handler = () => callback()
       ipcRenderer.on('library:updated', handler)

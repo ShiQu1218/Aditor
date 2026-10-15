@@ -1,5 +1,5 @@
 import { CacheDoc, Clip, ClipStatus, EngineEvent, EventType } from '../../shared/types'
-import { normalizeClips } from '../../shared/clips'
+import { mergeOnReanalyze, normalizeClips } from '../../shared/clips'
 
 export interface ViewerState {
   doc: CacheDoc
@@ -22,6 +22,7 @@ export type ViewerAction =
   | { type: 'acceptClip' | 'skipClip' | 'restoreClip'; id: string }
   | { type: 'restoreEvent'; id: string }
   | { type: 'setClips'; clips: Clip[] }
+  | { type: 'applyClips'; clips: Clip[] }
   | { type: 'derived'; events: EngineEvent[] }
   | { type: 'analysisResult'; doc: CacheDoc }
 
@@ -142,11 +143,18 @@ export function viewerReducer(state: ViewerState, action: ViewerAction): ViewerS
     case 'restoreClip': {
       const status: ClipStatus =
         action.type === 'acceptClip' ? 'accepted' : action.type === 'skipClip' ? 'skipped' : 'suggested'
+      const target = state.clips.find((c) => c.id === action.id)
+      // 不存在的 id 或已是目標狀態：原 state（不標 dirty）
+      if (!target || (target.status ?? 'accepted') === status) return state
+      // 略過／復原只作用於 AI 建議；手動片段不受影響
+      if (action.type !== 'acceptClip' && target.origin !== 'ai') return state
       const clips = state.clips.map((c) => (c.id === action.id ? { ...c, status } : c))
       return { ...state, clips, doc: { ...state.doc, clips }, dirty: true }
     }
 
     case 'restoreEvent': {
+      const target = state.doc.events.find((e) => e.id === action.id)
+      if (!target || !target.deleted) return state
       const events = state.doc.events.map((e) => (e.id === action.id ? { ...e, deleted: false } : e))
       return { ...state, doc: { ...state.doc, events }, dirty: true }
     }
@@ -154,6 +162,12 @@ export function viewerReducer(state: ViewerState, action: ViewerAction): ViewerS
     case 'setClips': {
       const clips = normalizeClips(action.clips)
       return { ...state, clips, doc: { ...state.doc, clips } }
+    }
+
+    case 'applyClips': {
+      // 浮層「套用」：以合併後結果取代片段並標 dirty
+      const clips = normalizeClips(action.clips)
+      return { ...state, clips, doc: { ...state.doc, clips }, dirty: true }
     }
 
     case 'derived': {
@@ -198,11 +212,11 @@ export function viewerReducer(state: ViewerState, action: ViewerAction): ViewerS
       })
 
       const mergedEvents = [...updatedFreshEvents, ...manualEvents].sort((a, b) => a.t - b.t)
-      const manualClips = state.clips.filter((c) => c.origin === 'manual')
-      const mergedClips = normalizeClips([
-        ...manualClips,
-        ...(freshDoc.clips || []).filter((c) => c.origin === 'ai')
-      ])
+      // 載入（狀態尚無片段）＝直接採用文件的片段（保留已存的 status）；
+      // 重新分析＝mergeOnReanalyze：accepted 保留並標 stale、suggested／skipped 被新結果取代（spec §4.2）
+      const freshAi = (freshDoc.clips || []).filter((c) => c.origin === 'ai')
+      const mergedClips =
+        state.clips.length === 0 ? normalizeClips(freshDoc.clips) : mergeOnReanalyze(state.clips, freshAi)
 
       return {
         ...state,

@@ -1,7 +1,7 @@
-import { ipcMain, dialog, BrowserWindow } from 'electron'
+import { ipcMain, dialog, BrowserWindow, app } from 'electron'
 import fs from 'fs'
 import path from 'path'
-import { Library } from './library'
+import { Library, normalizePath } from './library'
 import { AnalysisQueue } from './queue'
 import { EngineClient } from './engine'
 import { detectEncoders } from './export/encoders'
@@ -12,7 +12,9 @@ import { loadCacheDoc, saveCacheDoc } from './cache-io'
 import { SettingsStore } from './settings'
 import { WatchManager } from './watch'
 import { ProjectStore, StoredProject } from './projects'
-import { Settings } from '../shared/settings'
+import { DEFAULT_SETTINGS, Settings } from '../shared/settings'
+import { cacheDir, profileDir } from '../shared/paths'
+import { computeHlCount } from './hl'
 import { ProjectItem } from '../renderer/editor/project'
 
 const VIDEO_EXTS = new Set(['.mp4', '.mkv', '.mov', '.webm'])
@@ -128,6 +130,23 @@ export function registerIpcHandlers(
     } catch {
       return false
     }
+  })
+
+  // 惰性「N 精華」（spec §7.4）：卡片首次進入視窗且已分析完成、尚無記錄時，
+  // 主程序以預設參數呼叫 autoclip 並把數字快取進 library.json（不動快取檔格式）。
+  ipcMain.handle('library:computeHl', async (_, videoPath: string) => {
+    const entry = library.getEntries().find((e) => normalizePath(e.path) === normalizePath(videoPath))
+    if (!entry || entry.status !== 'done' || entry.hl !== undefined) return entry?.hl ?? null
+    if (!engine) return null
+    const params = settings?.get().autoclip ?? DEFAULT_SETTINGS.autoclip
+    const count = await computeHlCount((cmd, args) => engine.request<unknown>(cmd, args).promise, videoPath, params, {
+      profile_dir: profileDir(app.isPackaged),
+      cache_dir: cacheDir()
+    })
+    if (count === null) return null
+    library.update(videoPath, { hl: count })
+    broadcastUpdated()
+    return count
   })
 
   if (watch) {

@@ -46,7 +46,7 @@ export function StudioHeader({
         </div>
       </div>
       <div className="studio-head-actions">
-        <button type="button" className="btn-ghost" onClick={onAutoClip}>
+        <button type="button" className="btn-ghost" data-autoclip="toggle" onClick={onAutoClip}>
           <Sparkles className="ic sm" /> {t.autoClip}
         </button>
         <button type="button" className="btn-ghost" onClick={onQuick}>

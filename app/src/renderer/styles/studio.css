@@ -5,6 +5,7 @@
   display: flex;
   flex-direction: column;
   min-height: 0;
+  position: relative;
   background: var(--bg-app);
 }
 
@@ -310,6 +311,181 @@
 .aside-tab:hover { color: var(--text-1); }
 .aside-tab.on { color: var(--text-1); border-bottom-color: var(--accent); }
 .aside-panel { flex: 1; min-height: 0; overflow-y: auto; padding: var(--sp-3); }
+
+/* ---- 精華分頁（spec §3.2.3） ---- */
+.hl-tab { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.hl-list-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 10px var(--sp-3) 0;
+  font-size: var(--fs-small);
+}
+.hl-list-head > .dim { flex: 1; min-width: 0; }
+.hl-view {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--bg-raised);
+}
+.hl-view-btn {
+  height: 24px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--r-xs);
+  background: transparent;
+  color: var(--text-2);
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-bold);
+}
+.hl-view-btn.on { background: var(--bg-active); color: var(--text-1); }
+.hl-hint { flex: none; padding: 2px var(--sp-3) 0; font-size: var(--fs-caption); }
+.hl-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: var(--sp-2) var(--sp-3); }
+.hl-list { display: flex; flex-direction: column; gap: 8px; }
+.hl-empty {
+  display: grid;
+  justify-items: start;
+  gap: var(--sp-2);
+  padding: var(--sp-3) 0;
+  color: var(--text-2);
+  font-size: var(--fs-small);
+}
+
+/* 卡片（精簡＝128×84 縮圖；大圖＝16:9 直排） */
+.hl-card {
+  display: flex;
+  gap: 10px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--bg-raised);
+  cursor: pointer;
+}
+.hl-card:hover { border-color: var(--line-strong); }
+.hl-card.active { border-color: var(--accent); }
+.hl-card.skipped { opacity: 0.6; }
+.hl-card:focus-visible { outline: 2px solid var(--text-1); outline-offset: -2px; }
+.hl-card.big { flex-direction: column; }
+.hl-thumb {
+  position: relative;
+  flex: none;
+  width: 128px;
+  height: 84px;
+  border-radius: var(--r-xs);
+  background: var(--bg-input);
+  overflow: hidden;
+}
+.hl-card.big .hl-thumb { width: 100%; height: auto; aspect-ratio: 16 / 9; }
+.hl-badge {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  padding: 1px 6px;
+  border-radius: var(--r-xs);
+  background: var(--bg-scrim);
+  color: var(--text-1);
+  font-size: 10px;
+  font-weight: var(--fw-bold);
+  transform: skewX(-8deg);
+}
+.hl-badge.suggested { background: var(--accent); color: var(--on-accent); }
+.hl-dur {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  padding: 0 5px;
+  border-radius: var(--r-xs);
+  background: var(--bg-scrim);
+  color: var(--text-1);
+  font-size: 10px;
+  line-height: 16px;
+}
+
+.hl-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.hl-head { display: flex; align-items: baseline; gap: var(--sp-2); min-width: 0; }
+.hl-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: var(--fw-bold); font-size: var(--fs-small); }
+.hl-time { flex: none; font-size: var(--fs-caption); }
+.hl-sub { font-size: var(--fs-caption); }
+
+/* 事件字形列：形狀＋顏色雙重編碼；不計入＝空心＋65% 不透明 */
+.hl-glyphs { display: flex; align-items: center; gap: 4px; min-height: 14px; }
+.hl-glyph { width: 12px; height: 12px; border-radius: 50%; background: var(--text-3); flex: none; }
+.hl-glyph[data-type='knock'] { background: var(--ev-knock); }
+.hl-glyph[data-type='assist_knock'] { background: var(--ev-assist-knock); border-radius: 3px; }
+.hl-glyph[data-type='assist_elim'] { background: var(--ev-assist-elim); border-radius: 2px; transform: rotate(45deg); }
+.hl-glyph[data-type='elim'] { background: var(--ev-elim); border-radius: 2px; }
+.hl-glyph[data-type='squad_wipe'] {
+  background: var(--ev-squad-wipe);
+  clip-path: polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%);
+}
+.hl-glyph.uncounted { background: transparent; border: 1px solid var(--text-2); opacity: var(--ev-uncounted-alpha); }
+.hl-more { font-size: var(--fs-caption); }
+
+.hl-actions { display: flex; align-items: center; gap: 6px; margin-top: auto; }
+.hl-actions-spacer { flex: 1; }
+.hl-actions .icon-btn { width: 26px; height: 26px; }
+.hl-actions .btn-ghost,
+.hl-actions .btn-accent { height: 26px; padding: 0 8px; font-size: var(--fs-caption); }
+.hl-accepted {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--success);
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-bold);
+}
+
+.hl-foot {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 10px var(--sp-3);
+  border-top: 1px solid var(--line);
+}
+.hl-foot > .dim { flex: 1; min-width: 0; font-size: var(--fs-caption); }
+.hl-foot .btn-accent { height: 28px; }
+
+/* ---- AI 自動剪輯浮層（spec §3.2.4） ---- */
+.autoclip-pop {
+  position: absolute;
+  top: calc(var(--topbar-h) + 8px);
+  right: 240px;
+  z-index: 40;
+  width: 350px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--bg-popover);
+  box-shadow: var(--shadow-pop);
+}
+.autoclip-pop h3 { font-size: var(--fs-body-lg); }
+.ac-desc { font-size: var(--fs-caption); }
+.ac-fields { display: flex; flex-direction: column; gap: var(--sp-2); }
+.ac-row { display: grid; grid-template-columns: 1fr 64px; gap: 4px var(--sp-2); align-items: center; }
+.ac-label { font-size: var(--fs-small); }
+.ac-num {
+  grid-column: 2;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  background: var(--bg-input);
+  color: var(--text-1);
+  font-size: var(--fs-small);
+  text-align: right;
+}
+.ac-range { grid-column: 1 / -1; width: 100%; accent-color: var(--accent); }
+.ac-foot { padding-top: var(--sp-1); }
+.ac-est { font-size: var(--fs-small); }
+.ac-actions { display: flex; align-items: center; gap: var(--sp-2); margin-top: var(--sp-1); }
+.ac-actions .btn-accent { margin-left: 0; }
 
 /* ---- 新增事件對話框 ---- */
 .add-event-host {

@@ -236,4 +236,94 @@ describe('viewerReducer', () => {
       expect(s.doc.clips).toBe(s.clips)
     })
   })
+
+  describe('clip status guards、重新分析合併與載入', () => {
+    const base = (clips: Clip[] = []): ViewerState => ({
+      doc: makeTestDoc(),
+      selected: new Set(),
+      filter: new Set(),
+      clips,
+      dirty: false
+    })
+
+    it('acceptClip/skipClip/restoreClip no-op for missing id without dirty', () => {
+      const s = base([{ id: 'c1', start: 1, end: 5, origin: 'ai', event_ids: [], status: 'suggested' }])
+      expect(viewerReducer(s, { type: 'acceptClip', id: 'nope' })).toBe(s)
+      expect(viewerReducer(s, { type: 'skipClip', id: 'nope' })).toBe(s)
+      expect(viewerReducer(s, { type: 'restoreClip', id: 'nope' })).toBe(s)
+    })
+
+    it('clip status actions no-op when already at target status (undefined counts as accepted)', () => {
+      const accepted = base([{ id: 'c1', start: 1, end: 5, origin: 'ai', event_ids: [], status: 'accepted' }])
+      expect(viewerReducer(accepted, { type: 'acceptClip', id: 'c1' })).toBe(accepted)
+
+      const legacy = base([{ id: 'c1', start: 1, end: 5, origin: 'ai', event_ids: [] }])
+      expect(viewerReducer(legacy, { type: 'acceptClip', id: 'c1' })).toBe(legacy)
+
+      const suggested = base([{ id: 'c1', start: 1, end: 5, origin: 'ai', event_ids: [], status: 'suggested' }])
+      expect(viewerReducer(suggested, { type: 'restoreClip', id: 'c1' })).toBe(suggested)
+    })
+
+    it('skipClip/restoreClip only apply to ai clips', () => {
+      const manual = base([{ id: 'm1', start: 1, end: 5, origin: 'manual', event_ids: [], status: 'suggested' }])
+      expect(viewerReducer(manual, { type: 'skipClip', id: 'm1' })).toBe(manual)
+      expect(viewerReducer(manual, { type: 'restoreClip', id: 'm1' })).toBe(manual)
+
+      const skippedManual = base([{ id: 'm1', start: 1, end: 5, origin: 'manual', event_ids: [], status: 'skipped' }])
+      expect(viewerReducer(skippedManual, { type: 'restoreClip', id: 'm1' })).toBe(skippedManual)
+    })
+
+    it('restoreEvent no-ops for missing id or event that is not deleted', () => {
+      const s = base()
+      expect(viewerReducer(s, { type: 'restoreEvent', id: 'nope' })).toBe(s)
+      expect(viewerReducer(s, { type: 'restoreEvent', id: 'e1' })).toBe(s)
+    })
+
+    it('reanalyze keeps accepted (marked stale), replaces suggested/skipped and adds new suggestions', () => {
+      const state = base([
+        { id: 'a1', start: 10, end: 20, origin: 'ai', event_ids: ['e1'], status: 'accepted' },
+        { id: 's1', start: 30, end: 40, origin: 'ai', event_ids: [], status: 'suggested' },
+        { id: 'k1', start: 50, end: 60, origin: 'ai', event_ids: [], status: 'skipped' },
+        { id: 'm1', start: 70, end: 80, origin: 'manual', event_ids: [] }
+      ])
+      const fresh = makeTestDoc()
+      fresh.clips = [
+        { id: 'n1', start: 10.5, end: 20, origin: 'ai', event_ids: ['ne1'] }, // 與 a1 相差 <1s → 不重複
+        { id: 'n2', start: 90, end: 100, origin: 'ai', event_ids: ['ne2'] }
+      ]
+
+      const s = viewerReducer(state, { type: 'analysisResult', doc: fresh })
+      expect(s.clips.map((c) => c.id)).toEqual(['a1', 'm1', 'n2'])
+      expect(s.clips.find((c) => c.id === 'a1')?.status).toBe('accepted')
+      expect(s.clips.find((c) => c.id === 'a1')?.stale).toBe(true)
+      expect(s.clips.find((c) => c.id === 'm1')?.status).toBe('accepted')
+      expect(s.clips.find((c) => c.id === 'n2')?.status).toBe('suggested')
+    })
+
+    it('loading a doc into an empty state keeps stored clip statuses', () => {
+      const fresh = makeTestDoc()
+      fresh.clips = [
+        { id: 'a1', start: 10, end: 20, origin: 'ai', event_ids: [], status: 'accepted' },
+        { id: 's1', start: 30, end: 40, origin: 'ai', event_ids: [], status: 'suggested' },
+        { id: 'm1', start: 50, end: 60, origin: 'manual', event_ids: [] }
+      ]
+
+      const s = viewerReducer(base(), { type: 'analysisResult', doc: fresh })
+      expect(s.clips.map((c) => [c.id, c.status ?? 'accepted'])).toEqual([
+        ['a1', 'accepted'],
+        ['s1', 'suggested'],
+        ['m1', 'accepted']
+      ])
+    })
+
+    it('applyClips normalizes, sets dirty and updates doc', () => {
+      const s = viewerReducer(base(), {
+        type: 'applyClips',
+        clips: [{ id: 'x', start: 3, end: 8, origin: 'ai' } as unknown as Clip]
+      })
+      expect(s.clips[0].status).toBe('accepted')
+      expect(s.dirty).toBe(true)
+      expect(s.doc.clips).toBe(s.clips)
+    })
+  })
 })
