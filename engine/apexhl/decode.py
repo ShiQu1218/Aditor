@@ -12,7 +12,10 @@ from .profile import Profile
 
 HWACCEL_ARGS = ["-hwaccel", "auto"]
 # ffmpeg 預設用 libdav1d 解碼 AV1，該解碼器會忽略 -hwaccel；需指定原生 av1 解碼器才會走 D3D11VA。
-AV1_HWACCEL_ARGS = ["-hwaccel", "d3d11va", "-c:v", "av1"]
+# 硬體路徑：畫格留在 GPU（d3d11 surface），fps 抽樣後才 hwdownload，省下每格 GPU→CPU 複製。
+GPU_HWACCEL_ARGS = ["-hwaccel", "d3d11va", "-hwaccel_output_format", "d3d11"]
+AV1_HWACCEL_ARGS = GPU_HWACCEL_ARGS + ["-c:v", "av1"]
+GPU_CODECS = ("av1", "h264", "hevc", "vp9")
 LOGLEVEL = "error"
 FPS = 4
 STDERR_LIMIT = 64 * 1024
@@ -25,10 +28,16 @@ class DecodeError(Exception):
         self.stderr_tail = stderr_tail
 
 
-def build_filter(profile: Profile) -> str:
+def is_gpu_path(codec: str | None, hwaccel: bool) -> bool:
+    """是否走「畫格留在 GPU」的硬體路徑（需已知且支援的編碼）。"""
+    return bool(hwaccel and codec in GPU_CODECS)
+
+
+def build_filter(profile: Profile, gpu: bool = False) -> str:
     bx, by, bw, bh = profile.banner_roi
     sx, sy, sw, sh = profile.spec_roi
-    return (f"[0:v]fps={FPS},scale=1920:1080,split[a][b];"
+    pre = f"fps={FPS},hwdownload,format=nv12" if gpu else f"fps={FPS}"
+    return (f"[0:v]{pre},scale=1920:1080,split[a][b];"
             f"[a]crop={bw}:{bh}:{bx}:{by}[a1];"
             f"[b]crop={sw}:{sh}:{sx}:{sy},pad={bw}:ih[b1];"
             f"[a1][b1]vstack")
@@ -37,8 +46,10 @@ def build_filter(profile: Profile) -> str:
 def build_input_args(codec: str | None, hwaccel: bool, start: float) -> list[str]:
     """-i 之前的輸入選項（解碼器選項與 -ss 都必須在 -i 之前）。"""
     args: list[str] = []
-    if hwaccel:
-        args += AV1_HWACCEL_ARGS if codec == "av1" else HWACCEL_ARGS
+    if is_gpu_path(codec, hwaccel):
+        args += AV1_HWACCEL_ARGS if codec == "av1" else GPU_HWACCEL_ARGS
+    elif hwaccel:
+        args += HWACCEL_ARGS
     if start > 0:
         args += ["-ss", f"{start:.3f}"]
     return args
@@ -52,8 +63,9 @@ class FrameStream:
     """可迭代的解碼串流。產出 (t, banner_bgr, spec_bgr)，t = start + k * 0.25。"""
 
     def __init__(self, path: str, profile: Profile, *, start: float = 0.0, hwaccel: bool = True,
-                 codec: str | None = None):
+                 codec: str | None = None, end: float | None = None):
         self.path = path
+        self.end = end
         self.profile = profile
         self.start = start
         self.codec = codec
@@ -84,8 +96,10 @@ class FrameStream:
     def _spawn(self, hwaccel: bool) -> subprocess.Popen:
         cmd = [ffbin.ffmpeg(), "-v", LOGLEVEL, "-nostdin"]
         cmd += build_input_args(self.codec, hwaccel, self.start)
-        cmd += ["-i", self.path, "-filter_complex", build_filter(self.profile),
-                "-pix_fmt", "bgr24", "-f", "rawvideo", "pipe:1"]
+        cmd += ["-i", self.path, "-filter_complex", build_filter(self.profile, is_gpu_path(self.codec, hwaccel))]
+        if self.end is not None:
+            cmd += ["-t", f"{max(self.end - self.start, 0.0):.3f}"]
+        cmd += ["-pix_fmt", "bgr24", "-f", "rawvideo", "pipe:1"]
         with self._lock:
             self._stderr.clear()
         proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=0)
@@ -155,5 +169,5 @@ class FrameStream:
 
 
 def iter_frames(path: str, profile: Profile, *, start: float = 0.0,
-                hwaccel: bool = True, codec: str | None = None) -> FrameStream:
-    return FrameStream(path, profile, start=start, hwaccel=hwaccel, codec=codec)
+                hwaccel: bool = True, codec: str | None = None, end: float | None = None) -> FrameStream:
+    return FrameStream(path, profile, start=start, hwaccel=hwaccel, codec=codec, end=end)

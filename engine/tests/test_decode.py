@@ -60,19 +60,47 @@ def test_close_terminates_ffmpeg(tmp_path, zh_profile):
     assert fs._proc.poll() is not None
 
 
+GPU = ["-hwaccel", "d3d11va", "-hwaccel_output_format", "d3d11"]
+
+
 def test_build_input_args_av1_uses_native_decoder_with_d3d11va():
     # 解碼器選項必須在 -i 之前；-ss 也在 -i 之前，且位於 hwaccel 之後
-    assert decode.build_input_args("av1", True, 2.5) == ["-hwaccel", "d3d11va", "-c:v", "av1", "-ss", "2.500"]
+    assert decode.build_input_args("av1", True, 2.5) == GPU + ["-c:v", "av1", "-ss", "2.500"]
 
 
-def test_build_input_args_other_codec_keeps_hwaccel_auto():
-    assert decode.build_input_args("h264", True, 0.0) == ["-hwaccel", "auto"]
+@pytest.mark.parametrize("codec", ["h264", "hevc", "vp9"])
+def test_build_input_args_other_gpu_codecs_no_c_v(codec):
+    assert decode.build_input_args(codec, True, 0.0) == GPU
+
+
+def test_build_input_args_unknown_codec_keeps_hwaccel_auto():
     assert decode.build_input_args(None, True, 0.0) == ["-hwaccel", "auto"]
+    assert decode.build_input_args("mpeg4", True, 0.0) == ["-hwaccel", "auto"]
 
 
 def test_build_input_args_no_hwaccel_only_start():
     assert decode.build_input_args("av1", False, 0.0) == []
     assert decode.build_input_args("h264", False, 3.0) == ["-ss", "3.000"]
+
+
+def test_is_gpu_path():
+    assert decode.is_gpu_path("av1", True) and decode.is_gpu_path("h264", True)
+    assert not decode.is_gpu_path(None, True) and not decode.is_gpu_path("av1", False)
+    assert not decode.is_gpu_path("mpeg4", True)
+
+
+def test_build_filter_gpu_downloads_after_fps(zh_profile):
+    f = decode.build_filter(zh_profile, True)
+    assert f.startswith("[0:v]fps=4,hwdownload,format=nv12,scale=1920:1080,split[a][b];")
+    soft = decode.build_filter(zh_profile)
+    assert soft.startswith("[0:v]fps=4,scale=1920:1080,split[a][b];") and "hwdownload" not in soft
+    assert f.split("split[a][b];", 1)[1] == soft.split("split[a][b];", 1)[1]
+
+
+def test_frame_stream_end_limits_output(tmp_path, zh_profile):
+    v = make_video(tmp_path, "e.mp4", 6.0)
+    frames = list(FrameStream(str(v), zh_profile, start=1.0, end=3.0, hwaccel=False))
+    assert [f[0] for f in frames] == [1.0 + 0.25 * k for k in range(8)]
 
 
 def test_build_input_args_av1_hwaccel_before_ss_when_start_positive():
@@ -111,6 +139,8 @@ def test_av1_fallback_drops_c_v_av1(tmp_path, zh_profile, monkeypatch):
     assert len(cmds) == 2
     assert "nonexistent_accel" in cmds[0] and "-c:v" in cmds[0]
     assert "-hwaccel" not in cmds[1] and "-c:v" not in cmds[1]
+    assert "hwdownload" in cmds[0][cmds[0].index("-filter_complex") + 1]
+    assert "hwdownload" not in cmds[1][cmds[1].index("-filter_complex") + 1]
 
 
 def test_av1_decode_with_codec_yields_frames(tmp_path, zh_profile):
