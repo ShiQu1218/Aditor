@@ -49,3 +49,61 @@
 - **Status**: Completed
 - **Vitest**: 58 passed (extraSecondsForCopy, concatCompatibility check, copy/precise ffmpeg job generation, encoder priority, escapeConcatPath, disk space verification)
 - **Manual GUI check TODO**: In desktop UI, export clips from an Exports video in both "每段各一檔（快速無損）" and "合輯（精準）" modes, verifying output files exist and match expected duration via ffprobe.
+
+### Task 8: 打包、授權與說明文件
+- **Status**: Completed
+- **LGPL FFmpeg**: BtbN master Windows 64-bit shared LGPL build downloaded and verified with `ffmpeg -buildconf` (no `--enable-gpl`, no `--enable-nonfree`, includes `--enable-libdav1d`).
+- **Engine Packaging**: PyInstaller one-dir build produces standalone `apexhl.exe` in `build/engine/apexhl/`. Tested and verified execution in a sanitized environment with no Python and no FFmpeg in PATH.
+- **Electron Packaging**: `scripts/build.ps1` runs end-to-end build producing `dist/Apex Highlighter Setup 0.1.0.exe` (NSIS installer, 178.4 MB) and `dist/Apex Highlighter 0.1.0.exe` (portable, 178.2 MB).
+- **Licenses & Documentation**: `LICENSE` (MIT), `THIRD_PARTY_NOTICES.md` (FFmpeg LGPL replacement rights, dav1d, OpenCV, NumPy, Cisco OpenH264), `README.md` (features, requirements, build steps, usage).
+
+---
+
+## Final Project Summary
+
+### 1. Tasks Completion Status
+- **Plan 1 (Engine)**: Tasks 1 through 11 **ALL COMPLETED**
+  - Task 1: Environment & golden fixtures
+  - Task 2: Video probe
+  - Task 3: Frame decoding (hwaccel & dav1d)
+  - Task 4: Template matching & resolution scaling
+  - Task 5: Event state machine & calibration
+  - Task 6: Spectator detection & teammate veto
+  - Task 7: Cache storage (.json)
+  - Task 8: Event derivation & manual overrides
+  - Task 9: AI Auto-clip clustering
+  - Task 10: JSON Lines IPC daemon
+  - Task 11: Accuracy evaluation report (`docs/accuracy-report.md`) & benchmarks
+- **Plan 2 (App)**: Tasks 1 through 8 **ALL COMPLETED**
+  - Task 1: Electron scaffold & IPC client (`EngineClient`)
+  - Task 2: Video library, folder watch & analysis queue
+  - Task 3: Pure timeline & clip models
+  - Task 4: Viewer UI with canvas, corrections & auto clip
+  - Task 5: Media playability check & proxy transcoding
+  - Task 6: Project editor with sequence timeline & undo/redo
+  - Task 7: Export engine with stream copy / precise modes & encoder discovery
+  - Task 8: PyInstaller engine, LGPL FFmpeg bundling, electron-builder packaging & licensing
+
+### 2. Test Results
+- **Engine pytest suite**: `130 passed, 2 skipped, 1 xfailed in 54.14s`
+- **Engine golden accuracy test**: `1 passed` (12/12 events matched)
+- **App vitest suite**: `14 passed (14 test files, 58 unit and integration tests passed in 1.06s)`
+- **Isolated standalone test**: Verified `apexhl.exe` runs `analyze` in a clean environment with no Python and no FFmpeg in `PATH`.
+
+### 3. Key Accuracy & Performance Metrics
+- **Knockdown Recall**: 100% (8/8 on ground-truth clips)
+- **Visual Precision**: 100% (11/11 verified visual on-screen knock banners)
+- **Spectator Filtering**: 14 teammate knockdowns successfully vetoed during spectator mode in long recordings.
+- **Decoding & Analysis Speed**:
+  - `-hwaccel auto`: 4.46x realtime (600.2s video in 134.7s)
+  - Software decoding (CPU dav1d): 4.55x realtime (600.2s video in 132.0s)
+
+### 4. Known Issues & Manual Verification Items
+- **Windows Developer Mode / Symlinks**: Building `winCodeSign` during packaging requires Windows Developer Mode or elevated privileges for macOS symlinks in 7z archives; pre-extracted cache in `%LOCALAPPDATA%\electron-builder\Cache\winCodeSign\winCodeSign-2.6.0` bypasses this seamlessly.
+- **Manual GUI checks recorded for user**:
+  - Library: Verify video cards show badges and analysis progress.
+  - Viewer: Verify canvas seek to 8s before event and manual event corrections persist across reopens.
+  - Proxy: Verify proxy suggestion banner appears for AV1 and generates 960x540 proxy.
+  - Editor: Verify sequential playback across items, splitting, and undo/redo.
+  - Export: Verify export outputs play correctly in external players.
+

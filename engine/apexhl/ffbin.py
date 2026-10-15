@@ -4,12 +4,17 @@ from pathlib import Path
 
 
 def _find(env_var: str, exe: str, required_name: str) -> str:
-    """解析順序：環境變數 → 引擎旁的 ffmpeg/ 目錄 → PATH。"""
+    """解析順序：環境變數 → APEXHL_FFMPEG 同目錄 → 引擎旁的 ffmpeg/ 目錄 → PATH。"""
     env = os.environ.get(env_var)
     if env:
         if Path(env).exists():
             return env
         raise FileNotFoundError(f"{required_name} not found: {env_var}={env}")
+    ffmpeg_env = os.environ.get("APEXHL_FFMPEG")
+    if ffmpeg_env:
+        sibling = Path(ffmpeg_env).parent / (exe + (".exe" if os.name == "nt" else ""))
+        if sibling.exists():
+            return str(sibling)
     for d in (BUNDLED_DIR, BUNDLED_DIR / "bin"):
         cand = d / (exe + (".exe" if os.name == "nt" else ""))
         if cand.exists():

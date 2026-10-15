@@ -8,8 +8,8 @@ from pathlib import Path
 
 
 def _cmd_analyze(a) -> int:
-    from .analyze import analyze
-    from .profile import load_profile
+    from apexhl.analyze import analyze
+    from apexhl.profile import load_profile
 
     profile = load_profile(Path(a.profile_dir))
 
@@ -44,7 +44,7 @@ def main(argv: list[str] | None = None) -> int:
         s.reconfigure(encoding="utf-8")
     a = ap.parse_args(argv)
     if a.cmd == "ipc":
-        from .ipc import run
+        from apexhl.ipc import run
         return run()
     try:
         return _cmd_analyze(a)

@@ -1,0 +1,28 @@
+appId: com.apexhighlighter.app
+productName: Apex Highlighter
+directories:
+  output: ../dist
+  buildResources: build
+files:
+  - out/**/*
+  - package.json
+extraResources:
+  - from: ../build/engine/apexhl
+    to: engine/apexhl
+  - from: ../build/ffmpeg
+    to: ffmpeg
+  - from: ../templates
+    to: templates
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+    - target: portable
+      arch:
+        - x64
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true

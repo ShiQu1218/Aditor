@@ -4,7 +4,7 @@ import { EngineClient } from './engine'
 import { Library } from './library'
 import { AnalysisQueue } from './queue'
 import { registerIpcHandlers } from './ipc-handlers'
-import { appDataDir, cacheDir, engineCommand } from '../shared/paths'
+import { appDataDir, cacheDir, engineCommand, ffmpegExecutable } from '../shared/paths'
 
 let mainWindow: BrowserWindow | null = null
 let engineClient: EngineClient | null = null
@@ -38,6 +38,13 @@ function createWindow(): void {
 }
 
 async function initEngineAndServices(): Promise<void> {
+  if (app.isPackaged) {
+    const ffmpegPath = ffmpegExecutable(true)
+    process.env.APEXHL_FFMPEG = ffmpegPath
+    const binDir = resolve(join(ffmpegPath, '..'))
+    process.env.PATH = `${binDir}${resolve(join(__dirname, '..')) ? ';' : ''}${process.env.PATH || ''}`
+  }
+
   const cmd = engineCommand(app.isPackaged)
   engineClient = new EngineClient(cmd)
   try {

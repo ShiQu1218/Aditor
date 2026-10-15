@@ -43,3 +43,16 @@ export function engineCommand(isPackaged: boolean): {
     }
   }
 }
+
+export function ffmpegExecutable(isPackaged: boolean): string {
+  if (process.env.APEXHL_FFMPEG) {
+    return process.env.APEXHL_FFMPEG
+  }
+  if (isPackaged) {
+    const resPath = (process as unknown as { resourcesPath?: string }).resourcesPath || path.join(__dirname, '..', '..')
+    const exe = path.join(resPath, 'ffmpeg', 'bin', 'ffmpeg.exe')
+    return exe
+  }
+  return 'ffmpeg'
+}
+

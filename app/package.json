@@ -8,6 +8,7 @@
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",
+    "package": "electron-builder",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
