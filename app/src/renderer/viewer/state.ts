@@ -1,4 +1,5 @@
-import { CacheDoc, Clip, EngineEvent, EventType } from '../../shared/types'
+import { CacheDoc, Clip, ClipStatus, EngineEvent, EventType } from '../../shared/types'
+import { normalizeClips } from '../../shared/clips'
 
 export interface ViewerState {
   doc: CacheDoc
@@ -18,6 +19,9 @@ export type ViewerAction =
   | { type: 'updateClip'; clip: Clip }
   | { type: 'removeClip'; id: string }
   | { type: 'setAiClips'; clips: Clip[] }
+  | { type: 'acceptClip' | 'skipClip' | 'restoreClip'; id: string }
+  | { type: 'restoreEvent'; id: string }
+  | { type: 'setClips'; clips: Clip[] }
   | { type: 'derived'; events: EngineEvent[] }
   | { type: 'analysisResult'; doc: CacheDoc }
 
@@ -133,6 +137,25 @@ export function viewerReducer(state: ViewerState, action: ViewerAction): ViewerS
       }
     }
 
+    case 'acceptClip':
+    case 'skipClip':
+    case 'restoreClip': {
+      const status: ClipStatus =
+        action.type === 'acceptClip' ? 'accepted' : action.type === 'skipClip' ? 'skipped' : 'suggested'
+      const clips = state.clips.map((c) => (c.id === action.id ? { ...c, status } : c))
+      return { ...state, clips, doc: { ...state.doc, clips }, dirty: true }
+    }
+
+    case 'restoreEvent': {
+      const events = state.doc.events.map((e) => (e.id === action.id ? { ...e, deleted: false } : e))
+      return { ...state, doc: { ...state.doc, events }, dirty: true }
+    }
+
+    case 'setClips': {
+      const clips = normalizeClips(action.clips)
+      return { ...state, clips, doc: { ...state.doc, clips } }
+    }
+
     case 'derived': {
       return {
         ...state,
@@ -176,7 +199,10 @@ export function viewerReducer(state: ViewerState, action: ViewerAction): ViewerS
 
       const mergedEvents = [...updatedFreshEvents, ...manualEvents].sort((a, b) => a.t - b.t)
       const manualClips = state.clips.filter((c) => c.origin === 'manual')
-      const mergedClips = [...manualClips, ...(freshDoc.clips || []).filter((c) => c.origin === 'ai')]
+      const mergedClips = normalizeClips([
+        ...manualClips,
+        ...(freshDoc.clips || []).filter((c) => c.origin === 'ai')
+      ])
 
       return {
         ...state,

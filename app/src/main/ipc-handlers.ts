@@ -8,6 +8,7 @@ import { detectEncoders } from './export/encoders'
 import { buildJobs, estimateOutputBytes, escapeConcatPath, StreamProbe } from './export/plan'
 import { executeExportJobs } from './export/run'
 import { hasOpenH264, downloadOpenH264 } from './codecs'
+import { loadCacheDoc, saveCacheDoc } from './cache-io'
 import { ProjectItem } from '../renderer/editor/project'
 
 const VIDEO_EXTS = new Set(['.mp4', '.mkv', '.mov', '.webm'])
@@ -124,36 +125,9 @@ export function registerIpcHandlers(
     broadcastUpdated()
   })
 
-  ipcMain.handle('cache:load', async (_, cachePath: string) => {
-    try {
-      if (fs.existsSync(cachePath)) {
-        const raw = fs.readFileSync(cachePath, 'utf-8')
-        return JSON.parse(raw)
-      }
-    } catch (err) {
-      console.error('Failed to load cache:', err)
-    }
-    return null
-  })
+  ipcMain.handle('cache:load', async (_, cachePath: string) => loadCacheDoc(cachePath))
 
-  ipcMain.handle('cache:save', async (_, doc: { cache_path: string }) => {
-    try {
-      if (doc && doc.cache_path) {
-        const dest = doc.cache_path
-        const dir = path.dirname(dest)
-        if (!fs.existsSync(dir)) {
-          fs.mkdirSync(dir, { recursive: true })
-        }
-        const tmp = `${dest}.tmp`
-        fs.writeFileSync(tmp, JSON.stringify(doc, null, 2), 'utf-8')
-        fs.renameSync(tmp, dest)
-        return true
-      }
-    } catch (err) {
-      console.error('Failed to save cache:', err)
-    }
-    return false
-  })
+  ipcMain.handle('cache:save', async (_, doc: { cache_path: string }) => saveCacheDoc(doc))
 
   ipcMain.handle('proxy:get', async (_, videoPath: string) => {
     const { proxyPath } = await import('./proxy')

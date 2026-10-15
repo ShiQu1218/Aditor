@@ -30,12 +30,18 @@ export interface SpecInterval {
   end: number
 }
 
+export type ClipStatus = 'suggested' | 'accepted' | 'skipped'
+
 export interface Clip {
   id: string
   start: number
   end: number
   origin: 'ai' | 'manual'
   event_ids: string[]
+  /** 缺省（舊檔）視為 'accepted' */
+  status?: ClipStatus
+  /** 重新分析後保留的 AI 片段，來源事件可能已變 */
+  stale?: boolean
 }
 
 export interface AutoClipParams {

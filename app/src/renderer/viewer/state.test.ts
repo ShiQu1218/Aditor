@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { viewerReducer, ViewerState } from './state'
-import { CacheDoc, EngineEvent, EventType } from '../../shared/types'
+import { CacheDoc, Clip, EngineEvent, EventType } from '../../shared/types'
 
 function makeTestDoc(): CacheDoc {
   return {
@@ -194,5 +194,46 @@ describe('viewerReducer', () => {
     expect(newE2?.counted_override).toBe(false)
     // Manual clip preserved
     expect(updatedState.clips.some((c) => c.id === 'cm1')).toBe(true)
+  })
+
+  describe('clip status actions', () => {
+    const base = (): ViewerState => ({
+      doc: makeTestDoc(),
+      selected: new Set(),
+      filter: new Set(),
+      clips: [{ id: 'c1', start: 1, end: 5, origin: 'ai', event_ids: [], status: 'suggested' }],
+      dirty: false
+    })
+
+    it('acceptClip sets accepted and dirty', () => {
+      const s = viewerReducer(base(), { type: 'acceptClip', id: 'c1' })
+      expect(s.clips[0].status).toBe('accepted')
+      expect(s.doc.clips[0].status).toBe('accepted')
+      expect(s.dirty).toBe(true)
+    })
+
+    it('skipClip / restoreClip round trip', () => {
+      let s = viewerReducer(base(), { type: 'skipClip', id: 'c1' })
+      expect(s.clips[0].status).toBe('skipped')
+      s = viewerReducer(s, { type: 'restoreClip', id: 'c1' })
+      expect(s.clips[0].status).toBe('suggested')
+      expect(s.dirty).toBe(true)
+    })
+
+    it('restoreEvent undeletes and marks dirty', () => {
+      const b = base()
+      let s = viewerReducer(b, { type: 'deleteEvent', id: 'e1' })
+      s = { ...s, dirty: false }
+      s = viewerReducer(s, { type: 'restoreEvent', id: 'e1' })
+      expect(s.doc.events.find((e) => e.id === 'e1')?.deleted).toBeFalsy()
+      expect(s.dirty).toBe(true)
+    })
+
+    it('setClips normalizes legacy clips', () => {
+      const legacy = [{ id: 'x', start: 3, end: 8, origin: 'ai' }] as unknown as Clip[]
+      const s = viewerReducer(base(), { type: 'setClips', clips: legacy })
+      expect(s.clips[0].status).toBe('accepted')
+      expect(s.doc.clips).toBe(s.clips)
+    })
   })
 })
