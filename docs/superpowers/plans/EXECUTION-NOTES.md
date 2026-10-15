@@ -17,4 +17,12 @@
 
 ## Plan 2: Electron Application Implementation Log
 
-(Tasks 1–8 will be logged sequentially below.)
+### Task 1: 專案骨架與引擎用戶端
+- **Status**: Completed (commit `4d125b3`)
+- **Vitest**: 8 passed (EngineClient unit tests + real Python engine integration)
+
+### Task 2: 影片庫與分析佇列
+- **Status**: Completed
+- **Vitest**: 14 passed (Library deduplication/filtering/search + AnalysisQueue single-worker/error-resilience/counts)
+- **Manual GUI check TODO**: In desktop UI, verify visually importing 5 Exports videos from `E:\Outplayed\Outplayed\Exports` displays knock/assist badges on cards and progress bar while analyzing. (Automated tests verify library and queue behavior).
+

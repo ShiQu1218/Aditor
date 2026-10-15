@@ -1,10 +1,17 @@
-import React from 'react'
+import React, { useState } from 'react'
+import { LibraryPage } from './pages/Library'
 
 export default function App(): JSX.Element {
+  const [currentVideo, setCurrentVideo] = useState<string | null>(null)
+
   return (
-    <div style={{ padding: 24, fontFamily: 'sans-serif', color: '#fff', backgroundColor: '#1e1e24', minHeight: '100vh' }}>
-      <h1>Apex Highlighter</h1>
-      <p>Outplayed 風格之 Apex Legends 高光自動標註與剪輯工具</p>
+    <div style={{ backgroundColor: '#18191f', minHeight: '100vh', color: '#fff' }}>
+      <LibraryPage
+        onSelectVideo={(path) => {
+          console.log('Selected video:', path)
+          setCurrentVideo(path)
+        }}
+      />
     </div>
   )
 }

@@ -1,16 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
 
-export interface Api {
-  engine: {
-    probe: (path: string) => Promise<unknown>
-    analyze: (args: unknown) => Promise<unknown>
-    cancel: (targetId: string) => Promise<unknown>
-    derive: (args: unknown) => Promise<unknown>
-    autoclip: (args: unknown) => Promise<unknown>
-    onProgress: (callback: (data: { t: number; duration: number }) => void) => () => void
-  }
-}
-
 const api = {
   engine: {
     probe: (path: string) => ipcRenderer.invoke('engine:probe', path),
@@ -25,6 +14,25 @@ const api = {
         ipcRenderer.removeListener('engine:progress', handler)
       }
     }
+  },
+  library: {
+    getEntries: () => ipcRenderer.invoke('library:getEntries'),
+    add: (paths: string[]) => ipcRenderer.invoke('library:add', paths),
+    remove: (path: string) => ipcRenderer.invoke('library:remove', path),
+    toggleFavorite: (path: string) => ipcRenderer.invoke('library:toggleFavorite', path),
+    selectFiles: () => ipcRenderer.invoke('library:selectFiles'),
+    selectFolder: () => ipcRenderer.invoke('library:selectFolder'),
+    onUpdated: (callback: () => void) => {
+      const handler = () => callback()
+      ipcRenderer.on('library:updated', handler)
+      return () => {
+        ipcRenderer.removeListener('library:updated', handler)
+      }
+    }
+  },
+  queue: {
+    enqueue: (path: string) => ipcRenderer.invoke('queue:enqueue', path),
+    cancel: (path: string) => ipcRenderer.invoke('queue:cancel', path)
   }
 }
 
@@ -35,6 +43,6 @@ if (process.contextIsolated) {
     console.error(error)
   }
 } else {
-  // @ts-ignore (define in dts)
+  // @ts-ignore
   window.api = api
 }

@@ -1,10 +1,15 @@
 import { app, BrowserWindow, ipcMain } from 'electron'
-import { join } from 'path'
+import { join, resolve } from 'path'
 import { EngineClient } from './engine'
-import { engineCommand } from '../shared/paths'
+import { Library } from './library'
+import { AnalysisQueue } from './queue'
+import { registerIpcHandlers } from './ipc-handlers'
+import { appDataDir, cacheDir, engineCommand } from '../shared/paths'
 
 let mainWindow: BrowserWindow | null = null
 let engineClient: EngineClient | null = null
+let library: Library | null = null
+let queue: AnalysisQueue | null = null
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -32,7 +37,7 @@ function createWindow(): void {
   }
 }
 
-async function initEngine(): Promise<void> {
+async function initEngineAndServices(): Promise<void> {
   const cmd = engineCommand(app.isPackaged)
   engineClient = new EngineClient(cmd)
   try {
@@ -41,6 +46,17 @@ async function initEngine(): Promise<void> {
   } catch (err) {
     console.error('[Engine] Failed to start engine:', err)
   }
+
+  const root = app.isPackaged ? process.resourcesPath : resolve(__dirname, '../../..')
+  const profileDir = join(root, 'templates', 'zh-TW')
+
+  library = new Library(join(appDataDir(), 'library.json'))
+  queue = new AnalysisQueue(engineClient, library, {
+    profileDir,
+    cacheDir: cacheDir()
+  })
+
+  registerIpcHandlers(library, queue, () => (mainWindow ? [mainWindow] : []))
 
   ipcMain.handle('engine:probe', async (_, videoPath: string) => {
     return engineClient?.request('probe', { path: videoPath }).promise
@@ -68,7 +84,7 @@ async function initEngine(): Promise<void> {
 }
 
 app.whenReady().then(async () => {
-  await initEngine()
+  await initEngineAndServices()
   createWindow()
 
   app.on('activate', function () {
