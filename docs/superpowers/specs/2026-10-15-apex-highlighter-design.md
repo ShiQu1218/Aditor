@@ -1,7 +1,7 @@
 # Apex Highlighter — 設計規格
 
 日期：2026-10-15
-狀態：第 2 版（已納入審閱意見），待審閱
+狀態：第 3 版（已納入兩輪審閱意見），待審閱
 
 ## 1. 目標
 
@@ -48,7 +48,10 @@ Outplayed（Overwolf JS 應用，`Outplayed.exe` 僅為啟動器）的事件來�
 
 **待查證**（實作第一步從長片取樣確認，結果回寫本節）：
 - 兩個提示同時出現（例如擊倒＋小隊抹殺）時是否往上堆疊、ROI 位置是否偏移。
-- 自己死亡後觀戰隊友時，畫面是否顯示隊友的提示，以及觀戰介面上可作為範本的固定字樣與位置。
+- 自己死亡後觀戰隊友時，畫面是否顯示隊友的提示。
+- 觀戰介面上可作為範本的固定字樣，及其在畫面上的**位置**（決定 §5.1 觀戰 ROI 座標）。
+- 不同事件類型的敵人名字字型與粗細是否相同（例如擊倒的紅字是否為粗體），影響 §5.2 名字指紋的跨類型比對。
+- 原始錄影實際的關鍵影格間距（影響 §6.4 快速無損匯出的誤差）。
 
 英文介面對應關鍵字預期為 `KNOCKED DOWN`、`ASSIST`、`ELIMINATED`、`SQUAD WIPE`。
 
@@ -74,9 +77,11 @@ Outplayed（Overwolf JS 應用，`Outplayed.exe` 僅為啟動器）的事件來�
 | 元件 | 職責 | 介面 |
 |---|---|---|
 | `engine/probe` | ffprobe 讀取編碼、解析度、幀率、`start_time`、時長 | `probe(path) -> VideoInfo` |
-| `engine/decode` | ffmpeg 解碼並輸出 ROI 彩色畫格與其 pts（見 §5.1） | `iter_frames(path, info, profile) -> (t, ndarray[BGR])` |
-| `engine/detect` | 對單格做關鍵字比對、觀戰判斷、產生名字指紋 | `detect(frame) -> FrameResult`（命中類型、分數、x 位置、名字指紋、是否觀戰） |
-| `engine/events` | 狀態機把連續命中合併為事件、去重同一敵人、套用觀戰區間 | `build_events(results) -> list[Event]` |
+| `engine/decode` | ffmpeg 解碼並輸出拼接畫格（提示區＋觀戰區）與時間（見 §5.1） | `iter_frames(path, info, profile) -> (t, banner: ndarray[BGR], spec: ndarray[BGR])` |
+| `engine/calibrate` | 每支影片校準一次水平比例（見 §5.1） | `calibrate(path, info, profile) -> float` |
+| `engine/detect` | 對單格做關鍵字比對、觀戰判斷、產生名字指紋 | `detect(banner, spec, scale) -> FrameResult`（命中類型、分數、x 位置、名字指紋、是否觀戰） |
+| `engine/events` | 狀態機把連續命中合併為事件（串流階段，只產生原始事件） | `build_events(results) -> list[Event]` |
+| `engine/derive` | 對**整份**事件清單重算去重、觀戰與 `counted`（見 §5.3） | `derive(events, spectating, profile) -> list[Event]` |
 | `engine/autoclip` | 依間隔分群並產生片段 | `auto_clips(events, params) -> list[Clip]` |
 | `engine/ipc` | 接收指令（probe / analyze / cancel / autoclip），回報進度與結果 | JSON Lines |
 | `templates/<lang>/` | `profile.json`（ROI、關鍵字清單、閾值、事件類型對照、觀戰範本）＋範本 PNG | 外部檔案，改版時只換範本不需重新打包；含 `templates_version` |
@@ -85,16 +90,17 @@ Outplayed（Overwolf JS 應用，`Outplayed.exe` 僅為啟動器）的事件來�
 
 ### 4.2 快取與資料格式
 
-快取預設存在 **app data**（`%APPDATA%\ApexHighlighter\cache\<key>.json`），`key = sha1(正規化絕對路徑 + 檔案大小)`；設定中可改為「寫在影片旁」（`<影片名>.apexhl.json`）。不寫入 Outplayed 管理的目錄，除非使用者選擇此選項。
+快取預設存在 **app data**（`%APPDATA%\ApexHighlighter\cache\<key>.json`），`key = sha1(正規化絕對路徑)`（小寫、統一分隔符號）。檔案大小與修改時間**只存在快取內容中**，用來判斷是否需要重新分析，不參與快取鍵，因此影片內容改變時仍找得到舊快取並保留手動修正。設定中可改為「寫在影片旁」（`<影片名>.apexhl.json`）。不寫入 Outplayed 管理的目錄，除非使用者選擇此選項。
 
 ```json
 {
   "version": 1,
   "video": { "path": "...", "size": 0, "mtime": 0, "duration": 6002.25, "width": 1916, "height": 1080, "codec": "av1", "start_time": 0.0 },
   "profile": "zh-TW",
-  "analysis": { "status": "done", "progress_t": 6002.25, "engine_version": "0.1.0", "templates_version": "zh-TW@1" },
+  "analysis": { "status": "done", "progress_t": 6002.25, "engine_version": "0.1.0", "templates_version": "zh-TW@1", "h_scale": 1.0 },
   "events": [
-    { "id": "e1", "t": 812.25, "type": "knock", "score": 0.91, "damage_line": true, "name_sig": "base64...", "counted": true, "source": "auto" }
+    { "id": "e1", "t": 812.25, "type": "knock", "score": 0.91, "damage_line": true, "name_sig": "base64...",
+      "counted": true, "counted_reason": "first", "counted_override": null, "source": "auto" }
   ],
   "spectating": [ { "start": 3010.0, "end": 3105.5 } ],
   "clips": [
@@ -103,25 +109,34 @@ Outplayed（Overwolf JS 應用，`Outplayed.exe` 僅為啟動器）的事件來�
 }
 ```
 
-- `t` 一律為**扣除 `start_time` 後的秒數**，與 `<video>.currentTime` 一致。
+- `t` 一律為**扣除 `start_time` 後的秒數**（從影片開頭起算）。前端與 `<video>.currentTime` 互換時的偏移（Chromium 對 `start_time ≠ 0` 的 MP4 是否以 0 起算）以 §8 的合成影片實測決定，換算集中在單一函式。
 - `type`：`knock` | `assist_knock` | `assist_elim` | `elim` | `squad_wipe`
-- `counted`：去重或位於觀戰區間的事件為 `false`，仍顯示於時間軸。
-- `source`：`auto` | `manual`。使用者刪除的自動事件標記 `"deleted": true` 並保留，供準確率評估。
+- `counted`：**自動推導值**，由 `engine/derive` 依 §5.3 對整份清單重算，不在串流過程中決定。`counted_reason`：`first` | `duplicate`（同一敵人已計入）| `spectating` | `not_counting_type`（小隊抹殺）。
+- `counted_override`：**使用者設定**，`true` | `false` | `null`（未設定）。最終是否計入 = `counted_override ?? counted`。
+- `source`：`auto` | `manual`。使用者刪除的自動事件標記 `"deleted": true` 並保留，供準確率評估；`deleted` 的事件不參與去重推導，因此刪除某敵人「計入的第一筆」後，下一筆同名事件會自動遞補為計入。
+- **重新推導時機**：每次分析結束、每次手動修正（新增、刪除、改類型、切換 override）後，都對整份清單重跑 `derive`。
 - **重新分析的觸發條件**：影片 `size`/`mtime` 改變、`engine_version` 或 `templates_version` 改變、使用者手動要求。
-- **重新分析時**：只取代 `source=auto` 的事件；`manual` 事件與 `deleted` 標記保留（`deleted` 依 ±1 秒且同類型對應到新的自動事件）；`origin=manual` 的片段保留，`origin=ai` 的片段清除。
+- **重新分析時**：只取代 `source=auto` 的事件；`manual` 事件保留。舊自動事件上的使用者狀態（`deleted`、`counted_override`）依「同類型且時間差 ≤ 1 秒」對應到新的自動事件後保留，對應不到的列入介面上的「未對應修正」提示。`origin=manual` 的片段保留，`origin=ai` 的片段清除。最後重跑 `derive`。
 
 ## 5. 偵測演算法
 
 ### 5.1 解碼與正規化
 
-- 濾鏡順序：**降幀 → 縮放到 1080p 等效 → 裁切 ROI → 轉 BGR24**，管線只傳 ROI。
+- 濾鏡順序：**降幀 → 縮放到 1080p 等效 → 分成兩路裁切（提示區、觀戰區）→ 垂直拼接 → 轉 BGR24**，管線只傳兩塊 ROI 拼成的固定版面畫格：
   ```
-  ffmpeg [-hwaccel auto] -i <in> -vf "fps=4,scale=1920:1080,crop=<w>:<h>:<x>:<y>,showinfo" \
-         -pix_fmt bgr24 -f rawvideo pipe:1
+  ffmpeg -v error [-hwaccel auto] -i <in> -filter_complex \
+    "[0:v]fps=4,scale=1920:1080,split[a][b];
+     [a]crop=<banner_w>:<banner_h>:<bx>:<by>[a1];
+     [b]crop=<spec_w>:<spec_h>:<sx>:<sy>,pad=<banner_w>:ih[b1];
+     [a1][b1]vstack" \
+    -pix_fmt bgr24 -f rawvideo pipe:1
   ```
-  先把整格縮放到 1920×1080 再裁切，因此 1916×1080、1728×1080（拉伸）、1440p、4K 都映射到同一組 1080p 座標與同一套範本，**範本固定不縮放**。`scale` 只作用在降幀後的畫格，成本很低。
-- **時間戳記**：每格時間取自 ffmpeg 輸出的 pts（由 `showinfo` 從 stderr 解析，或改用等效方式），減去 `start_time`；**不使用「畫格編號 × 0.25」**，以支援可變幀率與 `start_time ≠ 0` 的影片。
-- **非 16:9**：縮放到 1920×1080 會使介面水平變形。此時關鍵字比對改用**水平多尺度**（例如水平比例 0.85–1.15，步長 0.05），並在介面提示「準確度可能下降」。
+  引擎依 profile 的 ROI 尺寸把每格切回 `banner` 與 `spec` 兩塊（`spec_w ≤ banner_w`；若觀戰 ROI 較寬，改為對 banner 做 pad）。
+- 先把整格縮放到 1920×1080 再裁切，因此 1916×1080、1728×1080（拉伸）、1440p、4K 都映射到同一組 1080p 座標與同一套範本，**範本固定不縮放**。`scale` 只作用在降幀後的畫格，成本很低。
+- **時間戳記**：`fps=4` 濾鏡依輸入 pts 挑格，輸出為 0.25 秒格點的固定幀率（可變幀率輸入也適用），且 ffmpeg 預設把輸入 `start_time` 平移為 0。因此第 k 格時間 `t = k × 0.25`（從影片開頭起算）；**不使用 `-copyts`，不解析 showinfo**。以 `start_time ≠ 0` 與可變幀率的合成影片測試驗證（§8）。
+- **管線死結防護**：stdout（畫格）與 stderr（錯誤訊息）必須以兩個執行緒同時讀取；stderr 內容保留最後 64KB 供錯誤回報。
+- **水平比例校準**（`engine/calibrate`，每支影片一次，16:9 影片也執行）：從影片中段起取樣，以水平多尺度（0.85–1.15，步長 0.05）比對關鍵字，收集前 5 次高信心命中後取最佳比例，寫入 `analysis.h_scale`，之後全片只用此比例。如此可涵蓋「遊戲以拉伸解析度執行、錄影卻是 16:9」的情況。若在取樣範圍內找不到命中，使用 1.0 並於分析完成後若命中數為 0 則提示。
+- **長寬比判斷**：`|寬/高 − 16/9| / (16/9) ≤ 1%` 視為 16:9（1916×1080 屬之）；超出時僅在介面提示「準確度可能下降」，比對方式仍由校準決定。
 - 硬體解碼失敗時自動改用軟體解碼並提示。速度基準須比較 `-hwaccel` 開／關的實際差異，若硬體解碼後的影格回傳抵銷了效益，預設改為軟體解碼。
 
 ### 5.2 單格偵測
@@ -132,30 +147,40 @@ ROI 擴大為約 `x=560..1360, y=700..880`（1080p 座標，實際值依 §3 堆
    - `white_mask`：高亮度、低飽和度像素（關鍵字與白色名字）。
    - `red_mask`：R 高、G/B 低的像素（擊倒的紅色名字）。
    - 閾值定義於 profile。
-2. **關鍵字比對**：在 `white_mask` 上以 `cv2.matchTemplate`（`TM_CCOEFF_NORMED`）滑動比對，依序 `小隊抹殺` → `助攻` → `擊倒` → `消滅`（「助攻」優先，避免「助攻，擊倒」被判成自己擊倒）。「助攻」命中後，在其右側判斷是「擊倒」或「消滅」。第二行 `造成` 命中時加分並標記 `damage_line`。
+2. **關鍵字比對**：依 `h_scale` 水平縮放 banner 後，在 `white_mask` 上以 `cv2.matchTemplate`（`TM_CCOEFF_NORMED`）滑動比對，依序 `小隊抹殺` → `助攻` → `擊倒` → `消滅`（「助攻」優先，避免「助攻，擊倒」被判成自己擊倒）。「助攻」命中後，在其右側判斷是「擊倒」或「消滅」。第二行 `造成` 命中時加分並標記 `damage_line`。
 3. **名字指紋**：取第一行關鍵字右側到 `+`／行尾之間的區塊，對 `white_mask ∪ red_mask` 做聯集，裁掉空白邊後縮放到固定高度（寬度保留比例），作為**字形**指紋。比對字形而非顏色，因此紅字（擊倒）與白字（助攻）可以跨類型比對。
-4. **觀戰判斷**：在 profile 指定的觀戰 ROI 比對觀戰字樣範本（範本於實作第一步從長片取得）。
+4. **觀戰判斷**：在 `spec` 區塊比對觀戰字樣範本（範本與 ROI 座標於實作第一步從長片取得）。
 
-### 5.3 事件追蹤
+### 5.3 事件追蹤與推導
 
-1. 同一關鍵字類型至少**連續 2 格**命中才成立（排除淡入動畫變形畫格）；事件時間取首次命中那一格的 pts。
+**串流階段**（`engine/events`，只產生原始事件，不決定是否計入）：
+1. 同一關鍵字類型至少**連續 2 格**命中才成立（排除淡入動畫變形畫格）；事件時間取首次命中那一格的時間。
 2. 提示消失 ≥ 0.5 秒後再出現，或名字指紋差異超過閾值，視為新事件。
-3. **去重**：30 秒內名字指紋相似（寬度比差 < 15% 且相關係數 > 閾值）的計數事件視為同一敵人，只有第一個 `counted=true`。
-4. **觀戰**：連續 ≥ 2 秒判定為觀戰的時段寫入 `spectating`，落在其中的事件 `counted=false`。
+3. 連續 ≥ 2 秒判定為觀戰的時段記為 `spectating` 區間。
+
+**推導階段**（`engine/derive`，每次分析結束與每次手動修正後，對整份清單重算）：
+1. 排除 `deleted` 事件。
+2. `squad_wipe` → `counted=false`（`not_counting_type`）。
+3. 位於 `spectating` 區間內 → `counted=false`（`spectating`）。
+4. **去重**：依時間排序，`dedupe_window` 秒內（預設 **90 秒**，寫在 profile，之後以評估資料調整）名字指紋相似（寬度比差 < 15% 且相關係數 > 閾值）的計數類型事件視為同一敵人，第一筆 `counted=true`（`first`），其餘 `counted=false`（`duplicate`）。
+5. 最終是否計入 = `counted_override ?? counted`；自動剪輯與介面徽章都使用最終值。
 
 ### 5.4 自動剪輯
 
 參數：`gap`（相鄰計數事件最大間隔，預設 20 秒）、`n`（預設 3）、`before`（預設 8 秒）、`after`（預設 4 秒）、`max_len`（片段最長，預設 90 秒）。
 
-1. 計數事件依時間排序；相鄰事件間隔 ≤ `gap` 就歸為同一群。
-2. 群內計數事件 ≥ `n` 才成立。
+1. 最終計入的事件依時間排序；相鄰事件間隔 ≤ `gap` 就歸為同一群。
+2. 群內事件 ≥ `n` 才成立。
 3. 片段為 `[首殺 − before, 末殺 + after]`，限制在影片範圍內。
 4. 若片段超過 `max_len`：在群內最大的事件間隔處切開，對切開後的子群遞迴套用規則 2–4。
-5. 重疊的片段合併（合併後仍受 `max_len` 限制，超過則不合併）。
+5. 重疊的片段合併；若合併後超過 `max_len` 而不合併，則把兩段的交界設在重疊區的**中點**（前段的 end 與後段的 start 都改為中點），避免合輯中出現重複畫面。
 
 ### 5.5 接續分析
 
-每 30 秒寫入 `progress_t`。接續時從 `progress_t − 5 秒` 開始解碼，新產生的事件與既有事件依「同類型且時間差 ≤ 1 秒」去重。
+每 30 秒寫入 `progress_t`。接續時從 `progress_t − 5 秒` 開始解碼：
+- 解碼的**第一格就已命中**的提示，視為延續中的提示，不產生新事件（其真正的首次出現時間早於接續點，已由前一次分析記錄或在重疊區外）。
+- 其餘新事件與既有事件比對「同類型、時間差 ≤ 1 秒、名字指紋相似」，相同者丟棄。
+- 完成後重跑 `derive`。
 
 ## 6. 使用介面與流程（仿 Outplayed）
 
@@ -163,6 +188,7 @@ ROI 擴大為約 `x=560..1360, y=700..880`（1080p 座標，實際值依 §3 堆
 - 卡片格狀清單：縮圖、日期、長度、擊倒／助攻數徽章、分析狀態（未分析／分析中 xx%／完成／錯誤）。
 - 匯入：拖放檔案、選擇資料夾；可設定監看資料夾，新影片自動排入分析佇列（一次只分析一支）。
 - 匯入時以 ffprobe 檢查：容器與編碼不在 Chromium 可播放清單（H.264、HEVC（需系統支援）、VP9、AV1，容器 MP4/WebM）中時，提示並提供「產生代理檔」。
+- 另以 `navigator.mediaCapabilities.decodingInfo()` 查詢該影片的編碼／解析度／幀率是否 `smooth` 且 `powerEfficient`（即有硬體解碼）；若否（例如低階電腦播放 1080p60 AV1），**主動建議**產生代理檔。
 - 搜尋 `Ctrl+F`、收藏 `Ctrl+D`、依事件類型篩選。
 
 ### 6.2 檢視器
@@ -173,7 +199,7 @@ ROI 擴大為約 `x=560..1360, y=700..880`（1080p 座標，實際值依 §3 堆
 - 快速剪輯 `Ctrl+Q`：以播放頭為事件點建立片段；拖曳片段框兩端調整長度。
 - 勾選事件 → 「建立合輯」：每個事件依前後秒數變成片段，重疊合併。
 - 「AI 自動剪輯」：對話框設定 `gap`、`n`、`before`、`after`、`max_len`，結果以「AI」標籤片段框加入時間軸，可調整或刪除。
-- 手動修正：刪除誤判事件、`M` 於播放頭新增事件（可選類型）、切換事件的 `counted`。修正寫回快取。
+- 手動修正：刪除誤判事件、`M` 於播放頭新增事件（可選類型）、設定事件的「計入／不計入／自動」（即 `counted_override` 的 `true`／`false`／`null`）。修正寫回快取並重跑推導（§5.3）。
 
 ### 6.3 剪輯專案
 - `Ctrl+E` 把選取的片段送進專案；專案時間軸支援分割、刪除、複製、拖曳排序、微調起訖點、`Ctrl+Z / Ctrl+Y`。
@@ -182,8 +208,8 @@ ROI 擴大為約 `x=560..1360, y=700..880`（1080p 座標，實際值依 §3 堆
 ### 6.4 匯出
 - 模式：每段各一檔／串成一支合輯。
 - 品質：
-  - 「快速無損」：`-c copy`，從關鍵影格切，可能多出 1–2 秒。**串接時先以 ffprobe 比對所有來源的編碼、解析度、幀率、像素格式、音訊參數**，不一致就自動改用重新編碼並提示原因。
-  - 「精準重新編碼」：依序嘗試 NVENC、QSV、AMF；皆不可用時使用 OpenH264（LGPL 版 ffmpeg 不含 libx264，見 §11）。
+  - 「快速無損」：`-c copy`，從關鍵影格切。分析時以 ffprobe 取得該影片的關鍵影格位置並存入快取，介面依每個片段的實際起點顯示「會多出約 X 秒」。**串接時先以 ffprobe 比對所有來源的編碼、解析度、幀率、像素格式、音訊參數**，不一致就自動改用重新編碼並提示原因。
+  - 「精準重新編碼」：依序嘗試 NVENC、QSV、AMF；皆不可用時使用 OpenH264（LGPL 版 ffmpeg 不含 libx264，見 §11）。OpenH264 DLL 不隨程式附帶，首次需要時經使用者同意，從 Cisco 官方網址下載。
 - 匯出前檢查磁碟空間；失敗時保留 ffmpeg stderr 供回報。
 
 ### 6.5 第一版不做
@@ -195,7 +221,7 @@ ROI 擴大為約 `x=560..1360, y=700..880`（1080p 座標，實際值依 §3 堆
 |---|---|
 | 硬體解碼失敗 | 自動改用軟體解碼並在介面提示 |
 | ffprobe 無法讀取／檔案損壞 | 影片庫卡片標紅並顯示原因，不中斷佇列 |
-| 解析度非 16:9 | 啟用水平多尺度比對，警告「準確度可能下降」 |
+| 長寬比超出 16:9 ±1% | 警告「準確度可能下降」；水平比例由校準決定（§5.1） |
 | 容器／編碼無法在 Chromium 播放 | 匯入時提示，提供產生代理檔 |
 | 分析中取消或程式關閉 | 依 §5.5 接續 |
 | 引擎程序異常結束 | Electron 偵測到程序結束，標記錯誤並允許重試 |
@@ -210,7 +236,9 @@ ROI 擴大為約 `x=560..1360, y=700..880`（1080p 座標，實際值依 §3 堆
   - 正例：各事件類型、提示堆疊。
   - 反例：跑圖、物品欄、死亡畫面、**觀戰畫面**、爆炸火光。
   - 名字指紋：同一敵人的紅字（擊倒）與白字（助攻）判定為相同；不同敵人判定為不同。
-  - 事件追蹤、去重、觀戰區間、自動剪輯（分群、`max_len` 切割、合併）、接續分析去重、pts 換算（含 `start_time ≠ 0` 的合成影片）各自測試。
+  - 事件追蹤、推導（去重、觀戰、`counted_override`、刪除後遞補）、自動剪輯（分群、`max_len` 切割、合併、不合併時的中點交界）、接續分析（第一格即命中的延續提示）、水平比例校準、長寬比判斷（1916×1080 視為 16:9）各自測試。
+  - 時間換算：以 ffmpeg 產生 `start_time ≠ 0` 與可變幀率的合成影片（在已知時間點顯示標記圖），驗證 `t = k × 0.25` 與標記時間一致。
+  - 解碼管線：stderr 大量輸出時不會死結。
 - **前端單元測試（vitest）**：時間軸座標換算、片段拖曳／合併、快捷鍵、專案時間軸編輯與復原、快取重新分析時保留手動修正的合併邏輯。
 - **端到端黃金測試**：從原始長片截一段 3–5 分鐘、包含多種事件的短片（只存在本機，不提交到 repo），由 CLI 跑完整流程產生 JSON，與已確認的黃金結果比對，防止改版退化。
 - **準確率評估**（`tools/evaluate`）：
@@ -243,5 +271,6 @@ apex-highlighter/
 - 隨附 **LGPL 版 ffmpeg/ffprobe**（不含 `--enable-gpl` 與 `--enable-nonfree` 元件），以獨立執行檔的方式呼叫（不連結），並在 `THIRD_PARTY_NOTICES.md` 註明版本、編譯設定與原始碼取得方式。
   - 解碼：內建解碼器 + dav1d（AV1，BSD）可用。
   - 編碼：NVENC／QSV／AMF 可用；**不含 libx264**，CPU 編碼改用 OpenH264（品質較差，僅在無 GPU 編碼器時使用）。「快速無損」匯出不受影響。
+  - OpenH264：ffmpeg 以動態連結方式使用 `openh264-*.dll`。只有使用 **Cisco 官方提供的二進位檔**才受 Cisco 的 H.264 專利授權涵蓋，因此本專案**不附帶也不自行編譯** OpenH264，而是在執行時從 `ciscobinary.openh264.org` 下載 Cisco 官方 DLL，並在 `THIRD_PARTY_NOTICES.md` 說明。
 - 範本 PNG 擷取自遊戲畫面，屬少量介面素材；README 加註免責聲明（Apex Legends 為 Electronic Arts／Respawn 之商標，本專案與其無關）。
 - Python 依賴 OpenCV（Apache-2.0）、numpy（BSD）與 MIT 相容。
