@@ -1,7 +1,7 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { LibraryScreen } from './library/LibraryScreen'
 import { StudioScreen } from './studio/StudioScreen'
-import { LONG_FIXTURE_PATH, fixtureProjectItems, longFixtureRequested } from './dev/fixture'
+import { LONG_FIXTURE_PATH, longFixtureRequested, projectFixtureRequested } from './dev/fixture'
 import { ProjectProvider, useProject } from './editor/ProjectProvider'
 import { FocusZoneProvider } from './input/FocusZoneProvider'
 import { AppShell } from './shell/AppShell'
@@ -27,12 +27,17 @@ function AppContent(): JSX.Element {
     longFixtureRequested() ? LONG_FIXTURE_PATH : null
   )
 
-  // 僅開發模式：fixture 專案（截圖用），只放一次
+  // 僅開發模式：fixture 專案（截圖用），只放一次；內容動態載入，正式 bundle 不含
+  const fixtureDoneRef = useRef(false)
+  const projectRef = useRef(project)
+  projectRef.current = project
   useEffect(() => {
-    const items = fixtureProjectItems()
-    if (items) apply({ ...project, name: '示範專案', items })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+    if (!import.meta.env.DEV || !projectFixtureRequested() || fixtureDoneRef.current) return
+    fixtureDoneRef.current = true
+    void import('./dev/projectFixture').then((m) => {
+      apply({ ...projectRef.current, name: '示範專案', items: m.fixtureProjectItems() })
+    })
+  }, [apply])
 
   const handleSelectVideo = (path: string) => {
     setCurrentVideo(path)

@@ -15,7 +15,7 @@ import {
   serializeProject
 } from './project'
 import { History } from './history'
-import { ProjectWithId, missingItemIds, newProjectId, restoreLastProject, validateSources } from './projectIo'
+import { ProjectWithId, createRefreshGate, missingItemIds, newProjectId, restoreLastProject, validateSources } from './projectIo'
 import { useAutosave } from './useAutosave'
 
 export type SaveState = 'saved' | 'saving' | 'error'
@@ -233,6 +233,27 @@ export function ProjectProvider({ children }: { children: React.ReactNode }): JS
     } catch {
       setSaveState('error')
       return null
+    }
+  }, [])
+
+  // 視窗取回焦點：重新檢查來源檔（節流 2 秒），讓缺失標記不致過時
+  useEffect(() => {
+    const gate = createRefreshGate(2000)
+    let cancelled = false
+    const onFocus = (): void => {
+      const api = window.api
+      const snapshot = projectRef.current
+      if (!api?.library?.fileExists || snapshot.items.length === 0 || !gate()) return
+      void validateSources(snapshot, (source) => api.library.fileExists(source))
+        .then(({ missing }) => {
+          if (!cancelled && projectRef.current === snapshot) setLastMissingSources(missing)
+        })
+        .catch(() => {})
+    }
+    window.addEventListener('focus', onFocus)
+    return () => {
+      cancelled = true
+      window.removeEventListener('focus', onFocus)
     }
   }, [])
 

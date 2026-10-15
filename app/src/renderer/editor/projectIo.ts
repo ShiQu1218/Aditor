@@ -76,3 +76,14 @@ export function missingItemIds(project: Project, missing: readonly string[]): Re
   const gone = new Set(missing.map(normSource))
   return new Set(project.items.filter((i) => gone.has(normSource(i.source))).map((i) => i.id))
 }
+
+/** 節流閘門：距上次放行不足 minMs 回 false（視窗取回焦點時重新檢查來源用）。 */
+export function createRefreshGate(minMs: number, now: () => number = Date.now): () => boolean {
+  let last = -Infinity
+  return () => {
+    const t = now()
+    if (t - last < minMs) return false
+    last = t
+    return true
+  }
+}

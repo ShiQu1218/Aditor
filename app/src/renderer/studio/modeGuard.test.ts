@@ -1,4 +1,6 @@
 import { describe, expect, test } from 'vitest'
+import { readFileSync } from 'fs'
+import { join } from 'path'
 import { guardCommand, SOURCE_EDIT_COMMANDS } from './modeGuard'
 
 describe('guardCommand (source-doc mutating commands in project mode)', () => {
@@ -15,5 +17,16 @@ describe('guardCommand (source-doc mutating commands in project mode)', () => {
     for (const c of ['play', 'undo', 'quickOrSplit', 'backToSource', 'playItem'] as const) {
       expect(guardCommand('project', c)).toBe('allow')
     }
+  })
+})
+
+describe('toast actions in StudioScreen', () => {
+  test('every toast action run is wrapped in guarded() except the project-only undo', () => {
+    const src = readFileSync(join(__dirname, 'StudioScreen.tsx'), 'utf8')
+    const runs = [...src.matchAll(/\brun:\s*([^\n]*)/g)].map((m) => m[1].trim())
+    expect(runs.length).toBeGreaterThan(5)
+    const unguarded = runs.filter((r) => !r.startsWith('guarded('))
+    // 專案軌刪除片段的〔復原〕只動專案（undo），不碰來源文件
+    expect(unguarded.every((r) => /^undo\b/.test(r))).toBe(true)
   })
 })

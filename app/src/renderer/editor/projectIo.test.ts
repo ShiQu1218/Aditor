@@ -1,5 +1,5 @@
 import { describe, expect, test, vi } from 'vitest'
-import { missingItemIds, newProjectId, restoreLastProject, validateSources } from './projectIo'
+import { createRefreshGate, missingItemIds, newProjectId, restoreLastProject, validateSources } from './projectIo'
 import { createProject } from './project'
 
 describe('restoreLastProject', () => {
@@ -81,5 +81,17 @@ describe('missingItemIds', () => {
     expect(missingItemIds(project, []).size).toBe(0)
     missingItemIds(project, ['C:/v/B.mp4'])
     expect(JSON.stringify(project)).toBe(before)
+  })
+})
+
+describe('createRefreshGate', () => {
+  test('allows the first call, then throttles within minMs, then allows again', () => {
+    let now = 10_000
+    const gate = createRefreshGate(2000, () => now)
+    expect(gate()).toBe(true)
+    now += 500
+    expect(gate()).toBe(false)
+    now += 1600
+    expect(gate()).toBe(true)
   })
 })

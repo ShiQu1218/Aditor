@@ -4,6 +4,7 @@ import { i18n } from '../i18n/zh-TW'
 import { ChevronDown, Copy, FilePlus2, FolderOpen, Redo2, Save, Scissors, Trash2, Undo2 } from '../components/icons'
 import type { Project, ProjectItem } from '../editor/project'
 import type { SaveState } from '../editor/ProjectProvider'
+import { nextTrapIndex } from './focusTrap'
 import { dropIndex, itemWidth, trimFromDrag, trimUpperBound } from '../editor/trackLayout'
 import { sourceBadge } from '../editor/sourceColors'
 
@@ -137,19 +138,34 @@ export function ProjectTrack(props: ProjectTrackProps): JSX.Element {
     onDialogOpenChange(newDlgOpen)
   }, [newDlgOpen, onDialogOpenChange])
 
-  // 新專案對話框：Esc 取消（全域 keymap 開啟時已由呼叫端停用）
+  // 新專案對話框：開啟時記住原焦點並聚焦第一個選項、Tab 在框內循環、Esc 只處理一次、關閉還原焦點
   useEffect(() => {
     if (!newDlgOpen) return
-    dlgBoxRef.current?.focus()
+    const prev = document.activeElement as HTMLElement | null
+    const box = dlgBoxRef.current
+    const focusables = (): HTMLElement[] =>
+      box ? Array.from(box.querySelectorAll<HTMLElement>('button:not([disabled])')) : []
+    focusables()[0]?.focus()
     const onKey = (e: KeyboardEvent): void => {
       if (e.isComposing || e.keyCode === 229) return
       if (e.key === 'Escape') {
         e.preventDefault()
+        e.stopPropagation() // 只由此處理，不再傳給全域 keymap
         setNewDlgOpen(false)
+      } else if (e.key === 'Tab') {
+        const list = focusables()
+        const i = nextTrapIndex(list.length, list.indexOf(document.activeElement as HTMLElement), e.shiftKey)
+        if (i >= 0) {
+          e.preventDefault()
+          list[i].focus()
+        }
       }
     }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
+    window.addEventListener('keydown', onKey, true)
+    return () => {
+      window.removeEventListener('keydown', onKey, true)
+      if (prev && document.contains(prev)) prev.focus()
+    }
   }, [newDlgOpen])
 
   const commitName = useCallback(() => {
