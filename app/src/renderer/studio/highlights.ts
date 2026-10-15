@@ -1,7 +1,8 @@
 import type { CacheDoc, Clip, EngineEvent } from '../../shared/types'
 import { isCounted } from '../../shared/types'
-import { normalizeClips } from '../../shared/clips'
-import type { Project, ProjectItem } from '../editor/project'
+import { mergeOnReanalyze, normalizeClips } from '../../shared/clips'
+import type { AutoClipParams } from '../../shared/types'
+import { addItems, type Project, type ProjectItem } from '../editor/project'
 import { i18n } from '../i18n/zh-TW'
 
 /**
@@ -24,11 +25,11 @@ export function toSuggestions(clips: Clip[]): Clip[] {
 }
 
 /**
- * 「套用（取代現有建議）」：保留手動與已加入片段，suggested／skipped 的 AI 片段被新結果取代
- * （mergeOnReanalyze 的子集規則：與保留片段起點 <1s 的新建議不重複、id 撞號改發新 id）。
+ * 「套用（取代現有建議）」：只取代 suggested 的 AI 片段；手動、已加入與已略過的片段全部保留
+ * （使用者的略過不會被重設）。與保留片段（含已略過）起點 <1s 的新建議不重複、id 撞號改發新 id。
  */
 export function applyAutoClip(oldClips: Clip[], newClips: Clip[]): Clip[] {
-  const kept = normalizeClips(oldClips).filter((c) => c.origin === 'manual' || c.status === 'accepted')
+  const kept = normalizeClips(oldClips).filter((c) => !(c.origin === 'ai' && c.status === 'suggested'))
   const ids = new Set(kept.map((c) => c.id))
   const added: Clip[] = []
   for (const n of normalizeClips(newClips)) {
@@ -169,4 +170,64 @@ export function planAddAll(suggested: Clip[], source: string, project: Project):
     for (const it of res.added) addedIds.push(it.id)
   }
   return { project: addedIds.length > 0 ? next : project, addedIds }
+}
+
+export interface AcceptPlan {
+  /** 套用後的專案（沒有新增時就是原物件） */
+  project: Project
+  /** 卡片的新狀態 */
+  clipStatus: 'accepted'
+  /** 'added'＝實際新增；'duplicate'＝專案已有此片段（顯示資訊 Toast、不附復原） */
+  notice: 'added' | 'duplicate'
+  /** 復原動作（duplicate 時為 null）：移除本次加入的專案片段，並讓卡片回到原狀態（Enter 可再次加入） */
+  undo: { project: (p: Project) => Project; clipStatus: 'suggested' | 'accepted' } | null
+}
+
+/** 單張卡片「加入」（卡片／Enter／＋從來源加入）的純規劃：專案變更、卡片狀態、Toast 復原內容（spec §3.6）。 */
+export function planAccept(clip: Clip, source: string, project: Project): AcceptPlan {
+  const res = acceptToProject(clip, source, project)
+  if (res.added.length === 0) {
+    return { project, clipStatus: 'accepted', notice: 'duplicate', undo: null }
+  }
+  return {
+    project: addItems(project, res.added),
+    clipStatus: 'accepted',
+    notice: 'added',
+    undo: { project: res.undo, clipStatus: clip.status === 'suggested' ? 'suggested' : 'accepted' }
+  }
+}
+
+export type SuggestionPlan =
+  | { kind: 'none' }
+  /** 載入路徑：文件沒有 AI 片段，放置新建議 */
+  | { kind: 'place'; params: AutoClipParams }
+  /** 重新分析：重跑 autoclip 並以 mergeOnReanalyze 合併（accepted→stale、舊建議丟棄） */
+  | { kind: 'merge'; params: AutoClipParams }
+
+export interface SuggestionInput {
+  doc: CacheDoc
+  /** 目前（重新分析前）的片段 */
+  clips: Clip[]
+  settings: { autoSuggestOnOpen: boolean; autoclip: AutoClipParams }
+  /** 這次文件是否為已有 AI 片段之文件的（重新）分析結果 */
+  reanalyzed: boolean
+}
+
+/**
+ * 分析完成後是否／如何產生建議。引擎 analyze 的文件只含手動片段（engine/apexhl/analyze.py），
+ * 所以重新分析後一律以目前預設參數重跑 autoclip；單純載入則維持 shouldAutoPlace 規則（不標 stale）。
+ */
+export function planSuggestions(input: SuggestionInput): SuggestionPlan {
+  const { doc, settings, reanalyzed } = input
+  if (doc.analysis?.status !== 'done' || doc.events.length === 0) return { kind: 'none' }
+  if (reanalyzed) return { kind: 'merge', params: settings.autoclip }
+  if (shouldAutoPlace(doc, settings)) return { kind: 'place', params: settings.autoclip }
+  return { kind: 'none' }
+}
+
+/** 把 autoclip 新結果合併進目前片段（'merge'＝mergeOnReanalyze；'place'＝保留手動、加入建議）。 */
+export function mergeSuggestions(kind: 'place' | 'merge', current: Clip[], freshAi: Clip[]): Clip[] {
+  if (kind === 'merge') return mergeOnReanalyze(current, freshAi)
+  const manual = normalizeClips(current).filter((c) => c.origin === 'manual')
+  return [...manual, ...toSuggestions(freshAi)].sort((a, b) => a.start - b.start)
 }

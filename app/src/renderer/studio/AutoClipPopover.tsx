@@ -1,9 +1,10 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useReducer, useRef, useState } from 'react'
 import type { AutoClipParams, Clip, EngineEvent } from '../../shared/types'
 import { formatTime } from '../../shared/time'
 import { useDebounced } from '../hooks/useDebounced'
 import { i18n } from '../i18n/zh-TW'
 import { RefreshCw } from '../components/icons'
+import { canApply, estimateReducer, estimateView, initialEstimate } from './autoclipEstimate'
 
 export interface AutoClipPopoverProps {
   /** 設定中的預設參數（〔重設預設值〕與初始值） */
@@ -36,33 +37,27 @@ export function AutoClipPopover({
 }: AutoClipPopoverProps): JSX.Element {
   const t = i18n.studio.autoClipPopover
   const [params, setParams] = useState<AutoClipParams>(defaults)
-  const [estimate, setEstimate] = useState<{ n: number; total: number } | null>(null)
+  // 預估數字與可套用的片段綁在同一個狀態（含算它用的參數），以序號丟棄過期回應
+  const [est, dispatchEst] = useReducer(estimateReducer, initialEstimate)
+  const seqRef = useRef(0)
   const boxRef = useRef<HTMLDivElement>(null)
-  const clipsRef = useRef<Clip[]>([])
   const debounced = useDebounced(params, 250)
 
-  // 即時預估：去抖 250ms 後呼叫既有 engine.autoclip（引擎不可用時維持「計算中…」並停用套用）
+  // 即時預估：去抖 250ms 後呼叫既有 engine.autoclip（引擎不可用／失敗時維持「計算中…」並停用套用）
   useEffect(() => {
-    let cancelled = false
     const api = window.api
     if (!api?.engine?.autoclip) return
+    const seq = ++seqRef.current
+    dispatchEst({ type: 'request', seq, params: debounced })
     void (async () => {
       try {
         const res = await api.engine.autoclip({ events, params: debounced, duration })
-        if (cancelled) return
-        const clips: Clip[] = Array.isArray(res?.clips) ? res.clips : []
-        clipsRef.current = clips
-        setEstimate({
-          n: clips.length,
-          total: clips.reduce((sum, c) => sum + Math.max(0, c.end - c.start), 0)
-        })
+        dispatchEst({ type: 'resolve', seq, clips: Array.isArray(res?.clips) ? res.clips : [] })
       } catch {
-        if (!cancelled) setEstimate(null)
+        dispatchEst({ type: 'reject', seq })
       }
     })()
-    return () => {
-      cancelled = true
-    }
+    // 參數／事件變動時下一輪 effect 會發新序號的 request，舊回應因序號不符被丟棄
   }, [debounced, events, duration])
 
   // Esc 關閉（輸入框聚焦時也要生效 → preventDefault 讓 keymap 不重複處理）
@@ -100,7 +95,9 @@ export function AutoClipPopover({
     setParams((p) => ({ ...p, [key]: next }))
   }
 
-  const canApply = estimate !== null
+  // 只有「目前輸入的參數」已算出結果時才能套用（輸入中、去抖中、請求中或失敗都停用）
+  const estimate = estimateView(est, params)
+  const applicable = canApply(est, params)
 
   return (
     <div className="autoclip-pop" ref={boxRef} role="dialog" aria-label={t.title}>
@@ -127,7 +124,7 @@ export function AutoClipPopover({
               max={f.max}
               step={1}
               value={params[f.key]}
-              aria-label={`${f.label}（滑桿）`}
+              aria-label={`${f.label}${t.slider}`}
               onChange={(e) => setField(f.key, f.min, f.max, Number(e.target.value))}
             />
           </div>
@@ -153,13 +150,14 @@ export function AutoClipPopover({
         <button
           type="button"
           className="btn-accent"
-          disabled={!canApply}
+          disabled={!applicable}
           onClick={() => {
-            onApply(clipsRef.current)
+            if (!applicable) return
+            onApply(est.clips)
             onClose()
           }}
         >
-          {t.apply}
+          {applicable ? t.apply : t.estimating}
         </button>
       </div>
     </div>

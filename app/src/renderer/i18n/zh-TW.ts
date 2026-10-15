@@ -167,6 +167,7 @@ export const i18n = {
     },
     toast: {
       added: '已加入專案',
+      alreadyInProject: '專案已有此片段',
       addedProject: '已加入專案（{sec} 秒）',
       skipped: '已略過這段建議',
       removedFromProject: '已移出專案片段',
@@ -259,6 +260,7 @@ export const i18n = {
       maxLen: '片段最長 max_len（秒）',
       estimate: '預計產生 {n} 段 · 共 {time}',
       estimating: '計算中…',
+      slider: '（滑桿）',
       reset: '重設預設值',
       cancel: '取消',
       apply: '套用（取代現有建議）'

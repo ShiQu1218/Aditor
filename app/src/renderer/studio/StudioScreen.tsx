@@ -31,11 +31,12 @@ import {
   clipTitle,
   findItemsForClip,
   isSuggested,
+  mergeSuggestions,
   nextSuggestion,
+  planAccept,
   planAddAll,
-  removeProjectItems,
-  shouldAutoPlace,
-  toSuggestions
+  planSuggestions,
+  removeProjectItems
 } from './highlights'
 import { EventsTab } from './EventsTab'
 import { HighlightsTab } from './HighlightsTab'
@@ -197,8 +198,17 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
   const selectedRef = useRef(state.selected)
   selectedRef.current = state.selected
 
-  // 自動放置建議每個工作階段只做一次（避免 autoclip 無結果時重複呼叫）
-  const autoPlaced = useRef(false)
+  // 片段的最新快照（建議合併在 await 之後才執行，不能閉包舊值）
+  const clipsRef = useRef(state.clips)
+  clipsRef.current = state.clips
+
+  // 分析結果世代（每次載入／重新分析完成 +1）：每個世代只規劃一次建議
+  const [analysisGen, setAnalysisGen] = useState(preloadedDoc ? 1 : 0)
+  const handledGen = useRef(0)
+  /** 這次分析結果是否為「已有 AI 片段之影片」的重新分析（決定建議用 merge 還是 place） */
+  const reanalyzedRef = useRef(false)
+  /** 建議請求序號：使用者套用浮層或有更新的請求時，較舊的回應一律丟棄 */
+  const suggestSeq = useRef(0)
 
   /* ---------------- 載入（先查條目狀態 → cache:load → 必要時 analyze；見 studioLoader） ---------------- */
 
@@ -211,7 +221,9 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
       if (longFixtureRequested()) {
         const { buildLongDoc } = await import('../dev/longFixture')
         if (!cancelled) {
+          reanalyzedRef.current = clipsRef.current.some((c) => c.origin === 'ai')
           dispatch({ type: 'analysisResult', doc: buildLongDoc(videoPath) })
+          setAnalysisGen((g) => g + 1)
           setLoaded(true)
         }
         return
@@ -235,7 +247,9 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
         setLoadError({ code: outcome.code, message: outcome.message })
         return
       }
+      reanalyzedRef.current = clipsRef.current.some((c) => c.origin === 'ai')
       dispatch({ type: 'analysisResult', doc: outcome.doc })
+      setAnalysisGen((g) => g + 1)
       setLoaded(true)
       void checkSmooth(outcome.doc.video).then((pl) => {
         if (!cancelled) setPlayability(pl)
@@ -309,26 +323,38 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
     }
   }, [])
 
-  // 開啟影片自動放置 AI 建議（spec §3.2.6）：每個工作階段一次；分析結果未載入或引擎不可用時不消耗機會
+  // 分析完成後的建議（spec §3.2.6、§4.2）：引擎文件只含手動片段，所以
+  // - 載入且沒有 AI 片段＋設定開啟＝自動放置建議；
+  // - 已有 AI 片段的影片重新分析＝一律以預設參數重跑 autoclip，mergeOnReanalyze 合併
+  //   （已加入→stale 保留、舊建議／略過丟棄、新建議加入）。
+  // 每個分析世代只做一次；引擎不可用時不呼叫。
   useEffect(() => {
-    if (!settings || autoPlaced.current) return
-    if (state.doc.events.length === 0) return
-    if (!shouldAutoPlace(state.doc, settings)) return
+    if (!settings || analysisGen === 0 || handledGen.current === analysisGen) return
+    handledGen.current = analysisGen
+    const plan = planSuggestions({
+      doc: state.doc,
+      clips: clipsRef.current,
+      settings,
+      reanalyzed: reanalyzedRef.current
+    })
+    if (plan.kind === 'none') return
     const api = window.api
     if (!api?.engine?.autoclip) return
-    autoPlaced.current = true
+    const seq = ++suggestSeq.current
+    const events = state.doc.events
     void (async () => {
       try {
-        const res = await api.engine.autoclip({ events: state.doc.events, params: settings.autoclip, duration })
-        if (Array.isArray(res?.clips) && res.clips.length > 0) {
-          dispatch({ type: 'setAiClips', clips: toSuggestions(res.clips) })
-          setTab('hl')
-        }
+        const res = await api.engine.autoclip({ events, params: plan.params, duration })
+        if (seq !== suggestSeq.current) return // 期間使用者套用了浮層或有更新的請求
+        const fresh: Clip[] = Array.isArray(res?.clips) ? res.clips : []
+        if (plan.kind === 'place' && fresh.length === 0) return
+        dispatch({ type: 'applyClips', clips: mergeSuggestions(plan.kind, clipsRef.current, fresh) })
+        setTab('hl')
       } catch (err) {
-        console.error('Failed to auto-place AI suggestions:', err)
+        console.error('Failed to place AI suggestions:', err)
       }
     })()
-  }, [settings, state.doc, duration])
+  }, [settings, state.doc, analysisGen, duration])
 
   // 精華分頁開啟時確保有作用中卡片（roving tabindex 的第一站）
   useEffect(() => {
@@ -690,19 +716,30 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
     [seekTo]
   )
 
-  /** 加入建議（卡片／Enter）：加入專案、標記已加入、Toast〔復原〕。 */
+  /** 加入建議（卡片／Enter）：加入專案、標記已加入；Toast〔復原〕同時移除專案片段並讓卡片回到建議。 */
   const acceptClip = useCallback(
     (clip: Clip) => {
-      const res = acceptToProject(clip, videoPath, projectRef.current)
-      if (res.added.length > 0) apply(addItems(projectRef.current, res.added))
+      const plan = planAccept(clip, videoPath, projectRef.current)
+      if (plan.notice === 'added') apply(plan.project)
       dispatch({ type: 'acceptClip', id: clip.id })
-      toast({
-        message: i18n.studio.toast.addedProject.replace('{sec}', String(Math.round(Math.max(0, clip.end - clip.start)))),
-        action:
-          res.added.length > 0
-            ? { label: i18n.studio.toast.undo, run: () => apply(res.undo(projectRef.current)) }
-            : undefined
-      })
+      if (plan.undo) {
+        const undo = plan.undo
+        toast({
+          message: i18n.studio.toast.addedProject.replace(
+            '{sec}',
+            String(Math.round(Math.max(0, clip.end - clip.start)))
+          ),
+          action: {
+            label: i18n.studio.toast.undo,
+            run: () => {
+              apply(undo.project(projectRef.current))
+              dispatch({ type: undo.clipStatus === 'suggested' ? 'restoreClip' : 'acceptClip', id: clip.id })
+            }
+          }
+        })
+      } else {
+        toast({ message: i18n.studio.toast.alreadyInProject })
+      }
       advanceActive(clip.id)
     },
     [videoPath, apply, toast, advanceActive]
@@ -915,13 +952,14 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
     overlay.open(<ExportDialog project={project} onClose={overlay.close} />)
   }, [overlay, project])
 
-  /** 浮層套用：只取代 suggested／skipped 的 AI 片段（保留已加入與手動）並寫回快取。 */
+  /** 浮層套用：只取代 suggested 的 AI 片段（保留已加入、已略過與手動）並寫回快取。 */
   const handleApplyAutoClip = useCallback(
     (clips: Clip[]) => {
-      dispatch({ type: 'applyClips', clips: applyAutoClip(state.clips, clips) })
+      suggestSeq.current++ // 尚未回來的自動建議不得覆蓋使用者剛套用的結果
+      dispatch({ type: 'applyClips', clips: applyAutoClip(clipsRef.current, clips) })
       setTab('hl')
     },
-    [state.clips]
+    []
   )
 
   /* ---------------- 專案軌操作（Task 13） ---------------- */

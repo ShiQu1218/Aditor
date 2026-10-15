@@ -1,13 +1,17 @@
 import { describe, expect, test } from 'vitest'
 import type { CacheDoc, Clip, EngineEvent } from '../../shared/types'
 import { createProject, ProjectItem } from '../editor/project'
+import { viewerReducer } from '../viewer/state'
 import {
   acceptToProject,
   planAddAll,
   applyAutoClip,
   clipEventGlyphs,
   clipTitle,
+  mergeSuggestions,
   nextSuggestion,
+  planAccept,
+  planSuggestions,
   removeProjectItems,
   shouldAutoPlace,
   toSuggestions
@@ -74,7 +78,7 @@ describe('toSuggestions', () => {
 })
 
 describe('applyAutoClip', () => {
-  test('applying popover replaces only suggested ai clips, keeps accepted and manual', () => {
+  test('applying popover replaces only suggested ai clips, keeps accepted, skipped and manual', () => {
     const accepted = clip('a1', 100, { status: 'accepted' })
     const manual = clip('m1', 200, { origin: 'manual', status: 'accepted' })
     const suggested = clip('s1', 300)
@@ -83,11 +87,12 @@ describe('applyAutoClip', () => {
 
     const next = applyAutoClip(old, [clip('n1', 20, { status: undefined }), clip('n2', 300, { status: undefined })])
 
-    // suggested／skipped 被取代，新片段回到 suggested
-    expect(next.map((c) => c.id)).toEqual(['n1', 'a1', 'm1', 'n2'])
+    // 只有 suggested 被取代；已略過保留原狀
+    expect(next.map((c) => c.id)).toEqual(['n1', 'a1', 'm1', 'n2', 'k1'])
+    expect(next.find((c) => c.id === 's1')).toBeUndefined()
     expect(next.find((c) => c.id === 'n1')?.status).toBe('suggested')
     expect(next.find((c) => c.id === 'n2')?.status).toBe('suggested')
-    // 已加入與手動保持原狀（不被標 stale）
+    expect(next.find((c) => c.id === 'k1')).toEqual(skipped)
     expect(next.find((c) => c.id === 'a1')).toEqual(accepted)
     expect(next.find((c) => c.id === 'm1')).toEqual(manual)
     // 不改動輸入陣列
@@ -95,6 +100,110 @@ describe('applyAutoClip', () => {
 
     // 與保留片段起點 <1s 的新建議不重複
     expect(applyAutoClip([accepted], [clip('near', 100.4)]).map((c) => c.id)).toEqual(['a1'])
+  })
+
+  test('a new ai clip within 1s of a skipped clip is not re-suggested', () => {
+    const skipped = clip('k1', 400, { status: 'skipped' })
+    const next = applyAutoClip([skipped], [clip('again', 400.5), clip('far', 600)])
+    expect(next.map((c) => c.id)).toEqual(['k1', 'far'])
+    expect(next[0].status).toBe('skipped')
+  })
+})
+
+describe('planAccept (single-card add + Toast undo)', () => {
+  const empty = { version: 1 as const, name: 'p', items: [] }
+
+  test('adding returns project change, accepted status and an undo that removes the item and restores the clip', () => {
+    const c = clip('c1', 40, { end: 80 })
+    const plan = planAccept(c, 'v.mp4', empty)
+    expect(plan.notice).toBe('added')
+    expect(plan.project.items).toHaveLength(1)
+    expect(plan.clipStatus).toBe('accepted')
+    expect(plan.undo?.clipStatus).toBe('suggested')
+    // 在最新專案上套用復原
+    const later = { ...plan.project, name: 'renamed' }
+    const undone = plan.undo!.project(later)
+    expect(undone.items).toHaveLength(0)
+    expect(undone.name).toBe('renamed')
+  })
+
+  test('duplicate: nothing added -> info notice, no undo, project untouched, clip still marked accepted', () => {
+    const c = clip('c1', 40, { end: 80 })
+    const first = planAccept(c, 'v.mp4', empty)
+    const again = planAccept(c, 'v.mp4', first.project)
+    expect(again.notice).toBe('duplicate')
+    expect(again.undo).toBeNull()
+    expect(again.project).toBe(first.project)
+    expect(again.clipStatus).toBe('accepted')
+  })
+})
+
+describe('planSuggestions + mergeSuggestions (real data flow)', () => {
+  const settings = { autoSuggestOnOpen: true, autoclip: { n: 3, gap: 20, before: 8, after: 4, max_len: 90 } }
+  // 引擎 analyze 回傳的文件只有手動片段（engine/apexhl/analyze.py）
+  const engineDoc = doc({ events: [ev('e1', 100), ev('e2', 105), ev('e3', 110)], clips: [clip('m1', 500, { origin: 'manual', status: 'accepted' })] })
+
+  test('load path: auto-place only when enabled and no ai clips; never marks stale', () => {
+    expect(planSuggestions({ doc: engineDoc, clips: engineDoc.clips, settings, reanalyzed: false })).toEqual({
+      kind: 'place',
+      params: settings.autoclip
+    })
+    expect(
+      planSuggestions({ doc: engineDoc, clips: engineDoc.clips, settings: { ...settings, autoSuggestOnOpen: false }, reanalyzed: false })
+    ).toEqual({ kind: 'none' })
+    const withAi = [clip('a1', 10, { status: 'accepted' })]
+    expect(planSuggestions({ doc: doc({ events: engineDoc.events, clips: withAi }), clips: withAi, settings, reanalyzed: false })).toEqual({ kind: 'none' })
+    // 沒有事件＝不呼叫
+    expect(planSuggestions({ doc: doc(), clips: [], settings, reanalyzed: false })).toEqual({ kind: 'none' })
+  })
+
+  test('re-analysis always re-runs autoclip with default params, even if autoSuggestOnOpen is off', () => {
+    const plan = planSuggestions({
+      doc: engineDoc,
+      clips: engineDoc.clips,
+      settings: { ...settings, autoSuggestOnOpen: false },
+      reanalyzed: true
+    })
+    expect(plan).toEqual({ kind: 'merge', params: settings.autoclip })
+    // 分析未完成不執行
+    expect(
+      planSuggestions({ doc: doc({ events: engineDoc.events, analysis: { ...doc().analysis, status: 'partial' } }), clips: [], settings, reanalyzed: true })
+    ).toEqual({ kind: 'none' })
+  })
+
+  test('integration: engine-shaped doc after re-analysis -> accepted(stale) + new suggested; old suggested/skipped dropped', () => {
+    const before: Clip[] = [
+      clip('a1', 100, { status: 'accepted' }),
+      clip('s_old', 300),
+      clip('k_old', 400, { status: 'skipped' }),
+      clip('m1', 500, { origin: 'manual', status: 'accepted' })
+    ]
+    // 1) viewerReducer 取得引擎文件（只有手動片段）
+    const state = viewerReducer(
+      { doc: doc(), selected: new Set(), filter: new Set(), clips: before, dirty: false },
+      { type: 'analysisResult', doc: engineDoc }
+    )
+    expect(state.clips.map((c) => c.id)).toEqual(['a1', 'm1'])
+    expect(state.clips.find((c) => c.id === 'a1')?.stale).toBe(true)
+    // 2) 規劃：需要重跑 autoclip
+    const plan = planSuggestions({ doc: state.doc, clips: before, settings, reanalyzed: true })
+    expect(plan.kind).toBe('merge')
+    // 3) 引擎 autoclip 的新結果（一個與已加入片段重疊，一個全新）
+    const fresh = [clip('f1', 100.3, { status: undefined }), clip('f2', 700, { status: undefined })]
+    const merged = mergeSuggestions('merge', state.clips, fresh)
+    expect(merged.map((c) => [c.id, c.status, c.stale ?? false])).toEqual([
+      ['a1', 'accepted', true],
+      ['m1', 'accepted', false],
+      ['f2', 'suggested', false]
+    ])
+  })
+
+  test('place mode keeps manual clips and adds suggestions; fresh ai clips replace nothing else', () => {
+    const merged = mergeSuggestions('place', engineDoc.clips, [clip('f1', 20, { status: undefined })])
+    expect(merged.map((c) => [c.id, c.status])).toEqual([
+      ['f1', 'suggested'],
+      ['m1', 'accepted']
+    ])
   })
 })
 
