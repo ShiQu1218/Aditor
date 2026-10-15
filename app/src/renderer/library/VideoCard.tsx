@@ -4,14 +4,11 @@ import type { VideoInfo } from '../../shared/types'
 import { formatTime } from '../../shared/time'
 import { formatEta } from '../../shared/eta'
 import { containerCodecSupported } from '../media/playability'
-import { useEtaTracker } from '../hooks/useEtaTracker'
+import { useQueueEta, useQueueItemState } from '../queue/QueueProvider'
 import { i18n } from '../i18n/zh-TW'
 import { AlertTriangle, ImageOff, MoreHorizontal, RefreshCw, Star, Trash2 } from '../components/icons'
 
 const t = i18n.library.card
-
-/** 供 hook 的穩定空陣列（非 analyzing 卡片不追蹤 ETA） */
-const NO_ENTRIES: LibraryEntry[] = []
 
 export interface VideoCardProps {
   entry: LibraryEntry
@@ -45,6 +42,7 @@ export function sameCardEntry(a: LibraryEntry, b: LibraryEntry): boolean {
     a.path === b.path &&
     a.status === b.status &&
     a.progress === b.progress &&
+    a.analyzingSince === b.analyzingSince &&
     a.favorite === b.favorite &&
     a.error === b.error &&
     a.hl === b.hl &&
@@ -64,9 +62,19 @@ function VideoCardView({ entry, onOpen, onToggleFavorite, onRemove, onRetry }: V
   const badge = proxyBadge(entry)
   const done = entry.status === 'done'
   const error = entry.status === 'error'
-  const statusText = done ? '' : error ? t.error : entry.status === 'analyzing' ? t.analyzing : t.waiting
-  const etas = useEtaTracker(entry.status === 'analyzing' ? [entry] : NO_ENTRIES)
-  const eta = etas.get(entry.path) ?? null
+  // 「等待中」只看 main 的真實佇列：status 為 pending 但不在佇列的（匯入未排隊、取消後）是「尚未分析」
+  const queueState = useQueueItemState(entry.path)
+  const notQueued = entry.status === 'pending' && queueState === 'idle'
+  const statusText = done
+    ? ''
+    : error
+      ? t.error
+      : entry.status === 'analyzing'
+        ? t.analyzing
+        : notQueued
+          ? t.notAnalyzed
+          : t.waiting
+  const eta = useQueueEta(entry.path)
 
   useEffect(() => {
     if (!menuOpen) return
@@ -215,11 +223,29 @@ function VideoCardView({ entry, onOpen, onToggleFavorite, onRemove, onRetry }: V
           )}
         </div>
 
-        {entry.status === 'pending' && (
+        {entry.status === 'pending' && !notQueued && (
           <div className="vcard-overlay" role="status">
             <div>
               {t.waiting}
               <small>{t.waitingQueue}</small>
+            </div>
+          </div>
+        )}
+        {notQueued && (
+          <div className="vcard-overlay" role="status">
+            <div>
+              {t.notAnalyzed}
+              <small>{t.notAnalyzedHint}</small>
+              <button
+                type="button"
+                className="btn sm primary"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onRetry(entry.path)
+                }}
+              >
+                {t.analyze}
+              </button>
             </div>
           </div>
         )}

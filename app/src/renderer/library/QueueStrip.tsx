@@ -2,32 +2,31 @@ import React, { useRef, useState } from 'react'
 import { formatEta } from '../../shared/eta'
 import { fileName } from './VideoCard'
 import { ChevronDown } from '../components/icons'
-import { useEtaTracker } from '../hooks/useEtaTracker'
 import { QueuePopover } from '../shell/QueuePopover'
 import { QueueRing } from '../shell/QueueRing'
-import { useQueueSummary } from '../shell/useQueueSummary'
+import { useQueueSummary } from '../queue/QueueProvider'
 import { i18n } from '../i18n/zh-TW'
 
 const t = i18n.queue
 
 /**
- * 影片庫頂的佇列條：分析中／等待中項目存在時顯示（目前檔名、百分比、ETA、檢視佇列）；
- * 點擊開啟佇列浮層（浮層貼在條的下方）。
+ * 影片庫頂的佇列條：只在 main 的真實佇列有「分析中／排隊中」項目時顯示
+ * （匯入但尚未排隊的影片不算）。顯示目前檔名、百分比、ETA；點擊開啟佇列浮層（貼在條的下方）。
  */
 export function QueueStrip(): JSX.Element | null {
   const summary = useQueueSummary()
-  const etas = useEtaTracker(summary.active)
   const [open, setOpen] = useState(false)
   const stripRef = useRef<HTMLButtonElement>(null)
 
-  if (summary.active.length === 0) {
+  if (summary.total === 0) {
     return null
   }
 
   const current = summary.analyzing
   const pct = Math.round((current?.progress ?? 0) * 100)
-  const eta = current ? etas.get(current.path) ?? null : null
-  const index = current ? summary.active.indexOf(current) + 1 : 0
+  const label = current
+    ? t.analyzing.replace('{i}', '1').replace('{n}', String(summary.total))
+    : t.queuedOnly.replace('{n}', String(summary.total))
 
   return (
     <div className="queue-strip-wrap">
@@ -39,10 +38,9 @@ export function QueueStrip(): JSX.Element | null {
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
       >
-        <QueueRing progress={current?.progress ?? 0} />
+        <QueueRing />
         <div className="queue-strip-text">
-          <b>{t.analyzing.replace('{i}', String(index)).replace('{n}', String(summary.active.length))}</b>{' '}
-          <span className="muted">{current ? fileName(current.path) : ''}</span>
+          <b>{label}</b> {current && <span className="muted">{fileName(current.path)}</span>}
         </div>
         {current && (
           <div className="bar">
@@ -51,7 +49,7 @@ export function QueueStrip(): JSX.Element | null {
         )}
         {current && (
           <span className="muted">
-            {pct}%{eta != null ? ` · ${formatEta(eta)}` : ''}
+            {pct}%{current.etaMs != null ? ` · ${formatEta(current.etaMs)}` : ''}
           </span>
         )}
         <span className="grow" />

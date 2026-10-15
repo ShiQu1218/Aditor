@@ -1,9 +1,8 @@
 import React, { useEffect, useRef } from 'react'
-import type { LibraryEntry } from '../../main/library'
+import type { QueueRow as QueueRowData } from '../../shared/queueState'
 import { formatEta } from '../../shared/eta'
 import { fileName } from '../library/VideoCard'
-import { useEtaTracker } from '../hooks/useEtaTracker'
-import { useQueueSummary } from './useQueueSummary'
+import { useQueueSummary } from '../queue/QueueProvider'
 import { i18n } from '../i18n/zh-TW'
 
 const t = i18n.queue
@@ -18,18 +17,18 @@ export interface QueuePopoverProps {
 }
 
 /**
- * 分析佇列浮層：列出分析中／等待、百分比、ETA 與〔取消〕（`queue.cancel`）。
- * Esc 或點擊外部關閉；資料與圖示欄環形進度共用 `useQueueSummary`（訂閱 library:updated）。
+ * 分析佇列浮層：列出分析中／排隊中（取自 main 的真實佇列）、百分比、ETA 與〔取消〕（`queue.cancel`）。
+ * Esc 或點擊外部關閉。關閉時不掛載內容（不訂閱佇列、不註冊監聽）。
  */
-export function QueuePopover({ open, onClose, variant = 'rail', anchorRef }: QueuePopoverProps): JSX.Element | null {
+export function QueuePopover({ open, ...rest }: QueuePopoverProps): JSX.Element | null {
+  return open ? <QueuePopoverBody {...rest} /> : null
+}
+
+function QueuePopoverBody({ onClose, variant = 'rail', anchorRef }: Omit<QueuePopoverProps, 'open'>): JSX.Element {
   const summary = useQueueSummary()
-  const etas = useEtaTracker(summary.active)
   const popRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    if (!open) {
-      return
-    }
     const onKeyDown = (e: KeyboardEvent): void => {
       if (e.key === 'Escape') {
         onClose()
@@ -48,11 +47,7 @@ export function QueuePopover({ open, onClose, variant = 'rail', anchorRef }: Que
       window.removeEventListener('keydown', onKeyDown)
       window.removeEventListener('mousedown', onMouseDown)
     }
-  }, [open, onClose, anchorRef])
-
-  if (!open) {
-    return null
-  }
+  }, [onClose, anchorRef])
 
   return (
     <div ref={popRef} className={`pop qpop${variant === 'strip' ? ' strip' : ''}`} role="dialog" aria-label={t.title}>
@@ -60,12 +55,12 @@ export function QueuePopover({ open, onClose, variant = 'rail', anchorRef }: Que
         <h3>{t.title}</h3>
         <span className="dim">{t.oneAtATime}</span>
       </header>
-      {summary.active.length === 0 ? (
+      {summary.total === 0 ? (
         <p className="qpop-empty">{t.empty}</p>
       ) : (
         <div className="qlist">
-          {summary.active.map((entry) => (
-            <QueueRow key={entry.path} entry={entry} eta={etas.get(entry.path) ?? null} />
+          {summary.rows.map((row) => (
+            <QueueRow key={row.path} row={row} />
           ))}
         </div>
       )}
@@ -73,18 +68,18 @@ export function QueuePopover({ open, onClose, variant = 'rail', anchorRef }: Que
   )
 }
 
-function QueueRow({ entry, eta }: { entry: LibraryEntry; eta: number | null }): JSX.Element {
-  const analyzing = entry.status === 'analyzing'
-  const pct = Math.round((entry.progress ?? 0) * 100)
+function QueueRow({ row }: { row: QueueRowData }): JSX.Element {
+  const analyzing = row.state === 'analyzing'
+  const pct = Math.round(row.progress * 100)
   return (
     <div className="qrow">
       <div className="qname">
-        <div className="qtitle" title={fileName(entry.path)}>
-          {fileName(entry.path)}
+        <div className="qtitle" title={fileName(row.path)}>
+          {fileName(row.path)}
         </div>
         <div className="dim">
           {analyzing
-            ? `${t.analyzingPct.replace('{n}', String(pct))}${eta != null ? ` · ${formatEta(eta)}` : ''}`
+            ? `${t.analyzingPct.replace('{n}', String(pct))}${row.etaMs != null ? ` · ${formatEta(row.etaMs)}` : ''}`
             : t.waiting}
         </div>
       </div>
@@ -92,7 +87,7 @@ function QueueRow({ entry, eta }: { entry: LibraryEntry; eta: number | null }): 
         type="button"
         className="btn sm ghost"
         onClick={() => {
-          void window.api?.queue?.cancel?.(entry.path)
+          void window.api?.queue?.cancel?.(row.path)
         }}
       >
         {t.cancel}

@@ -10,13 +10,11 @@ import { groupByDate } from '../lib/groupByDate'
 import { filterEntries, type LibraryKind } from '../lib/libraryFilter'
 import { useKeymap } from '../hooks/useShortcuts'
 import { useToast } from '../shell/ToastHost'
+import { useQueueStore } from '../queue/QueueProvider'
 import { i18n } from '../i18n/zh-TW'
-import { library500Requested, makeLibraryFixture } from '../dev/libraryFixture'
+import { library500Requested, libraryFixtureOnce } from '../dev/libraryFixture'
 
 const t = i18n.library
-
-/** 進度更新節流：同一支影片最多每 500 ms（2 Hz）接受一次進度變化 */
-export const PROGRESS_INTERVAL_MS = 500
 
 interface LibraryScreenProps {
   onSelectVideo: (path: string) => void
@@ -25,42 +23,23 @@ interface LibraryScreenProps {
 
 export function LibraryScreen({ onSelectVideo, onOpenSettings }: LibraryScreenProps): JSX.Element {
   const toast = useToast()
+  const queueStore = useQueueStore()
   const [entries, setEntries] = useState<LibraryEntry[]>([])
   const [query, setQuery] = useState('')
   const [favoriteOnly, setFavoriteOnly] = useState(false)
   const [kind, setKind] = useState<LibraryKind>('all')
   const [dragging, setDragging] = useState(false)
   const searchRef = useRef<HTMLInputElement>(null)
-  const progressAt = useRef(new Map<string, number>())
 
-  /** 合併新資料：進度類變更以 2 Hz 節流（卡片再由 React.memo 依欄位比較避免重繪） */
-  const mergeEntries = useCallback((next: LibraryEntry[]) => {
-    const now = Date.now()
-    setEntries((prev) => {
-      const before = new Map(prev.map((e) => [e.path, e]))
-      return next.map((n) => {
-        const old = before.get(n.path)
-        if (!old) return n
-        if (old.progress !== n.progress && old.status === n.status) {
-          const last = progressAt.current.get(n.path) ?? 0
-          if (now - last < PROGRESS_INTERVAL_MS) {
-            return { ...n, progress: old.progress }
-          }
-          progressAt.current.set(n.path, now)
-        }
-        return n
-      })
-    })
-  }, [])
-
+  // main 已把 library:updated 節流為最多每 500 ms 一次（含尾端），這裡不再另行節流
   const load = useCallback(async () => {
     if (library500Requested()) {
-      mergeEntries(makeLibraryFixture())
+      setEntries(libraryFixtureOnce())
       return
     }
     const data = await window.api?.library?.getEntries?.()
-    if (Array.isArray(data)) mergeEntries(data)
-  }, [mergeEntries])
+    if (Array.isArray(data)) setEntries(data)
+  }, [])
 
   useEffect(() => {
     void load()
@@ -104,10 +83,10 @@ export function LibraryScreen({ onSelectVideo, onOpenSettings }: LibraryScreenPr
       if (entry.status === 'done') {
         onSelectVideo(entry.path)
       } else if (entry.status !== 'error') {
-        toast({ message: t.card.openBlocked })
+        toast({ message: queueStore.stateOf(entry.path) === 'idle' ? t.card.notAnalyzedToast : t.card.openBlocked })
       }
     },
-    [onSelectVideo, toast]
+    [onSelectVideo, toast, queueStore]
   )
 
   const handleToggleFavorite = useCallback((path: string) => {

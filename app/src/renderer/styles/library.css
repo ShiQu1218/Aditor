@@ -226,6 +226,7 @@
   font-weight: var(--fw-bold);
   padding: 8px;
 }
+.vcard-overlay .btn { margin-top: 8px; }
 .vcard-overlay small { display: block; font-weight: var(--fw-regular); color: var(--text-2); margin-top: 2px; }
 .vcard-progress { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: var(--bg-active); z-index: 4; }
 .vcard-progress i { display: block; height: 100%; background: var(--accent-bright); }

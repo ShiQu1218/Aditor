@@ -12,13 +12,11 @@ interface RailProps {
   onNavigate: (v: RailView) => void
   onShortcuts?: () => void
   onQueue?: () => void
-  /** 目前分析進度 0–1（圖示欄環形進度；任何畫面都看得到） */
-  queueProgress?: number
   /** 供佇列浮層判斷「點擊外部」時排除觸發按鈕 */
   queueButtonRef?: React.Ref<HTMLButtonElement>
 }
 
-export function Rail({ active, projectCount, onNavigate, onShortcuts, onQueue, queueProgress = 0, queueButtonRef }: RailProps): JSX.Element {
+export function Rail({ active, projectCount, onNavigate, onShortcuts, onQueue, queueButtonRef }: RailProps): JSX.Element {
   const t = shellI18n.rail
   const btn = (view: RailView, tip: string, label: string, icon: JSX.Element, badge?: number) => (
     <button
@@ -45,7 +43,7 @@ export function Rail({ active, projectCount, onNavigate, onShortcuts, onQueue, q
         ref={queueButtonRef}
         onClick={onQueue}
       >
-        <QueueRing progress={queueProgress} />
+        <QueueRing />
       </button>
       <button className="rail-btn" data-tip={t.shortcuts} aria-label={t.shortcutsLabel} onClick={onShortcuts}>
         <Keyboard className="ic lg" />

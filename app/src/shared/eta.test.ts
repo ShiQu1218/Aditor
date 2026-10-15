@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { estimateEta, formatEta, trackEta } from './eta'
+import { estimateEta, formatEta, MIN_ELAPSED_MS } from './eta'
 
 describe('estimateEta', () => {
   test('estimateEta returns null below 2% progress and monotonic afterwards', () => {
@@ -22,6 +22,14 @@ describe('estimateEta', () => {
       prev = eta!
     }
 
+    // 剛開始（耗時不足 3 秒）樣本不足：不得把「第一次看到 50%」當成 ETA 0
+    expect(MIN_ELAPSED_MS).toBe(3000)
+    expect(estimateEta(0.5, 0)).toBeNull()
+    expect(estimateEta(0.5, 2999)).toBeNull()
+    expect(estimateEta(0.5, 3000)).toBeCloseTo(3000)
+    expect(estimateEta(0.019, 60000)).toBeNull()
+    expect(estimateEta(0.02, 3000)).toBeCloseTo(147000)
+
     // 完成／超額進度 → 0；無效輸入 → null
     expect(estimateEta(1, 30000)).toBe(0)
     expect(estimateEta(1.2, 30000)).toBe(0)
@@ -39,28 +47,5 @@ describe('estimateEta', () => {
     expect(formatEta(0)).toBe('不到 1 分')
     expect(formatEta(-5)).toBe('不到 1 分')
     expect(formatEta(Number.NaN)).toBe('不到 1 分')
-  })
-
-  test('trackEta tracks analyzing start time per path and drops finished items', () => {
-    const state = new Map<string, number>()
-    const entry = { path: 'a.mp4', status: 'analyzing', progress: 0.5 }
-
-    // 第一次看到：開始時間 = now；elapsed 0 → ETA 0（公式的極限值）
-    let map = trackEta(state, [entry], 1000)
-    expect(map.get('a.mp4')).toBe(0)
-    expect(state.get('a.mp4')).toBe(1000)
-
-    // 60 秒後、進度不變：ETA ≈ 60 秒
-    map = trackEta(state, [entry], 61000)
-    expect(map.get('a.mp4')).toBeCloseTo(60000)
-
-    // 非 analyzing 的項目不追蹤，且狀態被清除
-    map = trackEta(state, [{ ...entry, status: 'done' }], 62000)
-    expect(map.has('a.mp4')).toBe(false)
-    expect(state.has('a.mp4')).toBe(false)
-
-    // pending 不列入（沒有進度可估）
-    map = trackEta(state, [{ ...entry, status: 'pending' }], 63000)
-    expect(map.size).toBe(0)
   })
 })

@@ -27,8 +27,8 @@ const api = {
     removeWatchFolder: (dir: string) => ipcRenderer.invoke('library:removeWatchFolder', dir),
     fileExists: (path: string) => ipcRenderer.invoke('library:fileExists', path),
     computeHl: (path: string) => ipcRenderer.invoke('library:computeHl', path),
-    onUpdated: (callback: () => void) => {
-      const handler = () => callback()
+    onUpdated: (callback: (payload?: unknown) => void) => {
+      const handler = (_: unknown, payload?: unknown) => callback(payload)
       ipcRenderer.on('library:updated', handler)
       return () => {
         ipcRenderer.removeListener('library:updated', handler)
@@ -37,7 +37,9 @@ const api = {
   },
   queue: {
     enqueue: (path: string) => ipcRenderer.invoke('queue:enqueue', path),
-    cancel: (path: string) => ipcRenderer.invoke('queue:cancel', path)
+    cancel: (path: string) => ipcRenderer.invoke('queue:cancel', path),
+    /** 佇列的真實狀態（正在分析／排隊／進度／開始時間） */
+    getState: () => ipcRenderer.invoke('queue:getState')
   },
   cache: {
     load: (path: string) => ipcRenderer.invoke('cache:load', path),

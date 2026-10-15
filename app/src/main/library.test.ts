@@ -54,4 +54,23 @@ describe('Library', () => {
     expect(lib2.getEntries().length).toBe(1)
     expect(lib2.getEntries()[0].favorite).toBe(true)
   })
+
+  it('get() finds an entry by normalised path', () => {
+    lib.add(['D:/Videos/Get_Me.mp4'])
+    expect(lib.get('d:/VIDEOS/get_me.mp4')?.path).toBe('D:/Videos/Get_Me.mp4')
+    expect(lib.get('D:/Videos/none.mp4')).toBeUndefined()
+  })
+
+  it('resetStaleAnalyzing() turns leftovers of an interrupted run into idle entries and persists', () => {
+    lib.add(['D:/Videos/a.mp4', 'D:/Videos/b.mp4'])
+    lib.update('D:/Videos/a.mp4', { status: 'analyzing', progress: 0.4, analyzingSince: 123 })
+    lib.update('D:/Videos/b.mp4', { status: 'done', progress: 1 })
+    expect(lib.resetStaleAnalyzing()).toBe(1)
+    const a = lib.get('D:/Videos/a.mp4')!
+    expect(a).toMatchObject({ status: 'pending', progress: 0 })
+    expect(a.analyzingSince).toBeUndefined()
+    expect(lib.get('D:/Videos/b.mp4')?.status).toBe('done')
+    expect(new Library(tmpFile).get('D:/Videos/a.mp4')?.status).toBe('pending')
+    expect(lib.resetStaleAnalyzing()).toBe(0)
+  })
 })

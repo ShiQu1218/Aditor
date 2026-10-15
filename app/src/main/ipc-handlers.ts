@@ -14,11 +14,15 @@ import { WatchManager } from './watch'
 import { ProjectStore, StoredProject } from './projects'
 import { DEFAULT_SETTINGS, Settings } from '../shared/settings'
 import { cacheDir, profileDir } from '../shared/paths'
-import { computeHlCount, createSerialQueue, hlFromClips } from './hl'
+import { computeHlCount, createHlGuard, createSerialQueue, hlForSavedDoc } from './hl'
+import { createThrottle } from '../shared/throttle'
 import type { CacheDoc, Clip } from '../shared/types'
 import { handleProxyGenerate } from './proxy-ipc'
 import { ProjectItem } from '../renderer/editor/project'
 import { i18n } from '../renderer/i18n/zh-TW'
+
+/** `library:updated` 廣播的最小間隔 */
+export const LIBRARY_UPDATE_INTERVAL_MS = 500
 
 const VIDEO_EXTS = new Set(['.mp4', '.mkv', '.mov', '.webm'])
 
@@ -50,17 +54,24 @@ export function registerIpcHandlers(
   watch?: WatchManager,
   projectStore?: ProjectStore
 ): void {
-  const broadcastUpdated = () => {
+  // library:updated 最多每 500 ms 一次（前緣＋尾端，最後一次更新必定送達）；
+  // 夾帶佇列的真實狀態（正在分析／排隊／進度／開始時間），renderer 不必為了佇列再拉整份 entries
+  const sendUpdated = () => {
+    const payload = queue.payload()
     for (const win of getWindows()) {
       if (!win.isDestroyed()) {
-        win.webContents.send('library:updated')
+        win.webContents.send('library:updated', payload)
       }
     }
   }
+  const updatedThrottle = createThrottle(sendUpdated, LIBRARY_UPDATE_INTERVAL_MS)
+  const broadcastUpdated = () => updatedThrottle.trigger()
 
   queue.on('update', () => {
     broadcastUpdated()
   })
+
+  ipcMain.handle('queue:getState', () => queue.payload())
 
   ipcMain.handle('library:getEntries', () => {
     return library.getEntries()
@@ -139,20 +150,31 @@ export function registerIpcHandlers(
   // 讀取既有快取（無副作用、絕不觸發 analyze；沒有快取＝略過）後以預設參數呼叫 autoclip，
   // 數字快取進 library.json。請求並行度 1、同一影片去重，避免捲動時 N 張卡片同時打引擎。
   const hlQueue = createSerialQueue<number | null>()
+  const hlGuard = createHlGuard()
   ipcMain.handle('library:computeHl', (_, videoPath: string) => {
-    const find = () => library.getEntries().find((e) => normalizePath(e.path) === normalizePath(videoPath))
+    const key = normalizePath(videoPath)
+    const find = () => library.get(videoPath)
     const first = find()
     if (!first || first.status !== 'done' || first.hl !== undefined) return first?.hl ?? null
-    if (!engine) return null
-    return hlQueue.run(normalizePath(videoPath), async () => {
+    if (!engine || hlGuard.isNegative(key)) return null
+    return hlQueue.run(key, async () => {
       const entry = find()
       if (!entry || entry.status !== 'done') return null
       if (entry.hl !== undefined) return entry.hl
+      if (hlGuard.isNegative(key)) return null
+      const startedRev = hlGuard.rev(key)
       const doc = loadCacheDoc(cacheFilePath(videoPath, cacheDir())) as CacheDoc | null
       const params = settings?.get().autoclip ?? DEFAULT_SETTINGS.autoclip
       const count = await computeHlCount((cmd, args) => engine.request<unknown>(cmd, args).promise, doc, params)
-      if (count === null) return null
-      library.update(videoPath, { hl: count })
+      if (count === null) {
+        hlGuard.markFailed(key)
+        return null
+      }
+      // 計算期間若有較新的 cache:save（或條目已不是 done／被重新分析），丟棄這個舊結果
+      const committed = hlGuard.commitIfCurrent(key, startedRev, () => {
+        if (find()?.status === 'done') library.update(videoPath, { hl: count })
+      })
+      if (!committed) return find()?.hl ?? null
       broadcastUpdated()
       return count
     })
@@ -226,16 +248,21 @@ export function registerIpcHandlers(
   // 由影片路徑推得快取檔（無副作用、不啟動分析）；工作室載入用
   ipcMain.handle('cache:loadByVideo', async (_, videoPath: string) => loadCacheDoc(cacheFilePath(videoPath, cacheDir())))
 
-  // 工作室存檔時同步影片庫的「N 精華」（目前待確認建議數；沒有 AI 片段則清除，交給惰性重算）
-  ipcMain.handle('cache:save', async (_, doc: { cache_path: string; video?: { path?: string }; clips?: Clip[] }) => {
-    const ok = saveCacheDoc(doc)
-    const videoPath = doc?.video?.path
-    if (ok && videoPath && library.getEntries().some((e) => normalizePath(e.path) === normalizePath(videoPath))) {
-      library.update(videoPath, { hl: hlFromClips(doc.clips) })
-      broadcastUpdated()
+  // 工作室存檔時同步影片庫的「N 精華」＝目前待確認建議數（重新分析的建議尚未重算＝清除，交給惰性重算）。
+  // 修訂號 bump：較早開始的 computeHl 不能再蓋掉這個較新的值
+  ipcMain.handle(
+    'cache:save',
+    async (_, doc: { cache_path: string; video?: { path?: string }; clips?: Clip[]; app?: { suggestionsPending?: boolean } }) => {
+      const ok = saveCacheDoc(doc)
+      const videoPath = doc?.video?.path
+      if (ok && videoPath && library.get(videoPath)) {
+        hlGuard.bump(normalizePath(videoPath))
+        library.update(videoPath, { hl: hlForSavedDoc(doc) })
+        broadcastUpdated()
+      }
+      return ok
     }
-    return ok
-  })
+  )
 
   ipcMain.handle('proxy:get', async (_, videoPath: string) => {
     const { proxyPath } = await import('./proxy')

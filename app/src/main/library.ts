@@ -19,6 +19,8 @@ export interface LibraryEntry {
   hl?: number
   /** 影片編碼（分析完成後寫入，供卡片代理檔建議徽章） */
   codec?: string
+  /** main 記錄的分析開始時間（epoch ms；僅分析中有值，供 ETA = now - analyzingSince） */
+  analyzingSince?: number
 }
 
 export const SUPPORTED_EXTS = new Set(['.mp4', '.mkv', '.mov', '.webm'])
@@ -61,6 +63,32 @@ export class Library {
 
   getEntries(): LibraryEntry[] {
     return [...this.entries]
+  }
+
+  /** 以路徑取得單一條目（不複製整個陣列） */
+  get(videoPath: string): LibraryEntry | undefined {
+    const norm = normalizePath(videoPath)
+    return this.entries.find((e) => normalizePath(e.path) === norm)
+  }
+
+  /**
+   * 啟動時呼叫：上次執行中斷（崩潰／強制關閉）遺留的 'analyzing' 條目沒有任何佇列在處理，
+   * 重設為閒置（pending／0／無 analyzingSince）；回傳重設筆數。
+   */
+  resetStaleAnalyzing(): number {
+    let n = 0
+    for (const e of this.entries) {
+      if (e.status === 'analyzing') {
+        e.status = 'pending'
+        e.progress = 0
+        delete e.analyzingSince
+        n++
+      }
+    }
+    if (n > 0) {
+      this.save()
+    }
+    return n
   }
 
   add(paths: string[]): LibraryEntry[] {
