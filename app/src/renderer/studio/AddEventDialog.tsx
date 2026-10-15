@@ -11,6 +11,11 @@ interface AddEventDialogProps {
   onConfirm: (t: EventType) => void
 }
 
+/** Enter 是否由視窗層級處理器確認：按鈕上的 Enter 交給按鈕自己（取消鈕不得確認）。 */
+export function enterConfirms(target: { tagName: string } | null): boolean {
+  return !target || target.tagName.toUpperCase() !== 'BUTTON'
+}
+
 /** 新增事件對話框（M）：顯示播放頭時間，Enter 確認、Esc 取消。 */
 export function AddEventDialog({ time, onCancel, onConfirm }: AddEventDialogProps): JSX.Element {
   const [type, setType] = useState<EventType>('knock')
@@ -24,6 +29,7 @@ export function AddEventDialog({ time, onCancel, onConfirm }: AddEventDialogProp
     const onKey = (e: KeyboardEvent): void => {
       if (e.isComposing || e.keyCode === 229) return
       if (e.key === 'Enter') {
+        if (!enterConfirms(e.target as HTMLElement | null)) return
         e.preventDefault()
         onConfirm(type)
       } else if (e.key === 'Escape') {

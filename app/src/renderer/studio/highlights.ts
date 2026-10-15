@@ -152,3 +152,21 @@ export function nextSuggestion(clips: Clip[], activeId: string | null, dir: 1 | 
   }
   return null
 }
+
+export interface AddAllPlan {
+  project: Project
+  /** 本次實際新增的專案片段 id（空＝沒有新增，呼叫端不應推歷史／Toast） */
+  addedIds: string[]
+}
+
+/** 全部加入（Ctrl+E）：逐一以幂等的 acceptToProject 加入；重複觸發不會產生重複片段。 */
+export function planAddAll(suggested: Clip[], source: string, project: Project): AddAllPlan {
+  let next = project
+  const addedIds: string[] = []
+  for (const c of suggested) {
+    const res = acceptToProject(c, source, next)
+    if (res.added.length > 0) next = { ...next, items: [...next.items, ...res.added] }
+    for (const it of res.added) addedIds.push(it.id)
+  }
+  return { project: addedIds.length > 0 ? next : project, addedIds }
+}

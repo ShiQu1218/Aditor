@@ -179,14 +179,25 @@ export const i18n = {
       newProject: '已建立新專案；舊專案已自動儲存，可從「開啟檔案」或專案清單找回',
       savedAs: '已另存為 {name}（專案本身已自動儲存）',
       noSuggestions: '沒有待加入的片段',
-      splitHint: '請先在專案軌選取片段，並把播放頭移到片段內部'
+      splitHint: '請先在專案軌選取片段，並把播放頭移到片段內部',
+      sourceOnlyEdit: '回到來源後才能編輯事件'
     },
     meta: {
       events: '{n} 個事件'
     },
     live: {
       selected: '已選取 {n} 個事件',
-      event: '{type} · {time}'
+      event: '{type} · {time}',
+      playhead: '播放頭 {time}',
+      zoomIn: '時間軸放大',
+      zoomOut: '時間軸縮小',
+      zoomReset: '時間軸顯示全部'
+    },
+    loading: '載入分析結果…',
+    loadFailed: {
+      title: '無法載入分析結果',
+      text: '找不到可用的分析結果（代碼 {code}）。可重試，或返回影片庫。',
+      retry: '重試'
     },
     tabs: {
       hl: '精華',

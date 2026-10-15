@@ -13,7 +13,6 @@ import {
   initialInteraction,
   interactionReducer,
   attachGestureEscape,
-  nextSpaceState,
   swallowEscape,
   pointerToX,
   shouldCancel,
@@ -90,20 +89,6 @@ describe('gesture cancellation', () => {
     expect(interactionReducer(h, { type: 'cancel' }).state.phase).toBe('idle')
     expect(cancelRestore(run([down, { type: 'move', x: 130, y: 60 }]).state, orig)).toBeNull()
     expect(cancelRestore(h, null)).toBeNull()
-  })
-})
-
-describe('nextSpaceState', () => {
-  test('keydown Space sets only when active and not typing', () => {
-    expect(nextSpaceState(false, { type: 'keydown', code: 'Space', typing: false, active: true })).toBe(true)
-    expect(nextSpaceState(false, { type: 'keydown', code: 'Space', typing: true, active: true })).toBe(false)
-    expect(nextSpaceState(false, { type: 'keydown', code: 'Space', typing: false, active: false })).toBe(false)
-    expect(nextSpaceState(false, { type: 'keydown', code: 'KeyA', typing: false, active: true })).toBe(false)
-  })
-  test('keyup Space and blur clear it (no stuck pan)', () => {
-    expect(nextSpaceState(true, { type: 'keyup', code: 'Space' })).toBe(false)
-    expect(nextSpaceState(true, { type: 'keyup', code: 'KeyA' })).toBe(true)
-    expect(nextSpaceState(true, { type: 'blur' })).toBe(false)
   })
 })
 

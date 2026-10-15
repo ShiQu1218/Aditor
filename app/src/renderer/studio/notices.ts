@@ -49,3 +49,11 @@ export function studioNotice(input: StudioNoticeInput): StudioNotice | null {
   }
   return null
 }
+
+/** 代理檔產生中的狀態列：有進度（0–1）顯示百分比，否則通用文字。 */
+export function proxyBusyNotice(ratio: number | null): StudioNotice {
+  const t = i18n.studio.notices
+  const title =
+    ratio === null ? t.proxyBusy : t.proxyGenerating.replace('{n}', String(Math.round(Math.max(0, Math.min(1, ratio)) * 100)))
+  return { id: 'proxy-generating', kind: 'info', title, text: '', actions: [] }
+}

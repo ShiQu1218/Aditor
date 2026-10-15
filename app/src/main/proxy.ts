@@ -39,9 +39,19 @@ export function pickEncoder(available: string[]): string {
   return available[0] || 'libopenh264'
 }
 
+/** 由 ffmpeg stderr 的 `time=HH:MM:SS.xx` 與影片長度換算進度 0–1；無法判讀回 null。 */
+export function parseFfmpegProgress(line: string, durationSec: number): number | null {
+  if (!(durationSec > 0)) return null
+  const m = /time=(\d+):(\d+):(\d+(?:\.\d+)?)/.exec(line)
+  if (!m) return null
+  const sec = Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3])
+  return Math.max(0, Math.min(1, sec / durationSec))
+}
+
 export async function generateProxy(
   videoPath: string,
-  onProgress?: (ratio: number) => void
+  onProgress?: (ratio: number) => void,
+  durationSec?: number
 ): Promise<string> {
   const outPath = proxyPath(videoPath)
   const dir = path.dirname(outPath)
@@ -54,6 +64,10 @@ export async function generateProxy(
 
   return new Promise((resolve, reject) => {
     const ffmpeg = spawn(process.env.APEXHL_FFMPEG || 'ffmpeg', args)
+    ffmpeg.stderr?.on('data', (chunk: Buffer) => {
+      const r = parseFfmpegProgress(chunk.toString(), durationSec ?? 0)
+      if (r !== null) onProgress?.(r)
+    })
     ffmpeg.on('close', (code) => {
       if (code === 0) {
         onProgress?.(1.0)

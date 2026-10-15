@@ -8,7 +8,7 @@ import { detectEncoders } from './export/encoders'
 import { buildJobs, estimateOutputBytes, escapeConcatPath, StreamProbe } from './export/plan'
 import { executeExportJobs } from './export/run'
 import { hasOpenH264, downloadOpenH264 } from './codecs'
-import { loadCacheDoc, saveCacheDoc } from './cache-io'
+import { cacheFilePath, loadCacheDoc, saveCacheDoc } from './cache-io'
 import { SettingsStore } from './settings'
 import { WatchManager } from './watch'
 import { ProjectStore, StoredProject } from './projects'
@@ -210,6 +210,9 @@ export function registerIpcHandlers(
   })
 
   ipcMain.handle('cache:load', async (_, cachePath: string) => loadCacheDoc(cachePath))
+
+  // 由影片路徑推得快取檔（無副作用、不啟動分析）；工作室載入用
+  ipcMain.handle('cache:loadByVideo', async (_, videoPath: string) => loadCacheDoc(cacheFilePath(videoPath, cacheDir())))
 
   ipcMain.handle('cache:save', async (_, doc: { cache_path: string }) => saveCacheDoc(doc))
 

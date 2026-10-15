@@ -78,16 +78,6 @@ export function shouldCancel(phase: IState['phase'], ev: CancelEvent): boolean {
   return ev.buttons === 0
 }
 
-export type SpaceEvent = { type: 'keydown'; code: string; typing: boolean; active: boolean } | { type: 'keyup'; code: string } | { type: 'blur' }
-
-/** Space 是否處於按住狀態（blur 一律清除，避免 keyup 遺失造成永遠平移） */
-export function nextSpaceState(prev: boolean, ev: SpaceEvent): boolean {
-  if (ev.type === 'blur') return false
-  if (ev.type === 'keyup') return ev.code === 'Space' ? false : prev
-  if (ev.code !== 'Space' || ev.typing || !ev.active) return prev
-  return true
-}
-
 /** Esc 取消了進行中的手勢時，該次 Esc 不得再傳給全域快捷鍵（否則會一併離開專案模式／清除選取） */
 export function swallowEscape(phase: IState['phase']): boolean {
   return phase !== 'idle'

@@ -41,11 +41,19 @@ const api = {
   },
   cache: {
     load: (path: string) => ipcRenderer.invoke('cache:load', path),
+    loadByVideo: (videoPath: string) => ipcRenderer.invoke('cache:loadByVideo', videoPath),
     save: (doc: unknown) => ipcRenderer.invoke('cache:save', doc)
   },
   proxy: {
     get: (videoPath: string) => ipcRenderer.invoke('proxy:get', videoPath),
-    generate: (videoPath: string) => ipcRenderer.invoke('proxy:generate', videoPath),
+    generate: (videoPath: string, durationSec?: number) => ipcRenderer.invoke('proxy:generate', videoPath, durationSec),
+    onProgress: (callback: (data: { videoPath: string; ratio: number }) => void) => {
+      const handler = (_: unknown, data: { videoPath: string; ratio: number }) => callback(data)
+      ipcRenderer.on('proxy:progress', handler)
+      return () => {
+        ipcRenderer.removeListener('proxy:progress', handler)
+      }
+    },
     delete: (videoPath: string) => ipcRenderer.invoke('proxy:delete', videoPath)
   },
   project: {

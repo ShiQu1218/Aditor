@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
-import { loadCacheDoc, saveCacheDoc } from './cache-io'
+import { cacheFilePath, loadCacheDoc, saveCacheDoc } from './cache-io'
 
 describe('cache save/load roundtrip', () => {
   it('preserves clip status and stale', () => {
@@ -22,5 +22,15 @@ describe('cache save/load roundtrip', () => {
     expect(back.clips).toEqual(doc.clips)
     expect(loadCacheDoc(path.join(dir, 'missing.json'))).toBeNull()
     fs.rmSync(dir, { recursive: true, force: true })
+  })
+})
+
+describe('cacheFilePath', () => {
+  it('matches the engine naming (sha1 of lowercased, slash-normalised absolute path)', () => {
+    if (process.platform !== 'win32') return
+    // python: hashlib.sha1(b'd:/v/a.mp4').hexdigest()
+    const expected = path.join('C:/cache', '10ad1835deb8203d4d73f32ede655b294e165740.json')
+    expect(cacheFilePath('D:/v/a.mp4', 'C:/cache')).toBe(expected)
+    expect(cacheFilePath('d:\\V\\A.mp4', 'C:/cache')).toBe(expected)
   })
 })

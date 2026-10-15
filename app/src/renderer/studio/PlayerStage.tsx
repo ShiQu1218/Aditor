@@ -12,6 +12,7 @@ interface PlayerStageProps {
   recentCounted: number
   onTogglePlay: () => void
   onTimeUpdate: (t: number) => void
+  onLoadedMetadata: () => void
   onPlayingChange: (playing: boolean) => void
 }
 
@@ -25,6 +26,7 @@ export function PlayerStage({
   recentCounted,
   onTogglePlay,
   onTimeUpdate,
+  onLoadedMetadata,
   onPlayingChange
 }: PlayerStageProps): JSX.Element {
   return (
@@ -41,6 +43,8 @@ export function PlayerStage({
         src={src}
         onClick={onTogglePlay}
         onTimeUpdate={(e) => onTimeUpdate((e.target as HTMLVideoElement).currentTime)}
+        onLoadedMetadata={onLoadedMetadata}
+        onEmptied={() => onPlayingChange(false)}
         onPlay={() => onPlayingChange(true)}
         onPause={() => onPlayingChange(false)}
       />

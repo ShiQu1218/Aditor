@@ -48,3 +48,11 @@ export function isForeign(state: ModeState, project: Project): boolean {
   if (!item) return false
   return !samePath(item.source, state.sourceVideo)
 }
+
+/** 預覽中的片段不存在（例如被復原移除）→ 退回來源模式；其餘原樣回傳。 */
+export function reconcileMode(state: ModeState, project: Project): ModeState {
+  if (state.mode === 'project' && !currentItem(state, project)) {
+    return { ...state, mode: 'source', curItemId: null }
+  }
+  return state
+}

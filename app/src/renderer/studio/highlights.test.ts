@@ -3,6 +3,7 @@ import type { CacheDoc, Clip, EngineEvent } from '../../shared/types'
 import { createProject, ProjectItem } from '../editor/project'
 import {
   acceptToProject,
+  planAddAll,
   applyAutoClip,
   clipEventGlyphs,
   clipTitle,
@@ -189,5 +190,25 @@ describe('nextSuggestion', () => {
     const legacy = [{ ...clip('l1', 0) }] as Clip[]
     delete legacy[0].status
     expect(nextSuggestion(legacy, null, 1)).toBeNull()
+  })
+})
+
+describe('planAddAll (Ctrl+E twice must not duplicate)', () => {
+  const clips: Clip[] = [
+    { id: 'a', start: 10, end: 20, origin: 'ai', status: 'suggested', event_ids: [] },
+    { id: 'b', start: 30, end: 40, origin: 'ai', status: 'suggested', event_ids: [] }
+  ]
+  const empty = { version: 1 as const, name: 'p', items: [] }
+  test('adds every suggestion once; a second run on the result adds nothing', () => {
+    const first = planAddAll(clips, 'C:/v/a.mp4', empty)
+    expect(first.addedIds).toHaveLength(2)
+    expect(first.project.items).toHaveLength(2)
+    const second = planAddAll(clips, 'C:/v/a.mp4', first.project)
+    expect(second.addedIds).toHaveLength(0)
+    expect(second.project).toBe(first.project)
+    expect(second.project.items).toHaveLength(2)
+  })
+  test('no suggestions -> nothing', () => {
+    expect(planAddAll([], 'C:/v/a.mp4', empty).addedIds).toHaveLength(0)
   })
 })

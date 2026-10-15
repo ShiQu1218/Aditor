@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 import type { ProjectItem } from '../editor/project'
-import { createMode, currentItem, isForeign, reduceMode } from './mode'
+import { createMode, currentItem, isForeign, reconcileMode, reduceMode } from './mode'
 
 const item = (id: string, source: string): ProjectItem => ({ id, source, start: 1, end: 5 })
 
@@ -71,5 +71,21 @@ describe('studio mode reducer', () => {
     const project = { version: 1 as const, name: 'p', items: [item('i1', 'C:\\v\\a.mp4')] }
     const s = reduceMode(createMode('C:\\v\\a.mp4'), { type: 'playItem', item: item('gone', 'C:\\v\\b.mp4') })
     expect(isForeign(s, project)).toBe(false)
+  })
+})
+
+describe('reconcileMode', () => {
+  const emptyProject = { version: 1 as const, name: 'p', items: [] }
+  test('falls back to source when the previewed item no longer exists (undo)', () => {
+    const s = reduceMode(createMode('C:\v\a.mp4'), { type: 'playItem', item: item('gone', 'C:\v\a.mp4') })
+    expect(reconcileMode(s, emptyProject)).toEqual({ mode: 'source', curItemId: null, sourceVideo: 'C:\v\a.mp4' })
+  })
+  test('keeps project mode while the item exists; source stays source', () => {
+    const it = item('i1', 'C:\v\a.mp4')
+    const project = { version: 1 as const, name: 'p', items: [it] }
+    const s = reduceMode(createMode('C:\v\a.mp4'), { type: 'playItem', item: it })
+    expect(reconcileMode(s, project)).toBe(s)
+    const src = createMode('C:\v\a.mp4')
+    expect(reconcileMode(src, project)).toBe(src)
   })
 })

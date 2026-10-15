@@ -19,7 +19,7 @@ export function AppShell({ active, projectCount, onNavigate, children }: AppShel
 
   return (
     <ToastProvider>
-      <OverlayProvider>
+      <OverlayProvider queueOpen={queueOpen}>
         <div className="app">
           <Rail
             active={active}
