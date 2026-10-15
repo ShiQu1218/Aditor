@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { toCurrentTime, fromCurrentTime, formatTime } from './time'
+import { toCurrentTime, fromCurrentTime, formatTime, getStartOffset } from './time'
 
 describe('time utilities', () => {
   it('toCurrentTime and fromCurrentTime roundtrip', () => {
@@ -8,6 +8,11 @@ describe('time utilities', () => {
     const ct = toCurrentTime(t, offset)
     expect(ct).toBe(17.5)
     expect(fromCurrentTime(ct, offset)).toBe(12.5)
+  })
+
+  it('getStartOffset returns 0.0 for video', () => {
+    expect(getStartOffset()).toBe(0.0)
+    expect(getStartOffset({ start_time: 5.0 } as any)).toBe(0.0)
   })
 
   it('fromCurrentTime clamps to 0', () => {

@@ -27,7 +27,13 @@
 - **Manual GUI check TODO**: In desktop UI, verify visually importing 5 Exports videos from `E:\Outplayed\Outplayed\Exports` displays knock/assist badges on cards and progress bar while analyzing. (Automated tests verify library and queue behavior).
 
 ### Task 3: 時間軸與片段的純函式模型
-- **Status**: Completed
+- **Status**: Completed (commit `0a0ec9a`)
 - **Vitest**: 26 passed (time conversions, formatTime, timeline zoom/pan/heatmap/hitTest/nextEvent, clip creation/resize/supercut/merging)
+
+### Task 4: 檢視器畫面
+- **Status**: Completed
+- **Vitest**: 32 passed (viewer state reducer, event corrections retention, clip replacements, time utilities)
+- **Manual GUI check TODO**: In desktop UI, open an Exports video in Viewer, verify clicking event marker seeks to ~8 seconds before event, AI autoclip dialog produces clips, and deleting an event persists across reopen. (Automated tests verify reducer, canvas hit-test, and cache synchronization).
+
 
 

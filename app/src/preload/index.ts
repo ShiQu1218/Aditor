@@ -33,6 +33,10 @@ const api = {
   queue: {
     enqueue: (path: string) => ipcRenderer.invoke('queue:enqueue', path),
     cancel: (path: string) => ipcRenderer.invoke('queue:cancel', path)
+  },
+  cache: {
+    load: (path: string) => ipcRenderer.invoke('cache:load', path),
+    save: (doc: unknown) => ipcRenderer.invoke('cache:save', doc)
   }
 }
 
