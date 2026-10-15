@@ -431,7 +431,7 @@ def test_uses_final_counted():  # counted_override=False 的事件不計入
   - `cache.merge_reanalysis(old_events: list[Event], new_auto: list[Event]) -> tuple[list[Event], list[Event]]`：回傳 `(merged, unmatched)`；保留所有 `source="manual"`；舊 auto 事件的 `deleted`/`counted_override` 依「同 type 且 |Δt| ≤ 1.0」轉移到最近的新 auto 事件；轉移不到且帶有使用者狀態的舊事件放入 `unmatched`。
   - `cache.merge_clips(old_clips: list[Clip], new_ai: list[Clip]) -> list[Clip]`：保留 `origin="manual"`，`ai` 換成新的。
 
-- [ ] **Step 1: 寫失敗測試**
+- [x] **Step 1: 寫失敗測試**
 
 ```python
 def test_cache_key_path_only(tmp_path):     # 同路徑不同大小寫/斜線 → 同一個 key；檔案內容改變 key 不變
@@ -445,8 +445,8 @@ def test_merge_reports_unmatched():
 def test_merge_clips_keeps_manual():
 ```
 
-- [ ] **Step 2: 確認失敗** → **Step 3: 實作** → **Step 4: 確認通過**
-- [ ] **Step 5: Commit** `feat(engine): cache storage and reanalysis merge`
+- [x] **Step 2: 確認失敗** → **Step 3: 實作** → **Step 4: 確認通過**
+- [x] **Step 5: Commit** `feat(engine): cache storage and reanalysis merge`
 
 ---
 
