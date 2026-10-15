@@ -7,24 +7,57 @@ export type TargetKind = 'native' | 'text' | 'none'
 export interface ElementLike {
   tagName: string
   parentElement?: ElementLike | null
+  /** 瀏覽器計算後（含祖先繼承）的可編輯狀態；測試假物件可省略 */
+  isContentEditable?: boolean
   getAttribute(name: string): string | null
 }
 
 const ZONES = new Set(['src', 'hl', 'ev', 'proj'])
-const NATIVE_ROLES = new Set(['slider', 'checkbox', 'radio'])
+const TEXT_ROLES = new Set(['textbox', 'searchbox', 'combobox', 'spinbutton'])
+const NATIVE_ROLES = new Set([
+  'slider',
+  'checkbox',
+  'radio',
+  'tab',
+  'menuitem',
+  'menuitemcheckbox',
+  'menuitemradio',
+  'switch',
+  'button',
+  'link'
+])
 const TEXT_INPUT_TYPES = new Set(['text', 'number', 'search', 'email', 'url', 'password', 'tel', ''])
 
-/** button/select/a/role=slider|checkbox|radio/非文字 input → native；文字 input/textarea → text。 */
+function isEditable(el: ElementLike): boolean {
+  if (typeof el.isContentEditable === 'boolean') return el.isContentEditable
+  // 無 isContentEditable 時手動沿祖先找 contenteditable
+  for (let cur: ElementLike | null = el; cur; cur = cur.parentElement ?? null) {
+    const v = cur.getAttribute('contenteditable')
+    if (v === null) continue
+    const t = v.toLowerCase()
+    return t === '' || t === 'true' || t === 'plaintext-only'
+  }
+  return false
+}
+
+/**
+ * button/select/a/role=slider|tab|menuitem|switch…/非文字 input → native；
+ * 文字 input/textarea/contenteditable/role=textbox… → text；其餘（含 role=option/listbox/row/gridcell/listitem）→ none。
+ *
+ * 清單列（hl/ev/proj 的 role=option/listitem）不可使用 <button>，
+ * 否則 Enter/Delete 區域鍵會被原生控制項規則放行（resolveKey 回傳 null）。
+ */
 export function targetKindOf(el: ElementLike | null | undefined): TargetKind {
   if (!el || typeof el.tagName !== 'string') return 'none'
   const tag = el.tagName.toUpperCase()
-  if (tag === 'TEXTAREA') return 'text'
+  if (tag === 'TEXTAREA' || isEditable(el)) return 'text'
+  const role = el.getAttribute('role')
+  if (role && TEXT_ROLES.has(role)) return 'text'
   if (tag === 'INPUT') {
     const type = (el.getAttribute('type') ?? '').toLowerCase()
     return TEXT_INPUT_TYPES.has(type) ? 'text' : 'native'
   }
   if (tag === 'BUTTON' || tag === 'SELECT' || tag === 'A') return 'native'
-  const role = el.getAttribute('role')
   if (role && NATIVE_ROLES.has(role)) return 'native'
   return 'none'
 }

@@ -37,7 +37,12 @@ export const COMMANDS = [
   'closeOverlay',
   'showShortcuts',
   'focusSearch',
-  'toggleFavoriteFilter'
+  'toggleFavoriteFilter',
+  'seekSelectedEvent',
+  'selectPrevItem',
+  'selectNextItem',
+  'listPrev',
+  'listNext'
 ] as const
 export type Command = (typeof COMMANDS)[number]
 
@@ -49,6 +54,10 @@ export interface KeyInput {
   altKey: boolean
   metaKey: boolean
   repeat: boolean
+  /** IME 組字中 */
+  isComposing?: boolean
+  /** 組字中的 keydown 為 229 */
+  keyCode?: number
 }
 
 export interface KeyCtx {
@@ -118,67 +127,108 @@ function resolveCtrl(e: KeyInput, ctx: KeyCtx): Command | null {
   return null
 }
 
+/** 長按時仍可連續觸發的指令；其餘指令 repeat 一律忽略。 */
+const CONTINUOUS = new Set<Command>([
+  'seekBack',
+  'seekFwd',
+  'zoomIn',
+  'zoomOut',
+  'undo',
+  'redo',
+  'prevEvent',
+  'nextEvent',
+  'moveItemLeft',
+  'moveItemRight',
+  'selectPrevItem',
+  'selectNextItem',
+  'listPrev',
+  'listNext'
+])
+
 export function resolveKey(e: KeyInput, ctx: KeyCtx): Command | null {
+  // IME 組字中（含 keyCode 229）一律不處理
+  if (e.isComposing || e.keyCode === 229) return null
+  // AltGr 在 Windows 會同時帶 ctrl+alt：不是快捷鍵
+  if (e.ctrlKey && e.altKey) return null
+  const cmd = resolveInner(e, ctx)
+  if (cmd && e.repeat && !CONTINUOUS.has(cmd)) return null
+  return cmd
+}
+
+function resolveInner(e: KeyInput, ctx: KeyCtx): Command | null {
   const ctrl = e.ctrlKey || e.metaKey
 
   if (ctrl) return resolveCtrl(e, ctx)
 
-  // Esc：浮層優先，其次專案模式返回來源，否則清除選取／關閉抽屜
+  // Esc：浮層優先；焦點在輸入框／原生控制項時不得返回來源（例如取消 IME 組字）
   if (e.key === 'Escape') {
     if (ctx.overlayOpen) return 'closeOverlay'
+    if (ctx.target !== 'none') return null
     if (ctx.screen !== 'studio') return null
     return ctx.mode === 'project' ? 'backToSource' : 'closeOverlay'
   }
 
-  // 輸入框一律不攔截無修飾鍵（含 Alt 組合）
-  if (ctx.target === 'text') return null
-
-  // '?' 在輸入框以外皆可開啟（原生控制項亦可）
-  if (e.key === '?') return 'showShortcuts'
-
-  if (ctx.screen !== 'studio') return null
-
-  // Alt+←/→：只在專案軌，原生控制項聚焦時也作用
-  if (e.altKey) {
+  if (ctx.screen === 'studio' && e.altKey) {
+    // Alt+←/→：只在專案軌，輸入框與原生控制項聚焦時也作用（規則 1：Ctrl/Alt 除外）
     if (ctx.zone !== 'proj') return null
     if (e.key === 'ArrowLeft') return 'moveItemLeft'
     if (e.key === 'ArrowRight') return 'moveItemRight'
     return null
   }
 
+  // 輸入框一律不攔截無修飾鍵
+  if (ctx.target === 'text') return null
+
+  // '?' 在輸入框以外皆可開啟（原生控制項亦可）
+  if (!e.altKey && e.key === '?') return 'showShortcuts'
+
+  if (ctx.screen !== 'studio' || e.altKey) return null
+
   const native = ctx.target === 'native'
   const isSpace = e.code === 'Space' || e.key === ' '
 
   // 原生控制項保留 Space／Enter／方向鍵／Delete
-  if (isSpace) return native || e.repeat ? null : 'play'
+  if (isSpace) return native ? null : 'play'
 
   switch (e.key) {
     case 'Enter':
-      if (native || e.repeat) return null
+      if (native) return null
       if (ctx.zone === 'hl') return 'acceptSuggestion'
+      if (ctx.zone === 'ev') return 'seekSelectedEvent'
       if (ctx.zone === 'proj') return 'playItem'
-      return null // 事件清單的「跳到選取事件」由清單自身處理，來源軌無作用
+      return null
     case 'Delete':
-      if (native || e.repeat) return null
+      if (native) return null
       if (ctx.zone === 'hl') return 'skipSuggestion'
       if (ctx.zone === 'ev') return 'deleteSelectedEvents'
       if (ctx.zone === 'proj') return 'deleteProjectItem'
       return null
     case 'ArrowLeft':
-      return !native && ctx.zone === 'src' ? 'seekBack' : null
+      if (native || e.shiftKey) return null
+      if (ctx.zone === 'src') return 'seekBack'
+      if (ctx.zone === 'proj') return 'selectPrevItem'
+      return null
     case 'ArrowRight':
-      return !native && ctx.zone === 'src' ? 'seekFwd' : null
+      if (native || e.shiftKey) return null
+      if (ctx.zone === 'src') return 'seekFwd'
+      if (ctx.zone === 'proj') return 'selectNextItem'
+      return null
+    case 'ArrowUp':
+    case 'ArrowDown':
+      if (native || e.shiftKey) return null
+      if (ctx.zone !== 'hl' && ctx.zone !== 'ev') return null
+      return e.key === 'ArrowUp' ? 'listPrev' : 'listNext'
     case '[':
-      return e.repeat ? null : 'setStart'
+      return 'setStart'
     case ']':
-      return e.repeat ? null : 'setEnd'
+      return 'setEnd'
   }
   if (e.shiftKey) return null
   switch (e.key.toLowerCase()) {
     case 's':
-      return e.repeat ? null : 'speed'
+      return 'speed'
     case 'm':
-      return e.repeat ? null : 'addEvent'
+      return 'addEvent'
   }
   return null
 }
@@ -232,5 +282,10 @@ export const KEY_TABLE: KeyRow[] = [
   row('closeOverlay', 'Esc', S.global),
   row('showShortcuts', '?', S.global),
   row('focusSearch', 'Ctrl+F', `${S.library}／${S.settings}`),
-  row('toggleFavoriteFilter', 'Ctrl+D', S.library)
+  row('toggleFavoriteFilter', 'Ctrl+D', S.library),
+  row('seekSelectedEvent', 'Enter', S.ev),
+  row('selectPrevItem', '←', S.proj),
+  row('selectNextItem', '→', S.proj),
+  row('listPrev', '↑', `${S.hl}／${S.ev}`),
+  row('listNext', '↓', `${S.hl}／${S.ev}`)
 ]

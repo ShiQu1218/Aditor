@@ -138,7 +138,12 @@ export const shellI18n = {
       closeOverlay: '關閉浮層／清除選取',
       showShortcuts: '快捷鍵說明',
       focusSearch: '聚焦搜尋',
-      toggleFavoriteFilter: '切換只顯示收藏'
+      toggleFavoriteFilter: '切換只顯示收藏',
+      seekSelectedEvent: '跳到選取事件',
+      selectPrevItem: '選取上一個片段',
+      selectNextItem: '選取下一個片段',
+      listPrev: '上一項',
+      listNext: '下一項'
     }
   },
   legacyEditor: '舊專案編輯'

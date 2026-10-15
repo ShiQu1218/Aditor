@@ -1,4 +1,5 @@
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
+import { attachKeymap, createKeyDownHandler, type KeymapState } from '../hooks/useShortcuts'
 import { COMMANDS, KEY_TABLE, resolveKey, type KeyCtx, type KeyInput } from './keymap'
 import { targetKindOf, zoneOf, type ElementLike } from './focusZone'
 
@@ -31,9 +32,9 @@ describe('resolveKey 矩陣', () => {
     }
   })
 
-  test('Enter: hl→acceptSuggestion, ev→null (跳到事件由清單自行處理), proj→playItem, src→null', () => {
+  test('Enter: hl→acceptSuggestion, ev→seekSelectedEvent, proj→playItem, src→null', () => {
     expect(resolveKey(k('Enter'), ctx({ zone: 'hl' }))).toBe('acceptSuggestion')
-    expect(resolveKey(k('Enter'), ctx({ zone: 'ev' }))).toBeNull()
+    expect(resolveKey(k('Enter'), ctx({ zone: 'ev' }))).toBe('seekSelectedEvent')
     expect(resolveKey(k('Enter'), ctx({ zone: 'proj' }))).toBe('playItem')
     expect(resolveKey(k('Enter'), ctx({ zone: 'src' }))).toBeNull()
   })
@@ -130,8 +131,14 @@ describe('resolveKey 矩陣', () => {
     expect(resolveKey(k('ArrowLeft'), ctx({ zone: 'src' }))).toBe('seekBack')
     expect(resolveKey(k('ArrowRight'), ctx({ zone: 'src' }))).toBe('seekFwd')
     expect(resolveKey(k('ArrowRight'), ctx({ zone: 'src', target: 'native' }))).toBeNull()
-    expect(resolveKey(k('ArrowRight'), ctx({ zone: 'proj' }))).toBeNull()
-    expect(resolveKey(k('ArrowDown'), ctx({ zone: 'ev' }))).toBeNull()
+    expect(resolveKey(k('ArrowRight'), ctx({ zone: 'proj' }))).toBe('selectNextItem')
+    expect(resolveKey(k('ArrowLeft'), ctx({ zone: 'proj' }))).toBe('selectPrevItem')
+    expect(resolveKey(k('ArrowDown'), ctx({ zone: 'ev' }))).toBe('listNext')
+    expect(resolveKey(k('ArrowUp'), ctx({ zone: 'hl' }))).toBe('listPrev')
+    expect(resolveKey(k('ArrowUp'), ctx({ zone: 'src' }))).toBeNull()
+    expect(resolveKey(k('ArrowLeft'), ctx({ zone: 'hl' }))).toBeNull()
+    expect(resolveKey(k('ArrowDown'), ctx({ zone: 'ev', target: 'native' }))).toBeNull()
+    expect(resolveKey(k('ArrowRight', { shiftKey: true }), ctx({ zone: 'proj' }))).toBeNull()
     expect(resolveKey(k('ArrowLeft', { ctrlKey: true }), ctx({ zone: 'ev' }))).toBe('prevEvent')
     expect(resolveKey(k('ArrowRight', { ctrlKey: true }), ctx({ target: 'native' }))).toBe('nextEvent')
     expect(resolveKey(k('=', { ctrlKey: true }), ctx())).toBe('zoomIn')
@@ -152,7 +159,107 @@ describe('resolveKey 矩陣', () => {
   })
 })
 
+describe('IME / AltGr / Esc / Alt / repeat', () => {
+  test('組字中一律 null', () => {
+    const c = ctx({ zone: 'src', mode: 'project' })
+    expect(resolveKey(k('Escape', { isComposing: true }), c)).toBeNull()
+    expect(resolveKey(k(' ', { isComposing: true }), c)).toBeNull()
+    expect(resolveKey(k('z', { ctrlKey: true, isComposing: true }), c)).toBeNull()
+    expect(resolveKey(k('s', { isComposing: true }), c)).toBeNull()
+    expect(resolveKey(k('Process', { keyCode: 229 }), c)).toBeNull()
+    expect(resolveKey(k('s', { keyCode: 229 }), c)).toBeNull()
+    expect(resolveKey(k('s', { keyCode: 83 }), c)).toBe('speed')
+  })
+  test('Esc 在輸入框／原生控制項不返回來源，僅浮層時關閉', () => {
+    for (const target of ['text', 'native'] as const) {
+      expect(resolveKey(k('Escape'), ctx({ mode: 'project', target }))).toBeNull()
+      expect(resolveKey(k('Escape'), ctx({ mode: 'source', target }))).toBeNull()
+      expect(resolveKey(k('Escape'), ctx({ mode: 'project', target, overlayOpen: true }))).toBe(
+        'closeOverlay'
+      )
+    }
+  })
+  test('AltGr (ctrl+alt) 不觸發 Ctrl 或括號快捷鍵', () => {
+    const c = ctx({ zone: 'proj' })
+    const ag = { ctrlKey: true, altKey: true }
+    expect(resolveKey(k('q', ag), c)).toBeNull()
+    expect(resolveKey(k('[', ag), c)).toBeNull()
+    expect(resolveKey(k(']', ag), c)).toBeNull()
+    expect(resolveKey(k('ArrowLeft', ag), c)).toBeNull()
+    expect(resolveKey(k('s', { altKey: true }), c)).toBeNull()
+    expect(resolveKey(k('[', { altKey: true }), c)).toBeNull()
+  })
+  test('Alt+←/→ 在 proj 區於文字框／原生控制項也作用', () => {
+    for (const target of ['text', 'native', 'none'] as const) {
+      expect(resolveKey(k('ArrowLeft', { altKey: true }), ctx({ zone: 'proj', target }))).toBe('moveItemLeft')
+      expect(resolveKey(k('ArrowRight', { altKey: true }), ctx({ zone: 'proj', target }))).toBe('moveItemRight')
+    }
+    expect(resolveKey(k('ArrowLeft', { altKey: true }), ctx({ zone: 'ev', target: 'text' }))).toBeNull()
+  })
+  test('repeat 僅連續類指令可通過', () => {
+    const r = { repeat: true }
+    expect(resolveKey(k('z', { ctrlKey: true, ...r }), ctx())).toBe('undo')
+    expect(resolveKey(k('ArrowLeft', { ctrlKey: true, ...r }), ctx())).toBe('prevEvent')
+    expect(resolveKey(k('=', { ctrlKey: true, ...r }), ctx())).toBe('zoomIn')
+    expect(resolveKey(k('ArrowLeft', { altKey: true, ...r }), ctx({ zone: 'proj' }))).toBe('moveItemLeft')
+    expect(resolveKey(k('ArrowRight', r), ctx({ zone: 'proj' }))).toBe('selectNextItem')
+    expect(resolveKey(k('ArrowDown', r), ctx({ zone: 'ev' }))).toBe('listNext')
+    expect(resolveKey(k('q', { ctrlKey: true, ...r }), ctx())).toBeNull()
+    expect(resolveKey(k('s', { ctrlKey: true, ...r }), ctx())).toBeNull()
+    expect(resolveKey(k('e', { ctrlKey: true, shiftKey: true, ...r }), ctx())).toBeNull()
+    expect(resolveKey(k('Escape', r), ctx({ mode: 'project' }))).toBeNull()
+    expect(resolveKey(k('['), ctx())).toBe('setStart')
+    expect(resolveKey(k('[', r), ctx())).toBeNull()
+  })
+})
+
 describe('KEY_TABLE', () => {
+  const KEYMAP: Record<string, string> = {
+    '←': 'ArrowLeft',
+    '→': 'ArrowRight',
+    '↑': 'ArrowUp',
+    '↓': 'ArrowDown',
+    Esc: 'Escape',
+    Space: ' '
+  }
+  const parse = (keys: string): KeyInput | null => {
+    const one = keys.split(' ／ ')[0].trim()
+    if (one.includes('滾輪')) return null
+    const idx = one.lastIndexOf('+', one.length - 2) // 最後一段可能就是 '+'
+    const mods = idx >= 0 ? one.slice(0, idx).split('+') : []
+    const key = idx >= 0 ? one.slice(idx + 1) : one
+    return k(KEYMAP[key] ?? key, {
+      ctrlKey: mods.includes('Ctrl'),
+      altKey: mods.includes('Alt'),
+      shiftKey: mods.includes('Shift')
+    })
+  }
+  const zoneOfScope = (scope: string): KeyCtx['zone'] => {
+    if (scope.includes('來源')) return 'src'
+    if (scope.includes('精華')) return 'hl'
+    if (scope.includes('事件')) return 'ev'
+    if (scope.includes('專案軌')) return 'proj'
+    return null
+  }
+  test('KEY_TABLE keys 與 resolveKey 一致（每列第一組按鍵）', () => {
+    for (const r of KEY_TABLE) {
+      const input = parse(r.keys)
+      if (!input) continue
+      const screen: KeyCtx['screen'] = r.scope.includes('影片庫')
+        ? 'library'
+        : r.scope.includes('設定')
+          ? 'settings'
+          : 'studio'
+      const mode: KeyCtx['mode'] = r.command === 'backToSource' ? 'project' : 'source'
+      const got = resolveKey(input, ctx({ screen, mode, zone: zoneOfScope(r.scope) }))
+      expect([r.command, r.keys, got]).toEqual([r.command, r.keys, r.command])
+    }
+  })
+  test('KEY_TABLE 另一組按鍵（redo 的 Ctrl+Shift+Z）', () => {
+    const redo = KEY_TABLE.find((r) => r.command === 'redo')!
+    expect(redo.keys).toContain('Ctrl+Shift+Z')
+    expect(resolveKey(k('z', { ctrlKey: true, shiftKey: true }), ctx())).toBe('redo')
+  })
   test('KEY_TABLE covers every Command exactly once', () => {
     const cmds = KEY_TABLE.map((r) => r.command)
     expect(new Set(cmds).size).toBe(cmds.length)
@@ -162,6 +269,68 @@ describe('KEY_TABLE', () => {
       expect(r.label.length).toBeGreaterThan(0)
       expect(r.scope.length).toBeGreaterThan(0)
     }
+  })
+})
+
+describe('useKeymap 核心（createKeyDownHandler / attachKeymap）', () => {
+  const evt = (key: string, extra: Record<string, unknown> = {}) => {
+    const e = {
+      ...k(key),
+      defaultPrevented: false,
+      target: null,
+      preventDefault: vi.fn(() => {
+        e.defaultPrevented = true
+      }),
+      ...extra
+    }
+    return e as unknown as KeyboardEvent & { preventDefault: ReturnType<typeof vi.fn> }
+  }
+  const state = (handlers: KeymapState['handlers']): KeymapState => ({
+    handlers,
+    screen: 'studio',
+    mode: 'source',
+    overlayOpen: false
+  })
+
+  test('有指令且有 handler 才 preventDefault', () => {
+    const play = vi.fn()
+    const h = createKeyDownHandler(() => state({ play }))
+    const e1 = evt(' ')
+    h(e1)
+    expect(play).toHaveBeenCalledTimes(1)
+    expect(e1.preventDefault).toHaveBeenCalled()
+    const e2 = evt('s') // speed 無 handler
+    h(e2)
+    expect(e2.preventDefault).not.toHaveBeenCalled()
+    const e3 = evt('x') // 無指令
+    h(e3)
+    expect(e3.preventDefault).not.toHaveBeenCalled()
+  })
+  test('已 defaultPrevented 或 IME 組字時直接略過', () => {
+    const play = vi.fn()
+    const h = createKeyDownHandler(() => state({ play }))
+    h(evt(' ', { defaultPrevented: true }))
+    h(evt(' ', { isComposing: true }))
+    h(evt(' ', { keyCode: 229 }))
+    expect(play).not.toHaveBeenCalled()
+  })
+  test('attachKeymap 解除後不再觸發，且使用最新 handlers', () => {
+    const listeners = new Set<(e: KeyboardEvent) => void>()
+    const fakeWin = {
+      addEventListener: (_: string, fn: (e: KeyboardEvent) => void) => listeners.add(fn),
+      removeEventListener: (_: string, fn: (e: KeyboardEvent) => void) => listeners.delete(fn)
+    } as unknown as Window
+    const first = vi.fn()
+    const second = vi.fn()
+    let cur = state({ play: first })
+    const detach = attachKeymap(fakeWin, () => cur)
+    expect(listeners.size).toBe(1)
+    cur = state({ play: second })
+    ;[...listeners].forEach((fn) => fn(evt(' ')))
+    expect(first).not.toHaveBeenCalled()
+    expect(second).toHaveBeenCalledTimes(1)
+    detach()
+    expect(listeners.size).toBe(0)
   })
 })
 
@@ -184,6 +353,26 @@ describe('focusZone helpers', () => {
     expect(targetKindOf(el('TEXTAREA'))).toBe('text')
     expect(targetKindOf(el('DIV'))).toBe('none')
     expect(targetKindOf(null)).toBe('none')
+  })
+  test('targetKindOf: contenteditable 與 ARIA 角色', () => {
+    expect(targetKindOf(el('DIV', { contenteditable: 'true' }))).toBe('text')
+    expect(targetKindOf(el('DIV', { contenteditable: '' }))).toBe('text')
+    expect(targetKindOf(el('DIV', { contenteditable: 'plaintext-only' }))).toBe('text')
+    expect(targetKindOf(el('DIV', { contenteditable: 'false' }))).toBe('none')
+    expect(targetKindOf(el('SPAN', {}, el('DIV', { contenteditable: 'true' })))).toBe('text')
+    expect(targetKindOf({ ...el('SPAN'), isContentEditable: true })).toBe('text')
+    expect(
+      targetKindOf({ ...el('SPAN', { contenteditable: 'true' }), isContentEditable: false })
+    ).toBe('none')
+    for (const role of ['textbox', 'searchbox', 'combobox', 'spinbutton']) {
+      expect(targetKindOf(el('DIV', { role }))).toBe('text')
+    }
+    for (const role of ['tab', 'menuitem', 'menuitemcheckbox', 'menuitemradio', 'switch', 'button', 'link', 'slider', 'checkbox', 'radio']) {
+      expect(targetKindOf(el('DIV', { role }))).toBe('native')
+    }
+    for (const role of ['option', 'listbox', 'row', 'gridcell', 'listitem']) {
+      expect(targetKindOf(el('DIV', { role }))).toBe('none')
+    }
   })
   test('zoneOf walks up to data-zone', () => {
     const wrap = el('DIV', { 'data-zone': 'ev' })
