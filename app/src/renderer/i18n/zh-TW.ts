@@ -81,3 +81,18 @@ export const i18n = {
     complete: '匯出完成！'
   }
 }
+
+export const shellI18n = {
+  rail: {
+    library: '影片庫',
+    studio: '工作室（精華＋專案）',
+    studioLabel: '工作室',
+    queue: '分析佇列',
+    shortcuts: '快捷鍵 (?)',
+    shortcutsLabel: '快捷鍵',
+    settings: '設定',
+    mainNav: '主要導覽'
+  },
+  settings: { title: '設定', placeholder: '設定頁面即將推出。' },
+  legacyEditor: '舊專案編輯'
+}

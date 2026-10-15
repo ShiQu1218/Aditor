@@ -13,7 +13,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "chokidar": "^4.0.3"
+    "chokidar": "^4.0.3",
+    "lucide-react": "^1.57.0"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",

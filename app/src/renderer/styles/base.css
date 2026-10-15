@@ -1,0 +1,24 @@
+/* 基礎樣式：reset、全域字型、焦點環、圖示尺寸 */
+* { box-sizing: border-box; }
+html, body, #root { margin: 0; height: 100%; }
+body {
+  background: var(--bg-app);
+  color: var(--text-1);
+  font-family: var(--font-ui);
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  letter-spacing: 0;
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+button { font: inherit; color: inherit; cursor: pointer; }
+input, select { font: inherit; color: inherit; }
+h1, h2, h3, h4, p { margin: 0; }
+h1, h2, h3, h4 { line-height: var(--lh-tight); letter-spacing: 0; }
+:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.ic { width: 18px; height: 18px; stroke-width: 2; flex: none; }
+.ic.sm { width: 14px; height: 14px; }
+.ic.lg { width: 24px; height: 24px; }
+.mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+kbd { font-family: var(--font-mono); font-size: 11px; padding: 1px 6px; border: 1px solid var(--line-strong); border-bottom-width: 2px; border-radius: var(--r-xs); color: var(--text-2); background: rgba(255,255,255,.04); }
+.hidden { display: none !important; }
