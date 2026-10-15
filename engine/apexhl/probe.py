@@ -62,13 +62,25 @@ def probe(path: str) -> VideoInfo:
 
 
 def keyframes(path: str) -> list[float]:
+    """掃描封包（不解碼）取得關鍵影格時間，已扣除 start_time。"""
     start = _start_time(path)
-    doc = _run(["-skip_frame", "nokey", "-select_streams", "v:0",
-                "-show_entries", "frame=pts_time", path])
+    try:
+        r = subprocess.run([ffbin.ffprobe(), "-v", "error", "-select_streams", "v:0",
+                            "-show_entries", "packet=pts_time,flags", "-of", "csv=p=0", path],
+                           capture_output=True, timeout=600)
+    except FileNotFoundError as e:
+        raise ProbeError(str(e)) from e
+    except subprocess.TimeoutExpired as e:
+        raise ProbeError("ffprobe 逾時") from e
+    if r.returncode != 0:
+        raise ProbeError(r.stderr.decode("utf-8", errors="replace")[-500:] or "ffprobe 失敗")
     out = []
-    for f in doc.get("frames", []):
-        v = f.get("pts_time")
-        if v not in (None, "N/A"):
-            out.append(round(float(v) - start, 3))
+    for line in r.stdout.decode("utf-8", errors="replace").splitlines():
+        ts, _, flags = line.strip().partition(",")
+        if "K" in flags and ts not in ("", "N/A"):
+            try:
+                out.append(round(float(ts) - start, 3))
+            except ValueError:
+                continue
     out.sort()
     return out
