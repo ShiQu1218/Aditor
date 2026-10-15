@@ -328,7 +328,7 @@ kbd { font-family: var(--font-mono); font-size: 11px; padding: 1px 6px; border: 
 .sc-grid div { display: flex; justify-content: space-between; align-items: center; padding: 4px 0; border-bottom: 1px solid var(--line); }
 
 /* ---------- 設定 ---------- */
-.settings { flex: 1; min-height: 0; display: flex; gap: 32px; padding: 20px 24px 0; overflow: hidden; }
+.settings { flex: 1; min-height: 0; display: flex; justify-content: center; gap: 32px; padding: 20px 24px 0; overflow: hidden; }
 .set-nav { width: 240px; flex: none; display: flex; flex-direction: column; gap: 12px; }
 .set-nav .search { width: 100%; }
 .set-nav .search kbd { display: none; }
@@ -342,7 +342,7 @@ kbd { font-family: var(--font-mono); font-size: 11px; padding: 1px 6px; border: 
 .settings .wrap { flex: 1; max-width: 720px; min-width: 0; overflow-y: auto; padding-bottom: 40px; display: flex; flex-direction: column; gap: 16px; align-content: flex-start; }
 .setcard.hide, .setrow.hide { display: none; }
 @media (max-width: 899px) {
-  .settings { flex-direction: column; gap: 12px; padding: 12px 16px 0; }
+  .settings { flex-direction: column; justify-content: flex-start; gap: 12px; padding: 12px 16px 0; }
   .set-nav { width: 100%; flex-direction: row; align-items: center; }
   .set-nav .search { width: 200px; flex: none; }
   .set-cats { flex-direction: row; overflow-x: auto; }
