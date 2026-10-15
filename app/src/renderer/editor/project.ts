@@ -150,10 +150,39 @@ export function serializeProject(p: Project): string {
   return JSON.stringify(p, null, 2)
 }
 
+export type ProjectShapeError = { kind: 'unsupported' | 'format'; message: string }
+
+/** 檢查任意資料是否為合法專案（版本、name、items 逐項形狀）；合法回 null。 */
+export function projectShapeError(data: unknown): ProjectShapeError | null {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return { kind: 'format', message: '不是專案物件' }
+  const d = data as Record<string, unknown>
+  if (typeof d.version === 'number' && d.version > 1) {
+    return { kind: 'unsupported', message: `不支援的專案版本 ${d.version}（unsupported version）` }
+  }
+  if (d.version !== 1) return { kind: 'format', message: '版本欄位無效' }
+  if (typeof d.name !== 'string') return { kind: 'format', message: 'name 必須是字串' }
+  if (!Array.isArray(d.items)) return { kind: 'format', message: 'items 必須是陣列' }
+  for (const [i, it] of d.items.entries()) {
+    const x = it as Partial<ProjectItem> | null
+    const ok =
+      !!x &&
+      typeof x === 'object' &&
+      typeof x.id === 'string' &&
+      x.id.length > 0 &&
+      typeof x.source === 'string' &&
+      x.source.length > 0 &&
+      typeof x.start === 'number' &&
+      Number.isFinite(x.start) &&
+      typeof x.end === 'number' &&
+      Number.isFinite(x.end)
+    if (!ok) return { kind: 'format', message: `items[${i}] 格式不符` }
+  }
+  return null
+}
+
 export function deserializeProject(jsonStr: string): Project {
   const data = JSON.parse(jsonStr)
-  if (!data || data.version !== 1 || !Array.isArray(data.items)) {
-    throw new Error('Invalid project file format')
-  }
+  const err = projectShapeError(data)
+  if (err) throw new Error(`Invalid project file format: ${err.message}`)
   return data as Project
 }

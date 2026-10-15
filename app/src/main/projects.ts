@@ -1,6 +1,6 @@
 import fs from 'fs'
 import path from 'path'
-import { ProjectItem } from '../renderer/editor/project'
+import { ProjectItem, projectShapeError } from '../renderer/editor/project'
 
 /** 磁碟上的專案：renderer 的 Project 加上檔案 id。 */
 export interface StoredProject {
@@ -20,64 +20,147 @@ export interface ProjectListEntry {
 
 /** 專案 id 僅允許檔名安全字元（`p_` 開頭由 renderer 產生）。 */
 const ID_RE = /^[A-Za-z0-9_-]+$/
+/** 看起來合法、實際是 `String(undefined)` 之類的壞值。 */
+const BAD_IDS = new Set(['undefined', 'null', 'NaN'])
+/** 每個專案最多保留的損毀備份數 */
+const MAX_BACKUPS = 3
+
+export type ProjectErrorKind = 'save' | 'corrupt' | 'transient' | 'unsupported'
+
+function isValidId(id: unknown): id is string {
+  return typeof id === 'string' && id.length > 0 && ID_RE.test(id) && !BAD_IDS.has(id)
+}
 
 /**
  * `%APPDATA%\ApexHighlighter\projects\<id>.json` 的讀寫者。
- * 寫入走暫存檔＋rename（原子替換，失敗保留上一版）；
- * 讀取損毀檔案改名為 `<id>.bak.json` 並在 `lastError` 記錄。
+ * 寫入走暫存檔＋fsync＋rename（原子替換，失敗保留上一版）；
+ * 讀取：只有 JSON／格式錯誤才把檔案改名為 `<id>.bak.<時間戳>.json`（不覆蓋、保留最新 3 份）；
+ * 暫時性讀取錯誤（EBUSY／EACCES…）不動檔案；較新版本的檔案原樣保留。
  */
 export class ProjectStore {
   private dir: string
   /** 最近一次讀寫失敗訊息（成功時清除）；供 UI 顯示。 */
   lastError: string | null = null
+  lastErrorKind: ProjectErrorKind | null = null
 
   constructor(dir: string) {
     this.dir = dir
   }
 
+  private setError(kind: ProjectErrorKind, message: string): void {
+    this.lastErrorKind = kind
+    this.lastError = message
+  }
+
+  private clearError(): void {
+    this.lastErrorKind = null
+    this.lastError = null
+  }
+
   private filePath(id: string): string {
-    if (!ID_RE.test(id)) {
-      throw new Error(`無效的專案 id：${id}`)
+    if (!isValidId(id)) {
+      throw new Error(`無效的專案 id：${String(id)}`)
     }
     return path.join(this.dir, `${id}.json`)
   }
 
-  async save(p: StoredProject): Promise<void> {
-    const file = this.filePath(p.id)
-    const tmp = `${file}.tmp`
+  /** 同步寫入（關閉視窗的 flushSync 路徑也走這裡）。 */
+  saveSync(p: StoredProject): void {
+    let tmp = ''
     try {
+      if (!p || typeof p !== 'object') throw new Error('專案資料無效')
+      const file = this.filePath(p.id)
+      const shape = projectShapeError(p)
+      if (shape) throw new Error(`專案資料無效：${shape.message}`)
+      tmp = `${file}.tmp`
       fs.mkdirSync(this.dir, { recursive: true })
-      fs.writeFileSync(tmp, JSON.stringify(p, null, 2), 'utf-8')
-      fs.renameSync(tmp, file)
-      this.lastError = null
-    } catch (err) {
-      this.lastError = `儲存專案失敗：${(err as Error).message}`
+      const fd = fs.openSync(tmp, 'w')
       try {
-        fs.unlinkSync(tmp)
-      } catch {}
+        fs.writeSync(fd, JSON.stringify(p, null, 2), null, 'utf-8')
+        fs.fsyncSync(fd)
+      } finally {
+        fs.closeSync(fd)
+      }
+      fs.renameSync(tmp, file)
+      this.clearError()
+    } catch (err) {
+      this.setError('save', `儲存專案失敗：${(err as Error).message}`)
+      if (tmp) {
+        try {
+          fs.unlinkSync(tmp)
+        } catch {}
+      }
       throw err
     }
   }
 
+  async save(p: StoredProject): Promise<void> {
+    this.saveSync(p)
+  }
+
   async load(id: string): Promise<StoredProject | null> {
     const file = this.filePath(id)
-    if (!fs.existsSync(file)) return null
+    let raw: string
     try {
-      const data = JSON.parse(fs.readFileSync(file, 'utf-8'))
-      if (!data || data.version !== 1 || typeof data.name !== 'string' || !Array.isArray(data.items)) {
-        throw new Error('格式不符')
-      }
-      return { ...data, id } as StoredProject
+      raw = fs.readFileSync(file, 'utf-8')
     } catch (err) {
-      this.lastError = `專案檔損毀（${id}.json）：${(err as Error).message}`
-      try {
-        fs.renameSync(file, path.join(this.dir, `${id}.bak.json`))
-      } catch {}
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') return null
+      // 暫時性錯誤（檔案被占用／權限）：不改名、不刪除，下次再試
+      this.setError('transient', `暫時無法讀取專案檔（${id}.json）：${(err as Error).message}`)
       return null
+    }
+    let data: unknown
+    try {
+      data = JSON.parse(raw)
+    } catch (err) {
+      this.quarantine(id, file, (err as Error).message)
+      return null
+    }
+    const shape = projectShapeError(data)
+    if (shape?.kind === 'unsupported') {
+      this.setError('unsupported', `專案檔 ${id}.json：${shape.message}`)
+      return null
+    }
+    if (shape) {
+      this.quarantine(id, file, shape.message)
+      return null
+    }
+    return { ...(data as StoredProject), id }
+  }
+
+  /** 損毀檔案改名為不重複的備份名，並只保留最新 MAX_BACKUPS 份。 */
+  private quarantine(id: string, file: string, reason: string): void {
+    this.setError('corrupt', `專案檔損毀（${id}.json）：${reason}`)
+    try {
+      let ts = Date.now()
+      let dest = path.join(this.dir, `${id}.bak.${ts}.json`)
+      while (fs.existsSync(dest)) {
+        ts += 1
+        dest = path.join(this.dir, `${id}.bak.${ts}.json`)
+      }
+      fs.renameSync(file, dest)
+      this.pruneBackups(id)
+    } catch {}
+  }
+
+  private pruneBackups(id: string): void {
+    const prefix = `${id}.bak.`
+    const re = /^(\d+)\.json$/
+    const baks = fs
+      .readdirSync(this.dir)
+      .filter((n) => n.startsWith(prefix))
+      .map((n) => ({ n, ts: Number(re.exec(n.slice(prefix.length))?.[1]) }))
+      .filter((x) => Number.isFinite(x.ts))
+      .sort((a, b) => b.ts - a.ts)
+    for (const old of baks.slice(MAX_BACKUPS)) {
+      try {
+        fs.unlinkSync(path.join(this.dir, old.n))
+      } catch {}
     }
   }
 
   async list(): Promise<ProjectListEntry[]> {
+    this.clearError()
     let names: string[]
     try {
       names = fs.readdirSync(this.dir)
@@ -86,20 +169,22 @@ export class ProjectStore {
     }
     const entries: ProjectListEntry[] = []
     for (const name of names) {
-      if (!name.endsWith('.json') || name.endsWith('.bak.json')) continue
+      if (!name.endsWith('.json') || name.includes('.bak.')) continue
+      const id = name.slice(0, -'.json'.length)
+      if (!isValidId(id)) continue
       const file = path.join(this.dir, name)
       try {
         const stat = fs.statSync(file)
         const data = JSON.parse(fs.readFileSync(file, 'utf-8'))
-        if (!data || data.version !== 1 || !Array.isArray(data.items)) continue
-        entries.push({
-          id: name.slice(0, -'.json'.length),
-          name: typeof data.name === 'string' ? data.name : name,
-          updatedAt: stat.mtimeMs,
-          items: data.items.length
-        })
-      } catch {
-        // 損毀檔案交由 load() 備份，清單先略過
+        const shape = projectShapeError(data)
+        if (shape) {
+          this.setError(shape.kind === 'unsupported' ? 'unsupported' : 'corrupt', `專案檔 ${name}：${shape.message}`)
+          continue
+        }
+        entries.push({ id, name: data.name, updatedAt: stat.mtimeMs, items: data.items.length })
+      } catch (err) {
+        // 損毀檔案留給 load() 備份；清單只記錄錯誤
+        this.setError('corrupt', `專案檔損毀（${name}）：${(err as Error).message}`)
       }
     }
     entries.sort((a, b) => b.updatedAt - a.updatedAt)
