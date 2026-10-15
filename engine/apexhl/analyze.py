@@ -146,7 +146,7 @@ def analyze(path: str, profile: Profile, *, cache_dir: Path, beside: bool = Fals
             doc["base_events"] = [e.to_dict() for e in base_events]
         return doc
 
-    stream = FrameStream(path, profile, start=start, hwaccel=hwaccel)
+    stream = FrameStream(path, profile, start=start, hwaccel=hwaccel, codec=info.codec)
     last_save = start
     last_t = start
     last_emit = -1e9

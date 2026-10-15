@@ -11,6 +11,8 @@ from . import ffbin
 from .profile import Profile
 
 HWACCEL_ARGS = ["-hwaccel", "auto"]
+# ffmpeg 預設用 libdav1d 解碼 AV1，該解碼器會忽略 -hwaccel；需指定原生 av1 解碼器才會走 D3D11VA。
+AV1_HWACCEL_ARGS = ["-hwaccel", "d3d11va", "-c:v", "av1"]
 LOGLEVEL = "error"
 FPS = 4
 STDERR_LIMIT = 64 * 1024
@@ -32,6 +34,16 @@ def build_filter(profile: Profile) -> str:
             f"[a1][b1]vstack")
 
 
+def build_input_args(codec: str | None, hwaccel: bool, start: float) -> list[str]:
+    """-i 之前的輸入選項（解碼器選項與 -ss 都必須在 -i 之前）。"""
+    args: list[str] = []
+    if hwaccel:
+        args += AV1_HWACCEL_ARGS if codec == "av1" else HWACCEL_ARGS
+    if start > 0:
+        args += ["-ss", f"{start:.3f}"]
+    return args
+
+
 class _Failed(Exception):
     """第一格輸出前 ffmpeg 就失敗（用於硬體解碼回退）。"""
 
@@ -39,10 +51,12 @@ class _Failed(Exception):
 class FrameStream:
     """可迭代的解碼串流。產出 (t, banner_bgr, spec_bgr)，t = start + k * 0.25。"""
 
-    def __init__(self, path: str, profile: Profile, *, start: float = 0.0, hwaccel: bool = True):
+    def __init__(self, path: str, profile: Profile, *, start: float = 0.0, hwaccel: bool = True,
+                 codec: str | None = None):
         self.path = path
         self.profile = profile
         self.start = start
+        self.codec = codec
         self.used_hwaccel = hwaccel
         self._stderr = bytearray()
         self._lock = threading.Lock()
@@ -69,10 +83,7 @@ class FrameStream:
 
     def _spawn(self, hwaccel: bool) -> subprocess.Popen:
         cmd = [ffbin.ffmpeg(), "-v", LOGLEVEL, "-nostdin"]
-        if hwaccel:
-            cmd += HWACCEL_ARGS
-        if self.start > 0:
-            cmd += ["-ss", f"{self.start:.3f}"]
+        cmd += build_input_args(self.codec, hwaccel, self.start)
         cmd += ["-i", self.path, "-filter_complex", build_filter(self.profile),
                 "-pix_fmt", "bgr24", "-f", "rawvideo", "pipe:1"]
         with self._lock:
@@ -144,5 +155,5 @@ class FrameStream:
 
 
 def iter_frames(path: str, profile: Profile, *, start: float = 0.0,
-                hwaccel: bool = True) -> FrameStream:
-    return FrameStream(path, profile, start=start, hwaccel=hwaccel)
+                hwaccel: bool = True, codec: str | None = None) -> FrameStream:
+    return FrameStream(path, profile, start=start, hwaccel=hwaccel, codec=codec)

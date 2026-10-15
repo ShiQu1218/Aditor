@@ -14,12 +14,13 @@ from pathlib import Path
 DEFAULT_PROFILE = Path(__file__).resolve().parents[1] / "templates" / "zh-TW"
 
 
-def run_once(video: str, profile, seconds: float, start: float, hwaccel: bool) -> dict:
+def run_once(video: str, profile, seconds: float, start: float, hwaccel: bool,
+             codec: str | None = None) -> dict:
     from apexhl.decode import FrameStream
     from apexhl.detect import Detector
 
     detector = Detector(profile, 1.0)
-    stream = FrameStream(video, profile, start=start, hwaccel=hwaccel)
+    stream = FrameStream(video, profile, start=start, hwaccel=hwaccel, codec=codec)
     t0 = time.perf_counter()
     first = None
     last_t = start
@@ -53,8 +54,10 @@ def main(argv: list[str] | None = None) -> int:
         s.reconfigure(encoding="utf-8")
     from apexhl.profile import load_profile
     profile = load_profile(Path(a.profile_dir))
+    from apexhl.probe import probe
+    codec = probe(a.video).codec
     for hw in (True, False):
-        r = run_once(a.video, profile, a.seconds, a.start, hw)
+        r = run_once(a.video, profile, a.seconds, a.start, hw, codec)
         label = "hwaccel auto" if hw else "軟體解碼  "
         note = "" if r["used_hwaccel"] == hw else "（硬體解碼失敗，已退回軟體）"
         print(f"{label}：影片 {r['video_s']:.1f} 秒 / 實際 {r['wall_s']:.1f} 秒 = "

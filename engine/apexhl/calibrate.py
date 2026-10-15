@@ -25,11 +25,12 @@ def scan_scales(frames: list[np.ndarray], detector: Detector) -> float:
 
 def _collect(path: str, profile: Profile, detector: Detector, start: float,
              budget: float, limit: float | None,
-             cancel: threading.Event | None = None) -> tuple[list[np.ndarray], float]:
+             cancel: threading.Event | None = None,
+             codec: str | None = None) -> tuple[list[np.ndarray], float]:
     """從 start 解碼最多 budget 秒（且不超過時間 limit），回傳 (命中 banner, 實際掃描秒數)。"""
     hits: list[np.ndarray] = []
     scanned = 0.0
-    stream = FrameStream(path, profile, start=start)
+    stream = FrameStream(path, profile, start=start, codec=codec)
     try:
         for t, banner, spec in stream:
             if cancel is not None and cancel.is_set():
@@ -53,8 +54,10 @@ def calibrate(path: str, info: VideoInfo, profile: Profile, *,
     以 scale=1.0 收集命中畫格，再回傳最佳水平比例；一張都沒有則 1.0。"""
     detector = Detector(profile)
     mid = info.duration / 2
-    hits, scanned = _collect(path, profile, detector, mid, max_scan_seconds, None, cancel)
+    hits, scanned = _collect(path, profile, detector, mid, max_scan_seconds, None, cancel,
+                             info.codec)
     if len(hits) < WANTED_HITS and mid > 0 and scanned < max_scan_seconds:
-        more, _ = _collect(path, profile, detector, 0.0, max_scan_seconds - scanned, mid, cancel)
+        more, _ = _collect(path, profile, detector, 0.0, max_scan_seconds - scanned, mid, cancel,
+                           info.codec)
         hits += more[:WANTED_HITS - len(hits)]
     return scan_scales(hits, detector)
