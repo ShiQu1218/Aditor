@@ -155,30 +155,31 @@
     <section class="screen" id="s-settings">
       <header class="topbar"><h1>設定</h1></header>
       <div class="settings">
-        <div class="wrap">
-          <div class="setcard"><h3>影片來源</h3>
+        <aside class="set-nav"><div class="search"><svg class="ic" data-ic="search"></svg><input id="set-search" placeholder="搜尋設定"></div><div class="set-cats"><button class="set-cat active" data-cat="src"><svg class="ic" data-ic="folder"></svg><span>影片來源</span></button><button class="set-cat" data-cat="perf"><svg class="ic" data-ic="sliders"></svg><span>分析與效能</span></button><button class="set-cat" data-cat="proxy"><svg class="ic" data-ic="film"></svg><span>預覽與代理檔</span></button><button class="set-cat" data-cat="clip"><svg class="ic" data-ic="scissors"></svg><span>剪輯預設值</span></button><button class="set-cat" data-cat="export"><svg class="ic" data-ic="export"></svg><span>匯出</span></button><button class="set-cat" data-cat="about"><svg class="ic" data-ic="flag"></svg><span>關於</span></button></div></aside>
+        <div class="wrap" id="set-wrap"><div class="dim hidden" id="set-none" style="padding:40px 0">沒有符合的設定</div>
+          <div class="setcard" data-cat="src"><h3>影片來源</h3>
             <div class="setrow"><div>監看資料夾<span class="newtag">需新增 IPC</span><small>D:\Outplayed\Apex Legends　·　E:\Captures\Apex（新影片自動匯入並排入分析）</small></div><button class="btn sm"><svg class="ic sm" data-ic="plus"></svg>新增資料夾</button></div>
             <div class="setrow"><div>新影片自動分析<small>關閉後只匯入，需手動按「分析」</small></div><button class="switch on"></button></div>
           </div>
-          <div class="setcard"><h3>分析與效能</h3>
+          <div class="setcard" data-cat="perf"><h3>分析與效能</h3>
             <div class="setrow"><div>解碼方式<small>硬體解碼失敗時會自動改用軟體解碼並提示</small></div><select class="select" style="width:180px"><option>自動（硬體優先）</option><option>強制軟體解碼</option></select></div>
             <div class="setrow"><div>快取位置<small>預設存在 %APPDATA%\ApexHighlighter\cache，不寫入 Outplayed 目錄</small></div><select class="select" style="width:180px"><option>App 資料夾</option><option>影片旁（.apexhl.json）</option></select></div>
             <div class="setrow"><div>低效能模式<span class="newtag">新</span><small>關閉動畫、縮圖改為靜態、時間軸熱度條降為 60 格</small></div><button class="switch"></button></div>
           </div>
-          <div class="setcard"><h3>預覽與代理檔</h3>
+          <div class="setcard" data-cat="proxy"><h3>預覽與代理檔</h3>
             <div class="setrow"><div>播放不流暢時建議產生代理檔<small>以 mediaCapabilities 判斷；匯出一律使用原始檔</small></div><button class="switch on"></button></div>
             <div class="setrow"><div>代理檔佔用 2.4 GB（3 個檔案）</div><button class="btn sm danger">刪除全部代理檔</button></div>
           </div>
-          <div class="setcard"><h3>剪輯預設值</h3>
+          <div class="setcard" data-cat="clip"><h3>剪輯預設值</h3>
             <div class="setrow"><div>事件前／後秒數（快速剪輯、合輯）<small>預設 8 秒前、4 秒後</small></div><span class="insp"><span class="stepper"><button>−</button><span>8s</span><button>+</button></span><span class="stepper"><button>−</button><span>4s</span><button>+</button></span></span></div>
             <div class="setrow"><div>AI 自動剪輯預設參數<small>n=3、gap=20s、max_len=90s（在「AI 自動剪輯」浮層可臨時調整）</small></div><button class="btn sm">編輯預設值</button></div>
             <div class="setrow"><div>開啟影片時自動產生精華建議<span class="newtag">新</span><small>以預設參數執行一次，僅放上建議框，不會自動加入專案</small></div><button class="switch on"></button></div>
           </div>
-          <div class="setcard"><h3>匯出</h3>
+          <div class="setcard" data-cat="export"><h3>匯出</h3>
             <div class="setrow"><div>預設輸出資料夾</div><button class="btn sm"><svg class="ic sm" data-ic="folder"></svg>D:\Videos\Apex</button></div>
             <div class="setrow"><div>可用編碼器<small>NVENC ✓　QSV ✗　AMF ✗　OpenH264 已安裝（Cisco 官方 DLL）</small></div><button class="btn sm">重新偵測</button></div>
           </div>
-          <div class="setcard"><h3>關於</h3>
+          <div class="setcard" data-cat="about"><h3>關於</h3>
             <div class="setrow"><div>Apex Highlighter 0.1.0　·　引擎 0.1.0　·　範本 zh-TW@1<small>MIT 授權。隨附 LGPL 版 ffmpeg；Apex Legends 為 Electronic Arts／Respawn 之商標，與本專案無關。</small></div><button class="btn sm">第三方授權</button></div>
           </div>
         </div>

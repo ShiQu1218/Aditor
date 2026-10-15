@@ -703,14 +703,38 @@ Conversion failed!</div></div><div class="dim">常見原因：磁碟空間不足
     else if (k.startsWith('st')) { S.studio = { 'st-ready': 'ready', 'st-partial': 'partial', 'st-error': 'error', 'st-proxy': 'proxy' }[k]; go('studio'); applyStudioState(); }
     else if (k.startsWith('ex')) { if (S.screen !== 'studio') { S.studio = 'ready'; go('studio'); applyStudioState(); } openExport({ 'ex-config': 'config', 'ex-run': 'run', 'ex-done': 'done', 'ex-err': 'err' }[k]); }
   }
+  function setupSettings() {
+    const cats = $$('.set-cat'), cards = $$('.setcard[data-cat]'), q = $('#set-search');
+    let cur = 'src';
+    function apply() {
+      const t = q.value.trim().toLowerCase();
+      let any = false;
+      cards.forEach((c) => {
+        let hit = 0;
+        $$('.setrow', c).forEach((r) => { const m = !t || r.textContent.toLowerCase().includes(t) || c.querySelector('h3').textContent.toLowerCase().includes(t); r.classList.toggle('hide', !m); if (m) hit++; });
+        const show = t ? hit > 0 : c.dataset.cat === cur;
+        c.classList.toggle('hide', !show); if (show) any = true;
+        const b = cats.find((x) => x.dataset.cat === c.dataset.cat);
+        let h = b.querySelector('.cnt-hit'); if (h) h.remove();
+        if (t && hit) b.insertAdjacentHTML('beforeend', `<span class="cnt-hit">${hit}</span>`);
+      });
+      cats.forEach((b) => b.classList.toggle('active', !t && b.dataset.cat === cur));
+      $('#set-none').classList.toggle('hidden', any);
+    }
+    cats.forEach((b) => (b.onclick = () => { cur = b.dataset.cat; q.value = ''; apply(); }));
+    q.oninput = apply;
+    const m = /settings-(\w+)/.exec(location.hash); if (m) cur = m[1];
+    apply();
+  }
   function boot() {
+    setupSettings();
     hydrate(); renderKeys(); wireAc(); setupTL(); wire();
     if (/[?&]shot/.test(location.search)) $('#mockbar').classList.add('hidden');
     $('#qlist').innerHTML = QUEUE.map((q) => `<div class="qrow"><div style="min-width:0"><div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:700">${q.name}</div><div class="dim" style="font-size:12px">${q.state}${q.eta ? ' · ' + q.eta : ''}</div></div><button class="btn sm ghost">取消</button>${q.p ? `<div class="bar"><i style="width:${q.p * 100}%"></i></div>` : ''}</div>`).join('');
     renderLibrary();
     const h = (location.hash || '').replace('#', '');
     const map = { library: 'lib-full', 'library-empty': 'lib-empty', 'library-drag': 'lib-drag', studio: 'st-ready', 'studio-partial': 'st-partial', 'studio-error': 'st-error', 'studio-proxy': 'st-proxy', 'export': 'ex-config', 'export-run': 'ex-run', 'export-done': 'ex-done', 'export-err': 'ex-err' };
-    if (h === 'settings') go('settings');
+    if (h.startsWith('settings')) go('settings');
     else if (h === 'autoclip') { applyMock('st-ready'); setTimeout(() => togglePop('pop-ac'), 0); }
     else if (h === 'events') { applyMock('st-ready'); S.tab = 'ev'; seek(332); renderAside(); }
     else if (h === 'shortcuts') openDlg('dlg-kbd');
