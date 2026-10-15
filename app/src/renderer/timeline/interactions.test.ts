@@ -1,4 +1,5 @@
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
+import { attachKeymap, createKeyDownHandler } from '../hooks/useShortcuts'
 import type { Clip, EngineEvent, EventType } from '../../shared/types'
 import { genLong } from '../../../test/fixtures/genEvents'
 import { layoutTimeline } from './layout'
@@ -11,7 +12,9 @@ import {
   cancelRestore,
   initialInteraction,
   interactionReducer,
+  attachGestureEscape,
   nextSpaceState,
+  swallowEscape,
   pointerToX,
   shouldCancel,
   tipChanged,
@@ -147,5 +150,98 @@ describe('playheadTarget', () => {
   test('paused (or no getTime) uses the prop time', () => {
     expect(playheadTarget({ playing: false, time: 12, getTime: () => 99 })).toBe(12)
     expect(playheadTarget({ playing: true, time: 12 })).toBe(12)
+  })
+})
+
+describe('Escape swallowing', () => {
+  type L = (e: KeyboardEvent) => void
+  /** 簡易 window：先跑 capture 監聽，再跑 bubble 監聽，遵守 stopPropagation */
+  function fakeWindow(): {
+    win: Pick<Window, 'addEventListener' | 'removeEventListener'>
+    press: (key: string) => { defaultPrevented: boolean }
+  } {
+    const cap = new Set<L>()
+    const bub = new Set<L>()
+    const win = {
+      addEventListener: (_t: string, fn: L, capture?: boolean) => void (capture ? cap : bub).add(fn),
+      removeEventListener: (_t: string, fn: L, capture?: boolean) => void (capture ? cap : bub).delete(fn)
+    } as unknown as Pick<Window, 'addEventListener' | 'removeEventListener'>
+    const press = (key: string): { defaultPrevented: boolean } => {
+      let stopped = false
+      const e = {
+        key,
+        keyCode: 27,
+        isComposing: false,
+        target: null,
+        defaultPrevented: false,
+        preventDefault() {
+          e.defaultPrevented = true
+        },
+        stopPropagation() {
+          stopped = true
+        }
+      }
+      for (const fn of [...cap]) fn(e as unknown as KeyboardEvent)
+      if (!stopped) for (const fn of [...bub]) fn(e as unknown as KeyboardEvent)
+      return e
+    }
+    return { win, press }
+  }
+
+  test('swallowEscape is true only for non-idle phases', () => {
+    expect(swallowEscape('idle')).toBe(false)
+    for (const p of ['pressed', 'box', 'pan', 'handle'] as const) expect(swallowEscape(p)).toBe(true)
+  })
+
+  test('with a gesture active, Escape cancels it and never reaches the global keymap', () => {
+    const { win, press } = fakeWindow()
+    const closeOverlay = vi.fn()
+    attachKeymap(win as Window, () => ({ handlers: { closeOverlay }, screen: 'studio', mode: 'source', overlayOpen: true }))
+    let phase: IState['phase'] = 'box'
+    const cancel = vi.fn(() => {
+      phase = 'idle'
+    })
+    attachGestureEscape(win, () => phase, cancel)
+    const e = press('Escape')
+    expect(cancel).toHaveBeenCalledTimes(1)
+    expect(e.defaultPrevented).toBe(true)
+    expect(closeOverlay).not.toHaveBeenCalled()
+  })
+
+  test('idle: Escape passes through untouched to the global keymap', () => {
+    const { win, press } = fakeWindow()
+    const closeOverlay = vi.fn()
+    attachKeymap(win as Window, () => ({ handlers: { closeOverlay }, screen: 'studio', mode: 'source', overlayOpen: true }))
+    const cancel = vi.fn()
+    attachGestureEscape(win, () => 'idle', cancel)
+    press('Escape')
+    expect(cancel).not.toHaveBeenCalled()
+    expect(closeOverlay).toHaveBeenCalledTimes(1)
+  })
+
+  test('keymap alone honours defaultPrevented even without stopPropagation', () => {
+    const closeOverlay = vi.fn()
+    const h = createKeyDownHandler(() => ({ handlers: { closeOverlay }, screen: 'studio', mode: 'source', overlayOpen: true }))
+    h({ key: 'Escape', keyCode: 27, isComposing: false, defaultPrevented: true, target: null } as unknown as KeyboardEvent)
+    expect(closeOverlay).not.toHaveBeenCalled()
+  })
+
+  test('non-Escape keys during a gesture are untouched; detach removes the listener', () => {
+    const { win, press } = fakeWindow()
+    const cancel = vi.fn()
+    const detach = attachGestureEscape(win, () => 'pan', cancel)
+    expect(press('a').defaultPrevented).toBe(false)
+    detach()
+    press('Escape')
+    expect(cancel).not.toHaveBeenCalled()
+  })
+})
+
+describe('playheadTarget hardening', () => {
+  test('undefined / NaN / Infinity from getTime falls back to the prop time', () => {
+    expect(playheadTarget({ playing: true, time: 7, getTime: () => undefined as unknown as number })).toBe(7)
+    expect(playheadTarget({ playing: true, time: 7, getTime: () => NaN })).toBe(7)
+    expect(playheadTarget({ playing: true, time: 7, getTime: () => Infinity })).toBe(7)
+    expect(playheadTarget({ playing: true, time: 7, getTime: () => 0 })).toBe(0)
   })
 })

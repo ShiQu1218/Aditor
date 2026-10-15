@@ -8,7 +8,11 @@ export function playheadX(t: number, view: View): { x: number; visible: boolean 
 
 /** 播放中一律讀即時時間（video.currentTime）；props.time 來自 ~4Hz 的 timeupdate，會落後而造成倒退 */
 export function playheadTarget(a: { playing?: boolean; time: number; getTime?: () => number }): number {
-  return a.playing && a.getTime ? a.getTime() : a.time
+  if (a.playing && a.getTime) {
+    const t = a.getTime()
+    if (typeof t === 'number' && Number.isFinite(t)) return t
+  }
+  return a.time
 }
 
 interface PlayheadProps {

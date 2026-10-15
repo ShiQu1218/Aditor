@@ -86,6 +86,30 @@ export function nextSpaceState(prev: boolean, ev: SpaceEvent): boolean {
   return true
 }
 
+/** Esc 取消了進行中的手勢時，該次 Esc 不得再傳給全域快捷鍵（否則會一併離開專案模式／清除選取） */
+export function swallowEscape(phase: IState['phase']): boolean {
+  return phase !== 'idle'
+}
+
+/**
+ * 以捕獲階段監聽 Esc：僅在確實有手勢可取消時才 preventDefault＋stopPropagation，
+ * 其餘情況原樣放行。回傳解除函式。
+ */
+export function attachGestureEscape(
+  target: Pick<Window, 'addEventListener' | 'removeEventListener'>,
+  getPhase: () => IState['phase'],
+  cancel: () => void
+): () => void {
+  const onKey = (e: KeyboardEvent): void => {
+    if (e.key !== 'Escape' || !swallowEscape(getPhase())) return
+    cancel()
+    e.preventDefault()
+    e.stopPropagation()
+  }
+  target.addEventListener('keydown', onKey as EventListener, true)
+  return () => target.removeEventListener('keydown', onKey as EventListener, true)
+}
+
 /** 取消時需還原的片段（把手拖曳中途取消＝片段維持原樣） */
 export function cancelRestore(s: IState, original: Clip | null): Clip | null {
   return s.phase === 'handle' && original ? original : null
@@ -326,18 +350,19 @@ export function useTimelineInteractions(opts: InteractionOptions): InteractionRe
       if (shouldCancel(st.current.phase, { type: 'blur' })) cancelGesture()
       else setCursor('pointer')
     }
-    const onEsc = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape' && shouldCancel(st.current.phase, { type: 'escape' })) cancelGesture()
-    }
+    const detachEsc = attachGestureEscape(
+      window,
+      () => (shouldCancel(st.current.phase, { type: 'escape' }) ? st.current.phase : 'idle'),
+      cancelGesture
+    )
     window.addEventListener('mousemove', onMove)
     window.addEventListener('mouseup', onUp)
     window.addEventListener('blur', onBlur)
-    window.addEventListener('keydown', onEsc)
     return () => {
       window.removeEventListener('mousemove', onMove)
       window.removeEventListener('mouseup', onUp)
       window.removeEventListener('blur', onBlur)
-      window.removeEventListener('keydown', onEsc)
+      detachEsc()
     }
   }, [apply, local])
 
