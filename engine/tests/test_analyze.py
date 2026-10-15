@@ -156,3 +156,17 @@ def test_normal_partial_resume_does_not_recalibrate(tmp_path, zh_profile, monkey
     monkeypatch.setattr(az, "calibrate", lambda *a, **k: pytest.fail("不應重新校準"))
     doc = az.analyze(str(v), zh_profile, cache_dir=tmp_path / "cache")
     assert doc["analysis"]["h_scale"] == 0.95
+
+
+def test_combine_events_does_not_dedupe_new_against_new(zh_profile):
+    from apexhl.analyze import _combine_events
+    from apexhl.models import Event
+
+    def ev(i, t):
+        return Event(id=i, t=t, type="knock", score=0.9, damage_line=False, name_sig=None)
+
+    out = _combine_events([], [ev("a1", 10.0), ev("a2", 10.5)], 0.32)
+    assert [e.id for e in out] == ["a1", "a2"]
+    # 既有 vs 新仍會去重
+    out = _combine_events([ev("a1", 10.0)], [ev("b1", 10.5)], 0.32)
+    assert [e.id for e in out] == ["a1"]

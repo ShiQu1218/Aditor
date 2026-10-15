@@ -42,9 +42,10 @@ def _is_dup(e: Event, existing: list[Event], threshold: float) -> bool:
 
 
 def _combine_events(old: list[Event], new: list[Event], threshold: float) -> list[Event]:
+    # 只比對「既有 vs 新」；新事件之間不互相去重（同一次分析內的兩個真事件可能相隔 < 1 秒）
     out = list(old)
     for e in new:
-        if not _is_dup(e, out, threshold):
+        if not _is_dup(e, old, threshold):
             out.append(e)
     return sorted(out, key=lambda e: e.t)
 

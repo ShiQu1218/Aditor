@@ -145,3 +145,38 @@ def test_kind_change_lone_first_frame_not_established():
 def test_resume_continuation_with_one_frame_gap():
     ev, _ = run(seq("K.KK", t0=10.0), resume_start=10.0)
     assert ev == []
+
+
+def test_single_frame_name_jitter_does_not_split():
+    a, b = sig(1), sig(2)
+    frames = seq("KKK", name=a) + seq("K", name=b, t0=0.75) + seq("KKK", name=a, t0=1.0)
+    ev, _ = run(frames)
+    assert len(ev) == 1 and ev[0].t == 0.0
+
+
+def test_two_consecutive_frames_of_new_name_split_from_first_different_frame():
+    a, b = sig(1), sig(2)
+    frames = seq("KKK", name=a) + seq("KK", name=b, t0=0.75)
+    ev, _ = run(frames)
+    assert [e.t for e in ev] == [0.0, 0.75]
+    assert ev[1].name_sig == b.to_b64()
+
+
+def test_alternating_names_never_split():
+    a, b = sig(1), sig(2)
+    frames = []
+    for i in range(8):
+        frames.append((i * 0.25, fr("knock", a if i % 2 == 0 else b)))
+    ev, _ = run(frames)
+    assert len(ev) == 1
+
+
+def test_unstable_name_then_stable_name_is_one_event_with_stable_sig():
+    # 前 4 格每格指紋皆不同（抖動），之後穩定：應為單一事件，起點為第一格，簽名採穩定名字
+    jit = [sig(10 + i) for i in range(4)]
+    stable = sig(99)
+    frames = [(i * 0.25, fr("assist_elim", jit[i])) for i in range(4)]
+    frames += [(1.0 + i * 0.25, fr("assist_elim", stable)) for i in range(3)]
+    ev, _ = run(frames)
+    assert len(ev) == 1 and ev[0].t == 0.0
+    assert ev[0].name_sig == stable.to_b64()
