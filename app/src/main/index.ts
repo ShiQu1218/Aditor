@@ -5,6 +5,7 @@ import { Library } from './library'
 import { AnalysisQueue } from './queue'
 import { SettingsStore } from './settings'
 import { WatchManager } from './watch'
+import { ProjectStore } from './projects'
 import { registerIpcHandlers } from './ipc-handlers'
 import { appDataDir, cacheDir, engineCommand, ffmpegExecutable } from '../shared/paths'
 
@@ -73,7 +74,10 @@ async function initEngineAndServices(): Promise<void> {
   watchManager = new WatchManager({ library, queue, settings: settingsStore })
   watchManager.start()
 
-  registerIpcHandlers(library, queue, () => (mainWindow ? [mainWindow] : []), engineClient, settingsStore, watchManager)
+  // 專案自動儲存：`%APPDATA%\ApexHighlighter\projects\<id>.json`
+  const projectStore = new ProjectStore(join(appDataDir(), 'projects'))
+
+  registerIpcHandlers(library, queue, () => (mainWindow ? [mainWindow] : []), engineClient, settingsStore, watchManager, projectStore)
 
   ipcMain.handle('engine:probe', async (_, videoPath: string) => {
     return engineClient?.request('probe', { path: videoPath }).promise

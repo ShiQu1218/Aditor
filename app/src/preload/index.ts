@@ -25,6 +25,7 @@ const api = {
     getWatchFolders: () => ipcRenderer.invoke('library:getWatchFolders'),
     addWatchFolder: () => ipcRenderer.invoke('library:addWatchFolder'),
     removeWatchFolder: (dir: string) => ipcRenderer.invoke('library:removeWatchFolder', dir),
+    fileExists: (path: string) => ipcRenderer.invoke('library:fileExists', path),
     onUpdated: (callback: () => void) => {
       const handler = () => callback()
       ipcRenderer.on('library:updated', handler)
@@ -51,6 +52,12 @@ const api = {
     showOpenDialog: () => ipcRenderer.invoke('project:showOpenDialog'),
     save: (filePath: string, content: string) => ipcRenderer.invoke('project:save', filePath, content),
     load: (filePath: string) => ipcRenderer.invoke('project:load', filePath)
+  },
+  projects: {
+    save: (project: unknown) => ipcRenderer.invoke('projects:save', project),
+    load: (id: string) => ipcRenderer.invoke('projects:load', id),
+    list: () => ipcRenderer.invoke('projects:list'),
+    remove: (id: string) => ipcRenderer.invoke('projects:remove', id)
   },
   settings: {
     get: () => ipcRenderer.invoke('settings:get'),

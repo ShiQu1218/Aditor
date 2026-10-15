@@ -4,7 +4,8 @@ import { ViewerPage } from './pages/Viewer'
 import { EditorPage } from './pages/Editor'
 import { LONG_FIXTURE_PATH, longFixtureRequested } from './dev/fixture'
 import { Clip } from '../shared/types'
-import { Project, createProject, addItems } from './editor/project'
+import { addItems } from './editor/project'
+import { ProjectProvider, useProject } from './editor/ProjectProvider'
 import { AppShell } from './shell/AppShell'
 import { RailView } from './shell/Rail'
 import { shellI18n } from './i18n/zh-TW'
@@ -12,9 +13,17 @@ import { shellI18n } from './i18n/zh-TW'
 type View = 'library' | 'studio' | 'settings' | 'legacy-editor'
 
 export default function App(): JSX.Element {
+  return (
+    <ProjectProvider>
+      <AppContent />
+    </ProjectProvider>
+  )
+}
+
+function AppContent(): JSX.Element {
+  const { project, apply } = useProject()
   const [view, setView] = useState<View>(() => (longFixtureRequested() ? 'studio' : 'library'))
   const [currentVideo, setCurrentVideo] = useState<string | null>(() => (longFixtureRequested() ? LONG_FIXTURE_PATH : null))
-  const [project, setProject] = useState<Project>(() => createProject('我的精華專案'))
 
   const handleSelectVideo = (path: string) => {
     setCurrentVideo(path)
@@ -29,7 +38,7 @@ export default function App(): JSX.Element {
       start: c.start,
       end: c.end
     }))
-    setProject((prev) => addItems(prev, newItems))
+    apply(addItems(project, newItems))
     setView('legacy-editor')
   }
 

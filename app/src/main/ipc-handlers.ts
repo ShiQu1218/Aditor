@@ -11,6 +11,7 @@ import { hasOpenH264, downloadOpenH264 } from './codecs'
 import { loadCacheDoc, saveCacheDoc } from './cache-io'
 import { SettingsStore } from './settings'
 import { WatchManager } from './watch'
+import { ProjectStore, StoredProject } from './projects'
 import { Settings } from '../shared/settings'
 import { ProjectItem } from '../renderer/editor/project'
 
@@ -41,7 +42,8 @@ export function registerIpcHandlers(
   getWindows: () => BrowserWindow[],
   engine?: EngineClient,
   settings?: SettingsStore,
-  watch?: WatchManager
+  watch?: WatchManager,
+  projectStore?: ProjectStore
 ): void {
   const broadcastUpdated = () => {
     for (const win of getWindows()) {
@@ -120,6 +122,14 @@ export function registerIpcHandlers(
     return []
   })
 
+  ipcMain.handle('library:fileExists', (_, videoPath: string) => {
+    try {
+      return fs.existsSync(videoPath)
+    } catch {
+      return false
+    }
+  })
+
   if (watch) {
     const watchStatus = (): { dirs: string[]; missing: string[] } => ({ dirs: watch.list(), missing: watch.missing() })
 
@@ -151,6 +161,22 @@ export function registerIpcHandlers(
       await watch.remove(dir)
       broadcastUpdated()
       return { ok: true, ...watchStatus() }
+    })
+  }
+
+  if (projectStore) {
+    ipcMain.handle('projects:save', async (_, p: StoredProject) => {
+      await projectStore.save(p)
+      return true
+    })
+
+    ipcMain.handle('projects:load', async (_, id: string) => projectStore.load(id))
+
+    ipcMain.handle('projects:list', async () => projectStore.list())
+
+    ipcMain.handle('projects:remove', async (_, id: string) => {
+      await projectStore.remove(id)
+      return true
     })
   }
 
