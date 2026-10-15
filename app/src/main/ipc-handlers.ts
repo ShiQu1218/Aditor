@@ -18,6 +18,7 @@ import { computeHlCount, createSerialQueue, hlFromClips } from './hl'
 import type { CacheDoc, Clip } from '../shared/types'
 import { handleProxyGenerate } from './proxy-ipc'
 import { ProjectItem } from '../renderer/editor/project'
+import { i18n } from '../renderer/i18n/zh-TW'
 
 const VIDEO_EXTS = new Set(['.mp4', '.mkv', '.mov', '.webm'])
 
@@ -90,9 +91,9 @@ export function registerIpcHandlers(
   ipcMain.handle('library:selectFiles', async (event) => {
     const win = BrowserWindow.fromWebContents(event.sender)
     const res = await dialog.showOpenDialog(win || undefined as unknown as BrowserWindow, {
-      title: '選擇 Apex Legends 錄影檔案',
+      title: i18n.dialog.selectFilesTitle,
       properties: ['openFile', 'multiSelections'],
-      filters: [{ name: '影片檔案', extensions: ['mp4', 'mkv', 'mov', 'webm'] }]
+      filters: [{ name: i18n.dialog.videoFilter, extensions: ['mp4', 'mkv', 'mov', 'webm'] }]
     })
     if (!res.canceled && res.filePaths.length > 0) {
       const added = library.add(res.filePaths)
@@ -108,7 +109,7 @@ export function registerIpcHandlers(
   ipcMain.handle('library:selectFolder', async (event) => {
     const win = BrowserWindow.fromWebContents(event.sender)
     const res = await dialog.showOpenDialog(win || undefined as unknown as BrowserWindow, {
-      title: '選擇包含錄影的資料夾',
+      title: i18n.dialog.selectFolderTitle,
       properties: ['openDirectory']
     })
     if (!res.canceled && res.filePaths.length > 0) {
@@ -169,7 +170,7 @@ export function registerIpcHandlers(
     ipcMain.handle('library:addWatchFolder', async (event) => {
       const win = BrowserWindow.fromWebContents(event.sender)
       const res = await dialog.showOpenDialog(win || (undefined as unknown as BrowserWindow), {
-        title: '選擇要監看的資料夾（新影片自動匯入）',
+        title: i18n.dialog.addWatchFolderTitle,
         properties: ['openDirectory']
       })
       if (res.canceled || res.filePaths.length === 0) {
@@ -184,7 +185,10 @@ export function registerIpcHandlers(
       }
     })
 
-    ipcMain.handle('library:removeWatchFolder', async (_, dir: string) => {
+    ipcMain.handle('library:removeWatchFolder', async (_, dir: unknown) => {
+      if (typeof dir !== 'string' || dir.length === 0) {
+        return { ok: false, error: 'invalid folder path', ...watchStatus() }
+      }
       await watch.remove(dir)
       broadcastUpdated()
       return { ok: true, ...watchStatus() }
@@ -258,7 +262,7 @@ export function registerIpcHandlers(
   ipcMain.handle('project:showSaveDialog', async (event, defaultName?: string) => {
     const win = BrowserWindow.fromWebContents(event.sender)
     const res = await dialog.showSaveDialog(win || (undefined as unknown as BrowserWindow), {
-      title: '儲存剪輯專案',
+      title: i18n.dialog.saveProjectTitle,
       defaultPath: defaultName || 'project.apexproj.json',
       filters: [{ name: 'Apex Highlighter Project', extensions: ['apexproj.json', 'json'] }]
     })
@@ -268,7 +272,7 @@ export function registerIpcHandlers(
   ipcMain.handle('project:showOpenDialog', async (event) => {
     const win = BrowserWindow.fromWebContents(event.sender)
     const res = await dialog.showOpenDialog(win || (undefined as unknown as BrowserWindow), {
-      title: '開啟剪輯專案',
+      title: i18n.dialog.openProjectTitle,
       properties: ['openFile'],
       filters: [{ name: 'Apex Highlighter Project', extensions: ['apexproj.json', 'json'] }]
     })
@@ -315,7 +319,7 @@ export function registerIpcHandlers(
   ipcMain.handle('export:selectOutDir', async (event) => {
     const win = BrowserWindow.fromWebContents(event.sender)
     const res = await dialog.showOpenDialog(win || (undefined as unknown as BrowserWindow), {
-      title: '選擇匯出目標資料夾',
+      title: i18n.dialog.selectOutDirTitle,
       properties: ['openDirectory', 'createDirectory']
     })
     return res.canceled || res.filePaths.length === 0 ? null : res.filePaths[0]

@@ -5,6 +5,16 @@ export const i18n = {
     viewer: '檢視器',
     editor: '剪輯專案'
   },
+  /** main 程序的原生對話框（標題與檔案類型過濾） */
+  dialog: {
+    selectFilesTitle: '選擇 Apex Legends 錄影檔案',
+    videoFilter: '影片檔案',
+    selectFolderTitle: '選擇包含錄影的資料夾',
+    addWatchFolderTitle: '選擇要監看的資料夾（新影片自動匯入）',
+    saveProjectTitle: '儲存剪輯專案',
+    openProjectTitle: '開啟剪輯專案',
+    selectOutDirTitle: '選擇匯出目標資料夾'
+  },
   library: {
     title: '影片庫',
     importFiles: '匯入影片',
