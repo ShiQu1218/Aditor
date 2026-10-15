@@ -367,7 +367,7 @@ def test_spectating_interval():          # 9 格觀戰 → [t0, t0+2.25]；7 格
   - `derive.derive(events: list[Event], spectating: list[SpecInterval], profile: Profile) -> list[Event]`：回傳新清單（依 `t` 排序），依 §5.3 推導階段設定 `counted` 與 `counted_reason`；不修改 `counted_override`；`deleted` 事件 `counted=False`、`counted_reason="deleted"` 且不參與去重。
   - `derive.is_counted(e: Event) -> bool`：`e.counted_override if e.counted_override is not None else e.counted`，且 `deleted` 一律 False。
 
-- [ ] **Step 1: 寫失敗測試**
+- [x] **Step 1: 寫失敗測試**
 
 ```python
 def test_squad_wipe_not_counted():        # reason == "not_counting_type"
@@ -380,8 +380,8 @@ def test_override_respected():             # counted_override=False 的 first �
 def test_manual_event_without_sig_counted(): # name_sig=None 的 manual knock → first（不與任何人去重）
 ```
 
-- [ ] **Step 2: 確認失敗** → **Step 3: 實作** → **Step 4: 確認通過**
-- [ ] **Step 5: Commit** `feat(engine): derive counted flags with dedupe and spectating`
+- [x] **Step 2: 確認失敗** → **Step 3: 實作** → **Step 4: 確認通過**
+- [x] **Step 5: Commit** `feat(engine): derive counted flags with dedupe and spectating`
 
 ---
 
