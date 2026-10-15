@@ -28,7 +28,7 @@ describe('handleProxyGenerate', () => {
   it('轉送進度並節流（>=250ms），完成時送出 1', async () => {
     const s = fakeSender()
     let now = 1000
-    const gen = vi.fn(async (_p: string, onProgress?: (r: number) => void) => {
+    const gen = vi.fn(async (_p: string, onProgress?: (r: number) => void, _d?: number) => {
       onProgress?.(0.1) // 首次送出
       now += 100
       onProgress?.(0.2) // 節流掉
@@ -69,7 +69,7 @@ describe('handleProxyGenerate', () => {
 
   it('duration 無效 → 以 undefined 傳給 generateProxy（無百分比）', async () => {
     const s = fakeSender()
-    const gen = vi.fn(async () => 'o')
+    const gen = vi.fn(async (_p: string, _o?: (r: number) => void, _d?: number) => 'o')
     await handleProxyGenerate(s, 'a.mp4', NaN, { generateProxy: gen, now: () => 0 })
     expect(gen.mock.calls[0][2]).toBeUndefined()
   })
