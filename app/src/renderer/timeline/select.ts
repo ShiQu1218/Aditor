@@ -30,10 +30,16 @@ export function hitItem<T extends { x: number }>(items: T[], x: number, tolPx = 
   return best
 }
 
+/** items 依 x 遞增排序（layoutTimeline 的輸出）：以二分搜尋找起點，只掃描 ±tol 內的項目 */
 export function hitDensity(items: LayoutItem[], x: number, tolPx = 6): EngineEvent[] {
-  const out: EngineEvent[] = []
-  for (const it of items) {
-    if (Math.abs(it.x - x) <= tolPx) out.push(...it.events)
+  let lo = 0
+  let hi = items.length
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1
+    if (items[mid].x < x - tolPx) lo = mid + 1
+    else hi = mid
   }
+  const out: EngineEvent[] = []
+  for (let i = lo; i < items.length && items[i].x <= x + tolPx; i++) out.push(...items[i].events)
   return out
 }

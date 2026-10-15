@@ -8,7 +8,7 @@ import { resizeClip } from './clips'
 import { EVENT_TOP } from './draw'
 import { TimelineLayout, zoomToCluster } from './layout'
 import { View, pan, timeToX, xToTime, zoom } from './model'
-import { boxSelect, hitItem } from './select'
+import { boxSelect, hitDensity, hitItem } from './select'
 
 /** 拖曳超過此距離（px，水平）才視為框選 */
 export const DRAG_THRESHOLD_PX = 4
@@ -67,6 +67,46 @@ export function interactionReducer(s: IState, a: IAction): { state: IState; outc
   }
 }
 
+export type CancelEvent = { type: 'move'; buttons: number } | { type: 'blur' } | { type: 'escape' }
+
+/** 手勢是否應被取消：視窗失焦、Esc、或 move 時已沒有按下任何滑鼠鍵（mouseup 發生在視窗外而遺失；正常 mouseup 的 buttons 本就為 0，故不在 up 判斷） */
+export function shouldCancel(phase: IState['phase'], ev: CancelEvent): boolean {
+  if (phase === 'idle') return false
+  if (ev.type === 'blur' || ev.type === 'escape') return true
+  return ev.buttons === 0
+}
+
+export type SpaceEvent = { type: 'keydown'; code: string; typing: boolean; active: boolean } | { type: 'keyup'; code: string } | { type: 'blur' }
+
+/** Space 是否處於按住狀態（blur 一律清除，避免 keyup 遺失造成永遠平移） */
+export function nextSpaceState(prev: boolean, ev: SpaceEvent): boolean {
+  if (ev.type === 'blur') return false
+  if (ev.type === 'keyup') return ev.code === 'Space' ? false : prev
+  if (ev.code !== 'Space' || ev.typing || !ev.active) return prev
+  return true
+}
+
+/** 取消時需還原的片段（把手拖曳中途取消＝片段維持原樣） */
+export function cancelRestore(s: IState, original: Clip | null): Clip | null {
+  return s.phase === 'handle' && original ? original : null
+}
+
+/** 指標座標→軌內 x（容許元素被 CSS 縮放：rect.width 與邏輯寬 view.width 不同時換算） */
+export function pointerToX(clientX: number, rectLeft: number, rectWidth: number, viewWidth: number): number {
+  const scale = rectWidth > 0 ? viewWidth / rectWidth : 1
+  return (clientX - rectLeft) * scale
+}
+
+/** tooltip 狀態是否需要更新（文字或取整後位置改變才更新，避免 60 Hz 重繪） */
+export function tipChanged(
+  a: { x: number; y: number; text: string } | null,
+  b: { x: number; y: number; text: string } | null
+): boolean {
+  if (a === b) return false
+  if (!a || !b) return true
+  return a.text !== b.text || Math.round(a.x) !== Math.round(b.x) || Math.round(a.y) !== Math.round(b.y)
+}
+
 /* ---------------- 命中測試（純函式） ---------------- */
 
 /** 片段把手：邊緣 ±7 px、y 位於框區內；多個命中取最近者 */
@@ -119,7 +159,7 @@ export function tooltipAt(layout: TimelineLayout, mx: number, my: number): strin
   if (my < ITEM_HIT_Y[0] || my > ITEM_HIT_Y[1]) return null
   const tl = i18n.timeline
   if (layout.mode === 'density') {
-    const near = layout.items.filter((it) => Math.abs(it.x - mx) <= 6).map((it) => it.events[0])
+    const near = hitDensity(layout.items, mx, 6)
     if (near.length === 0) return null
     return tl.densityTip
       .replace('{n}', String(near.length))
@@ -180,6 +220,7 @@ export function useTimelineInteractions(opts: InteractionOptions): InteractionRe
   const panStart = useRef<{ clientX: number; start: number } | null>(null)
   const downT = useRef(0)
   const spaceRef = useRef(false)
+  const originalClip = useRef<Clip | null>(null)
   const insideRef = useRef(false)
 
   const [box, setBox] = useState<{ x0: number; x1: number } | null>(null)
@@ -189,7 +230,9 @@ export function useTimelineInteractions(opts: InteractionOptions): InteractionRe
 
   const local = useCallback((clientX: number, clientY: number): { x: number; y: number } => {
     const r = o.current.wrapRef.current?.getBoundingClientRect()
-    return r ? { x: clientX - r.left, y: clientY - r.top } : { x: 0, y: 0 }
+    return r
+      ? { x: pointerToX(clientX, r.left, r.width, o.current.view.width), y: clientY - r.top }
+      : { x: 0, y: 0 }
   }, [])
 
   const apply = useCallback((a: IAction): IOutcome => {
@@ -206,6 +249,7 @@ export function useTimelineInteractions(opts: InteractionOptions): InteractionRe
       const handle = handleAt(cur.clips, cur.view, x, y, cur.height)
       apply({ type: 'down', x, y, button: e.button, shift: e.shiftKey || e.ctrlKey, space: spaceRef.current, handle })
       downT.current = xToTime(x, cur.view)
+      originalClip.current = handle ? (cur.clips.find((c) => c.id === handle.clipId) ?? null) : null
       if (st.current.phase === 'pan') {
         e.preventDefault()
         panStart.current = { clientX: e.clientX, start: cur.view.start }
@@ -221,8 +265,18 @@ export function useTimelineInteractions(opts: InteractionOptions): InteractionRe
 
   // 拖曳中的移動與放開掛在 window，游標離開時間軸也不中斷
   useEffect(() => {
+    const cancelGesture = (): void => {
+      const restore = cancelRestore(st.current, originalClip.current)
+      apply({ type: 'cancel' })
+      originalClip.current = null
+      panStart.current = null
+      setBox(null)
+      setCursor(spaceRef.current ? 'grab' : 'pointer')
+      if (restore) o.current.onUpdateClip?.(restore)
+    }
     const onMove = (e: MouseEvent): void => {
       if (st.current.phase === 'idle') return
+      if (shouldCancel(st.current.phase, { type: 'move', buttons: e.buttons })) return cancelGesture()
       const { x, y } = local(e.clientX, e.clientY)
       apply({ type: 'move', x, y })
       const cur = o.current
@@ -267,11 +321,23 @@ export function useTimelineInteractions(opts: InteractionOptions): InteractionRe
         }
       }
     }
+    const onBlur = (): void => {
+      spaceRef.current = false
+      if (shouldCancel(st.current.phase, { type: 'blur' })) cancelGesture()
+      else setCursor('pointer')
+    }
+    const onEsc = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape' && shouldCancel(st.current.phase, { type: 'escape' })) cancelGesture()
+    }
     window.addEventListener('mousemove', onMove)
     window.addEventListener('mouseup', onUp)
+    window.addEventListener('blur', onBlur)
+    window.addEventListener('keydown', onEsc)
     return () => {
       window.removeEventListener('mousemove', onMove)
       window.removeEventListener('mouseup', onUp)
+      window.removeEventListener('blur', onBlur)
+      window.removeEventListener('keydown', onEsc)
     }
   }, [apply, local])
 
@@ -279,14 +345,17 @@ export function useTimelineInteractions(opts: InteractionOptions): InteractionRe
   useEffect(() => {
     const active = (): boolean => insideRef.current || document.activeElement === o.current.wrapRef.current
     const down = (e: KeyboardEvent): void => {
-      if (e.code !== 'Space' || isTypingTarget(e.target) || !active()) return
-      spaceRef.current = true
-      if (st.current.phase === 'idle') setCursor('grab')
+      spaceRef.current = nextSpaceState(spaceRef.current, {
+        type: 'keydown',
+        code: e.code,
+        typing: isTypingTarget(e.target),
+        active: active()
+      })
+      if (spaceRef.current && st.current.phase === 'idle') setCursor('grab')
     }
     const up = (e: KeyboardEvent): void => {
-      if (e.code !== 'Space') return
-      spaceRef.current = false
-      if (st.current.phase === 'idle') setCursor('pointer')
+      spaceRef.current = nextSpaceState(spaceRef.current, { type: 'keyup', code: e.code })
+      if (!spaceRef.current && st.current.phase === 'idle') setCursor('pointer')
     }
     window.addEventListener('keydown', down)
     window.addEventListener('keyup', up)
@@ -328,7 +397,8 @@ export function useTimelineInteractions(opts: InteractionOptions): InteractionRe
       const handle = handleAt(cur.clips, cur.view, x, y, cur.height)
       setCursor(spaceRef.current ? 'grab' : handle ? 'ew-resize' : 'pointer')
       const text = tooltipAt(cur.layoutRef.current, x, y)
-      setTip(text ? { x: Math.min(x + 10, Math.max(0, cur.view.width - 260)), y: Math.max(y - 34, 24), text } : null)
+      const next = text ? { x: Math.min(x + 10, Math.max(0, cur.view.width - 260)), y: Math.max(y - 34, 24), text } : null
+      setTip((prev) => (tipChanged(prev, next) ? next : prev))
     },
     [local]
   )

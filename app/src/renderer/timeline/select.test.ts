@@ -34,7 +34,7 @@ describe('boxSelect', () => {
 })
 
 describe('hit testing', () => {
-  const mk = (x: number, id: string): LayoutItem => ({ x, events: [ev(id, x)], counted: true })
+  const mk = (x: number, id: string): LayoutItem => ({ x, events: [ev(id, x)], counted: true, countedCount: 1 })
   const items = [mk(100, 'a'), mk(110, 'b'), mk(300, 'c')]
   test('hitItem returns the nearest within tolerance', () => {
     expect(hitItem(items, 108)?.events[0].id).toBe('b')

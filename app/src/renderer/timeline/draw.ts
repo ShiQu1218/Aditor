@@ -64,6 +64,7 @@ export interface DrawModel {
 
 let cachedTheme: Theme | null = null
 
+/** 僅供測試使用：單一深色主題，執行期不需要因 token 變更而重讀 */
 export function resetThemeCache(): void {
   cachedTheme = null
 }
@@ -325,7 +326,7 @@ function drawSingle(g: Ctx2D, e: EngineEvent, x: number, m: DrawModel, th: Theme
   }
 }
 
-function drawCluster(g: Ctx2D, events: EngineEvent[], x: number, m: DrawModel, th: Theme): void {
+function drawCluster(g: Ctx2D, events: EngineEvent[], countedCount: number, x: number, m: DrawModel, th: Theme): void {
   const n = events.length
   const label = '×' + n
   const w = g.measureText(label).width + 16
@@ -342,9 +343,8 @@ function drawCluster(g: Ctx2D, events: EngineEvent[], x: number, m: DrawModel, t
   g.fillText(label, x - w / 2 + 8, y + 1)
   g.textBaseline = 'top'
   // 計入比例小條
-  const counted = events.filter(isCounted).length
   g.fillStyle = th.text3
-  g.fillRect(x - w / 2 + 4, y + 14, (w - 8) * (counted / n), 2)
+  g.fillRect(x - w / 2 + 4, y + 14, (w - 8) * (countedCount / n), 2)
   if (events.some((e) => m.selected.has(e.id) || m.currentId === e.id)) {
     g.strokeStyle = th.text1
     g.lineWidth = 2
@@ -357,7 +357,7 @@ function drawCluster(g: Ctx2D, events: EngineEvent[], x: number, m: DrawModel, t
 function drawIconEvents(g: Ctx2D, m: DrawModel, th: Theme, bot: number): void {
   for (const it of m.layout.items) {
     if (it.events.length === 1) drawSingle(g, it.events[0], it.x, m, th, bot)
-    else drawCluster(g, it.events, it.x, m, th)
+    else drawCluster(g, it.events, it.countedCount, it.x, m, th)
   }
 }
 

@@ -246,10 +246,15 @@ describe('drawTimeline', () => {
     expect(t.args[2] as number).toBeLessThan(box.args[1] as number)
   })
 
-  test('unanalyzed range is not drawn in v1 (prop absent)', () => {
+  test('unanalyzed: nothing drawn when undefined, drawn when provided', () => {
     const absent = makeCtx()
     drawTimeline(absent.ctx, model([]), theme)
     expect(absent.calls.some((c) => c.fillStyle === 'T_unanalyzed' && c.name === 'fillRect')).toBe(false)
+    const given = makeCtx()
+    drawTimeline(given.ctx, model([], { unanalyzed: [{ start: 600, end: 700 }] }), theme)
+    const r = given.calls.find((c) => c.fillStyle === 'T_unanalyzed' && c.name === 'fillRect')
+    expect(r?.args[0]).toBe(600)
+    expect(r?.args[2]).toBe(100)
   })
 
   test('spectating hatch and ruler are drawn; label only when wide', () => {

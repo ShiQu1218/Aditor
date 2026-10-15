@@ -13,6 +13,8 @@ export interface LayoutItem {
   events: EngineEvent[]
   /** 群集內是否有任一事件算入（供畫布將未算入者淡化） */
   counted: boolean
+  /** 群集內算入的事件數（群集膠囊的計入比例條） */
+  countedCount: number
 }
 
 export interface TimelineLayout {
@@ -63,7 +65,7 @@ export function layoutTimeline(
     return {
       mode: 'density',
       visibleCount,
-      items: visible.map((e) => ({ x: timeToX(e.t, view), events: [e], counted: isCounted(e) }))
+      items: visible.map((e) => ({ x: timeToX(e.t, view), events: [e], counted: isCounted(e), countedCount: isCounted(e) ? 1 : 0 }))
     }
   }
 
@@ -74,7 +76,8 @@ export function layoutTimeline(
   let lastX = 0
   const flush = (): void => {
     if (cur.length === 0) return
-    items.push({ x: sumX / cur.length, events: cur, counted: cur.some(isCounted) })
+    const countedCount = cur.reduce((n, e) => n + (isCounted(e) ? 1 : 0), 0)
+    items.push({ x: sumX / cur.length, events: cur, counted: countedCount > 0, countedCount })
   }
   for (const e of visible) {
     const x = timeToX(e.t, view)

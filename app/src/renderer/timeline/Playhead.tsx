@@ -6,6 +6,11 @@ export function playheadX(t: number, view: View): { x: number; visible: boolean 
   return { x, visible: x >= 0 && x <= view.width }
 }
 
+/** 播放中一律讀即時時間（video.currentTime）；props.time 來自 ~4Hz 的 timeupdate，會落後而造成倒退 */
+export function playheadTarget(a: { playing?: boolean; time: number; getTime?: () => number }): number {
+  return a.playing && a.getTime ? a.getTime() : a.time
+}
+
 interface PlayheadProps {
   time: number
   view: View
@@ -31,21 +36,26 @@ export function Playhead({ time, view, getTime, playing }: PlayheadProps): JSX.E
     el.style.opacity = visible ? '1' : '0'
   }
 
-  // 非播放：time／view 改變時直接定位
-  useEffect(() => {
-    place(time)
-  }, [time, view.start, view.span, view.width])
+  const getTimeRef = useRef(getTime)
+  getTimeRef.current = getTime
+  const hasGetTime = !!getTime
 
+  // time／view 改變時定位；播放中改讀即時時間，不使用落後的 time
   useEffect(() => {
-    if (!playing || !getTime) return
+    place(playheadTarget({ playing, time, getTime: getTimeRef.current }))
+  }, [time, view.start, view.span, view.width, playing])
+
+  // 播放中的 rAF 迴圈只依 playing 啟停（getTime 以 ref 讀取，父層 inline 函式不會使其重啟）
+  useEffect(() => {
+    if (!playing || !hasGetTime) return
     let id = 0
     const tick = (): void => {
-      place(getTime())
+      place(getTimeRef.current!())
       id = requestAnimationFrame(tick)
     }
     id = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(id)
-  }, [playing, getTime])
+  }, [playing, hasGetTime])
 
   return <div ref={ref} className="tl-playhead" aria-hidden="true" />
 }

@@ -201,6 +201,8 @@ export function ViewerPage({ videoPath, onBack, onSendToProject }: ViewerPagePro
     setActiveTab('clips')
   }, [state.selected, state.doc.events, duration])
 
+  const getPlayTime = useCallback(() => videoRef.current?.currentTime ?? 0, [])
+
   // 框選：加選 or 取代目前選取（舊 reducer 只有 toggle，故以差集逐一切換）
   const handleBoxSelect = useCallback(
     (ids: string[], _t1: number, _t2: number, additive: boolean) => {
@@ -494,7 +496,7 @@ export function ViewerPage({ videoPath, onBack, onSendToProject }: ViewerPagePro
             selected={state.selected}
             onToggleSelect={(id) => dispatch({ type: 'toggleSelectEvent', id })}
             onBoxSelect={handleBoxSelect}
-            getPlayTime={() => videoRef.current?.currentTime ?? 0}
+            getPlayTime={getPlayTime}
             playing={isPlaying}
           />
         </div>
