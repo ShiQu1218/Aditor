@@ -85,7 +85,7 @@ function QueueRow({ row }: { row: QueueRowData }): JSX.Element {
       </div>
       <button
         type="button"
-        className="btn sm ghost"
+        className="lib-btn sm ghost"
         onClick={() => {
           void window.api?.queue?.cancel?.(row.path)
         }}

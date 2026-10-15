@@ -1,8 +1,8 @@
 /* 影片庫：虛擬網格、日期分組、卡片、空狀態與拖放覆蓋層。所有色彩一律使用 tokens.css 變數。 */
 
-/* ---- 通用控制（後續畫面共用；Task 17 可再抽出） ---- */
-.grow { flex: 1; }
-.btn {
+/* ---- 影片庫專用控制（一律 lib- 前綴，避免與 studio.css 的 .lib-chip 等撞名） ---- */
+.lib-grow { flex: 1; }
+.lib-btn {
   height: 32px;
   padding: 0 14px;
   border-radius: var(--r-sm);
@@ -16,15 +16,15 @@
   gap: 6px;
   transition: background var(--dur-fast), border-color var(--dur-fast);
 }
-.btn:hover { background: var(--bg-active); }
-.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
-.btn.primary:hover { background: var(--accent-hover); }
-.btn.ghost { background: transparent; border-color: transparent; color: var(--text-2); }
-.btn.ghost:hover { background: var(--bg-hover); color: var(--text-1); }
-.btn.sm { height: 26px; padding: 0 10px; font-size: var(--fs-small); }
-.btn:disabled { color: var(--text-disabled); background: var(--bg-surface); border-color: var(--line); cursor: default; }
+.lib-btn:hover { background: var(--bg-active); }
+.lib-btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.lib-btn.primary:hover { background: var(--accent-hover); }
+.lib-btn.ghost { background: transparent; border-color: transparent; color: var(--text-2); }
+.lib-btn.ghost:hover { background: var(--bg-hover); color: var(--text-1); }
+.lib-btn.sm { height: 26px; padding: 0 10px; font-size: var(--fs-small); }
+.lib-btn:disabled { color: var(--text-disabled); background: var(--bg-surface); border-color: var(--line); cursor: default; }
 
-.chip {
+.lib-chip {
   height: 28px;
   padding: 0 12px;
   border-radius: var(--r-pill);
@@ -38,12 +38,11 @@
   font-weight: var(--fw-bold);
   transition: background var(--dur-fast), color var(--dur-fast);
 }
-.chip:hover { background: var(--bg-hover); color: var(--text-1); }
-.chip.on { background: var(--text-1); color: var(--bg-app); border-color: var(--text-1); }
-.chip .n { opacity: 0.7; font-weight: var(--fw-regular); }
-.chip kbd { font-size: 10px; padding: 0 4px; }
-
-.pill {
+.lib-chip:hover { background: var(--bg-hover); color: var(--text-1); }
+.lib-chip.on { background: var(--text-1); color: var(--bg-app); border-color: var(--text-1); }
+.lib-chip .n { opacity: 0.7; font-weight: var(--fw-regular); }
+.lib-chip kbd { font-size: 10px; padding: 0 4px; }
+.lib-pill {
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -55,9 +54,9 @@
   background: var(--bg-active);
   color: var(--text-2);
 }
-.pill.warn { background: rgba(255, 213, 0, 0.14); color: var(--warning); }
-.pill.accent { background: var(--bg-active); color: var(--text-1); }
-.slant { border-radius: 0 var(--r-xs) 0 var(--r-xs); clip-path: polygon(6px 0, 100% 0, 100% 100%, 0 100%); }
+.lib-pill.warn { background: var(--lib-warn-soft); color: var(--warning); }
+.lib-pill.accent { background: var(--bg-active); color: var(--text-1); }
+.lib-slant { border-radius: 0 var(--r-xs) 0 var(--r-xs); clip-path: polygon(6px 0, 100% 0, 100% 100%, 0 100%); }
 
 /* ---- 畫面骨架 ---- */
 .lib-screen { height: 100%; display: flex; flex-direction: column; position: relative; min-height: 0; }
@@ -102,7 +101,7 @@
 .lib-group-head { position: absolute; left: 0; right: 0; display: flex; align-items: baseline; gap: 8px; padding-top: 12px; }
 .lib-group-label { font-weight: var(--fw-bold); font-size: var(--fs-body-lg); }
 .lib-group-count { color: var(--text-3); font-size: var(--fs-small); }
-.lib-row { position: absolute; left: 0; right: 0; display: grid; }
+.lib-row { position: absolute; left: 0; right: 0; display: grid; align-items: stretch; }
 .lib-noresults { flex: 1; display: grid; place-items: center; text-align: center; padding: 40px; }
 .lib-noresults h2 { font-size: var(--fs-title); margin-bottom: 6px; }
 
@@ -116,7 +115,7 @@
 .lib-empty .step { flex: 1; padding: 10px; background: var(--bg-surface); border-radius: var(--r-md); font-size: var(--fs-small); color: var(--text-2); }
 .lib-empty .step b { display: block; color: var(--text-1); font-size: var(--fs-body); margin-bottom: 2px; }
 .lib-empty .step i { font-style: normal; font-family: var(--font-display); font-weight: var(--fw-heavy); color: var(--accent-bright); font-size: var(--fs-title); }
-.lib-empty .btn { margin: 0 3px; }
+.lib-empty .lib-btn { margin: 0 3px; }
 
 /* ---- 拖放覆蓋層 ---- */
 .drop-overlay {
@@ -157,25 +156,46 @@
 .queue-strip .bar { flex: 1; max-width: 360px; height: 4px; border-radius: 2px; background: var(--bg-active); overflow: hidden; }
 .queue-strip .bar i { display: block; height: 100%; background: var(--accent-bright); }
 
-/* ---- 影片卡片 ---- */
+/* ---- 影片卡片 ----
+   幾何（--card-body-h 等）由 VirtualGrid 依 gridLayout.ts 的 CARD 常數設在 .lib-scroll 上，CSS 不寫死數字。 */
 .vcard {
   position: relative;
   display: flex;
   flex-direction: column;
+  box-sizing: border-box;
+  height: 100%;
   background: var(--bg-surface);
   border: 1px solid var(--line);
   border-radius: var(--r-md);
-  cursor: pointer;
   transition: border-color var(--dur-fast), transform var(--dur-fast);
 }
 .vcard:hover { border-color: var(--line-strong); transform: translateY(-2px); }
-.vcard:focus-visible { box-shadow: var(--focus-ring); }
-.vcard.busy { cursor: default; }
 .vcard.err { border-color: var(--danger); }
 .vcard.err:hover { transform: none; }
 
+/* 主要按鈕：縮圖＋文字區，負責開啟；其餘互動元件是它的兄弟，絕對定位在卡片上 */
+.vcard-open {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-md);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.vcard-open[aria-disabled='true'] { cursor: default; }
+.vcard-open:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+:where(.vcard-open > span) { display: block; }
+
 .vcard-thumb {
   position: relative;
+  flex: none;
   aspect-ratio: 16 / 9;
   border-radius: var(--r-md) var(--r-md) 0 0;
   overflow: hidden;
@@ -206,6 +226,7 @@
 .vcard:hover .vcard-fav,
 .vcard:focus-within .vcard-fav,
 .vcard-fav.on { opacity: 1; }
+.vcard-fav:focus-visible { box-shadow: var(--focus-ring); }
 .vcard-fav.on { color: var(--favorite); }
 
 .vcard-counts { position: absolute; left: 8px; bottom: 8px; display: flex; gap: 4px; z-index: 3; }
@@ -226,22 +247,34 @@
   font-weight: var(--fw-bold);
   padding: 8px;
 }
-.vcard-overlay .btn { margin-top: 8px; }
 .vcard-overlay small { display: block; font-weight: var(--fw-regular); color: var(--text-2); margin-top: 2px; }
+/* 「尚未分析」的〔分析〕鈕：兄弟元素，疊在縮圖下緣中央 */
+.vcard-analyze { position: absolute; left: 50%; transform: translateX(-50%); bottom: calc(var(--card-body-h) + 12px); z-index: 6; }
 .vcard-progress { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: var(--bg-active); z-index: 4; }
 .vcard-progress i { display: block; height: 100%; background: var(--accent-bright); }
 
-.vcard-body { height: 80px; padding: 8px 12px 10px; overflow: hidden; display: flex; flex-direction: column; gap: 4px; }
-.vcard-name { font-weight: var(--fw-bold); font-size: var(--fs-body); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.vcard-meta { color: var(--text-3); font-size: var(--fs-small); display: flex; gap: 8px; white-space: nowrap; overflow: hidden; }
+.vcard-body {
+  flex: none;
+  box-sizing: border-box;
+  height: var(--card-body-h);
+  padding: 10px 12px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.vcard-name { font-weight: var(--fw-bold); font-size: var(--fs-body); line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* 右側留給 ⋯ 按鈕（26px＋邊距），文字不會被它蓋住 */
+.vcard-meta { color: var(--text-3); font-size: var(--fs-small); line-height: 18px; display: flex; gap: 8px; white-space: nowrap; overflow: hidden; padding-right: 32px; }
 .vcard-codec { text-transform: uppercase; }
 
-.vcard-error { display: flex; flex-direction: column; gap: 6px; }
-.vcard-error-reason { color: var(--danger); font-size: var(--fs-small); display: flex; align-items: center; gap: 4px; white-space: nowrap; overflow: hidden; }
-.vcard-error-reason span { overflow: hidden; text-overflow: ellipsis; }
-.vcard-error-actions { display: flex; gap: 6px; }
+.vcard-error-reason { color: var(--danger); font-size: var(--fs-small); line-height: 18px; display: flex; align-items: center; gap: 4px; white-space: nowrap; overflow: hidden; }
+.vcard-error-reason span { display: inline; overflow: hidden; text-overflow: ellipsis; }
+/* 重試／移除：兄弟元素，固定在文字區底部（名稱 20＋間距 4＋原因 18＋間距 6＋按鈕 26＋上下內距 10 ≤ bodyH） */
+.vcard-error-actions { position: absolute; left: 12px; bottom: 10px; z-index: 5; display: flex; gap: 6px; }
 
-.vcard-menu-wrap { position: absolute; right: 8px; bottom: 6px; z-index: 5; }
+/* ⋯ 在文字區右下角（不在縮圖上，所以不會蓋到時長徽章） */
+.vcard-menu-wrap { position: absolute; right: 8px; bottom: 8px; z-index: 5; }
 .vcard-more {
   width: 26px;
   height: 26px;
@@ -255,7 +288,9 @@
   transition: opacity var(--dur-fast);
 }
 .vcard:hover .vcard-more,
-.vcard:focus-within .vcard-more { opacity: 1; }
+.vcard:focus-within .vcard-more,
+.vcard-more[aria-expanded='true'] { opacity: 1; }
+.vcard-more:focus-visible { box-shadow: var(--focus-ring); }
 .vcard-more:hover { background: var(--bg-hover); color: var(--text-1); }
 .vcard-menu {
   position: absolute;

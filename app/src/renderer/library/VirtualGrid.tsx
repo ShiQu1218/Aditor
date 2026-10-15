@@ -1,15 +1,8 @@
 import React, { useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { LibraryEntry } from '../../main/library'
 import type { DateGroup } from '../lib/groupByDate'
-import { computeGrid, gridColumns } from '../lib/gridLayout'
+import { CARD, cardGeomStyle, cardRowHeight, computeGrid, gridColumns } from '../lib/gridLayout'
 import { i18n } from '../i18n/zh-TW'
-
-/** 與 spec §3.1／tokens 對齊的網格常數 */
-const CARD_MIN = 280
-const GAP = 16
-const HEADER_H = 44
-const BODY_H = 72
-const OVERSCAN_ROWS = 2
 
 interface VirtualGridProps {
   groups: DateGroup[]
@@ -36,22 +29,22 @@ export function VirtualGrid({ groups, renderCard }: VirtualGridProps): JSX.Eleme
     return () => ro.disconnect()
   }, [])
 
-  const cols = gridColumns(size.width, CARD_MIN, GAP)
-  const cardWidth = size.width > 0 ? (size.width - GAP * (cols - 1)) / cols : CARD_MIN
-  const rowHeight = Math.round((cardWidth * 9) / 16 + BODY_H) + GAP
+  const cols = gridColumns(size.width, CARD.min, CARD.gap)
+  const cardWidth = size.width > 0 ? (size.width - CARD.gap * (cols - 1)) / cols : CARD.min
+  const rowHeight = cardRowHeight(cardWidth)
 
   const layout = useMemo(
     () =>
       computeGrid({
         width: size.width,
-        cardMin: CARD_MIN,
-        gap: GAP,
+        cardMin: CARD.min,
+        gap: CARD.gap,
         rowHeight,
-        headerHeight: HEADER_H,
+        headerHeight: CARD.headerH,
         groups: groups.map((g) => g.entries.length),
         scrollTop,
         viewHeight: size.height,
-        overscanRows: OVERSCAN_ROWS
+        overscanRows: CARD.overscanRows
       }),
     [groups, size.width, size.height, rowHeight, scrollTop]
   )
@@ -59,6 +52,7 @@ export function VirtualGrid({ groups, renderCard }: VirtualGridProps): JSX.Eleme
   return (
     <div
       className="lib-scroll"
+      style={cardGeomStyle() as React.CSSProperties}
       ref={scrollRef}
       onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
       data-testid="library-grid"
@@ -71,7 +65,7 @@ export function VirtualGrid({ groups, renderCard }: VirtualGridProps): JSX.Eleme
               <div
                 key={`h-${group.key}`}
                 className="lib-group-head"
-                style={{ top: layout.offsets[row.group], height: HEADER_H }}
+                style={{ top: layout.offsets[row.group], height: CARD.headerH }}
                 role="presentation"
               >
                 <span className="lib-group-label">{group.label}</span>
@@ -82,12 +76,12 @@ export function VirtualGrid({ groups, renderCard }: VirtualGridProps): JSX.Eleme
             )
           }
           const group = groups[row.group]
-          const top = layout.offsets[row.group] + HEADER_H + Math.floor(row.from / cols) * rowHeight
+          const top = layout.offsets[row.group] + CARD.headerH + Math.floor(row.from / cols) * rowHeight
           return (
             <div
               key={`r-${group.key}-${row.from}`}
               className="lib-row"
-              style={{ top, height: rowHeight - GAP, gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`, gap: GAP }}
+              style={{ top, height: rowHeight - CARD.gap, gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`, gap: CARD.gap }}
             >
               {group.entries.slice(row.from, row.to + 1).map((entry) => renderCard(entry))}
             </div>

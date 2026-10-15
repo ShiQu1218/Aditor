@@ -17,6 +17,8 @@ export interface VideoCardProps {
   onToggleFavorite: (path: string) => void
   onRemove: (path: string) => void
   onRetry: (path: string) => void
+  /** 卡片選單開／關時通報（開啟時帶關閉函式）：Esc 由 keymap 依「選單 → 搜尋」分層處理 */
+  onMenuChange?: (path: string, close: (() => void) | null) => void
 }
 
 /**
@@ -54,7 +56,7 @@ export function sameCardEntry(a: LibraryEntry, b: LibraryEntry): boolean {
   )
 }
 
-function VideoCardView({ entry, onOpen, onToggleFavorite, onRemove, onRetry }: VideoCardProps): JSX.Element {
+function VideoCardView({ entry, onOpen, onToggleFavorite, onRemove, onRetry, onMenuChange }: VideoCardProps): JSX.Element {
   const [menuOpen, setMenuOpen] = useState(false)
   const rootRef = useRef<HTMLElement>(null)
   const name = fileName(entry.path)
@@ -78,12 +80,16 @@ function VideoCardView({ entry, onOpen, onToggleFavorite, onRemove, onRetry }: V
 
   useEffect(() => {
     if (!menuOpen) return
+    onMenuChange?.(entry.path, () => setMenuOpen(false))
     const close = (e: MouseEvent): void => {
       if (!rootRef.current?.contains(e.target as Node)) setMenuOpen(false)
     }
     window.addEventListener('mousedown', close)
-    return () => window.removeEventListener('mousedown', close)
-  }, [menuOpen])
+    return () => {
+      window.removeEventListener('mousedown', close)
+      onMenuChange?.(entry.path, null)
+    }
+  }, [menuOpen, entry.path, onMenuChange])
 
   // 惰性「N 精華」（spec §7.4）：卡片首次進入視窗、分析完成且尚無記錄時，請主程序以預設參數計算
   const wantHl = done && entry.hl === undefined
@@ -111,197 +117,159 @@ function VideoCardView({ entry, onOpen, onToggleFavorite, onRemove, onRetry }: V
     return () => io.disconnect()
   }, [wantHl, entry.path])
 
-  const onKeyDown = (e: React.KeyboardEvent): void => {
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault()
-      onOpen(entry)
-    } else if (e.key === 'Delete') {
-      e.preventDefault()
-      onRemove(entry.path)
-    } else if (e.key === 'Escape') {
-      setMenuOpen(false)
-    }
-  }
+  const label = statusText ? `${title} · ${statusText}` : title
 
+  // 結構：<article>（無 role、無鍵盤處理）裡只有一個主要按鈕 .vcard-open（縮圖＋文字，負責開啟），
+  // 其餘互動元件（收藏、⋯、分析、重試、移除）都是它的「兄弟」，不巢狀；Enter／Space 由原生 <button> 處理。
   return (
-    <article
-      ref={rootRef}
-      className={`vcard${error ? ' err' : ''}${done ? '' : ' busy'}`}
-      role="button"
-      tabIndex={0}
-      aria-label={statusText ? `${title} · ${statusText}` : title}
-      aria-disabled={!done}
-      onClick={() => onOpen(entry)}
-      onKeyDown={onKeyDown}
-    >
-      <div className="vcard-thumb">
-        {entry.thumb ? (
-          <img src={`file://${entry.thumb.replace(/\\/g, '/')}`} alt="" loading="lazy" decoding="async" />
-        ) : (
-          <div className="vcard-nothumb">
-            <ImageOff className="ic lg" />
-            <span>{t.noThumb}</span>
-          </div>
-        )}
+    <article ref={rootRef} className={`vcard${error ? ' err' : ''}${done ? '' : ' busy'}`}>
+      <button
+        type="button"
+        className="vcard-open"
+        aria-label={label}
+        aria-disabled={!done}
+        onClick={() => onOpen(entry)}
+      >
+        <span className="vcard-thumb">
+          {entry.thumb ? (
+            <img src={`file://${entry.thumb.replace(/\\/g, '/')}`} alt="" loading="lazy" decoding="async" />
+          ) : (
+            <span className="vcard-nothumb">
+              <ImageOff className="ic lg" />
+              <span>{t.noThumb}</span>
+            </span>
+          )}
 
-        {badge && <span className="pill warn vcard-badge">{badge}</span>}
+          {badge && <span className="lib-pill warn vcard-badge">{badge}</span>}
 
+          {done && (
+            <span className="vcard-counts">
+              {(entry.counts?.knock ?? 0) > 0 && (
+                <span className="vbadge knock">{t.knockBadge.replace('{n}', String(entry.counts?.knock ?? 0))}</span>
+              )}
+              {(entry.counts?.assist ?? 0) > 0 && (
+                <span className="vbadge assist">{t.assistBadge.replace('{n}', String(entry.counts?.assist ?? 0))}</span>
+              )}
+              {(entry.hl ?? 0) > 0 && <span className="vbadge hl">{t.hlCount.replace('{n}', String(entry.hl))}</span>}
+            </span>
+          )}
+
+          {entry.durationSec ? <span className="vcard-dur mono">{formatTime(entry.durationSec)}</span> : null}
+
+          {entry.status === 'pending' && !notQueued && (
+            <span className="vcard-overlay" role="status">
+              <span>
+                {t.waiting}
+                <small>{t.waitingQueue}</small>
+              </span>
+            </span>
+          )}
+          {notQueued && (
+            <span className="vcard-overlay" role="status">
+              <span>
+                {t.notAnalyzed}
+                <small>{t.notAnalyzedHint}</small>
+              </span>
+            </span>
+          )}
+          {entry.status === 'analyzing' && (
+            <>
+              <span className="vcard-overlay" role="status">
+                <span>
+                  {t.progressText.replace('{n}', String(Math.round((entry.progress ?? 0) * 100)))}
+                  {eta != null ? ` · ${formatEta(eta)}` : ''}
+                  <small>{t.openBlocked}</small>
+                </span>
+              </span>
+              <span className="vcard-progress">
+                <i style={{ width: `${Math.round((entry.progress ?? 0) * 100)}%` }} />
+              </span>
+            </>
+          )}
+        </span>
+
+        <span className="vcard-body">
+          <span className="vcard-name" title={name}>
+            {title}
+          </span>
+          {error ? (
+            <span className="vcard-error-reason" title={entry.error}>
+              <AlertTriangle className="ic sm" />
+              <span>{entry.error || t.error}</span>
+            </span>
+          ) : (
+            <span className="vcard-meta">
+              <span>{new Date(entry.addedAt).toLocaleString('zh-TW', { hour12: false })}</span>
+              {entry.codec ? <span className="vcard-codec">{entry.codec.toUpperCase()}</span> : null}
+            </span>
+          )}
+        </span>
+      </button>
+
+      <button
+        type="button"
+        className={`vcard-fav${entry.favorite ? ' on' : ''}`}
+        aria-label={entry.favorite ? t.favoriteRemove : t.favoriteAdd}
+        aria-pressed={entry.favorite}
+        onClick={() => onToggleFavorite(entry.path)}
+      >
+        <Star className="ic" fill={entry.favorite ? 'currentColor' : 'none'} />
+      </button>
+
+      {notQueued && (
+        <button type="button" className="lib-btn sm primary vcard-analyze" onClick={() => onRetry(entry.path)}>
+          {t.analyze}
+        </button>
+      )}
+
+      {error && (
+        <div className="vcard-error-actions">
+          <button type="button" className="lib-btn sm" onClick={() => onRetry(entry.path)}>
+            {t.retry}
+          </button>
+          <button type="button" className="lib-btn sm" onClick={() => onRemove(entry.path)}>
+            {t.remove}
+          </button>
+        </div>
+      )}
+
+      <div className="vcard-menu-wrap">
         <button
           type="button"
-          className={`vcard-fav${entry.favorite ? ' on' : ''}`}
-          aria-label={entry.favorite ? t.favoriteRemove : t.favoriteAdd}
-          aria-pressed={entry.favorite}
-          onClick={(e) => {
-            e.stopPropagation()
-            onToggleFavorite(entry.path)
-          }}
+          className="vcard-more"
+          aria-label={t.more}
+          aria-haspopup="menu"
+          aria-expanded={menuOpen}
+          onClick={() => setMenuOpen((v) => !v)}
         >
-          <Star className="ic" fill={entry.favorite ? 'currentColor' : 'none'} />
+          <MoreHorizontal className="ic" />
         </button>
-
-        {done && (
-          <div className="vcard-counts">
-            {(entry.counts?.knock ?? 0) > 0 && (
-              <span className="vbadge knock">
-                {t.knockBadge.replace('{n}', String(entry.counts?.knock ?? 0))}
-              </span>
-            )}
-            {(entry.counts?.assist ?? 0) > 0 && (
-              <span className="vbadge assist">
-                {t.assistBadge.replace('{n}', String(entry.counts?.assist ?? 0))}
-              </span>
-            )}
-            {(entry.hl ?? 0) > 0 && <span className="vbadge hl">{t.hlCount.replace('{n}', String(entry.hl))}</span>}
-          </div>
-        )}
-
-        {entry.durationSec ? <span className="vcard-dur mono">{formatTime(entry.durationSec)}</span> : null}
-
-        <div className="vcard-menu-wrap">
-          <button
-            type="button"
-            className="vcard-more"
-            aria-label={t.more}
-            aria-haspopup="menu"
-            aria-expanded={menuOpen}
-            onClick={(e) => {
-              e.stopPropagation()
-              setMenuOpen((v) => !v)
-            }}
-          >
-            <MoreHorizontal className="ic" />
-          </button>
-          {menuOpen && (
-            <div className="vcard-menu" role="menu">
-              {(done || error) && (
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    setMenuOpen(false)
-                    onRetry(entry.path)
-                  }}
-                >
-                  <RefreshCw className="ic sm" />
-                  {t.reanalyze}
-                </button>
-              )}
+        {menuOpen && (
+          <div className="vcard-menu" role="menu">
+            {(done || error) && (
               <button
                 type="button"
                 role="menuitem"
-                onClick={(e) => {
-                  e.stopPropagation()
+                onClick={() => {
                   setMenuOpen(false)
-                  onRemove(entry.path)
-                }}
-              >
-                <Trash2 className="ic sm" />
-                {t.remove}
-              </button>
-            </div>
-          )}
-        </div>
-
-        {entry.status === 'pending' && !notQueued && (
-          <div className="vcard-overlay" role="status">
-            <div>
-              {t.waiting}
-              <small>{t.waitingQueue}</small>
-            </div>
-          </div>
-        )}
-        {notQueued && (
-          <div className="vcard-overlay" role="status">
-            <div>
-              {t.notAnalyzed}
-              <small>{t.notAnalyzedHint}</small>
-              <button
-                type="button"
-                className="btn sm primary"
-                onClick={(e) => {
-                  e.stopPropagation()
                   onRetry(entry.path)
                 }}
               >
-                {t.analyze}
+                <RefreshCw className="ic sm" />
+                {t.reanalyze}
               </button>
-            </div>
-          </div>
-        )}
-        {entry.status === 'analyzing' && (
-          <>
-            <div className="vcard-overlay" role="status">
-              <div>
-                {t.progressText.replace('{n}', String(Math.round((entry.progress ?? 0) * 100)))}
-                {eta != null ? ` · ${formatEta(eta)}` : ''}
-                <small>{t.openBlocked}</small>
-              </div>
-            </div>
-            <div className="vcard-progress">
-              <i style={{ width: `${Math.round((entry.progress ?? 0) * 100)}%` }} />
-            </div>
-          </>
-        )}
-      </div>
-
-      <div className="vcard-body">
-        <div className="vcard-name" title={name}>
-          {title}
-        </div>
-        {error ? (
-          <div className="vcard-error">
-            <div className="vcard-error-reason" title={entry.error}>
-              <AlertTriangle className="ic sm" />
-              <span>{entry.error || t.error}</span>
-            </div>
-            <div className="vcard-error-actions">
-              <button
-                type="button"
-                className="btn sm"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  onRetry(entry.path)
-                }}
-              >
-                {t.retry}
-              </button>
-              <button
-                type="button"
-                className="btn sm"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  onRemove(entry.path)
-                }}
-              >
-                {t.remove}
-              </button>
-            </div>
-          </div>
-        ) : (
-          <div className="vcard-meta">
-            <span>{new Date(entry.addedAt).toLocaleString('zh-TW', { hour12: false })}</span>
-            {entry.codec ? <span className="vcard-codec">{entry.codec.toUpperCase()}</span> : null}
+            )}
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setMenuOpen(false)
+                onRemove(entry.path)
+              }}
+            >
+              <Trash2 className="ic sm" />
+              {t.remove}
+            </button>
           </div>
         )}
       </div>

@@ -1,5 +1,41 @@
 // 影片庫虛擬網格版面（純函式）：依容器寬度算欄數，只回傳可視列＋上下 overscan。
 
+/**
+ * 卡片幾何的唯一來源：VirtualGrid 的計算與 library.css 都吃這組數字
+ * （CSS 透過 cardGeomStyle() 設在網格容器上的自訂屬性；min 另與 tokens.css 的 --card-min 以測試鎖定）。
+ */
+export const CARD = {
+  /** 卡片最小寬度（= tokens --card-min） */
+  min: 280,
+  gap: 16,
+  /** 日期分組表頭高度 */
+  headerH: 44,
+  /** 卡片 1px 邊框 */
+  border: 1,
+  /** 卡片文字區固定高度：錯誤卡（名稱＋原因＋26px 按鈕列）也放得下 */
+  bodyH: 96,
+  overscanRows: 2
+} as const
+
+/** 卡片總高（含邊框）：16:9 縮圖（以內寬計）＋文字區 */
+export function cardHeight(cardWidth: number): number {
+  return Math.round(((cardWidth - 2 * CARD.border) * 9) / 16) + 2 * CARD.border + CARD.bodyH
+}
+
+/** 一列的高度（含列間距） */
+export function cardRowHeight(cardWidth: number): number {
+  return cardHeight(cardWidth) + CARD.gap
+}
+
+/** 要放在網格容器上的 CSS 自訂屬性（讓 CSS 與 TS 用同一組數字） */
+export function cardGeomStyle(): Record<string, string> {
+  return {
+    '--card-min': `${CARD.min}px`,
+    '--card-gap': `${CARD.gap}px`,
+    '--card-body-h': `${CARD.bodyH}px`
+  }
+}
+
 export type GridRow =
   | { type: 'header'; group: number }
   | { type: 'row'; group: number; from: number; to: number }

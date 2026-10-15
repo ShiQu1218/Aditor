@@ -1,5 +1,7 @@
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { describe, expect, test } from 'vitest'
-import { computeGrid, gridColumns } from './gridLayout'
+import { CARD, cardGeomStyle, cardHeight, cardRowHeight, computeGrid, gridColumns } from './gridLayout'
 
 const base = {
   cardMin: 280,
@@ -88,5 +90,24 @@ describe('computeGrid', () => {
     times.sort((a, b) => a - b)
     const median = times[Math.floor(times.length / 2)]
     expect(median).toBeLessThan(2)
+  })
+})
+
+describe('card geometry (single source of truth)', () => {
+  test('cardRowHeight = border + 16:9 thumb of inner width + body + gap', () => {
+    const w = 296
+    expect(cardHeight(w)).toBe(Math.round(((w - 2 * CARD.border) * 9) / 16) + 2 * CARD.border + CARD.bodyH)
+    expect(cardRowHeight(w)).toBe(cardHeight(w) + CARD.gap)
+  })
+  test('CARD.min equals --card-min in tokens.css; library.css has no hard-coded body height', () => {
+    const tokens = readFileSync(resolve(__dirname, '../styles/tokens.css'), 'utf8')
+    expect(Number(/--card-min:\s*(\d+)px/.exec(tokens)?.[1])).toBe(CARD.min)
+    const css = readFileSync(resolve(__dirname, '../styles/library.css'), 'utf8')
+    expect(css).toMatch(/\.vcard-body\s*\{[^}]*height:\s*var\(--card-body-h\)/)
+    expect(cardGeomStyle()).toMatchObject({ '--card-body-h': `${CARD.bodyH}px`, '--card-gap': `${CARD.gap}px` })
+  })
+  test('error card content fits the body (name + reason + 26px actions)', () => {
+    // 10 上內距 + 名稱 20 + 4 + 原因 18 + 6 + 按鈕 26 + 10 下內距
+    expect(CARD.bodyH).toBeGreaterThanOrEqual(10 + 20 + 4 + 18 + 6 + 26 + 10)
   })
 })

@@ -5,14 +5,16 @@ import { EmptyState } from './EmptyState'
 import { LibraryToolbar } from './LibraryToolbar'
 import { QueueStrip } from './QueueStrip'
 import { VideoCard, fileName } from './VideoCard'
+import { resolveCardActivation, resolveLibraryEscape } from './cardLogic'
 import { VirtualGrid } from './VirtualGrid'
 import { groupByDate } from '../lib/groupByDate'
+import { useLocalNow } from '../lib/localDay'
 import { filterEntries, type LibraryKind } from '../lib/libraryFilter'
 import { useKeymap } from '../hooks/useShortcuts'
 import { useToast } from '../shell/ToastHost'
 import { useQueueStore } from '../queue/QueueProvider'
 import { i18n } from '../i18n/zh-TW'
-import { library500Requested, libraryFixtureOnce } from '../dev/libraryFixture'
+import { library500Requested } from '../dev/libraryFixtureFlag'
 
 const t = i18n.library
 
@@ -30,11 +32,19 @@ export function LibraryScreen({ onSelectVideo, onOpenSettings }: LibraryScreenPr
   const [kind, setKind] = useState<LibraryKind>('all')
   const [dragging, setDragging] = useState(false)
   const searchRef = useRef<HTMLInputElement>(null)
+  const queryRef = useRef(query)
+  queryRef.current = query
+  const openMenuClose = useRef<(() => void) | null>(null)
+  const handleMenuChange = useCallback((_path: string, close: (() => void) | null) => {
+    openMenuClose.current = close
+  }, [])
 
   // main 已把 library:updated 節流為最多每 500 ms 一次（含尾端），這裡不再另行節流
   const load = useCallback(async () => {
     if (library500Requested()) {
-      setEntries(libraryFixtureOnce())
+      // 僅 DEV：動態載入，正式包不含合成資料（見 libraryFixtureFlag）
+      const m = await import('../dev/libraryFixture')
+      setEntries(m.libraryFixtureOnce())
       return
     }
     const data = await window.api?.library?.getEntries?.()
@@ -53,13 +63,19 @@ export function LibraryScreen({ onSelectVideo, onOpenSettings }: LibraryScreenPr
     {
       focusSearch: () => searchRef.current?.focus(),
       toggleFavoriteFilter: () => setFavoriteOnly((v) => !v),
-      closeOverlay: () => setQuery('')
+      // Esc 只走 keymap（已排除 IME 組字）：最上層優先——開啟中的卡片選單 → 搜尋字串 → 無動作
+      closeOverlay: () => {
+        const action = resolveLibraryEscape({ menuOpen: openMenuClose.current !== null, query: queryRef.current })
+        if (action === 'close-menu') openMenuClose.current?.()
+        else if (action === 'clear-query') setQuery('')
+      }
     },
     { screen: 'library' }
   )
 
   const filtered = useMemo(() => filterEntries(entries, { query, favoriteOnly, kind }), [entries, query, favoriteOnly, kind])
-  const groups = useMemo(() => groupByDate(filtered), [filtered])
+  const now = useLocalNow() // 本地午夜或視窗重新取得焦點後重算「今天／昨天」
+  const groups = useMemo(() => groupByDate(filtered, now), [filtered, now])
   const counts = useMemo(
     () => ({
       all: entries.length,
@@ -80,11 +96,10 @@ export function LibraryScreen({ onSelectVideo, onOpenSettings }: LibraryScreenPr
 
   const handleOpen = useCallback(
     (entry: LibraryEntry) => {
-      if (entry.status === 'done') {
-        onSelectVideo(entry.path)
-      } else if (entry.status !== 'error') {
-        toast({ message: queueStore.stateOf(entry.path) === 'idle' ? t.card.notAnalyzedToast : t.card.openBlocked })
-      }
+      const action = resolveCardActivation(entry, queueStore.stateOf(entry.path))
+      if (action === 'open') onSelectVideo(entry.path)
+      else if (action === 'toast-not-analyzed') toast({ message: t.card.notAnalyzedToast })
+      else if (action === 'toast-blocked') toast({ message: t.card.openBlocked })
     },
     [onSelectVideo, toast, queueStore]
   )
@@ -132,11 +147,11 @@ export function LibraryScreen({ onSelectVideo, onOpenSettings }: LibraryScreenPr
     >
       <header className="lib-topbar">
         <h1>{t.title}</h1>
-        <div className="grow" />
-        <button type="button" className="btn" onClick={handleImportFolder}>
+        <div className="lib-grow" />
+        <button type="button" className="lib-btn" onClick={handleImportFolder}>
           {t.importFolder}
         </button>
-        <button type="button" className="btn primary" onClick={handleImportFiles}>
+        <button type="button" className="lib-btn primary" onClick={handleImportFiles}>
           {t.importFiles}
         </button>
       </header>
@@ -172,6 +187,7 @@ export function LibraryScreen({ onSelectVideo, onOpenSettings }: LibraryScreenPr
                   onToggleFavorite={handleToggleFavorite}
                   onRemove={handleRemove}
                   onRetry={handleRetry}
+                  onMenuChange={handleMenuChange}
                 />
               )}
             />

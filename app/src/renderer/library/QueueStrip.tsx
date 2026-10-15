@@ -52,7 +52,7 @@ export function QueueStrip(): JSX.Element | null {
             {pct}%{current.etaMs != null ? ` · ${formatEta(current.etaMs)}` : ''}
           </span>
         )}
-        <span className="grow" />
+        <span className="lib-grow" />
         <span className="dim">{t.view}</span>
         <ChevronDown className="ic sm dim" />
       </button>

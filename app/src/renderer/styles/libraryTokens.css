@@ -1,0 +1,5 @@
+/* 影片庫專用的衍生 token。tokens.css 必須與 docs/design/ui-mock/css/tokens.css 逐位元相同，所以衍生值放這裡。 */
+:root {
+  /* --warning (#ffd500) 的 14% 底色，用於「建議代理檔」徽章 */
+  --lib-warn-soft: color-mix(in srgb, var(--warning) 14%, transparent);
+}

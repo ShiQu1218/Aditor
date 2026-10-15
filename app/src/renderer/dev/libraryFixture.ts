@@ -1,11 +1,6 @@
 import type { LibraryEntry } from '../../main/library'
 import type { QueuePayload } from '../../shared/queueState'
 
-/** 僅開發模式：URL 帶 ?fixture=library500 時，以合成的 500 筆影片庫資料取代真實資料 */
-export function library500Requested(): boolean {
-  return import.meta.env.DEV && new URLSearchParams(window.location.search).get('fixture') === 'library500'
-}
-
 const PREFIXES = ['Apex Legends', 'Apex Legends', 'Apex Legends', 'Ranked', 'Mixtape']
 const DAY = 24 * 60 * 60 * 1000
 

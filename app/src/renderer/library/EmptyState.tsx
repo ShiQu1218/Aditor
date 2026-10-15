@@ -35,15 +35,15 @@ export function EmptyState({ onImportFiles, onImportFolder, onOpenSettings }: Em
             {t.step3Desc}
           </div>
         </div>
-        <button type="button" className="btn primary" onClick={onImportFiles}>
+        <button type="button" className="lib-btn primary" onClick={onImportFiles}>
           <Plus className="ic" />
           {i18n.library.importFiles}
         </button>
-        <button type="button" className="btn" onClick={onImportFolder}>
+        <button type="button" className="lib-btn" onClick={onImportFolder}>
           <FolderInput className="ic" />
           {i18n.library.importFolder}
         </button>
-        <button type="button" className="btn ghost" onClick={onOpenSettings}>
+        <button type="button" className="lib-btn ghost" onClick={onOpenSettings}>
           {t.openSettings}
         </button>
       </div>

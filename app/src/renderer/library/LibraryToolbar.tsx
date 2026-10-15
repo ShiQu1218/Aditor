@@ -30,7 +30,7 @@ export function LibraryToolbar({
   const chip = (k: LibraryKind, label: string, extra?: JSX.Element): JSX.Element => (
     <button
       type="button"
-      className={`chip${kind === k ? ' on' : ''}`}
+      className={`lib-chip${kind === k ? ' on' : ''}`}
       aria-pressed={kind === k}
       onClick={() => onKindChange(k)}
     >
@@ -51,19 +51,13 @@ export function LibraryToolbar({
           aria-label={t.searchPlaceholder}
           value={query}
           onChange={(e) => onQueryChange(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Escape') {
-              e.stopPropagation()
-              onQueryChange('')
-            }
-          }}
         />
         <kbd>Ctrl F</kbd>
       </div>
       <span className="sep" />
       <button
         type="button"
-        className={`chip${kind === 'all' && !favoriteOnly ? ' on' : ''}`}
+        className={`lib-chip${kind === 'all' && !favoriteOnly ? ' on' : ''}`}
         aria-pressed={kind === 'all' && !favoriteOnly}
         onClick={() => {
           onKindChange('all')
@@ -75,7 +69,7 @@ export function LibraryToolbar({
       </button>
       <button
         type="button"
-        className={`chip${favoriteOnly ? ' on' : ''}`}
+        className={`lib-chip${favoriteOnly ? ' on' : ''}`}
         aria-pressed={favoriteOnly}
         onClick={onToggleFavorite}
       >
@@ -85,7 +79,7 @@ export function LibraryToolbar({
       </button>
       {chip('knock', t.chips.knock)}
       {chip('assist', t.chips.assist)}
-      {chip('hl', t.chips.hl, <span className="pill accent slant">{t.chips.isNew}</span>)}
+      {chip('hl', t.chips.hl, <span className="lib-pill accent lib-slant">{t.chips.isNew}</span>)}
     </div>
   )
 }
