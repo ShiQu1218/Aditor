@@ -86,7 +86,8 @@ def _resumable(old: dict | None, info, profile: Profile) -> bool:
     if not old:
         return False
     a, v = old.get("analysis") or {}, old.get("video") or {}
-    return (a.get("status") == "partial" and v.get("size") == info.size
+    return (a.get("status") == "partial" and a.get("h_scale") is not None
+            and v.get("size") == info.size
             and abs(float(v.get("mtime", -1.0)) - info.mtime) < 1e-6
             and a.get("engine_version") == ENGINE_VERSION
             and a.get("templates_version") == profile.templates_version)
@@ -126,7 +127,7 @@ def analyze(path: str, profile: Profile, *, cache_dir: Path, beside: bool = Fals
         try:
             h_scale = calibrate(path, info, profile, cancel=cancel)
         except Cancelled:
-            doc = _make_doc(info, profile, "partial", 0.0, 1.0, [], [], manual_clips)
+            doc = _make_doc(info, profile, "partial", 0.0, None, [], [], manual_clips)  # h_scale=None：尚未校準
             if base_events:
                 doc["base_events"] = [e.to_dict() for e in base_events]
             _save(cp, doc, cache_dir)

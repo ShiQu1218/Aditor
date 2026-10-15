@@ -130,3 +130,29 @@ def test_cancel_during_calibration_leaves_partial(tmp_path, zh_profile):
         az.analyze(str(v), zh_profile, cache_dir=tmp_path / "cache", cancel=cancel)
     doc = load_cache(cache_path(str(v), tmp_path / "cache"))
     assert doc["analysis"]["status"] == "partial" and doc["analysis"]["progress_t"] == 0.0
+
+
+def test_resume_after_calibration_cancel_recalibrates(tmp_path, zh_profile, monkeypatch):
+    v = make_video(tmp_path, "plain.mp4", 6)
+    cancel = threading.Event()
+    cancel.set()
+    with pytest.raises(az.Cancelled):
+        az.analyze(str(v), zh_profile, cache_dir=tmp_path / "cache", cancel=cancel)
+    calls = []
+    monkeypatch.setattr(az, "calibrate", lambda *a, **k: calls.append(1) or 0.9)
+    doc = az.analyze(str(v), zh_profile, cache_dir=tmp_path / "cache")
+    assert calls == [1]
+    assert doc["analysis"]["h_scale"] == 0.9 and doc["analysis"]["status"] == "done"
+
+
+def test_normal_partial_resume_does_not_recalibrate(tmp_path, zh_profile, monkeypatch):
+    v = make_video(tmp_path, "plain.mp4", 8)
+    cancel = threading.Event()
+    with monkeypatch.context() as m:
+        m.setattr(az, "FrameStream", _CancelAt(3.0, cancel))
+        m.setattr(az, "calibrate", lambda *a, **k: 0.95)
+        with pytest.raises(az.Cancelled):
+            az.analyze(str(v), zh_profile, cache_dir=tmp_path / "cache", cancel=cancel)
+    monkeypatch.setattr(az, "calibrate", lambda *a, **k: pytest.fail("不應重新校準"))
+    doc = az.analyze(str(v), zh_profile, cache_dir=tmp_path / "cache")
+    assert doc["analysis"]["h_scale"] == 0.95

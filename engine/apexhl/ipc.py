@@ -127,7 +127,8 @@ class Server:
     def _release(self, cancel) -> None:
         if cancel is not None:
             with self._state:
-                self._current = None
+                if self._current is not None and self._current[1] is cancel:
+                    self._current = None
 
     # --- 指令 ---
     def _cancel(self, rid, args: dict) -> None:
