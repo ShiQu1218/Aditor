@@ -111,3 +111,14 @@ def labeled(labels):
             out.append((n, lab))
         return out
     return _f
+
+
+@pytest.fixture(scope="session")
+def pos_banners(labels):
+    """正例 banner（排除淡入畫格）。"""
+    out = []
+    for n, lab in labels.items():
+        if lab["kind"] is None or lab.get("fadein"):
+            continue
+        out.append(load_fixture(n)[0])
+    return out

@@ -301,7 +301,7 @@ def test_stacked_banner(zh_detector, labeled):   # Task 2 證實不會堆疊時�
 - Consumes: `FrameStream`, `Detector.best_scale_score`
 - Produces: `calibrate.calibrate(path: str, info: VideoInfo, profile: Profile, *, max_scan_seconds: float = 600.0) -> float`：從 `duration/2` 開始解碼（到尾端後從 0 繼續，總計最多 `max_scan_seconds`），每格以 `scale=1.0` 偵測；命中（任一關鍵字 ≥ threshold）的畫格保留，收滿 5 張後，對比例 0.85…1.15（步長 0.05）各自求 5 張的平均 `best_scale_score`，回傳最高者；收不滿 5 張則用已收集的；一張都沒有回傳 1.0。另提供 `calibrate.scan_scales(frames: list[np.ndarray], detector) -> float`（純函式，供測試）。
 
-- [ ] **Step 1: 寫失敗測試**
+- [x] **Step 1: 寫失敗測試**
 
 ```python
 def test_scan_scales_identity(zh_detector, pos_banners):
@@ -316,8 +316,8 @@ def test_scan_scales_empty(zh_detector):
     assert calibrate.scan_scales([], zh_detector) == 1.0
 ```
 
-- [ ] **Step 2: 確認失敗** → **Step 3: 實作** → **Step 4: 確認通過**
-- [ ] **Step 5: Commit** `feat(engine): per-video horizontal scale calibration`
+- [x] **Step 2: 確認失敗** → **Step 3: 實作** → **Step 4: 確認通過**
+- [x] **Step 5: Commit** `feat(engine): per-video horizontal scale calibration`
 
 ---
 
