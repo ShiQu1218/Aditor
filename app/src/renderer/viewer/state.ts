@@ -44,6 +44,7 @@ export type ViewerAction =
   | { type: 'restoreEvent'; id: string }
   | { type: 'setClips'; clips: Clip[] }
   | { type: 'applyClips'; clips: Clip[] }
+  | { type: 'applySuggestions'; clips: Clip[] }
   | { type: 'derived'; events: EngineEvent[] }
   | { type: 'analysisResult'; doc: CacheDoc }
 
@@ -193,9 +194,18 @@ export function viewerReducer(state: ViewerState, action: ViewerAction): ViewerS
     }
 
     case 'applyClips': {
-      // 浮層「套用」：以合併後結果取代片段並標 dirty
+      // 浮層「套用」：以合併後結果取代片段並標 dirty；使用者已自行決定建議，待重算旗標一併清除
       const clips = normalizeClips(action.clips)
-      return { ...state, clips, doc: { ...state.doc, clips }, dirty: true }
+      const app = state.doc.app ? { ...state.doc.app, suggestionsPending: false } : state.doc.app
+      return { ...state, clips, doc: { ...state.doc, clips, app }, dirty: true }
+    }
+
+    case 'applySuggestions': {
+      // 載入時的建議合併（place／merge）：套用結果並清除「重新分析後建議待重算」旗標，
+      // 存檔後同一次重新分析不會再合併（也不會蓋掉使用者之後的略過）
+      const clips = normalizeClips(action.clips)
+      const app = state.doc.app ? { ...state.doc.app, suggestionsPending: false } : state.doc.app
+      return { ...state, clips, doc: { ...state.doc, clips, app }, dirty: true }
     }
 
     case 'derived': {

@@ -35,6 +35,7 @@ import {
   nextSuggestion,
   planAccept,
   planAddAll,
+  isSuggestionsPending,
   planSuggestions,
   removeProjectItems
 } from './highlights'
@@ -211,8 +212,6 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
   // 分析結果世代（每次載入／重新分析完成 +1）：每個世代只規劃一次建議
   const [analysisGen, setAnalysisGen] = useState(preloadedDoc ? 1 : 0)
   const handledGen = useRef(0)
-  /** 這次分析結果是否為「已有 AI 片段之影片」的重新分析（決定建議用 merge 還是 place） */
-  const reanalyzedRef = useRef(false)
   /** 建議請求序號：使用者套用浮層或有更新的請求時，較舊的回應一律丟棄 */
   const suggestSeq = useRef(0)
 
@@ -227,7 +226,6 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
       if (longFixtureRequested()) {
         const { buildLongDoc } = await import('../dev/longFixture')
         if (!cancelled) {
-          reanalyzedRef.current = clipsRef.current.some((c) => c.origin === 'ai')
           dispatch({ type: 'analysisResult', doc: buildLongDoc(videoPath) })
           setAnalysisGen((g) => g + 1)
           setLoaded(true)
@@ -253,7 +251,6 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
         setLoadError({ code: outcome.code, message: outcome.message })
         return
       }
-      reanalyzedRef.current = clipsRef.current.some((c) => c.origin === 'ai')
       dispatch({ type: 'analysisResult', doc: outcome.doc })
       setAnalysisGen((g) => g + 1)
       setLoaded(true)
@@ -337,13 +334,16 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
   useEffect(() => {
     if (!settings || analysisGen === 0 || handledGen.current === analysisGen) return
     handledGen.current = analysisGen
-    const plan = planSuggestions({
-      doc: state.doc,
-      clips: clipsRef.current,
-      settings,
-      reanalyzed: reanalyzedRef.current
-    })
-    if (plan.kind === 'none') return
+    // 「重新分析」由文件旗標 app.suggestionsPending 決定（main 在重新分析後寫入；工作室全新掛載時
+    // 狀態沒有任何片段，無從從狀態得知）
+    const plan = planSuggestions({ doc: state.doc, clips: clipsRef.current, settings })
+    if (plan.kind === 'none') {
+      // 無從建議（例如沒有事件）：仍清除旗標，避免每次開啟都被視為待重算
+      if (isSuggestionsPending(state.doc) && state.doc.analysis?.status === 'done') {
+        dispatch({ type: 'applySuggestions', clips: clipsRef.current })
+      }
+      return
+    }
     const api = window.api
     if (!api?.engine?.autoclip) return
     const seq = ++suggestSeq.current
@@ -354,7 +354,9 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
         if (seq !== suggestSeq.current) return // 期間使用者套用了浮層或有更新的請求
         const fresh: Clip[] = Array.isArray(res?.clips) ? res.clips : []
         if (plan.kind === 'place' && fresh.length === 0) return
-        dispatch({ type: 'applyClips', clips: mergeSuggestions(plan.kind, clipsRef.current, fresh) })
+        // 套用後清除旗標並存檔：同一次重新分析只合併一次，之後使用者的略過不會被覆蓋
+        // （autoclip 失敗時不清除，下次開啟再試）
+        dispatch({ type: 'applySuggestions', clips: mergeSuggestions(plan.kind, clipsRef.current, fresh) })
         setTab('hl')
       } catch (err) {
         console.error('Failed to place AI suggestions:', err)

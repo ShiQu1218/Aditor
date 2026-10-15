@@ -209,16 +209,27 @@ export interface SuggestionInput {
   /** 目前（重新分析前）的片段 */
   clips: Clip[]
   settings: { autoSuggestOnOpen: boolean; autoclip: AutoClipParams }
-  /** 這次文件是否為已有 AI 片段之文件的（重新）分析結果 */
-  reanalyzed: boolean
+  /**
+   * 這次文件是否為重新分析的結果。預設取自文件旗標 `doc.app.suggestionsPending`
+   * （main 在重新分析完成後寫入；引擎文件本身看不出來）。
+   */
+  reanalyzed?: boolean
+}
+
+/** 文件是否帶有「重新分析後建議尚未重算」旗標（main 寫入；工作室合併一次後清除）。 */
+export function isSuggestionsPending(doc: Pick<CacheDoc, 'app'>): boolean {
+  return Boolean(doc.app?.suggestionsPending)
 }
 
 /**
  * 分析完成後是否／如何產生建議。引擎 analyze 的文件只含手動片段（engine/apexhl/analyze.py），
- * 所以重新分析後一律以目前預設參數重跑 autoclip；單純載入則維持 shouldAutoPlace 規則（不標 stale）。
+ * main 在重新分析後把手動＋已加入（stale）的片段寫回並設 `app.suggestionsPending`，
+ * 所以帶旗標的文件一律以目前預設參數重跑 autoclip 並 mergeOnReanalyze；
+ * 單純載入（首次分析、無旗標）則維持 shouldAutoPlace 規則（不標 stale）。
  */
 export function planSuggestions(input: SuggestionInput): SuggestionPlan {
-  const { doc, settings, reanalyzed } = input
+  const { doc, settings } = input
+  const reanalyzed = input.reanalyzed ?? isSuggestionsPending(doc)
   if (doc.analysis?.status !== 'done' || doc.events.length === 0) return { kind: 'none' }
   if (reanalyzed) return { kind: 'merge', params: settings.autoclip }
   if (shouldAutoPlace(doc, settings)) return { kind: 'place', params: settings.autoclip }

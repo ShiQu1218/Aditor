@@ -1,5 +1,5 @@
 import { describe, expect, test, vi } from 'vitest'
-import { computeHlCount, createSerialQueue, hlFromClips } from './hl'
+import { computeHlCount, createHlGuard, createSerialQueue, hlForSavedDoc, hlFromClips } from './hl'
 import type { AutoClipParams, CacheDoc } from '../shared/types'
 
 const PARAMS: AutoClipParams = { n: 3, gap: 20, before: 8, after: 4, max_len: 90 }
@@ -67,7 +67,7 @@ describe('computeHlCount', () => {
   })
 })
 
-describe('hlFromClips (studio save / re-analysis refresh)', () => {
+describe('hlFromClips (studio save / re-analysis refresh) — hl = number of pending suggestions', () => {
   const c = (id: string, status: 'suggested' | 'accepted' | 'skipped', origin: 'ai' | 'manual' = 'ai') => ({
     id,
     start: 0,
@@ -76,12 +76,86 @@ describe('hlFromClips (studio save / re-analysis refresh)', () => {
     event_ids: [],
     status
   })
-  test('counts pending ai suggestions once the doc has ai clips; undefined (recompute) when it has none', () => {
+  test('counts status === "suggested" ai clips; always a number', () => {
     expect(hlFromClips([c('a', 'suggested'), c('b', 'accepted'), c('d', 'suggested')])).toBe(2)
     expect(hlFromClips([c('a', 'accepted'), c('b', 'skipped')])).toBe(0)
-    expect(hlFromClips([c('m', 'accepted', 'manual')])).toBeUndefined()
-    expect(hlFromClips([])).toBeUndefined()
-    expect(hlFromClips(undefined)).toBeUndefined()
+    expect(hlFromClips([c('m', 'accepted', 'manual')])).toBe(0)
+    expect(hlFromClips([])).toBe(0)
+    expect(hlFromClips(undefined)).toBe(0)
+    // 舊檔缺 status 視為已加入
+    expect(hlFromClips([{ id: 'x', start: 0, end: 1, origin: 'ai', event_ids: [] }])).toBe(0)
+  })
+
+  test('hlForSavedDoc: suggestionsPending => undefined (recompute lazily); otherwise the suggested count', () => {
+    expect(hlForSavedDoc({ clips: [c('a', 'suggested')], app: { suggestionsPending: true } })).toBeUndefined()
+    expect(hlForSavedDoc({ clips: [c('a', 'suggested')], app: { suggestionsPending: false } })).toBe(1)
+    expect(hlForSavedDoc({ clips: [c('a', 'suggested')] })).toBe(1)
+  })
+})
+
+describe('computeHlCount semantics = pending suggestions', () => {
+  const ai = (id: string, start: number, status?: 'suggested' | 'accepted' | 'skipped', stale?: boolean) => ({
+    id,
+    start,
+    end: start + 10,
+    origin: 'ai' as const,
+    event_ids: [],
+    ...(status ? { status } : {}),
+    ...(stale ? { stale } : {})
+  })
+
+  test('doc with ai clips (no pending flag): counts suggested, no engine call', async () => {
+    const request = vi.fn(async () => ({ clips: [] }))
+    const doc = { ...makeDoc(), clips: [ai('a', 10, 'suggested'), ai('b', 50, 'accepted'), ai('c', 90, 'suggested')] }
+    expect(await computeHlCount(request, doc, PARAMS)).toBe(2)
+    expect(request).not.toHaveBeenCalled()
+  })
+
+  test('doc without ai clips (manual only): the autoclip count at default params (would be placed as suggestions)', async () => {
+    const request = vi.fn(async () => ({ clips: [ai('f1', 10), ai('f2', 80)] }))
+    const doc = { ...makeDoc(), clips: [{ id: 'm', start: 300, end: 310, origin: 'manual' as const, event_ids: [], status: 'accepted' as const }] }
+    expect(await computeHlCount(request, doc, PARAMS)).toBe(2)
+    expect(request).toHaveBeenCalledTimes(1)
+  })
+
+  test('pending re-analysis doc: counts what the studio merge will produce (new, non-overlapping suggestions only)', async () => {
+    // 已加入的舊 AI 片段（stale）在 100；新 autoclip 有一段與它重疊(100.3)、一段全新(500)
+    const request = vi.fn(async () => ({ clips: [ai('f1', 100.3), ai('f2', 500)] }))
+    const doc = { ...makeDoc(), clips: [ai('a1', 100, 'accepted', true)], app: { suggestionsPending: true } }
+    expect(await computeHlCount(request, doc, PARAMS)).toBe(1)
+  })
+})
+
+describe('createHlGuard (negative cache + revision counter)', () => {
+  test('failed compute is remembered for ~60 s then retried', () => {
+    let now = 1_000
+    const g = createHlGuard(() => now)
+    expect(g.isNegative('k')).toBe(false)
+    g.markFailed('k')
+    expect(g.isNegative('k')).toBe(true)
+    now += 59_999
+    expect(g.isNegative('k')).toBe(true)
+    now += 2
+    expect(g.isNegative('k')).toBe(false)
+  })
+
+  test('bump() (a newer authoritative hl) clears the negative entry', () => {
+    const g = createHlGuard(() => 0)
+    g.markFailed('k')
+    g.bump('k')
+    expect(g.isNegative('k')).toBe(false)
+  })
+
+  test('commitIfCurrent: a compute that started before a cache:save bump cannot overwrite the newer hl', () => {
+    const g = createHlGuard()
+    const started = g.rev('k')
+    const writes: string[] = []
+    g.bump('k') // cache:save 寫入較新的 hl
+    expect(g.commitIfCurrent('k', started, () => writes.push('stale compute'))).toBe(false)
+    expect(writes).toEqual([])
+    const fresh = g.rev('k')
+    expect(g.commitIfCurrent('k', fresh, () => writes.push('fresh'))).toBe(true)
+    expect(writes).toEqual(['fresh'])
   })
 })
 

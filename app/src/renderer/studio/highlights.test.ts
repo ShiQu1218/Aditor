@@ -171,31 +171,63 @@ describe('planSuggestions + mergeSuggestions (real data flow)', () => {
     ).toEqual({ kind: 'none' })
   })
 
-  test('integration: engine-shaped doc after re-analysis -> accepted(stale) + new suggested; old suggested/skipped dropped', () => {
-    const before: Clip[] = [
-      clip('a1', 100, { status: 'accepted' }),
-      clip('s_old', 300),
-      clip('k_old', 400, { status: 'skipped' }),
-      clip('m1', 500, { origin: 'manual', status: 'accepted' })
-    ]
-    // 1) viewerReducer 取得引擎文件（只有手動片段）
-    const state = viewerReducer(
-      { doc: doc(), selected: new Set(), filter: new Set(), clips: before, dirty: false },
-      { type: 'analysisResult', doc: engineDoc }
-    )
+  test('REAL load flow: fresh studio (empty state) + main-rewritten doc with suggestionsPending -> stale accepted kept, new suggested placed, flag cleared; second open does nothing', () => {
+    const fresh0 = { doc: doc(), selected: new Set<string>(), filter: new Set<never>(), clips: [] as Clip[], dirty: false }
+    // main 在重新分析後改寫的文件：手動片段＋已加入（stale）的 AI 片段，旗標 suggestionsPending
+    const onDisk = doc({
+      events: [ev('e1', 100), ev('e2', 105), ev('e3', 110)],
+      clips: [
+        clip('a1', 100, { status: 'accepted', stale: true }),
+        clip('m1', 500, { origin: 'manual', status: 'accepted' })
+      ],
+      app: { suggestionsPending: true }
+    })
+
+    // 1) 載入：工作室全新掛載，狀態沒有任何片段（重新分析只存在影片庫）
+    let state = viewerReducer(fresh0, { type: 'analysisResult', doc: onDisk })
     expect(state.clips.map((c) => c.id)).toEqual(['a1', 'm1'])
-    expect(state.clips.find((c) => c.id === 'a1')?.stale).toBe(true)
-    // 2) 規劃：需要重跑 autoclip
-    const plan = planSuggestions({ doc: state.doc, clips: before, settings, reanalyzed: true })
-    expect(plan.kind).toBe('merge')
-    // 3) 引擎 autoclip 的新結果（一個與已加入片段重疊，一個全新）
-    const fresh = [clip('f1', 100.3, { status: undefined }), clip('f2', 700, { status: undefined })]
-    const merged = mergeSuggestions('merge', state.clips, fresh)
-    expect(merged.map((c) => [c.id, c.status, c.stale ?? false])).toEqual([
+    expect(state.doc.app?.suggestionsPending).toBe(true)
+    expect(state.dirty).toBe(false)
+
+    // 2) 規劃：由文件旗標決定（不是由「狀態裡有沒有 AI 片段」）；autoSuggestOnOpen 關閉也要重算
+    const plan = planSuggestions({ doc: state.doc, clips: state.clips, settings: { ...settings, autoSuggestOnOpen: false } })
+    expect(plan).toEqual({ kind: 'merge', params: settings.autoclip })
+
+    // 3) autoclip 新結果：一段與保留片段重疊、一段全新 -> 合併後套用並清除旗標
+    const freshAi = [clip('f1', 100.3, { status: undefined }), clip('f2', 700, { status: undefined })]
+    const merged = mergeSuggestions('merge', state.clips, freshAi)
+    state = viewerReducer(state, { type: 'applySuggestions', clips: merged })
+    expect(state.clips.map((c) => [c.id, c.status, c.stale ?? false])).toEqual([
       ['a1', 'accepted', true],
       ['m1', 'accepted', false],
       ['f2', 'suggested', false]
     ])
+    expect(state.doc.clips).toEqual(state.clips)
+    expect(state.doc.app?.suggestionsPending).toBe(false)
+    expect(state.dirty).toBe(true) // 之後由 1 秒去抖存檔
+
+    // 4) 第二次開啟（讀回剛存的文件，旗標已清除）：不再規劃；使用者之後的略過不會被覆蓋
+    const skipped = viewerReducer(state, { type: 'skipClip', id: 'f2' })
+    const reopened = viewerReducer(fresh0, { type: 'analysisResult', doc: skipped.doc })
+    expect(planSuggestions({ doc: reopened.doc, clips: reopened.clips, settings })).toEqual({ kind: 'none' })
+    expect(reopened.clips.find((c) => c.id === 'f2')?.status).toBe('skipped')
+  })
+
+  test('flag cleared without touching clips when there is nothing to suggest (applySuggestions keeps docs without app untouched)', () => {
+    const base = { doc: doc({ clips: [clip('m1', 10, { origin: 'manual', status: 'accepted' })] }), selected: new Set<string>(), filter: new Set<never>(), clips: [] as Clip[], dirty: false }
+    const s = viewerReducer(base, { type: 'applySuggestions', clips: base.doc.clips })
+    expect(s.doc.app).toBeUndefined()
+    const pending = viewerReducer(
+      { ...base, doc: { ...base.doc, app: { suggestionsPending: true } } },
+      { type: 'applySuggestions', clips: base.doc.clips }
+    )
+    expect(pending.doc.app).toEqual({ suggestionsPending: false })
+    // 使用者在合併前自己套用浮層（applyClips）也視為已決定：旗標一併清除
+    const popover = viewerReducer(
+      { ...base, doc: { ...base.doc, app: { suggestionsPending: true } } },
+      { type: 'applyClips', clips: base.doc.clips }
+    )
+    expect(popover.doc.app).toEqual({ suggestionsPending: false })
   })
 
   test('place mode keeps manual clips and adds suggestions; fresh ai clips replace nothing else', () => {

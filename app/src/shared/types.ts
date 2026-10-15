@@ -70,6 +70,11 @@ export interface CacheDoc {
   clips: Clip[]
   keyframes: number[]
   cache_path: string
+  /**
+   * App 專屬欄位（引擎不認得，下次 analyze 重寫文件時會被丟棄，由 main 在重新分析後補回）。
+   * `suggestionsPending`：重新分析後 AI 建議尚未重算；工作室開啟時執行一次 merge 並清除。
+   */
+  app?: { suggestionsPending?: boolean }
 }
 
 export function isCounted(e: EngineEvent): boolean {
