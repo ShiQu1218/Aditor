@@ -184,7 +184,9 @@ export const i18n = {
       removedFromProject: '已移出專案片段',
       undo: '復原',
       deletedEvents: '已刪除 {n} 個事件',
-      copied: '已複製錯誤訊息'
+      copied: '已複製錯誤訊息',
+      derived: '已重新推導計入結果',
+      boxSelected: '框選了 {n} 個事件（{range}）'
     },
     meta: {
       events: '{n} 個事件'
@@ -220,6 +222,28 @@ export const i18n = {
       emptyHint: '可調整 AI 參數，或改用事件分頁建立合輯。',
       tuneParams: '調整 AI 參數',
       projectSummary: '專案已有 {n} 段 · 總長 {time}'
+    },
+    ev: {
+      ariaLabel: '事件清單',
+      hint: '單擊跳轉；勾選或 Shift+點時間軸選取',
+      counted: '計入',
+      uncounted: '不計入',
+      empty: '尚無偵測事件',
+      noMatch: '沒有符合篩選條件的事件',
+      checkbox: '選取',
+      damageLine: '含傷害行',
+      reasonDeleted: '已刪除',
+      reasonForced: '強制計入',
+      reasonForcedOff: '強制不計入',
+      auto: '自動',
+      yes: '計入',
+      no: '不計',
+      triLabel: '計入統計',
+      delete: '刪除（可復原）',
+      selected: '已選 {n} 個事件',
+      clear: '清除',
+      supercut: '建立合輯',
+      supercutKey: 'Ctrl M'
     },
     autoClipPopover: {
       title: 'AI 自動剪輯',

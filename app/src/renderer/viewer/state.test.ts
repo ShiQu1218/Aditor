@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { viewerReducer, ViewerState } from './state'
+import { mergeSelection, viewerReducer, ViewerState } from './state'
 import { CacheDoc, Clip, EngineEvent, EventType } from '../../shared/types'
 
 function makeTestDoc(): CacheDoc {
@@ -324,6 +324,40 @@ describe('viewerReducer', () => {
       expect(s.clips[0].status).toBe('accepted')
       expect(s.dirty).toBe(true)
       expect(s.doc.clips).toBe(s.clips)
+    })
+  })
+
+  describe('mergeSelection 與 setSelection', () => {
+    const base = (): ViewerState => ({
+      doc: makeTestDoc(),
+      selected: new Set(['a']),
+      filter: new Set(),
+      clips: [],
+      dirty: false
+    })
+
+    it('box selection adds to / replaces selection depending on modifier', () => {
+      const cur = new Set(['a'])
+      expect(mergeSelection(cur, ['b', 'c'], 'replace')).toEqual(new Set(['b', 'c']))
+      expect(mergeSelection(cur, ['b'], 'add')).toEqual(new Set(['a', 'b']))
+      expect(mergeSelection(cur, ['a', 'b'], 'toggle')).toEqual(new Set(['b']))
+      // 原集合不被修改
+      expect(cur).toEqual(new Set(['a']))
+    })
+
+    it('setSelection action applies replace / add / toggle in state without dirty', () => {
+      let s = viewerReducer(base(), { type: 'setSelection', ids: ['x', 'y'], mode: 'replace' })
+      expect(s.selected).toEqual(new Set(['x', 'y']))
+      expect(s.dirty).toBe(false)
+
+      s = viewerReducer(s, { type: 'setSelection', ids: ['z'], mode: 'add' })
+      expect(s.selected).toEqual(new Set(['x', 'y', 'z']))
+
+      s = viewerReducer(s, { type: 'setSelection', ids: ['x'], mode: 'toggle' })
+      expect(s.selected).toEqual(new Set(['y', 'z']))
+
+      s = viewerReducer(s, { type: 'setSelection', ids: [], mode: 'replace' })
+      expect(s.selected).toEqual(new Set())
     })
   })
 })

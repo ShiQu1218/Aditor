@@ -9,11 +9,31 @@ export interface ViewerState {
   dirty: boolean
 }
 
+/**
+ * 選取集合合併（純函式，原集合不被修改；spec §3.2.2）：
+ * - `replace`：框選（無修飾鍵）＝以新集合取代
+ * - `add`：框選加選（Shift／Ctrl）
+ * - `toggle`：Shift／Ctrl+點單一事件＝切換
+ */
+export function mergeSelection(current: Set<string>, ids: Iterable<string>, mode: SelectionMode): Set<string> {
+  if (mode === 'replace') return new Set(ids)
+  const next = new Set(current)
+  for (const id of ids) {
+    if (mode === 'add') next.add(id)
+    else if (next.has(id)) next.delete(id)
+    else next.add(id)
+  }
+  return next
+}
+
+export type SelectionMode = 'replace' | 'add' | 'toggle'
+
 export type ViewerAction =
   | { type: 'deleteEvent'; id: string }
   | { type: 'addManualEvent'; t: number; eventType: EventType }
   | { type: 'setOverride'; id: string; value: boolean | null }
   | { type: 'toggleSelectEvent'; id: string }
+  | { type: 'setSelection'; ids: readonly string[]; mode: SelectionMode }
   | { type: 'setFilter'; filter: Set<EventType> }
   | { type: 'addClip'; clip: Clip }
   | { type: 'updateClip'; clip: Clip }
@@ -87,6 +107,13 @@ export function viewerReducer(state: ViewerState, action: ViewerAction): ViewerS
       return {
         ...state,
         selected: nextSelected
+      }
+    }
+
+    case 'setSelection': {
+      return {
+        ...state,
+        selected: mergeSelection(state.selected, action.ids, action.mode)
       }
     }
 

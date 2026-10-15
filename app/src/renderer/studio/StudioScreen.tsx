@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import '../styles/studio.css'
-import { AutoClipParams, CacheDoc, Clip, EventType } from '../../shared/types'
+import { AutoClipParams, CacheDoc, Clip, EngineEvent, EventType } from '../../shared/types'
 import { formatTime, toCurrentTime } from '../../shared/time'
 import { DEFAULT_SETTINGS } from '../../shared/settings'
 import { viewerReducer, ViewerState } from '../viewer/state'
@@ -12,7 +12,6 @@ import { useToast } from '../shell/ToastHost'
 import { useOverlay } from '../shell/OverlayHost'
 import { useProject } from '../editor/ProjectProvider'
 import { addItems, Project, ProjectItem, totalDuration } from '../editor/project'
-import { EventList } from '../components/EventList'
 import { ExportDialog } from '../components/ExportDialog'
 import { FilePlus2, FolderOpen, Redo2, RefreshCw, Save, Undo2, ZoomIn, ZoomOut } from '../components/icons'
 import { checkSmooth, PlayabilityResult } from '../media/playability'
@@ -32,6 +31,7 @@ import {
   shouldAutoPlace,
   toSuggestions
 } from './highlights'
+import { EventsTab } from './EventsTab'
 import { HighlightsTab } from './HighlightsTab'
 import { NoticeBar } from './NoticeBar'
 import { PlayerStage } from './PlayerStage'
@@ -115,6 +115,8 @@ export function StudioScreen({ videoPath, onBack, onOpenLegacyEditor }: StudioSc
   const [addEventAt, setAddEventAt] = useState<number | null>(null)
   const [autoClipOpen, setAutoClipOpen] = useState(false)
   const [activeClipId, setActiveClipId] = useState<string | null>(null)
+  /** 事件清單鍵盤游標（roving tabindex；↑↓ 移動） */
+  const [evCursorId, setEvCursorId] = useState<string | null>(null)
   /** 設定快照（自動放置建議與浮層預設參數）；尚未讀到時以 DEFAULT_SETTINGS 為準 */
   const [settings, setSettings] = useState<{ autoSuggestOnOpen: boolean; autoclip: AutoClipParams } | null>(null)
 
@@ -134,6 +136,10 @@ export function StudioScreen({ videoPath, onBack, onOpenLegacyEditor }: StudioSc
   // 專案狀態的最新快照（Toast〔復原〕在觸發後才執行，不能閉包舊值）
   const projectRef = useRef(project)
   projectRef.current = project
+
+  // 選取集合的最新快照（框選 Toast 的〔建立合輯〕在稍後才執行）
+  const selectedRef = useRef(state.selected)
+  selectedRef.current = state.selected
 
   // 自動放置建議每個工作階段只做一次（避免 autoclip 無結果時重複呼叫）
   const autoPlaced = useRef(false)
@@ -263,6 +269,18 @@ export function StudioScreen({ videoPath, onBack, onOpenLegacyEditor }: StudioSc
       prev && state.clips.some((c) => c.id === prev) ? prev : nextSuggestion(state.clips, null, 1)
     )
   }, [tab, state.clips])
+
+  // 事件分頁的 filter 後清單（鍵盤游標／Enter 跳轉共用）
+  const evFiltered = useMemo(
+    () => state.doc.events.filter((e) => state.filter.has(e.type as EventType)),
+    [state.doc.events, state.filter]
+  )
+
+  // 事件分頁開啟時確保游標落在清單內（roving tabindex 的第一站）
+  useEffect(() => {
+    if (tab !== 'ev') return
+    setEvCursorId((prev) => (prev && evFiltered.some((e) => e.id === prev) ? prev : evFiltered[0]?.id ?? null))
+  }, [tab, evFiltered])
 
   /* ---------------- 播放控制 ---------------- */
 
@@ -562,17 +580,55 @@ export function StudioScreen({ videoPath, onBack, onOpenLegacyEditor }: StudioSc
     if (clip && isSuggested(clip)) skipClip(clip)
   }, [state.clips, activeClipId, skipClip])
 
-  const handleSupercut = useCallback(() => {
-    if (state.selected.size === 0) return
-    const clips = supercut(state.doc.events, state.selected, 8, 4, duration)
-    for (const c of clips) dispatch({ type: 'addClip', clip: c })
+  const handleToggleSelect = useCallback((id: string) => {
+    dispatch({ type: 'setSelection', ids: [id], mode: 'toggle' })
+  }, [])
+
+  const clearSelection = useCallback(() => {
+    dispatch({ type: 'setSelection', ids: [], mode: 'replace' })
+  }, [])
+
+  /** 建立合輯（Ctrl+M／底欄／框選 Toast）：勾選事件 → 片段 → 同步加入專案，單一 Toast〔復原〕。 */
+  const runSupercut = useCallback(() => {
+    const ids = selectedRef.current
+    if (ids.size === 0) return
+    const clips = supercut(
+      state.doc.events.filter((e) => !e.deleted),
+      ids,
+      8,
+      4,
+      duration
+    )
+    if (clips.length === 0) return
+    let next: Project = projectRef.current
+    const addedIds: string[] = []
+    for (const c of clips) {
+      dispatch({ type: 'addClip', clip: c })
+      const res = acceptToProject(c, videoPath, next)
+      if (res.added.length > 0) next = addItems(next, res.added)
+      for (const it of res.added) addedIds.push(it.id)
+    }
+    apply(next)
+    dispatch({ type: 'setSelection', ids: [], mode: 'replace' })
     setTab('hl')
-  }, [state.selected, state.doc.events, duration])
+    const secs = Math.round(clips.reduce((sum, c) => sum + Math.max(0, c.end - c.start), 0))
+    toast({
+      message: i18n.studio.toast.addedProject.replace('{sec}', String(secs)),
+      action: {
+        label: i18n.studio.toast.undo,
+        run: () => {
+          if (addedIds.length > 0) apply(removeProjectItems(projectRef.current, addedIds))
+          for (const c of clips) dispatch({ type: 'removeClip', id: c.id })
+        }
+      }
+    })
+  }, [state.doc.events, duration, videoPath, apply, toast])
 
   const handleDeleteSelected = useCallback(() => {
     const ids = [...state.selected]
     if (ids.length === 0) return
     for (const id of ids) dispatch({ type: 'deleteEvent', id })
+    dispatch({ type: 'setSelection', ids: [], mode: 'replace' })
     toast({
       message: i18n.studio.toast.deletedEvents.replace('{n}', String(ids.length)),
       action: { label: i18n.studio.toast.undo, run: () => ids.forEach((id) => dispatch({ type: 'restoreEvent', id })) }
@@ -582,6 +638,13 @@ export function StudioScreen({ videoPath, onBack, onOpenLegacyEditor }: StudioSc
   const handleDeleteEvent = useCallback(
     (id: string) => {
       dispatch({ type: 'deleteEvent', id })
+      if (selectedRef.current.has(id)) {
+        dispatch({
+          type: 'setSelection',
+          ids: [...selectedRef.current].filter((x) => x !== id),
+          mode: 'replace'
+        })
+      }
       toast({
         message: i18n.studio.toast.deletedEvents.replace('{n}', '1'),
         action: { label: i18n.studio.toast.undo, run: () => dispatch({ type: 'restoreEvent', id }) }
@@ -590,17 +653,61 @@ export function StudioScreen({ videoPath, onBack, onOpenLegacyEditor }: StudioSc
     [toast]
   )
 
-  const clearSelection = useCallback(() => {
-    for (const id of state.selected) dispatch({ type: 'toggleSelectEvent', id })
-  }, [state.selected])
-
-  const handleBoxSelect = useCallback(
-    (ids: string[], _t1: number, _t2: number, additive: boolean) => {
-      const want = new Set(additive ? [...state.selected, ...ids] : ids)
-      for (const id of want) if (!state.selected.has(id)) dispatch({ type: 'toggleSelectEvent', id })
-      for (const id of state.selected) if (!want.has(id)) dispatch({ type: 'toggleSelectEvent', id })
+  /** 三態變更：先套用 override，再呼叫引擎 derive 重新推導 counted 與原因；成功時 Toast。 */
+  const handleSetOverride = useCallback(
+    (id: string, value: boolean | null) => {
+      dispatch({ type: 'setOverride', id, value })
+      const api = window.api
+      if (!api?.engine?.derive) return
+      const events = state.doc.events.map((e) => (e.id === id ? { ...e, counted_override: value } : e))
+      void (async () => {
+        try {
+          const res = (await api.engine.derive({ events, spectating: state.doc.spectating })) as {
+            events: EngineEvent[]
+          } | null
+          if (res?.events) {
+            dispatch({ type: 'derived', events: res.events })
+            toast({ message: i18n.studio.toast.derived })
+          }
+        } catch (err) {
+          console.error('Failed to derive counted reasons:', err)
+        }
+      })()
     },
-    [state.selected]
+    [state.doc.events, state.doc.spectating, toast]
+  )
+
+  /** 框選（時間軸拖曳空白）：Shift／Ctrl＝加選，否則取代；完成 Toast〔建立合輯〕。 */
+  const handleBoxSelect = useCallback(
+    (ids: string[], t1: number, t2: number, additive: boolean) => {
+      dispatch({ type: 'setSelection', ids, mode: additive ? 'add' : 'replace' })
+      setTab('ev')
+      toast({
+        message: i18n.studio.toast.boxSelected
+          .replace('{n}', String(ids.length))
+          .replace('{range}', `${formatTime(t1)}–${formatTime(t2)}`),
+        action: { label: i18n.studio.ev.supercut, run: runSupercut }
+      })
+    },
+    [toast, runSupercut]
+  )
+
+  /** ↑↓：精華分頁移動建議卡；事件分頁移動游標（到底環繞）。 */
+  const moveListCursor = useCallback(
+    (dir: 1 | -1) => {
+      if (tab === 'hl') {
+        setActiveClipId((prev) => nextSuggestion(state.clips, prev, dir))
+        return
+      }
+      if (evFiltered.length === 0) return
+      setEvCursorId((prev) => {
+        const at = prev ? evFiltered.findIndex((e) => e.id === prev) : -1
+        const base = at >= 0 ? at : dir === 1 ? -1 : 0
+        const i = (((base + dir) % evFiltered.length) + evFiltered.length) % evFiltered.length
+        return evFiltered[i].id
+      })
+    },
+    [tab, state.clips, evFiltered]
   )
 
   const handleOpenExport = useCallback(() => {
@@ -631,20 +738,17 @@ export function StudioScreen({ videoPath, onBack, onOpenLegacyEditor }: StudioSc
       zoomReset: () => tlRef.current?.zoomReset(),
       quickOrSplit: handleQuickOrSplit,
       addEvent: () => setAddEventAt(videoRef.current?.currentTime ?? currentTime),
-      supercut: handleSupercut,
+      supercut: runSupercut,
       addAllToProject: addAllSuggestions,
       acceptSuggestion: handleAcceptSuggestion,
       skipSuggestion: handleSkipSuggestion,
-      listPrev: () => {
-        if (tab === 'hl') setActiveClipId((prev) => nextSuggestion(state.clips, prev, -1))
-      },
-      listNext: () => {
-        if (tab === 'hl') setActiveClipId((prev) => nextSuggestion(state.clips, prev, 1))
-      },
+      listPrev: () => moveListCursor(-1),
+      listNext: () => moveListCursor(1),
       deleteSelectedEvents: handleDeleteSelected,
       seekSelectedEvent: () => {
         const id = [...state.selected][0]
-        const ev = state.doc.events.find((e) => e.id === id)
+        const ev =
+          state.doc.events.find((e) => e.id === id) ?? evFiltered.find((e) => e.id === evCursorId)
         if (ev) handleSelectEvent(ev)
       },
       undo,
@@ -774,7 +878,7 @@ export function StudioScreen({ videoPath, onBack, onOpenLegacyEditor }: StudioSc
               onUpdateClip={(clip) => dispatch({ type: 'updateClip', clip })}
               selected={state.selected}
               currentEventId={activeEvent?.id}
-              onToggleSelect={(id) => dispatch({ type: 'toggleSelectEvent', id })}
+              onToggleSelect={handleToggleSelect}
               onBoxSelect={handleBoxSelect}
               getPlayTime={() => videoRef.current?.currentTime ?? 0}
               playing={isPlaying}
@@ -868,21 +972,20 @@ export function StudioScreen({ videoPath, onBack, onOpenLegacyEditor }: StudioSc
                 onAddAll={addAllSuggestions}
               />
             ) : (
-              <div className="aside-panel" data-zone="ev" role="tabpanel">
-                {state.doc.events.length === 0 ? (
-                  <p className="dim">{i18n.studio.shelves.evPlaceholder}</p>
-                ) : (
-                  <EventList
-                    events={state.doc.events}
-                    selected={state.selected}
-                    filter={state.filter}
-                    onSelectEvent={handleSelectEvent}
-                    onToggleSelect={(id) => dispatch({ type: 'toggleSelectEvent', id })}
-                    onToggleOverride={(id, value) => dispatch({ type: 'setOverride', id, value })}
-                    onDeleteEvent={handleDeleteEvent}
-                  />
-                )}
-              </div>
+              <EventsTab
+                events={state.doc.events}
+                filter={state.filter}
+                selected={state.selected}
+                currentId={activeEvent?.id ?? null}
+                cursorId={evCursorId}
+                onCursorChange={setEvCursorId}
+                onSeek={handleSelectEvent}
+                onToggleSelect={handleToggleSelect}
+                onSetOverride={handleSetOverride}
+                onDelete={handleDeleteEvent}
+                onClearSelection={clearSelection}
+                onSupercut={runSupercut}
+              />
             )}
           </Aside>
         )}
