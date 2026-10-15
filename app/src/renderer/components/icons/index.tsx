@@ -1,8 +1,46 @@
 // 圖示統一出口：集中自 lucide-react 匯入，避免各處散落
 import React from 'react'
-import { LayoutGrid, Film, Keyboard, SlidersHorizontal, ListVideo } from 'lucide-react'
+import {
+  LayoutGrid,
+  Film,
+  Keyboard,
+  SlidersHorizontal,
+  ListVideo,
+  Search,
+  Star,
+  Plus,
+  FolderInput,
+  Sparkles,
+  MoreHorizontal,
+  AlertTriangle,
+  RefreshCw,
+  Trash2,
+  ImageOff,
+  X,
+  FolderOpen,
+  Loader2
+} from 'lucide-react'
 
-export { LayoutGrid, Film, Keyboard, SlidersHorizontal, ListVideo }
+export {
+  LayoutGrid,
+  Film,
+  Keyboard,
+  SlidersHorizontal,
+  ListVideo,
+  Search,
+  Star,
+  Plus,
+  FolderInput,
+  Sparkles,
+  MoreHorizontal,
+  AlertTriangle,
+  RefreshCw,
+  Trash2,
+  ImageOff,
+  X,
+  FolderOpen,
+  Loader2
+}
 
 /** 品牌 logo（六角形＋十字），顏色跟隨 currentColor */
 export function LogoMark(props: { className?: string }): JSX.Element {

@@ -15,6 +15,10 @@ export interface LibraryEntry {
   counts?: { knock: number; assist: number }
   durationSec?: number
   thumb?: string
+  /** 預設參數下可產生的精華段數（Task 11 惰性寫入，供卡片徽章與「有精華」篩選） */
+  hl?: number
+  /** 影片編碼（分析完成後寫入，供卡片代理檔建議徽章） */
+  codec?: string
 }
 
 const SUPPORTED_EXTS = new Set(['.mp4', '.mkv', '.mov', '.webm'])

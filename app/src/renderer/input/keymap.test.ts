@@ -123,6 +123,16 @@ describe('resolveKey 矩陣', () => {
     expect(resolveKey(k('q', { ctrlKey: true }), lib)).toBeNull()
   })
 
+  test('library screen: Esc clears the search via closeOverlay', () => {
+    const lib = ctx({ screen: 'library' })
+    expect(resolveKey(k('Escape'), lib)).toBe('closeOverlay')
+    // 輸入框聚焦（搜尋框）時也要能清除；組字中不處理
+    expect(resolveKey(k('Escape'), { ...lib, target: 'text' })).toBe('closeOverlay')
+    expect(resolveKey(k('Escape', { isComposing: true }), lib)).toBeNull()
+    // 設定頁不受影響
+    expect(resolveKey(k('Escape'), ctx({ screen: 'settings' }))).toBeNull()
+  })
+
   test('其餘格子', () => {
     expect(resolveKey(k('s'), ctx())).toBe('speed')
     expect(resolveKey(k('m'), ctx({ target: 'native' }))).toBe('addEvent')

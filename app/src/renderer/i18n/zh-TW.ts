@@ -8,24 +8,62 @@ export const i18n = {
   library: {
     title: '影片庫',
     importFiles: '匯入影片',
-    importFolder: '選擇資料夾',
-    watchFolder: '設定監看資料夾',
-    searchPlaceholder: '搜尋影片名稱 (Ctrl+F)',
-    favoriteFilter: '只顯示收藏 (Ctrl+D)',
-    filterAll: '全部事件',
-    filterKnock: '含擊倒',
-    filterAssist: '含助攻',
-    emptyTitle: '尚未匯入任何影片',
-    emptyDesc: '拖放 Apex Legends 錄影檔到此處，或點擊上方按鈕匯入。',
-    status: {
-      pending: '等待分析',
-      analyzing: '分析中',
-      done: '分析完成',
-      error: '分析失敗'
+    importFolder: '匯入資料夾',
+    searchPlaceholder: '依檔名搜尋',
+    chips: {
+      all: '全部',
+      favorite: '收藏',
+      knock: '含擊倒',
+      assist: '含助攻',
+      hl: '有精華',
+      isNew: '新'
     },
-    badges: {
-      knock: '擊倒',
-      assist: '助攻'
+    date: {
+      today: '今天',
+      yesterday: '昨天',
+      /** 其他日期：2026 年 10 月 13 日 */
+      header: '{y} 年 {m} 月 {d} 日'
+    },
+    videoCount: '{n} 支影片',
+    empty: {
+      title: '把 Apex 錄影拖進來',
+      desc: '支援 mp4 / mkv / mov / webm。新影片會自動排入分析，一次分析一支。',
+      step1Title: '匯入',
+      step1Desc: '拖放檔案，或指定監看資料夾',
+      step2Title: '自動分析',
+      step2Desc: '標出擊倒、助攻與多殺精華',
+      step3Title: '挑選匯出',
+      step3Desc: '確認精華、微調、匯出',
+      openSettings: '設定監看資料夾'
+    },
+    noResults: {
+      title: '沒有符合條件的影片',
+      desc: '請嘗試調整搜尋關鍵字或篩選條件。'
+    },
+    drop: {
+      title: '放開滑鼠以匯入影片',
+      desc: '將加入影片庫並自動排入分析'
+    },
+    card: {
+      noThumb: '無縮圖',
+      waiting: '等待分析',
+      waitingQueue: '排在佇列中',
+      analyzing: '分析中',
+      progressText: '分析中 {n}%',
+      openBlocked: '分析完成後才能開啟',
+      error: '分析失敗',
+      retry: '重試',
+      remove: '從影片庫移除',
+      more: '更多動作',
+      reanalyze: '重新分析',
+      favoriteAdd: '加入收藏',
+      favoriteRemove: '取消收藏',
+      hlCount: '{n} 精華',
+      knockBadge: '擊倒 {n}',
+      assistBadge: '助攻 {n}',
+      av1: 'AV1 · 建議代理檔',
+      proxySuggest: '建議代理檔',
+      removeConfirm: '確定要從影片庫移除「{name}」嗎？（不會刪除影片檔案）'
     }
   },
   timeline: {

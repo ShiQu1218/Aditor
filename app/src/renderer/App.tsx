@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { LibraryPage } from './pages/Library'
+import { LibraryScreen } from './library/LibraryScreen'
 import { ViewerPage } from './pages/Viewer'
 import { EditorPage } from './pages/Editor'
 import { LONG_FIXTURE_PATH, longFixtureRequested } from './dev/fixture'
@@ -70,7 +70,7 @@ export default function App(): JSX.Element {
             {shellI18n.legacyEditor} ({project.items.length} 個片段) →
           </button>
         </div>
-        <LibraryPage onSelectVideo={handleSelectVideo} />
+        <LibraryScreen onSelectVideo={handleSelectVideo} onOpenSettings={() => setView('settings')} />
       </>
     )
   }

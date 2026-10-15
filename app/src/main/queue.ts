@@ -111,7 +111,8 @@ export class AnalysisQueue extends EventEmitter {
         progress: 1,
         counts: { knock, assist },
         durationSec: duration,
-        thumb
+        thumb,
+        codec: doc.video?.codec
       })
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
