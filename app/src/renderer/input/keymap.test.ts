@@ -169,6 +169,24 @@ describe('resolveKey 矩陣', () => {
   })
 })
 
+describe('overlayOpen 阻擋底下的工作室', () => {
+  const open = (o: Partial<KeyCtx> = {}): KeyCtx => ctx({ overlayOpen: true, ...o })
+  test('studio: nothing but Esc resolves while an overlay is open', () => {
+    expect(resolveKey(k(' '), open())).toBeNull()
+    expect(resolveKey(k('q', { ctrlKey: true }), open())).toBeNull()
+    expect(resolveKey(k('z', { ctrlKey: true }), open())).toBeNull()
+    expect(resolveKey(k('ArrowLeft'), open({ zone: 'src' }))).toBeNull()
+    expect(resolveKey(k('ArrowLeft', { ctrlKey: true }), open())).toBeNull()
+    expect(resolveKey(k('m'), open())).toBeNull()
+    expect(resolveKey(k('Enter'), open({ zone: 'hl' }))).toBeNull()
+    expect(resolveKey(k('?', { shiftKey: true }), open())).toBeNull()
+  })
+  test('Esc with an overlay open closes the overlay (never backToSource)', () => {
+    expect(resolveKey(k('Escape'), open({ mode: 'project' }))).toBe('closeOverlay')
+    expect(resolveKey(k('Escape'), open({ mode: 'project', target: 'text' }))).toBe('closeOverlay')
+  })
+})
+
 describe('IME / AltGr / Esc / Alt / repeat', () => {
   test('組字中一律 null', () => {
     const c = ctx({ zone: 'src', mode: 'project' })

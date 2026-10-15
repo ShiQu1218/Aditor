@@ -1,5 +1,5 @@
 import { useEffect, type ReactNode } from 'react'
-import { setCurrentZone, zoneAfterEvent } from './focusZone'
+import { initialZoneState, reduceZone, setCurrentZone, type ZoneEvent, type ZoneState } from './focusZone'
 
 /**
  * 以 focusin／focusout／mousedown 與 data-zone 屬性記錄目前焦點區。
@@ -8,9 +8,10 @@ import { setCurrentZone, zoneAfterEvent } from './focusZone'
  */
 export function FocusZoneProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
-    const apply = (ev: Parameters<typeof zoneAfterEvent>[0]): void => {
-      const next = zoneAfterEvent(ev)
-      setCurrentZone(next.zone, next.el)
+    let state: ZoneState = initialZoneState
+    const apply = (ev: ZoneEvent): void => {
+      state = reduceZone(state, ev)
+      setCurrentZone(state.zone, state.el)
     }
     const onFocusIn = (e: Event): void =>
       apply({ type: 'focusin', target: e.target as HTMLElement | null, related: (e as FocusEvent).relatedTarget as HTMLElement | null })
@@ -25,6 +26,7 @@ export function FocusZoneProvider({ children }: { children: ReactNode }) {
       document.removeEventListener('focusin', onFocusIn)
       document.removeEventListener('focusout', onFocusOut)
       document.removeEventListener('mousedown', onMouseDown, true)
+      state = initialZoneState
       setCurrentZone(null)
     }
   }, [])

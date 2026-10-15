@@ -89,19 +89,44 @@ export function getCurrentZone(): Zone {
   return currentZone
 }
 
-/** 由焦點事件計算下一個焦點區狀態（純函式，供 FocusZoneProvider 與測試共用）。 */
-export function zoneAfterEvent(ev: {
+export interface ZoneState {
+  zone: Zone
+  el: ElementLike | null
+  /**
+   * 指標鎖存：剛在區域內 mousedown。點在非可聚焦元素上時，瀏覽器會讓原本聚焦的元素 blur
+   * （focusout，relatedTarget 為 null）；這次 focusout 不得把剛點到的區域清掉。
+   * 只保護緊接著的那一次 focusout，任何 focusin／區域外 mousedown 都會解除。
+   */
+  latched: boolean
+}
+
+export const initialZoneState: ZoneState = { zone: null, el: null, latched: false }
+
+export type ZoneEvent = {
   type: 'focusin' | 'focusout' | 'mousedown'
   target: ElementLike | null
   related: ElementLike | null
-}): { zone: Zone; el: ElementLike | null } {
-  if (ev.type === 'focusout') {
-    // 焦點移到其他地方：優先記錄新焦點（relatedTarget）所在的區域；
-    // 離開到區域外（related 為 null 或不在任何區域）→ 清除
-    const next = zoneOf(ev.related)
-    if (next === null) return { zone: null, el: null }
-    return { zone: next, el: ev.related }
+}
+
+/** 由焦點事件計算下一個焦點區狀態（純函式，供 FocusZoneProvider 與序列測試共用）。 */
+export function reduceZone(state: ZoneState, ev: ZoneEvent): ZoneState {
+  switch (ev.type) {
+    case 'mousedown': {
+      const zone = zoneOf(ev.target)
+      return zone ? { zone, el: ev.target, latched: true } : initialZoneState
+    }
+    case 'focusin': {
+      const zone = zoneOf(ev.target)
+      return zone ? { zone, el: ev.target, latched: false } : initialZoneState
+    }
+    case 'focusout': {
+      // 焦點移到其他區域：記錄新區域
+      const next = zoneOf(ev.related)
+      if (next !== null) return { zone: next, el: ev.related, latched: false }
+      // 指標剛點在區域內（非可聚焦）造成的 blur：維持區域，鎖存用掉
+      if (state.latched) return { ...state, latched: false }
+      // 離開到區域外 → 清除
+      return initialZoneState
+    }
   }
-  const zone = zoneOf(ev.target)
-  return { zone, el: zone ? ev.target : null }
 }

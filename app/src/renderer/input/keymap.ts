@@ -158,6 +158,11 @@ export function resolveKey(e: KeyInput, ctx: KeyCtx): Command | null {
 function resolveInner(e: KeyInput, ctx: KeyCtx): Command | null {
   const ctrl = e.ctrlKey || e.metaKey
 
+  // 工作室有浮層／對話框時，除了 Esc（關最上層）一律不作用於底下的工作室
+  if (ctx.screen === 'studio' && ctx.overlayOpen) {
+    return e.key === 'Escape' && !ctrl ? 'closeOverlay' : null
+  }
+
   if (ctrl) return resolveCtrl(e, ctx)
 
   // Esc：浮層優先；焦點在輸入框／原生控制項時不得返回來源（例如取消 IME 組字）
