@@ -1,11 +1,10 @@
 import React, { useState } from 'react'
 import { LibraryScreen } from './library/LibraryScreen'
-import { ViewerPage } from './pages/Viewer'
+import { StudioScreen } from './studio/StudioScreen'
 import { EditorPage } from './pages/Editor'
 import { LONG_FIXTURE_PATH, longFixtureRequested } from './dev/fixture'
-import { Clip } from '../shared/types'
-import { addItems } from './editor/project'
 import { ProjectProvider, useProject } from './editor/ProjectProvider'
+import { FocusZoneProvider } from './input/FocusZoneProvider'
 import { AppShell } from './shell/AppShell'
 import { RailView } from './shell/Rail'
 import { shellI18n } from './i18n/zh-TW'
@@ -14,32 +13,24 @@ type View = 'library' | 'studio' | 'settings' | 'legacy-editor'
 
 export default function App(): JSX.Element {
   return (
-    <ProjectProvider>
-      <AppContent />
-    </ProjectProvider>
+    <FocusZoneProvider>
+      <ProjectProvider>
+        <AppContent />
+      </ProjectProvider>
+    </FocusZoneProvider>
   )
 }
 
 function AppContent(): JSX.Element {
-  const { project, apply } = useProject()
+  const { project } = useProject()
   const [view, setView] = useState<View>(() => (longFixtureRequested() ? 'studio' : 'library'))
-  const [currentVideo, setCurrentVideo] = useState<string | null>(() => (longFixtureRequested() ? LONG_FIXTURE_PATH : null))
+  const [currentVideo, setCurrentVideo] = useState<string | null>(() =>
+    longFixtureRequested() ? LONG_FIXTURE_PATH : null
+  )
 
   const handleSelectVideo = (path: string) => {
     setCurrentVideo(path)
     setView('studio')
-  }
-
-  const handleSendToProject = (clips: Clip[]) => {
-    if (!currentVideo) return
-    const newItems = clips.map((c) => ({
-      id: `item_${Date.now()}_${c.id}`,
-      source: currentVideo,
-      start: c.start,
-      end: c.end
-    }))
-    apply(addItems(project, newItems))
-    setView('legacy-editor')
   }
 
   // 工作室在尚未選定影片時回到影片庫（暫時行為，Task 13 之後改版）
@@ -53,10 +44,11 @@ function AppContent(): JSX.Element {
   let page: JSX.Element
   if (view === 'studio' && currentVideo) {
     page = (
-      <ViewerPage
+      <StudioScreen
+        key={currentVideo}
         videoPath={currentVideo}
         onBack={() => setView('library')}
-        onSendToProject={handleSendToProject}
+        onOpenLegacyEditor={() => setView('legacy-editor')}
       />
     )
   } else if (view === 'legacy-editor') {

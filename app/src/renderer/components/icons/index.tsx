@@ -19,7 +19,21 @@ import {
   X,
   FolderOpen,
   Loader2,
-  ChevronDown
+  ChevronDown,
+  ChevronLeft,
+  Play,
+  Pause,
+  SkipBack,
+  SkipForward,
+  Scissors,
+  Download,
+  Menu,
+  ZoomIn,
+  ZoomOut,
+  Undo2,
+  Redo2,
+  FilePlus2,
+  Save
 } from 'lucide-react'
 
 export {
@@ -41,7 +55,21 @@ export {
   X,
   FolderOpen,
   Loader2,
-  ChevronDown
+  ChevronDown,
+  ChevronLeft,
+  Play,
+  Pause,
+  SkipBack,
+  SkipForward,
+  Scissors,
+  Download,
+  Menu,
+  ZoomIn,
+  ZoomOut,
+  Undo2,
+  Redo2,
+  FilePlus2,
+  Save
 }
 
 /** 品牌 logo（六角形＋十字），顏色跟隨 currentColor */

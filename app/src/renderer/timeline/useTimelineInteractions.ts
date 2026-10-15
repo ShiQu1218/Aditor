@@ -4,11 +4,13 @@ import type { Clip, EngineEvent, EventType } from '../../shared/types'
 import { isCounted } from '../../shared/types'
 import { formatTime } from '../../shared/time'
 import { i18n } from '../i18n/zh-TW'
+import { targetKindOf } from '../input/focusZone'
 import { resizeClip } from './clips'
 import { EVENT_TOP } from './draw'
 import { TimelineLayout, zoomToCluster } from './layout'
 import { View, pan, timeToX, xToTime, zoom } from './model'
 import { boxSelect, hitDensity, hitItem } from './select'
+import { idleArbiter, spaceArbiter, type SpaceArbiter } from './spacePlay'
 
 /** 拖曳超過此距離（px，水平）才視為框選 */
 export const DRAG_THRESHOLD_PX = 4
@@ -220,6 +222,8 @@ export interface InteractionOptions {
   onToggleSelect?: (id: string) => void
   onBoxSelect?: (ids: string[], t1: number, t2: number, additive: boolean) => void
   onUpdateClip?: (clip: Clip) => void
+  /** 空白鍵輕按（放開時未平移）＝切換播放；由 spaceArbiter 仲裁後呼叫 */
+  onPlayToggle?: () => void
 }
 
 export interface InteractionResult {
@@ -232,12 +236,6 @@ export interface InteractionResult {
   tip: { x: number; y: number; text: string } | null
 }
 
-function isTypingTarget(t: EventTarget | null): boolean {
-  const el = t as HTMLElement | null
-  if (!el || !el.tagName) return false
-  return el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable
-}
-
 export function useTimelineInteractions(opts: InteractionOptions): InteractionResult {
   const o = useRef(opts)
   o.current = opts
@@ -245,7 +243,7 @@ export function useTimelineInteractions(opts: InteractionOptions): InteractionRe
   const st = useRef<IState>(initialInteraction)
   const panStart = useRef<{ clientX: number; start: number } | null>(null)
   const downT = useRef(0)
-  const spaceRef = useRef(false)
+  const arbRef = useRef<SpaceArbiter>(idleArbiter)
   const originalClip = useRef<Clip | null>(null)
   const insideRef = useRef(false)
 
@@ -261,6 +259,9 @@ export function useTimelineInteractions(opts: InteractionOptions): InteractionRe
       : { x: 0, y: 0 }
   }, [])
 
+  /** 空白鍵是否讓時間軸處於「平移待命」或已平移（游標回饋用） */
+  const spaceHeld = (): boolean => arbRef.current.pending || arbRef.current.panned
+
   const apply = useCallback((a: IAction): IOutcome => {
     const r = interactionReducer(st.current, a)
     st.current = r.state
@@ -272,8 +273,11 @@ export function useTimelineInteractions(opts: InteractionOptions): InteractionRe
       if (e.button !== 0 && e.button !== 1) return
       const { x, y } = local(e.clientX, e.clientY)
       const cur = o.current
+      // 空白鍵仲裁：按住 >200 ms 後才視為平移；未達門檻的按下不觸發播放
+      const gate = spaceArbiter(arbRef.current, { type: 'pointerdown', now: performance.now() })
+      arbRef.current = gate.state
       const handle = handleAt(cur.clips, cur.view, x, y, cur.height)
-      apply({ type: 'down', x, y, button: e.button, shift: e.shiftKey || e.ctrlKey, space: spaceRef.current, handle })
+      apply({ type: 'down', x, y, button: e.button, shift: e.shiftKey || e.ctrlKey, space: gate.pan, handle })
       downT.current = xToTime(x, cur.view)
       originalClip.current = handle ? (cur.clips.find((c) => c.id === handle.clipId) ?? null) : null
       if (st.current.phase === 'pan') {
@@ -297,7 +301,7 @@ export function useTimelineInteractions(opts: InteractionOptions): InteractionRe
       originalClip.current = null
       panStart.current = null
       setBox(null)
-      setCursor(spaceRef.current ? 'grab' : 'pointer')
+      setCursor(spaceHeld() ? 'grab' : 'pointer')
       if (restore) o.current.onUpdateClip?.(restore)
     }
     const onMove = (e: MouseEvent): void => {
@@ -326,7 +330,7 @@ export function useTimelineInteractions(opts: InteractionOptions): InteractionRe
       const cur = o.current
       setBox(null)
       panStart.current = null
-      setCursor(spaceRef.current ? 'grab' : 'pointer')
+      setCursor(spaceHeld() ? 'grab' : 'pointer')
       if (outcome === 'box') {
         const t1 = Math.min(downT.current, xToTime(x, cur.view))
         const t2 = Math.max(downT.current, xToTime(x, cur.view))
@@ -348,7 +352,7 @@ export function useTimelineInteractions(opts: InteractionOptions): InteractionRe
       }
     }
     const onBlur = (): void => {
-      spaceRef.current = false
+      arbRef.current = idleArbiter
       if (shouldCancel(st.current.phase, { type: 'blur' })) cancelGesture()
       else setCursor('pointer')
     }
@@ -368,21 +372,28 @@ export function useTimelineInteractions(opts: InteractionOptions): InteractionRe
     }
   }, [apply, local])
 
-  // Space 平移的游標回饋（播放／暫停仍由全域鍵盤層處理）
+  // 空白鍵仲裁（spec §3.2.2）：游標在時間軸內或時間軸聚焦時接管 Space。
+  // 輕按＝放開時切換播放（keydown 時 preventDefault 抑制全域 keymap 的 play，keymap 跳過 defaultPrevented）；
+  // 按住 >200 ms 後才有資格成為平移（由 onMouseDown 的 pointerdown 仲裁決定），平移不觸發播放。
   useEffect(() => {
     const active = (): boolean => insideRef.current || document.activeElement === o.current.wrapRef.current
     const down = (e: KeyboardEvent): void => {
-      spaceRef.current = nextSpaceState(spaceRef.current, {
-        type: 'keydown',
-        code: e.code,
-        typing: isTypingTarget(e.target),
-        active: active()
-      })
-      if (spaceRef.current && st.current.phase === 'idle') setCursor('grab')
+      if (e.code !== 'Space' || e.isComposing || e.keyCode === 229) return
+      // 文字欄位／原生控制項的 Space 保留原生行為
+      if (targetKindOf(e.target as HTMLElement | null) !== 'none') return
+      if (!active()) return
+      const r = spaceArbiter(arbRef.current, { type: 'keydown', now: performance.now() })
+      arbRef.current = r.state
+      if (!r.state.pending && !r.state.panned) return
+      e.preventDefault()
+      if (st.current.phase === 'idle') setCursor('grab')
     }
     const up = (e: KeyboardEvent): void => {
-      spaceRef.current = nextSpaceState(spaceRef.current, { type: 'keyup', code: e.code })
-      if (!spaceRef.current && st.current.phase === 'idle') setCursor('pointer')
+      if (e.code !== 'Space' || e.isComposing) return
+      const r = spaceArbiter(arbRef.current, { type: 'keyup', now: performance.now() })
+      arbRef.current = r.state
+      if (r.play) o.current.onPlayToggle?.()
+      if (st.current.phase === 'idle') setCursor('pointer')
     }
     window.addEventListener('keydown', down)
     window.addEventListener('keyup', up)
@@ -422,7 +433,7 @@ export function useTimelineInteractions(opts: InteractionOptions): InteractionRe
       const clip = clipAt(cur.clips, cur.view, x, y)
       setHoverClipId(clip ? clip.id : null)
       const handle = handleAt(cur.clips, cur.view, x, y, cur.height)
-      setCursor(spaceRef.current ? 'grab' : handle ? 'ew-resize' : 'pointer')
+      setCursor(spaceHeld() ? 'grab' : handle ? 'ew-resize' : 'pointer')
       const text = tooltipAt(cur.layoutRef.current, x, y)
       const next = text ? { x: Math.min(x + 10, Math.max(0, cur.view.width - 260)), y: Math.max(y - 34, 24), text } : null
       setTip((prev) => (tipChanged(prev, next) ? next : prev))

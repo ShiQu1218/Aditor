@@ -1,11 +1,18 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
 import '../styles/timeline.css'
 import { Clip, EngineEvent, EventType, SpecInterval } from '../../shared/types'
-import { View } from './model'
+import { View, zoom } from './model'
 import { layoutTimeline, TimelineLayout } from './layout'
 import { createRedrawScheduler, DrawModel, drawTimeline, readTheme } from './draw'
 import { Playhead } from './Playhead'
 import { useTimelineInteractions } from './useTimelineInteractions'
+
+/** 命令式時間軸操作（keymap 的 Ctrl +/−/0 由外層呼叫）。 */
+export interface TimelineHandle {
+  zoomIn: () => void
+  zoomOut: () => void
+  zoomReset: () => void
+}
 
 interface TimelineCanvasProps {
   duration: number
@@ -30,31 +37,39 @@ interface TimelineCanvasProps {
   /** 播放中以 rAF 讀取目前時間（例如 video.currentTime），播放頭不經 React 重繪 */
   getPlayTime?: () => number
   playing?: boolean
+  /** 空白鍵輕按（未平移）＝切換播放 */
+  onPlayToggle?: () => void
 }
 
 const EMPTY_SET: Set<string> = new Set()
 const MAX_DPR = 2
+const ZOOM_IN_FACTOR = 0.7
+const ZOOM_OUT_FACTOR = 1.4
 
-export function TimelineCanvas({
-  duration,
-  currentTime,
-  events,
-  spectating,
-  clips,
-  filter,
-  onSeek,
-  onSelectEvent,
-  onUpdateClip,
-  height = 132,
-  selected = EMPTY_SET,
-  currentEventId,
-  activeClipId = null,
-  seekBefore = 8,
-  onToggleSelect,
-  onBoxSelect,
-  getPlayTime,
-  playing
-}: TimelineCanvasProps): JSX.Element {
+export const TimelineCanvas = React.forwardRef<TimelineHandle, TimelineCanvasProps>(function TimelineCanvas(
+  {
+    duration,
+    currentTime,
+    events,
+    spectating,
+    clips,
+    filter,
+    onSeek,
+    onSelectEvent,
+    onUpdateClip,
+    height = 132,
+    selected = EMPTY_SET,
+    currentEventId,
+    activeClipId = null,
+    seekBefore = 8,
+    onToggleSelect,
+    onBoxSelect,
+    getPlayTime,
+    playing,
+    onPlayToggle
+  }: TimelineCanvasProps,
+  ref
+): JSX.Element {
   const wrapRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
@@ -90,6 +105,17 @@ export function TimelineCanvas({
     return () => ro.disconnect()
   }, [])
 
+  // 命令式縮放（keymap 的 Ctrl +/−/0）：錨點為目前視窗中心
+  useImperativeHandle(
+    ref,
+    () => ({
+      zoomIn: () => setView((v) => zoom(v, ZOOM_IN_FACTOR, v.start + v.span / 2)),
+      zoomOut: () => setView((v) => zoom(v, ZOOM_OUT_FACTOR, v.start + v.span / 2)),
+      zoomReset: () => setView((v) => ({ ...v, start: 0, span: v.duration }))
+    }),
+    []
+  )
+
   const layout = useMemo(() => layoutTimeline(events, view, filter), [events, view, filter])
   const layoutRef = useRef<TimelineLayout>(layout)
   layoutRef.current = layout
@@ -109,7 +135,8 @@ export function TimelineCanvas({
     onSelectEvent,
     onToggleSelect,
     onBoxSelect,
-    onUpdateClip
+    onUpdateClip,
+    onPlayToggle
   })
 
   const modelRef = useRef<DrawModel | null>(null)
@@ -156,6 +183,7 @@ export function TimelineCanvas({
     <div
       ref={wrapRef}
       className="tl-wrap"
+      data-zone="src"
       tabIndex={0}
       style={{ height, cursor: ix.cursor }}
       onMouseDown={ix.onMouseDown}
@@ -177,4 +205,4 @@ export function TimelineCanvas({
       )}
     </div>
   )
-}
+})

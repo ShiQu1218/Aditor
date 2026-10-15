@@ -71,12 +71,37 @@ export function zoneOf(el: ElementLike | null | undefined): Zone {
   return null
 }
 
-// 目前焦點區（由 FocusZoneProvider 的 focusin／mousedown 更新）。模組層級狀態：
+// 目前焦點區（由 FocusZoneProvider 的 focusin／focusout／mousedown 更新）。模組層級狀態：
 // 整個 renderer 只有一個視窗焦點，單一值即可。
+// 一併記住最後一次所在的元素；元素被移除（isConnected === false）後即視為過期，
+// 避免 `zoneOf(el) ?? getCurrentZone()` 在 DOM 重繪後回傳殘留的舊區域。
 let currentZone: Zone = null
+let currentEl: ElementLike | null = null
+
+export function setCurrentZone(z: Zone, el: ElementLike | null = null): void {
+  currentZone = z
+  currentEl = z ? el : null
+}
+
 export function getCurrentZone(): Zone {
+  const connected = (currentEl as { isConnected?: boolean } | null)?.isConnected
+  if (connected === false) return null
   return currentZone
 }
-export function setCurrentZone(z: Zone): void {
-  currentZone = z
+
+/** 由焦點事件計算下一個焦點區狀態（純函式，供 FocusZoneProvider 與測試共用）。 */
+export function zoneAfterEvent(ev: {
+  type: 'focusin' | 'focusout' | 'mousedown'
+  target: ElementLike | null
+  related: ElementLike | null
+}): { zone: Zone; el: ElementLike | null } {
+  if (ev.type === 'focusout') {
+    // 焦點移到其他地方：優先記錄新焦點（relatedTarget）所在的區域；
+    // 離開到區域外（related 為 null 或不在任何區域）→ 清除
+    const next = zoneOf(ev.related)
+    if (next === null) return { zone: null, el: null }
+    return { zone: next, el: ev.related }
+  }
+  const zone = zoneOf(ev.target)
+  return { zone, el: zone ? ev.target : null }
 }

@@ -62,35 +62,3 @@ export function useKeymap(handlers: KeymapHandlers, opts: KeymapOptions = {}): v
     return attachKeymap(window, () => latest.current)
   }, [enabled])
 }
-
-// ---- 舊匯出別名（Task 10 刪除舊 Viewer 時一併移除） ----
-export interface ShortcutHandlers {
-  onPlayPause?: () => void
-  onCycleSpeed?: () => void
-  onPrevEvent?: () => void
-  onNextEvent?: () => void
-  onQuickClip?: () => void
-  onAddEvent?: () => void
-  onSendToProject?: () => void
-  onZoomIn?: () => void
-  onZoomOut?: () => void
-  onZoomReset?: () => void
-}
-
-export function useShortcuts(handlers: ShortcutHandlers, enabled = true): void {
-  useKeymap(
-    {
-      play: handlers.onPlayPause,
-      speed: handlers.onCycleSpeed,
-      prevEvent: handlers.onPrevEvent,
-      nextEvent: handlers.onNextEvent,
-      quickOrSplit: handlers.onQuickClip,
-      addEvent: handlers.onAddEvent,
-      addAllToProject: handlers.onSendToProject,
-      zoomIn: handlers.onZoomIn,
-      zoomOut: handlers.onZoomOut,
-      zoomReset: handlers.onZoomReset
-    },
-    { enabled }
-  )
-}

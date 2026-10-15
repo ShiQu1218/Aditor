@@ -135,6 +135,114 @@ export const i18n = {
     saveProject: '儲存專案',
     loadProject: '載入專案'
   },
+  studio: {
+    back: '返回影片庫',
+    openBlocked: '分析完成後才能開啟',
+    statusDone: '分析完成',
+    autoClip: 'AI 自動剪輯',
+    quickClip: '快速剪輯',
+    splitClip: '分割',
+    quickClipKey: 'Ctrl Q',
+    export: '匯出',
+    exportCount: '匯出 ({n})',
+    asideToggle: '切換側欄',
+    asideShow: '顯示側欄',
+    asideHide: '隱藏側欄',
+    mode: {
+      source: '來源',
+      project: '專案預覽',
+      item: '片段 {i}/{n}',
+      spectating: '觀戰中'
+    },
+    recentCounted: '近 90 秒計入 {n}',
+    context: {
+      text: '正在預覽專案片段 #{i}「{label}」，來源影片 {name}（不是目前開啟的影片，來源軌與側欄暫時停用）',
+      backToSource: '返回來源 Esc'
+    },
+    notices: {
+      engineErrorTitle: '分析引擎異常結束',
+      engineErrorText: '分析引擎異常結束（代碼 {code}）。不會遺失已完成進度，可接續分析。',
+      resume: '接續分析',
+      copyError: '複製錯誤訊息',
+      proxyTitle: '播放可能不流暢',
+      proxyText: '此影片非硬體解碼或格式支援有限，建議產生代理檔以獲得流暢預覽。',
+      proxyGenerate: '產生代理檔',
+      proxyGenerating: '產生中… {n}%',
+      proxyBusy: '正在產生代理檔…',
+      proxyLater: '稍後再說',
+      videoMissingTitle: '影片無法播放',
+      videoMissingText: '找不到或無法播放此影片檔案，請重新連結或返回影片庫。',
+      relink: '重新連結檔案',
+      back: '返回影片庫',
+      noEventsTitle: '這支影片沒有偵測到擊倒／助攻',
+      noEventsText: '可按 M 手動新增，或確認錄影語言為繁體中文。'
+    },
+    toast: {
+      added: '已加入專案',
+      undo: '復原',
+      deletedEvents: '已刪除 {n} 個事件',
+      copied: '已複製錯誤訊息'
+    },
+    meta: {
+      events: '{n} 個事件'
+    },
+    live: {
+      selected: '已選取 {n} 個事件',
+      event: '{type} · {time}'
+    },
+    tabs: {
+      hl: '精華',
+      ev: '事件',
+      asideLabel: '精華與事件'
+    },
+    transport: {
+      play: '播放',
+      pause: '暫停',
+      prevEvent: '上一個事件',
+      nextEvent: '下一個事件',
+      addEvent: '＋事件',
+      filterLabel: '事件類型篩選',
+      zoomIn: '放大',
+      zoomOut: '縮小',
+      zoomReset: '重設縮放'
+    },
+    track: {
+      title: '專案',
+      itemCount: '{n} 段',
+      total: '總長 {time}',
+      empty: '尚無片段，從精華或事件加入',
+      legacy: '舊專案頁',
+      addFromSource: '＋從來源加入',
+      sources: '共 {n} 支影片',
+      newProject: '新專案',
+      openFile: '開啟專案',
+      saveFile: '另存專案',
+      addAll: '全部加入',
+      addAllKey: 'Ctrl E',
+      undo: '復原',
+      redo: '重做'
+    },
+    addEvent: {
+      title: '新增事件（{time}）',
+      type: '事件類型',
+      cancel: '取消',
+      confirm: '新增',
+      hint: 'Enter 確認'
+    },
+    shelves: {
+      empty: '尚無資料',
+      hlPlaceholder: '精華清單將顯示 AI 建議與手動片段',
+      evPlaceholder: '事件清單將顯示所有偵測事件'
+    },
+    sideHints: {
+      hlCount: '精華 {n}',
+      evCount: '事件 {n}'
+    },
+    search: {
+      events: '搜尋事件',
+      clips: '搜尋精華'
+    }
+  },
   export: {
     title: '匯出專案',
     mode: '匯出模式',
