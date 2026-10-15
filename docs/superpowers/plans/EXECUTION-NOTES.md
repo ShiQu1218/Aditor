@@ -22,7 +22,12 @@
 - **Vitest**: 8 passed (EngineClient unit tests + real Python engine integration)
 
 ### Task 2: 影片庫與分析佇列
-- **Status**: Completed
+- **Status**: Completed (commit `b44510b`)
 - **Vitest**: 14 passed (Library deduplication/filtering/search + AnalysisQueue single-worker/error-resilience/counts)
 - **Manual GUI check TODO**: In desktop UI, verify visually importing 5 Exports videos from `E:\Outplayed\Outplayed\Exports` displays knock/assist badges on cards and progress bar while analyzing. (Automated tests verify library and queue behavior).
+
+### Task 3: 時間軸與片段的純函式模型
+- **Status**: Completed
+- **Vitest**: 26 passed (time conversions, formatTime, timeline zoom/pan/heatmap/hitTest/nextEvent, clip creation/resize/supercut/merging)
+
 
