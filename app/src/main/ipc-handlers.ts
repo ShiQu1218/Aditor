@@ -16,6 +16,7 @@ import { DEFAULT_SETTINGS, Settings } from '../shared/settings'
 import { cacheDir, profileDir } from '../shared/paths'
 import { computeHlCount, createSerialQueue, hlFromClips } from './hl'
 import type { CacheDoc, Clip } from '../shared/types'
+import { handleProxyGenerate } from './proxy-ipc'
 import { ProjectItem } from '../renderer/editor/project'
 
 const VIDEO_EXTS = new Set(['.mp4', '.mkv', '.mov', '.webm'])
@@ -238,9 +239,10 @@ export function registerIpcHandlers(
     return fs.existsSync(p) ? p : null
   })
 
-  ipcMain.handle('proxy:generate', async (_, videoPath: string) => {
+  ipcMain.handle('proxy:generate', async (event, videoPath: unknown, durationSec?: unknown) => {
     const { generateProxy } = await import('./proxy')
-    return generateProxy(videoPath)
+    // 進度只推給發出請求的視窗
+    return handleProxyGenerate(event.sender, videoPath, durationSec, { generateProxy })
   })
 
   ipcMain.handle('proxy:delete', async (_, videoPath: string) => {
