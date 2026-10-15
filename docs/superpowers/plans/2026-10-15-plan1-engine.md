@@ -193,7 +193,7 @@ def test_zh_profile_loads():
   - `decode.DecodeError(message: str, stderr_tail: str)`。
   - 硬體解碼失敗回退：`hwaccel=True` 時若 ffmpeg 在輸出第一格前以非 0 結束，自動以 `hwaccel=False` 重試一次，並在產生器屬性 `used_hwaccel: bool` 上反映（以 class 包裝 iterator：`FrameStream`，有 `__iter__`、`close()`、`used_hwaccel`、`stderr_tail`）。
 
-- [ ] **Step 1: 寫失敗測試**
+- [x] **Step 1: 寫失敗測試**
 
 ```python
 def test_frame_times_and_shapes(tmp_path, zh_profile):
@@ -228,10 +228,10 @@ def test_stderr_flood_no_deadlock(tmp_path, zh_profile, monkeypatch):
     assert len(list(FrameStream(str(v), zh_profile))) == 40   # 以 pytest timeout 60s 保護
 ```
 
-- [ ] **Step 2: 確認失敗**：`.venv/Scripts/python -m pytest tests/test_decode.py -v`
-- [ ] **Step 3: 實作 `decode.py`**：模組常數 `HWACCEL_ARGS = ["-hwaccel", "auto"]`、`LOGLEVEL = "error"`；stdout 以 `readinto` 讀固定位元組數（`banner_w * (banner_h + spec_h) * 3`），stderr 由 daemon thread 讀進 `collections.deque` 限 64KB。
-- [ ] **Step 4: 確認通過**
-- [ ] **Step 5: Commit** `feat(engine): ffmpeg two-ROI decode pipeline with hwaccel fallback`
+- [x] **Step 2: 確認失敗**：`.venv/Scripts/python -m pytest tests/test_decode.py -v`
+- [x] **Step 3: 實作 `decode.py`**：模組常數 `HWACCEL_ARGS = ["-hwaccel", "auto"]`、`LOGLEVEL = "error"`；stdout 以 `readinto` 讀固定位元組數（`banner_w * (banner_h + spec_h) * 3`），stderr 由 daemon thread 讀進 `collections.deque` 限 64KB。
+- [x] **Step 4: 確認通過**
+- [x] **Step 5: Commit** `feat(engine): ffmpeg two-ROI decode pipeline with hwaccel fallback`
 
 ---
 
