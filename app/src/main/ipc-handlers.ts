@@ -9,6 +9,8 @@ import { buildJobs, estimateOutputBytes, escapeConcatPath, StreamProbe } from '.
 import { executeExportJobs } from './export/run'
 import { hasOpenH264, downloadOpenH264 } from './codecs'
 import { loadCacheDoc, saveCacheDoc } from './cache-io'
+import { SettingsStore } from './settings'
+import { Settings } from '../shared/settings'
 import { ProjectItem } from '../renderer/editor/project'
 
 const VIDEO_EXTS = new Set(['.mp4', '.mkv', '.mov', '.webm'])
@@ -36,7 +38,8 @@ export function registerIpcHandlers(
   library: Library,
   queue: AnalysisQueue,
   getWindows: () => BrowserWindow[],
-  engine?: EngineClient
+  engine?: EngineClient,
+  settings?: SettingsStore
 ): void {
   const broadcastUpdated = () => {
     for (const win of getWindows()) {
@@ -298,4 +301,18 @@ export function registerIpcHandlers(
       }
     }
   )
+
+  if (settings) {
+    settings.onChange((current) => {
+      for (const win of getWindows()) {
+        if (!win.isDestroyed()) {
+          win.webContents.send('settings:changed', current)
+        }
+      }
+    })
+
+    ipcMain.handle('settings:get', () => settings.get())
+
+    ipcMain.handle('settings:set', (_, partial: Partial<Settings>) => settings.set(partial))
+  }
 }
