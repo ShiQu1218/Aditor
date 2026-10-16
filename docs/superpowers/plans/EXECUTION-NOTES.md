@@ -128,3 +128,12 @@
 
 - 結論：所有純函式幾乎免費（2000 事件比目標快約 70 倍）；實際成本在 canvas 繪製與 React 渲染，不在版面計算。
 - 低效能模式（`<html data-lowperf>`）：熱度條 60 格、關閉所有 transition／animation、移除 hover 位移；首次啟動偵測無硬體解碼時詢問一次。
+
+## Plan 3 E2E（Task 18）
+
+- 指令：`npm --prefix app run test:e2e`（先 `electron-vite build`，再以 Playwright `_electron` 驅動已安裝的 Electron 33；不下載瀏覽器）。CI 不強制。
+- 環境掛鉤：`APEXHL_E2E=1`＋`APEXHL_APPDATA`（暫存 appData／userData）＋`APEXHL_ENGINE=fake`（`app/test/fake-engine.mjs` 的 `FAKE_ENGINE_MODE=e2e`，引擎形狀的 300 筆合成事件、progress／cancel／derive／autoclip）＋`APEXHL_E2E_FAKE_FFMPEG=1`（匯出改用真實子程序 `fake-ffmpeg.mjs`）。缺少 `APEXHL_E2E=1` 時一律無作用（`main/e2e.test.ts` 鎖定）。
+- 影片：以系統 ffmpeg 的 `testsrc2`＋靜音 AAC 產生 3 支 12–20 秒 H.264 於暫存目錄；找不到 ffmpeg 時需要影片的案例 `skip` 並印出原因（實測：無 ffmpeg → 4 通過、17 略過、0 失敗）。
+- 結果（本機，ffmpeg 8.1.1）：**21 個案例，連跑 3 次皆 21 通過／0 略過／0 失敗**（每次約 47 秒），無 flaky。
+- 驗證不是空轉：暫時還原 Ctrl+→ 錨點修正、關閉時 flushSync、手勢 Esc 攔截，對應案例都會失敗（已還原）。
+- 仍需人工：真實 AV1／長片與代理檔、真實引擎辨識品質、NVENC／OpenH264 實際編碼、螢幕閱讀器、Windows 高對比、IME、色盲濾鏡、4 GB 低階機效能、真實硬體解碼偵測（E2E 以覆寫 `mediaCapabilities` 模擬）。
