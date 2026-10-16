@@ -39,6 +39,14 @@ export function LibraryScreen({ onSelectVideo, onOpenSettings }: LibraryScreenPr
   queryRef.current = query
   // 設定「建議代理檔」（即時）：關閉時卡片不顯示「建議代理檔」徽章
   const [proxySuggest, setProxySuggest] = useState(true)
+  // 影片庫檔案損毀時（已由 main 備份）提示一次
+  useEffect(() => {
+    void window.api?.library?.getLoadNotice?.()?.then((p: string | null) => {
+      if (p) toast({ message: t.corruptNotice.replace('{path}', p) })
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   useEffect(() => subscribeStudioSettings(window.api, (s) => setProxySuggest(s.proxySuggest)), [])
   const openMenuClose = useRef<(() => void) | null>(null)
   const handleMenuChange = useCallback((_path: string, close: (() => void) | null) => {

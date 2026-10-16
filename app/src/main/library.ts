@@ -38,27 +38,71 @@ export class Library {
     this.load()
   }
 
+  /** 讀到損毀檔時，原檔被改名成的備份路徑（供提示使用者）；正常為 null。 */
+  corruptBackup: string | null = null
+  private saveTimer: ReturnType<typeof setTimeout> | null = null
+  private dirty = false
+
   load(): void {
+    if (!fs.existsSync(this.file)) return
     try {
-      if (fs.existsSync(this.file)) {
-        const raw = fs.readFileSync(this.file, 'utf-8')
-        this.entries = JSON.parse(raw)
-      }
-    } catch {
+      const parsed: unknown = JSON.parse(fs.readFileSync(this.file, 'utf-8'))
+      if (!Array.isArray(parsed)) throw new Error('library.json 不是陣列')
+      this.entries = parsed as LibraryEntry[]
+    } catch (err) {
+      // 損毀：先把原檔改名備份，之後的 save() 才不會用空陣列蓋掉它
       this.entries = []
+      const bak = path.join(path.dirname(this.file), `library.bak.${Date.now()}.json`)
+      try {
+        fs.renameSync(this.file, bak)
+        this.corruptBackup = bak
+      } catch (e) {
+        console.error('Failed to back up corrupt library:', e)
+      }
+      console.error('Library file is corrupt, moved aside:', err)
     }
   }
 
+  /** 原子寫入（tmp + fsync + rename）；失敗時原檔不變。 */
   save(): void {
+    if (this.saveTimer) {
+      clearTimeout(this.saveTimer)
+      this.saveTimer = null
+    }
+    this.dirty = false
+    const tmp = `${this.file}.tmp`
     try {
-      const dir = path.dirname(this.file)
-      if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true })
+      fs.mkdirSync(path.dirname(this.file), { recursive: true })
+      const fd = fs.openSync(tmp, 'w')
+      try {
+        fs.writeFileSync(fd, JSON.stringify(this.entries, null, 2), 'utf-8')
+        fs.fsyncSync(fd)
+      } finally {
+        fs.closeSync(fd)
       }
-      fs.writeFileSync(this.file, JSON.stringify(this.entries, null, 2), 'utf-8')
+      fs.renameSync(tmp, this.file)
     } catch (err) {
       console.error('Failed to save library:', err)
+      try {
+        fs.rmSync(tmp, { force: true })
+      } catch {}
     }
+  }
+
+  /** 進度更新只動記憶體，最多每 2 秒落盤一次（2 小時分析不會每秒寫 4 次）。 */
+  private scheduleSave(): void {
+    this.dirty = true
+    if (this.saveTimer) return
+    this.saveTimer = setTimeout(() => {
+      this.saveTimer = null
+      if (this.dirty) this.save()
+    }, 2000)
+    this.saveTimer.unref?.()
+  }
+
+  /** 立即寫入尚未落盤的變更（App 結束前呼叫）。 */
+  flush(): void {
+    if (this.dirty) this.save()
   }
 
   getEntries(): LibraryEntry[] {
@@ -149,7 +193,9 @@ export class Library {
     const entry = this.entries.find((e) => normalizePath(e.path) === norm)
     if (entry) {
       Object.assign(entry, patch)
-      this.save()
+      const keys = Object.keys(patch)
+      if (keys.length > 0 && keys.every((k) => k === 'progress')) this.scheduleSave()
+      else this.save()
     }
   }
 

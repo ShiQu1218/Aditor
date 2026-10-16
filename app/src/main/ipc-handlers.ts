@@ -80,6 +80,8 @@ export function registerIpcHandlers(
 
   ipcMain.handle('queue:getState', () => queue.payload())
 
+  ipcMain.handle('library:getLoadNotice', () => library.corruptBackup)
+
   ipcMain.handle('library:getEntries', () => {
     return library.getEntries()
   })

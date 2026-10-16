@@ -154,6 +154,7 @@ app.whenReady().then(async () => {
 })
 
 app.on('before-quit', () => {
+  library?.flush()
   void cancelExport?.()
 })
 

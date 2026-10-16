@@ -26,6 +26,8 @@ const api = {
     addWatchFolder: () => ipcRenderer.invoke('library:addWatchFolder'),
     removeWatchFolder: (dir: string) => ipcRenderer.invoke('library:removeWatchFolder', dir),
     fileExists: (path: string) => ipcRenderer.invoke('library:fileExists', path),
+    /** 影片庫檔案損毀時的備份路徑（否則 null） */
+    getLoadNotice: () => ipcRenderer.invoke('library:getLoadNotice'),
     computeHl: (path: string) => ipcRenderer.invoke('library:computeHl', path),
     onUpdated: (callback: (payload?: unknown) => void) => {
       const handler = (_: unknown, payload?: unknown) => callback(payload)

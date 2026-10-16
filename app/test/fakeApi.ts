@@ -47,6 +47,7 @@ export function createFakeApi(opts: FakeApiOptions = {}) {
       addWatchFolder: vi.fn(async () => undefined),
       removeWatchFolder: vi.fn(async () => undefined),
       fileExists: vi.fn(async () => true),
+      getLoadNotice: vi.fn(async () => null),
       computeHl: vi.fn(async () => undefined),
       onUpdated: sub('library:updated')
     },

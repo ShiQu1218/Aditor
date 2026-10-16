@@ -22,6 +22,7 @@ export const i18n = {
   },
   library: {
     title: '影片庫',
+    corruptNotice: '影片庫檔案已損毀，已備份為 {path}，並建立新的影片庫。',
     importFiles: '匯入影片',
     importFolder: '匯入資料夾',
     searchPlaceholder: '依檔名搜尋',
