@@ -1,15 +1,11 @@
 import { EventEmitter } from 'events'
-import { spawn } from 'child_process'
-import path from 'path'
-import fs from 'fs'
-import crypto from 'crypto'
 import { EngineClient } from './engine'
 import { Library, normalizePath } from './library'
 import { CacheDoc, isCounted } from '../shared/types'
-import { proxyDir } from '../shared/paths'
 import type { QueuePayload, QueueSnapshot } from '../shared/queueState'
 import { analyzeSettingArgs, AnalyzeSettings, resolveAnalyzeProfileDir } from './settings-derived'
 import { capturePriorCache, preserveClipsAfterReanalysis } from './reanalysis'
+import { generateThumbnail } from './thumbnail'
 
 export interface AnalysisQueueOptions {
   profileDir: string
@@ -193,44 +189,7 @@ export class AnalysisQueue extends EventEmitter {
     }
   }
 
-  private async _generateThumbnail(videoPath: string, duration: number): Promise<string | undefined> {
-    if (!fs.existsSync(videoPath)) {
-      return undefined
-    }
-    const hash = crypto.createHash('sha1').update(normalizePath(videoPath)).digest('hex')
-    const thumbsDir = path.join(proxyDir(), 'thumbs')
-    if (!fs.existsSync(thumbsDir)) {
-      fs.mkdirSync(thumbsDir, { recursive: true })
-    }
-    const outPath = path.join(thumbsDir, `${hash}.jpg`)
-    if (fs.existsSync(outPath)) {
-      return outPath
-    }
-
-    const t = Math.max(1, duration * 0.1)
-    return new Promise((resolve) => {
-      const ffmpeg = spawn(process.env.APEXHL_FFMPEG || 'ffmpeg', [
-        '-v',
-        'error',
-        '-ss',
-        t.toFixed(2),
-        '-i',
-        videoPath,
-        '-vframes',
-        '1',
-        '-q:v',
-        '3',
-        '-y',
-        outPath
-      ])
-      ffmpeg.on('close', (code) => {
-        if (code === 0 && fs.existsSync(outPath)) {
-          resolve(outPath)
-        } else {
-          resolve(undefined)
-        }
-      })
-      ffmpeg.on('error', () => resolve(undefined))
-    })
+  private _generateThumbnail(videoPath: string, duration: number): Promise<string | undefined> {
+    return generateThumbnail(videoPath, duration)
   }
 }
