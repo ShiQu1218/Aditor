@@ -9,14 +9,14 @@ describe('Proxy generator', () => {
     expect(p1.endsWith('.mp4')).toBe(true)
   })
 
-  it('buildProxyArgs includes -g 30 and scale=960:540', () => {
+  it('buildProxyArgs includes -g 30 and aspect-preserving scale=-2:540', () => {
     const args = buildProxyArgs('in.mp4', 'out.mp4', 'h264_nvenc')
     expect(args).toContain('-g')
     const gIdx = args.indexOf('-g')
     expect(args[gIdx + 1]).toBe('30')
 
     const vf = args.find((_, i) => args[i - 1] === '-vf')
-    expect(vf).toContain('scale=960:540')
+    expect(vf).toContain('scale=-2:540')
     expect(args).toContain('h264_nvenc')
   })
 
@@ -25,6 +25,7 @@ describe('Proxy generator', () => {
     expect(pickEncoder(['h264_amf', 'h264_qsv'])).toBe('h264_qsv')
     expect(pickEncoder(['h264_amf', 'libopenh264'])).toBe('h264_amf')
     expect(pickEncoder(['libopenh264'])).toBe('libopenh264')
+    expect(pickEncoder([])).toBeNull()
   })
 
   it('parseFfmpegProgress reads time= from stderr and clamps to 0..1', () => {

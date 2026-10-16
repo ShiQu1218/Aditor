@@ -352,7 +352,10 @@ export function registerIpcHandlers(
       }
     })
     try {
-      return await h264Downloading
+      const dll = await h264Downloading
+      // 新裝的 OpenH264 要讓代理檔的編碼器偵測重新來過
+      ;(await import('./proxy')).resetProxyEncoderCache()
+      return dll
     } finally {
       h264Downloading = null
     }
