@@ -93,7 +93,9 @@ def test_resume_no_duplicates(tmp_path, zh_profile, fixture_video, monkeypatch):
         return real(*a, **k)
     monkeypatch.setattr(az, "FrameStream", spy)
     doc = az.analyze(str(fixture_video), zh_profile, cache_dir=cache)
-    assert starts == [pytest.approx(part["analysis"]["progress_t"] - 5.0)]
+    # 擁有範圍回退 RESUME_BACK、再往前補足 PREROLL 上下文（此片很短 → 從 0 起）
+    own = max(0.0, part["analysis"]["progress_t"] - az.RESUME_BACK)
+    assert starts == [pytest.approx(max(0.0, own - az.SEGMENT_PREROLL))]
     ks = [e for e in doc["events"] if e["type"] == "knock"]
     assert len(ks) == 2
     assert ks[0]["t"] == pytest.approx(2.0, abs=0.3)
@@ -158,27 +160,13 @@ def test_normal_partial_resume_does_not_recalibrate(tmp_path, zh_profile, monkey
     assert doc["analysis"]["h_scale"] == 0.95
 
 
-def test_combine_events_does_not_dedupe_new_against_new(zh_profile):
-    from apexhl.analyze import _combine_events
-    from apexhl.models import Event
-
-    def ev(i, t):
-        return Event(id=i, t=t, type="knock", score=0.9, damage_line=False, name_sig=None)
-
-    out = _combine_events([], [ev("a1", 10.0), ev("a2", 10.5)], 0.32)
-    assert [e.id for e in out] == ["a1", "a2"]
-    # 既有 vs 新仍會去重
-    out = _combine_events([ev("a1", 10.0)], [ev("b1", 10.5)], 0.32)
-    assert [e.id for e in out] == ["a1"]
-
-
 # ---- 切段平行解碼（jobs） ----
 
 def test_plan_segments_overlap_and_last_segment():
     segs = az.plan_segments(60.0, 3, min_len=5.0)
     assert segs == [(0.0, 20.0), (20.0, 40.0), (40.0, 60.0)]
     sg = [az._Seg(a, b, i == 2, 60.0) for i, (a, b) in enumerate(segs)]
-    assert [x.dec_end for x in sg] == [25.0, 45.0, None]  # 與下一段重疊 5 秒，最後一段到片尾
+    assert [x.dec_end for x in sg] == [20.0 + az.SEGMENT_POSTROLL, 40.0 + az.SEGMENT_POSTROLL, None]  # 段尾後延解碼，最後一段到片尾
 
 
 def test_plan_segments_boundaries_on_quarter_grid():
@@ -204,28 +192,6 @@ def test_auto_jobs(monkeypatch):
     assert az.auto_jobs(True) == 1
     monkeypatch.setattr(az.os, "cpu_count", lambda: None)
     assert az.auto_jobs(True) == 1
-
-
-def _ev(i, t, typ="knock", sig=None):
-    from apexhl.models import Event
-    return Event(id=i, t=t, type=typ, score=0.9, damage_line=False, name_sig=sig)
-
-
-def test_segment_merge_keeps_one_cross_segment_duplicate():
-    from apexhl.analyze import _combine_events
-    seg0 = [_ev("a1", 21.0)]
-    seg1 = [_ev("b1", 21.25), _ev("b2", 30.0)]
-    out = _combine_events(_combine_events([], seg0, 0.32), seg1, 0.32)
-    assert [e.id for e in out] == ["a1", "b2"]
-
-
-def test_segment_merge_keeps_same_segment_close_events():
-    from apexhl.analyze import _combine_events
-    out = _combine_events([], [_ev("a1", 10.0), _ev("a2", 10.5)], 0.32)
-    assert [e.id for e in out] == ["a1", "a2"]
-    # 另一段不含它們：兩個都保留；另一段重複者只吃掉對應的那個
-    out = _combine_events(out, [_ev("b1", 10.25)], 0.32)
-    assert [e.id for e in out] == ["a1", "a2"]
 
 
 @pytest.fixture(scope="module")
@@ -260,7 +226,8 @@ def test_parallel_matches_single(tmp_path, zh_profile, multi_video):
 
 
 class _Seg3Harness:
-    """包住 FrameStream：記錄所有串流；seg0 完成後 seg2 才觸發取消，seg1 卡到取消為止。"""
+    """包住 FrameStream：記錄所有串流；seg0 完成後 seg2 才觸發取消，seg1 卡到取消為止。
+    各段以 end 辨識（seg0 = 20 + 後延、seg1 = 40 + 後延、seg2 = None），名目起點 0／20／40。"""
 
     def __init__(self, cancel):
         self.cancel = cancel
@@ -271,27 +238,28 @@ class _Seg3Harness:
     def __call__(self, *a, **k):
         inner = FrameStream(*a, **k)
         self.inners.append(inner)
-        start = k.get("start", 0.0)
-        self.calls.append((start, k.get("end")))
+        self.calls.append((k.get("start", 0.0), k.get("end")))
+        end = k.get("end")
+        nominal = {20.0 + az.SEGMENT_POSTROLL: 0.0, 40.0 + az.SEGMENT_POSTROLL: 20.0, None: 40.0}[end]
         h = self
 
         class W:
             def __iter__(s):
                 for t, b, sp in inner:
-                    if start == 0.0:
+                    if nominal == 0.0:
                         yield t, b, sp
                         continue
-                    if start >= 40 and t >= start + 3:
+                    if nominal >= 40 and t >= nominal + 3:
                         h.seg0_done.wait(60)
-                        if t >= start + 5:
+                        if t >= nominal + 5:
                             h.cancel.set()
-                    elif start >= 20 and t >= start + 10:
+                    elif nominal >= 20 and t >= nominal + 10:
                         for _ in range(600):
                             if h.cancel.is_set():
                                 break
                             threading.Event().wait(0.1)
                     yield t, b, sp
-                if start == 0.0:
+                if nominal == 0.0:
                     h.seg0_done.set()
 
             def close(s):
@@ -316,8 +284,8 @@ def test_parallel_cancel_leaves_segments_and_resume_reruns_only_unfinished(
     a = part["analysis"]
     assert a["status"] == "partial" and len(a["segments"]) == 3
     segs = a["segments"]
-    assert segs[0]["progress_t"] == pytest.approx(25.0)  # seg0 已完成（含 5 秒重疊）
-    assert segs[1]["progress_t"] < 45.0 and segs[2]["progress_t"] < 60.0
+    assert segs[0]["progress_t"] == pytest.approx(20.0 + az.SEGMENT_POSTROLL)  # seg0 已完成（含後延）
+    assert segs[1]["progress_t"] < 40.0 + az.SEGMENT_POSTROLL and segs[2]["progress_t"] < 60.0
     assert [(s["start"], s["end"]) for s in segs] == [(0.0, 20.0), (20.0, 40.0), (40.0, 60.0)]
 
     calls = []
@@ -329,10 +297,14 @@ def test_parallel_cancel_leaves_segments_and_resume_reruns_only_unfinished(
     monkeypatch.setattr(az, "FrameStream", spy)
     monkeypatch.setattr(az, "calibrate", lambda *a, **k: pytest.fail("不應重新校準"))
     doc = az.analyze(str(multi_video), zh_profile, cache_dir=cache, jobs=3)
-    calls.sort(key=lambda c: c[0])
+    calls.sort(key=lambda c: (c[1] is None, c[1]))
     assert len(calls) == 2  # 只重跑 seg1、seg2，seg0 已完成
-    assert calls[0] == (pytest.approx(max(20.0, segs[1]["progress_t"] - 5.0)), 45.0)
-    assert calls[1] == (pytest.approx(max(40.0, segs[2]["progress_t"] - 5.0)), None)
+
+    def frm(start, p):
+        own = max(start, p - az.RESUME_BACK)
+        return max(0.0, own - az.SEGMENT_PREROLL)
+    assert calls[0] == (pytest.approx(frm(20.0, segs[1]["progress_t"])), 40.0 + az.SEGMENT_POSTROLL)
+    assert calls[1] == (pytest.approx(frm(40.0, segs[2]["progress_t"])), None)
     assert doc["analysis"]["status"] == "done"
     x, y = _knocks(full), _knocks(doc)
     assert len(x) == len(y) == 5

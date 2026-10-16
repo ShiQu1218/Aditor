@@ -15,7 +15,7 @@ from .cache import (cache_path, load_cache, merge_clips, merge_reanalysis,
 from .calibrate import calibrate, calibrate_auto
 from .decode import FrameStream, is_gpu_path
 from .errors import Cancelled
-from .derive import derive, sig_similar
+from .derive import derive
 from .detect import Detector
 from .events import EventTracker
 from .models import Clip, Event, SpecInterval
@@ -23,10 +23,14 @@ from .probe import keyframes, probe
 from .profile import Profile
 
 PARTIAL_EVERY = 30.0   # 每隔多少「影片秒」寫一次 partial
-RESUME_BACK = 5.0      # 接續時回退秒數
+RESUME_BACK = 12.0     # 接續時，擁有範圍回退秒數（> 單一橫幅最長約 10 秒：此時間之前開始的橫幅一定已完整結束並存入）
 PROGRESS_INTERVAL = 0.25  # on_progress 至多每 0.25 秒（實際時間）一次
-DEDUPE_DT = 1.0
-SEGMENT_OVERLAP = 5.0  # 切段解碼時與下一段重疊的秒數
+# 切段解碼的「擁有權」合併（C1）：每段只輸出 first_t 落在 [start, end) 的事件；為了讓追蹤器在段起點
+# 擁有與單段分析相同的上下文，每段另外從 start - SEGMENT_PREROLL 起解碼（只餵追蹤器、不輸出事件）。
+# PREROLL >= LINK_WINDOW（30 秒，補刀往前連結擊倒的最遠距離）+ 單一橫幅最長約 10 秒。
+SEGMENT_PREROLL = 40.0
+# 段尾往後多解碼的秒數，讓「在段內開始、跨過段界」的橫幅完整收尾（類型多數決、名字指紋、分裂判定）。
+SEGMENT_POSTROLL = 12.0
 AUTO_MIN_SEGMENT = 30.0  # 自動 jobs 時每段至少多長（秒）
 EXPLICIT_MIN_SEGMENT = 5.0  # 明確指定 jobs 時每段至少多長（秒）
 GRID = 0.25
@@ -39,24 +43,6 @@ def _noop(t: float, duration: float) -> None:
     pass
 
 
-def _is_dup(e: Event, existing: list[Event], threshold: float) -> bool:
-    for o in existing:
-        if o.type != e.type or abs(o.t - e.t) > DEDUPE_DT:
-            continue
-        if (o.name_sig is None and e.name_sig is None) or sig_similar(o.name_sig, e.name_sig, threshold):
-            return True
-    return False
-
-
-def _combine_events(old: list[Event], new: list[Event], threshold: float) -> list[Event]:
-    # 只比對「既有 vs 新」；新事件之間不互相去重（同一次分析內的兩個真事件可能相隔 < 1 秒）
-    out = list(old)
-    for e in new:
-        if not _is_dup(e, old, threshold):
-            out.append(e)
-    return sorted(out, key=lambda e: e.t)
-
-
 def _merge_intervals(items: list[SpecInterval]) -> list[SpecInterval]:
     out: list[SpecInterval] = []
     for s in sorted(items, key=lambda i: i.start):
@@ -67,10 +53,35 @@ def _merge_intervals(items: list[SpecInterval]) -> list[SpecInterval]:
     return out
 
 
+def _clip_intervals(items: list[SpecInterval], lo: float, hi: float) -> list[SpecInterval]:
+    """只留 [lo, hi) 內的部分。"""
+    out = []
+    for i in items:
+        a, b = max(i.start, lo), min(i.end, hi)
+        if b > a:
+            out.append(SpecInterval(a, b))
+    return out
+
+
+def _cut_intervals(items: list[SpecInterval], lo: float, hi: float) -> list[SpecInterval]:
+    """挖掉 [lo, hi) 範圍（保留其餘部分）。"""
+    out = []
+    for i in items:
+        if i.end <= lo or i.start >= hi:
+            out.append(SpecInterval(i.start, i.end))
+            continue
+        if i.start < lo:
+            out.append(SpecInterval(i.start, lo))
+        if i.end > hi:
+            out.append(SpecInterval(hi, i.end))
+    return out
+
+
 def plan_segments(duration: float, jobs: int, *, min_len: float = AUTO_MIN_SEGMENT) -> list[tuple[float, float]]:
     """把 [0, duration] 平均切成最多 jobs 段（每段至少 min_len 秒），邊界對齊 0.25 秒格線。
 
-    回傳 [(start, end)]；解碼範圍為 [start, end + SEGMENT_OVERLAP]（最後一段到片尾）。
+    回傳 [(start, end)]；每段的事件擁有範圍為 [start, end)，解碼範圍為
+    [start - SEGMENT_PREROLL, end + SEGMENT_POSTROLL]（第一段從 0 起、最後一段到片尾）。
     """
     n = max(1, min(int(jobs), int(duration // min_len) if min_len > 0 else int(jobs)))
     bounds = [0.0]
@@ -90,17 +101,18 @@ def auto_jobs(gpu_path: bool) -> int:
 @dataclass
 class _Seg:
     start: float
-    end: float          # 名目結尾（不含重疊）
+    end: float          # 名目結尾（擁有範圍 [start, end)；不含後延解碼）
     last: bool
     duration: float
-    progress_t: float = 0.0   # 即時進度（工作緒更新）
-    snap_progress: float = 0.0  # 與 snap_events/snap_spec 對應的進度（寫入 partial 用）
+    progress_t: float = 0.0   # 顯示／完成判斷用進度（單調不減；接續重播上下文時不倒退）
+    snap_progress: float = 0.0  # 與 snap_events/snap_spec 對應的追蹤器游標（寫入 partial 用）
     snap_events: list = field(default_factory=list)
     snap_spec: list = field(default_factory=list)
+    own_from: float = 0.0     # 本次執行開始擁有輸出權的時間（接續時 > start）
 
     @property
     def dec_end(self) -> float | None:
-        return None if self.last else min(self.end + SEGMENT_OVERLAP, self.duration)
+        return None if self.last else min(self.end + SEGMENT_POSTROLL, self.duration)
 
     @property
     def target(self) -> float:
@@ -109,6 +121,18 @@ class _Seg:
     @property
     def done(self) -> bool:
         return self.progress_t >= self.target - 1e-6
+
+    def resume_plan(self) -> tuple[float, float]:
+        """(擁有輸出權的起點, 解碼起點)。新段（或游標還在前置上下文內）從 start 擁有、解碼自 start - PREROLL；
+        接續則回退 RESUME_BACK 後重新擁有，並同樣往前補足 PREROLL 上下文。"""
+        if self.snap_progress <= self.start + 1e-6:
+            own = self.start
+        else:
+            own = max(self.start, self.snap_progress - RESUME_BACK)
+        return own, max(0.0, own - SEGMENT_PREROLL)
+
+    def owns(self, t: float) -> bool:
+        return t >= self.own_from - 1e-6 and (self.last or t < self.end - 1e-6)
 
     def contribution(self, progress: float) -> float:
         return min(max(progress - self.start, 0.0), self.end - self.start)
@@ -223,7 +247,6 @@ def analyze(path: str, profile: Profile | list[Profile], *, cache_dir: Path, bes
     if matched_resume is not None:
         profile = matched_resume
     old_clips = [Clip.from_dict(c) for c in (old or {}).get("clips", [])]
-    thr = profile.name_sig_threshold
     segs: list[_Seg] | None = None
     if resuming:
         raw_segs = old["analysis"].get("segments")
@@ -257,7 +280,6 @@ def analyze(path: str, profile: Profile | list[Profile], *, cache_dir: Path, bes
                     return _undetermined_doc(path, info, cp, cache_dir, old, base_events,
                                              manual_clips, candidates, on_progress)
                 profile = chosen
-            thr = profile.name_sig_threshold
         except Cancelled:
             doc = _make_doc(info, profile, "partial", 0.0, None, [], [], manual_clips)  # h_scale=None：尚未校準
             if base_events:
@@ -271,6 +293,23 @@ def analyze(path: str, profile: Profile | list[Profile], *, cache_dir: Path, bes
         plan = plan_segments(info.duration, n_jobs, min_len=min_len)
         segs = [_Seg(a, b, i == len(plan) - 1, info.duration, a, a) for i, (a, b) in enumerate(plan)]
 
+    # 擁有權：每段只輸出 own_from（新段＝start；接續＝游標回退 RESUME_BACK）之後、段尾之前開始的事件。
+    # 已存入 partial 的舊事件只保留「已完成段」與「各未完成段 own_from 之前」的部分，其餘由重新播放產生。
+    for sg in segs:
+        sg.own_from = sg.end if sg.done else sg.resume_plan()[0]
+
+    def _kept_old(e: Event) -> bool:
+        for sg in segs:
+            if sg.start - 1e-6 <= e.t and (sg.last or e.t < sg.end - 1e-6):
+                return sg.done or e.t < sg.own_from - 1e-6
+        return True
+
+    kept_events = [e for e in done_events if _kept_old(e)]
+    kept_spec = list(done_spec)
+    for sg in segs:
+        if not sg.done:
+            kept_spec = _cut_intervals(kept_spec, sg.own_from, float("inf") if sg.last else sg.end)
+
     lock = threading.Lock()
     abort = threading.Event()  # 某段失敗時通知其他段停止
     state = {"last_emit": -1e9}
@@ -279,13 +318,13 @@ def analyze(path: str, profile: Profile | list[Profile], *, cache_dir: Path, bes
         return abort.is_set() or (cancel is not None and cancel.is_set())
 
     def combined():
-        # 依段起點順序逐段合併：只做「不同段之間」（含既有事件）的去重，不做同段內去重
-        evs = list(done_events)
-        spec = list(done_spec)
+        # 擁有權合併：各段輸出範圍互不重疊，不需要（也不做）指紋去重
+        evs = list(kept_events)
+        spec = list(kept_spec)
         for sg in segs:
-            evs = _combine_events(evs, sg.snap_events, thr)
+            evs += sg.snap_events
             spec += sg.snap_spec
-        return evs, _merge_intervals(spec)
+        return sorted(evs, key=lambda e: e.t), _merge_intervals(spec)
 
     def partial_doc() -> dict:
         evs, spec = combined()
@@ -306,44 +345,57 @@ def analyze(path: str, profile: Profile | list[Profile], *, cache_dir: Path, bes
         on_progress(t, info.duration)
 
     def work(sg: _Seg) -> None:
-        frm = max(sg.start, sg.progress_t - RESUME_BACK)
+        own_from, frm = sg.resume_plan()
         detector = Detector(profile, h_scale)
-        tracker = EventTracker(profile, resume_start=frm if frm > 0 else None)
+        tracker = EventTracker(profile)
         kw = {"end": sg.dec_end} if sg.dec_end is not None else {}
         stream = FrameStream(path, profile, start=frm, hwaccel=hwaccel, codec=info.codec, **kw)
         last_save = frm
-        sg.progress_t = frm
+        cursor = frm
+        hi = float("inf") if sg.last else sg.end
 
         def snap(progress: float) -> None:
-            sg.snap_events, sg.snap_spec = tracker.snapshot()
+            evs, spec = tracker.snapshot()
+            sg.snap_events = [e for e in evs if sg.owns(e.t)]
+            sg.snap_spec = _clip_intervals(spec, own_from, hi)
             sg.snap_progress = progress
 
         try:
             for t, banner, spec in stream:
                 if stopped():
                     with lock:
-                        snap(sg.progress_t)
+                        snap(cursor)
                     return
                 tracker.feed(t, detector.detect(banner, spec))
-                sg.progress_t = t
+                cursor = t
+                if t > sg.progress_t:
+                    sg.progress_t = t
                 emit_progress()
                 if t - last_save >= PARTIAL_EVERY:
                     last_save = t
                     with lock:
                         snap(t)
                         _save(cp, partial_doc(), cache_dir)
-            sg.progress_t = sg.target
-            sg.snap_events, sg.snap_spec = tracker.finish()
-            sg.snap_progress = sg.progress_t
+            events, intervals = tracker.finish()
+            with lock:
+                sg.snap_events = [e for e in events if sg.owns(e.t)]
+                sg.snap_spec = _clip_intervals(intervals, own_from, hi)
+                sg.snap_progress = sg.progress_t = sg.target
+        except BaseException:
+            abort.set()  # 其他段立刻停止（I7），不必等到它們跑完
+            raise
         finally:
             stream.close()
 
     todo = [sg for sg in segs if not sg.done]
+    errors: list[BaseException] = []
     if len(todo) <= 1:
         for sg in todo:
-            work(sg)
+            try:
+                work(sg)
+            except BaseException as e:  # noqa: BLE001
+                errors.append(e)
     else:
-        errors: list[BaseException] = []
         with ThreadPoolExecutor(max_workers=len(todo)) as ex:
             futs = [ex.submit(work, sg) for sg in todo]
             for f in futs:
@@ -352,8 +404,14 @@ def analyze(path: str, profile: Profile | list[Profile], *, cache_dir: Path, bes
                 except BaseException as e:  # noqa: BLE001
                     abort.set()
                     errors.append(e)
-        if errors:
-            raise errors[0]
+    if errors:
+        # 段失敗：先保留已完成的進度（下次可接續），再把第一個錯誤交給呼叫者
+        try:
+            with lock:
+                _save(cp, partial_doc(), cache_dir)
+        except Exception:
+            pass
+        raise errors[0]
 
     if not all(sg.done for sg in segs):
         # 取消：寫入 partial（含各段進度）後離開；所有 FrameStream 已在各段工作內關閉
