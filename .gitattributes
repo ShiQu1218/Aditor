@@ -1,0 +1,16 @@
+# 版控內一律 LF；工作目錄也以 LF 簽出，避免 Windows 上 CRLF／LF 混用造成假差異
+* text=auto eol=lf
+
+# 二進位檔不做換行轉換
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.ico binary
+*.icns binary
+*.woff2 binary
+*.woff binary
+*.ttf binary
+*.mp4 binary
+*.mkv binary
+*.zip binary
+*.npy binary

@@ -76,12 +76,45 @@ function loadDoc(p) {
   }
 }
 
-function templatesVersion(profileDir) {
+export const UNDETERMINED_VERSION = 'auto@undetermined'
+const KNOWN_VERSIONS = { 'zh-TW': 'zh-TW@1', en: 'en@2', ja: 'ja@2' }
+
+/**
+ * 鏡像引擎 profile.resolve_profiles／calibrate_auto：profile_dir 內有 profile.json＝單一語言；
+ * 否則（templates 根目錄或 .../auto）＝自動偵測。假引擎不看畫面，auto 的結果由 FAKE_ENGINE_AUTO_LANG 決定
+ * （預設 zh-TW；填 en／ja 模擬偵測到該語言；填 none 模擬「無法判斷」＝引擎的 lang_detected:false 結果）。
+ */
+export function resolveProfile(profileDir, env = process.env) {
   try {
-    return JSON.parse(fs.readFileSync(path.join(profileDir, 'profile.json'), 'utf-8')).templates_version
+    const p = JSON.parse(fs.readFileSync(path.join(profileDir, 'profile.json'), 'utf-8'))
+    return { auto: false, lang: p.lang || 'zh-TW', detected: true, templatesVersion: p.templates_version || 'zh-TW@1' }
   } catch {
-    return 'zh-TW@1'
+    /* 沒有 profile.json：看是不是 auto */
   }
+  const root = path.basename(profileDir || '') === 'auto' ? path.dirname(profileDir) : profileDir
+  const isAuto = !!root && Object.keys(KNOWN_VERSIONS).some((l) => fs.existsSync(path.join(root, l, 'profile.json')))
+  if (!isAuto) return { auto: false, lang: 'zh-TW', detected: true, templatesVersion: 'zh-TW@1' }
+  const pick = env.FAKE_ENGINE_AUTO_LANG || 'zh-TW'
+  if (pick === 'none') return { auto: true, lang: null, detected: false, templatesVersion: UNDETERMINED_VERSION }
+  let tv = KNOWN_VERSIONS[pick] || 'zh-TW@1'
+  try {
+    tv = JSON.parse(fs.readFileSync(path.join(root, pick, 'profile.json'), 'utf-8')).templates_version || tv
+  } catch {
+    /* 用內建對照 */
+  }
+  return { auto: true, lang: KNOWN_VERSIONS[pick] ? pick : 'zh-TW', detected: true, templatesVersion: tv }
+}
+
+/** 鏡像 engine/apexhl/cache.needs_reanalysis（取反）：單一語言版本需相同；auto 接受任何已知語言且不得是「無法判斷」。 */
+export function isCacheFresh(old, info, prof) {
+  const a = old?.analysis
+  if (!a || a.status !== 'done') return false
+  if (old.video?.size !== info.size || Math.abs(Number(old.video?.mtime) - info.mtime) >= 1e-6) return false
+  if (a.engine_version !== ENGINE_VERSION) return false
+  if (a.lang_detected === false) return false
+  if (!prof.auto) return a.templates_version === prof.templatesVersion
+  const known = new Set(Object.values(KNOWN_VERSIONS))
+  return known.has(a.templates_version) && Object.keys(KNOWN_VERSIONS).includes(a.profile || old.profile)
 }
 
 /** 合成事件：3 場戰鬥（約 12%／50%／88%），每場均分 N/3 筆；每 7 筆與前一筆同名（重複敵人）。 */
@@ -252,16 +285,9 @@ export function createE2EHandler(send) {
     try {
       const info = await runProbe(args.path)
       const cp = cachePath(args.path, args.cache_dir, !!args.beside)
-      const tv = templatesVersion(args.profile_dir || '')
+      const prof = resolveProfile(args.profile_dir || '')
       const old = loadDoc(cp)
-      const fresh =
-        old &&
-        old.analysis?.status === 'done' &&
-        old.video?.size === info.size &&
-        Math.abs(Number(old.video?.mtime) - info.mtime) < 1e-6 &&
-        old.analysis?.engine_version === ENGINE_VERSION &&
-        old.analysis?.templates_version === tv
-      if (!args.force && fresh) {
+      if (!args.force && isCacheFresh(old, info, prof)) {
         old.cache_path = cp
         return send({ id, type: 'result', data: old })
       }
@@ -272,14 +298,31 @@ export function createE2EHandler(send) {
       const mk = (status, t, events, extra) => ({
         version: 1,
         video: info,
-        profile: 'zh-TW',
-        analysis: { status, progress_t: t, engine_version: ENGINE_VERSION, templates_version: tv, h_scale: 1.0 },
+        profile: prof.lang,
+        analysis: {
+          status,
+          progress_t: t,
+          engine_version: ENGINE_VERSION,
+          templates_version: prof.templatesVersion,
+          h_scale: 1.0,
+          profile: prof.lang,
+          lang_detected: prof.detected,
+          spectating_supported: prof.detected ? true : null
+        },
         events,
         spectating: status === 'done' ? spectating : [],
         clips: manualClips,
         cache_path: cp,
         ...extra
       })
+      if (!prof.detected) {
+        // 無法判斷錄影語言：不解碼、無自動事件（保留手動事件），status=done、lang_detected=false（鏡像引擎 _undetermined_doc）
+        const manual = (Array.isArray(baseEvents) ? baseEvents : []).filter((e) => e.source === 'manual')
+        const doc = mk('done', info.duration, derive(manual, []), { keyframes: [], unmatched: [] })
+        doc.spectating = []
+        writeDoc(cp, doc)
+        return send({ id, type: 'result', data: doc })
+      }
       const steps = Number(process.env.FAKE_ENGINE_STEPS || 10)
       const stepMs = Number(process.env.FAKE_ENGINE_STEP_MS || 30)
       const gate = process.env.FAKE_ENGINE_GATE_DIR ? path.join(process.env.FAKE_ENGINE_GATE_DIR, 'hold') : null

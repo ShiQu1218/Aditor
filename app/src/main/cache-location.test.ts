@@ -3,7 +3,7 @@ import fs from 'fs'
 import os from 'os'
 import path from 'path'
 import { cacheFilePath, resolveCacheFile } from './cache-io'
-import { analyzeSettingArgs, buildAnalyzeArgs } from './settings-derived'
+import { analyzeSettingArgs, buildAnalyzeArgs, resolveAnalyzeProfileDir } from './settings-derived'
 import { DEFAULT_SETTINGS } from '../shared/settings'
 
 describe('cacheFilePath：與引擎 cache_path(video, cache_dir, beside) 同一規則', () => {
@@ -74,5 +74,42 @@ describe('analyzeSettingArgs：decode／cacheLocation → 引擎參數', () => {
       { path: 'D:/v.mp4', hwaccel: true, beside: 'yes' }
     )
     expect(out).toEqual({ profile_dir: 'p', cache_dir: 'c', path: 'D:/v.mp4', hwaccel: false, beside: false })
+  })
+})
+
+describe('resolveAnalyzeProfileDir：gameLang → 引擎 profile_dir', () => {
+  const root = path.join('X', 'templates')
+  const withLang = (gameLang: 'auto' | 'zh-TW' | 'en' | 'ja') => ({ ...DEFAULT_SETTINGS, gameLang })
+
+  it('沒有設定來源或沒有 gameLang → 原樣（舊行為）', () => {
+    expect(resolveAnalyzeProfileDir(root, undefined)).toBe(root)
+    expect(resolveAnalyzeProfileDir(root, { decode: 'auto', cacheLocation: 'appdata' })).toBe(root)
+  })
+  it('auto → templates 根目錄（引擎自動偵測語言）', () => {
+    expect(resolveAnalyzeProfileDir(root, withLang('auto'))).toBe(root)
+  })
+  it('指定語言 → templates/<語言>', () => {
+    expect(resolveAnalyzeProfileDir(root, withLang('en'))).toBe(path.join(root, 'en'))
+    expect(resolveAnalyzeProfileDir(root, withLang('ja'))).toBe(path.join(root, 'ja'))
+    expect(resolveAnalyzeProfileDir(root, withLang('zh-TW'))).toBe(path.join(root, 'zh-TW'))
+  })
+  it('基準目錄本身已是某個語言資料夾 → 先回到 templates 根目錄再換語言', () => {
+    expect(resolveAnalyzeProfileDir(path.join(root, 'zh-TW'), withLang('ja'))).toBe(path.join(root, 'ja'))
+    expect(resolveAnalyzeProfileDir(path.join(root, 'en'), withLang('auto'))).toBe(root)
+    expect(resolveAnalyzeProfileDir(path.join(root, 'auto'), withLang('en'))).toBe(path.join(root, 'en'))
+  })
+  it('基準目錄名稱不是語言（任意資料夾名）→ 視為 templates 根目錄', () => {
+    const custom = path.join('X', 'my-profiles')
+    expect(resolveAnalyzeProfileDir(custom, withLang('ja'))).toBe(path.join(custom, 'ja'))
+    expect(resolveAnalyzeProfileDir(custom, withLang('auto'))).toBe(custom)
+  })
+  it('buildAnalyzeArgs 的 profile_dir 依 gameLang 轉換，renderer 傳來的同名欄位仍被覆蓋順序保留', () => {
+    const out = buildAnalyzeArgs({ profile_dir: root, cache_dir: 'c' }, withLang('en'), { path: 'D:/v.mp4' })
+    expect(out.profile_dir).toBe(path.join(root, 'en'))
+    expect(out.path).toBe('D:/v.mp4')
+  })
+  it('buildAnalyzeArgs：renderer 傳來的 profile_dir 不得蓋過設定（profile_dir 一律由主程序依 gameLang 決定）', () => {
+    const out = buildAnalyzeArgs({ profile_dir: root, cache_dir: 'c' }, withLang('ja'), { profile_dir: 'EVIL', path: 'D:/v.mp4' })
+    expect(out.profile_dir).toBe(path.join(root, 'ja'))
   })
 })

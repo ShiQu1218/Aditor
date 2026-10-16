@@ -65,6 +65,8 @@ describe('SettingsScreen markup（renderToString + fake window.api 資料）', (
     expect(html).toContain('找不到此資料夾')
     expect(html).toContain('aria-label="移除監看資料夾 D:\\Outplayed\\Apex Legends"')
     expect(html).toContain('新增資料夾')
+    // 語言列說明要告知：變更只影響之後的分析
+    expect(html).toContain('變更只影響之後的分析')
   })
 
   test('category b: proxy + clip defaults (6 rows) with usage text and steppers', async () => {
