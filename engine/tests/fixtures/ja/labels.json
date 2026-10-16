@@ -1,0 +1,1001 @@
+{
+ "assist_elim_a102225.png": {
+  "damage_line": false,
+  "enemy": "杯子漏电命悬一线",
+  "kind": "assist_elim",
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 1022.25
+ },
+ "assist_elim_a102275.png": {
+  "damage_line": false,
+  "enemy": "杯子漏电命悬一线",
+  "kind": "assist_elim",
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 1022.75
+ },
+ "assist_elim_a102300.png": {
+  "damage_line": false,
+  "enemy": "杯子漏电命悬一线",
+  "kind": "assist_elim",
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 1023.0
+ },
+ "assist_elim_a102325.png": {
+  "damage_line": false,
+  "enemy": "杯子漏电命悬一线",
+  "kind": "assist_elim",
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 1023.25
+ },
+ "assist_elim_a102375.png": {
+  "damage_line": false,
+  "enemy": "杯子漏电命悬一线",
+  "kind": "assist_elim",
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 1023.75
+ },
+ "assist_elim_fadein_a102200.png": {
+  "damage_line": false,
+  "enemy": "杯子漏电命悬一线",
+  "fadein": true,
+  "kind": "assist_elim",
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 1022.0
+ },
+ "assist_knock_a025625.png": {
+  "damage_line": false,
+  "enemy": "KO",
+  "kind": "assist_knock",
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 256.25
+ },
+ "assist_knock_a025700.png": {
+  "damage_line": false,
+  "enemy": "KO",
+  "kind": "assist_knock",
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 257.0
+ },
+ "assist_knock_a025800.png": {
+  "damage_line": false,
+  "enemy": "KO",
+  "kind": "assist_knock",
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 258.0
+ },
+ "assist_knock_a096800.png": {
+  "damage_line": false,
+  "enemy": "BUG SHOOTING SKILL",
+  "kind": "assist_knock",
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 968.0
+ },
+ "assist_knock_a096875.png": {
+  "damage_line": false,
+  "enemy": "BUG SHOOTING SKILL",
+  "kind": "assist_knock",
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 968.75
+ },
+ "assist_knock_a096975.png": {
+  "damage_line": false,
+  "enemy": "BUG SHOOTING SKILL",
+  "kind": "assist_knock",
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 969.75
+ },
+ "assist_knock_a101975.png": {
+  "damage_line": false,
+  "enemy": "杯子漏电命悬一线",
+  "kind": "assist_knock",
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 1019.75
+ },
+ "assist_knock_a102050.png": {
+  "damage_line": false,
+  "enemy": "杯子漏电命悬一线",
+  "kind": "assist_knock",
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 1020.5
+ },
+ "assist_knock_a102125.png": {
+  "damage_line": false,
+  "enemy": "杯子漏电命悬一线",
+  "kind": "assist_knock",
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 1021.25
+ },
+ "assist_knock_a103125.png": {
+  "damage_line": false,
+  "enemy": "我是璃月七星的电弧星",
+  "kind": "assist_knock",
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 1031.25
+ },
+ "assist_knock_a103200.png": {
+  "damage_line": false,
+  "enemy": "我是璃月七星的电弧星",
+  "kind": "assist_knock",
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 1032.0
+ },
+ "assist_knock_a103300.png": {
+  "damage_line": false,
+  "enemy": "我是璃月七星的电弧星",
+  "kind": "assist_knock",
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 1033.0
+ },
+ "assist_knock_fadein_a025600.png": {
+  "damage_line": false,
+  "enemy": "KO",
+  "fadein": true,
+  "kind": "assist_knock",
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 256.0
+ },
+ "assist_knock_fadein_a096775.png": {
+  "damage_line": false,
+  "enemy": "BUG SHOOTING SKILL",
+  "fadein": true,
+  "kind": "assist_knock",
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 967.75
+ },
+ "assist_knock_fadein_a101950.png": {
+  "damage_line": false,
+  "enemy": "杯子漏电命悬一线",
+  "fadein": true,
+  "kind": "assist_knock",
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 1019.5
+ },
+ "assist_knock_fadein_a103100.png": {
+  "damage_line": false,
+  "enemy": "我是璃月七星的电弧星",
+  "fadein": true,
+  "kind": "assist_knock",
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 1031.0
+ },
+ "banner_recovery_banner_a061350.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 613.5,
+  "tag": "banner_recovery_banner"
+ },
+ "champion_banner_a104500.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 1045.0,
+  "tag": "champion_banner"
+ },
+ "end_menu_a106500.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 1065.0,
+  "tag": "end_menu"
+ },
+ "evo_harvester_banner_a016525.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 165.25,
+  "tag": "evo_harvester_banner"
+ },
+ "inventory_a028075.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 280.75,
+  "tag": "inventory"
+ },
+ "inventory_a029175.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 291.75,
+  "tag": "inventory"
+ },
+ "inventory_a031475.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 314.75,
+  "tag": "inventory"
+ },
+ "inventory_a039225.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 392.25,
+  "tag": "inventory"
+ },
+ "inventory_a046525.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 465.25,
+  "tag": "inventory"
+ },
+ "inventory_a070025.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 700.25,
+  "tag": "inventory"
+ },
+ "inventory_a071925.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 719.25,
+  "tag": "inventory"
+ },
+ "inventory_a076325.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 763.25,
+  "tag": "inventory"
+ },
+ "knock_a021450.png": {
+  "damage_line": true,
+  "enemy": "可口可乐",
+  "kind": "knock",
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 214.5
+ },
+ "knock_a021475.png": {
+  "damage_line": true,
+  "enemy": "可口可乐",
+  "kind": "knock",
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 214.75
+ },
+ "knock_a021550.png": {
+  "damage_line": true,
+  "enemy": "可口可乐",
+  "kind": "knock",
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 215.5
+ },
+ "knock_a021650.png": {
+  "damage_line": true,
+  "enemy": "可口可乐",
+  "kind": "knock",
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 216.5
+ },
+ "knock_a058000.png": {
+  "damage_line": true,
+  "enemy": "ENMA",
+  "kind": "knock",
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 580.0
+ },
+ "knock_a058025.png": {
+  "damage_line": true,
+  "enemy": "ENMA",
+  "kind": "knock",
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 580.25
+ },
+ "knock_a058100.png": {
+  "damage_line": true,
+  "enemy": "ENMA",
+  "kind": "knock",
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 581.0
+ },
+ "knock_a058175.png": {
+  "damage_line": true,
+  "enemy": "ENMA",
+  "kind": "knock",
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 581.75
+ },
+ "knock_a091375.png": {
+  "damage_line": true,
+  "enemy": "DONOOPOOOW",
+  "kind": "knock",
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 913.75
+ },
+ "knock_a091400.png": {
+  "damage_line": true,
+  "enemy": "DONOOPOOOW",
+  "kind": "knock",
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 914.0
+ },
+ "knock_a091475.png": {
+  "damage_line": true,
+  "enemy": "DONOOPOOOW",
+  "kind": "knock",
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 914.75
+ },
+ "knock_a091550.png": {
+  "damage_line": true,
+  "enemy": "DONOOPOOOW",
+  "kind": "knock",
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 915.5
+ },
+ "knock_a094475.png": {
+  "damage_line": true,
+  "enemy": "BUG SHOOTING SKILL",
+  "kind": "knock",
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 944.75
+ },
+ "knock_a094500.png": {
+  "damage_line": true,
+  "enemy": "BUG SHOOTING SKILL",
+  "kind": "knock",
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 945.0
+ },
+ "knock_a094575.png": {
+  "damage_line": true,
+  "enemy": "BUG SHOOTING SKILL",
+  "kind": "knock",
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 945.75
+ },
+ "knock_a094675.png": {
+  "damage_line": true,
+  "enemy": "BUG SHOOTING SKILL",
+  "kind": "knock",
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 946.75
+ },
+ "knock_a095825.png": {
+  "damage_line": true,
+  "enemy": "AMORE_CICCIO",
+  "kind": "knock",
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 958.25
+ },
+ "knock_a095900.png": {
+  "damage_line": true,
+  "enemy": "AMORE_CICCIO",
+  "kind": "knock",
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 959.0
+ },
+ "knock_a096000.png": {
+  "damage_line": true,
+  "enemy": "AMORE_CICCIO",
+  "kind": "knock",
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 960.0
+ },
+ "knock_a097175.png": {
+  "damage_line": true,
+  "enemy": "DF-PITE",
+  "kind": "knock",
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 971.75
+ },
+ "knock_a097225.png": {
+  "damage_line": true,
+  "enemy": "DF-PITE",
+  "kind": "knock",
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 972.25
+ },
+ "knock_a100150.png": {
+  "damage_line": true,
+  "enemy": "杯子漏电命悬一线",
+  "kind": "knock",
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 1001.5
+ },
+ "knock_a100175.png": {
+  "damage_line": true,
+  "enemy": "杯子漏电命悬一线",
+  "kind": "knock",
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 1001.75
+ },
+ "knock_a100250.png": {
+  "damage_line": true,
+  "enemy": "杯子漏电命悬一线",
+  "kind": "knock",
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 1002.5
+ },
+ "knock_a100350.png": {
+  "damage_line": true,
+  "enemy": "杯子漏电命悬一线",
+  "kind": "knock",
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 1003.5
+ },
+ "knock_fadein_a095800.png": {
+  "damage_line": true,
+  "enemy": "AMORE_CICCIO",
+  "fadein": true,
+  "kind": "knock",
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 958.0
+ },
+ "knock_fadein_a097025.png": {
+  "damage_line": true,
+  "enemy": "DF-PITE",
+  "fadein": true,
+  "kind": "knock",
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 970.25
+ },
+ "legend_select_a001775.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 17.75,
+  "tag": "legend_select"
+ },
+ "legend_select_a002500.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 25.0,
+  "tag": "legend_select"
+ },
+ "legend_select_a003750.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 37.5,
+  "tag": "legend_select"
+ },
+ "lobby_podium_a105000.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 1050.0,
+  "tag": "lobby_podium"
+ },
+ "lobby_podium_a105750.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 1057.5,
+  "tag": "lobby_podium"
+ },
+ "match_result_a004225.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 42.25,
+  "tag": "match_result"
+ },
+ "pixel_bars_a006550.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 65.5,
+  "tag": "pixel_bars"
+ },
+ "pixel_bars_a009900.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 99.0,
+  "tag": "pixel_bars"
+ },
+ "pixel_bars_a026575.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 265.75,
+  "tag": "pixel_bars"
+ },
+ "prompt_f1_a057250.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 572.5,
+  "tag": "prompt_f1"
+ },
+ "prompt_hold_f1_a005775.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 57.75,
+  "tag": "prompt_hold_f1"
+ },
+ "prompt_ult_a018225.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 182.25,
+  "tag": "prompt_ult"
+ },
+ "prompt_ult_a019175.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 191.75,
+  "tag": "prompt_ult"
+ },
+ "prompt_ult_a083025.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 830.25,
+  "tag": "prompt_ult"
+ },
+ "prompt_ult_a088475.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 884.75,
+  "tag": "prompt_ult"
+ },
+ "respawn_banner_a067875.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 678.75,
+  "tag": "respawn_banner"
+ },
+ "revive_banner_a056900.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 569.0,
+  "tag": "revive_banner"
+ },
+ "ring_scan_banner_a013350.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 133.5,
+  "tag": "ring_scan_banner"
+ },
+ "running_a010950.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 109.5,
+  "tag": "running"
+ },
+ "running_a017900.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 179.0,
+  "tag": "running"
+ },
+ "running_a018650.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 186.5,
+  "tag": "running"
+ },
+ "running_a021175.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 211.75,
+  "tag": "running"
+ },
+ "running_a025100.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 251.0,
+  "tag": "running"
+ },
+ "running_a034100.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 341.0,
+  "tag": "running"
+ },
+ "running_a035875.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 358.75,
+  "tag": "running"
+ },
+ "running_a044950.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 449.5,
+  "tag": "running"
+ },
+ "running_a068925.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 689.25,
+  "tag": "running"
+ },
+ "running_a082225.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 822.25,
+  "tag": "running"
+ },
+ "running_a092200.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 922.0,
+  "tag": "running"
+ },
+ "running_a095600.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 956.0,
+  "tag": "running"
+ },
+ "running_a104275.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 1042.75,
+  "tag": "running"
+ },
+ "spectating_c038350.png": {
+  "damage_line": false,
+  "enemy": null,
+  "heldout_clip": true,
+  "kind": null,
+  "spectating": true,
+  "src": "test_JP.mp4",
+  "t": 383.5,
+  "tag": "spectating"
+ },
+ "spectating_c038375.png": {
+  "damage_line": false,
+  "enemy": null,
+  "heldout_clip": true,
+  "kind": null,
+  "spectating": true,
+  "src": "test_JP.mp4",
+  "t": 383.75,
+  "tag": "spectating"
+ },
+ "spectating_c038400.png": {
+  "damage_line": false,
+  "enemy": null,
+  "heldout_clip": true,
+  "kind": null,
+  "spectating": true,
+  "src": "test_JP.mp4",
+  "t": 384.0,
+  "tag": "spectating"
+ },
+ "spectating_c038950.png": {
+  "damage_line": false,
+  "enemy": null,
+  "heldout_clip": true,
+  "kind": null,
+  "spectating": true,
+  "src": "test_JP.mp4",
+  "t": 389.5,
+  "tag": "spectating"
+ },
+ "spectating_c039000.png": {
+  "damage_line": false,
+  "enemy": null,
+  "heldout_clip": true,
+  "kind": null,
+  "spectating": true,
+  "src": "test_JP.mp4",
+  "t": 390.0,
+  "tag": "spectating"
+ },
+ "spectating_c039050.png": {
+  "damage_line": false,
+  "enemy": null,
+  "heldout_clip": true,
+  "kind": null,
+  "spectating": true,
+  "src": "test_JP.mp4",
+  "t": 390.5,
+  "tag": "spectating"
+ },
+ "spectating_c039100.png": {
+  "damage_line": false,
+  "enemy": null,
+  "heldout_clip": true,
+  "kind": null,
+  "spectating": true,
+  "src": "test_JP.mp4",
+  "t": 391.0,
+  "tag": "spectating"
+ },
+ "squad_hud_a026350.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 263.5,
+  "tag": "squad_hud"
+ },
+ "squad_hud_a027300.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 273.0,
+  "tag": "squad_hud"
+ },
+ "squad_hud_a042500.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 425.0,
+  "tag": "squad_hud"
+ },
+ "squad_hud_a092450.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 924.5,
+  "tag": "squad_hud"
+ },
+ "squad_wipe_a025850.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": "squad_wipe",
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 258.5
+ },
+ "squad_wipe_a025875.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": "squad_wipe",
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 258.75
+ },
+ "squad_wipe_a025950.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": "squad_wipe",
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 259.5
+ },
+ "squad_wipe_a026050.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": "squad_wipe",
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 260.5
+ },
+ "squad_wipe_a097325.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": "squad_wipe",
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 973.25
+ },
+ "squad_wipe_a097400.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": "squad_wipe",
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 974.0
+ },
+ "squad_wipe_a097475.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": "squad_wipe",
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 974.75
+ },
+ "squad_wipe_a102625.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": "squad_wipe",
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 1026.25
+ },
+ "squad_wipe_a102700.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": "squad_wipe",
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 1027.0
+ },
+ "squad_wipe_a102775.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": "squad_wipe",
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 1027.75
+ },
+ "squad_wipe_fadein_a097300.png": {
+  "damage_line": false,
+  "enemy": null,
+  "fadein": true,
+  "kind": "squad_wipe",
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 973.0
+ },
+ "squad_wipe_fadein_a102600.png": {
+  "damage_line": false,
+  "enemy": null,
+  "fadein": true,
+  "kind": "squad_wipe",
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 1026.0
+ },
+ "waypoint_marker_a032900.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 329.0,
+  "tag": "waypoint_marker"
+ }
+}

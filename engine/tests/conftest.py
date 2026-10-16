@@ -69,25 +69,70 @@ def zh_detector(zh_profile):
     return Detector(zh_profile)
 
 
-@functools.lru_cache(maxsize=None)
-def _zh_profile_cached():
-    from apexhl.profile import load_profile
-    return load_profile(ZH_DIR)
-
-
-def load_fixture(name):
-    """讀取 fixtures/zh-TW 下的 PNG（banner 在上、spec 在下垂直拼接）→ (banner, spec)。"""
+def load_fixture(name, lang="zh-TW"):
+    """讀取 fixtures/<lang> 下的 PNG（banner 在上、spec 在下垂直拼接）→ (banner, spec)。"""
     import cv2
-    p = _zh_profile_cached()
+    p = lang_profile(lang)
     img = None
     for sub in ("pos", "neg"):
-        f = FIXTURES / "zh-TW" / sub / name
+        f = FIXTURES / lang / sub / name
         if f.exists():
             img = cv2.imdecode(np.fromfile(str(f), dtype=np.uint8), cv2.IMREAD_COLOR)
     assert img is not None, name
     bh = p.banner_roi[3]
     sw, sh = p.spec_roi[2], p.spec_roi[3]
     return img[:bh], img[bh:bh + sh, :sw]
+
+
+LANGS = ("zh-TW", "en", "ja")
+
+
+@functools.lru_cache(maxsize=None)
+def lang_profile(lang):
+    from apexhl.profile import load_profile
+    return load_profile(REPO / "templates" / lang)
+
+
+def lang_labels(lang):
+    return json.loads((FIXTURES / lang / "labels.json").read_text(encoding="utf-8"))
+
+
+class LangCtx:
+    """某語言的 profile、偵測器、labels 與 fixture 讀取（多語測試用）。"""
+
+    def __init__(self, lang):
+        from apexhl.detect import Detector
+        self.lang = lang
+        self.profile = lang_profile(lang)
+        self.detector = Detector(self.profile)
+        self.labels = lang_labels(lang)
+
+    def load(self, name):
+        return load_fixture(name, self.lang)
+
+    def items(self, kind=None, kind_not_null=False, kind_null=False, exclude_fadein=False):
+        out = []
+        for n, lab in self.labels.items():
+            if kind is not None and lab["kind"] != kind:
+                continue
+            if kind_not_null and lab["kind"] is None:
+                continue
+            if kind_null and lab["kind"] is not None:
+                continue
+            if exclude_fadein and lab.get("fadein"):
+                continue
+            out.append((n, lab))
+        return out
+
+
+@pytest.fixture(scope="session", params=LANGS)
+def lang_ctx(request):
+    return LangCtx(request.param)
+
+
+@pytest.fixture(scope="session", params=("en", "ja"))
+def new_lang_ctx(request):
+    return LangCtx(request.param)
 
 
 @pytest.fixture(scope="session")

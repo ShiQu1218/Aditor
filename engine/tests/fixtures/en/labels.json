@@ -1,0 +1,907 @@
+{
+ "assist_knock_a006475.png": {
+  "damage_line": false,
+  "enemy": "MAGURO",
+  "kind": "assist_knock",
+  "spectating": false,
+  "src": "English.mkv",
+  "t": 64.75
+ },
+ "assist_knock_a006500.png": {
+  "damage_line": false,
+  "enemy": "MAGURO",
+  "kind": "assist_knock",
+  "spectating": false,
+  "src": "English.mkv",
+  "t": 65.0
+ },
+ "assist_knock_a006575.png": {
+  "damage_line": false,
+  "enemy": "MAGURO",
+  "kind": "assist_knock",
+  "spectating": false,
+  "src": "English.mkv",
+  "t": 65.75
+ },
+ "assist_knock_a006675.png": {
+  "damage_line": false,
+  "enemy": "MAGURO",
+  "kind": "assist_knock",
+  "spectating": false,
+  "src": "English.mkv",
+  "t": 66.75
+ },
+ "assist_knock_a029625.png": {
+  "damage_line": false,
+  "enemy": "METEORA",
+  "kind": "assist_knock",
+  "spectating": false,
+  "src": "English.mkv",
+  "t": 296.25
+ },
+ "assist_knock_a029675.png": {
+  "damage_line": false,
+  "enemy": "METEORA",
+  "kind": "assist_knock",
+  "spectating": false,
+  "src": "English.mkv",
+  "t": 296.75
+ },
+ "assist_knock_a029725.png": {
+  "damage_line": false,
+  "enemy": "METEORA",
+  "kind": "assist_knock",
+  "spectating": false,
+  "src": "English.mkv",
+  "t": 297.25
+ },
+ "assist_knock_fadein_a029600.png": {
+  "damage_line": false,
+  "enemy": "METEORA",
+  "fadein": true,
+  "kind": "assist_knock",
+  "spectating": false,
+  "src": "English.mkv",
+  "t": 296.0
+ },
+ "crate_reveal_banner_a043650.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "English.mkv",
+  "t": 436.5,
+  "tag": "crate_reveal_banner"
+ },
+ "death_recap_a048925.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "English.mkv",
+  "t": 489.25,
+  "tag": "death_recap"
+ },
+ "death_recap_a049050.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "English.mkv",
+  "t": 490.5,
+  "tag": "death_recap"
+ },
+ "death_recap_a049175.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "English.mkv",
+  "t": 491.75,
+  "tag": "death_recap"
+ },
+ "elim_a003625.png": {
+  "damage_line": false,
+  "enemy": "RI-HIKARULL",
+  "kind": "elim",
+  "spectating": false,
+  "src": "English.mkv",
+  "t": 36.25
+ },
+ "elim_a003650.png": {
+  "damage_line": false,
+  "enemy": "RI-HIKARULL",
+  "kind": "elim",
+  "spectating": false,
+  "src": "English.mkv",
+  "t": 36.5
+ },
+ "elim_a003725.png": {
+  "damage_line": false,
+  "enemy": "RI-HIKARULL",
+  "kind": "elim",
+  "spectating": false,
+  "src": "English.mkv",
+  "t": 37.25
+ },
+ "elim_a003825.png": {
+  "damage_line": false,
+  "enemy": "RI-HIKARULL",
+  "kind": "elim",
+  "spectating": false,
+  "src": "English.mkv",
+  "t": 38.25
+ },
+ "elim_a039650.png": {
+  "damage_line": false,
+  "enemy": "潮落",
+  "kind": "elim",
+  "spectating": false,
+  "src": "English.mkv",
+  "t": 396.5
+ },
+ "elim_a039700.png": {
+  "damage_line": false,
+  "enemy": "潮落",
+  "kind": "elim",
+  "spectating": false,
+  "src": "English.mkv",
+  "t": 397.0
+ },
+ "elim_a039825.png": {
+  "damage_line": false,
+  "enemy": "潮落",
+  "kind": "elim",
+  "spectating": false,
+  "src": "English.mkv",
+  "t": 398.25
+ },
+ "elim_fadein_a039625.png": {
+  "damage_line": false,
+  "enemy": "潮落",
+  "fadein": true,
+  "kind": "elim",
+  "spectating": false,
+  "src": "English.mkv",
+  "t": 396.25
+ },
+ "evo_harvester_banner_a019725.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "English.mkv",
+  "t": 197.25,
+  "tag": "evo_harvester_banner"
+ },
+ "evo_harvester_banner_a034900.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "English.mkv",
+  "t": 349.0,
+  "tag": "evo_harvester_banner"
+ },
+ "inventory_a022525.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "English.mkv",
+  "t": 225.25,
+  "tag": "inventory"
+ },
+ "inventory_a024475.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "English.mkv",
+  "t": 244.75,
+  "tag": "inventory"
+ },
+ "inventory_a031300.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "English.mkv",
+  "t": 313.0,
+  "tag": "inventory"
+ },
+ "inventory_a033700.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "English.mkv",
+  "t": 337.0,
+  "tag": "inventory"
+ },
+ "inventory_a034425.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "English.mkv",
+  "t": 344.25,
+  "tag": "inventory"
+ },
+ "knock_a002400.png": {
+  "damage_line": true,
+  "enemy": "RI-HIKARULL",
+  "kind": "knock",
+  "spectating": false,
+  "src": "English.mkv",
+  "t": 24.0
+ },
+ "knock_a002425.png": {
+  "damage_line": true,
+  "enemy": "RI-HIKARULL",
+  "kind": "knock",
+  "spectating": false,
+  "src": "English.mkv",
+  "t": 24.25
+ },
+ "knock_a002500.png": {
+  "damage_line": true,
+  "enemy": "RI-HIKARULL",
+  "kind": "knock",
+  "spectating": false,
+  "src": "English.mkv",
+  "t": 25.0
+ },
+ "knock_a002575.png": {
+  "damage_line": true,
+  "enemy": "RI-HIKARULL",
+  "kind": "knock",
+  "spectating": false,
+  "src": "English.mkv",
+  "t": 25.75
+ },
+ "knock_a016525.png": {
+  "damage_line": true,
+  "enemy": "[CSGO]阿牛不是牛",
+  "kind": "knock",
+  "spectating": false,
+  "src": "English.mkv",
+  "t": 165.25
+ },
+ "knock_a016550.png": {
+  "damage_line": true,
+  "enemy": "[CSGO]阿牛不是牛",
+  "kind": "knock",
+  "spectating": false,
+  "src": "English.mkv",
+  "t": 165.5
+ },
+ "knock_a016625.png": {
+  "damage_line": true,
+  "enemy": "[CSGO]阿牛不是牛",
+  "kind": "knock",
+  "spectating": false,
+  "src": "English.mkv",
+  "t": 166.25
+ },
+ "knock_a016700.png": {
+  "damage_line": true,
+  "enemy": "[CSGO]阿牛不是牛",
+  "kind": "knock",
+  "spectating": false,
+  "src": "English.mkv",
+  "t": 167.0
+ },
+ "knock_a016950.png": {
+  "damage_line": true,
+  "enemy": "□墨",
+  "kind": "knock",
+  "spectating": false,
+  "src": "English.mkv",
+  "t": 169.5
+ },
+ "knock_a017025.png": {
+  "damage_line": true,
+  "enemy": "□墨",
+  "kind": "knock",
+  "spectating": false,
+  "src": "English.mkv",
+  "t": 170.25
+ },
+ "knock_a017100.png": {
+  "damage_line": true,
+  "enemy": "□墨",
+  "kind": "knock",
+  "spectating": false,
+  "src": "English.mkv",
+  "t": 171.0
+ },
+ "knock_a027350.png": {
+  "damage_line": true,
+  "enemy": "SOLO孤兒",
+  "kind": "knock",
+  "spectating": false,
+  "src": "English.mkv",
+  "t": 273.5
+ },
+ "knock_a027450.png": {
+  "damage_line": true,
+  "enemy": "SOLO孤兒",
+  "kind": "knock",
+  "spectating": false,
+  "src": "English.mkv",
+  "t": 274.5
+ },
+ "knock_a027550.png": {
+  "damage_line": true,
+  "enemy": "SOLO孤兒",
+  "kind": "knock",
+  "spectating": false,
+  "src": "English.mkv",
+  "t": 275.5
+ },
+ "knock_a027950.png": {
+  "damage_line": true,
+  "enemy": "EGGTYHD",
+  "kind": "knock",
+  "spectating": false,
+  "src": "English.mkv",
+  "t": 279.5
+ },
+ "knock_a028025.png": {
+  "damage_line": true,
+  "enemy": "EGGTYHD",
+  "kind": "knock",
+  "spectating": false,
+  "src": "English.mkv",
+  "t": 280.25
+ },
+ "knock_a028125.png": {
+  "damage_line": true,
+  "enemy": "EGGTYHD",
+  "kind": "knock",
+  "spectating": false,
+  "src": "English.mkv",
+  "t": 281.25
+ },
+ "knock_a039125.png": {
+  "damage_line": true,
+  "enemy": "潮落",
+  "kind": "knock",
+  "spectating": false,
+  "src": "English.mkv",
+  "t": 391.25
+ },
+ "knock_a039150.png": {
+  "damage_line": true,
+  "enemy": "潮落",
+  "kind": "knock",
+  "spectating": false,
+  "src": "English.mkv",
+  "t": 391.5
+ },
+ "knock_a039200.png": {
+  "damage_line": true,
+  "enemy": "潮落",
+  "kind": "knock",
+  "spectating": false,
+  "src": "English.mkv",
+  "t": 392.0
+ },
+ "knock_a048275.png": {
+  "damage_line": true,
+  "enemy": "你看甚麼 出來單挑阿",
+  "kind": "knock",
+  "spectating": false,
+  "src": "English.mkv",
+  "t": 482.75
+ },
+ "knock_a048350.png": {
+  "damage_line": true,
+  "enemy": "你看甚麼 出來單挑阿",
+  "kind": "knock",
+  "spectating": false,
+  "src": "English.mkv",
+  "t": 483.5
+ },
+ "knock_a048450.png": {
+  "damage_line": true,
+  "enemy": "你看甚麼 出來單挑阿",
+  "kind": "knock",
+  "spectating": false,
+  "src": "English.mkv",
+  "t": 484.5
+ },
+ "knock_fadein_a016925.png": {
+  "damage_line": true,
+  "enemy": "□墨",
+  "fadein": true,
+  "kind": "knock",
+  "spectating": false,
+  "src": "English.mkv",
+  "t": 169.25
+ },
+ "knock_fadein_a027325.png": {
+  "damage_line": true,
+  "enemy": "SOLO孤兒",
+  "fadein": true,
+  "kind": "knock",
+  "spectating": false,
+  "src": "English.mkv",
+  "t": 273.25
+ },
+ "knock_fadein_a027925.png": {
+  "damage_line": true,
+  "enemy": "EGGTYHD",
+  "fadein": true,
+  "kind": "knock",
+  "spectating": false,
+  "src": "English.mkv",
+  "t": 279.25
+ },
+ "knock_fadein_a039000.png": {
+  "damage_line": true,
+  "enemy": "潮落",
+  "fadein": true,
+  "kind": "knock",
+  "spectating": false,
+  "src": "English.mkv",
+  "t": 390.0
+ },
+ "knock_fadein_a048250.png": {
+  "damage_line": true,
+  "enemy": "你看甚麼 出來單挑阿",
+  "fadein": true,
+  "kind": "knock",
+  "spectating": false,
+  "src": "English.mkv",
+  "t": 482.5
+ },
+ "obs_screen_a000000.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "English.mkv",
+  "t": 0.0,
+  "tag": "obs_screen"
+ },
+ "obs_screen_a050725.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "English.mkv",
+  "t": 507.25,
+  "tag": "obs_screen"
+ },
+ "pickup_hud_a004625.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "English.mkv",
+  "t": 46.25,
+  "tag": "pickup_hud"
+ },
+ "pickup_hud_a042950.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "English.mkv",
+  "t": 429.5,
+  "tag": "pickup_hud"
+ },
+ "pickup_hud_a043175.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "English.mkv",
+  "t": 431.75,
+  "tag": "pickup_hud"
+ },
+ "pixel_bars_a009125.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "English.mkv",
+  "t": 91.25,
+  "tag": "pixel_bars"
+ },
+ "pixel_bars_a012675.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "English.mkv",
+  "t": 126.75,
+  "tag": "pixel_bars"
+ },
+ "pixel_bars_a018375.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "English.mkv",
+  "t": 183.75,
+  "tag": "pixel_bars"
+ },
+ "pixel_bars_a023275.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "English.mkv",
+  "t": 232.75,
+  "tag": "pixel_bars"
+ },
+ "pixel_bars_a033800.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "English.mkv",
+  "t": 338.0,
+  "tag": "pixel_bars"
+ },
+ "prompt_ult_a003300.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "English.mkv",
+  "t": 33.0,
+  "tag": "prompt_ult"
+ },
+ "prompt_ult_a015175.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "English.mkv",
+  "t": 151.75,
+  "tag": "prompt_ult"
+ },
+ "prompt_ult_a015800.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "English.mkv",
+  "t": 158.0,
+  "tag": "prompt_ult"
+ },
+ "prompt_ult_a027750.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "English.mkv",
+  "t": 277.5,
+  "tag": "prompt_ult"
+ },
+ "radial_menu_a047325.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "English.mkv",
+  "t": 473.25,
+  "tag": "radial_menu"
+ },
+ "revive_banner_a008675.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "English.mkv",
+  "t": 86.75,
+  "tag": "revive_banner"
+ },
+ "running_a011075.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "English.mkv",
+  "t": 110.75,
+  "tag": "running"
+ },
+ "running_a023025.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "English.mkv",
+  "t": 230.25,
+  "tag": "running"
+ },
+ "running_a032975.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "English.mkv",
+  "t": 329.75,
+  "tag": "running"
+ },
+ "running_a037800.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "English.mkv",
+  "t": 378.0,
+  "tag": "running"
+ },
+ "running_a038750.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "English.mkv",
+  "t": 387.5,
+  "tag": "running"
+ },
+ "running_a047975.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "English.mkv",
+  "t": 479.75,
+  "tag": "running"
+ },
+ "spectating_a048625.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": true,
+  "src": "English.mkv",
+  "t": 486.25,
+  "tag": "spectating"
+ },
+ "spectating_a048700.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": true,
+  "src": "English.mkv",
+  "t": 487.0,
+  "tag": "spectating"
+ },
+ "spectating_a048750.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": true,
+  "src": "English.mkv",
+  "t": 487.5,
+  "tag": "spectating"
+ },
+ "spectating_a048800.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": true,
+  "src": "English.mkv",
+  "t": 488.0,
+  "tag": "spectating"
+ },
+ "spectating_a048850.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": true,
+  "src": "English.mkv",
+  "t": 488.5,
+  "tag": "spectating"
+ },
+ "spectating_a049250.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": true,
+  "src": "English.mkv",
+  "t": 492.5,
+  "tag": "spectating"
+ },
+ "spectating_a049300.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": true,
+  "src": "English.mkv",
+  "t": 493.0,
+  "tag": "spectating"
+ },
+ "spectating_a049375.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": true,
+  "src": "English.mkv",
+  "t": 493.75,
+  "tag": "spectating"
+ },
+ "spectating_a049425.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": true,
+  "src": "English.mkv",
+  "t": 494.25,
+  "tag": "spectating"
+ },
+ "spectating_a049450.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": true,
+  "src": "English.mkv",
+  "t": 494.5,
+  "tag": "spectating"
+ },
+ "squad_hud_a008950.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "English.mkv",
+  "t": 89.5,
+  "tag": "squad_hud"
+ },
+ "squad_hud_a010175.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "English.mkv",
+  "t": 101.75,
+  "tag": "squad_hud"
+ },
+ "squad_hud_a010575.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "English.mkv",
+  "t": 105.75,
+  "tag": "squad_hud"
+ },
+ "squad_hud_a010850.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "English.mkv",
+  "t": 108.5,
+  "tag": "squad_hud"
+ },
+ "squad_hud_a018025.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "English.mkv",
+  "t": 180.25,
+  "tag": "squad_hud"
+ },
+ "squad_hud_a019025.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "English.mkv",
+  "t": 190.25,
+  "tag": "squad_hud"
+ },
+ "squad_wipe_a007600.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": "squad_wipe",
+  "spectating": false,
+  "src": "English.mkv",
+  "t": 76.0
+ },
+ "squad_wipe_a007625.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": "squad_wipe",
+  "spectating": false,
+  "src": "English.mkv",
+  "t": 76.25
+ },
+ "squad_wipe_a007700.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": "squad_wipe",
+  "spectating": false,
+  "src": "English.mkv",
+  "t": 77.0
+ },
+ "squad_wipe_a007800.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": "squad_wipe",
+  "spectating": false,
+  "src": "English.mkv",
+  "t": 78.0
+ },
+ "squad_wipe_a017175.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": "squad_wipe",
+  "spectating": false,
+  "src": "English.mkv",
+  "t": 171.75
+ },
+ "squad_wipe_a017200.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": "squad_wipe",
+  "spectating": false,
+  "src": "English.mkv",
+  "t": 172.0
+ },
+ "squad_wipe_a017275.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": "squad_wipe",
+  "spectating": false,
+  "src": "English.mkv",
+  "t": 172.75
+ },
+ "squad_wipe_a017375.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": "squad_wipe",
+  "spectating": false,
+  "src": "English.mkv",
+  "t": 173.75
+ },
+ "squad_wipe_a029900.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": "squad_wipe",
+  "spectating": false,
+  "src": "English.mkv",
+  "t": 299.0
+ },
+ "squad_wipe_a029925.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": "squad_wipe",
+  "spectating": false,
+  "src": "English.mkv",
+  "t": 299.25
+ },
+ "squad_wipe_a029975.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": "squad_wipe",
+  "spectating": false,
+  "src": "English.mkv",
+  "t": 299.75
+ },
+ "squad_wipe_a030050.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": "squad_wipe",
+  "spectating": false,
+  "src": "English.mkv",
+  "t": 300.5
+ },
+ "waypoint_marker_a021525.png": {
+  "damage_line": false,
+  "enemy": null,
+  "kind": null,
+  "spectating": false,
+  "src": "English.mkv",
+  "t": 215.25,
+  "tag": "waypoint_marker"
+ }
+}
