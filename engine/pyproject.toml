@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "apexhl"
-version = "0.1.0"
+version = "0.2.0"
 description = "Apex Highlighter 分析引擎"
 requires-python = ">=3.11"
 dependencies = ["opencv-python", "numpy"]

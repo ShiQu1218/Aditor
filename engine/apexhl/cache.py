@@ -89,6 +89,11 @@ def _has_state(e: Event) -> bool:
     return e.deleted or e.counted_override is not None
 
 
+def _family(t: str) -> str:
+    """配對用的類型家族：助攻擊倒／助攻消滅互通（引擎改版後助攻子類型常改判，使用者狀態不應因此遺失）。"""
+    return "assist" if t in ("assist_knock", "assist_elim") else t
+
+
 def merge_reanalysis(old_events: list[Event], new_auto: list[Event]) -> tuple[list[Event], list[Event]]:
     manual = [e for e in old_events if e.source == "manual"]
     new = list(new_auto)
@@ -99,7 +104,7 @@ def merge_reanalysis(old_events: list[Event], new_auto: list[Event]) -> tuple[li
     for o in olds:
         best, best_d = None, None
         for i, n in enumerate(new):
-            if i in received or n.type != o.type:
+            if i in received or _family(n.type) != _family(o.type):
                 continue
             d = abs(n.t - o.t)
             if d <= MATCH_WINDOW and (best_d is None or d < best_d):

@@ -53,7 +53,7 @@ class Proc:
 def test_ipc_ready_probe_and_error(tmp_path):
     p = Proc()
     ready = p.get()
-    assert ready["type"] == "ready" and ready["engine_version"] == "0.1.0"
+    assert ready["type"] == "ready" and ready["engine_version"] == "0.2.0"
     v = make_video(tmp_path, "含 空白.mp4", 2)
     p.send({"id": "1", "cmd": "probe", "args": {"path": str(v)}})
     r = p.get()

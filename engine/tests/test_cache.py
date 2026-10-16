@@ -111,3 +111,26 @@ def test_merge_clips_keeps_manual():
     new = [Clip("c3", 30, 40, "ai")]
     out = cache.merge_clips(old, new)
     assert [c.id for c in out] == ["c2", "c3"]
+
+
+def test_i6_caches_from_previous_engine_or_zh_templates_are_stale():
+    """I6：0.1.0／zh-TW@1 的舊快取（舊追蹤器、無黃名遮罩）不得被當成新結果。"""
+    from apexhl import ENGINE_VERSION
+    assert ENGINE_VERSION == "0.2.0"
+    old_engine = good_doc()
+    old_engine["analysis"]["engine_version"] = "0.1.0"
+    old_engine["analysis"]["templates_version"] = "zh-TW@2"
+    assert cache.needs_reanalysis(old_engine, info(), "zh-TW@2")
+    old_tpl = good_doc()
+    old_tpl["analysis"]["templates_version"] = "zh-TW@1"
+    assert cache.needs_reanalysis(old_tpl, info(), "zh-TW@2")
+
+
+def test_merge_reanalysis_matches_assist_subtypes():
+    """I6：改版後大量 assist_elim 變 assist_knock，使用者的刪除／覆寫不應因此全部變成 unmatched。"""
+    old = [ev("o1", 10.0, "assist_elim", deleted=True)]
+    new = [ev("n1", 10.25, "assist_knock")]
+    merged, unmatched = cache.merge_reanalysis(old, new)
+    assert unmatched == [] and merged[0].deleted is True
+    merged, unmatched = cache.merge_reanalysis([ev("o2", 10.0, "knock", deleted=True)], new)
+    assert len(unmatched) == 1   # 不同家族仍不配對

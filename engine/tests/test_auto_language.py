@@ -51,6 +51,36 @@ def test_calibrate_auto_undetermined_is_explicit(tmp_path, profiles):
     assert chosen is None and scale == 1.0  # 絕不悄悄退回 profiles[0]
 
 
+def _assist_without_sub_png(tmp_path):
+    """模擬簡體中文錄影：「助攻，」看得到，但後面的簡體「击倒」比不到任何子關鍵字 → 偵測器後備成 assist_elim。"""
+    from apexhl.detect import Detector, white_mask
+    prof = [p for p in resolve_profiles(REPO / "templates") if p.lang == "zh-TW"][0]
+    det = Detector(prof)
+    img = cv2.imdecode(np.fromfile(str(FIXTURES / "zh-TW" / "pos" / "assist_knock_a007150.png"), dtype=np.uint8),
+                       cv2.IMREAD_COLOR)[:180]
+    wm = white_mask(img, prof)
+    from apexhl.detect import _ink_box
+    box = _ink_box(wm, rows_limit=prof.line1_rows)
+    s, x, y = det._hit(wm, "assist", box)
+    img = img.copy()
+    img[:, x + det.tpl["assist"].shape[1]:] = 0
+    out = tmp_path / "sc_like.png"
+    ok, buf = cv2.imencode(".png", img)
+    assert ok
+    buf.tofile(str(out))
+    return out
+
+
+def test_simplified_chinese_like_recording_is_undetermined_not_zh_tw(tmp_path, profiles):
+    """I5：只有弱類型（assist_elim 後備）命中的錄影不得被判成 zh-TW。"""
+    png = _assist_without_sub_png(tmp_path)
+    v = make_video(tmp_path, "sc.mp4", 6, overlay=(png, [(1.0, 5.0)]))
+    chosen, _ = calibrate_auto(str(v), _info(v, 6.0), profiles, max_scan_seconds=10.0)
+    assert chosen is None
+    doc = analyze(str(v), profiles, cache_dir=tmp_path / "c", hwaccel=False)
+    assert doc["analysis"]["lang_detected"] is False and doc["events"] == []
+
+
 def test_analyze_auto_undetermined_records_flag_and_is_not_cached(tmp_path, profiles):
     v = make_video(tmp_path, "blank.mp4", 4)
     doc = analyze(str(v), profiles, cache_dir=tmp_path / "c", hwaccel=False)
@@ -86,7 +116,7 @@ class _Info:
     size, mtime = 5, 1.0
 
 
-KNOWN = {"zh-TW@1", "en@2", "ja@2"}
+KNOWN = {"zh-TW@2", "en@2", "ja@2"}
 LANGS = {"zh-TW", "en", "ja"}
 
 
