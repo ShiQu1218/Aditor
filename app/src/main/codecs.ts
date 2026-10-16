@@ -4,7 +4,8 @@ import path from 'path'
 import { createHash } from 'crypto'
 import { spawn } from 'child_process'
 import { Readable } from 'stream'
-import { codecsDir, engineCommand } from '../shared/paths'
+import { codecsDir } from '../shared/paths'
+import { decompressBz2File } from './bz2'
 
 const OPENH264_HOST = 'ciscobinary.openh264.org'
 const OPENH264_FILE = 'openh264-2.3.1-win64.dll.bz2'
@@ -65,16 +66,6 @@ function httpsFetch(url: string): Promise<FetchedStream> {
   })
 }
 
-function pythonBz2(bz2Path: string, dllPath: string): Promise<void> {
-  const cmd = engineCommand(false)
-  return new Promise<void>((resolve, reject) => {
-    const script = `import bz2, sys\nwith open(sys.argv[1], 'rb') as f_in, open(sys.argv[2], 'wb') as f_out:\n    f_out.write(bz2.decompress(f_in.read()))\n`
-    const proc = spawn(cmd.command, ['-c', script, bz2Path, dllPath])
-    proc.on('close', (code) => (code === 0 ? resolve() : reject(new Error(`解壓縮 OpenH264 失敗 (exit code ${code})`))))
-    proc.on('error', reject)
-  })
-}
-
 export interface DownloadOptions {
   onProgress?: (ratio: number) => void
   /** 測試用覆寫 */
@@ -124,7 +115,7 @@ export async function downloadOpenH264(opts: DownloadOptions = {}): Promise<stri
     })
     if (downloaded !== expected.size) throw new Error('OpenH264 檔案大小與預期不符')
     if (hash.digest('hex') !== expected.sha256) throw new Error('OpenH264 檔案雜湊校驗失敗，已拒絕使用')
-    await (opts.decompress ?? pythonBz2)(bz2Path, dllTmp)
+    await (opts.decompress ?? decompressBz2File)(bz2Path, dllTmp)
     fs.renameSync(dllTmp, dllPath)
     fs.rmSync(bz2Path, { force: true })
     opts.onProgress?.(1)
