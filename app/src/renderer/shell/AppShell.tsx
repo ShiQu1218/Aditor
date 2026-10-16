@@ -4,6 +4,23 @@ import { ToastProvider } from './ToastHost'
 import { OverlayProvider, useOverlay } from './OverlayHost'
 import { QueuePopover } from './QueuePopover'
 import { QueueProvider } from '../queue/QueueProvider'
+import { useProject } from '../editor/ProjectProvider'
+import { useToast } from './ToastHost'
+import { i18n } from '../i18n/zh-TW'
+
+/** 啟動還原遇到損毀／過新版本專案時顯示一次 Toast（I12）。 */
+function RestoreNotice(): null {
+  const { restoreNotice } = useProject()
+  const toast = useToast()
+  const shown = useRef(false)
+  React.useEffect(() => {
+    if (!restoreNotice || shown.current) return
+    shown.current = true
+    const t = i18n.studio.toast
+    toast({ message: restoreNotice === 'corrupt' ? t.projectRestoreCorrupt : t.projectRestoreUnsupported })
+  }, [restoreNotice, toast])
+  return null
+}
 
 interface AppShellProps {
   active: RailView | null
@@ -56,6 +73,7 @@ function ShellFrame({
   const overlay = useOverlay()
   return (
     <div className="app">
+      <RestoreNotice />
       <Rail
         active={active}
         projectCount={projectCount}

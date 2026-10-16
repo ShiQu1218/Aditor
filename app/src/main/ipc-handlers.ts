@@ -17,7 +17,7 @@ import { fileExistsSafe, isSafeLocalDirPath, isSafeLocalVideoPath } from './safe
 import { createPathGrants, loadGrantedProject, planCacheSave, saveGrantedProject } from './ipc-guards'
 import { DEFAULT_SETTINGS } from '../shared/settings'
 import { currentE2EConfig } from './e2e'
-import { cacheDir, noticesFile, profileDir } from '../shared/paths'
+import { appDataDir, cacheDir, noticesFile, profileDir } from '../shared/paths'
 import { computeHlCount, createHlGuard, createSerialQueue, hlForSavedDoc } from './hl'
 import { createThrottle } from '../shared/throttle'
 import type { CacheDoc, Clip } from '../shared/types'
@@ -321,6 +321,8 @@ export function registerIpcHandlers(
     const res = await dialog.showOpenDialog(win || (undefined as unknown as BrowserWindow), {
       title: i18n.dialog.openProjectTitle,
       properties: ['openFile'],
+      // 自動儲存的專案（含損毀備份）都在這裡，方便找回（I12）
+      defaultPath: path.join(appDataDir(), 'projects'),
       filters: [{ name: 'Apex Highlighter Project', extensions: ['apexproj.json', 'json'] }]
     })
     if (res.canceled || res.filePaths.length === 0) return null

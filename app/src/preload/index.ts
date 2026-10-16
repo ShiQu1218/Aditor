@@ -73,6 +73,8 @@ const api = {
     save: (project: unknown) => ipcRenderer.invoke('projects:save', project),
     load: (id: string) => ipcRenderer.invoke('projects:load', id),
     list: () => ipcRenderer.invoke('projects:list'),
+    /** 最近一次專案讀寫錯誤（kind: save/corrupt/transient/unsupported）；沒有則 null */
+    lastError: () => ipcRenderer.invoke('projects:lastError'),
     remove: (id: string) => ipcRenderer.invoke('projects:remove', id),
     /** 關閉視窗時用：阻塞到 main 已把專案寫入磁碟（同時記下 lastProjectId）。 */
     flushSync: (project: unknown): boolean => ipcRenderer.sendSync('projects:flushSync', project) === true,

@@ -46,6 +46,10 @@ export function registerProjectHandlers(
   ipc.on('projects:flushDone', () => onFlushDone?.())
 
   ipc.handle('projects:load', async (_e, id: string) => store.load(id))
+  // 啟動還原遇到損毀／過新版本時，renderer 用它顯示 notice（I12）
+  ipc.handle('projects:lastError', async () =>
+    store.lastErrorKind && store.lastError ? { kind: store.lastErrorKind, message: store.lastError } : null
+  )
   ipc.handle('projects:list', async () => store.list())
   ipc.handle('projects:remove', async (_e, id: string) => {
     await store.remove(id)

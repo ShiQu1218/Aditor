@@ -198,6 +198,8 @@ export const i18n = {
     toast: {
       added: '已加入專案',
       alreadyInProject: '專案已有此片段',
+      projectRestoreCorrupt: '上次的專案檔已損毀，已保留備份並建立新專案。可從「開啟檔案」找回備份。',
+      projectRestoreUnsupported: '上次的專案檔來自較新的版本，無法開啟；已建立新專案，原檔未被變更。',
       addedProject: '已加入專案（{sec} 秒）',
       skipped: '已略過這段建議',
       removedFromProject: '已移出專案片段',

@@ -45,6 +45,8 @@ export interface ProjectContextValue {
   lastSavedAt: number | null
   /** 專案自動儲存關閉時，上次另存後是否有未儲存的變更（I5）。 */
   unsaved: boolean
+  /** 啟動還原時專案檔損毀／版本過新（顯示一次 notice）。 */
+  restoreNotice: 'corrupt' | 'unsupported' | null
   /** 開啟檔案時檢查到的缺失來源（Task 13 顯示用）。 */
   lastMissingSources: string[]
   /** 來源缺失的片段 id（由 lastMissingSources 衍生，不進專案檔；UI 警示且不可預覽）。 */
@@ -80,6 +82,7 @@ export function ProjectProvider({ children }: { children: React.ReactNode }): JS
   const session = sessionRef.current
   const state = useSyncExternalStore(session.subscribe, session.getState, session.getState)
   const [lastMissingSources, setLastMissingSources] = useState<string[]>([])
+  const [restoreNotice, setRestoreNotice] = useState<'corrupt' | 'unsupported' | null>(null)
 
   // 啟動：先載入設定，再還原上次專案（結果由 session 決定是否套用）
   useEffect(() => {
@@ -104,6 +107,16 @@ export function ProjectProvider({ children }: { children: React.ReactNode }): JS
         getSettings: async () => settings,
         loadProject: (id: string) => api.projects.load(id)
       })
+      if (cancelled) return
+      // 損毀／過新版本的專案檔：main 已保留備份，這裡只負責告知使用者（I12）
+      if (!restored) {
+        try {
+          const err = (await api.projects.lastError?.()) as { kind?: string } | null
+          if (!cancelled && (err?.kind === 'corrupt' || err?.kind === 'unsupported')) setRestoreNotice(err.kind)
+        } catch {
+          /* 沒有 notice 不影響使用 */
+        }
+      }
       if (cancelled) return
       if (!session.restored(restored) || !restored) return
       // 還原的專案也要檢查來源是否仍存在（缺失片段警示且不可預覽）
@@ -266,10 +279,11 @@ export function ProjectProvider({ children }: { children: React.ReactNode }): JS
       saveState: state.saveState,
       lastSavedAt: state.lastSavedAt,
       unsaved: state.unsaved,
+      restoreNotice,
       lastMissingSources,
       missingItemIds: missingIds
     }),
-    [state, actions, openFile, saveFile, lastMissingSources, missingIds]
+    [state, actions, openFile, saveFile, lastMissingSources, missingIds, restoreNotice]
   )
 
   return <ProjectContext.Provider value={value}>{children}</ProjectContext.Provider>

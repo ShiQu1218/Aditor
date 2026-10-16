@@ -80,6 +80,7 @@ export function createFakeApi(opts: FakeApiOptions = {}) {
       remove: vi.fn(async () => true),
       flushSync: vi.fn(() => true),
       onFlushRequest: sub('projects:flushRequest'),
+      lastError: vi.fn(async () => null),
       flushDone: vi.fn(),
       setDirty: vi.fn(),
       onSaveAndCloseRequest: sub('projects:saveAndCloseRequest'),
