@@ -10,6 +10,7 @@ import { registerIpcHandlers } from './ipc-handlers'
 import { createCloseGate } from './project-ipc'
 import { buildAnalyzeArgs, resolveAnalyzeProfileDir } from './settings-derived'
 import { currentE2EConfig } from './e2e'
+import { applyWindowSecurity } from './window-security'
 import { sanitizeAnalyzeArgs, sanitizeAutoclipArgs, sanitizeDeriveArgs, sanitizeProbeArgs } from './ipc-guards'
 import { appDataDir, cacheDir, engineCommand, ffmpegExecutable, profileDir } from '../shared/paths'
 
@@ -41,10 +42,13 @@ function createWindow(): void {
     autoHideMenuBar: true,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
-      sandbox: false,
+      // preload 只用 contextBridge／ipcRenderer，可以在沙箱內執行（I2）
+      sandbox: true,
       contextIsolation: true
     }
   })
+
+  applyWindowSecurity(mainWindow.webContents)
 
   // 關閉前先請 renderer 立即寫入最新專案（beforeunload 的 sendSync 之外的第二道保險）；
   // 收到 flushDone 或逾時才真正關閉

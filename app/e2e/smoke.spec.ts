@@ -233,3 +233,21 @@ test('1366x768: project track collapsed by default; export drawer does not cover
     fs.rmSync(outDir, { recursive: true, force: true })
   }
 })
+
+test('security (I2): CSP is applied, in-page navigation to a file is blocked, window.open denied', async ({ launch }) => {
+  const { page } = await launch()
+  const csp = await page.locator('meta[http-equiv="Content-Security-Policy"]').getAttribute('content')
+  expect(csp).toContain("default-src 'self'")
+  expect(csp).not.toContain('unsafe-eval')
+  const before = page.url()
+  await page.evaluate(() => {
+    window.location.href = 'file:///C:/Windows/win.ini'
+  })
+  await page.waitForTimeout(500)
+  expect(page.url()).toBe(before)
+  await page.waitForTimeout(500)
+  expect(await page.evaluate(() => !!document.querySelector('.lib-empty'))).toBe(true)
+  const opened = await page.evaluate(() => window.open('https://example.com/') === null)
+  expect(opened).toBe(true)
+  expect(await page.evaluate(() => typeof (window as unknown as { api?: unknown }).api)).toBe('object')
+})
