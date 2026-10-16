@@ -183,7 +183,11 @@ export const i18n = {
       relink: '重新連結檔案',
       back: '返回影片庫',
       noEventsTitle: '這支影片沒有偵測到擊倒／助攻',
-      noEventsText: '可按 M 手動新增，或確認錄影語言為繁體中文。'
+      noEventsText: '可按 M 手動新增，或到設定確認「遊戲語言」是否與錄影相符。',
+      langUndeterminedTitle: '無法判斷錄影語言',
+      langUndeterminedText: '無法判斷錄影語言，請在設定中指定遊戲語言後重新分析',
+      spectatingUnsupportedTitle: '此語言尚不支援觀戰偵測',
+      spectatingUnsupportedText: '觀戰期間（隊友被擊倒後觀看隊友）的事件無法自動排除，請自行檢查。'
     },
     toast: {
       added: '已加入專案',

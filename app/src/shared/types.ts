@@ -58,12 +58,18 @@ export interface AnalysisInfo {
   engine_version: string
   templates_version: string
   h_scale: number
+  /** 偵測到（或指定）的語言；自動語言偵測失敗時為 null */
+  profile?: string | null
+  /** false＝自動語言偵測失敗（沒有語言的橫幅達到命中門檻）：結果只有手動事件，需指定語言後重新分析 */
+  lang_detected?: boolean
+  /** 該語言是否支援觀戰偵測；false＝觀戰期間的事件無法自動排除；null＝無語言 */
+  spectating_supported?: boolean | null
 }
 
 export interface CacheDoc {
   version: number
   video: VideoInfo
-  profile: string
+  profile: string | null
   analysis: AnalysisInfo
   events: EngineEvent[]
   spectating: SpecInterval[]

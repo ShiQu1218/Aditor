@@ -1,9 +1,17 @@
 import fs from 'fs'
 import path from 'path'
-import { DEFAULT_SETTINGS, SETTINGS_RANGES, SETTINGS_VERSION, Settings, SettingsSetResult } from '../shared/settings'
+import {
+  DEFAULT_SETTINGS,
+  GameLang,
+  SETTINGS_RANGES,
+  SETTINGS_VERSION,
+  Settings,
+  SettingsSetResult
+} from '../shared/settings'
 import { AutoClipParams } from '../shared/types'
 
 const RANGES = SETTINGS_RANGES
+const GAME_LANGS: readonly GameLang[] = ['auto', 'zh-TW', 'en', 'ja']
 
 function isPlainObject(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v)
@@ -64,7 +72,7 @@ function applySettings(base: Settings, src: unknown): Settings {
     version: SETTINGS_VERSION,
     watchFolders: pickStringArray(s.watchFolders, base.watchFolders),
     autoAnalyze: pickBool(s.autoAnalyze, base.autoAnalyze),
-    gameLang: pickEnum(s.gameLang, ['auto', 'zh-TW', 'en', 'ja'] as const, base.gameLang),
+    gameLang: pickEnum(s.gameLang, GAME_LANGS, base.gameLang),
     decode: pickEnum(s.decode, ['auto', 'software'] as const, base.decode),
     cacheLocation: pickEnum(s.cacheLocation, ['appdata', 'besideVideo'] as const, base.cacheLocation),
     lowPerfMode: pickBool(s.lowPerfMode, base.lowPerfMode),
@@ -86,7 +94,13 @@ function applySettings(base: Settings, src: unknown): Settings {
  * `version` 缺失或較舊一律視為舊版，已知且合法的值保留、其餘逐欄位回退預設。
  */
 export function migrateSettings(raw: unknown): Settings {
-  return applySettings(cloneSettings(DEFAULT_SETTINGS), raw)
+  const migrated = applySettings(cloneSettings(DEFAULT_SETTINGS), raw)
+  // 舊版（只支援 zh-TW）留下的設定檔沒有合法的 gameLang：維持舊行為 zh-TW；
+  // 只有「根本沒有設定檔」的新安裝才用預設 'auto'（見 loadSettings）。
+  if (isPlainObject(raw) && !GAME_LANGS.includes(raw.gameLang as GameLang)) {
+    migrated.gameLang = 'zh-TW'
+  }
+  return migrated
 }
 
 /**

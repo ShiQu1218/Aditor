@@ -678,11 +678,19 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
 
   /* ---------------- 狀態列（引擎異常／代理檔） ---------------- */
 
+  const docAnalysis = state.doc.analysis
   const notice: StudioNotice | null = useMemo(() => {
-    const base = studioNotice({ analysis: 'done', playability, proxyState, proxySuggest: cfg.proxySuggest })
+    const base = studioNotice({
+      analysis: 'done',
+      playability,
+      proxyState,
+      proxySuggest: cfg.proxySuggest,
+      langDetected: docAnalysis?.lang_detected,
+      spectatingSupported: docAnalysis?.spectating_supported
+    })
     if (proxyDismissed && base?.id === 'proxy-suggest') return null
     return base
-  }, [playability, proxyState, proxyDismissed, cfg.proxySuggest])
+  }, [playability, proxyState, proxyDismissed, cfg.proxySuggest, docAnalysis])
 
   const busyNotice: StudioNotice | null = useMemo(
     () => (proxyState === 'generating' ? proxyBusyNotice(proxyPct) : null),
@@ -991,7 +999,12 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
       const ticket = deriveGate.current.next()
       void (async () => {
         try {
-          const res = (await api.engine.derive({ events, spectating: docRef.current.spectating })) as {
+          const res = (await api.engine.derive({
+            events,
+            spectating: docRef.current.spectating,
+            // 用快取文件記錄的語言去重（自動模式不可退回第一個語言）
+            profile: docRef.current.analysis?.profile ?? docRef.current.profile ?? undefined
+          })) as {
             events: EngineEvent[]
           } | null
           if (!deriveGate.current.isLatest(ticket)) return

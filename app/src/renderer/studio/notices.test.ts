@@ -34,6 +34,28 @@ describe('studioNotice', () => {
   })
 })
 
+describe('studioNotice（語言偵測）', () => {
+  test('langDetected=false → 提示指定遊戲語言後重新分析（優先於代理檔建議）', () => {
+    const n = studioNotice({ analysis: 'done', playability: weakPlayability, proxyState: 'none', langDetected: false })
+    expect(n!.id).toBe('lang-undetermined')
+    expect(n!.text).toBe('無法判斷錄影語言，請在設定中指定遊戲語言後重新分析')
+  })
+
+  test('langDetected=true／舊快取(undefined) 不提示；spectatingSupported=false → 資訊提示', () => {
+    expect(studioNotice({ analysis: 'done', playability: okPlayability, proxyState: 'none', langDetected: true })).toBeNull()
+    expect(studioNotice({ analysis: 'done', playability: okPlayability, proxyState: 'none' })).toBeNull()
+    const n = studioNotice({
+      analysis: 'done',
+      playability: okPlayability,
+      proxyState: 'none',
+      langDetected: true,
+      spectatingSupported: false
+    })
+    expect(n!.id).toBe('spectating-unsupported')
+    expect(n!.kind).toBe('info')
+  })
+})
+
 describe('proxyBusyNotice', () => {
   test('shows the percentage when progress is known, generic text otherwise', () => {
     expect(proxyBusyNotice(0.42).title).toBe('產生中… 42%')

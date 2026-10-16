@@ -20,6 +20,10 @@ export interface StudioNoticeInput {
   errorCode?: string | number
   /** 設定「建議代理檔」：false 時不建議（預設 true） */
   proxySuggest?: boolean
+  /** 分析結果的語言偵測：false＝自動偵測失敗（優先顯示）；undefined＝舊快取，不提示 */
+  langDetected?: boolean
+  /** 該語言是否支援觀戰偵測：false＝提示無法自動排除觀戰 */
+  spectatingSupported?: boolean | null
 }
 
 /**
@@ -37,6 +41,15 @@ export function studioNotice(input: StudioNoticeInput): StudioNotice | null {
       actions: ['resume', 'copyError']
     }
   }
+  if (input.langDetected === false) {
+    return {
+      id: 'lang-undetermined',
+      kind: 'warn',
+      title: t.langUndeterminedTitle,
+      text: t.langUndeterminedText,
+      actions: ['back']
+    }
+  }
   if (input.proxyState === 'none' && input.proxySuggest !== false) {
     const p = input.playability
     if (!p.supported || !p.smooth || !p.powerEfficient) {
@@ -47,6 +60,15 @@ export function studioNotice(input: StudioNoticeInput): StudioNotice | null {
         text: t.proxyText,
         actions: ['generateProxy', 'later']
       }
+    }
+  }
+  if (input.spectatingSupported === false) {
+    return {
+      id: 'spectating-unsupported',
+      kind: 'info',
+      title: t.spectatingUnsupportedTitle,
+      text: t.spectatingUnsupportedText,
+      actions: []
     }
   }
   return null

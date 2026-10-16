@@ -94,7 +94,7 @@ async function initEngineAndServices(): Promise<void> {
   library = new Library(join(appDataDir(), 'library.json'))
   // 上次執行中斷遺留的「分析中」條目沒有佇列在處理，重設為閒置
   library.resetStaleAnalyzing()
-  // 啟動時讀取設定；無檔案＝首次使用者，採預設值（行為與舊版相同）
+  // 啟動時讀取設定：無檔案＝新安裝，gameLang 預設 'auto'；舊設定檔缺 gameLang → 'zh-TW'（行為與舊版相同）
   settingsStore = new SettingsStore(join(appDataDir(), 'settings.json'))
   queue = new AnalysisQueue(engineClient, library, {
     profileDir: templateProfileDir,
