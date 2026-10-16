@@ -1,7 +1,7 @@
 /** 影片 src 與 seek 規劃（純函式）：換檔後才能套用的時間，不得設在即將被替換的 <video> 上。 */
 
 export function fileUrl(path: string): string {
-  return `file://${path.replace(/\\/g, '/')}`
+  return `file://${encodeURI(path.replace(/\\/g, '/')).replace(/#/g, '%23').replace(/\?/g, '%3F')}`
 }
 
 /** 要 seek 的檔案已載入 → 立即套用；否則等 loadedmetadata 後套用。 */

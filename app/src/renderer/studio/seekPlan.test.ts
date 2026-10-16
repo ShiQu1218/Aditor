@@ -2,6 +2,9 @@ import { describe, expect, test } from 'vitest'
 import { fileUrl, onVideoError, planSeek, routeTimeUpdate } from './seekPlan'
 
 describe('fileUrl', () => {
+  test('percent-encodes characters that would break the URL (#, ?, %, space) (Minor 1)', () => {
+    expect(fileUrl('C:\\v\\a#1 100%?.mp4')).toBe('file://C:/v/a%231%20100%25%3F.mp4')
+  })
   test('converts backslashes', () => expect(fileUrl('C:\\v\\a.mp4')).toBe('file://C:/v/a.mp4'))
 })
 

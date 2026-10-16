@@ -182,7 +182,7 @@ function VideoCardView({ entry, onOpen, onToggleFavorite, onRemove, onRetry, onM
       >
         <span className="vcard-thumb">
           {entry.thumb ? (
-            <img src={`file://${entry.thumb.replace(/\\/g, '/')}`} alt="" loading="lazy" decoding="async" />
+            <img src={`file://${encodeURI(entry.thumb.replace(/\\/g, '/')).replace(/#/g, '%23').replace(/\?/g, '%3F')}`} alt="" loading="lazy" decoding="async" />
           ) : (
             <span className="vcard-nothumb">
               <ImageOff className="ic lg" />
