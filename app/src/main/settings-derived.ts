@@ -36,7 +36,7 @@ export function buildAnalyzeArgs(
   settings: AnalyzeSettings | undefined,
   rendererArgs: Record<string, unknown>
 ): Record<string, unknown> {
-  const merged = { ...base, ...rendererArgs, ...analyzeSettingArgs(settings) }
+  const merged: Record<string, unknown> = { ...base, ...rendererArgs, ...analyzeSettingArgs(settings) }
   if (typeof base.profile_dir === 'string' && settings?.gameLang) {
     merged.profile_dir = resolveAnalyzeProfileDir(base.profile_dir, settings)
   }
