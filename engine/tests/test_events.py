@@ -237,3 +237,160 @@ def test_jitter_does_not_lower_minimum_frames():
     assert ev == []
     ev, _ = run([(0.0, fr("knock", sig(500)))])
     assert ev == []
+
+
+# --- Fix-ML-2：跨類型（knock → elim）同敵人連結 ---
+
+def _runs(*parts):
+    """parts: (t0, kind, [名字指紋...])，每個指紋一格 (0.25s)。"""
+    frames = []
+    for t0, kind, names in parts:
+        frames += [(t0 + i * 0.25, fr(kind, n)) for i, n in enumerate(names)]
+    return frames
+
+
+def test_elim_links_to_recent_knock_when_stable_frames_match():
+    # knock 的指紋乾淨；elim 的畫格大多是破碎殘片，但有兩格取到完整名字（互相印證）
+    a = sig(7)
+    frames = _runs((0.0, "knock", [a, noisy(a, 1), a, noisy(a, 2)]),
+                   (4.0, "elim", [sig(600), sig(601), noisy(a, 3), sig(602), noisy(a, 4), sig(603)]))
+    ev, _ = run(frames)
+    assert [e.type for e in ev] == ["knock", "elim"]
+    assert ev[1].name_sig == ev[0].name_sig  # 沿用同一敵人的指紋 → derive 會去重
+
+
+def test_single_matching_frame_does_not_link():
+    # 單格偶然相符（殘片）不足以連結：實測會把不同敵人連在一起
+    a = sig(7)
+    # （放在 PAIR_WINDOW 之外，只測指紋層）
+    frames = _runs((0.0, "knock", [a, noisy(a, 1), a, noisy(a, 2)]),
+                   (15.0, "elim", [sig(600), sig(601), noisy(a, 3), sig(602), sig(603)]))
+    ev, _ = run(frames)
+    assert len(ev) == 2 and ev[1].name_sig != ev[0].name_sig
+
+
+def test_elim_not_linked_when_no_frame_matches():
+    a = sig(7)
+    frames = _runs((0.0, "knock", [a, a, a]), (15.0, "elim", [sig(600), sig(601), sig(602)]))
+    ev, _ = run(frames)
+    assert len(ev) == 2 and ev[1].name_sig != ev[0].name_sig
+
+
+def test_link_window():
+    a = sig(7)
+    frames = _runs((0.0, "knock", [a, a, a]), (60.0, "elim", [a, a, a]))
+    ev, _ = run(frames)
+    assert len(ev) == 2 and ev[1].name_sig == ev[0].name_sig == a.to_b64()  # 本來就同簽名：與連結無關
+    far = _runs((0.0, "knock", [a, a, a]), (60.0, "elim", [sig(700), noisy(a, 5), noisy(a, 6)]))
+    ev, _ = run(far)
+    assert ev[1].name_sig != ev[0].name_sig  # 超過連結視窗不連結
+
+
+def test_link_ignores_tiny_fragments():
+    # 寬度過小的殘片相關性不可靠，不得用來連結
+    small = NameSig(10, (np.random.default_rng(3).random((16, 10)) > 0.5).astype(np.uint8))
+    frames = _runs((0.0, "knock", [small, small, small]), (4.0, "elim", [small, small, small]))
+    ev, _ = run(frames)
+    assert len(ev) == 2
+    assert ev[1].name_sig == small.to_b64()  # 自己的指紋，未被替換（連結被拒絕時保持原樣）
+
+
+def test_link_does_not_touch_squad_wipe_or_unrelated_names():
+    a, b = sig(7), sig(8)
+    frames = _runs((0.0, "knock", [a, a, a]), (4.0, "knock", [b, b, b]))
+    ev, _ = run(frames)
+    assert ev[0].name_sig == a.to_b64() and ev[1].name_sig == b.to_b64()
+
+
+# --- Fix-ML-2：補刀（elim）依時間配對最近的擊倒 ---
+
+def test_elim_pairs_with_preceding_knock_when_names_unreadable():
+    # 擊倒的名字讀得到；補刀的畫格全是不相干的殘片（沒有被印證的指紋）→ 以時間配對
+    a = sig(7)
+    frames = _runs((0.0, "knock", [a, noisy(a, 1), a]),
+                   (4.0, "elim", [sig(600), sig(601), sig(602), sig(603)]))
+    ev, _ = run(frames)
+    assert [e.type for e in ev] == ["knock", "elim"]
+    assert ev[1].name_sig == ev[0].name_sig
+
+
+def test_elim_pairs_when_knock_name_also_unreadable():
+    frames = _runs((0.0, "knock", [sig(610), sig(611), sig(612)]),
+                   (4.0, "elim", [sig(600), sig(601), sig(602)]))
+    ev, _ = run(frames)
+    assert len(ev) == 2 and ev[1].name_sig == ev[0].name_sig
+
+
+def test_elim_not_paired_when_both_names_readable_and_different():
+    a, b = sig(7), sig(8)
+    frames = _runs((0.0, "knock", [a, a, a]), (4.0, "elim", [b, b, b]))
+    ev, _ = run(frames)
+    assert ev[1].name_sig == b.to_b64()
+
+
+def test_elim_not_paired_beyond_pair_window_or_without_knock():
+    frames = _runs((0.0, "knock", [sig(610), sig(611), sig(612)]),
+                   (15.0, "elim", [sig(600), sig(601), sig(602)]))
+    ev, _ = run(frames)
+    assert ev[1].name_sig != ev[0].name_sig
+    ev, _ = run(_runs((0.0, "elim", [sig(600), sig(601), sig(602)])))
+    assert len(ev) == 1
+
+
+def test_one_knock_pairs_with_only_one_elim():
+    a = sig(7)
+    frames = _runs((0.0, "knock", [a, a, a]),
+                   (3.0, "elim", [sig(600), sig(601), sig(602)]),
+                   (6.0, "elim", [sig(620), sig(621), sig(622)]))
+    ev, _ = run(frames)
+    assert ev[1].name_sig == ev[0].name_sig       # 第一個補刀吃掉這次擊倒
+    assert ev[2].name_sig not in (ev[0].name_sig,)  # 第二個補刀是另一個敵人
+
+
+def test_assist_elim_pairs_with_assist_knock():
+    frames = _runs((0.0, "assist_knock", [sig(610), sig(611), sig(612)]),
+                   (4.0, "assist_elim", [sig(600), sig(601), sig(602)]))
+    ev, _ = run(frames)
+    assert ev[1].name_sig == ev[0].name_sig
+
+
+def test_knock_after_elim_never_pairs_by_time():
+    frames = _runs((0.0, "elim", [sig(610), sig(611), sig(612)]),
+                   (4.0, "knock", [sig(600), sig(601), sig(602)]))
+    ev, _ = run(frames)
+    assert ev[1].name_sig != ev[0].name_sig
+
+
+def test_pairing_allowed_when_readable_names_have_very_different_widths():
+    # 擊倒讀到完整名字（寬 60）；補刀只讀到被背景吃掉的短殘片（寬 30，且彼此印證）：
+    # 殘片無法反駁，仍依時間配對
+    a = sig(7)
+    frag = [NameSig(30, (np.random.default_rng(900 + i % 2).random((16, 30)) > 0.5).astype(np.uint8)) for i in range(4)]
+    frames = _runs((0.0, "knock", [a, a, a]), (4.0, "elim", frag))
+    ev, _ = run(frames)
+    assert ev[1].name_sig == ev[0].name_sig
+
+
+def test_pairing_refused_when_comparable_width_readable_names_differ():
+    a, b = sig(7, 60), sig(8, 62)  # 寬度相近、內容不同 → 不同敵人
+    frames = _runs((0.0, "knock", [a, a, a]), (4.0, "elim", [b, b, b]))
+    ev, _ = run(frames)
+    assert ev[1].name_sig == b.to_b64()
+
+
+# --- Fix-ML-2：同一個助攻橫幅的 assist_knock／assist_elim 閃爍不拆成兩個事件 ---
+
+def test_assist_subkind_flicker_is_one_event_with_majority_type():
+    a = sig(7)
+    kinds = ["assist_elim", "assist_elim", "assist_knock", "assist_knock", "assist_knock", "assist_knock"]
+    frames = [(i * 0.25, fr(k, a)) for i, k in enumerate(kinds)]
+    ev, _ = run(frames)
+    assert len(ev) == 1 and ev[0].t == 0.0 and ev[0].type == "assist_knock"
+
+
+def test_assist_family_does_not_merge_with_other_kinds():
+    a = sig(7)
+    frames = [(0.0, fr("assist_knock", a)), (0.25, fr("assist_knock", a)), (0.5, fr("assist_knock", a)),
+              (0.75, fr("knock", a)), (1.0, fr("knock", a)), (1.25, fr("knock", a))]
+    ev, _ = run(frames)
+    assert [e.type for e in ev] == ["assist_knock", "knock"]
