@@ -102,11 +102,11 @@ def test_analyze_auto_detected_records_profile_and_spectating_flag(tmp_path, pro
     doc = analyze(str(v), profiles, cache_dir=tmp_path / "c", hwaccel=False)
     a = doc["analysis"]
     assert a["lang_detected"] is True and a["profile"] == "en" and doc["profile"] == "en"
-    assert a["spectating_supported"] is True and a["templates_version"] == "en@2"
+    assert a["spectating_supported"] is True and a["templates_version"] == "en@3"
 
 
 def _doc(**analysis):
-    a = {"status": "done", "engine_version": ENGINE_VERSION, "templates_version": "en@2",
+    a = {"status": "done", "engine_version": ENGINE_VERSION, "templates_version": "en@3",
          "profile": "en", "lang_detected": True}
     a.update(analysis)
     return {"video": {"size": 5, "mtime": 1.0}, "analysis": a, "profile": a["profile"]}
@@ -116,7 +116,7 @@ class _Info:
     size, mtime = 5, 1.0
 
 
-KNOWN = {"zh-TW@2", "en@2", "ja@2"}
+KNOWN = {"zh-TW@3", "en@3", "ja@3"}
 LANGS = {"zh-TW", "en", "ja"}
 
 
@@ -136,9 +136,9 @@ def test_needs_reanalysis_auto_rejects_foreign_or_undetermined(analysis):
 
 
 def test_needs_reanalysis_single_mode_exact_version():
-    assert not needs_reanalysis(_doc(), _Info, "en@2")
-    assert needs_reanalysis(_doc(), _Info, "ja@2")
-    assert needs_reanalysis(_doc(lang_detected=False), _Info, "en@2")
+    assert not needs_reanalysis(_doc(), _Info, "en@3")
+    assert needs_reanalysis(_doc(), _Info, "ja@3")
+    assert needs_reanalysis(_doc(lang_detected=False), _Info, "en@3")
 
 
 def test_pick_profile_uses_recorded_language(profiles):

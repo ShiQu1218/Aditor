@@ -33,6 +33,10 @@ def pick_assist_sub(scores: dict[str, float], thr: dict[str, float]) -> str | No
     return None
 
 
+# 粉紅備援的指紋至少要有這麼高的墨密度（真名字約 0.2–0.3），避免把場景裡零星的粉橘像素當成名字。
+PINK_FALLBACK_MIN_DENSITY = 0.12
+
+
 def _imread_gray(path) -> np.ndarray:
     return cv2.imdecode(np.fromfile(str(path), dtype=np.uint8), cv2.IMREAD_GRAYSCALE)
 
@@ -44,8 +48,8 @@ def white_mask(img_bgr: np.ndarray, profile: Profile) -> np.ndarray:
     return ok.astype(np.uint8) * 255
 
 
-def red_mask(img_bgr: np.ndarray, profile: Profile) -> np.ndarray:
-    """R 高、G/B 低的像素 → uint8 0/255。"""
+def red_mask(img_bgr: np.ndarray, profile: Profile, pink: bool = False) -> np.ndarray:
+    """R 高、G/B 低的像素 → uint8 0/255。pink=True 時另併入粉紅（綠色盲）規則，僅供名字指紋的備援使用。"""
     b, g, r = img_bgr[..., 0], img_bgr[..., 1], img_bgr[..., 2]
     ok = (r >= profile.red["r_min"]) & (g <= profile.red["g_max"]) & (b <= profile.red["b_max"])
     if "r_diff_min" in profile.red:
@@ -56,6 +60,12 @@ def red_mask(img_bgr: np.ndarray, profile: Profile) -> np.ndarray:
         r16, g16, b16 = r.astype(np.int16), g.astype(np.int16), b.astype(np.int16)
         ok = ok | ((r16 >= y["r_min"]) & (g16 >= y["g_min"]) & (b16 <= y["b_max"])
                    & (r16 - b16 >= y["rb_min"]) & (np.abs(r16 - g16) <= y["rg_max"]))
+    pk = profile.red.get("pink") if pink else None
+    if pk:
+        # 綠色盲模式敵人名字為粉紅色（約 R 220、G 152、B 163）：R 高且明顯高於 G、B 不低於 G（排除橘／膚色場景）。
+        r16, g16, b16 = r.astype(np.int16), g.astype(np.int16), b.astype(np.int16)
+        ok = ok | ((r16 >= pk["r_min"]) & (g16 >= pk["g_min"]) & (r16 - g16 >= pk["rg_min"]) & (b16 - g16 >= pk["bg_min"])
+                   & (r16 - b16 >= pk["rb_min"]))
     return ok.astype(np.uint8) * 255
 
 
@@ -234,6 +244,21 @@ class Detector:
 
     def _name_sig(self, banner: np.ndarray, wm: np.ndarray, x0: int, y: int, h: int,
                   red_name: bool) -> NameSig | None:
+        """名字指紋；標準紅／黃遮罩取不到像樣的字形時，備援改用粉紅（綠色盲模式）遮罩再取一次。"""
+        sig = self._name_sig_core(banner, wm, x0, y, h, red_name, False)
+        if red_name and self._weak_sig(sig) and "pink" in self.profile.red:
+            alt = self._name_sig_core(banner, wm, x0, y, h, red_name, True)
+            if not self._weak_sig(alt, PINK_FALLBACK_MIN_DENSITY):
+                return alt
+        return sig
+
+    @staticmethod
+    def _weak_sig(sig: NameSig | None, min_density: float = 0.03) -> bool:
+        """指紋為空，或墨密度低於 min_density（筆畫太細／只剩雜點，沒有鑑別力）。"""
+        return sig is None or float(sig.bits.mean()) < min_density
+
+    def _name_sig_core(self, banner: np.ndarray, wm: np.ndarray, x0: int, y: int, h: int,
+                       red_name: bool, pink: bool) -> NameSig | None:
         """取關鍵字右緣 x0 起、同一行的名字區塊，縮放成高 16 的 0/1 字形指紋。
 
         墨一律取 white_mask ∪ red_mask（紅、白字可跨類型比對），先去掉粗亮塊與雜點；
@@ -245,7 +270,7 @@ class Detector:
         x_end = W
         if x0 >= x_end or y1 <= y0:
             return None
-        red = red_mask(banner[y0:y1, x0:x_end], self.profile) > 0
+        red = red_mask(banner[y0:y1, x0:x_end], self.profile, pink) > 0
         ink = self._despeckle((wm[y0:y1, x0:x_end] > 0) | red)
         red = red & ink
         max_gap = 1.5 * h
@@ -271,6 +296,16 @@ class Detector:
 
     def _name_sig_bounded(self, banner: np.ndarray, wm: np.ndarray, x0: int, x1: int, y: int,
                           h: int) -> NameSig | None:
+        """同 _name_sig：標準遮罩取不到像樣的字形時，備援改用粉紅遮罩。"""
+        sig = self._name_sig_bounded_core(banner, wm, x0, x1, y, h, False)
+        if self._weak_sig(sig) and "pink" in self.profile.red:
+            alt = self._name_sig_bounded_core(banner, wm, x0, x1, y, h, True)
+            if not self._weak_sig(alt, PINK_FALLBACK_MIN_DENSITY):
+                return alt
+        return sig
+
+    def _name_sig_bounded_core(self, banner: np.ndarray, wm: np.ndarray, x0: int, x1: int, y: int,
+                               h: int, pink: bool) -> NameSig | None:
         """取 [x0, x1) 之間、關鍵字同一行的所有墨當作名字（name_side=left 用：左界是骷髏圖示、
         右界是關鍵字，兩端都由範本比對決定，不靠「空白多寬」猜測）。"""
         H, W = wm.shape
@@ -278,7 +313,7 @@ class Detector:
         x0, x1 = max(0, x0), min(W, x1)
         if x1 - x0 < 4 or y1 <= y0:
             return None
-        red = red_mask(banner[y0:y1, x0:x1], self.profile) > 0
+        red = red_mask(banner[y0:y1, x0:x1], self.profile, pink) > 0
         ink = self._despeckle((wm[y0:y1, x0:x1] > 0) | red)
         cols = np.flatnonzero(ink.any(axis=0))
         if cols.size == 0:

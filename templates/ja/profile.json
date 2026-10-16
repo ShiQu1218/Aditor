@@ -1,6 +1,6 @@
 {
   "lang": "ja",
-  "templates_version": "ja@2",
+  "templates_version": "ja@3",
   "banner_roi": [
     560,
     700,
@@ -28,6 +28,13 @@
       "b_max": 110,
       "rb_min": 90,
       "rg_max": 30
+    },
+    "pink": {
+      "r_min": 170,
+      "g_min": 100,
+      "rg_min": 40,
+      "bg_min": -12,
+      "rb_min": 20
     }
   },
   "keywords": {

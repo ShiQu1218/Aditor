@@ -1,0 +1,112 @@
+{
+ "pink_en_a1.png": {
+  "mode": "green_blind_pink",
+  "name": "en-a",
+  "source_t": 24.75
+ },
+ "pink_en_a2.png": {
+  "mode": "green_blind_pink",
+  "name": "en-a",
+  "source_t": 25.0
+ },
+ "pink_en_b1.png": {
+  "mode": "green_blind_pink",
+  "name": "en-b",
+  "source_t": 273.75
+ },
+ "pink_en_b2.png": {
+  "mode": "green_blind_pink",
+  "name": "en-b",
+  "source_t": 274.25
+ },
+ "pink_en_c1.png": {
+  "mode": "green_blind_pink",
+  "name": "en-c",
+  "source_t": 279.75
+ },
+ "pink_en_c2.png": {
+  "mode": "green_blind_pink",
+  "name": "en-c",
+  "source_t": 280.75
+ },
+ "pink_ja_a1.png": {
+  "mode": "green_blind_pink",
+  "name": "ja-a",
+  "source_t": 215.0
+ },
+ "pink_ja_a2.png": {
+  "mode": "green_blind_pink",
+  "name": "ja-a",
+  "source_t": 215.25
+ },
+ "pink_ja_b1.png": {
+  "mode": "green_blind_pink",
+  "name": "ja-b",
+  "source_t": 914.25
+ },
+ "pink_ja_b2.png": {
+  "mode": "green_blind_pink",
+  "name": "ja-b",
+  "source_t": 915.0
+ },
+ "pink_ja_c1.png": {
+  "mode": "green_blind_pink",
+  "name": "ja-c",
+  "source_t": 945.0
+ },
+ "pink_ja_c2.png": {
+  "mode": "green_blind_pink",
+  "name": "ja-c",
+  "source_t": 945.75
+ },
+ "yellow_boring1.png": {
+  "mode": "yellow",
+  "name": "boring",
+  "source_t": 355.75
+ },
+ "yellow_boring2.png": {
+  "mode": "yellow",
+  "name": "boring",
+  "source_t": 356.0
+ },
+ "yellow_wang1.png": {
+  "mode": "yellow",
+  "name": "wang",
+  "source_t": 335.0
+ },
+ "yellow_wang2.png": {
+  "mode": "yellow",
+  "name": "wang",
+  "source_t": 335.25
+ },
+ "yellow_oliao1.png": {
+  "mode": "yellow",
+  "name": "oliao",
+  "source_t": 579.5
+ },
+ "yellow_oliao2.png": {
+  "mode": "yellow",
+  "name": "oliao",
+  "source_t": 579.75
+ },
+ "off_red_cole1.png": {
+  "mode": "off_red",
+  "name": "cole",
+  "source_t": 308.75
+ },
+ "off_red_cole2.png": {
+  "mode": "off_red",
+  "name": "cole",
+  "source_t": 309.0
+ },
+ "off_red_umi1.png": {
+  "mode": "off_red",
+  "name": "umi",
+  "source_t": 457.0
+ },
+ "off_red_umi2.png": {
+  "mode": "off_red",
+  "name": "umi",
+  "source_t": 457.25
+ }
+}

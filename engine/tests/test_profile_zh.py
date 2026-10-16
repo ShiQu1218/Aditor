@@ -46,7 +46,7 @@ def _frame(name, lab, prof):
 
 def test_zh_profile_loads():
     p = load_profile(REPO / "templates/zh-TW")
-    assert p.templates_version == "zh-TW@2"
+    assert p.templates_version == "zh-TW@3"
     assert {"squad_wipe", "assist", "knock", "damage", "elim"} <= set(p.keywords)
     x, y, w, h = p.banner_roi
     assert 0 <= x and x + w <= 1920 and y + h <= 1080

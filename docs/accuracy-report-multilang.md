@@ -143,8 +143,13 @@ Apex 有 4 種色盲模式（關閉／紅色盲／綠色盲／藍色盲）；紅
   （en 同敵人配對 70/86、ja 126/134、zh-TW 86 fixture 與凍結舊偵測器逐位元相同、test-TC 84 事件含 name_sig 與 committed 逐筆相同）。
   煙霧測試：用 en profile 對兩張截圖取名字指紋，黃名 AY 得 27 px 指紋、紅名 COLE 得 51 px（zh-TW 未加黃遮罩前黃名為 None）。
   `test_yellow_names_colorblind_mode`（三語言）把真實 knock fixture 的紅名像素改成黃色，必須取得指紋且與紅名版本判為同一人。
-- **未驗證**：綠色盲模式的名字顏色未知（沒有樣本）；黃名的真實錄影（非靜態截圖）也沒有，所以黃名的跨事件去重品質沒有量測。
-  訓練來源（English.mkv／Japanese.mkv）與 test-TC 的名字都是紅色。
+- **更正與實測（色盲模式驗證，細節見 `.superpowers/sdd/colorblind-report.md`）**：English.mkv／Japanese.mkv（訓練來源）的名字其實是**粉紅**（綠色盲，約 R220 G152 B163），
+  test-ENG／test_JP／test-TC 與 SC2.mkv 才是紅（關閉模式；驗收錄影的紅偏暗，R 中位 140–158，SC2 較亮 184），SC1.mkv 是黃（紅／藍色盲）。
+  黃（SC1）、紅（SC2）在三個 profile 下指紋都正常；en／ja 的主規則本來就涵蓋粉紅，但 **zh-TW 的紅遮罩（g_max 90）讀不到粉紅 → 綠色盲的 zh-TW 使用者 name_sig 幾乎全為空**（English.mkv 畫格 3%、Japanese.mkv 13% 有像素）。
+  修正：三個 profile 新增 `red.pink`（r≥170、g≥100、r−g≥40、b−g≥−12、r−b≥20），只作為**備援**——標準紅／黃遮罩取不到像樣指紋（空或墨密度 < 0.03）時才用它再取一次，
+  且備援結果的墨密度須 ≥ 0.12（`PINK_FALLBACK_MIN_DENSITY`）。備援不改變任何標準遮罩已取得指紋的結果；zh-TW 86 fixture 與凍結舊偵測器仍逐位元相同。
+  為什麼是備援而非併入紅遮罩：直接併入會讓 zh-TW 86 fixture 中 4 張（粉紫花叢、鮭魚色天空等場景像素）的指紋改變，無法維持位元級回歸。
+  三個 profile 的 `templates_version` 升為 `@3`（舊快取需重新分析）。測試：`tests/test_colorblind_names.py` + `tests/fixtures/colorblind`（22 張名字區小圖，共約 150 KB）。
 
 ## 4c. Fix-ML-2：事件追蹤、同敵人連結、助攻子類型（驗收錄影只量測、不調參）
 

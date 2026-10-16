@@ -15,7 +15,7 @@ def _gray(path):
 def test_profile_loads_and_templates_are_binary_masks(lang):
     p = load_profile(REPO / "templates" / lang)
     assert p.lang == lang
-    assert p.templates_version == f"{lang}@2"
+    assert p.templates_version == f"{lang}@3"
     assert {"squad_wipe", "assist", "knock", "damage", "elim", "elim_done"} <= set(p.keywords)
     assert p.banner_roi == (560, 700, 800, 180)
     assert p.spec_roi == (60, 1028, 480, 40)
