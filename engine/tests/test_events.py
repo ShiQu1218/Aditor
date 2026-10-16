@@ -394,3 +394,12 @@ def test_assist_family_does_not_merge_with_other_kinds():
               (0.75, fr("knock", a)), (1.0, fr("knock", a)), (1.25, fr("knock", a))]
     ev, _ = run(frames)
     assert [e.type for e in ev] == ["assist_knock", "knock"]
+
+
+def test_recurring_jitter_name_seen_earlier_in_run_does_not_split():
+    # 同一橫幅內曾出現過的另一種讀法（抖動）再次連續 2 格出現：與已確認格相符，不算新名字
+    a, j, k = sig(1), sig(50), sig(51)
+    names = [a, a, a, j, k, noisy(j, 1), noisy(j, 2), a, a]
+    frames = [(i * 0.25, fr("knock", n)) for i, n in enumerate(names)]
+    ev, _ = run(frames)
+    assert len(ev) == 1 and ev[0].name_sig == a.to_b64()

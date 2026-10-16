@@ -126,8 +126,10 @@ class _Run:
             self.pending = None
 
     def matches(self, r: FrameResult) -> bool:
-        rep = self.representative()
-        return rep is None or r.name_sig is None or same_name(rep, r.name_sig, self.threshold)
+        """這格的名字是否屬於本 run：與代表簽名、或任何已確認格的簽名相符就算（沒有名字不算矛盾）。"""
+        if r.name_sig is None or not self._sigs:
+            return True
+        return any(same_name(o, r.name_sig, self.threshold) for o in [self.representative(), *self._sigs])
 
 
 class EventTracker:
