@@ -67,8 +67,8 @@ const fingerprintOf = (doc: Partial<CacheDoc>): string => JSON.stringify([doc.vi
  * - 備份優先於（可能不完整的）文件片段；備份損毀＝忽略。
  * 沒有快取也沒有備份＝null（首次分析）。
  */
-export function capturePriorCache(videoPath: string, cacheDir: string): PriorCache | null {
-  const cachePath = cacheFilePath(videoPath, cacheDir)
+export function capturePriorCache(videoPath: string, cacheDir: string, beside = false): PriorCache | null {
+  const cachePath = cacheFilePath(videoPath, cacheDir, beside)
   const doc = loadCacheDoc(cachePath) as Partial<CacheDoc> | null
   const hasDoc = !!doc && typeof doc === 'object'
   const docDone = hasDoc && doc!.analysis?.status === 'done'
@@ -98,11 +98,12 @@ export function preserveClipsAfterReanalysis(
   prior: PriorCache | null,
   result: CacheDoc,
   videoPath: string,
-  cacheDir: string
+  cacheDir: string,
+  beside = false
 ): boolean {
   if (!prior || !prior.done) return false
   if (!result || result.analysis?.status !== 'done') return false
-  const cachePath = result.cache_path || cacheFilePath(videoPath, cacheDir)
+  const cachePath = result.cache_path || cacheFilePath(videoPath, cacheDir, beside)
   if (fingerprintOf(result) === prior.fingerprint) {
     // 引擎直接回傳快取：沒有發生重新分析，剛建立的備份已無用
     deleteClipsBackup(cachePath)

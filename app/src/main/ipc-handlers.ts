@@ -7,7 +7,7 @@ import { EngineClient } from './engine'
 import { detectEncoders } from './export/encoders'
 import { createExportService, registerExportHandlers } from './export/export-ipc'
 import { hasOpenH264, downloadOpenH264 } from './codecs'
-import { cacheFilePath, loadCacheDoc, saveCacheDoc } from './cache-io'
+import { loadCacheDoc, resolveCacheFile, saveCacheDoc } from './cache-io'
 import { SettingsStore } from './settings'
 import { registerSettingsHandlers } from './settings-ipc'
 import { WatchManager } from './watch'
@@ -57,6 +57,8 @@ export function registerIpcHandlers(
   projectStore?: ProjectStore,
   onProjectFlushDone?: () => void
 ): { cancelExport: () => Promise<void> } {
+  // 快取位置設定（每次讀取，變更免重啟）：與引擎 analyze 的 beside 同一規則
+  const cacheBeside = (): boolean => settings?.get().cacheLocation === 'besideVideo'
   // library:updated 最多每 500 ms 一次（前緣＋尾端，最後一次更新必定送達）；
   // 夾帶佇列的真實狀態（正在分析／排隊／進度／開始時間），renderer 不必為了佇列再拉整份 entries
   const sendUpdated = () => {
@@ -161,7 +163,7 @@ export function registerIpcHandlers(
       if (entry.hl !== undefined) return entry.hl
       if (hlGuard.isNegative(key)) return null
       const startedRev = hlGuard.rev(key)
-      const doc = loadCacheDoc(cacheFilePath(videoPath, cacheDir())) as CacheDoc | null
+      const doc = loadCacheDoc(resolveCacheFile(videoPath, cacheDir(), cacheBeside())) as CacheDoc | null
       const params = settings?.get().autoclip ?? DEFAULT_SETTINGS.autoclip
       const count = await computeHlCount((cmd, args) => engine.request<unknown>(cmd, args).promise, doc, params)
       if (count === null) {
@@ -232,7 +234,7 @@ export function registerIpcHandlers(
   ipcMain.handle('cache:load', async (_, cachePath: string) => loadCacheDoc(cachePath))
 
   // 由影片路徑推得快取檔（無副作用、不啟動分析）；工作室載入用
-  ipcMain.handle('cache:loadByVideo', async (_, videoPath: string) => loadCacheDoc(cacheFilePath(videoPath, cacheDir())))
+  ipcMain.handle('cache:loadByVideo', async (_, videoPath: string) => loadCacheDoc(resolveCacheFile(videoPath, cacheDir(), cacheBeside())))
 
   // 工作室存檔時同步影片庫的「N 精華」＝目前待確認建議數（重新分析的建議尚未重算＝清除，交給惰性重算）。
   // 修訂號 bump：較早開始的 computeHl 不能再蓋掉這個較新的值

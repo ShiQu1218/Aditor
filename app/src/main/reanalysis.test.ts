@@ -6,7 +6,7 @@ import { AnalysisQueue } from './queue'
 import { Library } from './library'
 import type { EngineClient } from './engine'
 import { cacheFilePath, saveCacheDoc } from './cache-io'
-import { clipsBackupPath, readClipsBackup } from './reanalysis'
+import { capturePriorCache, clipsBackupPath, readClipsBackup } from './reanalysis'
 
 const V1 = path.join(os.tmpdir(), 'apexhl-ra', 'v1.mp4')
 const tick = (ms = 30): Promise<void> => new Promise((r) => setTimeout(r, ms))
@@ -216,5 +216,32 @@ describe('clips backup across cancelled re-analysis (F2)', () => {
     q.enqueue(V1)
     await tick(60)
     expect(lib.get(V1)?.status).toBe('done')
+  })
+})
+
+describe('re-analysis with cacheLocation=besideVideo', () => {
+  it('capturePriorCache(beside) reads/backs up the cache beside the video, not the appdata one', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'apexhl-rb-'))
+    const video = path.join(dir, 'videos', 'x.mp4')
+    const beside = cacheFilePath(video, path.join(dir, 'cache'), true)
+    const mk = (p: string, id: string): void => {
+      saveCacheDoc({
+        cache_path: p,
+        video: { path: video, mtime: 1 },
+        analysis: { status: 'done' },
+        clips: [{ id, start: 1, end: 2, origin: 'manual', event_ids: [] }]
+      } as unknown as { cache_path: string })
+    }
+    mk(beside, 'beside-clip')
+    mk(cacheFilePath(video, path.join(dir, 'cache'), false), 'appdata-clip')
+    try {
+      const prior = capturePriorCache(video, path.join(dir, 'cache'), true)
+      expect(prior?.clips.map((c) => c.id)).toEqual(['beside-clip'])
+      expect(fs.existsSync(clipsBackupPath(beside))).toBe(true)
+      expect(path.dirname(clipsBackupPath(beside))).toBe(path.dirname(video))
+      expect(capturePriorCache(video, path.join(dir, 'cache'))?.clips.map((c) => c.id)).toEqual(['appdata-clip'])
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true })
+    }
   })
 })

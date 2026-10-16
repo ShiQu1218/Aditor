@@ -8,11 +8,14 @@ import { Library, normalizePath } from './library'
 import { CacheDoc, isCounted } from '../shared/types'
 import { proxyDir } from '../shared/paths'
 import type { QueuePayload, QueueSnapshot } from '../shared/queueState'
+import { analyzeSettingArgs, AnalyzeSettings } from './settings-derived'
 import { capturePriorCache, preserveClipsAfterReanalysis } from './reanalysis'
 
 export interface AnalysisQueueOptions {
   profileDir: string
   cacheDir: string
+  /** 每次分析前讀取（設定變更免重啟）：decode → hwaccel、cacheLocation → beside */
+  getSettings?: () => AnalyzeSettings | undefined
 }
 
 interface CurrentRun {
@@ -112,13 +115,16 @@ export class AnalysisQueue extends EventEmitter {
 
     try {
       // 重新分析前先唯讀擷取既有快取的片段（引擎會覆寫快取且只保留手動片段）
-      const prior = capturePriorCache(videoPath, this.opts.cacheDir)
+      const extra = analyzeSettingArgs(this.opts.getSettings?.())
+      const prior = capturePriorCache(videoPath, this.opts.cacheDir, extra.beside)
       const req = this.engine.request<CacheDoc>(
         'analyze',
         {
           path: videoPath,
           profile_dir: this.opts.profileDir,
-          cache_dir: this.opts.cacheDir
+          cache_dir: this.opts.cacheDir,
+          hwaccel: extra.hwaccel,
+          beside: extra.beside
         },
         (progress) => {
           if (run.cancelled) {
@@ -138,7 +144,7 @@ export class AnalysisQueue extends EventEmitter {
 
       // 只有成功完成才改寫快取（取消／失敗不碰舊快取）
       try {
-        preserveClipsAfterReanalysis(prior, doc, videoPath, this.opts.cacheDir)
+        preserveClipsAfterReanalysis(prior, doc, videoPath, this.opts.cacheDir, extra.beside)
       } catch (err) {
         console.error('[Queue] failed to preserve clips after re-analysis:', err)
       }

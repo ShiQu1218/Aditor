@@ -18,6 +18,8 @@ export interface StudioNoticeInput {
   proxyState: 'none' | 'available' | 'generating'
   /** 引擎錯誤代碼（顯示於文案） */
   errorCode?: string | number
+  /** 設定「建議代理檔」：false 時不建議（預設 true） */
+  proxySuggest?: boolean
 }
 
 /**
@@ -35,7 +37,7 @@ export function studioNotice(input: StudioNoticeInput): StudioNotice | null {
       actions: ['resume', 'copyError']
     }
   }
-  if (input.proxyState === 'none') {
+  if (input.proxyState === 'none' && input.proxySuggest !== false) {
     const p = input.playability
     if (!p.supported || !p.smooth || !p.powerEfficient) {
       return {

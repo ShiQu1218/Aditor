@@ -75,7 +75,8 @@ function applySettings(base: Settings, src: unknown): Settings {
     projectAutosave: pickBool(s.projectAutosave, base.projectAutosave),
     defaultOutDir: pickStringOrNull(s.defaultOutDir, base.defaultOutDir),
     projectTrackCollapsed: pickProjectTrackCollapsed(s.projectTrackCollapsed, base.projectTrackCollapsed),
-    lastProjectId: pickStringOrNull(s.lastProjectId, base.lastProjectId)
+    lastProjectId: pickStringOrNull(s.lastProjectId, base.lastProjectId),
+    lowPerfAsked: pickBool(s.lowPerfAsked, base.lowPerfAsked)
   }
 }
 

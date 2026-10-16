@@ -65,6 +65,17 @@ describe('settings store（設定儲存）', () => {
     expect(s2.after).toBe(DEFAULT_SETTINGS.after)
   })
 
+  it('lowPerfAsked：預設 false；非布林回退、布林保留並可持久化', () => {
+    expect(DEFAULT_SETTINGS.lowPerfAsked).toBe(false)
+    fs.writeFileSync(file, JSON.stringify({ version: 1, lowPerfAsked: 'yes' }), 'utf-8')
+    expect(loadSettings(file).lowPerfAsked).toBe(false)
+    fs.writeFileSync(file, JSON.stringify({ version: 1, lowPerfAsked: true }), 'utf-8')
+    expect(loadSettings(file).lowPerfAsked).toBe(true)
+    const store = new SettingsStore(file)
+    expect(store.set({ lowPerfAsked: false }).settings.lowPerfAsked).toBe(false)
+    expect(JSON.parse(fs.readFileSync(file, 'utf-8')).lowPerfAsked).toBe(false)
+  })
+
   it('unknown keys dropped; wrong-typed field falls back to default individually', () => {
     fs.writeFileSync(
       file,

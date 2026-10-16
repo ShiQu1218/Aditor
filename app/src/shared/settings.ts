@@ -37,6 +37,8 @@ export interface Settings {
   projectTrackCollapsed: 'auto' | boolean
   /** 上次開啟的專案 id（啟動時還原） */
   lastProjectId: string | null
+  /** 已詢問過「是否開啟低效能模式」（首次啟動偵測無硬體解碼時只問一次） */
+  lowPerfAsked: boolean
 }
 
 /** 數值範圍（含端點） */
@@ -83,5 +85,6 @@ export const DEFAULT_SETTINGS: Settings = {
   projectAutosave: true,
   defaultOutDir: null,
   projectTrackCollapsed: 'auto',
-  lastProjectId: null
+  lastProjectId: null,
+  lowPerfAsked: false
 }

@@ -8,6 +8,7 @@ import { WatchManager } from './watch'
 import { ProjectStore } from './projects'
 import { registerIpcHandlers } from './ipc-handlers'
 import { createCloseGate } from './project-ipc'
+import { buildAnalyzeArgs } from './settings-derived'
 import { appDataDir, cacheDir, engineCommand, ffmpegExecutable, profileDir } from '../shared/paths'
 
 let mainWindow: BrowserWindow | null = null
@@ -89,7 +90,9 @@ async function initEngineAndServices(): Promise<void> {
   settingsStore = new SettingsStore(join(appDataDir(), 'settings.json'))
   queue = new AnalysisQueue(engineClient, library, {
     profileDir: templateProfileDir,
-    cacheDir: cacheDir()
+    cacheDir: cacheDir(),
+    // decode／cacheLocation 每次分析時才讀取，設定變更免重啟
+    getSettings: () => settingsStore?.get()
   })
 
   // 監看資料夾：依設定恢復；新影片自動匯入（autoAnalyze 開啟時排入佇列）
@@ -108,7 +111,7 @@ async function initEngineAndServices(): Promise<void> {
 
   ipcMain.handle('engine:analyze', async (event, args: Record<string, unknown>) => {
     // renderer 只知道影片路徑；引擎需要的 profile_dir／cache_dir 由主程序補上（命中快取時直接回傳）
-    const req = engineClient?.request('analyze', { profile_dir: templateProfileDir, cache_dir: cacheDir(), ...args }, (progress) => {
+    const req = engineClient?.request('analyze', buildAnalyzeArgs({ profile_dir: templateProfileDir, cache_dir: cacheDir() }, settingsStore?.get(), args), (progress) => {
       event.sender.send('engine:progress', progress)
     })
     return req?.promise

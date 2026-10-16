@@ -1,11 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore } from 'react'
 import '../styles/studio.css'
 import '../styles/projectTrack.css'
-import { AutoClipParams, CacheDoc, Clip, EngineEvent, EventType } from '../../shared/types'
+import { CacheDoc, Clip, EngineEvent, EventType } from '../../shared/types'
 import { formatTime, toCurrentTime } from '../../shared/time'
-import { DEFAULT_SETTINGS } from '../../shared/settings'
 import { viewerReducer, ViewerState } from '../viewer/state'
 import { createClipAt, supercut } from '../timeline/clips'
+import { leadInSeek, STUDIO_SETTINGS_DEFAULTS, subscribeStudioSettings, type StudioSettings } from './studioSettings'
 import { nextEvent } from '../timeline/model'
 import { TimelineCanvas, TimelineHandle } from '../timeline/TimelineCanvas'
 import { useKeymap } from '../hooks/useShortcuts'
@@ -174,12 +174,10 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
   const [selProjId, setSelProjId] = useState<string | null>(null)
   /** 新專案對話框開啟中（暫停全域 keymap） */
   const [projDlgOpen, setProjDlgOpen] = useState(false)
-  /** 設定快照（自動放置建議、浮層預設參數、專案軌收合）；尚未讀到時以 DEFAULT_SETTINGS 為準 */
-  const [settings, setSettings] = useState<{
-    autoSuggestOnOpen: boolean
-    autoclip: AutoClipParams
-    projectTrackCollapsed: 'auto' | boolean
-  } | null>(null)
+  /** 設定快照（自動放置建議、浮層預設參數、專案軌收合、前後秒數、代理檔建議）；尚未讀到時以 DEFAULT_SETTINGS 為準 */
+  const [settings, setSettings] = useState<StudioSettings | null>(null)
+  /** 尚未讀到設定時以預設值運作（自動放置建議仍等 settings 讀到才執行） */
+  const cfg = settings ?? STUDIO_SETTINGS_DEFAULTS
 
   const [reloadKey, setReloadKey] = useState(0)
   const [blocked, setBlocked] = useState(false)
@@ -200,7 +198,7 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
 
   // 專案軌收合：'auto' 依視窗高度（≤800px 收合）；使用者切換後記進 settings
   const autoCollapse = useMediaQuery('(max-height: 800px)')
-  const collapsePref = settings?.projectTrackCollapsed ?? DEFAULT_SETTINGS.projectTrackCollapsed
+  const collapsePref = cfg.projectTrackCollapsed
   const projCollapsed = collapsePref === 'auto' ? autoCollapse : collapsePref
 
   // 供 timeupdate 讀取（避免每幀重建 callback）
@@ -302,44 +300,8 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
 
   /* ---------------- 設定與自動放置建議 ---------------- */
 
-  // 讀取設定（自動放置開關、AI 預設參數與專案軌收合）；浮層與自動放置共用
-  useEffect(() => {
-    let cancelled = false
-    void (async () => {
-      const api = window.api
-      if (!api?.settings?.get) {
-        setSettings({
-          autoSuggestOnOpen: DEFAULT_SETTINGS.autoSuggestOnOpen,
-          autoclip: DEFAULT_SETTINGS.autoclip,
-          projectTrackCollapsed: DEFAULT_SETTINGS.projectTrackCollapsed
-        })
-        return
-      }
-      try {
-        const s = await api.settings.get()
-        if (cancelled) return
-        const pref = s?.projectTrackCollapsed
-        setSettings({
-          autoSuggestOnOpen:
-            typeof s?.autoSuggestOnOpen === 'boolean' ? s.autoSuggestOnOpen : DEFAULT_SETTINGS.autoSuggestOnOpen,
-          autoclip: s?.autoclip ?? DEFAULT_SETTINGS.autoclip,
-          projectTrackCollapsed:
-            pref === true || pref === false || pref === 'auto' ? pref : DEFAULT_SETTINGS.projectTrackCollapsed
-        })
-      } catch {
-        if (!cancelled) {
-          setSettings({
-            autoSuggestOnOpen: false,
-            autoclip: DEFAULT_SETTINGS.autoclip,
-            projectTrackCollapsed: DEFAULT_SETTINGS.projectTrackCollapsed
-          })
-        }
-      }
-    })()
-    return () => {
-      cancelled = true
-    }
-  }, [])
+  // 讀取設定並訂閱 settings:changed（前後秒數、代理檔建議、AI 預設參數、專案軌收合設定變更免重啟）
+  useEffect(() => subscribeStudioSettings(window.api, setSettings), [])
 
   // 分析完成後的建議（spec §3.2.6、§4.2）：引擎文件只含手動片段，所以
   // - 載入且沒有 AI 片段＋設定開啟＝自動放置建議；
@@ -543,18 +505,18 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
     (dir: 1 | -1) => {
       const ev = nextEvent(state.doc.events, currentTimeRef.current, dir, state.filter)
       if (!ev) return
-      const target = Math.max(0, ev.t - 8)
+      const target = leadInSeek(ev.t, cfg.before)
       seekTo(target)
       announce(i18n.studio.live.playhead.replace('{time}', formatTime(target)))
     },
-    [state.doc.events, state.filter, seekTo, announce]
+    [state.doc.events, state.filter, seekTo, announce, cfg.before]
   )
 
   const handleSelectEvent = useCallback(
     (ev: { t: number }) => {
-      seekTo(Math.max(0, ev.t - 8))
+      seekTo(leadInSeek(ev.t, cfg.before))
     },
-    [seekTo]
+    [seekTo, cfg.before]
   )
 
   const missingRef = useRef(missingItemIds)
@@ -711,10 +673,10 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
   /* ---------------- 狀態列（引擎異常／代理檔） ---------------- */
 
   const notice: StudioNotice | null = useMemo(() => {
-    const base = studioNotice({ analysis: 'done', playability, proxyState })
+    const base = studioNotice({ analysis: 'done', playability, proxyState, proxySuggest: cfg.proxySuggest })
     if (proxyDismissed && base?.id === 'proxy-suggest') return null
     return base
-  }, [playability, proxyState, proxyDismissed])
+  }, [playability, proxyState, proxyDismissed, cfg.proxySuggest])
 
   const busyNotice: StudioNotice | null = useMemo(
     () => (proxyState === 'generating' ? proxyBusyNotice(proxyPct) : null),
@@ -794,7 +756,7 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
       splitProjectAtPlayhead()
       return
     }
-    const clip = createClipAt(sourcePlayTime(), 8, 4, duration)
+    const clip = createClipAt(sourcePlayTime(), cfg.before, cfg.after, duration)
     dispatch({ type: 'addClip', clip })
     setTab('hl')
     const res = acceptToProject(clip, videoPath, projectRef.current)
@@ -810,7 +772,7 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
         })
       }
     })
-  }, [mode.mode, splitProjectAtPlayhead, sourcePlayTime, duration, videoPath, apply, toast, guarded])
+  }, [mode.mode, splitProjectAtPlayhead, sourcePlayTime, duration, videoPath, apply, toast, guarded, cfg.before, cfg.after])
 
   /** 處理完目前建議後，把作用中卡片移到下一個建議（以處理前的清單計算）。 */
   const advanceActive = useCallback(
@@ -945,8 +907,8 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
     const clips = supercut(
       state.doc.events.filter((e) => !e.deleted),
       ids,
-      8,
-      4,
+      cfg.before,
+      cfg.after,
       duration
     )
     if (clips.length === 0) return
@@ -972,7 +934,7 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
         })
       }
     })
-  }, [state.doc.events, duration, videoPath, apply, toast, guarded])
+  }, [state.doc.events, duration, videoPath, apply, toast, guarded, cfg.before, cfg.after])
 
   /** Delete（事件區）：有勾選刪勾選的；沒有勾選則刪游標列。〔復原〕同時還原選取。 */
   const handleDeleteSelected = useCallback(() => {
@@ -1559,6 +1521,7 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
               filter={state.filter}
               onSeek={seekTo}
               onSelectEvent={handleSelectEvent}
+              seekBefore={cfg.before}
               onUpdateClip={(clip) => dispatch({ type: 'updateClip', clip })}
               selected={state.selected}
               currentEventId={activeEvent?.id}
@@ -1661,7 +1624,7 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
 
       {autoClipOpen && (
         <AutoClipPopover
-          defaults={settings?.autoclip ?? DEFAULT_SETTINGS.autoclip}
+          defaults={cfg.autoclip}
           events={state.doc.events}
           duration={duration}
           onClose={() => setAutoClipOpen(false)}

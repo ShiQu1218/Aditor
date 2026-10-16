@@ -19,6 +19,8 @@ export interface VideoCardProps {
   onRetry: (path: string) => void
   /** 卡片選單開／關時通報（開啟時帶關閉函式）：Esc 由 keymap 依「選單 → 搜尋」分層處理 */
   onMenuChange?: (path: string, close: (() => void) | null) => void
+  /** 設定「建議代理檔」：false 時不顯示「建議代理檔」徽章（預設 true） */
+  proxySuggest?: boolean
 }
 
 /**
@@ -56,12 +58,12 @@ export function sameCardEntry(a: LibraryEntry, b: LibraryEntry): boolean {
   )
 }
 
-function VideoCardView({ entry, onOpen, onToggleFavorite, onRemove, onRetry, onMenuChange }: VideoCardProps): JSX.Element {
+function VideoCardView({ entry, onOpen, onToggleFavorite, onRemove, onRetry, onMenuChange, proxySuggest = true }: VideoCardProps): JSX.Element {
   const [menuOpen, setMenuOpen] = useState(false)
   const rootRef = useRef<HTMLElement>(null)
   const name = fileName(entry.path)
   const title = name.replace(/\.[^.]+$/, '')
-  const badge = proxyBadge(entry)
+  const badge = proxySuggest ? proxyBadge(entry) : null
   const done = entry.status === 'done'
   const error = entry.status === 'error'
   // 「等待中」只看 main 的真實佇列：status 為 pending 但不在佇列的（匯入未排隊、取消後）是「尚未分析」
@@ -277,4 +279,4 @@ function VideoCardView({ entry, onOpen, onToggleFavorite, onRemove, onRetry, onM
   )
 }
 
-export const VideoCard = React.memo(VideoCardView, (a, b) => sameCardEntry(a.entry, b.entry))
+export const VideoCard = React.memo(VideoCardView, (a, b) => sameCardEntry(a.entry, b.entry) && (a.proxySuggest ?? true) === (b.proxySuggest ?? true))

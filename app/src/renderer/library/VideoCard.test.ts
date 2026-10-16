@@ -74,3 +74,32 @@ describe('sameCardEntry (memo comparator: only the changed card re-renders)', ()
     expect(changed).toEqual(['p7'])
   })
 })
+
+describe('proxySuggest 設定 → 卡片「建議代理檔」徽章', () => {
+  const av1 = entry({ codec: 'av1' })
+  test('預設（未傳）與 true 顯示徽章；false 不顯示（AV1 也是代理檔建議）', () => {
+    expect(html(av1)).toContain('建議代理檔')
+    const withProp = (v: boolean): string =>
+      renderToStaticMarkup(
+        React.createElement(VideoCard, { entry: av1, proxySuggest: v, onOpen: noop, onToggleFavorite: noop, onRemove: noop, onRetry: noop })
+      )
+    expect(withProp(true)).toContain('建議代理檔')
+    expect(withProp(false)).not.toContain('建議代理檔')
+  })
+  test('memo 比較器：proxySuggest 改變時卡片要重繪', () => {
+    const cmp = (VideoCard as unknown as { compare: (a: unknown, b: unknown) => boolean }).compare
+    const base = { entry: av1, proxySuggest: true }
+    expect(cmp(base, { entry: { ...av1 }, proxySuggest: true })).toBe(true)
+    expect(cmp(base, { entry: av1, proxySuggest: false })).toBe(false)
+  })
+})
+
+describe('LibraryScreen 接線（原始碼掃描）', () => {
+  test('訂閱設定並把 proxySuggest 傳給每張卡片', async () => {
+    const { readFileSync } = await import('fs')
+    const { resolve } = await import('path')
+    const src = readFileSync(resolve(__dirname, 'LibraryScreen.tsx'), 'utf-8')
+    expect(src).toMatch(/subscribeStudioSettings\(window\.api/)
+    expect(src).toMatch(/proxySuggest=\{proxySuggest\}/)
+  })
+})

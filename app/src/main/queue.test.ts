@@ -148,3 +148,61 @@ describe('AnalysisQueue', () => {
     expect(e?.hl).toBeUndefined()
   })
 })
+
+describe('AnalysisQueue：設定接線（decode／cacheLocation）', () => {
+  function run(settings: { decode: 'auto' | 'software'; cacheLocation: 'appdata' | 'besideVideo' } | undefined) {
+    const seen: Array<Record<string, unknown>> = []
+    const engineMock = {
+      request: (_cmd: string, args: Record<string, unknown>) => {
+        seen.push(args)
+        return { id: 'r', promise: Promise.resolve({ video: { duration: 10 }, events: [], analysis: { status: 'done' } }) }
+      },
+      cancel: () => {}
+    } as unknown as EngineClient
+    const file = path.join(os.tmpdir(), `apexhl_queue_set_${Date.now()}_${Math.random()}.json`)
+    const lib = new Library(file)
+    lib.add(['D:/Videos/s.mp4'])
+    const queue = new AnalysisQueue(engineMock, lib, {
+      profileDir: '/p',
+      cacheDir: '/c',
+      getSettings: settings ? () => settings : undefined
+    })
+    queue.enqueue('D:/Videos/s.mp4')
+    return { seen, queue }
+  }
+
+  it('decode=software → hwaccel:false；cacheLocation=besideVideo → beside:true', async () => {
+    const { seen } = run({ decode: 'software', cacheLocation: 'besideVideo' })
+    await new Promise((r) => setTimeout(r, 30))
+    expect(seen).toHaveLength(1)
+    expect(seen[0]).toMatchObject({ hwaccel: false, beside: true, cache_dir: '/c' })
+  })
+
+  it('預設 / 未提供設定 → hwaccel:true、beside:false；設定在每次請求時才讀取（免重啟）', async () => {
+    const { seen } = run(undefined)
+    await new Promise((r) => setTimeout(r, 30))
+    expect(seen[0]).toMatchObject({ hwaccel: true, beside: false })
+
+    let cur: { decode: 'auto' | 'software'; cacheLocation: 'appdata' | 'besideVideo' } = { decode: 'auto', cacheLocation: 'appdata' }
+    const seen2: Array<Record<string, unknown>> = []
+    const engineMock = {
+      request: (_c: string, a: Record<string, unknown>) => {
+        seen2.push(a)
+        return { id: 'r', promise: Promise.resolve({ video: { duration: 1 }, events: [] }) }
+      },
+      cancel: () => {}
+    } as unknown as EngineClient
+    const lib = new Library(path.join(os.tmpdir(), `apexhl_queue_set2_${Date.now()}.json`))
+    lib.add(['D:/Videos/a.mp4', 'D:/Videos/b.mp4'])
+    const q = new AnalysisQueue(engineMock, lib, { profileDir: '/p', cacheDir: '/c', getSettings: () => cur })
+    q.enqueue('D:/Videos/a.mp4')
+    await new Promise((r) => setTimeout(r, 30))
+    cur = { decode: 'software', cacheLocation: 'besideVideo' }
+    q.enqueue('D:/Videos/b.mp4')
+    await new Promise((r) => setTimeout(r, 30))
+    expect(seen2.map((a) => [a.hwaccel, a.beside])).toEqual([
+      [true, false],
+      [false, true]
+    ])
+  })
+})

@@ -14,6 +14,7 @@ import { useKeymap } from '../hooks/useShortcuts'
 import { useToast } from '../shell/ToastHost'
 import { useQueueStore } from '../queue/QueueProvider'
 import { i18n } from '../i18n/zh-TW'
+import { subscribeStudioSettings } from '../studio/studioSettings'
 import { library500Requested } from '../dev/libraryFixtureFlag'
 
 const t = i18n.library
@@ -34,6 +35,9 @@ export function LibraryScreen({ onSelectVideo, onOpenSettings }: LibraryScreenPr
   const searchRef = useRef<HTMLInputElement>(null)
   const queryRef = useRef(query)
   queryRef.current = query
+  // 設定「建議代理檔」（即時）：關閉時卡片不顯示「建議代理檔」徽章
+  const [proxySuggest, setProxySuggest] = useState(true)
+  useEffect(() => subscribeStudioSettings(window.api, (s) => setProxySuggest(s.proxySuggest)), [])
   const openMenuClose = useRef<(() => void) | null>(null)
   const handleMenuChange = useCallback((_path: string, close: (() => void) | null) => {
     openMenuClose.current = close
@@ -188,6 +192,7 @@ export function LibraryScreen({ onSelectVideo, onOpenSettings }: LibraryScreenPr
                   onRemove={handleRemove}
                   onRetry={handleRetry}
                   onMenuChange={handleMenuChange}
+                  proxySuggest={proxySuggest}
                 />
               )}
             />
