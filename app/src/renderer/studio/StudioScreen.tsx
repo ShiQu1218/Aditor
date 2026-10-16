@@ -594,6 +594,8 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
     pendingSeekRef.current = r.pending
     setIsPlaying(r.playing)
     if (previewRef.current.item) toast({ message: i18n.studio.track.missingToast })
+    // 來源模式的影片載入失敗＝影片缺失或無法播放：顯示 notice（重新連結／返回影片庫）
+    else setVideoMissing(true)
   }, [toast])
 
   // 播放頭時間：來源時間與專案預覽時間分流（見 routeTimeUpdate）；專案模式依序接續
@@ -698,10 +700,13 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
 
   /* ---------------- 狀態列（引擎異常／代理檔） ---------------- */
 
+  const [videoMissing, setVideoMissing] = useState(false)
+  useEffect(() => setVideoMissing(false), [videoPath, reloadKey])
   const docAnalysis = state.doc.analysis
   const notice: StudioNotice | null = useMemo(() => {
     const base = studioNotice({
       analysis: 'done',
+      videoMissing,
       playability,
       proxyState,
       proxySuggest: cfg.proxySuggest,
@@ -710,7 +715,7 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
     })
     if (proxyDismissed && base?.id === 'proxy-suggest') return null
     return base
-  }, [playability, proxyState, proxyDismissed, cfg.proxySuggest, docAnalysis])
+  }, [playability, proxyState, proxyDismissed, cfg.proxySuggest, docAnalysis, videoMissing])
 
   const busyNotice: StudioNotice | null = useMemo(
     () => (proxyState === 'generating' ? proxyBusyNotice(proxyPct) : null),
@@ -743,6 +748,15 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
     }
   }, [videoPath, duration])
 
+  /** 返回影片庫；匯出進行中不離開（改用 Toast 提示） */
+  const requestBack = useCallback((): void => {
+    if (exportCtl.getState().phase === 'running') {
+      toast({ message: i18n.export.backBlocked })
+      return
+    }
+    onBack()
+  }, [exportCtl, toast, onBack])
+
   const handleNoticeAction = useCallback(
     (a: NoticeAction): void => {
       if (a === 'resume') {
@@ -755,9 +769,15 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
         void handleGenerateProxy()
       } else if (a === 'later') {
         setProxyDismissed(true)
+      } else if (a === 'back') {
+        requestBack()
+      } else if (a === 'relink') {
+        // 重新連結：回到影片庫，由使用者移除失效項目後重新匯入檔案
+        toast({ message: i18n.studio.toast.relinkHint })
+        requestBack()
       }
     },
-    [loadError, handleGenerateProxy, toast]
+    [loadError, handleGenerateProxy, toast, requestBack]
   )
 
   /* ---------------- 編輯操作 ---------------- */
@@ -1483,13 +1503,7 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
   if (!loaded) return <StudioLoadingView />
 
   /** 匯出進行中不離開工作室（返回會中斷匯出的狀態顯示）：改用 Toast 提示 */
-  const handleBack = (): void => {
-    if (exportCtl.getState().phase === 'running') {
-      toast({ message: i18n.export.backBlocked })
-      return
-    }
-    onBack()
-  }
+  const handleBack = requestBack
 
   const counts = chipCounts(state.doc.events)
   const eventCount = state.doc.events.filter((e) => !e.deleted).length

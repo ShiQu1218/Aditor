@@ -72,3 +72,17 @@ describe('error code vs message', () => {
     expect(m!.text).toContain('unknown')
   })
 })
+
+describe('video-missing notice (I13)', () => {
+  const base = { analysis: 'done' as const, playability: { supported: true, smooth: true, powerEfficient: true }, proxyState: 'none' as const }
+  test('a missing / unplayable video yields an error notice with relink and back actions', () => {
+    const n = studioNotice({ ...base, videoMissing: true })!
+    expect(n.id).toBe('video-missing')
+    expect(n.kind).toBe('error')
+    expect(n.actions).toEqual(['relink', 'back'])
+  })
+  test('engine errors still win; video-missing wins over language / proxy hints', () => {
+    expect(studioNotice({ ...base, analysis: 'error', videoMissing: true })!.id).toBe('engine-error')
+    expect(studioNotice({ ...base, videoMissing: true, langDetected: false })!.id).toBe('video-missing')
+  })
+})

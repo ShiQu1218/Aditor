@@ -17,6 +17,7 @@ export interface StudioFixtureOptions {
   /** 啟動時由 ProjectProvider 還原的專案片段 */
   items?: ProjectItem[]
   api?: FakeApiOptions
+  onBack?: () => void
 }
 
 export interface StudioMount {
@@ -55,7 +56,7 @@ export async function mountStudio(opts: StudioFixtureOptions = {}): Promise<Stud
   const restore = installFakeApi(fake)
   const m = mount(
     <Providers active="studio">
-      <StudioScreen videoPath={STUDIO_VIDEO} onBack={() => undefined} preloadedDoc={doc} />
+      <StudioScreen videoPath={STUDIO_VIDEO} onBack={opts.onBack ?? (() => undefined)} preloadedDoc={doc} />
     </Providers>
   )
   await flush(20)

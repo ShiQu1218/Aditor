@@ -13,6 +13,8 @@ export interface StudioNotice {
 
 export interface StudioNoticeInput {
   analysis: 'done' | 'error'
+  /** 影片檔案找不到或無法播放（來源模式 `<video>` 載入失敗） */
+  videoMissing?: boolean
   playability: PlayabilityResult
   /** 代理檔狀態：none＝未產生（才會建議）、available＝已有、generating＝產生中（進度由 UI 顯示） */
   proxyState: 'none' | 'available' | 'generating'
@@ -39,6 +41,15 @@ export function studioNotice(input: StudioNoticeInput): StudioNotice | null {
       title: t.engineErrorTitle,
       text: t.engineErrorText.replace('{code}', String(input.errorCode ?? 'unknown')),
       actions: ['resume', 'copyError']
+    }
+  }
+  if (input.videoMissing) {
+    return {
+      id: 'video-missing',
+      kind: 'error',
+      title: t.videoMissingTitle,
+      text: t.videoMissingText,
+      actions: ['relink', 'back']
     }
   }
   if (input.langDetected === false) {
