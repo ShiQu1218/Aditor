@@ -225,7 +225,7 @@ def test_jitter_between_two_enemies_still_splits_once():
     frames += [(1.0, fr("knock", sig(400))), (1.25, fr("knock", sig(401)))]  # 空白一格後，兩格各自不同的抖動
     frames += seq("KKK", name=b, t0=1.5)
     ev, _ = run(frames)
-    assert len(ev) == 2 and ev[0].t == 0.0 and ev[1].t == 1.5
+    assert len(ev) == 2 and ev[0].t == 0.0 and ev[1].t == 1.0  # 新橫幅從空白格之後的第一格起算（名字抖動格也是新橫幅）
     assert ev[1].name_sig == b.to_b64()
 
 
@@ -533,3 +533,54 @@ def test_i3_unreadable_knock_does_not_pair_with_elim_that_has_a_reliable_name():
     frames = [(i * 0.25, fr("knock", None)) for i in range(4)] + _runs((4.0, "elim", [b, b, b]))
     ev, _ = run(frames)
     assert ev[0].name_sig is None and ev[1].name_sig == b.to_b64()
+
+
+# --- 驗收片回歸（test-ENG 510.0）：背靠背不同敵人，中間只有一格「彈出」空白 ---
+
+def test_real_banner_replacement_after_blank_frame_is_not_absorbed_by_junk_sigs():
+    # 舊橫幅內曾出現過幾格雜訊指紋（遮擋／火光），其中一個碰巧與新名字互為殘片；
+    # 空白格之後出現的新橫幅只能和 run 的代表簽名（或其殘片）比對，不能被雜訊指紋吸收
+    a, b = sig(51, 75), sig(52, 110)
+    junk1, junk2 = crop(b, 20, 45), crop(b, 40, 50)
+    names = [a, a, a, a, junk1, junk1, a, a]
+    frames = [(i * 0.25, fr("knock", n)) for i, n in enumerate(names)]
+    frames += [(2.25 + i * 0.25, fr("knock", b)) for i in range(5)]   # 1.75 之後只空白一格（2.0），2.25 起新橫幅；t 差 0.5 仍在同 run 容許內
+    ev, _ = run(frames)
+    assert [e.t for e in ev] == [0.0, 2.25] and ev[1].name_sig == b.to_b64()
+
+
+def test_blank_gap_inside_banner_with_same_name_still_one_event():
+    a = sig(53, 75)
+    frames = [(i * 0.25, fr("knock", a if i != 4 else None)) for i in range(10)]
+    ev, _ = run(frames)
+    assert len(ev) == 1
+
+
+def test_new_banner_after_blank_starts_at_first_frame_even_if_name_unreadable_for_a_while():
+    # test-ENG 510.0：彈出空白格之後的新橫幅，前幾格名字讀不到、之後才讀到另一個名字；
+    # 新事件的 t 必須是空白格後的第一格（橫幅最早出現），而不是名字讀到的那格
+    a, b = sig(61, 75), sig(62, 100)
+    frames = [(i * 0.25, fr("knock", a)) for i in range(6)]                 # 0 – 1.25
+    frames += [(1.75 + i * 0.25, fr("knock", None)) for i in range(6)]      # 1.5 空白一格；1.75 – 3.0 名字讀不到
+    frames += [(3.25 + i * 0.25, fr("knock", b)) for i in range(4)]
+    ev, _ = run(frames)
+    assert [e.t for e in ev] == [0.0, 1.75] and ev[1].name_sig == b.to_b64()
+    assert ev[0].name_sig == a.to_b64()
+
+
+def test_blank_then_unreadable_then_same_name_is_still_one_event():
+    a = sig(63, 75)
+    frames = [(i * 0.25, fr("knock", a)) for i in range(6)]
+    frames += [(1.75 + i * 0.25, fr("knock", None)) for i in range(3)] + [(2.5 + i * 0.25, fr("knock", a)) for i in range(3)]
+    ev, _ = run(frames)
+    assert len(ev) == 1 and ev[0].t == 0.0
+
+
+def test_i3_stray_single_red_sig_does_not_hide_the_white_name_fallback():
+    # 驗收／held-out 實測：再次擊倒的白字名旁邊偶然取到一個孤立的窄「紅字」指紋（未被印證）；
+    # 這種單格雜訊不應蓋過整段都有的白字備援指紋
+    w, junk = sig(71, 64), sig(72, 18)
+    frames = [(i * 0.25, fr("knock", None, alt=w)) for i in range(8)]
+    frames.append((2.0, fr("knock", junk)))
+    ev, _ = run(frames)
+    assert len(ev) == 1 and ev[0].name_sig == w.to_b64()

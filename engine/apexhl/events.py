@@ -49,6 +49,7 @@ class _Run:
         self.pending: tuple[float, FrameResult] | None = None
         self.paired = False  # 這次擊倒是否已被某個補刀配對
         self.discontinuity = False  # 最後一個「與本 run 名字相符」的畫格之後，是否出現過空白格（橫幅淡出）
+        self.disc_idx: int | None = None  # 空白格之後第一格在 frames 的索引（若之後確認是新橫幅，新事件從這格起算）
         self._sigs: list[NameSig] = []   # 已確認（非暫列）格的指紋，依時間排序
         self._support: list[int] = []    # 與各指紋「同一人」的其他指紋數
         self._fb_sigs: list[NameSig] = []      # 備援指紋（白字名，I3）：整個 run 沒有紅字名時才採用
@@ -122,8 +123,11 @@ class _Run:
         support.append(sup)
 
     def _pool(self) -> tuple[list[NameSig], list[int]]:
-        """連結／代表簽名採用的指紋池：有紅字名就只用紅字名，否則退回白字備援指紋（再次擊倒，I3）。"""
-        return (self._sigs, self._support) if self._sigs else (self._fb_sigs, self._fb_support)
+        """連結／代表簽名採用的指紋池：有被印證的紅字名就只用紅字名，否則退回白字備援指紋（再次擊倒，I3）。"""
+        # 紅字名指紋只有零星幾格、彼此也無法印證（例如「再次擊倒」白字名旁邊偶然取到的雜點）時，白字備援更可靠
+        if self._sigs and (any(c >= 1 for c in self._support) or not self._fb_sigs):
+            return self._sigs, self._support
+        return self._fb_sigs, self._fb_support
 
     def representative(self) -> NameSig | None:
         """medoid：與最多其他指紋判為同一人的指紋（多數）；同分取最早的。
@@ -133,6 +137,14 @@ class _Run:
             return None
         best = max(range(len(sigs)), key=lambda i: (support[i], -i))
         return sigs[best]
+
+    def reset(self, frames: list[tuple[float, FrameResult]]) -> None:
+        """以給定畫格重建本 run 的彙整狀態（分裂時把後半段移給新 run）。"""
+        self.frames, self.pending = [], None
+        self._sigs, self._support, self._fb_sigs, self._fb_support = [], [], [], []
+        self.discontinuity, self.disc_idx = False, None
+        for t, r in frames:
+            self.add(t, r)
 
     # --- 變更 ---
     def add(self, t: float, r: FrameResult, *, tentative: bool = False) -> None:
@@ -159,6 +171,13 @@ class _Run:
             if sig is not None:
                 self._register(sig)
             self.pending = None
+
+    def matches_representative(self, r: FrameResult) -> bool:
+        """只和代表簽名比：同名或殘片關係；沒有名字／run 還沒有名字不算矛盾。"""
+        rep = self.representative()
+        if r.name_sig is None or rep is None:
+            return True
+        return same_name(rep, r.name_sig, self.threshold) or fragment_related(rep, r.name_sig)
 
     def matches(self, r: FrameResult) -> bool:
         """這格的名字是否屬於本 run：與代表簽名、或任何已確認格的簽名相符就算（沒有名字不算矛盾）。"""
@@ -207,12 +226,19 @@ class EventTracker:
         if r.kind is None:
             return
         if run is not None and t - run.last_t - STEP < GAP - _EPS and run.accepts(r.kind, t):
-            if run.matches(r):
+            # 空白格（橫幅「彈出」換場）之後的第一格只和 run 的代表簽名（或其殘片）比對：run 內遮擋／火光造成的
+            # 雜訊指紋不能把另一個敵人的新橫幅吸收進來（驗收片 test-ENG 背靠背兩個敵人）
+            gap = t - run.last_t > STEP + _EPS
+            if gap and not run.discontinuity:
+                run.discontinuity, run.disc_idx = True, len(run.frames)
+            rep_before = run.representative()
+            if (run.matches_representative(r) if run.discontinuity else run.matches(r)):
                 run.add(t, r)
-                run.discontinuity = False
+                # 空白格之後要有一格「讀得到名字、且與代表簽名相符」才算確認是同一橫幅；
+                # 新橫幅的名字常要幾格才讀得到，讀不到名字的格先保持待確認
+                if r.name_sig is not None and (rep_before is None or run.matches_representative(r)):
+                    run.discontinuity, run.disc_idx = False, None
             else:
-                if t - run.last_t > STEP + _EPS:
-                    run.discontinuity = True
                 pend = run.pending
                 if (pend is not None and t - pend[0] < STEP + _EPS
                         and same_name(pend[1].name_sig, r.name_sig, self._threshold)):
@@ -253,17 +279,23 @@ class EventTracker:
         return min(pend[1].score, r.score) < ref - SPLIT_SCORE_DIP
 
     def _split(self, old: _Run, pend: tuple[float, FrameResult], t: float, r: FrameResult) -> None:
-        """不同名字連續 2 格才分裂；新事件從第一個不同格起算，並把暫列格自舊 run 移出。"""
-        old.frames.pop()  # 暫列格一定是最後一格
-        old.pending = None
+        """不同名字連續 2 格才分裂。
+
+        一般情況新事件從第一個不同格（暫列格）起算；若舊 run 的名字最後出現後有空白格（橫幅換場），
+        新事件從空白格之後的第一格起算（新橫幅的名字常要幾格才讀得到，這些格不屬於舊橫幅）。"""
+        idx = old.disc_idx if (old.discontinuity and old.disc_idx is not None) else len(old.frames) - 1
+        idx = min(idx, len(old.frames) - 1)
+        moved = old.frames[idx:]
+        old.reset(old.frames[:idx])
         if old.event is not None and not old.has_pair:
-            self._events.remove(old.event)  # 舊 run 少了暫列格後不足連續 2 格：撤回先前發出的事件
+            self._events.remove(old.event)  # 舊 run 少了這些格後不足連續 2 格：撤回先前發出的事件
             old.event = None
         elif old.event is not None:
             self._emit(old)
         self._close(old)
         new = self._run = _Run(self._threshold, False)
-        new.add(pend[0], pend[1])
+        for mt, mr in moved:
+            new.add(mt, mr)
         new.add(t, r)
         self._emit(new)
 
