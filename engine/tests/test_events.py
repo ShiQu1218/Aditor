@@ -584,3 +584,12 @@ def test_i3_stray_single_red_sig_does_not_hide_the_white_name_fallback():
     frames.append((2.0, fr("knock", junk)))
     ev, _ = run(frames)
     assert len(ev) == 1 and ev[0].name_sig == w.to_b64()
+
+
+def test_i3_wide_unconfirmed_red_sig_is_still_preferred_over_white_fallback():
+    # test-ENG 實測：白字備援常是別的白色文字；只要有夠寬（>= LINK_MIN_WIDTH）的紅字名就不改用備援
+    red, w = sig(73, 70), sig(74, 64)
+    frames = [(i * 0.25, fr("knock", None, alt=w)) for i in range(6)]
+    frames.append((1.5, fr("knock", red)))
+    ev, _ = run(frames)
+    assert len(ev) == 1 and ev[0].name_sig == red.to_b64()

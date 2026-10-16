@@ -124,8 +124,10 @@ class _Run:
 
     def _pool(self) -> tuple[list[NameSig], list[int]]:
         """連結／代表簽名採用的指紋池：有被印證的紅字名就只用紅字名，否則退回白字備援指紋（再次擊倒，I3）。"""
-        # 紅字名指紋只有零星幾格、彼此也無法印證（例如「再次擊倒」白字名旁邊偶然取到的雜點）時，白字備援更可靠
-        if self._sigs and (any(c >= 1 for c in self._support) or not self._fb_sigs):
+        # 紅字名指紋全都是極窄的雜點、又沒有被印證（例如「再次擊倒」白字名旁邊偶然取到的小墨點）時，白字備援更可靠；
+        # 有夠寬的紅字名（即使未被印證）仍優先採用——實測 test-ENG 的白字備援常是別的白字，會把不同敵人連在一起
+        if self._sigs and (not self._fb_sigs or any(c >= 1 for c in self._support)
+                           or any(g.width >= LINK_MIN_WIDTH for g in self._sigs)):
             return self._sigs, self._support
         return self._fb_sigs, self._fb_support
 
