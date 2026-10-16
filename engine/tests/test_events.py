@@ -180,3 +180,60 @@ def test_unstable_name_then_stable_name_is_one_event_with_stable_sig():
     ev, _ = run(frames)
     assert len(ev) == 1 and ev[0].t == 0.0
     assert ev[0].name_sig == stable.to_b64()
+
+
+# --- Fix-ML-2：名字指紋逐格抖動（medoid／多數代表簽名） ---
+
+def noisy(base: NameSig, seed: int, flips: int = 6) -> NameSig:
+    """同一個名字的輕微變體（翻幾個位元）：仍應判為同一人。"""
+    rng = np.random.default_rng(1000 + seed)
+    bits = base.bits.copy()
+    idx = rng.choice(bits.size, flips, replace=False)
+    bits.reshape(-1)[idx] ^= 1
+    return NameSig(base.width, bits)
+
+
+def test_every_frame_distinct_sig_is_still_one_event():
+    # 連續 5 格命中、每格指紋彼此都不同（畫格層抖動）：不得整段被丟棄
+    frames = [(i * 0.25, fr("knock", sig(200 + i))) for i in range(5)]
+    ev, _ = run(frames)
+    assert len(ev) == 1 and ev[0].t == 0.0 and ev[0].type == "knock"
+
+
+def test_jitter_run_uses_representative_sig_not_first_frame():
+    from apexhl.detect import same_name
+    good = sig(7)
+    # 第 1 格是淡入的破碎指紋，之後多數格是同一個名字的變體，中間夾兩格不相干的抖動
+    names = [sig(300), noisy(good, 1), sig(301), noisy(good, 2), noisy(good, 3), sig(302), noisy(good, 4)]
+    frames = [(i * 0.25, fr("elim", n)) for i, n in enumerate(names)]
+    ev, _ = run(frames)
+    assert len(ev) == 1 and ev[0].t == 0.0
+    got = NameSig.from_b64(ev[0].name_sig)
+    assert same_name(got, good, PROFILE.name_sig_threshold)
+
+
+def test_jitter_between_two_enemies_still_splits_once():
+    a, b = sig(1), sig(2)
+    frames = seq("KKK", name=a)
+    frames += [(0.75, fr("knock", sig(400))), (1.0, fr("knock", sig(401)))]  # 兩格各自不同的抖動
+    frames += seq("KKK", name=b, t0=1.25)
+    ev, _ = run(frames)
+    assert len(ev) == 2 and ev[0].t == 0.0 and ev[1].t == 1.25
+    assert ev[1].name_sig == b.to_b64()
+
+
+def test_lone_frame_before_split_does_not_leave_phantom_event():
+    # 只有 1 格舊名字、之後是穩定的新名字 → 單一事件（舊名字格不獨立成事件）
+    a, b = sig(1), sig(2)
+    frames = seq("K", name=a) + seq("KKKK", name=b, t0=0.25)
+    ev, _ = run(frames)
+    assert len(ev) == 1 and ev[0].name_sig == b.to_b64()
+
+
+def test_jitter_does_not_lower_minimum_frames():
+    # 兩格不連續（中間 1 格空白）、各自不同指紋：仍不成事件
+    frames = [(0.0, fr("knock", sig(500))), (0.5, fr("knock", sig(501)))]
+    ev, _ = run(frames)
+    assert ev == []
+    ev, _ = run([(0.0, fr("knock", sig(500)))])
+    assert ev == []
