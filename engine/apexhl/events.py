@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from apexhl.detect import same_name
+from apexhl.detect import fragment_of as fragment_related
+from apexhl.detect import related_name, same_name
 from apexhl.models import COUNTING_TYPES, Event, FrameResult, NameSig, SpecInterval
 from apexhl.profile import Profile
 
@@ -16,6 +17,7 @@ LINK_MIN_WIDTH = 24  # 參與連結的指紋最小寬度（再窄的殘片相關
 _KNOCK_TYPES = frozenset({"knock", "assist_knock"})
 _FINISH_TYPES = frozenset({"elim", "assist_elim"})
 _ASSIST_KINDS = frozenset({"assist_knock", "assist_elim"})
+ASSIST_MIX_WINDOW = 1.0  # 助攻橫幅淡入的前幾格，子關鍵字（擊倒／消滅）常讀不準：run 開始後這麼多秒內互相接納
 _MAX_SIGS = 40  # 每個 run 最多納入代表簽名計算的指紋數（橫幅最長約 10 秒 = 40 格；超過者仍參與比對但不入池）
 
 
@@ -36,6 +38,8 @@ class _Run:
         self.paired = False  # 這次擊倒是否已被某個補刀配對
         self._sigs: list[NameSig] = []   # 已確認（非暫列）格的指紋，依時間排序
         self._support: list[int] = []    # 與各指紋「同一人」的其他指紋數
+        self._fb_sigs: list[NameSig] = []      # 備援指紋（白字名，I3）：整個 run 沒有紅字名時才採用
+        self._fb_support: list[int] = []
 
     # --- 彙整 ---
     @property
@@ -50,10 +54,18 @@ class _Run:
                 return r.kind
         return None
 
-    def accepts(self, kind: str | None) -> bool:
-        """這個 run 能不能接納該類型的畫格：同類型，或同屬助攻家族（assist_knock／assist_elim）。"""
+    def accepts(self, kind: str | None, t: float) -> bool:
+        """這個 run 能不能接納該類型的畫格：同類型；或同屬助攻家族（assist_knock／assist_elim）且
+        連續（沒有空白格）或仍在淡入期（run 開始後 ASSIST_MIX_WINDOW 秒內）。
+
+        橫幅淡入時子關鍵字讀不準，所以淡入期與連續畫格允許互收；但「助攻，擊倒 X」之後隔一格空白、
+        換成「助攻，消滅 X」是同一敵人的另一則橫幅（I2），不得併成一個 run（否則少一個補刀事件、類型錯誤）。"""
         k = self.kind
-        return kind == k or (kind in _ASSIST_KINDS and k in _ASSIST_KINDS)
+        if kind == k:
+            return True
+        if kind in _ASSIST_KINDS and k in _ASSIST_KINDS:
+            return t - self.last_t < STEP + _EPS or t - self.first_t < ASSIST_MIX_WINDOW
+        return False
 
     @property
     def first_t(self) -> float:
@@ -83,24 +95,31 @@ class _Run:
 
     # --- 代表簽名 ---
     def _register(self, sig: NameSig) -> None:
-        n = len(self._sigs)
-        if n >= _MAX_SIGS:
+        self._append(self._sigs, self._support, sig)
+
+    def _append(self, sigs: list[NameSig], support: list[int], sig: NameSig) -> None:
+        if len(sigs) >= _MAX_SIGS:
             return
         sup = 0
-        for i, o in enumerate(self._sigs):
+        for i, o in enumerate(sigs):
             if same_name(o, sig, self.threshold):
-                self._support[i] += 1
+                support[i] += 1
                 sup += 1
-        self._sigs.append(sig)
-        self._support.append(sup)
+        sigs.append(sig)
+        support.append(sup)
+
+    def _pool(self) -> tuple[list[NameSig], list[int]]:
+        """連結／代表簽名採用的指紋池：有紅字名就只用紅字名，否則退回白字備援指紋（再次擊倒，I3）。"""
+        return (self._sigs, self._support) if self._sigs else (self._fb_sigs, self._fb_support)
 
     def representative(self) -> NameSig | None:
         """medoid：與最多其他指紋判為同一人的指紋（多數）；同分取最早的。
         乾淨的 run（全部互為同一人）因此回傳第一個指紋，與逐格追蹤的舊行為相同。"""
-        if not self._sigs:
+        sigs, support = self._pool()
+        if not sigs:
             return None
-        best = max(range(len(self._sigs)), key=lambda i: (self._support[i], -i))
-        return self._sigs[best]
+        best = max(range(len(sigs)), key=lambda i: (support[i], -i))
+        return sigs[best]
 
     # --- 變更 ---
     def add(self, t: float, r: FrameResult, *, tentative: bool = False) -> None:
@@ -111,11 +130,14 @@ class _Run:
         self.pending = None
         if r.name_sig is not None:
             self._register(r.name_sig)
+        elif r.alt_sig is not None:
+            self._append(self._fb_sigs, self._fb_support, r.alt_sig)
 
     def stable_sigs(self) -> list[NameSig]:
         """至少有另一格與之判為同一人、且夠寬的指紋（連結只信任被 run 內多格印證的指紋，
         單格的殘片偶然相關的機率太高，會把不同敵人連在一起）。"""
-        return [s for s, c in zip(self._sigs, self._support) if c >= 1 and s.width >= LINK_MIN_WIDTH]
+        sigs, support = self._pool()
+        return [s for s, c in zip(sigs, support) if c >= 1 and s.width >= LINK_MIN_WIDTH]
 
     def commit_pending(self) -> None:
         """暫列格被新的暫列格取代：視為本 run 內的抖動，併入已確認格。"""
@@ -129,7 +151,10 @@ class _Run:
         """這格的名字是否屬於本 run：與代表簽名、或任何已確認格的簽名相符就算（沒有名字不算矛盾）。"""
         if r.name_sig is None or not self._sigs:
             return True
-        return any(same_name(o, r.name_sig, self.threshold) for o in [self.representative(), *self._sigs])
+        if any(same_name(o, r.name_sig, self.threshold) for o in [self.representative(), *self._sigs]):
+            return True
+        # 被 HUD 遮擋／淡出而變窄的殘片仍是同一個名字（I1）：不算矛盾，併入本 run
+        return any(fragment_related(o, r.name_sig) for o in self._sigs)
 
 
 class EventTracker:
@@ -168,7 +193,7 @@ class EventTracker:
         run = self._run
         if r.kind is None:
             return
-        if run is not None and t - run.last_t - STEP < GAP - _EPS and run.accepts(r.kind):
+        if run is not None and t - run.last_t - STEP < GAP - _EPS and run.accepts(r.kind, t):
             if run.matches(r):
                 run.add(t, r)
             else:
@@ -248,11 +273,13 @@ class EventTracker:
         self._closed.append(run)
 
     def _contradicts(self, a: _Run, b: _Run) -> bool:
-        """兩個 run 都讀得到名字、寬度相近（差 < 15%）卻沒有任何一對相符 → 不同敵人。
-        寬度差很多代表其中一邊多半只是被背景吃掉的殘片，無法反駁。"""
-        pairs = [(x, y) for x in a.stable_sigs() for y in b.stable_sigs()
-                 if abs(x.width - y.width) / max(x.width, y.width) < 0.15]
-        return bool(pairs) and not any(same_name(x, y, self._threshold) for x, y in pairs)
+        """兩個 run 都有被多格印證、夠寬的名字，卻沒有任何一對「同名或互為殘片」→ 不同敵人（I4）。
+        殘片關係用滑動相關判斷（較短者能在較長者上找到對應位置），不再只看寬度：
+        寬度差很大但內容無關的兩個名字是不同的人；真正被遮擋的殘片則找得到對應位置。"""
+        xs, ys = a.stable_sigs(), b.stable_sigs()
+        if not xs or not ys:
+            return False
+        return not any(related_name(x, y, self._threshold) for x in xs for y in ys)
 
     def _emit(self, run: _Run) -> None:
         if run.has_pair and not run.suppressed:

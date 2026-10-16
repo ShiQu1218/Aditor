@@ -15,8 +15,9 @@ def sig(seed: int, width: int = 60) -> NameSig:
     return NameSig(width, (rng.random((16, width)) > 0.5).astype(np.uint8))
 
 
-def fr(kind=None, name=None, spec=False, score=0.9, damage=False):
-    return FrameResult(kind=kind, score=score, x=0, damage_line=damage, name_sig=name, spectating=spec)
+def fr(kind=None, name=None, spec=False, score=0.9, damage=False, alt=None):
+    return FrameResult(kind=kind, score=score, x=0, damage_line=damage, name_sig=name, spectating=spec,
+                       alt_sig=alt)
 
 
 def seq(pattern, kind="knock", name=None, t0=0.0):
@@ -183,6 +184,11 @@ def test_unstable_name_then_stable_name_is_one_event_with_stable_sig():
 
 
 # --- Fix-ML-2：名字指紋逐格抖動（medoid／多數代表簽名） ---
+
+def crop(base: NameSig, x0: int, w: int) -> NameSig:
+    """同一個名字的一段（被 HUD 遮擋或淡出後剩下的殘片）。"""
+    return NameSig(w, base.bits[:, x0:x0 + w].copy())
+
 
 def noisy(base: NameSig, seed: int, flips: int = 6) -> NameSig:
     """同一個名字的輕微變體（翻幾個位元）：仍應判為同一人。"""
@@ -361,14 +367,30 @@ def test_knock_after_elim_never_pairs_by_time():
     assert ev[1].name_sig != ev[0].name_sig
 
 
-def test_pairing_allowed_when_readable_names_have_very_different_widths():
-    # 擊倒讀到完整名字（寬 60）；補刀只讀到被背景吃掉的短殘片（寬 30，且彼此印證）：
-    # 殘片無法反駁，仍依時間配對
-    a = sig(7)
-    frag = [NameSig(30, (np.random.default_rng(900 + i % 2).random((16, 30)) > 0.5).astype(np.uint8)) for i in range(4)]
-    frames = _runs((0.0, "knock", [a, a, a]), (4.0, "elim", frag))
+def test_pairing_allowed_when_short_name_is_a_fragment_of_the_knock_name():
+    # 擊倒讀到完整名字（寬 90）；補刀只讀到被背景／HUD 吃掉的殘片（同一名字的一段，彼此印證）：
+    # 殘片是同一敵人的證據，依時間配對（I4：判斷依據改為「滑動相關」而不是寬度）
+    a = sig(7, 90)
+    frag = crop(a, 20, 45)
+    frames = _runs((0.0, "knock", [a, a, a]), (4.0, "elim", [frag, noisy(frag, 1), frag, noisy(frag, 2)]))
     ev, _ = run(frames)
     assert ev[1].name_sig == ev[0].name_sig
+
+
+def test_pairing_refused_when_wide_name_is_not_related_to_the_knock_name():
+    # I4：擊倒 A（寬 60）後 10 秒內，獨立擊殺另一個人 B（寬 120，互相印證）→ 不同敵人，不得配對成重複
+    a, b = sig(7, 60), sig(8, 120)
+    frames = _runs((0.0, "knock", [a, a, a]), (4.0, "elim", [b, b, b]))
+    ev, _ = run(frames)
+    assert ev[1].name_sig == b.to_b64() and ev[1].name_sig != ev[0].name_sig
+
+
+def test_squad_fight_sequence_last_elim_not_paired_to_wrong_knock():
+    # I4：擊倒 A、擊倒 B，最後一人 C 直接消滅（名字都讀得到、寬度各異）→ C 是獨立計入
+    a, b, c = sig(11, 70), sig(12, 100), sig(13, 55)
+    frames = _runs((0.0, "knock", [a, a, a]), (2.0, "knock", [b, b, b]), (5.0, "elim", [c, c, c]))
+    ev, _ = run(frames)
+    assert [e.name_sig for e in ev] == [a.to_b64(), b.to_b64(), c.to_b64()]
 
 
 def test_pairing_refused_when_comparable_width_readable_names_differ():
@@ -401,5 +423,77 @@ def test_recurring_jitter_name_seen_earlier_in_run_does_not_split():
     a, j, k = sig(1), sig(50), sig(51)
     names = [a, a, a, j, k, noisy(j, 1), noisy(j, 2), a, a]
     frames = [(i * 0.25, fr("knock", n)) for i, n in enumerate(names)]
+    ev, _ = run(frames)
+    assert len(ev) == 1 and ev[0].name_sig == a.to_b64()
+
+
+# --- 最終審查 I1：無空白格的名字變窄（遮擋／淡出）不是新敵人 ---
+
+def test_i1_occluded_name_fragment_without_gap_does_not_split():
+    full = sig(21, 120)
+    names = [full, noisy(full, 1), full, noisy(full, 2)] + [crop(full, 10, 60)] * 3
+    frames = [(i * 0.25, fr("knock", n)) for i, n in enumerate(names)]
+    ev, _ = run(frames)
+    assert len(ev) == 1 and ev[0].t == 0.0
+    assert ev[0].name_sig == full.to_b64()
+
+
+def test_i1_fade_out_fragments_of_assist_banner_do_not_split():
+    full = sig(22, 100)
+    names = [full, noisy(full, 1), full] + [crop(full, 0, 55)] * 2
+    frames = [(i * 0.25, fr("assist_knock", n)) for i, n in enumerate(names)]
+    ev, _ = run(frames)
+    assert len(ev) == 1
+
+
+def test_i1_unrelated_narrow_name_without_gap_still_splits():
+    # 不是殘片（相關性低）→ 仍視為另一個敵人
+    a, b = sig(23, 100), sig(24, 55)
+    frames = _runs((0.0, "knock", [a, a, a, a]), (1.0, "knock", [b, b, b]))
+    ev, _ = run(frames)
+    assert len(ev) == 2 and ev[1].t == 1.0
+
+
+# --- 最終審查 I2：助攻擊倒 → 助攻消滅（同一敵人）不併成同一個 run ---
+
+def test_i2_assist_knock_then_assist_elim_after_gap_are_two_events():
+    a = sig(31, 76)
+    frames = _runs((0.0, "assist_knock", [a] * 9), (2.5, "assist_elim", [a] * 9))  # 2.25 空白一格
+    ev, _ = run(frames)
+    assert [e.type for e in ev] == ["assist_knock", "assist_elim"]
+    assert ev[1].name_sig == ev[0].name_sig  # 時間配對／連結 → derive 標為重複
+
+
+def test_i2_subkind_flicker_in_first_second_still_one_event():
+    a = sig(32, 76)
+    kinds = ["assist_elim", ".", "assist_knock", "assist_knock", "assist_knock", "assist_knock", "assist_knock"]
+    frames = [(i * 0.25, fr(k if k != "." else None, a if k != "." else None)) for i, k in enumerate(kinds)]
+    ev, _ = run(frames)
+    assert len(ev) == 1 and ev[0].type == "assist_knock"
+
+
+def test_i2_subkind_switch_with_gap_later_in_run_splits():
+    a = sig(33, 76)
+    kinds = ["assist_knock"] * 8 + ["."] + ["assist_elim"] * 4
+    frames = [(i * 0.25, fr(k if k != "." else None, a if k != "." else None)) for i, k in enumerate(kinds)]
+    ev, _ = run(frames)
+    assert [e.type for e in ev] == ["assist_knock", "assist_elim"]
+
+
+# --- 最終審查 I3：「再次擊倒」白字名 ---
+
+def test_i3_white_name_knock_uses_alt_sig_for_dedupe_and_pairing():
+    w = sig(41, 64)
+    frames = [(i * 0.25, fr("knock", None, alt=w)) for i in range(4)]
+    frames += _runs((3.0, "elim", [sig(600), sig(601), sig(602), sig(603)]))
+    ev, _ = run(frames)
+    assert ev[0].name_sig == w.to_b64()          # 不再是 None：後續可去重
+    assert ev[1].name_sig == ev[0].name_sig      # 補刀以時間配對到這次再次擊倒
+
+
+def test_i3_alt_sig_ignored_when_run_has_red_names():
+    a, junk = sig(42, 64), sig(43, 64)
+    frames = [(0.0, fr("knock", a)), (0.25, fr("knock", None, alt=junk)), (0.5, fr("knock", a)),
+              (0.75, fr("knock", None, alt=junk))]
     ev, _ = run(frames)
     assert len(ev) == 1 and ev[0].name_sig == a.to_b64()

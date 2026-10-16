@@ -53,6 +53,9 @@ class FrameResult:
     damage_line: bool
     name_sig: NameSig | None
     spectating: bool
+    # 擊倒橫幅的備援名字指紋：紅字名讀不到（例如「再次擊倒」名字是白字）時，改取白字＋紅字的墨。
+    # 只給追蹤器在整個 run 都沒有紅字名時使用；不參與名字分裂判斷，故不影響既有行為。
+    alt_sig: NameSig | None = None
 
 
 @dataclass

@@ -103,6 +103,36 @@ def same_name(a: NameSig | None, b: NameSig | None, threshold: float) -> bool:
     return name_sig_similarity(a, b) >= threshold
 
 
+FRAGMENT_MIN_WIDTH = 30    # 殘片比對：較短指紋至少要這麼寬（再窄的殘片在別人名字上也常偶然相關）
+FRAGMENT_THRESHOLD = 0.70  # 較短指紋在較長指紋上滑動的最大相關係數門檻
+
+
+def fragment_of(a: NameSig | None, b: NameSig | None) -> bool:
+    """一方是否為另一方被遮擋／淡出的殘片（同一敵人）：寬度差 >= 15%，且較短者在較長者上滑動的
+    最大相關係數 >= FRAGMENT_THRESHOLD。寬度相近的比對交給 same_name。
+
+    門檻依據三語言全部 fixture 的名字指紋：寬度 >= 30 的不同名字配對，滑動最大相關最高約 0.53
+    （p99 0.48）；同名字裁出 40–75% 的殘片（含 4% 位元雜訊）至少 0.9。"""
+    if a is None or b is None:
+        return False
+    short, long_ = (a, b) if a.width <= b.width else (b, a)
+    if short.width < FRAGMENT_MIN_WIDTH or (long_.width - short.width) / long_.width < 0.15:
+        return False
+    ps = cv2.GaussianBlur(short.bits.astype(np.float32), (3, 3), 0.8)
+    pl = cv2.GaussianBlur(long_.bits.astype(np.float32), (3, 3), 0.8)
+    ps = ps - ps.mean()
+    ns = float(np.sqrt((ps * ps).sum()))
+    if ns < 1e-6:
+        return False
+    res = cv2.matchTemplate(pl, ps, cv2.TM_CCOEFF_NORMED)
+    return bool(np.isfinite(res).any() and float(np.nanmax(res)) >= FRAGMENT_THRESHOLD)
+
+
+def related_name(a: NameSig | None, b: NameSig | None, threshold: float) -> bool:
+    """兩個指紋是否可能是同一敵人：同名（same_name）或其中一方是另一方的殘片。"""
+    return same_name(a, b, threshold) or fragment_of(a, b)
+
+
 def _match(mask: np.ndarray, tpl: np.ndarray, box=None) -> tuple[float, int, int]:
     """回傳 (最高分, x, y)，座標為 mask 座標。box 限定搜尋範圍；範圍比範本小視為無命中。"""
     ox = oy = 0
@@ -280,8 +310,8 @@ class Detector:
         wm = white_mask(banner, self.profile)
         box = _ink_box(wm, rows_limit=self.profile.line1_rows)
 
-        def result(kind, score=0.0, x=0, damage=False, sig=None):
-            return FrameResult(kind, score, x, damage, sig, spectating)
+        def result(kind, score=0.0, x=0, damage=False, sig=None, alt=None):
+            return FrameResult(kind, score, x, damage, sig, spectating, alt)
 
         # 「敵方小隊已消滅」不是事件，須否決。為省時間改成「任何關鍵字命中後、回傳前」才檢查，
         # 輸出與「先檢查否決」完全相同（否決範本沒命中時不影響任何結果）。
@@ -331,8 +361,11 @@ class Detector:
                 return result(None)
             s, x, y = hit
             dmg = _match(wm, self.tpl["damage"], (box[0], y + h, box[2], min(wm.shape[0], y + h + self.profile.damage_depth)))[0] >= self.thr["damage"]
-            sig = self._name_sig(banner, wm, x + self.tpl["knock"].shape[1], y, h, True)
-            return result("knock", s, x, dmg, sig)
+            edge = x + self.tpl["knock"].shape[1]
+            sig = self._name_sig(banner, wm, edge, y, h, True)
+            # 「再次擊倒」的名字是白字：紅字名取不到時另備一份白字＋紅字的指紋（I3），供追蹤器去重／配對
+            alt = self._name_sig(banner, wm, edge, y, h, False) if sig is None else None
+            return result("knock", s, x, dmg, sig, alt)
 
         hit = self._hit(wm, "elim_done", box)
         if hit:

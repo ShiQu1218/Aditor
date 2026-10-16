@@ -216,3 +216,29 @@ def test_detect_speed(zh_detector, labeled):
         zh_detector.detect(banner, spec)
     avg_ms = (time.perf_counter() - t0) / 200 * 1000
     assert avg_ms < 3.0, f"{avg_ms:.2f} ms"
+
+
+def test_white_name_knock_has_alt_sig_matching_the_red_name_sig(zh_detector, zh_profile):
+    """I3：「再次擊倒」的名字是白字 → name_sig 為 None，但備援 alt_sig 要存在且和紅字版同名。"""
+    banner, spec = load_fixture("knock_a007700.png")
+    base = zh_detector.detect(banner, spec)
+    assert base.kind == "knock" and base.name_sig is not None and base.alt_sig is None
+    white = banner.copy()
+    white[red_mask(banner, zh_profile) > 0] = (255, 255, 255)   # 紅字名改成白字
+    r = zh_detector.detect(white, spec)
+    assert r.kind == "knock" and r.name_sig is None
+    assert r.alt_sig is not None
+    assert same_name(r.alt_sig, base.name_sig, zh_profile.name_sig_threshold)
+
+
+def test_fragment_of_detects_cropped_name_but_not_other_names():
+    from apexhl.detect import fragment_of
+    rng = np.random.default_rng(5)
+    full = NameSig(120, (rng.random((16, 120)) > 0.5).astype(np.uint8))
+    other = NameSig(120, (np.random.default_rng(6).random((16, 120)) > 0.5).astype(np.uint8))
+    frag = NameSig(55, full.bits[:, 30:85].copy())
+    assert fragment_of(frag, full) and fragment_of(full, frag)
+    assert not fragment_of(NameSig(55, other.bits[:, 30:85].copy()), full)
+    assert not fragment_of(NameSig(20, full.bits[:, :20].copy()), full)        # 太窄的殘片不採信
+    assert not fragment_of(NameSig(110, full.bits[:, :110].copy()), full)      # 寬度相近交給 same_name
+    assert not fragment_of(None, full)
