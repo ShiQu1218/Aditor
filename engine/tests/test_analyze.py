@@ -15,9 +15,9 @@ def fixture_video(tmp_path, knock_banner_png):
     return make_video(tmp_path, "含 空白.mp4", 15, overlay=(knock_banner_png, SPANS))
 
 
-def test_analyze_synthetic_no_events(tmp_path, zh_profile):
+def test_analyze_synthetic_no_events(tmp_path, profile):
     v = make_video(tmp_path, "plain.mp4", 6)
-    doc = az.analyze(str(v), zh_profile, cache_dir=tmp_path / "cache")
+    doc = az.analyze(str(v), profile, cache_dir=tmp_path / "cache")
     assert doc["events"] == []
     assert doc["analysis"]["status"] == "done"
     assert doc["keyframes"] and doc["clips"] == []
@@ -25,15 +25,15 @@ def test_analyze_synthetic_no_events(tmp_path, zh_profile):
     assert load_cache(cache_path(str(v), tmp_path / "cache"))["analysis"]["status"] == "done"
 
 
-def test_analyze_uses_cache(tmp_path, zh_profile, monkeypatch):
+def test_analyze_uses_cache(tmp_path, profile, monkeypatch):
     v = make_video(tmp_path, "plain.mp4", 4)
-    az.analyze(str(v), zh_profile, cache_dir=tmp_path / "cache")
+    az.analyze(str(v), profile, cache_dir=tmp_path / "cache")
 
     def boom(*a, **k):
         raise AssertionError("不應解碼")
     monkeypatch.setattr(az, "FrameStream", boom)
     monkeypatch.setattr(az, "calibrate", boom)
-    doc = az.analyze(str(v), zh_profile, cache_dir=tmp_path / "cache")
+    doc = az.analyze(str(v), profile, cache_dir=tmp_path / "cache")
     assert doc["analysis"]["status"] == "done"
 
 
@@ -59,20 +59,20 @@ class _CancelAt:
         return W()
 
 
-def test_cancel_writes_partial(tmp_path, zh_profile, monkeypatch):
+def test_cancel_writes_partial(tmp_path, profile, monkeypatch):
     v = make_video(tmp_path, "plain.mp4", 8)
     cancel = threading.Event()
     monkeypatch.setattr(az, "FrameStream", _CancelAt(3.0, cancel))
     with pytest.raises(az.Cancelled):
-        az.analyze(str(v), zh_profile, cache_dir=tmp_path / "cache", cancel=cancel)
+        az.analyze(str(v), profile, cache_dir=tmp_path / "cache", cancel=cancel)
     doc = load_cache(cache_path(str(v), tmp_path / "cache"))
     assert doc["analysis"]["status"] == "partial"
     assert 2.0 <= doc["analysis"]["progress_t"] < 3.0
 
 
-def test_resume_no_duplicates(tmp_path, zh_profile, fixture_video, monkeypatch):
+def test_resume_no_duplicates(tmp_path, profile, fixture_video, monkeypatch):
     cache = tmp_path / "cache"
-    full = az.analyze(str(fixture_video), zh_profile, cache_dir=cache / "full")
+    full = az.analyze(str(fixture_video), profile, cache_dir=cache / "full")
     knocks = [e for e in full["events"] if e["type"] == "knock"]
     assert len(knocks) == 2, full["events"]
 
@@ -80,7 +80,7 @@ def test_resume_no_duplicates(tmp_path, zh_profile, fixture_video, monkeypatch):
     with monkeypatch.context() as m:
         m.setattr(az, "FrameStream", _CancelAt(11.0, cancel))
         with pytest.raises(az.Cancelled):
-            az.analyze(str(fixture_video), zh_profile, cache_dir=cache, cancel=cancel)
+            az.analyze(str(fixture_video), profile, cache_dir=cache, cancel=cancel)
     part = load_cache(cache_path(str(fixture_video), cache))
     assert part["analysis"]["status"] == "partial"
     assert len(part["events"]) == 2  # 第二個提示在取消前已成立
@@ -92,7 +92,7 @@ def test_resume_no_duplicates(tmp_path, zh_profile, fixture_video, monkeypatch):
         starts.append(k.get("start"))
         return real(*a, **k)
     monkeypatch.setattr(az, "FrameStream", spy)
-    doc = az.analyze(str(fixture_video), zh_profile, cache_dir=cache)
+    doc = az.analyze(str(fixture_video), profile, cache_dir=cache)
     # 擁有範圍回退 RESUME_BACK、再往前補足 PREROLL 上下文（此片很短 → 從 0 起）
     own = max(0.0, part["analysis"]["progress_t"] - az.RESUME_BACK)
     assert starts == [pytest.approx(max(0.0, own - az.SEGMENT_PREROLL))]
@@ -104,59 +104,59 @@ def test_resume_no_duplicates(tmp_path, zh_profile, fixture_video, monkeypatch):
     assert [e["t"] for e in ks] == [e["t"] for e in knocks]
 
 
-def test_reanalysis_keeps_user_state(tmp_path, zh_profile, fixture_video):
+def test_reanalysis_keeps_user_state(tmp_path, profile, fixture_video):
     cache = tmp_path / "cache"
-    doc = az.analyze(str(fixture_video), zh_profile, cache_dir=cache)
+    doc = az.analyze(str(fixture_video), profile, cache_dir=cache)
     doc["events"][0]["deleted"] = True
     save_cache(cache_path(str(fixture_video), cache), doc)
-    doc2 = az.analyze(str(fixture_video), zh_profile, cache_dir=cache, force=True)
+    doc2 = az.analyze(str(fixture_video), profile, cache_dir=cache, force=True)
     assert doc2["events"][0]["deleted"] is True
     assert doc2["unmatched"] == []
 
 
-def test_progress_throttled_and_final(tmp_path, zh_profile):
+def test_progress_throttled_and_final(tmp_path, profile):
     v = make_video(tmp_path, "plain.mp4", 6)
     calls = []
-    az.analyze(str(v), zh_profile, cache_dir=tmp_path / "cache", on_progress=lambda t, d: calls.append((t, d)))
+    az.analyze(str(v), profile, cache_dir=tmp_path / "cache", on_progress=lambda t, d: calls.append((t, d)))
     assert calls[-1][0] == pytest.approx(calls[-1][1])
     assert len(calls) < 6 * 4 + 2  # 少於逐格呼叫
 
 
-def test_cancel_during_calibration_leaves_partial(tmp_path, zh_profile):
+def test_cancel_during_calibration_leaves_partial(tmp_path, profile):
     from apexhl.errors import Cancelled
     assert az.Cancelled is Cancelled
     v = make_video(tmp_path, "plain.mp4", 6)
     cancel = threading.Event()
     cancel.set()
     with pytest.raises(az.Cancelled):
-        az.analyze(str(v), zh_profile, cache_dir=tmp_path / "cache", cancel=cancel)
+        az.analyze(str(v), profile, cache_dir=tmp_path / "cache", cancel=cancel)
     doc = load_cache(cache_path(str(v), tmp_path / "cache"))
     assert doc["analysis"]["status"] == "partial" and doc["analysis"]["progress_t"] == 0.0
 
 
-def test_resume_after_calibration_cancel_recalibrates(tmp_path, zh_profile, monkeypatch):
+def test_resume_after_calibration_cancel_recalibrates(tmp_path, profile, monkeypatch):
     v = make_video(tmp_path, "plain.mp4", 6)
     cancel = threading.Event()
     cancel.set()
     with pytest.raises(az.Cancelled):
-        az.analyze(str(v), zh_profile, cache_dir=tmp_path / "cache", cancel=cancel)
+        az.analyze(str(v), profile, cache_dir=tmp_path / "cache", cancel=cancel)
     calls = []
     monkeypatch.setattr(az, "calibrate", lambda *a, **k: calls.append(1) or 0.9)
-    doc = az.analyze(str(v), zh_profile, cache_dir=tmp_path / "cache")
+    doc = az.analyze(str(v), profile, cache_dir=tmp_path / "cache")
     assert calls == [1]
     assert doc["analysis"]["h_scale"] == 0.9 and doc["analysis"]["status"] == "done"
 
 
-def test_normal_partial_resume_does_not_recalibrate(tmp_path, zh_profile, monkeypatch):
+def test_normal_partial_resume_does_not_recalibrate(tmp_path, profile, monkeypatch):
     v = make_video(tmp_path, "plain.mp4", 8)
     cancel = threading.Event()
     with monkeypatch.context() as m:
         m.setattr(az, "FrameStream", _CancelAt(3.0, cancel))
         m.setattr(az, "calibrate", lambda *a, **k: 0.95)
         with pytest.raises(az.Cancelled):
-            az.analyze(str(v), zh_profile, cache_dir=tmp_path / "cache", cancel=cancel)
+            az.analyze(str(v), profile, cache_dir=tmp_path / "cache", cancel=cancel)
     monkeypatch.setattr(az, "calibrate", lambda *a, **k: pytest.fail("不應重新校準"))
-    doc = az.analyze(str(v), zh_profile, cache_dir=tmp_path / "cache")
+    doc = az.analyze(str(v), profile, cache_dir=tmp_path / "cache")
     assert doc["analysis"]["h_scale"] == 0.95
 
 
@@ -200,7 +200,7 @@ def multi_video(tmp_path_factory):
     import numpy as np
     from conftest import FIXTURES
     d = tmp_path_factory.mktemp("multi")
-    src = FIXTURES / "zh-TW" / "pos" / "knock_a007700.png"
+    src = FIXTURES / "en" / "pos" / "knock_a002500.png"
     img = cv2.imdecode(np.fromfile(str(src), dtype=np.uint8), cv2.IMREAD_COLOR)
     ok, buf = cv2.imencode(".png", img[:180])
     png = d / "b.png"
@@ -214,9 +214,9 @@ def _knocks(doc):
     return [(e["type"], e["t"]) for e in doc["events"]]
 
 
-def test_parallel_matches_single(tmp_path, zh_profile, multi_video):
-    single = az.analyze(str(multi_video), zh_profile, cache_dir=tmp_path / "c1", jobs=1)
-    par = az.analyze(str(multi_video), zh_profile, cache_dir=tmp_path / "c3", jobs=3)
+def test_parallel_matches_single(tmp_path, profile, multi_video):
+    single = az.analyze(str(multi_video), profile, cache_dir=tmp_path / "c1", jobs=1)
+    par = az.analyze(str(multi_video), profile, cache_dir=tmp_path / "c3", jobs=3)
     a, b = _knocks(single), _knocks(par)
     assert len(a) == 5, a
     assert len(a) == len(b)
@@ -269,15 +269,15 @@ class _Seg3Harness:
 
 @pytest.mark.timeout(240)
 def test_parallel_cancel_leaves_segments_and_resume_reruns_only_unfinished(
-        tmp_path, zh_profile, multi_video, monkeypatch):
-    full = az.analyze(str(multi_video), zh_profile, cache_dir=tmp_path / "full", jobs=3)
+        tmp_path, profile, multi_video, monkeypatch):
+    full = az.analyze(str(multi_video), profile, cache_dir=tmp_path / "full", jobs=3)
     cache = tmp_path / "cache"
     cancel = threading.Event()
     harness = _Seg3Harness(cancel)
     with monkeypatch.context() as m:
         m.setattr(az, "FrameStream", harness)
         with pytest.raises(az.Cancelled):
-            az.analyze(str(multi_video), zh_profile, cache_dir=cache, cancel=cancel, jobs=3)
+            az.analyze(str(multi_video), profile, cache_dir=cache, cancel=cancel, jobs=3)
     assert len(harness.inners) == 3
     assert all(i._proc is not None and i._proc.poll() is not None for i in harness.inners)  # 無殘留 ffmpeg
     part = load_cache(cache_path(str(multi_video), cache))
@@ -296,7 +296,7 @@ def test_parallel_cancel_leaves_segments_and_resume_reruns_only_unfinished(
         return real(*a, **k)
     monkeypatch.setattr(az, "FrameStream", spy)
     monkeypatch.setattr(az, "calibrate", lambda *a, **k: pytest.fail("不應重新校準"))
-    doc = az.analyze(str(multi_video), zh_profile, cache_dir=cache, jobs=3)
+    doc = az.analyze(str(multi_video), profile, cache_dir=cache, jobs=3)
     calls.sort(key=lambda c: (c[1] is None, c[1]))
     assert len(calls) == 2  # 只重跑 seg1、seg2，seg0 已完成
 

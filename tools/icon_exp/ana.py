@@ -29,7 +29,7 @@ def frames(lab, params=None, tag="diag"):
 
 
 def icon_runs(lab, params=None, tag="diag"):
-    from apexhl.icon_detect import build_runs
+    from runs_proto import build_runs
     fr_ = frames(lab, params, tag)
     return build_runs([i / 4 for i in range(len(fr_))], fr_, params or IconParams())
 

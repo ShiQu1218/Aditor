@@ -9,16 +9,15 @@ from pathlib import Path
 
 def _cmd_analyze(a) -> int:
     from apexhl.analyze import analyze
-    from apexhl.profile import resolve_profiles
+    from apexhl.profile import load_profile
 
-    profiles = resolve_profiles(Path(a.profile_dir))
-    profile_arg = profiles[0] if len(profiles) == 1 else profiles
+    profile = load_profile(Path(a.profile_dir))
 
     def progress(t: float, duration: float) -> None:
         pct = 100.0 * t / duration if duration > 0 else 0.0
         print(f"\r分析中 {t:8.1f} / {duration:.1f} 秒 ({pct:5.1f}%)", end="", file=sys.stderr, flush=True)
 
-    doc = analyze(a.video, profile_arg, cache_dir=Path(a.cache_dir), force=a.force,
+    doc = analyze(a.video, profile, cache_dir=Path(a.cache_dir), force=a.force,
                   on_progress=progress, hwaccel=not a.no_hwaccel, jobs=a.jobs)
     print(file=sys.stderr)
     if a.out:

@@ -1,7 +1,7 @@
 """C1：切段平行／接續的事件「擁有權」合併。
 
 用合成的逐格偵測結果（假 FrameStream＋假 Detector）驅動真的 analyze／EventTracker／derive，
-重現「同敵人補刀的指紋被連結改寫 → 跨段去重失敗 → 多算」，並要求任何 jobs 的結果與 jobs=1 逐筆相同。
+刻意把「同一敵人再次被擊倒」（derive 去重）與橫幅放在段界兩側，並要求任何 jobs 的結果與 jobs=1 逐筆相同。
 """
 import threading
 
@@ -23,7 +23,7 @@ def _sig(seed: int, width: int = 60) -> NameSig:
 
 
 def _build_script():
-    """{格索引: FrameResult}。每個敵人：擊倒讀得到名字，補刀的名字全是互不相干的殘片（只能靠時間配對）。"""
+    """{格索引: FrameResult}。每個敵人：先擊倒（讀得到名字），稍後同一敵人再次被擊倒（同名，derive 標為重複）。"""
     script: dict[int, FrameResult] = {}
 
     def put(t0, t1, kind, namer):
@@ -34,11 +34,11 @@ def _build_script():
     def knock(t0, t1, seed):
         put(t0, t1, "knock", lambda i, s=_sig(seed): s)
 
-    def elim(t0, t1):
-        put(t0, t1, "elim", lambda i: _sig(10_000 + i))
+    def reknock(t0, t1, seed):
+        put(t0, t1, "knock", lambda i, s=_sig(seed): s)
 
     # 時間軸（秒）。段界：jobs=2 → 30；jobs=3 → 20、40；jobs=4 → 15、30、45。
-    # 每組：擊倒讀得到名字；同敵人的補刀名字全是殘片（只能靠時間配對／連結），位置刻意跨在段界兩側。
+    # 每組：擊倒與同敵人的再次擊倒，位置刻意跨在段界兩側。
     for n, (k0, k1, e0, e1) in enumerate([
             (5.0, 7.5, 9.0, 11.0),       # 不靠近任何段界
             (12.5, 14.5, 16.0, 18.0),    # 擊倒在 15 前、補刀在 15 後
@@ -48,8 +48,8 @@ def _build_script():
             (44.0, 46.5, 48.0, 50.0),    # 擊倒跨過 45
             (55.0, 57.0, 58.0, 59.75)]):  # 近片尾
         knock(k0, k1, 100 + n)
-        elim(e0, e1)
-    put(51.0, 53.0, "elim", lambda i, s=_sig(400): s)  # 另一個獨立擊殺（無擊倒）
+        reknock(e0, e1, 100 + n)
+    put(51.0, 53.0, "assist_elim", lambda i: None)  # 助攻消滅（沒有名字指紋 → 不去重）
     return script
 
 
@@ -77,7 +77,7 @@ class _FakeStream:
 class _FakeDetector:
     script: dict = {}
 
-    def __init__(self, profile, h_scale=1.0):
+    def __init__(self, profile, icon_scale=1.0):
         pass
 
     def detect(self, banner, spec):
@@ -86,14 +86,14 @@ class _FakeDetector:
 
 
 @pytest.fixture
-def fake_env(tmp_path, zh_profile, monkeypatch):
+def fake_env(tmp_path, profile, monkeypatch):
     script = _build_script()
     _FakeDetector.script = script
     v = make_video(tmp_path, "plain.mp4", int(DURATION))
     monkeypatch.setattr(az, "FrameStream", _FakeStream(script, DURATION))
     monkeypatch.setattr(az, "Detector", _FakeDetector)
     monkeypatch.setattr(az, "calibrate", lambda *a, **k: 1.0)
-    return v, zh_profile, tmp_path
+    return v, profile, tmp_path
 
 
 def _view(doc):
@@ -105,9 +105,9 @@ def test_single_segment_baseline_counts_each_enemy_once(fake_env):
     v, prof, tmp = fake_env
     doc = az.analyze(str(v), prof, cache_dir=tmp / "c1", jobs=1)
     counted = [e for e in doc["events"] if e["counted"]]
-    # 7 個有擊倒的敵人（補刀被併入）＋ 1 個獨立擊殺
+    # 7 個敵人各計一次（再次擊倒被去重）＋ 1 個助攻消滅
     assert len(counted) == 8, _view(doc)
-    assert sum(1 for e in doc["events"] if e["type"] == "elim" and not e["counted"]) == 7
+    assert sum(1 for e in doc["events"] if e["counted_reason"] == "duplicate") == 7
 
 
 @pytest.mark.parametrize("jobs", [2, 3, 4])
@@ -119,15 +119,15 @@ def test_segmented_events_identical_to_single(fake_env, jobs):
     assert sum(e["counted"] for e in seg["events"]) == sum(e["counted"] for e in single["events"]) == 8
 
 
-def test_spectating_intervals_identical_across_jobs(tmp_path, zh_profile, monkeypatch):
+def test_spectating_intervals_identical_across_jobs(tmp_path, profile, monkeypatch):
     script = {i: FrameResult(None, 0.0, 0, False, None, True) for i in range(int(18 / STEP), int(33 / STEP))}
     _FakeDetector.script = script
     v = make_video(tmp_path, "plain.mp4", int(DURATION))
     monkeypatch.setattr(az, "FrameStream", _FakeStream(script, DURATION))
     monkeypatch.setattr(az, "Detector", _FakeDetector)
     monkeypatch.setattr(az, "calibrate", lambda *a, **k: 1.0)
-    one = az.analyze(str(v), zh_profile, cache_dir=tmp_path / "a", jobs=1)["spectating"]
-    four = az.analyze(str(v), zh_profile, cache_dir=tmp_path / "b", jobs=4)["spectating"]
+    one = az.analyze(str(v), profile, cache_dir=tmp_path / "a", jobs=1)["spectating"]
+    four = az.analyze(str(v), profile, cache_dir=tmp_path / "b", jobs=4)["spectating"]
     assert one == four and len(one) == 1
 
 

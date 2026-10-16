@@ -12,7 +12,7 @@ from typing import Callable
 from . import ENGINE_VERSION
 from .cache import (cache_path, load_cache, merge_clips, merge_reanalysis,
                     needs_reanalysis, save_cache)
-from .calibrate import calibrate, calibrate_auto
+from .calibrate import calibrate
 from .decode import FrameStream, is_gpu_path
 from .errors import Cancelled
 from .derive import derive
@@ -27,8 +27,9 @@ RESUME_BACK = 12.0     # 接續時，擁有範圍回退秒數（> 單一橫幅�
 PROGRESS_INTERVAL = 0.25  # on_progress 至多每 0.25 秒（實際時間）一次
 # 切段解碼的「擁有權」合併（C1）：每段只輸出 first_t 落在 [start, end) 的事件；為了讓追蹤器在段起點
 # 擁有與單段分析相同的上下文，每段另外從 start - SEGMENT_PREROLL 起解碼（只餵追蹤器、不輸出事件）。
-# PREROLL >= LINK_WINDOW（30 秒，補刀往前連結擊倒的最遠距離）+ 單一橫幅最長約 10 秒。
-SEGMENT_PREROLL = 40.0
+# 追蹤器的狀態只有「進行中的橫幅 run」（沒有跨橫幅連結），上下文只需涵蓋單一橫幅最長約 10 秒＋一段空白；
+# 取 20 秒，讓段起點的追蹤器狀態與單段分析相同（run 之間只要有 ≥2 格空白就互相獨立）。
+SEGMENT_PREROLL = 20.0
 # 段尾往後多解碼的秒數，讓「在段內開始、跨過段界」的橫幅完整收尾（類型多數決、名字指紋、分裂判定）。
 SEGMENT_POSTROLL = 12.0
 AUTO_MIN_SEGMENT = 30.0  # 自動 jobs 時每段至少多長（秒）
@@ -156,23 +157,16 @@ def _segments_from_doc(raw, duration: float) -> list[_Seg] | None:
     return segs
 
 
-UNDETERMINED_VERSION = "auto@undetermined"  # 自動語言偵測失敗的快取；不屬於任何語言設定檔的版本
-
-
-def _make_doc(info, profile: Profile | None, status: str, progress_t: float, h_scale: float,
+def _make_doc(info, profile: Profile, status: str, progress_t: float, h_scale: float | None,
               events: list[Event], spectating: list[SpecInterval], clips: list[Clip],
               segments: list[dict] | None = None) -> dict:
-    """profile=None 表示自動語言偵測失敗（analysis.lang_detected=false、profile=null）。"""
+    """h_scale＝本支影片校準出的圖示尺度（欄位名沿用舊版，None＝尚未校準）。"""
     doc = {
         "version": 1,
         "video": info.to_dict(),
-        "profile": profile.lang if profile else None,
         "analysis": {"status": status, "progress_t": progress_t, "engine_version": ENGINE_VERSION,
-                     "templates_version": profile.templates_version if profile else UNDETERMINED_VERSION,
-                     "h_scale": h_scale,
-                     "profile": profile.lang if profile else None,
-                     "lang_detected": profile is not None,
-                     "spectating_supported": profile.spectating_supported if profile else None},
+                     "templates_version": profile.templates_version,
+                     "h_scale": h_scale},
         "events": [e.to_dict() for e in events],
         "spectating": [s.to_dict() for s in spectating],
         "clips": [c.to_dict() for c in clips],
@@ -191,25 +185,6 @@ def _save(cp: Path, doc: dict, fallback: Path) -> Path:
     return written
 
 
-def _undetermined_doc(path, info, cp: Path, cache_dir: Path, old: dict | None, base_events: list[Event],
-                      manual_clips: list[Clip], candidates: list[Profile], on_progress) -> dict:
-    """自動語言偵測失敗：存成 status=done、lang_detected=false、無自動事件的結果（保留手動事件）。
-
-    下次 auto 分析會因 lang_detected=false 重新嘗試；單一語言模式的 templates_version 不會相符，
-    因此使用者在設定指定語言後重新分析會真的重跑。"""
-    raw, unmatched = merge_reanalysis(base_events, []) if base_events else ([], [])
-    final = derive(raw, [], candidates[0])  # 只有手動事件；candidates[0] 僅提供 dedupe 參數
-    doc = _make_doc(info, None, "done", info.duration, 1.0, final, [], manual_clips)
-    try:
-        doc["keyframes"] = keyframes(path)
-    except Exception:
-        doc["keyframes"] = []
-    doc["unmatched"] = [e.to_dict() for e in unmatched]
-    _save(cp, doc, cache_dir)
-    on_progress(info.duration, info.duration)
-    return doc
-
-
 def _resumable(old: dict | None, info, profile: Profile) -> bool:
     if not old:
         return False
@@ -221,31 +196,19 @@ def _resumable(old: dict | None, info, profile: Profile) -> bool:
             and a.get("templates_version") == profile.templates_version)
 
 
-def _cache_stale(old: dict, info, candidates: list[Profile]) -> bool:
-    if len(candidates) == 1:
-        return needs_reanalysis(old, info, candidates[0].templates_version)
-    return needs_reanalysis(old, info, {p.templates_version for p in candidates},
-                            {p.lang for p in candidates})
-
-
-def analyze(path: str, profile: Profile | list[Profile], *, cache_dir: Path, beside: bool = False,
+def analyze(path: str, profile: Profile, *, cache_dir: Path, beside: bool = False,
             force: bool = False, on_progress: Callable[[float, float], None] = _noop,
             cancel: threading.Event | None = None, hwaccel: bool = True,
             jobs: int | None = None) -> dict:
-    candidates = profile if isinstance(profile, list) else [profile]
-    profile = candidates[0]
     info = probe(path)
     cache_dir = Path(cache_dir)
     cp = cache_path(path, cache_dir, beside)
     old = load_cache(cp)
-    if not force and old is not None and not _cache_stale(old, info, candidates):
+    if not force and old is not None and not needs_reanalysis(old, info, profile.templates_version):
         old["cache_path"] = str(cp)
         return old
 
-    matched_resume = next((p for p in candidates if _resumable(old, info, p)), None) if not force else None
-    resuming = matched_resume is not None
-    if matched_resume is not None:
-        profile = matched_resume
+    resuming = (not force) and _resumable(old, info, profile)
     old_clips = [Clip.from_dict(c) for c in (old or {}).get("clips", [])]
     segs: list[_Seg] | None = None
     if resuming:
@@ -272,14 +235,7 @@ def analyze(path: str, profile: Profile | list[Profile], *, cache_dir: Path, bes
     manual_clips = merge_clips(old_clips, [])
     if h_scale is None:
         try:
-            if len(candidates) == 1:
-                h_scale = calibrate(path, info, profile, cancel=cancel, hwaccel=hwaccel)
-            else:
-                chosen, h_scale = calibrate_auto(path, info, candidates, cancel=cancel, hwaccel=hwaccel)
-                if chosen is None:  # 無法判斷錄影語言：明確記錄，不用任何語言硬分析
-                    return _undetermined_doc(path, info, cp, cache_dir, old, base_events,
-                                             manual_clips, candidates, on_progress)
-                profile = chosen
+            h_scale = calibrate(path, info, profile, cancel=cancel, hwaccel=hwaccel)
         except Cancelled:
             doc = _make_doc(info, profile, "partial", 0.0, None, [], [], manual_clips)  # h_scale=None：尚未校準
             if base_events:

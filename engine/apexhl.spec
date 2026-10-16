@@ -26,6 +26,7 @@ a = Analysis(
         'apexhl.errors',
         'apexhl.events',
         'apexhl.ffbin',
+        'apexhl.icon_detect',
         'apexhl.ipc',
         'apexhl.models',
         'apexhl.probe',

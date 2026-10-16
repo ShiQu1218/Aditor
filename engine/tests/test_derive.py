@@ -39,30 +39,30 @@ def make_event(
     )
 
 
-def test_squad_wipe_not_counted(zh_profile):
+def test_squad_wipe_not_counted(profile):
     e = make_event(id="e1", t=50.0, type="squad_wipe", name_sig=make_sig(1))
-    res = derive([e], [], zh_profile)
+    res = derive([e], [], profile)
     assert len(res) == 1
     assert res[0].counted is False
     assert res[0].counted_reason == "not_counting_type"
     assert is_counted(res[0]) is False
 
 
-def test_spectating_not_counted(zh_profile):
+def test_spectating_not_counted(profile):
     e = make_event(id="e1", t=50.0, type="knock", name_sig=make_sig(1))
     spec = [SpecInterval(start=40.0, end=60.0)]
-    res = derive([e], spec, zh_profile)
+    res = derive([e], spec, profile)
     assert len(res) == 1
     assert res[0].counted is False
     assert res[0].counted_reason == "spectating"
     assert is_counted(res[0]) is False
 
 
-def test_dedupe_same_enemy_within_window(zh_profile):
+def test_dedupe_same_enemy_within_window(profile):
     sig_a = make_sig(1)
     e1 = make_event(id="e1", t=100.0, type="knock", name_sig=sig_a)
     e2 = make_event(id="e2", t=180.0, type="assist_elim", name_sig=sig_a)
-    res = derive([e1, e2], [], zh_profile)
+    res = derive([e1, e2], [], profile)
     assert len(res) == 2
     assert res[0].counted is True
     assert res[0].counted_reason == "first"
@@ -72,11 +72,11 @@ def test_dedupe_same_enemy_within_window(zh_profile):
     assert is_counted(res[1]) is False
 
 
-def test_dedupe_outside_window(zh_profile):
+def test_dedupe_outside_window(profile):
     sig_a = make_sig(1)
     e1 = make_event(id="e1", t=100.0, type="knock", name_sig=sig_a)
     e2 = make_event(id="e2", t=191.0, type="assist_elim", name_sig=sig_a)
-    res = derive([e1, e2], [], zh_profile)
+    res = derive([e1, e2], [], profile)
     assert len(res) == 2
     assert res[0].counted is True
     assert res[0].counted_reason == "first"
@@ -84,12 +84,12 @@ def test_dedupe_outside_window(zh_profile):
     assert res[1].counted_reason == "first"
 
 
-def test_different_enemy_both_counted(zh_profile):
+def test_different_enemy_both_counted(profile):
     sig_a = make_sig(1)
     sig_b = make_sig(2)
     e1 = make_event(id="e1", t=100.0, type="knock", name_sig=sig_a)
     e2 = make_event(id="e2", t=110.0, type="assist_elim", name_sig=sig_b)
-    res = derive([e1, e2], [], zh_profile)
+    res = derive([e1, e2], [], profile)
     assert len(res) == 2
     assert res[0].counted is True
     assert res[0].counted_reason == "first"
@@ -97,11 +97,11 @@ def test_different_enemy_both_counted(zh_profile):
     assert res[1].counted_reason == "first"
 
 
-def test_deleted_first_promotes_next(zh_profile):
+def test_deleted_first_promotes_next(profile):
     sig_a = make_sig(1)
     e1 = make_event(id="e1", t=100.0, type="knock", name_sig=sig_a, deleted=True)
     e2 = make_event(id="e2", t=120.0, type="assist_elim", name_sig=sig_a)
-    res = derive([e1, e2], [], zh_profile)
+    res = derive([e1, e2], [], profile)
     assert len(res) == 2
     assert res[0].counted is False
     assert res[0].counted_reason == "deleted"
@@ -111,10 +111,10 @@ def test_deleted_first_promotes_next(zh_profile):
     assert is_counted(res[1]) is True
 
 
-def test_override_respected(zh_profile):
+def test_override_respected(profile):
     sig_a = make_sig(1)
     e1 = make_event(id="e1", t=100.0, type="knock", name_sig=sig_a, counted_override=False)
-    res = derive([e1], [], zh_profile)
+    res = derive([e1], [], profile)
     assert len(res) == 1
     assert res[0].counted is True
     assert res[0].counted_reason == "first"
@@ -122,10 +122,10 @@ def test_override_respected(zh_profile):
     assert is_counted(res[0]) is False
 
 
-def test_manual_event_without_sig_counted(zh_profile):
+def test_manual_event_without_sig_counted(profile):
     e1 = make_event(id="m1", t=100.0, type="knock", name_sig=None, source="manual")
     e2 = make_event(id="m2", t=120.0, type="knock", name_sig=None, source="manual")
-    res = derive([e1, e2], [], zh_profile)
+    res = derive([e1, e2], [], profile)
     assert len(res) == 2
     assert res[0].counted is True
     assert res[0].counted_reason == "first"
@@ -150,11 +150,11 @@ def test_sig_similar():
     assert sig_similar(sig48, sig60, 0.32) is False
 
 
-def test_derive_sorts_and_immutability(zh_profile):
+def test_derive_sorts_and_immutability(profile):
     sig_a = make_sig(1)
     e1 = make_event(id="e1", t=200.0, type="knock", name_sig=sig_a)
     e2 = make_event(id="e2", t=100.0, type="knock", name_sig=sig_a)
-    res = derive([e1, e2], [], zh_profile)
+    res = derive([e1, e2], [], profile)
     assert [e.id for e in res] == ["e2", "e1"]
     # 原始物件不可變
     assert e1.counted is False
@@ -163,7 +163,7 @@ def test_derive_sorts_and_immutability(zh_profile):
     assert e2.counted_reason == ""
 
 
-def test_spectating_boundaries(zh_profile):
+def test_spectating_boundaries(profile):
     sig_a = make_sig(1)
     spec = [SpecInterval(start=10.0, end=20.0)]
     e_before = make_event(id="e1", t=9.99, type="knock", name_sig=sig_a)
@@ -171,7 +171,7 @@ def test_spectating_boundaries(zh_profile):
     e_inside = make_event(id="e3", t=19.99, type="knock", name_sig=sig_a)
     e_end = make_event(id="e4", t=20.0, type="knock", name_sig=sig_a)
 
-    res = derive([e_before, e_start, e_inside, e_end], spec, zh_profile)
+    res = derive([e_before, e_start, e_inside, e_end], spec, profile)
     assert res[0].counted_reason == "first"
     assert res[1].counted_reason == "spectating"
     assert res[2].counted_reason == "spectating"
@@ -179,11 +179,11 @@ def test_spectating_boundaries(zh_profile):
     assert res[3].counted_reason == "duplicate"
 
 
-def test_squad_wipe_never_acts_as_dedupe_first(zh_profile):
+def test_squad_wipe_never_acts_as_dedupe_first(profile):
     sig_a = make_sig(1)
     e1 = make_event(id="e1", t=100.0, type="squad_wipe", name_sig=sig_a)
     e2 = make_event(id="e2", t=110.0, type="knock", name_sig=sig_a)
-    res = derive([e1, e2], [], zh_profile)
+    res = derive([e1, e2], [], profile)
     assert res[0].counted is False
     assert res[0].counted_reason == "not_counting_type"
     assert res[1].counted is True

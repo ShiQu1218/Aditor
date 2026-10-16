@@ -13,7 +13,7 @@ import sys
 import time
 from pathlib import Path
 
-DEFAULT_PROFILE = Path(__file__).resolve().parents[1] / "templates" / "zh-TW"
+DEFAULT_PROFILE = Path(__file__).resolve().parents[1] / "templates" / "icons"
 
 
 def run_once(video: str, profile, seconds: float, start: float, hwaccel: bool,

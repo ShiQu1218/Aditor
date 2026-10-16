@@ -5,55 +5,55 @@ from apexhl.decode import FrameStream
 from conftest import make_video
 
 
-def test_frame_times_and_shapes(tmp_path, zh_profile):
+def test_frame_times_and_shapes(tmp_path, profile):
     v = make_video(tmp_path, "中文 路徑.mp4", 3.0)
-    frames = list(FrameStream(str(v), zh_profile))
+    frames = list(FrameStream(str(v), profile))
     assert len(frames) == 12
     assert [f[0] for f in frames[:3]] == [0.0, 0.25, 0.5]
-    x, y, w, h = zh_profile.banner_roi
+    x, y, w, h = profile.banner_roi
     assert frames[0][1].shape == (h, w, 3)
-    assert frames[0][2].shape == (zh_profile.spec_roi[3], zh_profile.spec_roi[2], 3)
+    assert frames[0][2].shape == (profile.spec_roi[3], profile.spec_roi[2], 3)
 
 
 @pytest.mark.parametrize("start_time,vfr", [(5.0, False), (0.0, True)])
-def test_mark_time_alignment(tmp_path, zh_profile, start_time, vfr):
+def test_mark_time_alignment(tmp_path, profile, start_time, vfr):
     v = make_video(tmp_path, "m.mp4", 6.0, start_time=start_time, vfr=vfr, marks=[(3.0, 3.6)])
-    lit = [t for t, b, s in FrameStream(str(v), zh_profile) if b.mean() > 200]
+    lit = [t for t, b, s in FrameStream(str(v), profile) if b.mean() > 200]
     assert lit[0] == pytest.approx(3.0, abs=0.25)
 
 
-def test_resume_start(tmp_path, zh_profile):
+def test_resume_start(tmp_path, profile):
     v = make_video(tmp_path, "r.mp4", 6.0, marks=[(4.0, 4.6)])
-    lit = [t for t, b, s in FrameStream(str(v), zh_profile, start=2.0) if b.mean() > 200]
+    lit = [t for t, b, s in FrameStream(str(v), profile, start=2.0) if b.mean() > 200]
     assert lit[0] == pytest.approx(4.0, abs=0.25)
 
 
-def test_hwaccel_fallback(tmp_path, zh_profile, monkeypatch):
+def test_hwaccel_fallback(tmp_path, profile, monkeypatch):
     monkeypatch.setattr(decode, "HWACCEL_ARGS", ["-hwaccel", "nonexistent_accel"])
     v = make_video(tmp_path, "h.mp4", 1.0)
-    fs = FrameStream(str(v), zh_profile)
+    fs = FrameStream(str(v), profile)
     assert len(list(fs)) == 4 and fs.used_hwaccel is False
 
 
 @pytest.mark.timeout(60)
-def test_stderr_flood_no_deadlock(tmp_path, zh_profile, monkeypatch):
+def test_stderr_flood_no_deadlock(tmp_path, profile, monkeypatch):
     monkeypatch.setattr(decode, "LOGLEVEL", "debug")  # 大量 stderr
     v = make_video(tmp_path, "d.mp4", 10.0)
-    fs = FrameStream(str(v), zh_profile)
+    fs = FrameStream(str(v), profile)
     assert len(list(fs)) == 40
     assert len(fs.stderr_tail.encode()) <= 64 * 1024
 
 
-def test_decode_error_on_bad_file(tmp_path, zh_profile):
+def test_decode_error_on_bad_file(tmp_path, profile):
     p = tmp_path / "bad.mp4"
     p.write_bytes(b"garbage")
     with pytest.raises(decode.DecodeError):
-        list(FrameStream(str(p), zh_profile))
+        list(FrameStream(str(p), profile))
 
 
-def test_close_terminates_ffmpeg(tmp_path, zh_profile):
+def test_close_terminates_ffmpeg(tmp_path, profile):
     v = make_video(tmp_path, "c.mp4", 10.0)
-    fs = FrameStream(str(v), zh_profile)
+    fs = FrameStream(str(v), profile)
     it = iter(fs)
     next(it)
     it.close()
@@ -89,18 +89,18 @@ def test_is_gpu_path():
     assert not decode.is_gpu_path("mpeg4", True)
 
 
-def test_build_filter_gpu_downloads_after_fps(zh_profile):
-    f = decode.build_filter(zh_profile, True)
+def test_build_filter_gpu_downloads_after_fps(profile):
+    f = decode.build_filter(profile, True)
     assert f.startswith("[0:v]fps=4,hwdownload,format=nv12,scale=1920:1080,split[a][b];")
-    assert "hwdownload,format=p010le," in decode.build_filter(zh_profile, True, "p010le")
-    soft = decode.build_filter(zh_profile)
+    assert "hwdownload,format=p010le," in decode.build_filter(profile, True, "p010le")
+    soft = decode.build_filter(profile)
     assert soft.startswith("[0:v]fps=4,scale=1920:1080,split[a][b];") and "hwdownload" not in soft
     assert f.split("split[a][b];", 1)[1] == soft.split("split[a][b];", 1)[1]
 
 
-def test_frame_stream_end_limits_output(tmp_path, zh_profile):
+def test_frame_stream_end_limits_output(tmp_path, profile):
     v = make_video(tmp_path, "e.mp4", 6.0)
-    frames = list(FrameStream(str(v), zh_profile, start=1.0, end=3.0, hwaccel=False))
+    frames = list(FrameStream(str(v), profile, start=1.0, end=3.0, hwaccel=False))
     assert [f[0] for f in frames] == [1.0 + 0.25 * k for k in range(8)]
 
 
@@ -125,7 +125,7 @@ def _av1_clip(tmp_path, seconds=1.0):
     return out
 
 
-def test_av1_fallback_drops_c_v_av1(tmp_path, zh_profile, monkeypatch):
+def test_av1_fallback_drops_c_v_av1(tmp_path, profile, monkeypatch):
     v = _av1_clip(tmp_path)
     monkeypatch.setattr(decode, "AV1_HWACCEL_ARGS", ["-hwaccel", "nonexistent_accel", "-c:v", "av1"])
     cmds = []
@@ -135,7 +135,7 @@ def test_av1_fallback_drops_c_v_av1(tmp_path, zh_profile, monkeypatch):
         cmds.append(list(cmd))
         return real_popen(cmd, *a, **k)
     monkeypatch.setattr(decode.subprocess, "Popen", spy)
-    fs = FrameStream(str(v), zh_profile, codec="av1")
+    fs = FrameStream(str(v), profile, codec="av1")
     assert len(list(fs)) == 4 and fs.used_hwaccel is False
     # 硬體 nv12 → 硬體 p010le（10-bit 像素格式重試，第一格前失敗才會）→ 軟體
     assert len(cmds) == 3
@@ -146,19 +146,19 @@ def test_av1_fallback_drops_c_v_av1(tmp_path, zh_profile, monkeypatch):
     assert "hwdownload" not in fc(cmds[2])
 
 
-def test_av1_decode_with_codec_yields_frames(tmp_path, zh_profile):
+def test_av1_decode_with_codec_yields_frames(tmp_path, profile):
     v = _av1_clip(tmp_path)
-    frames = list(FrameStream(str(v), zh_profile, codec="av1"))
+    frames = list(FrameStream(str(v), profile, codec="av1"))
     assert len(frames) == 4
 
 
-def test_hw_failure_mid_stream_continues_in_software_on_the_same_time_grid(tmp_path, zh_profile, monkeypatch):
+def test_hw_failure_mid_stream_continues_in_software_on_the_same_time_grid(tmp_path, profile, monkeypatch):
     """I7：硬體解碼在已產出幾格之後才失敗 → 從下一格改用軟體繼續，不遺漏、不重複、時間格線不變。"""
     import sys
     import subprocess
     v = make_video(tmp_path, "h.mp4", 3.0)
-    bx, by, bw, bh = zh_profile.banner_roi
-    sx, sy, sw, sh = zh_profile.spec_roi
+    bx, by, bw, bh = profile.banner_roi
+    sx, sy, sw, sh = profile.spec_roi
     frame_bytes = bw * (bh + sh) * 3
     real_spawn = FrameStream._spawn
     calls = []
@@ -171,7 +171,7 @@ def test_hw_failure_mid_stream_continues_in_software_on_the_same_time_grid(tmp_p
                                     stderr=subprocess.PIPE, bufsize=0)
         return real_spawn(self, hwaccel, start)
     monkeypatch.setattr(FrameStream, "_spawn", spawn)
-    fs = FrameStream(str(v), zh_profile, codec="h264")
+    fs = FrameStream(str(v), profile, codec="h264")
     ts = [t for t, _, _ in fs]
     assert fs.used_hwaccel is False
     assert calls[0][0] is True and calls[1] == (False, pytest.approx(0.75))  # 中途失敗不重試 p010le
@@ -188,12 +188,12 @@ def _nvenc_10bit(tmp_path):
     return out if r.returncode == 0 else None
 
 
-def test_ten_bit_hevc_uses_hardware_path(tmp_path, zh_profile):
+def test_ten_bit_hevc_uses_hardware_path(tmp_path, profile):
     """M1：10-bit（p010）硬體表面也要能下載，而不是每次先失敗再退回軟體。需要 NVENC 才能產生測試檔。"""
     v = _nvenc_10bit(tmp_path)
     if v is None:
         pytest.skip("沒有 hevc_nvenc，無法產生 10-bit HEVC")
-    fs = FrameStream(str(v), zh_profile, codec="hevc")
+    fs = FrameStream(str(v), profile, codec="hevc")
     assert len(list(fs)) == 8
     if not fs.used_hwaccel:
         pytest.skip("這台機器沒有 D3D11VA 硬體解碼")

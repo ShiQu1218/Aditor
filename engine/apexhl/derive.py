@@ -43,7 +43,7 @@ def derive(
     回傳新 Event 物件清單（依 t 排序）。不修改 counted_override。
     規則（spec §5.3）：
     1. deleted 事件：counted=False, counted_reason="deleted"，不參與去重。
-    2. 非計數類型（如 squad_wipe）：counted=False, counted_reason="not_counting_type"，不作為去重首筆。
+    2. 非計數類型（如 squad_wipe；引擎已不輸出，保留給舊專案檔）：counted=False, counted_reason="not_counting_type"，不作為去重首筆。
     3. 位於 spectating 區間內（start <= t < end）：counted=False, counted_reason="spectating"。
     4. 去重：dedupe_window 秒內名字指紋相似的計數類型事件，第一筆 counted=True（first），其餘 counted=False（duplicate）。
        若 name_sig 為 None（如手動事件），則為 first 且不與任何人去重。

@@ -1,7 +1,6 @@
 """測試共用工具：合成影片產生器與 fixture 路徑。"""
 import functools
 import json
-import os
 import subprocess
 import sys
 from pathlib import Path
@@ -13,7 +12,8 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 REPO = Path(__file__).resolve().parents[2]
 FIXTURES = Path(__file__).parent / "fixtures"
-ZH_DIR = REPO / "templates" / "zh-TW"
+ICON_DIR = REPO / "templates" / "icons"
+LANGS = ("zh-TW", "en", "ja")  # fixture 的來源語言（只是素材分類；引擎本身與語言無關）
 
 
 def _ffmpeg() -> str:
@@ -26,7 +26,7 @@ def make_video(tmp_path, name, duration, *, start_time=0.0, vfr=False, marks=(),
 
     marks：(t_start, t_end) 清單，在這些時間於 banner 區域畫實心白框。
     start_time：以 -output_ts_offset 達成。vfr：丟格並抖動 pts 產生可變幀率。
-    overlay：(png_path, [(t_start, t_end), ...])，於 (560,700) 疊上 PNG（Task 10 使用）。
+    overlay：(png_path, [(t_start, t_end), ...])，於 (560,700) 疊上 PNG。
     """
     out = Path(tmp_path) / name
     filters = []
@@ -58,21 +58,21 @@ def make_video(tmp_path, name, duration, *, start_time=0.0, vfr=False, marks=(),
 
 
 @pytest.fixture(scope="session")
-def zh_profile():
+def profile():
     from apexhl.profile import load_profile
-    return load_profile(ZH_DIR)
+    return load_profile(ICON_DIR)
 
 
 @pytest.fixture(scope="session")
-def zh_detector(zh_profile):
+def detector(profile):
     from apexhl.detect import Detector
-    return Detector(zh_profile)
+    return Detector(profile)
 
 
 def load_fixture(name, lang="zh-TW"):
     """讀取 fixtures/<lang> 下的 PNG（banner 在上、spec 在下垂直拼接）→ (banner, spec)。"""
     import cv2
-    p = lang_profile(lang)
+    p = _profile()
     img = None
     for sub in ("pos", "neg"):
         f = FIXTURES / lang / sub / name
@@ -84,96 +84,22 @@ def load_fixture(name, lang="zh-TW"):
     return img[:bh], img[bh:bh + sh, :sw]
 
 
-LANGS = ("zh-TW", "en", "ja")
+@functools.lru_cache(maxsize=None)
+def _profile():
+    from apexhl.profile import load_profile
+    return load_profile(ICON_DIR)
 
 
 @functools.lru_cache(maxsize=None)
-def lang_profile(lang):
-    from apexhl.profile import load_profile
-    return load_profile(REPO / "templates" / lang)
-
-
 def lang_labels(lang):
     return json.loads((FIXTURES / lang / "labels.json").read_text(encoding="utf-8"))
-
-
-class LangCtx:
-    """某語言的 profile、偵測器、labels 與 fixture 讀取（多語測試用）。"""
-
-    def __init__(self, lang):
-        from apexhl.detect import Detector
-        self.lang = lang
-        self.profile = lang_profile(lang)
-        self.detector = Detector(self.profile)
-        self.labels = lang_labels(lang)
-
-    def load(self, name):
-        return load_fixture(name, self.lang)
-
-    def items(self, kind=None, kind_not_null=False, kind_null=False, exclude_fadein=False):
-        out = []
-        for n, lab in self.labels.items():
-            if kind is not None and lab["kind"] != kind:
-                continue
-            if kind_not_null and lab["kind"] is None:
-                continue
-            if kind_null and lab["kind"] is not None:
-                continue
-            if exclude_fadein and lab.get("fadein"):
-                continue
-            out.append((n, lab))
-        return out
-
-
-@pytest.fixture(scope="session", params=LANGS)
-def lang_ctx(request):
-    return LangCtx(request.param)
-
-
-@pytest.fixture(scope="session", params=("en", "ja"))
-def new_lang_ctx(request):
-    return LangCtx(request.param)
-
-
-@pytest.fixture(scope="session")
-def labels():
-    return json.loads((FIXTURES / "zh-TW" / "labels.json").read_text(encoding="utf-8"))
-
-
-@pytest.fixture
-def labeled(labels):
-    def _f(kind=None, kind_not_null=False, kind_null=False, exclude_fadein=False):
-        out = []
-        for n, lab in labels.items():
-            if kind is not None and lab["kind"] != kind:
-                continue
-            if kind_not_null and lab["kind"] is None:
-                continue
-            if kind_null and lab["kind"] is not None:
-                continue
-            if exclude_fadein and lab.get("fadein"):
-                continue
-            out.append((n, lab))
-        return out
-    return _f
-
-
-@pytest.fixture(scope="session")
-def pos_banners(labels):
-    """正例 banner（排除淡入畫格）。"""
-    out = []
-    for n, lab in labels.items():
-        if lab["kind"] is None or lab.get("fadein"):
-            continue
-        out.append(load_fixture(n)[0])
-    return out
 
 
 @pytest.fixture
 def knock_banner_png(tmp_path):
     """把正例擊倒 fixture 裁成上方 180 列（只有 banner，供 make_video overlay 使用）。"""
     import cv2
-    src = FIXTURES / "zh-TW" / "pos" / "knock_a007700.png"
+    src = FIXTURES / "en" / "pos" / "knock_a002500.png"
     img = cv2.imdecode(np.fromfile(str(src), dtype=np.uint8), cv2.IMREAD_COLOR)
     out = tmp_path / "knock_banner.png"
     ok, buf = cv2.imencode(".png", img[:180])

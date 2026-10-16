@@ -5,6 +5,7 @@ from dataclasses import asdict, dataclass, field, fields
 
 import numpy as np
 
+# 引擎只輸出 knock／assist_knock／assist_elim；elim 保留在計數類型內只為相容舊專案檔與手動事件
 COUNTING_TYPES = frozenset({"knock", "assist_knock", "assist_elim", "elim"})
 
 
@@ -53,9 +54,9 @@ class FrameResult:
     damage_line: bool
     name_sig: NameSig | None
     spectating: bool
-    # 擊倒橫幅的備援名字指紋：紅字名讀不到（例如「再次擊倒」名字是白字）時，改取白字＋紅字的墨。
-    # 只給追蹤器在整個 run 都沒有紅字名時使用；不參與名字分裂判斷，故不影響既有行為。
-    alt_sig: NameSig | None = None
+    # kind 為 None 時的提示：cont＝有加分箭頭與「+」但人形不確定（淡入淡出），不中斷進行中的事件；
+    # other＝別種橫幅（獨立消滅、小隊抹殺、REVIVE 等），會中斷進行中的事件。
+    hint: str | None = None
 
 
 @dataclass

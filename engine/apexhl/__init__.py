@@ -1,3 +1,3 @@
 """Apex Highlighter 分析引擎。"""
 
-ENGINE_VERSION = "0.2.0"
+ENGINE_VERSION = "0.3.0"

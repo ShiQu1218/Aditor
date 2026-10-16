@@ -5,7 +5,6 @@ import hashlib
 import json
 import os
 from dataclasses import replace
-from collections.abc import Collection
 from pathlib import Path
 
 from . import ENGINE_VERSION
@@ -56,13 +55,8 @@ def save_cache(p: Path, doc: dict, fallback_dir: Path | None = None) -> Path:
     return fb
 
 
-def needs_reanalysis(doc: dict | None, info: VideoInfo, templates_version: str | Collection[str],
-                     langs: Collection[str] | None = None) -> bool:
-    """快取是否需要重新分析。
-
-    單一語言模式：templates_version 為字串，必須完全相同。
-    自動語言模式：templates_version 為「已知語言設定檔的版本集合」、langs 為已知語言集合；
-    快取必須屬於這個集合，且不得是「無法判斷語言」（lang_detected=false）的結果。"""
+def needs_reanalysis(doc: dict | None, info: VideoInfo, templates_version: str) -> bool:
+    """快取是否需要重新分析：未完成、影片變了、引擎版本或樣板版本不同（舊版文字關鍵字法的快取因此失效）。"""
     if not doc:
         return True
     analysis = doc.get("analysis") or {}
@@ -75,14 +69,7 @@ def needs_reanalysis(doc: dict | None, info: VideoInfo, templates_version: str |
         return True
     if analysis.get("engine_version") != ENGINE_VERSION:
         return True
-    if analysis.get("lang_detected") is False:
-        return True
-    accepted = {templates_version} if isinstance(templates_version, str) else set(templates_version)
-    if analysis.get("templates_version") not in accepted:
-        return True
-    if langs is not None and (analysis.get("profile") or doc.get("profile")) not in set(langs):
-        return True
-    return False
+    return analysis.get("templates_version") != templates_version
 
 
 def _has_state(e: Event) -> bool:

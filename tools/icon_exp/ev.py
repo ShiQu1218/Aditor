@@ -12,7 +12,7 @@ kv = {}
 for a in sys.argv[1:]:
     if a.startswith("--p="):
         kv = {k: float(v) for k, v in (x.split("=") for x in a[4:].split(","))}
-import apexhl.icon_detect as _idm
+import runs_proto as _idm
 if "splitx" in kv:
     _idm.SPLIT_X = int(kv.pop("splitx"))
 if "split" in kv:

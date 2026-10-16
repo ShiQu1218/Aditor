@@ -17,7 +17,7 @@ def info(size=10, mtime=100.0):
 
 def good_doc():
     return {"analysis": {"status": "done", "engine_version": ENGINE_VERSION,
-                         "templates_version": "zh-TW@1"},
+                         "templates_version": "icons@1"},
             "video": {"size": 10, "mtime": 100.0}}
 
 
@@ -71,15 +71,15 @@ def test_readonly_dir_falls_back(tmp_path):
 
 
 def test_needs_reanalysis_triggers():
-    assert not cache.needs_reanalysis(good_doc(), info(), "zh-TW@1")
-    assert cache.needs_reanalysis(None, info(), "zh-TW@1")
-    assert cache.needs_reanalysis(good_doc(), info(size=11), "zh-TW@1")
-    assert cache.needs_reanalysis(good_doc(), info(mtime=101.0), "zh-TW@1")
-    assert cache.needs_reanalysis(good_doc(), info(), "zh-TW@2")
+    assert not cache.needs_reanalysis(good_doc(), info(), "icons@1")
+    assert cache.needs_reanalysis(None, info(), "icons@1")
+    assert cache.needs_reanalysis(good_doc(), info(size=11), "icons@1")
+    assert cache.needs_reanalysis(good_doc(), info(mtime=101.0), "icons@1")
+    assert cache.needs_reanalysis(good_doc(), info(), "icons@2")
     d = good_doc(); d["analysis"]["engine_version"] = "0.0.0"
-    assert cache.needs_reanalysis(d, info(), "zh-TW@1")
+    assert cache.needs_reanalysis(d, info(), "icons@1")
     d = good_doc(); d["analysis"]["status"] = "running"
-    assert cache.needs_reanalysis(d, info(), "zh-TW@1")
+    assert cache.needs_reanalysis(d, info(), "icons@1")
 
 
 def test_merge_keeps_manual_and_transfers_state():
@@ -113,17 +113,17 @@ def test_merge_clips_keeps_manual():
     assert [c.id for c in out] == ["c2", "c3"]
 
 
-def test_i6_caches_from_previous_engine_or_zh_templates_are_stale():
-    """I6：0.1.0／zh-TW@1 的舊快取（舊追蹤器、無黃名遮罩）不得被當成新結果。"""
+def test_caches_from_text_keyword_engine_are_stale():
+    """改為圖示偵測（引擎 0.3.0／icons@1）後，舊文字關鍵字法（0.2.0／zh-TW@3 等）的快取一律失效。"""
     from apexhl import ENGINE_VERSION
-    assert ENGINE_VERSION == "0.2.0"
+    assert ENGINE_VERSION == "0.3.0"
     old_engine = good_doc()
-    old_engine["analysis"]["engine_version"] = "0.1.0"
-    old_engine["analysis"]["templates_version"] = "zh-TW@2"
-    assert cache.needs_reanalysis(old_engine, info(), "zh-TW@2")
+    old_engine["analysis"]["engine_version"] = "0.2.0"
+    old_engine["analysis"]["templates_version"] = "icons@1"
+    assert cache.needs_reanalysis(old_engine, info(), "icons@1")
     old_tpl = good_doc()
-    old_tpl["analysis"]["templates_version"] = "zh-TW@1"
-    assert cache.needs_reanalysis(old_tpl, info(), "zh-TW@2")
+    old_tpl["analysis"]["templates_version"] = "zh-TW@3"
+    assert cache.needs_reanalysis(old_tpl, info(), "icons@1")
 
 
 def test_merge_reanalysis_matches_assist_subtypes():
