@@ -16,6 +16,7 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
+MAX_OFFSET = 2.0     # 系統性偏移補償上限（秒）：超過者不補償，直接反映成漏抓／誤抓（M8）
 OFFSET_WINDOW = 5.0  # 估計偏移時，只看此範圍內的最近配對（秒）
 
 TRUTH_TYPE_MAP = {"knock": "knock", "assist": "assist", "kill": "elim",
@@ -30,7 +31,8 @@ class TypeStats:
     truth: int = 0
     pred: int = 0
     tp: int = 0
-    offset: float = 0.0
+    offset: float = 0.0       # 實際扣除的偏移
+    raw_offset: float = 0.0   # 估計出的原始偏移（可能超過上限而未扣除）
     missed: list[float] = field(default_factory=list)   # 真值時間（未偵測到）
     false: list[float] = field(default_factory=list)    # 預測原始時間（無對應真值）
 
@@ -76,7 +78,7 @@ def _match(truth: list[float], pred: list[float], tolerance: float) -> list[tupl
 
 
 def evaluate(truth: list[tuple[float, str]], pred: list[tuple[float, str]],
-             tolerance: float = 1.5) -> Report:
+             tolerance: float = 1.5, max_offset: float = MAX_OFFSET) -> Report:
     """truth／pred 皆為 (時間秒, 類型)。"""
     names = sorted({k for _, k in truth} | {k for _, k in pred})
     types: dict[str, TypeStats] = {}
@@ -84,10 +86,11 @@ def evaluate(truth: list[tuple[float, str]], pred: list[tuple[float, str]],
     for name in names:
         tt = sorted(t for t, k in truth if k == name)
         pp = sorted(t for t, k in pred if k == name)
-        off = _estimate_offset(tt, pp)
+        raw = _estimate_offset(tt, pp)
+        off = raw if abs(raw) <= max_offset else 0.0  # 偏移過大是 bug 不是校正對象
         shifted = [p - off for p in pp]
         pairs = _match(tt, shifted, tolerance)
-        st = TypeStats(name, truth=len(tt), pred=len(pp), tp=len(pairs), offset=off)
+        st = TypeStats(name, truth=len(tt), pred=len(pp), tp=len(pairs), offset=off, raw_offset=raw)
         mt = {i for i, _ in pairs}
         mp = {j for _, j in pairs}
         st.missed = [t for i, t in enumerate(tt) if i not in mt]
@@ -142,7 +145,8 @@ def format_report(rep: Report, types: list[str] | None) -> str:
         if types and name not in types:
             continue
         lines.append(f"[{name}] 真值 {st.truth} 預測 {st.pred} 命中 {st.tp} "
-                     f"召回率 {st.recall:.1%} 精確率 {st.precision:.1%} 偏移 {st.offset:+.2f}s")
+                     f"召回率 {st.recall:.1%} 精確率 {st.precision:.1%} 偏移 {st.raw_offset:+.2f}s"
+                     + ("（超過上限，未補償）" if st.raw_offset != st.offset else ""))
         if st.missed:
             lines.append("  漏抓：" + " ".join(hms(t) for t in st.missed))
         if st.false:

@@ -273,9 +273,9 @@ def analyze(path: str, profile: Profile | list[Profile], *, cache_dir: Path, bes
     if h_scale is None:
         try:
             if len(candidates) == 1:
-                h_scale = calibrate(path, info, profile, cancel=cancel)
+                h_scale = calibrate(path, info, profile, cancel=cancel, hwaccel=hwaccel)
             else:
-                chosen, h_scale = calibrate_auto(path, info, candidates, cancel=cancel)
+                chosen, h_scale = calibrate_auto(path, info, candidates, cancel=cancel, hwaccel=hwaccel)
                 if chosen is None:  # 無法判斷錄影語言：明確記錄，不用任何語言硬分析
                     return _undetermined_doc(path, info, cp, cache_dir, old, base_events,
                                              manual_clips, candidates, on_progress)

@@ -70,3 +70,12 @@ def test_outplayed_truth_events_and_skip_empty(tmp_path):
     truths, warns = build_truth(matches, None)
     assert list(truths) == [str(a)] and truths[str(a)]["video"] == "a.mp4"
     assert len(warns) == 1 and "b.mp4" in warns[0]
+
+
+def test_large_systematic_offset_is_not_compensated():
+    """M8：偏移超過上限就不扣除，直接反映成漏抓／誤抓，並保留原始偏移供報告。"""
+    truth = [(10.0, "knock"), (30.0, "knock"), (50.0, "knock")]
+    pred = [(t + 4.0, k) for t, k in truth]
+    rep = evaluate(truth, pred, 1.5)
+    st = rep.types["knock"]
+    assert st.tp == 0 and st.raw_offset == 4.0 and st.offset == 0.0

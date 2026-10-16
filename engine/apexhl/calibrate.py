@@ -26,11 +26,11 @@ def scan_scales(frames: list[np.ndarray], detector: Detector) -> float:
 def _collect(path: str, profile: Profile, detector: Detector, start: float,
              budget: float, limit: float | None,
              cancel: threading.Event | None = None,
-             codec: str | None = None) -> tuple[list[np.ndarray], float]:
+             codec: str | None = None, hwaccel: bool = True) -> tuple[list[np.ndarray], float]:
     """從 start 解碼最多 budget 秒（且不超過時間 limit），回傳 (命中 banner, 實際掃描秒數)。"""
     hits: list[np.ndarray] = []
     scanned = 0.0
-    stream = FrameStream(path, profile, start=start, codec=codec)
+    stream = FrameStream(path, profile, start=start, codec=codec, hwaccel=hwaccel)
     try:
         for t, banner, spec in stream:
             if cancel is not None and cancel.is_set():
@@ -49,16 +49,16 @@ def _collect(path: str, profile: Profile, detector: Detector, start: float,
 
 def calibrate(path: str, info: VideoInfo, profile: Profile, *,
               max_scan_seconds: float = 600.0,
-              cancel: threading.Event | None = None) -> float:
+              cancel: threading.Event | None = None, hwaccel: bool = True) -> float:
     """從 duration/2 起解碼（到尾端後從 0 繼續，總計最多 max_scan_seconds），
     以 scale=1.0 收集命中畫格，再回傳最佳水平比例；一張都沒有則 1.0。"""
     detector = Detector(profile)
     mid = info.duration / 2
     hits, scanned = _collect(path, profile, detector, mid, max_scan_seconds, None, cancel,
-                             info.codec)
+                             info.codec, hwaccel)
     if len(hits) < WANTED_HITS and mid > 0 and scanned < max_scan_seconds:
         more, _ = _collect(path, profile, detector, 0.0, max_scan_seconds - scanned, mid, cancel,
-                           info.codec)
+                           info.codec, hwaccel)
         hits += more[:WANTED_HITS - len(hits)]
     return scan_scales(hits, detector)
 
@@ -67,9 +67,9 @@ def _collect_multi(path: str, profiles: list[Profile], detectors: list[Detector]
                    budget: float, limit: float | None,
                    hits: list[list[tuple[float, np.ndarray, str]]],
                    cancel: threading.Event | None = None,
-                   codec: str | None = None) -> float:
+                   codec: str | None = None, hwaccel: bool = True) -> float:
     scanned = 0.0
-    stream = FrameStream(path, profiles[0], start=start, codec=codec)
+    stream = FrameStream(path, profiles[0], start=start, codec=codec, hwaccel=hwaccel)
     try:
         for t, banner, spec in stream:
             if cancel is not None and cancel.is_set():
@@ -107,7 +107,7 @@ MIN_AUTO_HITS = 3  # 自動語言偵測：最佳語言至少要有這麼多命�
 
 def calibrate_auto(path: str, info: VideoInfo, profiles: list[Profile], *,
                    max_scan_seconds: float = 600.0,
-                   cancel: threading.Event | None = None) -> tuple[Profile | None, float]:
+                   cancel: threading.Event | None = None, hwaccel: bool = True) -> tuple[Profile | None, float]:
     """多語自動偵測與水平比例校準：回傳 (最佳語言 Profile, h_scale)。
 
     沒有任何語言達到 MIN_AUTO_HITS 命中、或命中全是弱類型（assist_elim／elim）時回傳 (None, 1.0)＝「無法判斷」，**絕不**悄悄退回某個語言。"""
@@ -115,10 +115,10 @@ def calibrate_auto(path: str, info: VideoInfo, profiles: list[Profile], *,
     hits: list[list[tuple[float, np.ndarray, str]]] = [[] for _ in profiles]
     mid = info.duration / 2
     scanned = _collect_multi(path, profiles, detectors, mid, max_scan_seconds, None,
-                             hits, cancel, info.codec)
+                             hits, cancel, info.codec, hwaccel)
     if not any(_enough(h) for h in hits) and mid > 0 and scanned < max_scan_seconds:
         _collect_multi(path, profiles, detectors, 0.0, max_scan_seconds - scanned, mid,
-                       hits, cancel, info.codec)
+                       hits, cancel, info.codec, hwaccel)
     # 必須同時：命中格數夠多、且含至少一個「強」類型；否則視為無法判斷（lang_detected=false）
     ok = [i for i in range(len(profiles)) if len(hits[i]) >= MIN_AUTO_HITS and _strong(hits[i])]
     if not ok:

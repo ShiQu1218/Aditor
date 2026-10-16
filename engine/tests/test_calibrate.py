@@ -47,3 +47,25 @@ def test_calibrate_cancel_raises_and_closes_stream(tmp_path, zh_profile, monkeyp
     with pytest.raises(Cancelled):
         calibrate.calibrate(str(p), info, zh_profile, cancel=ev)
     assert closed
+
+
+def test_calibration_honours_no_hwaccel(tmp_path, zh_profile, monkeypatch):
+    """M2：--no-hwaccel 時校準也不得走 GPU。"""
+    from apexhl import calibrate as cal
+    from apexhl.models import VideoInfo
+    seen = []
+
+    class Fake:
+        def __init__(self, *a, **k):
+            seen.append(k.get("hwaccel", True))
+
+        def __iter__(self):
+            return iter(())
+
+        def close(self):
+            pass
+    monkeypatch.setattr(cal, "FrameStream", Fake)
+    info = VideoInfo("x.mp4", 100.0, 1920, 1080, "h264", 0.0, 1, 0.0)
+    cal.calibrate("x.mp4", info, zh_profile, hwaccel=False)
+    cal.calibrate_auto("x.mp4", info, [zh_profile], hwaccel=False)
+    assert seen and not any(seen)

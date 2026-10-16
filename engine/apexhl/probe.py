@@ -35,10 +35,12 @@ def _run(args: list[str]) -> dict:
 
 
 def _start_time(path: str) -> float:
-    doc = _run(["-select_streams", "v:0", "-show_entries", "stream=start_time", path])
+    """容器起點（format start_time）。ffmpeg 解碼出的時間軸以容器起點為 0，事件時間因此以它為基準；
+    關鍵影格必須用同一個基準（視訊串流比音訊晚開始時，兩者才不會差一個偏移）。"""
+    doc = _run(["-show_entries", "format=start_time", path])
     try:
-        return float(doc["streams"][0].get("start_time") or 0.0)
-    except (KeyError, IndexError, ValueError):
+        return float((doc.get("format") or {}).get("start_time") or 0.0)
+    except (TypeError, ValueError):
         return 0.0
 
 
@@ -62,7 +64,7 @@ def probe(path: str) -> VideoInfo:
 
 
 def keyframes(path: str) -> list[float]:
-    """掃描封包（不解碼）取得關鍵影格時間，已扣除 start_time。"""
+    """掃描封包（不解碼）取得關鍵影格時間，已扣除容器起點（與事件時間同一基準）。"""
     start = _start_time(path)
     try:
         r = subprocess.run([ffbin.ffprobe(), "-v", "error", "-select_streams", "v:0",

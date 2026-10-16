@@ -33,10 +33,13 @@ def is_gpu_path(codec: str | None, hwaccel: bool) -> bool:
     return bool(hwaccel and codec in GPU_CODECS)
 
 
-def build_filter(profile: Profile, gpu: bool = False) -> str:
+def build_filter(profile: Profile, gpu: bool = False, hw_format: str = "nv12") -> str:
+    """hw_format：hwdownload 後的像素格式。8-bit 解碼表面是 nv12；10-bit（HEVC Main10／AV1 10-bit，
+    HDR 錄影常見）是 p010le。ffmpeg 的 format 濾鏡只會取第一個候選，所以無法寫成 nv12|p010le，
+    改由 FrameStream 在第一格前失敗時換格式重試。"""
     bx, by, bw, bh = profile.banner_roi
     sx, sy, sw, sh = profile.spec_roi
-    pre = f"fps={FPS},hwdownload,format=nv12" if gpu else f"fps={FPS}"
+    pre = f"fps={FPS},hwdownload,format={hw_format}" if gpu else f"fps={FPS}"
     return (f"[0:v]{pre},scale=1920:1080,split[a][b];"
             f"[a]crop={bw}:{bh}:{bx}:{by}[a1];"
             f"[b]crop={sw}:{sh}:{sx}:{sy},pad={bw}:ih[b1];"
@@ -56,7 +59,11 @@ def build_input_args(codec: str | None, hwaccel: bool, start: float) -> list[str
 
 
 class _Failed(Exception):
-    """第一格輸出前 ffmpeg 就失敗（用於硬體解碼回退）。"""
+    """硬體解碼的 ffmpeg 失敗（用於回退軟體）。k = 失敗前已產出的畫格數（0 = 第一格前就失敗）。"""
+
+    def __init__(self, k: int = 0):
+        super().__init__(k)
+        self.k = k
 
 
 class FrameStream:
@@ -74,6 +81,7 @@ class FrameStream:
         self._lock = threading.Lock()
         self._proc: subprocess.Popen | None = None
         self._closed = False
+        self._hw_format = "nv12"
 
     @property
     def stderr_tail(self) -> str:
@@ -93,12 +101,13 @@ class FrameStream:
         except (OSError, ValueError):
             pass
 
-    def _spawn(self, hwaccel: bool) -> subprocess.Popen:
+    def _spawn(self, hwaccel: bool, start: float | None = None) -> subprocess.Popen:
+        start = self.start if start is None else start
         cmd = [ffbin.ffmpeg(), "-v", LOGLEVEL, "-nostdin"]
-        cmd += build_input_args(self.codec, hwaccel, self.start)
-        cmd += ["-i", self.path, "-filter_complex", build_filter(self.profile, is_gpu_path(self.codec, hwaccel))]
+        cmd += build_input_args(self.codec, hwaccel, start)
+        cmd += ["-i", self.path, "-filter_complex", build_filter(self.profile, is_gpu_path(self.codec, hwaccel), self._hw_format)]
         if self.end is not None:
-            cmd += ["-t", f"{max(self.end - self.start, 0.0):.3f}"]
+            cmd += ["-t", f"{max(self.end - start, 0.0):.3f}"]
         cmd += ["-pix_fmt", "bgr24", "-f", "rawvideo", "pipe:1"]
         with self._lock:
             self._stderr.clear()
@@ -106,14 +115,15 @@ class FrameStream:
         threading.Thread(target=self._drain_stderr, args=(proc.stderr,), daemon=True).start()
         return proc
 
-    def _frames(self, hwaccel: bool) -> Iterator[tuple[float, np.ndarray, np.ndarray]]:
+    def _frames(self, hwaccel: bool, k0: int = 0) -> Iterator[tuple[float, np.ndarray, np.ndarray]]:
+        """k0：已由先前（失敗的）硬體解碼產出的畫格數；從 start + k0/FPS 重新開始，時間格線不變。"""
         bx, by, bw, bh = self.profile.banner_roi
         sx, sy, sw, sh = self.profile.spec_roi
         frame_bytes = bw * (bh + sh) * 3
         buf = bytearray(frame_bytes)
         view = memoryview(buf)
-        self._proc = proc = self._spawn(hwaccel)
-        k = 0
+        self._proc = proc = self._spawn(hwaccel, self.start + k0 / FPS)
+        k = k0
         while True:
             got = 0
             while got < frame_bytes:
@@ -130,24 +140,33 @@ class FrameStream:
             k += 1
         rc = proc.wait()
         if rc != 0 and not self._closed:
-            if k == 0:
-                raise _Failed()
+            if hwaccel or k == k0:
+                raise _Failed(k)  # 硬體解碼中途失敗（TDR、裝置遺失）：從下一格改用軟體繼續（I7）
             raise DecodeError(f"ffmpeg 異常結束（{rc}）", self.stderr_tail)
 
     def __iter__(self) -> Iterator[tuple[float, np.ndarray, np.ndarray]]:
+        """依序嘗試：硬體（nv12）→ 硬體（p010le，僅限第一格前就失敗＝像素格式不符的 10-bit 影片）→ 軟體。
+        硬體在中途失敗時，從尚未產出的那一格起改用軟體繼續（時間格線不變）。"""
+        if self.used_hwaccel:
+            plans = [(True, "nv12")]
+            if is_gpu_path(self.codec, True):
+                plans.append((True, "p010le"))
+            plans.append((False, "nv12"))
+        else:
+            plans = [(False, "nv12")]
+        k0 = 0
         try:
-            try:
-                yield from self._frames(self.used_hwaccel)
-            except _Failed:
-                if self.used_hwaccel:
-                    # 硬體解碼在第一格前失敗 → 改用軟體解碼重試一次
-                    self.used_hwaccel = False
-                    try:
-                        yield from self._frames(False)
-                    except _Failed:
+            for i, (hw, fmt) in enumerate(plans):
+                if fmt == "p010le" and k0 > 0:
+                    continue  # 已經解出畫格 → 不是像素格式問題，直接退回軟體
+                self._hw_format, self.used_hwaccel = fmt, hw
+                try:
+                    yield from self._frames(hw, k0)
+                    return
+                except _Failed as f:
+                    k0 = f.k
+                    if i == len(plans) - 1:
                         raise DecodeError("ffmpeg 解碼失敗", self.stderr_tail) from None
-                else:
-                    raise DecodeError("ffmpeg 解碼失敗", self.stderr_tail) from None
         finally:
             self.close()
 
