@@ -203,7 +203,7 @@ class Detector:
         return keep[lab]
 
     def _name_sig(self, banner: np.ndarray, wm: np.ndarray, x0: int, y: int, h: int,
-                  red_name: bool, x1: int | None = None) -> NameSig | None:
+                  red_name: bool) -> NameSig | None:
         """取關鍵字右緣 x0 起、同一行的名字區塊，縮放成高 16 的 0/1 字形指紋。
 
         墨一律取 white_mask ∪ red_mask（紅、白字可跨類型比對），先去掉粗亮塊與雜點；
@@ -212,7 +212,7 @@ class Detector:
         """
         H, W = wm.shape
         y0, y1 = max(0, y), min(H, y + h)
-        x_end = W if x1 is None else min(W, x1)
+        x_end = W
         if x0 >= x_end or y1 <= y0:
             return None
         red = red_mask(banner[y0:y1, x0:x_end], self.profile) > 0
@@ -313,7 +313,6 @@ class Detector:
                                    {c: self.thr[k] for c, k in keys.items()})
             best = None if pick is None else (found[pick][0], pick, rx + found[pick][1],
                                               lo + found[pick][2], keys[pick])
-            x1 = None
             if best is None:
                 kind, edge, ky = "assist_elim", assist_end, y
             else:
@@ -324,7 +323,7 @@ class Detector:
                     return result(kind, s, x, False,
                                   self._name_sig_bounded(banner, wm, assist_end, best[2], y, h))
                 edge, ky = best[2] + self.tpl[best[4]].shape[1], best[3]
-            return result(kind, s, x, False, self._name_sig(banner, wm, edge, ky, h, False, x1=x1))
+            return result(kind, s, x, False, self._name_sig(banner, wm, edge, ky, h, False))
 
         hit = self._hit(wm, "knock", box)
         if hit:
