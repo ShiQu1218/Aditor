@@ -12,6 +12,7 @@ const src = (rel: string): string => resolve(__dirname, '../../', rel)
 const FIELD_CONSUMERS: Record<string, Array<[string, RegExp]>> = {
   watchFolders: [['main/watch.ts', /watchFolders/]],
   autoAnalyze: [['main/watch.ts', /\.autoAnalyze/]],
+  gameLang: [['main/settings-derived.ts', /\.gameLang/], ['main/queue.ts', /resolveAnalyzeProfileDir/], ['main/index.ts', /buildAnalyzeArgs/]],
   decode: [['main/settings-derived.ts', /\.decode/], ['main/queue.ts', /analyzeSettingArgs/], ['main/index.ts', /buildAnalyzeArgs/]],
   cacheLocation: [
     ['main/settings-derived.ts', /\.cacheLocation/],
@@ -35,6 +36,7 @@ const FIELD_CONSUMERS: Record<string, Array<[string, RegExp]>> = {
 const ROW_TARGETS: Record<string, { fields?: string[]; consumers?: Array<[string, RegExp]> }> = {
   watchFolders: { fields: ['watchFolders'] },
   autoAnalyze: { fields: ['autoAnalyze'] },
+  gameLang: { fields: ['gameLang'] },
   decode: { fields: ['decode'] },
   cacheLocation: { fields: ['cacheLocation'] },
   lowPerfMode: { fields: ['lowPerfMode'] },

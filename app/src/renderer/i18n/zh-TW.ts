@@ -562,6 +562,15 @@ export const settingsI18n = {
       desc: '關閉後只匯入，需手動按「分析」。',
       keywords: ['分析', '佇列', '自動']
     },
+    gameLang: {
+      title: '遊戲介面語言',
+      desc: '分析擊倒／助攻橫幅所使用的遊戲語言範本；預設自動偵測（支援繁體中文、英文、日文）。',
+      keywords: ['語言', '英文', '日文', '繁體中文', 'language', 'english', 'japanese'],
+      auto: '自動偵測（推薦）',
+      zhTW: '繁體中文',
+      en: 'English（英文）',
+      ja: '日本語（日文）'
+    },
     decode: {
       title: '解碼方式',
       desc: '強制軟體解碼會在之後開始的分析生效（已在分析中的影片不受影響）；硬體解碼失敗時會自動改用軟體解碼並提示。',

@@ -1,0 +1,77 @@
+{
+  "lang": "ja",
+  "templates_version": "ja@1",
+  "banner_roi": [
+    560,
+    700,
+    800,
+    180
+  ],
+  "spec_roi": [
+    60,
+    1028,
+    480,
+    40
+  ],
+  "white": {
+    "v_min": 200,
+    "s_max": 60
+  },
+  "red": {
+    "r_min": 170,
+    "g_max": 195,
+    "b_max": 195,
+    "r_diff_min": 40
+  },
+  "keywords": {
+    "squad_wipe": {
+      "file": "kw_squad_wipe.png",
+      "threshold": 0.65
+    },
+    "assist": {
+      "file": "kw_assist.png",
+      "threshold": 0.76
+    },
+    "knock": {
+      "file": "kw_knock.png",
+      "threshold": 0.7
+    },
+    "assist_knock": {
+      "file": "kw_assist_knock.png",
+      "threshold": 0.65
+    },
+    "damage": {
+      "file": "kw_damage.png",
+      "threshold": 0.65
+    },
+    "elim": {
+      "file": "kw_elim.png",
+      "threshold": 0.65
+    },
+    "elim_done": {
+      "file": "kw_elim_done.png",
+      "threshold": 0.7
+    },
+    "enemy_squad_down": {
+      "file": "kw_enemy_squad_down.png",
+      "threshold": 0.7
+    }
+  },
+  "spec_templates": [
+    {
+      "file": "spec_show_flag.png",
+      "threshold": 0.75
+    },
+    {
+      "file": "spec_next_mate.png",
+      "threshold": 0.75
+    }
+  ],
+  "line1_rows": [
+    50,
+    96
+  ],
+  "damage_depth": 40,
+  "name_sig_threshold": 0.32,
+  "dedupe_window": 90
+}

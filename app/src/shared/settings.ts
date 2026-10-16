@@ -3,6 +3,8 @@ import { AutoClipParams } from './types'
 /** 設定檔格式版本；格式變更時遞增並在 `migrateSettings` 處理舊版。 */
 export const SETTINGS_VERSION = 1
 
+export type GameLang = 'auto' | 'zh-TW' | 'en' | 'ja'
+
 /**
  * 應用程式設定（`%APPDATA%\ApexHighlighter\settings.json`）。
  * 欄位語意見 spec §3.3；數值範圍由 main 的 `set`／`migrateSettings` 驗證（spec §3.2）。
@@ -13,6 +15,8 @@ export interface Settings {
   watchFolders: string[]
   /** 監看資料夾的新影片自動排入分析佇列 */
   autoAnalyze: boolean
+  /** 遊戲介面語言：'auto'＝自動偵測、或指定 'zh-TW' | 'en' | 'ja' */
+  gameLang: GameLang
   /** 解碼方式：'auto'＝硬體優先、'software'＝純軟體 */
   decode: 'auto' | 'software'
   /** 快取位置：'appdata'（%APPDATA%）或影片旁 */
@@ -74,6 +78,7 @@ export const DEFAULT_SETTINGS: Settings = {
   version: SETTINGS_VERSION,
   watchFolders: [],
   autoAnalyze: true,
+  gameLang: 'auto',
   decode: 'auto',
   cacheLocation: 'appdata',
   lowPerfMode: false,

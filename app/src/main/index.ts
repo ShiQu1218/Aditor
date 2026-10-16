@@ -8,7 +8,7 @@ import { WatchManager } from './watch'
 import { ProjectStore } from './projects'
 import { registerIpcHandlers } from './ipc-handlers'
 import { createCloseGate } from './project-ipc'
-import { buildAnalyzeArgs } from './settings-derived'
+import { buildAnalyzeArgs, resolveAnalyzeProfileDir } from './settings-derived'
 import { currentE2EConfig } from './e2e'
 import { appDataDir, cacheDir, engineCommand, ffmpegExecutable, profileDir } from '../shared/paths'
 
@@ -131,7 +131,7 @@ async function initEngineAndServices(): Promise<void> {
   })
 
   ipcMain.handle('engine:derive', async (_, args: Record<string, unknown>) => {
-    return engineClient?.request('derive', { profile_dir: templateProfileDir, ...args }).promise
+    return engineClient?.request('derive', { profile_dir: resolveAnalyzeProfileDir(templateProfileDir, settingsStore?.get()), ...args }).promise
   })
 
   ipcMain.handle('engine:autoclip', async (_, args: Record<string, unknown>) => {

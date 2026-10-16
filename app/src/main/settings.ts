@@ -64,6 +64,7 @@ function applySettings(base: Settings, src: unknown): Settings {
     version: SETTINGS_VERSION,
     watchFolders: pickStringArray(s.watchFolders, base.watchFolders),
     autoAnalyze: pickBool(s.autoAnalyze, base.autoAnalyze),
+    gameLang: pickEnum(s.gameLang, ['auto', 'zh-TW', 'en', 'ja'] as const, base.gameLang),
     decode: pickEnum(s.decode, ['auto', 'software'] as const, base.decode),
     cacheLocation: pickEnum(s.cacheLocation, ['appdata', 'besideVideo'] as const, base.cacheLocation),
     lowPerfMode: pickBool(s.lowPerfMode, base.lowPerfMode),

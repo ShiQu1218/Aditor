@@ -61,3 +61,52 @@ def calibrate(path: str, info: VideoInfo, profile: Profile, *,
                            info.codec)
         hits += more[:WANTED_HITS - len(hits)]
     return scan_scales(hits, detector)
+
+
+def _collect_multi(path: str, profiles: list[Profile], detectors: list[Detector], start: float,
+                   budget: float, limit: float | None,
+                   hits: list[list[tuple[float, np.ndarray]]],
+                   cancel: threading.Event | None = None,
+                   codec: str | None = None) -> float:
+    scanned = 0.0
+    stream = FrameStream(path, profiles[0], start=start, codec=codec)
+    try:
+        for t, banner, spec in stream:
+            if cancel is not None and cancel.is_set():
+                raise Cancelled()
+            if (limit is not None and t >= limit) or scanned >= budget:
+                break
+            scanned += 1.0 / FPS
+            for i, det in enumerate(detectors):
+                r = det.detect(banner, spec)
+                if r.kind is not None:
+                    hits[i].append((r.score, banner))
+            if any(len(h) >= WANTED_HITS for h in hits):
+                break
+    finally:
+        stream.close()
+    return scanned
+
+
+def calibrate_auto(path: str, info: VideoInfo, profiles: list[Profile], *,
+                   max_scan_seconds: float = 600.0,
+                   cancel: threading.Event | None = None) -> tuple[Profile, float]:
+    """多語自動偵測與水平比例校準：回傳 (最佳語言 Profile, h_scale)。"""
+    if len(profiles) == 1:
+        return profiles[0], calibrate(path, info, profiles[0],
+                                      max_scan_seconds=max_scan_seconds, cancel=cancel)
+    detectors = [Detector(p) for p in profiles]
+    hits: list[list[tuple[float, np.ndarray]]] = [[] for _ in profiles]
+    mid = info.duration / 2
+    scanned = _collect_multi(path, profiles, detectors, mid, max_scan_seconds, None,
+                             hits, cancel, info.codec)
+    if not any(len(h) >= WANTED_HITS for h in hits) and mid > 0 and scanned < max_scan_seconds:
+        _collect_multi(path, profiles, detectors, 0.0, max_scan_seconds - scanned, mid,
+                       hits, cancel, info.codec)
+    best_idx = max(range(len(profiles)),
+                   key=lambda i: (len(hits[i]), sum(s for s, _ in hits[i])))
+    if not hits[best_idx]:
+        return profiles[0], 1.0
+    frames = [b for _, b in hits[best_idx][:WANTED_HITS]]
+    return profiles[best_idx], scan_scales(frames, detectors[best_idx])
+

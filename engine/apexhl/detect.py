@@ -25,6 +25,8 @@ def red_mask(img_bgr: np.ndarray, profile: Profile) -> np.ndarray:
     """R 高、G/B 低的像素 → uint8 0/255。"""
     b, g, r = img_bgr[..., 0], img_bgr[..., 1], img_bgr[..., 2]
     ok = (r >= profile.red["r_min"]) & (g <= profile.red["g_max"]) & (b <= profile.red["b_max"])
+    if "r_diff_min" in profile.red:
+        ok = ok & (r.astype(np.int16) - np.maximum(g, b).astype(np.int16) >= profile.red["r_diff_min"])
     return ok.astype(np.uint8) * 255
 
 
@@ -169,7 +171,7 @@ class Detector:
         return keep[lab]
 
     def _name_sig(self, banner: np.ndarray, wm: np.ndarray, x0: int, y: int, h: int,
-                  red_name: bool) -> NameSig | None:
+                  red_name: bool, x1: int | None = None) -> NameSig | None:
         """取關鍵字右緣 x0 起、同一行的名字區塊，縮放成高 16 的 0/1 字形指紋。
 
         墨一律取 white_mask ∪ red_mask（紅、白字可跨類型比對），先去掉粗亮塊與雜點；
@@ -178,10 +180,11 @@ class Detector:
         """
         H, W = wm.shape
         y0, y1 = max(0, y), min(H, y + h)
-        if x0 >= W or y1 <= y0:
+        x_end = W if x1 is None else min(W, x1)
+        if x0 >= x_end or y1 <= y0:
             return None
-        red = red_mask(banner[y0:y1, x0:], self.profile) > 0
-        ink = self._despeckle((wm[y0:y1, x0:] > 0) | red)
+        red = red_mask(banner[y0:y1, x0:x_end], self.profile) > 0
+        ink = self._despeckle((wm[y0:y1, x0:x_end] > 0) | red)
         red = red & ink
         max_gap = 1.5 * h
         segs = self._segments((red if red_name else ink).any(axis=0))
@@ -231,20 +234,26 @@ class Detector:
             if vetoed():
                 return result(None)
             s, x, y = hit
+            assist_end = x + self.tpl["assist"].shape[1]
             rx = x + self.tpl["assist"].shape[1] // 2  # 右側搜尋區從助攻範本中段起，容許間距
             lo, hi = max(0, y - _ROW_PAD), y + h + _ROW_PAD
             sub = wm[lo:hi, rx:]
             best = None
-            for key in ("knock", "elim"):
+            knock_key = "assist_knock" if "assist_knock" in self.tpl else "knock"
+            for key, canon in ((knock_key, "knock"), ("elim", "elim")):
                 sc, sx, sy = _match(sub, self.tpl[key])
                 if sc >= self.thr[key] and (best is None or sc > best[0]):
-                    best = (sc, key, rx + sx, lo + sy)
+                    best = (sc, canon, rx + sx, lo + sy, key)
+            x1 = None
             if best is None:
-                kind, edge, ky = "assist_elim", x + self.tpl["assist"].shape[1], y
+                kind, edge, ky = "assist_elim", assist_end, y
             else:
                 kind = "assist_knock" if best[1] == "knock" else "assist_elim"
-                edge, ky = best[2] + self.tpl[best[1]].shape[1], best[3]
-            return result(kind, s, x, False, self._name_sig(banner, wm, edge, ky, h, False))
+                if best[2] - assist_end >= 25:
+                    edge, x1, ky = assist_end, best[2], y
+                else:
+                    edge, ky = best[2] + self.tpl[best[4]].shape[1], best[3]
+            return result(kind, s, x, False, self._name_sig(banner, wm, edge, ky, h, False, x1=x1))
 
         hit = self._hit(wm, "knock", box)
         if hit:
@@ -261,6 +270,9 @@ class Detector:
                 return result(None)
             s, x, y = hit
             sig = self._name_sig(banner, wm, x + self.tpl["elim_done"].shape[1], y, h, True)
+            if sig is None:
+                sig = self._name_sig(banner, wm, 0, y, h, True, x1=x)
             return result("elim", s, x, False, sig)
 
         return result(None)
+

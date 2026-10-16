@@ -13,7 +13,7 @@ from .decode import DecodeError
 from .derive import derive
 from .models import AutoClipParams, Event, SpecInterval
 from .probe import ProbeError, probe
-from .profile import ProfileError, load_profile
+from .profile import ProfileError, load_profile, resolve_profiles
 
 
 class BadRequest(Exception):
@@ -153,13 +153,14 @@ class Server:
 
     def _analyze(self, rid, args, cancel):
         path = _arg(args, "path")
-        profile = load_profile(Path(_arg(args, "profile_dir")))
+        profiles = resolve_profiles(Path(_arg(args, "profile_dir")))
+        profile_arg = profiles[0] if len(profiles) == 1 else profiles
         cache_dir = Path(_arg(args, "cache_dir"))
 
         def progress(t: float, duration: float) -> None:
             self.send({"id": rid, "type": "progress", "t": t, "duration": duration})
 
-        return analyze(path, profile, cache_dir=cache_dir, beside=bool(args.get("beside", False)),
+        return analyze(path, profile_arg, cache_dir=cache_dir, beside=bool(args.get("beside", False)),
                        force=bool(args.get("force", False)), on_progress=progress, cancel=cancel,
                        hwaccel=bool(args.get("hwaccel", True)), jobs=_jobs(args.get("jobs")))
 
@@ -169,8 +170,8 @@ class Server:
             spec = [SpecInterval.from_dict(s) for s in _arg(args, "spectating")]
         except (KeyError, TypeError) as e:
             raise BadRequest(f"參數格式錯誤：{e!r}") from e
-        profile = load_profile(Path(_arg(args, "profile_dir")))
-        return {"events": [e.to_dict() for e in derive(events, spec, profile)]}
+        profiles = resolve_profiles(Path(_arg(args, "profile_dir")))
+        return {"events": [e.to_dict() for e in derive(events, spec, profiles[0])]}
 
     def _autoclip(self, rid, args, cancel):
         try:

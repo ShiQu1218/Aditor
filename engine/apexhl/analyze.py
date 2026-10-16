@@ -12,7 +12,7 @@ from typing import Callable
 from . import ENGINE_VERSION
 from .cache import (cache_path, load_cache, merge_clips, merge_reanalysis,
                     needs_reanalysis, save_cache)
-from .calibrate import calibrate
+from .calibrate import calibrate, calibrate_auto
 from .decode import FrameStream, is_gpu_path
 from .errors import Cancelled
 from .derive import derive, sig_similar
@@ -170,19 +170,25 @@ def _resumable(old: dict | None, info, profile: Profile) -> bool:
             and a.get("templates_version") == profile.templates_version)
 
 
-def analyze(path: str, profile: Profile, *, cache_dir: Path, beside: bool = False,
+def analyze(path: str, profile: Profile | list[Profile], *, cache_dir: Path, beside: bool = False,
             force: bool = False, on_progress: Callable[[float, float], None] = _noop,
             cancel: threading.Event | None = None, hwaccel: bool = True,
             jobs: int | None = None) -> dict:
+    candidates = profile if isinstance(profile, list) else [profile]
+    profile = candidates[0]
     info = probe(path)
     cache_dir = Path(cache_dir)
     cp = cache_path(path, cache_dir, beside)
     old = load_cache(cp)
-    if not force and old is not None and not needs_reanalysis(old, info, profile.templates_version):
+    if not force and old is not None and any(
+            not needs_reanalysis(old, info, p.templates_version) for p in candidates):
         old["cache_path"] = str(cp)
         return old
 
-    resuming = (not force) and _resumable(old, info, profile)
+    matched_resume = next((p for p in candidates if _resumable(old, info, p)), None) if not force else None
+    resuming = matched_resume is not None
+    if matched_resume is not None:
+        profile = matched_resume
     old_clips = [Clip.from_dict(c) for c in (old or {}).get("clips", [])]
     thr = profile.name_sig_threshold
     segs: list[_Seg] | None = None
@@ -210,7 +216,11 @@ def analyze(path: str, profile: Profile, *, cache_dir: Path, beside: bool = Fals
     manual_clips = merge_clips(old_clips, [])
     if h_scale is None:
         try:
-            h_scale = calibrate(path, info, profile, cancel=cancel)
+            if len(candidates) == 1:
+                h_scale = calibrate(path, info, profile, cancel=cancel)
+            else:
+                profile, h_scale = calibrate_auto(path, info, candidates, cancel=cancel)
+            thr = profile.name_sig_threshold
         except Cancelled:
             doc = _make_doc(info, profile, "partial", 0.0, None, [], [], manual_clips)  # h_scale=None：尚未校準
             if base_events:

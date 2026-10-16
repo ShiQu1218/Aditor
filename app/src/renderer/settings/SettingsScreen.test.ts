@@ -55,9 +55,9 @@ describe('SettingsScreen markup（renderToString + fake window.api 資料）', (
     expect(html).toContain(settingsI18n.loading)
   })
 
-  test('category a: watch folders, auto analyze, decode, cache, low-perf (5 rows) with the exact tablist', async () => {
+  test('category a: watch folders, auto analyze, gameLang, decode, cache, low-perf (6 rows) with the exact tablist', async () => {
     const html = await render({ initialCategory: 'a' })
-    expect(rowIds(html)).toEqual(['watchFolders', 'autoAnalyze', 'decode', 'cacheLocation', 'lowPerfMode'])
+    expect(rowIds(html)).toEqual(['watchFolders', 'autoAnalyze', 'gameLang', 'decode', 'cacheLocation', 'lowPerfMode'])
     expect(html).toContain('影片來源')
     expect(html).toContain('分析與效能')
     // 監看資料夾來自 getWatchFolders，缺失者有標記，每個都有可命名的移除按鈕

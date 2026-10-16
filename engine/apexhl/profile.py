@@ -66,3 +66,29 @@ def load_profile(dir: Path) -> Profile:
         if not (dir / spec.file).exists():
             raise ProfileError(f"範本檔遺失：{spec.file}")
     return p
+
+
+LANG_ORDER = ("zh-TW", "en", "ja")
+
+
+def resolve_profiles(dir: Path) -> list[Profile]:
+    """載入單一語言設定檔，或自動偵測模式（auto / templates 根目錄）下載入所有語言設定檔。"""
+    dir = Path(dir)
+    if (dir / "profile.json").exists():
+        return [load_profile(dir)]
+    root = dir.parent if dir.name == "auto" else dir
+    if root.is_dir():
+        subs: list[Profile] = []
+        seen: set[str] = set()
+        for lang in LANG_ORDER:
+            sub = root / lang
+            if (sub / "profile.json").exists():
+                subs.append(load_profile(sub))
+                seen.add(lang)
+        for sub in sorted(root.iterdir()):
+            if sub.is_dir() and sub.name not in seen and (sub / "profile.json").exists():
+                subs.append(load_profile(sub))
+        if subs:
+            return subs
+    raise ProfileError(f"profile.json 不存在：{dir / 'profile.json'}")
+
