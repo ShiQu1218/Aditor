@@ -87,7 +87,7 @@ describe('handleProxyGenerate', () => {
   })
 
   it('不安全的路徑（URL／concat:／UNC／非影片副檔名）→ 拒絕，不呼叫 ffmpeg（Minor 13）', async () => {
-    for (const bad of ['http://x/a.mp4', 'concat:a|b', '\\srv\s\a.mp4', 'D:/v/a.exe', 'a.mp4']) {
+    for (const bad of ['http://x/a.mp4', 'concat:a|b', '\\\\srv\\s\\a.mp4', 'D:/v/a.exe', 'a.mp4']) {
       let called = false
       await expect(
         handleProxyGenerate(fakeSender(), bad, 1, { generateProxy: async () => ((called = true), 'o'), now: () => 0 })
