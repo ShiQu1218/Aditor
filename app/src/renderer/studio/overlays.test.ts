@@ -6,6 +6,7 @@ const none: OverlayState = {
   autoClip: false,
   newProject: false,
   hostDialog: false,
+  exportDrawer: false,
   queuePopover: false,
   shortcuts: false
 }

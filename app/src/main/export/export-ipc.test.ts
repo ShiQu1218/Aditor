@@ -320,7 +320,6 @@ describe('preload 與 main 的頻道一致', () => {
     const ex = exposed.export
     const payload = req()
     ex.start(payload)
-    ex.run(payload)
     ex.cancel()
     ex.diskSpace('C:\\x')
     ex.onProgress(() => undefined)
@@ -329,10 +328,10 @@ describe('preload 與 main 的頻道一致', () => {
 
     const { handlers } = setup()
     const chans = invoked.map((c) => c.channel)
-    expect(chans).toEqual(['export:start', 'export:start', 'export:cancel', 'export:diskSpace'])
+    expect(chans).toEqual(['export:start', 'export:cancel', 'export:diskSpace'])
     for (const c of chans) expect(handlers.has(c)).toBe(true)
     expect(invoked[0].args).toEqual([payload])
-    expect(invoked[3].args).toEqual(['C:\\x'])
+    expect(invoked[2].args).toEqual(['C:\\x'])
     // 進度：preload 監聽的頻道 === service 傳送的頻道
     expect(listened).toEqual(['export:progress'])
     const { invoke, sender } = setup()

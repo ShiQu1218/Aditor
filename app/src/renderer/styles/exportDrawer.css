@@ -1,0 +1,200 @@
+/* 匯出抽屜（spec §3.2.5）：與側欄同寬、只覆蓋側欄；頂欄、播放器、時間軸與專案軌保持可見。tokens only。 */
+
+.xd {
+  position: absolute;
+  z-index: 30;
+  top: var(--topbar-h);
+  right: 0;
+  bottom: 0;
+  width: var(--aside-w);
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-popover);
+  border-left: 1px solid var(--line-strong);
+  outline: none;
+}
+.xd-head {
+  flex: none;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 0 var(--sp-4);
+  border-bottom: 1px solid var(--line);
+}
+.xd-head h3 { flex: 1; font-family: var(--font-display); font-size: var(--fs-subtitle); line-height: var(--lh-tight); }
+.xd-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--sp-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+.xd-foot {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-4);
+  border-top: 1px solid var(--line);
+}
+.xd-grow { flex: 1; }
+.xd-muted { color: var(--text-2); font-size: var(--fs-small); line-height: var(--lh-body); }
+.xd-hint { margin-top: var(--sp-2); }
+
+.xd-stats { display: flex; gap: var(--sp-2); }
+.xd-stat { flex: 1; background: var(--bg-raised); border-radius: var(--r-sm); padding: var(--sp-3); }
+.xd-stat b { display: block; font-family: var(--font-display); font-size: var(--fs-title); }
+.xd-stat span { color: var(--text-3); font-size: var(--fs-small); }
+
+.xd-live { display: flex; flex-direction: column; gap: var(--sp-2); }
+.xd-live:empty { display: none; }
+.xd-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line-strong);
+  background: var(--bg-raised);
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+}
+.xd-notice .ic { flex: none; width: 18px; height: 18px; margin-top: 2px; }
+.xd-warn { border-color: var(--warning); }
+.xd-warn .ic { color: var(--warning); }
+.xd-err { border-color: var(--danger); }
+.xd-err .ic { color: var(--danger); }
+.xd-info { border-color: var(--info); }
+.xd-info .ic { color: var(--info); }
+.xd-err-text { color: var(--danger); font-size: var(--fs-small); }
+.xd-blockers { margin: var(--sp-1) 0 0; padding-left: var(--sp-4); word-break: break-all; }
+
+.xd-sec { border: 0; margin: 0; padding: 0; min-width: 0; }
+.xd-sec legend,
+.xd-sec h4 {
+  padding: 0;
+  margin-bottom: var(--sp-2);
+  font-size: var(--fs-small);
+  font-weight: var(--fw-bold);
+  color: var(--text-3);
+}
+.xd-opt {
+  display: flex;
+  gap: var(--sp-3);
+  padding: var(--sp-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  background: var(--bg-raised);
+  cursor: pointer;
+}
+.xd-opt + .xd-opt { margin-top: 6px; }
+.xd-opt.on { border-color: var(--accent-bright); background: var(--accent-soft); }
+.xd-opt.disabled { opacity: 0.55; cursor: default; }
+.xd-opt b { display: block; line-height: var(--lh-tight); }
+.xd-opt small { display: block; color: var(--text-2); font-size: var(--fs-small); line-height: var(--lh-body); }
+.xd-opt input { accent-color: var(--accent); margin-top: 3px; }
+.xd-opt:focus-within { box-shadow: var(--focus-ring); }
+.xd-pill {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 8px;
+  border-radius: var(--r-pill);
+  font-size: var(--fs-caption);
+  background: var(--bg-active);
+  color: var(--text-2);
+}
+.xd-select,
+.xd-input {
+  width: 100%;
+  height: 32px;
+  background: var(--bg-input);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  padding: 0 10px;
+  color: var(--text-1);
+}
+.xd-select { margin-top: var(--sp-2); }
+.xd-row { display: flex; gap: 6px; margin-bottom: 6px; }
+.xd-select:focus-visible,
+.xd-input:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+
+.xd-big { font-family: var(--font-display); font-size: 32px; font-weight: var(--fw-heavy); }
+.xd-bar { height: 4px; border-radius: 2px; background: var(--bg-active); overflow: hidden; }
+.xd-bar-lg { height: 8px; border-radius: 4px; margin: var(--sp-3) 0; }
+.xd-bar i { display: block; height: 100%; background: var(--accent-bright); }
+
+.xd-done-head { text-align: center; padding: var(--sp-5) 0; }
+.xd-done-head h3 { font-family: var(--font-display); margin: var(--sp-3) 0 2px; }
+.xd-done-ic { width: 48px; height: 48px; color: var(--success); }
+.xd-code {
+  font-family: var(--font-mono);
+  font-size: var(--fs-small);
+  background: var(--bg-input);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  padding: var(--sp-3);
+  color: var(--text-2);
+  max-height: 160px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.xd-code:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+
+.btn-danger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 10px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--danger);
+  background: transparent;
+  color: var(--danger);
+  font-size: var(--fs-small);
+  font-weight: var(--fw-bold);
+}
+.btn-danger:hover { background: var(--bg-hover); }
+
+/* 頂欄「匯出」按鈕的進度徽章（進行中縮小抽屜後仍可見） */
+.xd-badge {
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: var(--r-pill);
+  background: var(--on-accent);
+  color: var(--accent);
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-bold);
+}
+
+/* OpenH264 同意對話框（頁內；半透明遮罩，不做背景模糊） */
+.xd-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-scrim);
+}
+.xd-consent {
+  width: min(440px, calc(100vw - 2 * var(--sp-4)));
+  max-height: 90vh;
+  overflow: auto;
+  padding: var(--sp-5);
+  background: var(--bg-popover);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-pop);
+}
+.xd-consent h3 { font-family: var(--font-display); font-size: var(--fs-subtitle); margin-bottom: var(--sp-1); }
+.xd-sub { color: var(--text-2); margin: 0 0 var(--sp-3); line-height: var(--lh-body); }
+.xd-consent .xd-muted { margin: var(--sp-2) 0 0; }
+.xd-h264-prog { margin-top: var(--sp-3); }
+.xd-consent-foot { display: flex; justify-content: flex-end; gap: var(--sp-2); margin-top: var(--sp-5); }

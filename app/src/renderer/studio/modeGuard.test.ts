@@ -27,6 +27,7 @@ describe('toast actions in StudioScreen', () => {
     expect(runs.length).toBeGreaterThan(5)
     const unguarded = runs.filter((r) => !r.startsWith('guarded('))
     // 專案軌刪除片段的〔復原〕只動專案（undo），不碰來源文件
-    expect(unguarded.every((r) => /^undo\b/.test(r))).toBe(true)
+    // 匯出完成 Toast 的〔查看〕只開啟匯出抽屜（唯讀，不改來源文件）
+    expect(unguarded.every((r) => /^undo\b/.test(r) || r.startsWith('() => setExportOpen(true)'))).toBe(true)
   })
 })

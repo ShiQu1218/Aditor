@@ -325,6 +325,7 @@ export function ProjectTrack(props: ProjectTrackProps): JSX.Element {
     <section
       className={`project-lane${collapsed ? ' collapsed' : ''}`}
       data-zone="proj"
+      data-editor-lock
       aria-label={t.title}
     >
       <div className="lane-label">

@@ -11,3 +11,10 @@ export function projectFixtureRequested(): boolean {
   const q = new URLSearchParams(window.location.search)
   return q.get('fixture') === 'long' && q.get('project') === '1'
 }
+
+/** 僅開發模式：?fixture=long&drawer=settings|running|done|failed|consent → 開啟匯出抽屜（假 IPC，見 exportFixture.ts） */
+export function drawerFixtureRequested(): 'settings' | 'running' | 'done' | 'failed' | 'consent' | null {
+  if (!import.meta.env.DEV) return null
+  const v = new URLSearchParams(window.location.search).get('drawer')
+  return v === 'settings' || v === 'running' || v === 'done' || v === 'failed' || v === 'consent' ? v : null
+}

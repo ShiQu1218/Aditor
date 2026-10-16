@@ -1,4 +1,4 @@
-import { ipcMain, dialog, BrowserWindow, app } from 'electron'
+import { ipcMain, dialog, BrowserWindow, app, shell } from 'electron'
 import fs from 'fs'
 import path from 'path'
 import { Library, normalizePath } from './library'
@@ -12,7 +12,7 @@ import { SettingsStore } from './settings'
 import { WatchManager } from './watch'
 import { ProjectStore } from './projects'
 import { registerProjectHandlers } from './project-ipc'
-import { fileExistsSafe } from './safe-path'
+import { fileExistsSafe, isSafeLocalDirPath } from './safe-path'
 import { DEFAULT_SETTINGS, Settings } from '../shared/settings'
 import { cacheDir, profileDir } from '../shared/paths'
 import { computeHlCount, createHlGuard, createSerialQueue, hlForSavedDoc } from './hl'
@@ -324,8 +324,28 @@ export function registerIpcHandlers(
     return { installed: hasOpenH264() }
   })
 
-  ipcMain.handle('export:downloadOpenH264', async () => {
-    return downloadOpenH264()
+  // OpenH264 下載：網址白名單與大小／雜湊驗證在 codecs.ts；進度只送給發出請求的視窗；同時只允許一個下載
+  let h264Downloading: Promise<string> | null = null
+  ipcMain.handle('export:downloadOpenH264', async (event) => {
+    if (h264Downloading) throw new Error('OpenH264 正在下載中')
+    h264Downloading = downloadOpenH264({
+      onProgress: (ratio) => {
+        if (!event.sender.isDestroyed()) event.sender.send('export:openh264Progress', ratio)
+      }
+    })
+    try {
+      return await h264Downloading
+    } finally {
+      h264Downloading = null
+    }
+  })
+
+  // 開啟輸出資料夾：只接受存在的本機絕對資料夾路徑
+  ipcMain.handle('export:openFolder', async (_event, dir: unknown) => {
+    if (!isSafeLocalDirPath(dir)) return false
+    const st = await fs.promises.stat(dir).catch(() => null)
+    if (!st || !st.isDirectory()) return false
+    return (await shell.openPath(dir)) === ''
   })
 
   ipcMain.handle('export:selectOutDir', async (event) => {

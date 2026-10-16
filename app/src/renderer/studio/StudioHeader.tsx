@@ -15,6 +15,10 @@ interface StudioHeaderProps {
   onAutoClip: () => void
   onQuick: () => void
   onExport: () => void
+  /** 匯出抽屜是否開啟（aria-expanded） */
+  exportOpen: boolean
+  /** 匯出進行中的百分比（顯示徽章）；非進行中＝null */
+  exportPercent: number | null
   onToggleAside: () => void
 }
 
@@ -30,6 +34,8 @@ export function StudioHeader({
   onAutoClip,
   onQuick,
   onExport,
+  exportOpen,
+  exportPercent,
   onToggleAside
 }: StudioHeaderProps): JSX.Element {
   const t = i18n.studio
@@ -52,8 +58,16 @@ export function StudioHeader({
         <button type="button" className="btn-ghost" onClick={onQuick}>
           <Scissors className="ic sm" /> {mode === 'project' ? t.splitClip : t.quickClip} <kbd>{t.quickClipKey}</kbd>
         </button>
-        <button type="button" className="btn-accent" onClick={onExport}>
+        <button
+          type="button"
+          className="btn-accent"
+          aria-haspopup="dialog"
+          aria-expanded={exportOpen}
+          aria-label={exportPercent !== null ? i18n.export.badgeLabel.replace('{pct}', String(exportPercent)) : undefined}
+          onClick={onExport}
+        >
           <Download className="ic sm" /> {t.exportCount.replace('{n}', String(exportCount))}
+          {exportPercent !== null && <span className="xd-badge">{i18n.export.badge.replace('{pct}', String(exportPercent))}</span>}
         </button>
         <button
           type="button"

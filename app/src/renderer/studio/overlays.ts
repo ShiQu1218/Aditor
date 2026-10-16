@@ -5,6 +5,8 @@ export interface OverlayState {
   newProject: boolean
   /** OverlayHost 承載的對話框（匯出、快捷鍵說明…） */
   hostDialog: boolean
+  /** 匯出抽屜（只覆蓋側欄；開啟時 keymap 只剩 Esc） */
+  exportDrawer: boolean
   queuePopover: boolean
   shortcuts: boolean
 }
@@ -12,7 +14,7 @@ export interface OverlayState {
 export type OverlayKey = keyof OverlayState
 
 /** 由上而下＝最上層優先（Esc 先關最上層）。 */
-const PRIORITY: OverlayKey[] = ['addEvent', 'newProject', 'shortcuts', 'hostDialog', 'autoClip', 'queuePopover']
+const PRIORITY: OverlayKey[] = ['addEvent', 'newProject', 'shortcuts', 'hostDialog', 'exportDrawer', 'autoClip', 'queuePopover']
 
 export function isAnyOverlayOpen(s: OverlayState): boolean {
   return PRIORITY.some((k) => s[k])

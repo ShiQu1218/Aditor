@@ -18,6 +18,7 @@ import {
   validateSources
 } from './projectIo'
 import { ProjectSession, SaveState, createSessionIo } from './projectSession'
+import { isEditorLocked } from './editorLock'
 
 export type { SaveState }
 
@@ -147,10 +148,18 @@ export function ProjectProvider({ children }: { children: React.ReactNode }): JS
 
   const actions = useMemo(
     () => ({
-      apply: (next: Project) => session.apply(next),
-      undo: () => session.undo(),
-      redo: () => session.redo(),
+      // 匯出進行中（editorLock）：資料層一律拒絕異動，介面層另有 inert
+      apply: (next: Project) => {
+        if (!isEditorLocked()) session.apply(next)
+      },
+      undo: () => {
+        if (!isEditorLocked()) session.undo()
+      },
+      redo: () => {
+        if (!isEditorLocked()) session.redo()
+      },
       newProject: () => {
+        if (isEditorLocked()) return
         setLastMissingSources([])
         session.newProject()
       }
@@ -161,7 +170,7 @@ export function ProjectProvider({ children }: { children: React.ReactNode }): JS
   const openFile = useMemo(
     () => async (): Promise<void> => {
       const api = window.api
-      if (!api) return
+      if (!api || isEditorLocked()) return
       const filePath = await api.project?.showOpenDialog?.()
       if (!filePath) return
       const content = await api.project?.load?.(filePath)

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore } from 'react'
 import '../styles/studio.css'
 import '../styles/projectTrack.css'
 import { AutoClipParams, CacheDoc, Clip, EngineEvent, EventType } from '../../shared/types'
@@ -15,11 +15,15 @@ import { useOverlay } from '../shell/OverlayHost'
 import { useProject } from '../editor/ProjectProvider'
 import { addItems, duplicateItem, moveItem, Project, ProjectItem, removeItem, splitItem, trimItem } from '../editor/project'
 import { nextAfter, nextPlayableItem } from '../editor/sequence'
-import { ExportDialog } from '../components/ExportDialog'
+import { ExportDrawer } from './ExportDrawer'
+import { createExportController } from './exportController'
+import { windowExportApi } from './exportApi'
+import { buildPlanBase, ExportPlanBase } from './exportPlanBase'
+import { useEditorLock } from '../editor/useEditorLock'
 import { RefreshCw, ZoomIn, ZoomOut } from '../components/icons'
 import { checkSmooth, PlayabilityResult } from '../media/playability'
 import { Command } from '../input/keymap'
-import { longFixtureRequested } from '../dev/fixture'
+import { drawerFixtureRequested, longFixtureRequested } from '../dev/fixture'
 import { i18n } from '../i18n/zh-TW'
 import { AddEventDialog } from './AddEventDialog'
 import { Aside } from './Aside'
@@ -136,6 +140,17 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
   } = useProject()
   const toast = useToast()
   const overlay = useOverlay()
+
+  /* ---------------- 匯出抽屜（Task 15）：控制器在工作室層，抽屜縮小為徽章時匯出照常進行 ---------------- */
+  const exportCtl = useMemo(() => createExportController(windowExportApi, 'highlight'), [])
+  const exportState = useSyncExternalStore(exportCtl.subscribe, exportCtl.getState, exportCtl.getState)
+  const exporting = exportState.phase === 'running'
+  useEditorLock(exporting)
+  const [exportOpen, setExportOpen] = useState(false)
+  const exportOpenRef = useRef(false)
+  exportOpenRef.current = exportOpen
+  const [exportBase, setExportBase] = useState<ExportPlanBase | null>(null)
+  useEffect(() => () => exportCtl.dispose({ cancelIfRunning: true }), [exportCtl])
 
   const videoRef = useRef<HTMLVideoElement>(null)
   const tlRef = useRef<TimelineHandle>(null)
@@ -1059,9 +1074,81 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
     [tab, state.clips, evFiltered]
   )
 
+  const projectRefForExport = useRef(project)
+  projectRefForExport.current = project
+  const missingForExport = useRef(missingItemIds)
+  missingForExport.current = missingItemIds
+  const docRefForExport = useRef(state.doc)
+  docRefForExport.current = state.doc
+
+  /** 開啟抽屜：設定階段重新偵測編碼器／磁碟空間並收集各來源規格；進行中或結果頁直接顯示現況。 */
   const handleOpenExport = useCallback(() => {
-    overlay.open(<ExportDialog project={project} onClose={overlay.close} />)
-  }, [overlay, project])
+    setExportOpen(true)
+    if (exportCtl.getState().phase !== 'settings') return
+    exportCtl.setBaseName(projectRefForExport.current.name || 'highlight')
+    void (async () => {
+      let outDir: string | null = null
+      try {
+        const s = await window.api?.settings?.get?.()
+        outDir = typeof s?.defaultOutDir === 'string' ? s.defaultOutDir : null
+      } catch {
+        outDir = null
+      }
+      void exportCtl.init(outDir)
+    })()
+  }, [exportCtl])
+
+  const handleCloseExport = useCallback(() => setExportOpen(false), [])
+
+  // 抽屜設定階段：專案、缺失來源或目前影片資訊變動時重新收集各來源規格（抽屜開著時仍可在專案軌編輯）
+  useEffect(() => {
+    if (!exportOpen || exportState.phase !== 'settings') return
+    let cancelled = false
+    const doc = state.doc
+    void buildPlanBase(
+      project,
+      missingItemIds,
+      { path: videoPath, info: { codec: doc.video.codec, width: doc.video.width, height: doc.video.height }, keyframes: doc.keyframes ?? [] },
+      async (src) => (await window.api?.probe?.(src)) ?? null
+    ).then((b) => {
+      if (!cancelled) setExportBase(b)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [exportOpen, exportState.phase, project, missingItemIds, state.doc, videoPath])
+
+  // 抽屜縮小時匯出結束：用 Toast 通知並提供〔查看〕
+  const prevPhaseRef = useRef(exportState.phase)
+  useEffect(() => {
+    const prev = prevPhaseRef.current
+    prevPhaseRef.current = exportState.phase
+    if (prev !== 'running' || exportState.phase === 'running' || exportOpenRef.current) return
+    const t = i18n.export
+    toast({
+      message: exportState.phase === 'failed' ? t.toastFailed : exportState.result?.cancelled ? t.toastCancelled : t.toastDone,
+      action: { label: t.view, run: () => setExportOpen(true) }
+    })
+  }, [exportState.phase, exportState.result, toast])
+
+  // 僅開發模式：?drawer=… 以假 IPC 直接顯示抽屜狀態（截圖用）；動態載入，正式 bundle 不含
+  const drawerFixtureDone = useRef(false)
+  useEffect(() => {
+    const kind = import.meta.env.DEV ? drawerFixtureRequested() : null
+    if (!kind || drawerFixtureDone.current) return
+    drawerFixtureDone.current = true
+    void import('../dev/exportFixture').then(async (m) => {
+      m.installExportFixtureApi(kind)
+      handleOpenExport()
+      await new Promise((r) => setTimeout(r, 150))
+      if (kind === 'consent') await exportCtl.setQuality('precise')
+      else if (kind !== 'settings') {
+        const items = projectRefForExport.current.items.map((i) => ({ id: i.id, source: i.source, start: i.start, end: i.end }))
+        void exportCtl.start(items)
+      }
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loaded])
 
   /** 浮層套用：只取代 suggested 的 AI 片段（保留已加入、已略過與手動）並寫回快取。 */
   const handleApplyAutoClip = useCallback(
@@ -1243,6 +1330,7 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
     autoClip: autoClipOpen,
     newProject: projDlgOpen,
     hostDialog: overlay.isOpen,
+    exportDrawer: exportOpen,
     queuePopover: overlay.queueOpen,
     shortcuts: false
   }
@@ -1262,13 +1350,18 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
       case 'hostDialog':
         overlay.close()
         break
+      case 'exportDrawer':
+        // 進行中＝縮小為徽章（不取消）；其餘狀態回到設定頁並關閉
+        if (exportCtl.getState().phase !== 'running') exportCtl.finish()
+        setExportOpen(false)
+        break
       case null:
         clearSelection()
         break
       default:
         break
     }
-  }, [overlay, clearSelection])
+  }, [overlay, clearSelection, exportCtl])
 
   /* ---------------- keymap（spec §3.2.7） ---------------- */
 
@@ -1382,6 +1475,15 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
   if (blocked) return <StudioBlockedView onBack={onBack} />
   if (!loaded) return <StudioLoadingView />
 
+  /** 匯出進行中不離開工作室（返回會中斷匯出的狀態顯示）：改用 Toast 提示 */
+  const handleBack = (): void => {
+    if (exportCtl.getState().phase === 'running') {
+      toast({ message: i18n.export.backBlocked })
+      return
+    }
+    onBack()
+  }
+
   const counts = chipCounts(state.doc.events)
   const eventCount = state.doc.events.filter((e) => !e.deleted).length
   const meta = [state.doc.video.width + '×' + state.doc.video.height, state.doc.video.codec.toUpperCase(), formatTime(duration), i18n.studio.meta.events.replace('{n}', String(eventCount))].join(' · ')
@@ -1395,10 +1497,12 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
         mode={mode.mode}
         exportCount={project.items.length}
         asideOpen={asideOpen}
-        onBack={onBack}
+        onBack={handleBack}
         onAutoClip={() => setAutoClipOpen((v) => !v)}
         onQuick={handleQuickOrSplit}
         onExport={handleOpenExport}
+        exportOpen={exportOpen}
+        exportPercent={exporting ? (exportState.progress?.percent ?? 0) : null}
         onToggleAside={() => setAsideOpen((v) => !v)}
       />
 
@@ -1444,7 +1548,7 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
             onToggleFilter={(t) => dispatch({ type: 'setFilter', filter: toggleFilter(state.filter, t) })}
           />
 
-          <div className={`studio-tl${foreign ? ' grayed' : ''}`}>
+          <div className={`studio-tl${foreign ? ' grayed' : ''}`} data-editor-lock>
             <TimelineCanvas
               ref={tlRef}
               duration={duration}
@@ -1552,6 +1656,8 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
           </Aside>
         )}
       </div>
+
+      {exportOpen && <ExportDrawer controller={exportCtl} project={project} base={exportBase} onClose={handleCloseExport} />}
 
       {autoClipOpen && (
         <AutoClipPopover
