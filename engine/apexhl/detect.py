@@ -27,6 +27,12 @@ def red_mask(img_bgr: np.ndarray, profile: Profile) -> np.ndarray:
     ok = (r >= profile.red["r_min"]) & (g <= profile.red["g_max"]) & (b <= profile.red["b_max"])
     if "r_diff_min" in profile.red:
         ok = ok & (r.astype(np.int16) - np.maximum(g, b).astype(np.int16) >= profile.red["r_diff_min"])
+    y = profile.red.get("yellow")
+    if y:
+        # 色盲模式（紅色盲／藍色盲）敵人名字為黃色：R、G 高且接近、B 低。未設定時（zh-TW）行為不變。
+        r16, g16, b16 = r.astype(np.int16), g.astype(np.int16), b.astype(np.int16)
+        ok = ok | ((r16 >= y["r_min"]) & (g16 >= y["g_min"]) & (b16 <= y["b_max"])
+                   & (r16 - b16 >= y["rb_min"]) & (np.abs(r16 - g16) <= y["rg_max"]))
     return ok.astype(np.uint8) * 255
 
 

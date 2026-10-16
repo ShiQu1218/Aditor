@@ -20,7 +20,14 @@
   "red": {
     "r_min": 170,
     "g_max": 90,
-    "b_max": 90
+    "b_max": 90,
+    "yellow": {
+      "r_min": 160,
+      "g_min": 150,
+      "b_max": 110,
+      "rb_min": 90,
+      "rg_max": 30
+    }
   },
   "keywords": {
     "squad_wipe": {
