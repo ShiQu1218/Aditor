@@ -111,7 +111,7 @@ class IconDetector:
 
     # ---- 比對 ----
     def _best(self, g: np.ndarray, key: str, scales=None) -> tuple[float, int, int, float]:
-        out = (0.0, 0, 0, 1.0)
+        out = (0.0, 0, 0, (scales or self.scales)[0])
         for s in scales or self.scales:
             t = self.tpl[key][s]
             if g.shape[0] < t.shape[0] or g.shape[1] < t.shape[1]:

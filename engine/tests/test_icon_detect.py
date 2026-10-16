@@ -142,3 +142,18 @@ def test_spectating_detected_in_every_language_without_choosing_one(det, lang):
 def test_synthetic_frame_result_defaults():
     r = FrameResult("knock", 0.9, 0, False, None, False)
     assert r.hint is None
+
+
+def test_single_off_one_scale_detector_never_raises_on_empty_or_unmatched_frames(profile):
+    """校準得到 0.95 等非 1.0 尺度時，沒有任何命中的畫格（空白、比樣板小的帶）也不得因預設尺度而出錯。"""
+    d = Detector(profile, icon_scale=0.95)
+    blank = np.zeros((180, 800, 3), np.uint8)
+    spec = np.zeros((40, 480, 3), np.uint8)
+    assert d.detect(blank, spec).kind is None
+    assert IconDetector(ICON_DIR, scales=(1.1,)).features(np.zeros((40, 800, 3), np.uint8)).kind is None
+
+
+@pytest.mark.parametrize("scale", [0.9, 0.95, 1.0, 1.05, 1.1])
+def test_every_calibration_scale_is_a_valid_detector_scale(profile, scale):
+    r = Detector(profile, icon_scale=scale).detect(*load_fixture("knock_a002500.png", "en"))
+    assert r.kind in ("knock", None)
