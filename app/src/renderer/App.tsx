@@ -1,12 +1,14 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { LibraryScreen } from './library/LibraryScreen'
 import { StudioScreen } from './studio/StudioScreen'
-import { LONG_FIXTURE_PATH, longFixtureRequested, projectFixtureRequested, settingsFixtureRequested } from './dev/fixture'
+import { LONG_FIXTURE_PATH, longFixtureRequested, lowPerfFixtureRequested, projectFixtureRequested, settingsFixtureRequested } from './dev/fixture'
 import { ProjectProvider, useProject } from './editor/ProjectProvider'
 import { FocusZoneProvider } from './input/FocusZoneProvider'
 import { AppShell } from './shell/AppShell'
 import { RailView } from './shell/Rail'
 import { SettingsScreen } from './settings/SettingsScreen'
+import { setLowPerf, watchLowPerfSetting } from './perf/lowPerf'
+import { LowPerfNotice } from './perf/LowPerfNotice'
 
 type View = 'library' | 'studio' | 'settings'
 
@@ -22,6 +24,11 @@ export default function App(): JSX.Element {
 
 function AppContent(): JSX.Element {
   const { project, apply } = useProject()
+  // 低效能模式：<html data-lowperf> 隨設定即時切換
+  useEffect(() => {
+    if (lowPerfFixtureRequested()) setLowPerf(true)
+    return watchLowPerfSetting(window.api)
+  }, [])
   // 僅開發模式：?fixture=settings 直接開設定畫面，假 IPC 於動態載入後才掛上
   const settingsFx = settingsFixtureRequested()
   const [fxReady, setFxReady] = useState(!settingsFx)
@@ -75,6 +82,7 @@ function AppContent(): JSX.Element {
 
   return (
     <AppShell active={view} projectCount={project.items.length} onNavigate={handleNavigate}>
+      <LowPerfNotice />
       {page}
     </AppShell>
   )

@@ -1,4 +1,5 @@
-import React, { useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { isLowPerf, subscribeLowPerf } from '../perf/lowPerf'
 import '../styles/timeline.css'
 import { Clip, EngineEvent, EventType, SpecInterval } from '../../shared/types'
 import { View, zoom } from './model'
@@ -139,6 +140,8 @@ export const TimelineCanvas = React.forwardRef<TimelineHandle, TimelineCanvasPro
     onPlayToggle
   })
 
+  // 低效能模式（設定即時切換）：熱度條降為 60 格並重繪
+  const lowPerf = useSyncExternalStore(subscribeLowPerf, isLowPerf, isLowPerf)
   const modelRef = useRef<DrawModel | null>(null)
   modelRef.current = {
     width: view.width,
@@ -151,7 +154,8 @@ export const TimelineCanvas = React.forwardRef<TimelineHandle, TimelineCanvasPro
     selected,
     currentId: currentEventId,
     hoverClipId: ix.hoverClipId,
-    activeClipId
+    activeClipId,
+    lowPerf
   }
 
   const paint = useCallback((): void => {
@@ -177,7 +181,7 @@ export const TimelineCanvas = React.forwardRef<TimelineHandle, TimelineCanvasPro
   // 靜態層：只在資料／縮放／尺寸／選取／hover 改變時以 rAF 合併重繪（currentTime 不在其中）
   useEffect(() => {
     scheduler.invalidate()
-  }, [scheduler, view, layout, spectating, clips, selected, currentEventId, ix.hoverClipId, activeClipId, height])
+  }, [scheduler, view, layout, spectating, clips, selected, currentEventId, ix.hoverClipId, activeClipId, height, lowPerf])
 
   return (
     <div

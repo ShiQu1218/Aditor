@@ -6,6 +6,8 @@ import './styles/shell.css'
 import './styles/libraryTokens.css'
 import './styles/library.css'
 import './styles/settings.css'
+import './styles/fonts.css'
+import './styles/lowperf.css'
 import App from './App'
 
 ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(

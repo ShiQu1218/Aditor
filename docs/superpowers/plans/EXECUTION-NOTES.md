@@ -107,3 +107,24 @@
   - Editor: Verify sequential playback across items, splitting, and undo/redo.
   - Export: Verify export outputs play correctly in external players.
 
+
+---
+
+## Plan 3 performance
+
+- **Task 17a bench** (`npm --prefix app run bench` ＝ `vitest bench --run`；檔案 `app/src/renderer/timeline/layout.bench.ts`；不是 CI 失敗門檻)
+- **環境**：AMD Ryzen 7 7700、Node v24.16.0、vitest 2.1.9、Windows 11（桌機；低階 4 GB 筆電尚未實測，需要時以同一指令重跑）
+- **spec §6 目標**：2000 事件 `layoutTimeline` < 5 ms
+
+| 項目 | mean | p99 | hz |
+|---|---|---|---|
+| `layoutTimeline` 2004 事件，全片視圖（density） | 0.070 ms | 0.180 ms | 14.3 k/s |
+| `layoutTimeline` 2004 事件，放大視圖（icons＋群集） | 0.005 ms | 0.007 ms | 196 k/s |
+| `layoutTimeline` 6004 事件，全片視圖（density） | 0.196 ms | 0.282 ms | 5.1 k/s |
+| `layoutTimeline` 6004 事件，放大視圖（icons＋群集） | 0.017 ms | 0.024 ms | 59.7 k/s |
+| `computeGrid` 500 筆（5 組、scrollTop 0） | 0.0002 ms | 0.0004 ms | 5.8 M/s |
+| `computeGrid` 500 筆（捲動到中段） | 0.0002 ms | 0.0004 ms | 5.6 M/s |
+| `listWindow` 6000 列、44 px | < 0.0001 ms | 0.0001 ms | 24.9 M/s |
+
+- 結論：所有純函式幾乎免費（2000 事件比目標快約 70 倍）；實際成本在 canvas 繪製與 React 渲染，不在版面計算。
+- 低效能模式（`<html data-lowperf>`）：熱度條 60 格、關閉所有 transition／animation、移除 hover 位移；首次啟動偵測無硬體解碼時詢問一次。

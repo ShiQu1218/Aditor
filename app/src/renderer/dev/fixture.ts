@@ -27,3 +27,8 @@ export function settingsFixtureRequested(): { cat: 'a' | 'b' | 'c'; q: string; f
   const cat = p.get('cat')
   return { cat: cat === 'b' || cat === 'c' ? cat : 'a', q: p.get('q') ?? '', fail: p.get('fail') === '1' }
 }
+
+/** 僅開發模式：URL 帶 &lowperf=1 → 直接開啟低效能模式（截圖用；正式包恆為 false） */
+export function lowPerfFixtureRequested(): boolean {
+  return import.meta.env.DEV && new URLSearchParams(window.location.search).get('lowperf') === '1'
+}

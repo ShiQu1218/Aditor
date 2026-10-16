@@ -4,6 +4,7 @@ import { formatTime } from '../../shared/time'
 import { i18n } from '../i18n/zh-TW'
 import type { TimelineLayout } from './layout'
 import { View, timeToX } from './model'
+import { heatBinCount } from '../perf/lowPerf'
 import { EVENT_TYPES, SHAPES, glyphPath, shapeFor, shapePath } from './eventShapes'
 
 export type Ctx2D = CanvasRenderingContext2D
@@ -58,6 +59,8 @@ export interface DrawModel {
   unanalyzed?: SpecInterval[]
   hoverClipId?: string | null
   activeClipId?: string | null
+  /** 低效能模式：熱度條降為 HEAT_BINS_LOWPERF 格 */
+  lowPerf?: boolean
 }
 
 /* ---------------- Theme：由 CSS 變數讀出一次並快取 ---------------- */
@@ -191,9 +194,10 @@ function drawUnanalyzed(g: Ctx2D, m: DrawModel, th: Theme): void {
 
 function drawHeat(g: Ctx2D, m: DrawModel, th: Theme, bot: number): void {
   const density = m.layout.mode === 'density'
-  const binPx = density ? 4 : 6
-  const nb = Math.ceil(m.width / binPx)
+  const nb = heatBinCount(m.width, density, Boolean(m.lowPerf))
   if (nb <= 0) return
+  // 一般模式每格固定 4／6 px；低效能模式把整個寬度均分成 60 格
+  const binPx = m.lowPerf ? m.width / nb : density ? 4 : 6
   const counts = new Float32Array(nb)
   let max = 0
   for (const it of m.layout.items) {
@@ -201,7 +205,7 @@ function drawHeat(g: Ctx2D, m: DrawModel, th: Theme, bot: number): void {
       if (!isCounted(e)) continue
       const x = timeToX(e.t, m.view)
       if (x < 0 || x >= m.width) continue
-      const b = Math.floor(x / binPx)
+      const b = Math.min(nb - 1, Math.floor(x / binPx))
       counts[b]++
       if (counts[b] > max) max = counts[b]
     }
@@ -212,7 +216,7 @@ function drawHeat(g: Ctx2D, m: DrawModel, th: Theme, bot: number): void {
     const k = counts[i] / max
     const h = 3 + k * (maxH - 3)
     g.fillStyle = `rgba(${th.heatRgb}, ${0.35 + k * 0.55})`
-    g.fillRect(i * binPx, bot - h, binPx - 1, h)
+    g.fillRect(i * binPx, bot - h, Math.max(1, binPx - 1), h)
   }
 }
 

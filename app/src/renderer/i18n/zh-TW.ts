@@ -1,4 +1,9 @@
 export const i18n = {
+  lowPerf: {
+    askText: '偵測到此電腦沒有硬體解碼，要開啟低效能模式嗎？',
+    enable: '開啟',
+    dismiss: '不用了'
+  },
   appTitle: 'Apex Highlighter',
   nav: {
     library: '影片庫',
@@ -551,14 +556,14 @@ export const settingsI18n = {
     },
     decode: {
       title: '解碼方式',
-      desc: '硬體解碼失敗時會自動改用軟體解碼並提示。',
+      desc: '強制軟體解碼會在之後開始的分析生效（已在分析中的影片不受影響）；硬體解碼失敗時會自動改用軟體解碼並提示。',
       keywords: ['解碼', '硬體', '軟體', 'gpu', 'decode'],
       auto: '自動（硬體優先）',
       software: '強制軟體解碼'
     },
     cacheLocation: {
       title: '快取位置',
-      desc: '預設存在 %APPDATA%\\ApexHighlighter\\cache，不寫入 Outplayed 目錄。',
+      desc: '預設存在 %APPDATA%\\ApexHighlighter\\cache，不寫入 Outplayed 目錄。變更後對之後開始的分析生效；已分析過的影片仍可從原位置開啟。',
       keywords: ['快取', '位置', 'cache', 'appdata'],
       appdata: 'App 資料夾',
       besideVideo: '影片旁（.apexhl.json）'

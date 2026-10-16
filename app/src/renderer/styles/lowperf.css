@@ -1,0 +1,23 @@
+/* 低效能模式（spec §6）：設定「低效能模式」開啟時 <html data-lowperf>，或系統要求減少動態效果時。
+   不含任何色碼；必須最後載入，才能覆蓋其他樣式表的 transition／animation／hover 位移。
+   熱度條降為 60 格由 canvas（perf/lowPerf.ts 的 HEAT_BINS_LOWPERF）處理，縮圖本身是靜態圖片。 */
+html[data-lowperf] *,
+html[data-lowperf] *::before,
+html[data-lowperf] *::after {
+  transition: none !important;
+  animation: none !important;
+  scroll-behavior: auto !important;
+}
+html[data-lowperf] .vcard:hover { transform: none; }
+html[data-lowperf] .vcard-thumb img { transition: none; animation: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition: none !important;
+    animation: none !important;
+    scroll-behavior: auto !important;
+  }
+  .vcard:hover { transform: none; }
+}
