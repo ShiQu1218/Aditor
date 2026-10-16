@@ -3,14 +3,14 @@ import { EngineClient } from './engine'
 import { Library, normalizePath } from './library'
 import { CacheDoc, isCounted } from '../shared/types'
 import type { QueuePayload, QueueSnapshot } from '../shared/queueState'
-import { analyzeSettingArgs, AnalyzeSettings, resolveAnalyzeProfileDir } from './settings-derived'
+import { analyzeSettingArgs, AnalyzeSettings } from './settings-derived'
 import { capturePriorCache, preserveClipsAfterReanalysis } from './reanalysis'
 import { generateThumbnail } from './thumbnail'
 
 export interface AnalysisQueueOptions {
   profileDir: string
   cacheDir: string
-  /** 每次分析前讀取（設定變更免重啟）：decode → hwaccel、cacheLocation → beside、gameLang → profile_dir */
+  /** 每次分析前讀取（設定變更免重啟）：decode → hwaccel、cacheLocation → beside */
   getSettings?: () => AnalyzeSettings | undefined
 }
 
@@ -113,13 +113,12 @@ export class AnalysisQueue extends EventEmitter {
       // 重新分析前先唯讀擷取既有快取的片段（引擎會覆寫快取且只保留手動片段）
       const settings = this.opts.getSettings?.()
       const extra = analyzeSettingArgs(settings)
-      const resolvedProfileDir = resolveAnalyzeProfileDir(this.opts.profileDir, settings)
       const prior = capturePriorCache(videoPath, this.opts.cacheDir, extra.beside)
       const req = this.engine.request<CacheDoc>(
         'analyze',
         {
           path: videoPath,
-          profile_dir: resolvedProfileDir,
+          profile_dir: this.opts.profileDir,
           cache_dir: this.opts.cacheDir,
           hwaccel: extra.hwaccel,
           beside: extra.beside

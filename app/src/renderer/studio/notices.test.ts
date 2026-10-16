@@ -34,25 +34,9 @@ describe('studioNotice', () => {
   })
 })
 
-describe('studioNotice（語言偵測）', () => {
-  test('langDetected=false → 提示指定遊戲語言後重新分析（優先於代理檔建議）', () => {
-    const n = studioNotice({ analysis: 'done', playability: weakPlayability, proxyState: 'none', langDetected: false })
-    expect(n!.id).toBe('lang-undetermined')
-    expect(n!.text).toBe('無法判斷錄影語言，請在設定中指定遊戲語言後重新分析')
-  })
-
-  test('langDetected=true／舊快取(undefined) 不提示；spectatingSupported=false → 資訊提示', () => {
-    expect(studioNotice({ analysis: 'done', playability: okPlayability, proxyState: 'none', langDetected: true })).toBeNull()
+describe('studioNotice（與語言無關）', () => {
+  test('偵測不再需要遊戲語言：沒有語言／觀戰支援相關的提示，正常情況回 null', () => {
     expect(studioNotice({ analysis: 'done', playability: okPlayability, proxyState: 'none' })).toBeNull()
-    const n = studioNotice({
-      analysis: 'done',
-      playability: okPlayability,
-      proxyState: 'none',
-      langDetected: true,
-      spectatingSupported: false
-    })
-    expect(n!.id).toBe('spectating-unsupported')
-    expect(n!.kind).toBe('info')
   })
 })
 
@@ -83,6 +67,6 @@ describe('video-missing notice (I13)', () => {
   })
   test('engine errors still win; video-missing wins over language / proxy hints', () => {
     expect(studioNotice({ ...base, analysis: 'error', videoMissing: true })!.id).toBe('engine-error')
-    expect(studioNotice({ ...base, videoMissing: true, langDetected: false })!.id).toBe('video-missing')
+    expect(studioNotice({ ...base, videoMissing: true })!.id).toBe('video-missing')
   })
 })

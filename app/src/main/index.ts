@@ -11,7 +11,7 @@ import { WatchManager } from './watch'
 import { ProjectStore } from './projects'
 import { registerIpcHandlers } from './ipc-handlers'
 import { createCloseGate } from './project-ipc'
-import { buildAnalyzeArgs, resolveAnalyzeProfileDir } from './settings-derived'
+import { buildAnalyzeArgs } from './settings-derived'
 import { currentE2EConfig } from './e2e'
 import { applyWindowSecurity } from './window-security'
 import { sanitizeAnalyzeArgs, sanitizeAutoclipArgs, sanitizeDeriveArgs, sanitizeProbeArgs } from './ipc-guards'
@@ -128,7 +128,6 @@ async function initEngineAndServices(): Promise<void> {
   library = new Library(join(appDataDir(), 'library.json'))
   // 上次執行中斷遺留的「分析中」條目沒有佇列在處理，重設為閒置
   library.resetStaleAnalyzing()
-  // 啟動時讀取設定：無檔案＝新安裝，gameLang 預設 'auto'；舊設定檔缺 gameLang → 'zh-TW'（行為與舊版相同）
   settingsStore = new SettingsStore(join(appDataDir(), 'settings.json'))
   queue = new AnalysisQueue(engineClient, library, {
     profileDir: templateProfileDir,
@@ -168,7 +167,7 @@ async function initEngineAndServices(): Promise<void> {
   })
 
   ipcMain.handle('engine:derive', async (_, args: unknown) => {
-    return engineClient?.request('derive', { ...sanitizeDeriveArgs(args), profile_dir: resolveAnalyzeProfileDir(templateProfileDir, settingsStore?.get()) }).promise
+    return engineClient?.request('derive', { ...sanitizeDeriveArgs(args), profile_dir: templateProfileDir }).promise
   })
 
   ipcMain.handle('engine:autoclip', async (_, args: unknown) => {

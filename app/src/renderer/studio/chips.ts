@@ -1,7 +1,10 @@
 import { isCounted, type EngineEvent, type EventType } from '../../shared/types'
 
-/** 事件類型 chip 的固定順序（spec §5.2）。 */
-export const CHIP_TYPES: EventType[] = ['knock', 'assist_knock', 'assist_elim', 'elim', 'squad_wipe']
+/**
+ * 事件類型 chip 的固定順序（spec §5.2）。引擎只輸出擊倒與助攻（助攻擊倒／助攻消滅），
+ * elim／squad_wipe 不再有篩選 chip；舊專案／舊快取裡既有的這兩類事件仍顯示（預設篩選集合包含它們）、型別保持相容。
+ */
+export const CHIP_TYPES: EventType[] = ['knock', 'assist_knock', 'assist_elim']
 
 /** 各類型未刪除事件數（chip 上的計數）。 */
 export function chipCounts(events: EngineEvent[]): Record<EventType, number> {

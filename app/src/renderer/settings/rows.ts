@@ -23,7 +23,7 @@ export type BoolField = 'autoAnalyze' | 'lowPerfMode' | 'proxySuggest' | 'autoSu
 
 export type ControlSpec =
   | { kind: 'switch'; field: BoolField }
-  | { kind: 'select'; field: 'decode' | 'cacheLocation' | 'gameLang'; options: ReadonlyArray<{ value: string; label: string }> }
+  | { kind: 'select'; field: 'decode' | 'cacheLocation'; options: ReadonlyArray<{ value: string; label: string }> }
   | { kind: 'numberPair'; fields: readonly ['before', 'after'] }
   | { kind: 'autoclip' }
   | { kind: 'watchFolders' }
@@ -67,25 +67,6 @@ export const SETTING_ROWS: SettingRow[] = [
     desc: t.row.autoAnalyze.desc,
     keywords: [...t.row.autoAnalyze.keywords],
     control: { kind: 'switch', field: 'autoAnalyze' }
-  },
-  {
-    id: 'gameLang',
-    category: 'a',
-    card: t.card.perf,
-    title: t.row.gameLang.title,
-    desc: t.row.gameLang.desc,
-    keywords: [...t.row.gameLang.keywords],
-    isNew: true,
-    control: {
-      kind: 'select',
-      field: 'gameLang',
-      options: [
-        { value: 'auto', label: t.row.gameLang.auto },
-        { value: 'zh-TW', label: t.row.gameLang.zhTW },
-        { value: 'en', label: t.row.gameLang.en },
-        { value: 'ja', label: t.row.gameLang.ja }
-      ]
-    }
   },
   {
     id: 'decode',

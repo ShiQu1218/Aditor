@@ -35,16 +35,4 @@ describe('video missing notice (I13)', () => {
     expect(onBack).toHaveBeenCalledTimes(1)
     expect(document.querySelector('.toast')?.textContent).toContain(i18n.studio.toast.relinkHint)
   })
-
-  test('undetermined-language notice: 〔返回影片庫〕 works', async () => {
-    const onBack = vi.fn()
-    s = await mountStudio({
-      onBack,
-      doc: (d) => ({ ...d, analysis: { ...(d.analysis as object), lang_detected: false } as typeof d.analysis })
-    })
-    const bar = document.querySelector('.notice')!
-    expect(bar.textContent).toContain(N.langUndeterminedTitle)
-    click(buttonByText(bar, N.back)!)
-    expect(onBack).toHaveBeenCalledTimes(1)
-  })
 })

@@ -65,23 +65,15 @@ describe('settings store（設定儲存）', () => {
     expect(s2.after).toBe(DEFAULT_SETTINGS.after)
   })
 
-  it('gameLang 遷移：無檔案（新安裝）→ auto；舊檔缺 gameLang 或值不合法 → zh-TW；合法值保留', () => {
-    expect(loadSettings(file).gameLang).toBe('auto')
-    expect(DEFAULT_SETTINGS.gameLang).toBe('auto')
-
-    fs.writeFileSync(file, JSON.stringify({ version: 1, before: 5 }), 'utf-8')
-    expect(loadSettings(file).gameLang).toBe('zh-TW')
-    fs.writeFileSync(file, JSON.stringify({ before: 5 }), 'utf-8')
-    expect(loadSettings(file).gameLang).toBe('zh-TW')
-    fs.writeFileSync(file, JSON.stringify({ version: 1, gameLang: 'fr' }), 'utf-8')
-    expect(loadSettings(file).gameLang).toBe('zh-TW')
-    fs.writeFileSync(file, '[]', 'utf-8')
-    expect(loadSettings(file).gameLang).toBe('auto')
-
-    for (const lang of ['auto', 'zh-TW', 'en', 'ja']) {
-      fs.writeFileSync(file, JSON.stringify({ version: 1, gameLang: lang }), 'utf-8')
-      expect(loadSettings(file).gameLang).toBe(lang)
-    }
+  it('舊設定檔帶有已移除的 gameLang（或其他未知欄位）→ 安全丟棄、不報錯，其餘欄位保留', () => {
+    fs.writeFileSync(file, JSON.stringify({ version: 1, gameLang: 'ja', before: 5, mystery: 1 }), 'utf-8')
+    const s = loadSettings(file) as unknown as Record<string, unknown>
+    expect(s.before).toBe(5)
+    expect('gameLang' in s).toBe(false)
+    expect('mystery' in s).toBe(false)
+    expect('gameLang' in (DEFAULT_SETTINGS as unknown as Record<string, unknown>)).toBe(false)
+    fs.writeFileSync(file, JSON.stringify({ gameLang: 'fr' }), 'utf-8')
+    expect('gameLang' in (loadSettings(file) as unknown as Record<string, unknown>)).toBe(false)
   })
 
   it('lowPerfAsked：預設 false；非布林回退、布林保留並可持久化', () => {

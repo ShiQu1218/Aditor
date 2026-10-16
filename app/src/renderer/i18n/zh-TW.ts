@@ -189,11 +189,7 @@ export const i18n = {
       relink: '重新連結檔案',
       back: '返回影片庫',
       noEventsTitle: '這支影片沒有偵測到擊倒／助攻',
-      noEventsText: '可按 M 手動新增，或到設定確認「遊戲語言」是否與錄影相符。',
-      langUndeterminedTitle: '無法判斷錄影語言',
-      langUndeterminedText: '無法判斷錄影語言，請在設定中指定遊戲語言後重新分析',
-      spectatingUnsupportedTitle: '此語言尚不支援觀戰偵測',
-      spectatingUnsupportedText: '觀戰期間（隊友被擊倒後觀看隊友）的事件無法自動排除，請自行檢查。'
+      noEventsText: '可按 M 手動新增；若錄影是舊版遊戲或 HUD 縮放很小，偵測可能找不到橫幅。'
     },
     toast: {
       added: '已加入專案',
@@ -582,15 +578,6 @@ export const settingsI18n = {
       title: '新影片自動分析',
       desc: '關閉後只匯入，需手動按「分析」。',
       keywords: ['分析', '佇列', '自動']
-    },
-    gameLang: {
-      title: '遊戲介面語言',
-      desc: '分析擊倒／助攻橫幅所使用的遊戲語言範本；預設自動偵測（支援繁體中文、英文、日文）。變更只影響之後的分析。',
-      keywords: ['語言', '英文', '日文', '繁體中文', 'language', 'english', 'japanese'],
-      auto: '自動偵測（推薦）',
-      zhTW: '繁體中文',
-      en: 'English（英文）',
-      ja: '日本語（日文）'
     },
     decode: {
       title: '解碼方式',

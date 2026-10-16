@@ -55,9 +55,9 @@ describe('SettingsScreen markup（renderToString + fake window.api 資料）', (
     expect(html).toContain(settingsI18n.loading)
   })
 
-  test('category a: watch folders, auto analyze, gameLang, decode, cache, low-perf (6 rows) with the exact tablist', async () => {
+  test('category a: watch folders, auto analyze, decode, cache, low-perf (5 rows) with the exact tablist', async () => {
     const html = await render({ initialCategory: 'a' })
-    expect(rowIds(html)).toEqual(['watchFolders', 'autoAnalyze', 'gameLang', 'decode', 'cacheLocation', 'lowPerfMode'])
+    expect(rowIds(html)).toEqual(['watchFolders', 'autoAnalyze', 'decode', 'cacheLocation', 'lowPerfMode'])
     expect(html).toContain('影片來源')
     expect(html).toContain('分析與效能')
     // 監看資料夾來自 getWatchFolders，缺失者有標記，每個都有可命名的移除按鈕
@@ -65,8 +65,6 @@ describe('SettingsScreen markup（renderToString + fake window.api 資料）', (
     expect(html).toContain('找不到此資料夾')
     expect(html).toContain('aria-label="移除監看資料夾 D:\\Outplayed\\Apex Legends"')
     expect(html).toContain('新增資料夾')
-    // 語言列說明要告知：變更只影響之後的分析
-    expect(html).toContain('變更只影響之後的分析')
   })
 
   test('category b: proxy + clip defaults (6 rows) with usage text and steppers', async () => {

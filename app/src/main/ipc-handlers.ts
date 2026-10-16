@@ -17,7 +17,7 @@ import { fileExistsSafe, isSafeLocalDirPath, isSafeLocalVideoPath } from './safe
 import { createPathGrants, loadGrantedProject, planCacheSave, saveGrantedProject } from './ipc-guards'
 import { DEFAULT_SETTINGS } from '../shared/settings'
 import { currentE2EConfig } from './e2e'
-import { appDataDir, cacheDir, noticesFile, profileDir } from '../shared/paths'
+import { appDataDir, cacheDir, noticesFile } from '../shared/paths'
 import { computeHlCount, createHlGuard, createSerialQueue, hlForSavedDoc } from './hl'
 import { createThrottle } from '../shared/throttle'
 import type { CacheDoc, Clip } from '../shared/types'

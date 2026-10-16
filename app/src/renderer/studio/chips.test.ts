@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 import type { EngineEvent, EventType } from '../../shared/types'
-import { nearCount, chipCounts, toggleFilter } from './chips'
+import { CHIP_TYPES, nearCount, chipCounts, toggleFilter } from './chips'
 
 function ev(t: number, type: EventType, extra: Partial<EngineEvent> = {}): EngineEvent {
   return {
@@ -19,6 +19,10 @@ function ev(t: number, type: EventType, extra: Partial<EngineEvent> = {}): Engin
 }
 
 describe('studio filter chips', () => {
+  test('chip 只有擊倒與助攻（elim／squad_wipe 引擎不再產生）', () => {
+    expect(CHIP_TYPES).toEqual(['knock', 'assist_knock', 'assist_elim'])
+  })
+
   test('chipCounts 依類型計算未刪除事件', () => {
     const events = [ev(1, 'knock'), ev(2, 'knock'), ev(3, 'elim'), ev(4, 'assist_elim', { deleted: true })]
     const counts = chipCounts(events)

@@ -18,12 +18,12 @@ export function codecsDir(): string {
   return path.join(appDataDir(), 'codecs')
 }
 
-/** 分析範本目錄（`profile_dir`）：開發＝repo 的 `templates/<lang>`（`auto` 為 `templates` 根目錄），打包＝resources 下同名目錄。 */
-export function profileDir(isPackaged: boolean, lang: 'auto' | 'zh-TW' | 'en' | 'ja' = 'zh-TW'): string {
+/** 分析範本目錄（`profile_dir`）：開發＝repo 的 `templates/icons`（與語言無關的單一設定檔），打包＝resources 下同名目錄。 */
+export function profileDir(isPackaged: boolean): string {
   const root = isPackaged
     ? (process as unknown as { resourcesPath?: string }).resourcesPath || path.join(__dirname, '..', '..')
     : path.resolve(__dirname, '../../..')
-  return lang === 'auto' ? path.join(root, 'templates') : path.join(root, 'templates', lang)
+  return path.join(root, 'templates', 'icons')
 }
 
 export function engineCommand(isPackaged: boolean): {

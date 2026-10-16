@@ -96,12 +96,11 @@ function initialDoc(videoPath: string): CacheDoc {
       codec: 'h264',
       start_time: 0
     },
-    profile: 'zh-TW',
     analysis: {
       status: 'done',
       progress_t: 0,
       engine_version: '0.1.0',
-      templates_version: 'zh-TW@1',
+      templates_version: 'icons@1',
       h_scale: 1.0
     },
     events: [],
@@ -709,9 +708,7 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
       videoMissing,
       playability,
       proxyState,
-      proxySuggest: cfg.proxySuggest,
-      langDetected: docAnalysis?.lang_detected,
-      spectatingSupported: docAnalysis?.spectating_supported
+      proxySuggest: cfg.proxySuggest
     })
     if (proxyDismissed && base?.id === 'proxy-suggest') return null
     return base
@@ -1041,9 +1038,7 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
         try {
           const res = (await api.engine.derive({
             events,
-            spectating: docRef.current.spectating,
-            // 用快取文件記錄的語言去重（自動模式不可退回第一個語言）
-            profile: docRef.current.analysis?.profile ?? docRef.current.profile ?? undefined
+            spectating: docRef.current.spectating
           })) as {
             events: EngineEvent[]
           } | null

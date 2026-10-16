@@ -76,7 +76,6 @@ export function sanitizeAnalyzeArgs(raw: unknown): { path: string; force?: boole
 export function sanitizeDeriveArgs(raw: unknown): Record<string, unknown> {
   const r = (raw ?? {}) as Record<string, unknown>
   const out: Record<string, unknown> = { events: r.events, spectating: r.spectating }
-  if (r.profile !== undefined) out.profile = r.profile
   return out
 }
 

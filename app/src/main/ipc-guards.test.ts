@@ -73,7 +73,7 @@ describe('engine argument sanitizing (I1 / Minor 13)', () => {
   })
   it('derive cannot override profile_dir', () => {
     const r = sanitizeDeriveArgs({ events: [], spectating: [], profile: 'zh-TW', profile_dir: 'C:\\evil' })
-    expect(r).toEqual({ events: [], spectating: [], profile: 'zh-TW' })
+    expect(r).toEqual({ events: [], spectating: [] })
   })
   it('autoclip passes only events/params/duration', () => {
     expect(sanitizeAutoclipArgs({ events: [], params: {}, duration: 3, extra: 1 })).toEqual({ events: [], params: {}, duration: 3 })

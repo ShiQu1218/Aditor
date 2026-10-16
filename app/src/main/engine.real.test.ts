@@ -16,6 +16,6 @@ describe('EngineClient with real Python engine', () => {
     const cmd = engineCommand(false)
     client = new EngineClient(cmd)
     const res = await client.start()
-    expect(res.engineVersion).toBe('0.2.0')
+    expect(res.engineVersion).toBe('0.3.0')
   })
 })
