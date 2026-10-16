@@ -94,12 +94,22 @@
    - 下載並驗證 LGPL FFmpeg 執行檔 (`build/ffmpeg/`)
    - 編譯前端頁面並使用 `electron-builder` 打包出 NSIS 安裝檔與免安裝 Portable 版（輸出於 `dist/` 目錄）。
 
+   FFmpeg 固定為 BtbN 的具名 autobuild（版本與 SHA-256 寫在 `scripts/fetch-ffmpeg.ps1`），下載檔雜湊不符時腳本會**失敗**而不是警告；
+   若 `buildfmpeg-lgpl-shared.zip` 是舊版下載，請先刪除再重跑。
+
+### 發版前重建檢查清單
+1. 先跑測試：`engine\.venv\Scripts\python.exe -m pytest -q`（設定 `APEXHL_GOLDEN_VIDEO` 讓 test_golden 真的執行）、`npm --prefix app test`、`npm --prefix app run typecheck`、`npm --prefix app run test:e2e`。
+2. 把舊的 `dist\`、`build\engine`、`build\pyinstaller-temp` 搬到備份位置（避免舊產物混入），再執行 `scriptsuild.ps1`。
+3. 產物檢查：`dist\win-unpackedesources	emplates\` 含 `zh-TW`、`en`、`ja` 且與 git 相同；`resources\enginepexhlpexhl.exe ipc` 的 ready 訊息 `engine_version` 為 `0.2.0`；
+   `resourcesfmpeginfmpeg.exe -buildconf` 無 `--enable-gpl`／`--enable-nonfree`、有 `--enable-version3` 與 `--enable-libdav1d`；安裝檔內含 `THIRD_PARTY_NOTICES.md`、`LICENSE`。
+4. 引擎版本 0.2.0／zh-TW@2 起，舊版（0.1.0）產生的快取會自動重新分析；首次開啟舊專案會看到重新分析。
+
 ---
 
 ## 📜 授權與第三方說明
 
 - 本專案核心原始碼依據 [MIT 授權條款](LICENSE) 開源發布。
-- 專案打包隨附之 FFmpeg 執行檔與動態連結函式庫嚴格遵循 **LGPL** 授權協議，不含任何 GPL 或非自由授權限制組件。詳細第三方套件與授權宣告請參閱 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+- 專案打包隨附之 FFmpeg 執行檔與動態連結函式庫為 **LGPL v3** 建置（`--enable-version3`，無 `--enable-gpl`／`--enable-nonfree`），其中的 libopenh264 為原始碼編譯而非 Cisco 官方二進位，詳見聲明檔。詳細第三方套件與授權宣告請參閱 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 
 ---
 

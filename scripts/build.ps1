@@ -19,7 +19,7 @@ if (-not $SkipEngine) {
     $pyinstaller = Join-Path $root "engine\.venv\Scripts\pyinstaller.exe"
     if (-not (Test-Path $pyinstaller)) {
         Write-Host "PyInstaller not found in venv, installing..."
-        & (Join-Path $root "engine\.venv\Scripts\python.exe") -m pip install pyinstaller
+        & (Join-Path $root "engine\.venv\Scripts\python.exe") -m pip install "pyinstaller==6.22.3"
     }
 
     $distPath = Join-Path $root "build\engine"
@@ -41,6 +41,9 @@ if (-not $SkipFfmpeg) {
     Write-Host "`n[2/4] Fetching & verifying LGPL FFmpeg..."
     $fetchScript = Join-Path $root "scripts\fetch-ffmpeg.ps1"
     & powershell -ExecutionPolicy Bypass -File $fetchScript
+    if ($LASTEXITCODE -ne 0) {
+        throw "fetch-ffmpeg.ps1 failed (pinned version / SHA256 verification) - refusing to package an unverified FFmpeg"
+    }
     $ffmpegExe = Join-Path $root "build\ffmpeg\bin\ffmpeg.exe"
     if (-not (Test-Path $ffmpegExe)) {
         throw "FFmpeg not found: $ffmpegExe"

@@ -53,6 +53,8 @@ def run_segments(video: str, profile, seconds: float, start: float, jobs: int,
 
     seg = seconds / jobs
 
+    used: list[bool] = []
+
     def work(i: int) -> int:
         s0 = start + i * seg
         detector = Detector(profile, 1.0)
@@ -63,6 +65,7 @@ def run_segments(video: str, profile, seconds: float, start: float, jobs: int,
                 detector.detect(banner, spec)
                 n += 1
         finally:
+            used.append(stream.used_hwaccel)
             stream.close()
         return n
 
@@ -71,7 +74,7 @@ def run_segments(video: str, profile, seconds: float, start: float, jobs: int,
         frames = sum(ex.map(work, range(jobs)))
     wall = time.perf_counter() - t0
     video_s = frames * 0.25
-    return {"hwaccel": True, "used_hwaccel": True, "frames": frames, "video_s": video_s, "wall_s": wall,
+    return {"hwaccel": True, "used_hwaccel": all(used), "frames": frames, "video_s": video_s, "wall_s": wall,
             "startup_s": 0.0, "speed": video_s / wall if wall > 0 else 0.0}
 
 

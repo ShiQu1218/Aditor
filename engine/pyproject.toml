@@ -7,7 +7,8 @@ name = "apexhl"
 version = "0.2.0"
 description = "Apex Highlighter 分析引擎"
 requires-python = ">=3.11"
-dependencies = ["opencv-python", "numpy"]
+# 下限＝目前驗證過的版本（發版建置時的環境）；上限避免大版本破壞
+dependencies = ["opencv-python>=5.0,<6", "numpy>=2.5,<3"]
 
 [project.optional-dependencies]
 dev = ["pytest", "pytest-timeout"]

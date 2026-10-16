@@ -6,13 +6,13 @@ This project, Apex Highlighter, incorporates or interacts with several third-par
 
 ## 1. FFmpeg
 
-- **License**: GNU Lesser General Public License (LGPL) version 2.1 or later (LGPL v3 / LGPL v2.1)
-- **Source Code**: Available at [https://ffmpeg.org](https://ffmpeg.org) and [https://github.com/FFmpeg/FFmpeg](https://github.com/FFmpeg/FFmpeg)
-- **Included Build**: Precompiled Windows 64-bit shared build provided by BtbN (`FFmpeg-Builds`).
+- **License**: GNU Lesser General Public License, **version 3** (LGPL v3). The bundled build is configured with `--enable-version3` and **without** `--enable-gpl` and **without** `--enable-nonfree`, so the combined FFmpeg libraries are licensed under LGPL v3 (not "v2.1 or later"). The full license text ships as `resources/ffmpeg/LICENSE.txt`.
+- **Source Code**: [https://ffmpeg.org](https://ffmpeg.org) and [https://github.com/FFmpeg/FFmpeg](https://github.com/FFmpeg/FFmpeg) (revision `g045dea2a34`). The complete corresponding source and the build scripts of the exact binary are available from the BtbN FFmpeg-Builds project: [https://github.com/BtbN/FFmpeg-Builds](https://github.com/BtbN/FFmpeg-Builds).
+- **Included Build**: Precompiled Windows 64-bit **shared** build `ffmpeg-N-127527-g045dea2a34-win64-lgpl-shared.zip` from the BtbN release tag `autobuild-2026-10-14-13-03`. The exact tag and the SHA-256 of the archive are pinned in `scripts/fetch-ffmpeg.ps1`, which refuses to continue when the checksum does not match.
 - **Configuration (`ffmpeg -buildconf`)**:
-  - The distributed build is strictly configured **WITHOUT** `--enable-gpl` and **WITHOUT** `--enable-nonfree`.
-  - It includes `--enable-libdav1d` for high-performance AV1 video decoding.
-  - It includes dynamic shared libraries (`avcodec`, `avformat`, `avutil`, etc.).
+  - `--enable-version3`, no `--enable-gpl`, no `--enable-nonfree`.
+  - `--enable-libdav1d` (AV1 decoding), `--enable-libopenh264` (see section 7), and further third-party libraries compiled into the shared DLLs (for example libaom, libvpx, libopus, libvorbis, libass, libwebp, libsvtav1, rav1e); their licenses (BSD, MIT, LGPL, MPL, ISC and similar) are compatible with LGPL v3 distribution. The complete list is the output of `ffmpeg -buildconf` of the bundled binary.
+  - FFmpeg is linked dynamically (`avcodec`, `avformat`, `avutil`, ... DLLs), as a separate executable that Apex Highlighter launches as a child process.
 - **User Modification Notice**:
   In compliance with the LGPL, users have the right to modify, recompile, or replace the FFmpeg shared libraries and executable binaries. You may replace the files in the `resources/ffmpeg/` directory with any binary-compatible FFmpeg build of your choice.
 
@@ -31,6 +31,16 @@ This project, Apex Highlighter, incorporates or interacts with several third-par
 - **License**: Apache License 2.0
 - **Copyright**: (c) 2000–2026, OpenCV Foundation, Intel Corporation, and contributors.
 - **Source**: [https://opencv.org](https://opencv.org)
+
+---
+
+### 3a. OpenCV bundled FFmpeg (opencv_videoio_ffmpeg)
+
+- The Python wheel of OpenCV includes `cv2/opencv_videoio_ffmpeg*.dll`, an FFmpeg build licensed under **LGPL v2.1 or later** (source: [https://github.com/opencv/opencv-python](https://github.com/opencv/opencv-python) and [https://ffmpeg.org](https://ffmpeg.org)). The analysis engine does not use OpenCV video I/O (frames are decoded by the separate FFmpeg described in section 1), but the DLL is packaged together with OpenCV by PyInstaller. Users may replace it with a compatible build.
+
+### 3b. Python and PyInstaller
+
+- The analysis engine is packaged with PyInstaller (GPL v2 or later **with a special exception** that permits distributing the bootloader and bundled applications under any license) and embeds the CPython runtime (Python Software Foundation License, [https://docs.python.org/3/license.html](https://docs.python.org/3/license.html)).
 
 ---
 
@@ -58,12 +68,12 @@ This project, Apex Highlighter, incorporates or interacts with several third-par
 
 ---
 
-## 7. Cisco OpenH264 (Optional Download)
+## 7. OpenH264 (H.264 encoder)
 
-- **License**: Cisco Binary Code License Agreement
-- **Source / Binary Provider**: Cisco Systems, Inc. ([http://ciscobinary.openh264.org](http://ciscobinary.openh264.org))
-- **Notice**:
-  Apex Highlighter does not bundle OpenH264 binaries by default. If the user chooses to enable precise H.264 re-encoding on systems without hardware encoders (NVENC / QSV / AMF), the application allows downloading the official precompiled binary directly from Cisco upon explicit user confirmation, ensuring compliance with Cisco's binary licensing model and patent royalty coverage.
+- **License of the source code**: BSD 2-Clause License. Copyright (c) 2013, Cisco Systems, Inc.
+- **What is bundled**: The bundled FFmpeg build (section 1) is compiled with `--enable-libopenh264`; BtbN builds OpenH264 from source and links it into FFmpeg. This is **not** Cisco's pre-built binary, so Cisco's patent license for its own binary release (Cisco Binary Code License, [http://www.openh264.org/BINARY_LICENSE.txt](http://www.openh264.org/BINARY_LICENSE.txt)) does **not** cover the encoder inside the bundled FFmpeg.
+- **Optional download**: When the user chooses precise H.264 re-encoding on a system without a hardware encoder (NVENC / QSV / AMF), the application can download Cisco's official pre-built OpenH264 binary directly from Cisco after explicit user confirmation. That binary is covered by Cisco's Binary Code License and patent grant; it is not redistributed with the installer.
+- **Patents**: H.264 is subject to patent licensing (MPEG LA / Via LA). Apex Highlighter is a local, non-commercial desktop utility; anyone redistributing builds commercially is responsible for obtaining the necessary H.264 patent licenses or for substituting an FFmpeg build compiled with `--disable-libopenh264`.
 
 ---
 
