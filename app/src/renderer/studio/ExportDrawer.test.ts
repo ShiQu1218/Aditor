@@ -58,7 +58,10 @@ async function ready(over: Record<string, unknown> = {}, outDir: string | null =
 describe('ExportDrawer markup (all four states)', () => {
   test('settings: dialog semantics, summary, modes, quality, output, enabled start', async () => {
     const { c } = await ready()
-    const m = html(c)
+    // 兩段來自同一支影片（相容性可確認）；不同來源的規格引擎無法完整提供，會保守地改走精準編碼（I9）
+    const sameSource: Project = { ...project, items: [project.items[0], { ...project.items[1], source: A, start: 10, end: 40 }] }
+    const m = html(c, sameSource)
+    expect(html(c)).toContain('無法確認幀率')
     expect(m).toContain('role="dialog"')
     expect(m).toContain('aria-modal="true"')
     expect(m).toContain('aria-labelledby="xd-title"')
