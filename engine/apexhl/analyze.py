@@ -132,15 +132,23 @@ def _segments_from_doc(raw, duration: float) -> list[_Seg] | None:
     return segs
 
 
-def _make_doc(info, profile: Profile, status: str, progress_t: float, h_scale: float,
+UNDETERMINED_VERSION = "auto@undetermined"  # 自動語言偵測失敗的快取；不屬於任何語言設定檔的版本
+
+
+def _make_doc(info, profile: Profile | None, status: str, progress_t: float, h_scale: float,
               events: list[Event], spectating: list[SpecInterval], clips: list[Clip],
               segments: list[dict] | None = None) -> dict:
+    """profile=None 表示自動語言偵測失敗（analysis.lang_detected=false、profile=null）。"""
     doc = {
         "version": 1,
         "video": info.to_dict(),
-        "profile": profile.lang,
+        "profile": profile.lang if profile else None,
         "analysis": {"status": status, "progress_t": progress_t, "engine_version": ENGINE_VERSION,
-                     "templates_version": profile.templates_version, "h_scale": h_scale},
+                     "templates_version": profile.templates_version if profile else UNDETERMINED_VERSION,
+                     "h_scale": h_scale,
+                     "profile": profile.lang if profile else None,
+                     "lang_detected": profile is not None,
+                     "spectating_supported": profile.spectating_supported if profile else None},
         "events": [e.to_dict() for e in events],
         "spectating": [s.to_dict() for s in spectating],
         "clips": [c.to_dict() for c in clips],
@@ -159,6 +167,25 @@ def _save(cp: Path, doc: dict, fallback: Path) -> Path:
     return written
 
 
+def _undetermined_doc(path, info, cp: Path, cache_dir: Path, old: dict | None, base_events: list[Event],
+                      manual_clips: list[Clip], candidates: list[Profile], on_progress) -> dict:
+    """自動語言偵測失敗：存成 status=done、lang_detected=false、無自動事件的結果（保留手動事件）。
+
+    下次 auto 分析會因 lang_detected=false 重新嘗試；單一語言模式的 templates_version 不會相符，
+    因此使用者在設定指定語言後重新分析會真的重跑。"""
+    raw, unmatched = merge_reanalysis(base_events, []) if base_events else ([], [])
+    final = derive(raw, [], candidates[0])  # 只有手動事件；candidates[0] 僅提供 dedupe 參數
+    doc = _make_doc(info, None, "done", info.duration, 1.0, final, [], manual_clips)
+    try:
+        doc["keyframes"] = keyframes(path)
+    except Exception:
+        doc["keyframes"] = []
+    doc["unmatched"] = [e.to_dict() for e in unmatched]
+    _save(cp, doc, cache_dir)
+    on_progress(info.duration, info.duration)
+    return doc
+
+
 def _resumable(old: dict | None, info, profile: Profile) -> bool:
     if not old:
         return False
@@ -168,6 +195,13 @@ def _resumable(old: dict | None, info, profile: Profile) -> bool:
             and abs(float(v.get("mtime", -1.0)) - info.mtime) < 1e-6
             and a.get("engine_version") == ENGINE_VERSION
             and a.get("templates_version") == profile.templates_version)
+
+
+def _cache_stale(old: dict, info, candidates: list[Profile]) -> bool:
+    if len(candidates) == 1:
+        return needs_reanalysis(old, info, candidates[0].templates_version)
+    return needs_reanalysis(old, info, {p.templates_version for p in candidates},
+                            {p.lang for p in candidates})
 
 
 def analyze(path: str, profile: Profile | list[Profile], *, cache_dir: Path, beside: bool = False,
@@ -180,8 +214,7 @@ def analyze(path: str, profile: Profile | list[Profile], *, cache_dir: Path, bes
     cache_dir = Path(cache_dir)
     cp = cache_path(path, cache_dir, beside)
     old = load_cache(cp)
-    if not force and old is not None and any(
-            not needs_reanalysis(old, info, p.templates_version) for p in candidates):
+    if not force and old is not None and not _cache_stale(old, info, candidates):
         old["cache_path"] = str(cp)
         return old
 
@@ -219,7 +252,11 @@ def analyze(path: str, profile: Profile | list[Profile], *, cache_dir: Path, bes
             if len(candidates) == 1:
                 h_scale = calibrate(path, info, profile, cancel=cancel)
             else:
-                profile, h_scale = calibrate_auto(path, info, candidates, cancel=cancel)
+                chosen, h_scale = calibrate_auto(path, info, candidates, cancel=cancel)
+                if chosen is None:  # 無法判斷錄影語言：明確記錄，不用任何語言硬分析
+                    return _undetermined_doc(path, info, cp, cache_dir, old, base_events,
+                                             manual_clips, candidates, on_progress)
+                profile = chosen
             thr = profile.name_sig_threshold
         except Cancelled:
             doc = _make_doc(info, profile, "partial", 0.0, None, [], [], manual_clips)  # h_scale=None：尚未校準

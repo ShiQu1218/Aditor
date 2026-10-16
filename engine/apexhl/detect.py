@@ -95,6 +95,9 @@ class Detector:
         self.h_scale = h_scale
         self.tpl = {k: _imread_gray(profile.dir / v.file) for k, v in profile.keywords.items()}
         self.thr = {k: v.threshold for k, v in profile.keywords.items()}
+        # 診斷／校準只看關鍵字範本；skull 只是名字的左界與「獨立擊殺」存在檢查
+        self._kw_keys = [k for k in self.tpl if k != "skull"]
+        # spec_templates 可為空（該語言不支援觀戰偵測）→ 永遠回報 spectating=False
         self.spec_tpl = [(_imread_gray(profile.dir / v.file), v.threshold) for v in profile.spec_templates]
 
     # ---- 內部 ----
@@ -107,12 +110,12 @@ class Detector:
     def keyword_scores(self, banner_bgr: np.ndarray) -> dict[str, float]:
         """每個關鍵字在整個 banner 上的最高分（診斷／測試用，不做否決與早退）。"""
         wm = white_mask(self._scaled(banner_bgr, self.h_scale), self.profile)
-        return {k: self._score(wm, k) for k in self.tpl}
+        return {k: self._score(wm, k) for k in self._kw_keys}
 
     def best_scale_score(self, banner_bgr: np.ndarray, scale: float) -> float:
         """該水平比例下所有關鍵字的最高分（給 calibrate 用）。"""
         wm = white_mask(self._scaled(banner_bgr, scale), self.profile)
-        return max(self._score(wm, k) for k in self.tpl)
+        return max(self._score(wm, k) for k in self._kw_keys)
 
     def _score(self, wm: np.ndarray, key: str) -> float:
         r0, r1 = self.profile.line1_rows
@@ -207,6 +210,40 @@ class Detector:
         small = cv2.resize(block, (w16, NameSig.HEIGHT), interpolation=cv2.INTER_AREA)
         return NameSig(w16, (small >= 0.5).astype(np.uint8))
 
+    def _name_sig_bounded(self, banner: np.ndarray, wm: np.ndarray, x0: int, x1: int, y: int,
+                          h: int) -> NameSig | None:
+        """取 [x0, x1) 之間、關鍵字同一行的所有墨當作名字（name_side=left 用：左界是骷髏圖示、
+        右界是關鍵字，兩端都由範本比對決定，不靠「空白多寬」猜測）。"""
+        H, W = wm.shape
+        y0, y1 = max(0, y), min(H, y + h)
+        x0, x1 = max(0, x0), min(W, x1)
+        if x1 - x0 < 4 or y1 <= y0:
+            return None
+        red = red_mask(banner[y0:y1, x0:x1], self.profile) > 0
+        ink = self._despeckle((wm[y0:y1, x0:x1] > 0) | red)
+        cols = np.flatnonzero(ink.any(axis=0))
+        if cols.size == 0:
+            return None
+        block = ink[:, cols[0]:cols[-1] + 1]
+        rows = np.flatnonzero(block.any(axis=1))
+        block = block[rows[0]:rows[-1] + 1].astype(np.float32)
+        bh, bw = block.shape
+        if bw < 4:
+            return None
+        w16 = max(1, int(round(bw * NameSig.HEIGHT / bh)))
+        small = cv2.resize(block, (w16, NameSig.HEIGHT), interpolation=cv2.INTER_AREA)
+        return NameSig(w16, (small >= 0.5).astype(np.uint8))
+
+    def _skull_left_of(self, wm: np.ndarray, x_kw: int, y: int, h: int) -> tuple[float, int, int] | None:
+        """在關鍵字左側、同一行找骷髏圖示；回傳 (分數, x, y) 或 None（分數低於門檻）。"""
+        tpl = self.tpl["skull"]
+        lo, hi = max(0, y - _ROW_PAD), y + h + _ROW_PAD
+        sub = wm[lo:hi, :max(0, x_kw)]
+        s, sx, sy = _match(sub, tpl)
+        if s < self.thr["skull"]:
+            return None
+        return s, sx, lo + sy
+
     # ---- 對外 ----
     def detect(self, banner_bgr: np.ndarray, spec_bgr: np.ndarray) -> FrameResult:
         spectating = self._spectating(spec_bgr)
@@ -220,6 +257,8 @@ class Detector:
         # 「敵方小隊已消滅」不是事件，須否決。為省時間改成「任何關鍵字命中後、回傳前」才檢查，
         # 輸出與「先檢查否決」完全相同（否決範本沒命中時不影響任何結果）。
         def vetoed() -> bool:
+            if "enemy_squad_down" not in self.tpl:  # 該語言沒有真實樣本的否決橫幅：不否決
+                return False
             return self._hit(wm, "enemy_squad_down", box) is not None
 
         h = self.tpl["knock"].shape[0]
@@ -249,10 +288,12 @@ class Detector:
                 kind, edge, ky = "assist_elim", assist_end, y
             else:
                 kind = "assist_knock" if best[1] == "knock" else "assist_elim"
-                if best[2] - assist_end >= 25:
-                    edge, x1, ky = assist_end, best[2], y
-                else:
-                    edge, ky = best[2] + self.tpl[best[4]].shape[1], best[3]
+                if self.profile.name_between_assist:
+                    # ja：アシスト、<名字>をダウン —— 名字夾在兩者之間（單字名也只取到關鍵字左緣，
+                    # 不會把關鍵字後面的「+100」當名字）
+                    return result(kind, s, x, False,
+                                  self._name_sig_bounded(banner, wm, assist_end, best[2], y, h))
+                edge, ky = best[2] + self.tpl[best[4]].shape[1], best[3]
             return result(kind, s, x, False, self._name_sig(banner, wm, edge, ky, h, False, x1=x1))
 
         hit = self._hit(wm, "knock", box)
@@ -269,10 +310,14 @@ class Detector:
             if vetoed():
                 return result(None)
             s, x, y = hit
+            if self.profile.name_side == "left":
+                # ja：[骷髏] 名字 を撃破。骷髏是「真的獨立擊殺」的存在檢查，也是名字的左界
+                sk = self._skull_left_of(wm, x, y, h)
+                if sk is None:
+                    return result(None)
+                sig = self._name_sig_bounded(banner, wm, sk[1] + self.tpl["skull"].shape[1], x, y, h)
+                return result("elim", s, x, False, sig)
             sig = self._name_sig(banner, wm, x + self.tpl["elim_done"].shape[1], y, h, True)
-            if sig is None:
-                sig = self._name_sig(banner, wm, 0, y, h, True, x1=x)
             return result("elim", s, x, False, sig)
 
         return result(None)
-

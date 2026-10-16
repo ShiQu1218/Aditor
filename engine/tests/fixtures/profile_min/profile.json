@@ -1,5 +1,8 @@
 {"lang":"test","templates_version":"test@1","banner_roi":[560,700,800,180],"spec_roi":[0,0,400,60],
 "white":{"v_min":200,"s_max":60},"red":{"r_min":180,"g_max":90,"b_max":90},
-"keywords":{"knock":{"file":"kw_knock.png","threshold":0.75}},
+"keywords":{"knock":{"file":"kw_knock.png","threshold":0.75},
+"squad_wipe":{"file":"kw_squad_wipe.png","threshold":0.75},"assist":{"file":"kw_assist.png","threshold":0.75},
+"damage":{"file":"kw_damage.png","threshold":0.75},"elim":{"file":"kw_elim.png","threshold":0.75},
+"elim_done":{"file":"kw_elim_done.png","threshold":0.75}},
 "spec_templates":[{"file":"spec_a.png","threshold":0.75}],
 "name_sig_threshold":0.7,"dedupe_window":90}

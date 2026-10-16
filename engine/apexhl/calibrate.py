@@ -88,13 +88,15 @@ def _collect_multi(path: str, profiles: list[Profile], detectors: list[Detector]
     return scanned
 
 
+MIN_AUTO_HITS = 3  # 自動語言偵測：最佳語言至少要有這麼多命中畫格（約一個橫幅的下限），否則視為無法判斷
+
+
 def calibrate_auto(path: str, info: VideoInfo, profiles: list[Profile], *,
                    max_scan_seconds: float = 600.0,
-                   cancel: threading.Event | None = None) -> tuple[Profile, float]:
-    """多語自動偵測與水平比例校準：回傳 (最佳語言 Profile, h_scale)。"""
-    if len(profiles) == 1:
-        return profiles[0], calibrate(path, info, profiles[0],
-                                      max_scan_seconds=max_scan_seconds, cancel=cancel)
+                   cancel: threading.Event | None = None) -> tuple[Profile | None, float]:
+    """多語自動偵測與水平比例校準：回傳 (最佳語言 Profile, h_scale)。
+
+    沒有任何語言達到 MIN_AUTO_HITS 命中時回傳 (None, 1.0)＝「無法判斷」，**絕不**悄悄退回某個語言。"""
     detectors = [Detector(p) for p in profiles]
     hits: list[list[tuple[float, np.ndarray]]] = [[] for _ in profiles]
     mid = info.duration / 2
@@ -105,8 +107,7 @@ def calibrate_auto(path: str, info: VideoInfo, profiles: list[Profile], *,
                        hits, cancel, info.codec)
     best_idx = max(range(len(profiles)),
                    key=lambda i: (len(hits[i]), sum(s for s, _ in hits[i])))
-    if not hits[best_idx]:
-        return profiles[0], 1.0
+    if len(hits[best_idx]) < MIN_AUTO_HITS:
+        return None, 1.0
     frames = [b for _, b in hits[best_idx][:WANTED_HITS]]
     return profiles[best_idx], scan_scales(frames, detectors[best_idx])
-

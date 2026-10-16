@@ -13,7 +13,7 @@ from .decode import DecodeError
 from .derive import derive
 from .models import AutoClipParams, Event, SpecInterval
 from .probe import ProbeError, probe
-from .profile import ProfileError, load_profile, resolve_profiles
+from .profile import ProfileError, resolve_profiles
 
 
 class BadRequest(Exception):
@@ -50,6 +50,23 @@ def _jobs(v):
     if isinstance(v, bool) or not isinstance(v, int) or v < 1:
         raise BadRequest("jobs 必須是正整數")
     return v
+
+
+def _pick_profile(profiles, recorded):
+    """derive 用快取文件記錄的語言（analysis.profile／profile），不是 profiles[0]。
+
+    單一語言：直接用它（記錄的語言若不同則報錯，避免用錯語言的去重參數）。
+    自動模式：必須帶 profile 參數，且必須是已知語言。"""
+    if recorded is not None and not isinstance(recorded, str):
+        raise BadRequest("profile 必須是語言字串")
+    by_lang = {p.lang: p for p in profiles}
+    if recorded:
+        if recorded not in by_lang:
+            raise BadRequest(f"快取記錄的語言 {recorded!r} 不在可用的語言設定檔中：{sorted(by_lang)}")
+        return by_lang[recorded]
+    if len(profiles) == 1:
+        return profiles[0]
+    raise BadRequest("自動語言模式的 derive 需要帶 profile（快取文件記錄的語言）")
 
 
 class Server:
@@ -171,7 +188,7 @@ class Server:
         except (KeyError, TypeError) as e:
             raise BadRequest(f"參數格式錯誤：{e!r}") from e
         profiles = resolve_profiles(Path(_arg(args, "profile_dir")))
-        return {"events": [e.to_dict() for e in derive(events, spec, profiles[0])]}
+        return {"events": [e.to_dict() for e in derive(events, spec, _pick_profile(profiles, args.get("profile")))]}
 
     def _autoclip(self, rid, args, cancel):
         try:
