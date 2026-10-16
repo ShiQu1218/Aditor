@@ -64,6 +64,14 @@
   "src": "Japanese.mkv",
   "t": 257.0
  },
+ "assist_knock_a025725.png": {
+  "damage_line": false,
+  "enemy": "KO",
+  "kind": "assist_knock",
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 257.25
+ },
  "assist_knock_a025800.png": {
   "damage_line": false,
   "enemy": "KO",
@@ -104,6 +112,14 @@
   "src": "Japanese.mkv",
   "t": 1019.75
  },
+ "assist_knock_a102000.png": {
+  "damage_line": false,
+  "enemy": "杯子漏电命悬一线",
+  "kind": "assist_knock",
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 1020.0
+ },
  "assist_knock_a102050.png": {
   "damage_line": false,
   "enemy": "杯子漏电命悬一线",
@@ -135,6 +151,14 @@
   "spectating": false,
   "src": "Japanese.mkv",
   "t": 1032.0
+ },
+ "assist_knock_a103250.png": {
+  "damage_line": false,
+  "enemy": "我是璃月七星的电弧星",
+  "kind": "assist_knock",
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 1032.5
  },
  "assist_knock_a103300.png": {
   "damage_line": false,
@@ -375,6 +399,14 @@
   "spectating": false,
   "src": "Japanese.mkv",
   "t": 914.75
+ },
+ "knock_a091500.png": {
+  "damage_line": true,
+  "enemy": "DONOOPOOOW",
+  "kind": "knock",
+  "spectating": false,
+  "src": "Japanese.mkv",
+  "t": 915.0
  },
  "knock_a091550.png": {
   "damage_line": true,

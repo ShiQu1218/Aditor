@@ -18,15 +18,15 @@ _COMPANIONS = {
 }
 _WINNER = {"knock": "knock", "assist_knock": "assist", "assist_elim": "assist",
            "elim": "elim_done", "squad_wipe": "squad_wipe"}
-# 實測最小「勝出關鍵字領先其他關鍵字」：zh-TW 0.287、en 0.304、ja 0.462 → 下限取略低
-_MIN_MARGIN = {"zh-TW": 0.25, "en": 0.25, "ja": 0.40}
+# 實測最小「勝出關鍵字領先其他關鍵字」：zh-TW 0.287、en 0.163（含最難的低對比正例）、ja 0.462 → 下限取略低
+_MIN_MARGIN = {"zh-TW": 0.25, "en": 0.15, "ja": 0.40}
 # 助攻之後 knock/elim 子關鍵字互相的領先：zh-TW 0.519、en 0.50、ja 0.46
 _MIN_SUB_MARGIN = {"zh-TW": 0.45, "en": 0.45, "ja": 0.40}
 # 門檻須落在「正例最小值」與「外來最大值」之間，且兩側各至少留這麼多
 _GAP = 0.05
-# 傷害行：真實但對比太低而沒偵測到的畫格（已知限制；若改善請移除）
-_KNOWN_DAMAGE_MISS = {("en", "knock_a016950.png")}
-# 名字指紋：同敵人配對判為同一人的實測比例（en 52/66、ja 108/112）與不同敵人誤合併 0 次
+# 傷害行：真實但對比太低而沒偵測到的畫格（已知限制；目前沒有，en 門檻 0.35 就是為了涵蓋對比 0.44 的實測畫格）
+_KNOWN_DAMAGE_MISS: set = set()
+# 名字指紋：同敵人配對判為同一人的實測比例（en 70/86、ja 126/134）與不同敵人誤合併 0 次
 _SAME_PAIR_FLOOR = {"en": 0.75, "ja": 0.90}
 
 
@@ -117,8 +117,7 @@ def test_thresholds_sit_inside_measured_gap(lang_ctx):
     dmg_pos = [sc["damage"] for k, dl, sc in rows if k == "knock" and dl]
     dmg_foreign = [sc["damage"] for k, _, sc in rows if k in (None, "elim")]
     assert max(dmg_foreign) + _GAP <= d.thr["damage"]
-    if lang_ctx.lang != "en":  # en 有一格對比極低的傷害行（_KNOWN_DAMAGE_MISS），見報告
-        assert d.thr["damage"] + _GAP <= min(dmg_pos)
+    assert d.thr["damage"] + _GAP <= min(dmg_pos)
 
 
 def test_name_sig_pairs_on_real_fixtures(new_lang_ctx):
@@ -171,3 +170,48 @@ def test_profile_flags(lang_ctx):
         assert p.name_side == "right" and not p.name_between_assist
     assert not p.veto_supported or lang_ctx.lang == "zh-TW"  # en/ja 無真實否決橫幅樣本
     assert p.spectating_supported == bool(p.spec_templates)
+
+
+def test_ja_skull_threshold_inside_gap():
+    """ja 的 skull 範本（從 English.mkv 獨立擊殺橫幅裁出，圖示與語言無關）：
+    正例＝en 獨立擊殺 fixture（非淡入）最小 0.824；外來＝全部 ja fixture 第一行帶最大 0.630。"""
+    from conftest import LangCtx
+    from apexhl.detect import _match, white_mask
+    ja, en = LangCtx("ja"), LangCtx("en")
+    tpl = ja.detector.tpl["skull"]
+    thr = ja.profile.keywords["skull"].threshold
+
+    def best(ctx, name):
+        wm = white_mask(ctx.load(name)[0], ja.profile)
+        return _match(wm[50:108], tpl)[0]
+
+    pos = [best(en, n) for n, lab in en.items(kind="elim", exclude_fadein=True)]
+    foreign = [best(ja, n) for n, _ in ja.items()]
+    assert len(pos) >= 5 and max(foreign) + _GAP <= thr <= min(pos) - _GAP
+
+
+def test_yellow_names_colorblind_mode(lang_ctx):
+    """色盲模式（紅色盲／藍色盲）敵人名字為黃色：把真實 knock fixture 的紅字名像素改成黃色
+    （與使用者提供的黃名截圖同一色相，BGR≈(59,171,180)），名字指紋必須仍可取得並與紅名版本判為同一人。
+    關鍵字比對只用白字遮罩，與名字顏色無關。"""
+    import numpy as np
+    from apexhl.detect import red_mask
+    ctx = lang_ctx
+    done = 0
+    for name, lab in ctx.items(kind="knock", exclude_fadein=True):
+        banner, spec = ctx.load(name)
+        red = red_mask(banner, ctx.profile) > 0
+        if red.sum() < 150:
+            continue
+        yellow = banner.copy()
+        yellow[red] = (59, 171, 180)
+        a, b = ctx.detector.detect(banner, spec), ctx.detector.detect(yellow, spec)
+        assert b.kind == "knock"
+        if a.name_sig is None:
+            continue
+        assert b.name_sig is not None, name
+        assert same_name(a.name_sig, b.name_sig, ctx.profile.name_sig_threshold), name
+        done += 1
+        if done >= 5:
+            break
+    assert done >= 3

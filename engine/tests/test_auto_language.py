@@ -135,3 +135,19 @@ def test_ipc_derive_uses_recorded_profile_dedupe(tmp_path):
     with pytest.raises(BadRequest):
         s._derive("1", {**args, "profile": None}, None)
     json.dumps(args)
+
+
+def test_analysis_reports_spectating_unsupported_profile(tmp_path):
+    """profile 沒有觀戰範本（spectating_supported=false）→ analysis.spectating_supported=false，App 才能警告。"""
+    import shutil
+    from apexhl.profile import load_profile
+    d = tmp_path / "zh"
+    shutil.copytree(REPO / "templates" / "zh-TW", d)
+    doc = json.loads((d / "profile.json").read_text(encoding="utf-8"))
+    doc["spec_templates"] = []
+    doc["spectating_supported"] = False
+    (d / "profile.json").write_text(json.dumps(doc), encoding="utf-8")
+    v = make_video(tmp_path, "blank.mp4", 3)
+    res = analyze(str(v), load_profile(d), cache_dir=tmp_path / "c", hwaccel=False)
+    assert res["analysis"]["spectating_supported"] is False
+    assert res["analysis"]["lang_detected"] is True and res["analysis"]["profile"] == "zh-TW"
