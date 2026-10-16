@@ -58,6 +58,7 @@ import { NoticeAction, proxyBusyNotice, studioNotice, StudioNotice } from './not
 import { createAnnouncer } from './liveAnnouncer'
 import { guardCommand, SourceEditCommand } from './modeGuard'
 import { eventAriaLabel } from './reasons'
+import { AutosaveController } from '../editor/useAutosave'
 import { navReference, type NavAnchor } from './eventNav'
 import { isAnyOverlayOpen, OverlayState, topOverlay } from './overlays'
 import { fileUrl, onVideoError, planSeek, routeTimeUpdate } from './seekPlan'
@@ -291,13 +292,31 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [videoPath, reloadKey])
 
-  // dirty：1 秒去抖後寫回快取
+  // dirty：1 秒去抖後寫回快取。離開工作室（卸載）、關閉視窗（beforeunload）與 main 的 flushRequest
+  // 都會同步寫入尚未落盤的編輯（I4），不會丟掉最後 1 秒。
+  const cacheSaver = useRef<AutosaveController<CacheDoc> | null>(null)
+  if (!cacheSaver.current) {
+    cacheSaver.current = new AutosaveController<CacheDoc>({
+      delayMs: 1000,
+      save: (doc) => void window.api?.cache?.save?.(doc),
+      saveSync: (doc) => void window.api?.cache?.saveSync?.(doc)
+    })
+  }
   useEffect(() => {
-    if (!state.dirty || !state.doc.cache_path) return
-    const timer = setTimeout(async () => {
-      await window.api?.cache?.save?.(state.doc)
-    }, 1000)
-    return () => clearTimeout(timer)
+    const saver = cacheSaver.current!
+    const flush = (): void => saver.flushSync()
+    window.addEventListener('beforeunload', flush)
+    const offRequest = window.api?.projects?.onFlushRequest?.(flush)
+    return () => {
+      window.removeEventListener('beforeunload', flush)
+      offRequest?.()
+      saver.flushSync()
+      saver.dispose()
+    }
+  }, [])
+  useEffect(() => {
+    if (!state.dirty) return
+    cacheSaver.current!.update(state.doc)
   }, [state.dirty, state.doc])
 
   /* ---------------- 設定與自動放置建議 ---------------- */
