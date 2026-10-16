@@ -18,3 +18,12 @@ export function drawerFixtureRequested(): 'settings' | 'running' | 'done' | 'fai
   const v = new URLSearchParams(window.location.search).get('drawer')
   return v === 'settings' || v === 'running' || v === 'done' || v === 'failed' || v === 'consent' ? v : null
 }
+
+/** 僅開發模式：?fixture=settings[&cat=a|b|c][&q=搜尋字][&fail=1] → 直接開啟設定畫面（假 IPC，見 settingsFixture.ts；fail=1 模擬寫檔失敗） */
+export function settingsFixtureRequested(): { cat: 'a' | 'b' | 'c'; q: string; fail: boolean } | null {
+  if (!import.meta.env.DEV) return null
+  const p = new URLSearchParams(window.location.search)
+  if (p.get('fixture') !== 'settings') return null
+  const cat = p.get('cat')
+  return { cat: cat === 'b' || cat === 'c' ? cat : 'a', q: p.get('q') ?? '', fail: p.get('fail') === '1' }
+}

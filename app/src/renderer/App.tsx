@@ -1,12 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { LibraryScreen } from './library/LibraryScreen'
 import { StudioScreen } from './studio/StudioScreen'
-import { LONG_FIXTURE_PATH, longFixtureRequested, projectFixtureRequested } from './dev/fixture'
+import { LONG_FIXTURE_PATH, longFixtureRequested, projectFixtureRequested, settingsFixtureRequested } from './dev/fixture'
 import { ProjectProvider, useProject } from './editor/ProjectProvider'
 import { FocusZoneProvider } from './input/FocusZoneProvider'
 import { AppShell } from './shell/AppShell'
 import { RailView } from './shell/Rail'
-import { shellI18n } from './i18n/zh-TW'
+import { SettingsScreen } from './settings/SettingsScreen'
 
 type View = 'library' | 'studio' | 'settings'
 
@@ -22,7 +22,17 @@ export default function App(): JSX.Element {
 
 function AppContent(): JSX.Element {
   const { project, apply } = useProject()
-  const [view, setView] = useState<View>(() => (longFixtureRequested() ? 'studio' : 'library'))
+  // 僅開發模式：?fixture=settings 直接開設定畫面，假 IPC 於動態載入後才掛上
+  const settingsFx = settingsFixtureRequested()
+  const [fxReady, setFxReady] = useState(!settingsFx)
+  useEffect(() => {
+    if (!import.meta.env.DEV || !settingsFx) return
+    void import('./dev/settingsFixture').then((m) => {
+      m.installSettingsFixtureApi(settingsFx.fail)
+      setFxReady(true)
+    })
+  }, [settingsFx])
+  const [view, setView] = useState<View>(() => (settingsFx ? 'settings' : longFixtureRequested() ? 'studio' : 'library'))
   const [currentVideo, setCurrentVideo] = useState<string | null>(() =>
     longFixtureRequested() ? LONG_FIXTURE_PATH : null
   )
@@ -54,11 +64,10 @@ function AppContent(): JSX.Element {
   if (view === 'studio' && currentVideo) {
     page = <StudioScreen key={currentVideo} videoPath={currentVideo} onBack={() => setView('library')} />
   } else if (view === 'settings') {
-    page = (
-      <div className="placeholder-page">
-        <h1>{shellI18n.settings.title}</h1>
-        <p>{shellI18n.settings.placeholder}</p>
-      </div>
+    page = fxReady ? (
+      <SettingsScreen initialQuery={settingsFx?.q} initialCategory={settingsFx?.cat} />
+    ) : (
+      <div />
     )
   } else {
     page = <LibraryScreen onSelectVideo={handleSelectVideo} onOpenSettings={() => setView('settings')} />

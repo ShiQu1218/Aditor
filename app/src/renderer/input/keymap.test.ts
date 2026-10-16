@@ -129,8 +129,16 @@ describe('resolveKey 矩陣', () => {
     // 輸入框聚焦（搜尋框）時也要能清除；組字中不處理
     expect(resolveKey(k('Escape'), { ...lib, target: 'text' })).toBe('closeOverlay')
     expect(resolveKey(k('Escape', { isComposing: true }), lib)).toBeNull()
-    // 設定頁不受影響
-    expect(resolveKey(k('Escape'), ctx({ screen: 'settings' }))).toBeNull()
+  })
+
+  test('settings screen: Esc clears the search via closeOverlay (IME-safe; native controls keep Esc)', () => {
+    const set = ctx({ screen: 'settings' })
+    expect(resolveKey(k('Escape'), set)).toBe('closeOverlay')
+    expect(resolveKey(k('Escape'), { ...set, target: 'text' })).toBe('closeOverlay')
+    expect(resolveKey(k('Escape', { isComposing: true }), { ...set, target: 'text' })).toBeNull()
+    expect(resolveKey(k('Escape', { keyCode: 229 }), { ...set, target: 'text' })).toBeNull()
+    // 下拉選單等原生控制項：Esc 保留給它自己（關閉選單）
+    expect(resolveKey(k('Escape'), { ...set, target: 'native' })).toBeNull()
   })
 
   test('其餘格子', () => {

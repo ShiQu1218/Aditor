@@ -449,7 +449,7 @@ export const shellI18n = {
     settings: '設定',
     mainNav: '主要導覽'
   },
-  settings: { title: '設定', placeholder: '設定頁面即將推出。' },
+  settings: { title: '設定' },
   keymap: {
     scope: {
       global: '全域',
@@ -503,3 +503,160 @@ export const shellI18n = {
     }
   }
 }
+
+/** 設定畫面（Task 16）：分類、卡片、各列文字與控制項標籤。 */
+export const settingsI18n = {
+  title: '設定',
+  searchPlaceholder: '搜尋設定',
+  searchLabel: '搜尋設定',
+  tablistLabel: '設定分類',
+  resultsLabel: '搜尋結果',
+  noResults: '沒有符合的設定',
+  noResultsHint: '試試其他關鍵字，例如「代理檔」「秒數」「編碼器」。',
+  hitCount: '{n} 項符合',
+  loading: '正在讀取設定…',
+  loadFailed: '無法讀取設定，已顯示預設值。',
+  saveFailed: '儲存失敗：這項變更已在目前視窗生效，但沒有寫入磁碟，重新啟動後可能還原。請確認磁碟空間與資料夾權限後再試一次。',
+  newTag: '新',
+  comingSoon: '此功能將在後續更新提供。',
+  cat: {
+    a: '影片與分析',
+    b: '預覽與剪輯',
+    c: '匯出與關於'
+  },
+  card: {
+    source: '影片來源',
+    perf: '分析與效能',
+    proxy: '預覽與代理檔',
+    clip: '剪輯預設值',
+    export: '匯出',
+    about: '關於'
+  },
+  row: {
+    watchFolders: {
+      title: '監看資料夾',
+      desc: '新影片穩定後自動匯入影片庫（是否自動分析見下一項）。',
+      keywords: ['資料夾', '監看', '匯入', 'watch', 'folder'],
+      add: '新增資料夾',
+      remove: '移除',
+      removeLabel: '移除監看資料夾 {dir}',
+      empty: '尚未設定監看資料夾',
+      missing: '找不到此資料夾',
+      list: '已設定的監看資料夾'
+    },
+    autoAnalyze: {
+      title: '新影片自動分析',
+      desc: '關閉後只匯入，需手動按「分析」。',
+      keywords: ['分析', '佇列', '自動']
+    },
+    decode: {
+      title: '解碼方式',
+      desc: '硬體解碼失敗時會自動改用軟體解碼並提示。',
+      keywords: ['解碼', '硬體', '軟體', 'gpu', 'decode'],
+      auto: '自動（硬體優先）',
+      software: '強制軟體解碼'
+    },
+    cacheLocation: {
+      title: '快取位置',
+      desc: '預設存在 %APPDATA%\\ApexHighlighter\\cache，不寫入 Outplayed 目錄。',
+      keywords: ['快取', '位置', 'cache', 'appdata'],
+      appdata: 'App 資料夾',
+      besideVideo: '影片旁（.apexhl.json）'
+    },
+    lowPerfMode: {
+      title: '低效能模式',
+      desc: '關閉動畫、縮圖改為靜態、時間軸熱度條降為 60 格。',
+      keywords: ['低效能', '效能', '動畫', 'performance']
+    },
+    proxySuggest: {
+      title: '播放不流暢時建議產生代理檔',
+      desc: '以 mediaCapabilities 判斷；匯出一律使用原始檔。',
+      keywords: ['代理檔', '建議', 'proxy', '預覽']
+    },
+    proxyUsage: {
+      title: '代理檔佔用空間',
+      desc: '刪除後需要時可重新產生。',
+      keywords: ['代理檔', '刪除', '佔用', '空間', 'proxy'],
+      summary: '{size}（{count} 個檔案）',
+      none: '目前沒有代理檔',
+      unknown: '無法取得佔用空間',
+      delete: '刪除全部代理檔',
+      confirm: '確定刪除？',
+      cancel: '取消',
+      deleted: '已刪除 {n} 個代理檔',
+      failed: '有 {n} 個代理檔無法刪除'
+    },
+    beforeAfter: {
+      title: '事件前／後秒數（快速剪輯、合輯）',
+      desc: '預設 8 秒前、4 秒後；範圍 0–30 秒。',
+      keywords: ['秒數', '前後', '快速剪輯', '合輯', 'before', 'after'],
+      before: '事件前秒數',
+      after: '事件後秒數',
+      decrease: '減少{name}',
+      increase: '增加{name}',
+      unit: '秒'
+    },
+    autoclip: {
+      title: 'AI 自動剪輯預設參數',
+      desc: '在「AI 自動剪輯」浮層可臨時調整；這裡是開啟浮層時的起始值。',
+      keywords: ['ai', '自動剪輯', '參數', 'gap', 'max_len', '精華'],
+      n: '最少殺敵數 n（1–10）',
+      gap: '相鄰最大間隔 gap 秒（5–60）',
+      before: '首殺前 before 秒（0–30）',
+      after: '末殺後 after 秒（0–30）',
+      max_len: '片段最長 max_len 秒（15–300）'
+    },
+    autoSuggestOnOpen: {
+      title: '開啟影片時自動產生精華建議',
+      desc: '以預設參數執行一次，僅放上建議框，不會自動加入專案。',
+      keywords: ['自動', '建議', '精華', '開啟影片']
+    },
+    projectAutosave: {
+      title: '專案自動儲存',
+      desc: '每次修改後自動存到 %APPDATA%\\ApexHighlighter\\projects\\，「另存檔案」只用於分享。關閉後會恢復「未儲存變更」提示。',
+      keywords: ['專案', '自動儲存', 'autosave', '儲存']
+    },
+    defaultOutDir: {
+      title: '預設輸出資料夾',
+      desc: '匯出抽屜的起始資料夾；未設定時每次詢問。',
+      keywords: ['匯出', '輸出', '資料夾', 'export'],
+      choose: '選擇資料夾',
+      clear: '清除',
+      unset: '每次詢問',
+      current: '目前：{dir}'
+    },
+    encoders: {
+      title: '可用編碼器',
+      desc: '精準重新編碼會依 NVENC、QSV、AMF 的順序挑選硬體編碼器。',
+      keywords: ['編碼器', 'nvenc', 'qsv', 'amf', 'encoder', 'gpu'],
+      redetect: '重新偵測',
+      detecting: '偵測中…',
+      notDetected: '尚未偵測',
+      available: '可用',
+      unavailable: '不可用'
+    },
+    openh264: {
+      title: 'OpenH264（CPU 編碼）',
+      desc: '僅在沒有硬體編碼器時使用；依授權不隨附，需在匯出面板同意後下載。',
+      keywords: ['openh264', 'cisco', 'cpu', '編碼'],
+      installed: '已安裝',
+      notInstalled: '尚未安裝',
+      unknown: '狀態未知',
+      download: '重新下載',
+      downloadHint: '下載需在匯出面板同意授權後進行。'
+    },
+    about: {
+      title: '版本與授權',
+      desc: 'MIT 授權。隨附 LGPL 版 ffmpeg。',
+      keywords: ['版本', '授權', '關於', 'license', 'version', 'mit', 'ffmpeg'],
+      version: 'Apex Highlighter {version}',
+      licenses: '第三方授權',
+      licensesHint: '授權清單頁面將在後續更新提供。'
+    },
+    trademark: {
+      title: '商標聲明',
+      desc: 'Apex Legends 為 Electronic Arts／Respawn 之商標，與本專案無關。',
+      keywords: ['商標', 'apex legends', 'ea', 'respawn', '聲明']
+    }
+  }
+} as const

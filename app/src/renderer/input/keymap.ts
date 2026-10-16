@@ -170,6 +170,8 @@ function resolveInner(e: KeyInput, ctx: KeyCtx): Command | null {
     if (ctx.overlayOpen) return 'closeOverlay'
     // 影片庫：Esc 清除搜尋（輸入框聚焦時亦可）
     if (ctx.screen === 'library') return 'closeOverlay'
+    // 設定：Esc 清除搜尋（輸入框聚焦時亦可）；下拉選單等原生控制項保留 Esc
+    if (ctx.screen === 'settings') return ctx.target === 'native' ? null : 'closeOverlay'
     if (ctx.target !== 'none') return null
     if (ctx.screen !== 'studio') return null
     return ctx.mode === 'project' ? 'backToSource' : 'closeOverlay'
