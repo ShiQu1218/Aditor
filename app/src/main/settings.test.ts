@@ -95,7 +95,9 @@ describe('settings store（設定儲存）', () => {
     const store = new SettingsStore(file)
     const renameSpy = vi.spyOn(fs, 'renameSync')
 
-    const s = store.set({ before: 12, autoclip: { ...DEFAULT_SETTINGS.autoclip, n: 5 } })
+    const r1 = store.set({ before: 12, autoclip: { ...DEFAULT_SETTINGS.autoclip, n: 5 } })
+    expect(r1.persisted).toBe(true)
+    const s = r1.settings
     expect(s.before).toBe(12)
     expect(s.autoclip.n).toBe(5)
 
@@ -113,7 +115,7 @@ describe('settings store（設定儲存）', () => {
       after: -1,
       autoclip: { ...s.autoclip, gap: 1000, max_len: 14 },
       lowPerfMode: true
-    })
+    }).settings
     expect(s2.before).toBe(12)
     expect(s2.after).toBe(DEFAULT_SETTINGS.after)
     expect(s2.autoclip.gap).toBe(DEFAULT_SETTINGS.autoclip.gap)
@@ -122,7 +124,7 @@ describe('settings store（設定儲存）', () => {
     expect(s2.lowPerfMode).toBe(true)
 
     // 邊界值（含端點）允許
-    const s3 = store.set({ before: 0, after: 30 })
+    const s3 = store.set({ before: 0, after: 30 }).settings
     expect(s3.before).toBe(0)
     expect(s3.after).toBe(30)
   })
@@ -136,8 +138,10 @@ describe('settings store（設定儲存）', () => {
     vi.spyOn(fs, 'renameSync').mockImplementation(() => {
       throw new Error('EPERM: rename failed')
     })
-    const s = store.set({ before: 5 })
-    expect(s.before).toBe(5) // 記憶體狀態仍更新，不丟錯
+    const r = store.set({ before: 5 })
+    expect(r.settings.before).toBe(5) // 記憶體狀態仍更新，不丟錯
+    expect(r.persisted).toBe(false) // 但明確回報沒有寫入磁碟
+    expect(store.get().before).toBe(5)
 
     expect(fs.readFileSync(file, 'utf-8')).toBe(previous) // 舊檔完好
     expect(JSON.parse(fs.readFileSync(file, 'utf-8')).before).toBe(10)
@@ -156,5 +160,61 @@ describe('settings store（設定儲存）', () => {
     off()
     store.set({ before: 3 })
     expect(seen).toEqual([1, 2])
+  })
+
+  it('set reports persisted:true on success and persisted:false when the write fails', () => {
+    const store = new SettingsStore(file)
+    expect(store.set({ before: 7 }).persisted).toBe(true)
+    vi.spyOn(fs, 'writeFileSync').mockImplementation(() => {
+      throw new Error('ENOSPC: no space left')
+    })
+    const r = store.set({ before: 9 })
+    expect(r.persisted).toBe(false)
+    expect(r.settings.before).toBe(9)
+  })
+
+  it('a later successful set persists again (memory and disk converge)', () => {
+    const store = new SettingsStore(file)
+    const spy = vi.spyOn(fs, 'renameSync').mockImplementationOnce(() => {
+      throw new Error('EPERM')
+    })
+    expect(store.set({ before: 5 }).persisted).toBe(false)
+    spy.mockRestore()
+    // 即使這次沒有任何欄位變更，仍要把先前未寫入的狀態補寫
+    const r = store.set({})
+    expect(r.persisted).toBe(true)
+    expect(JSON.parse(fs.readFileSync(file, 'utf-8')).before).toBe(5)
+  })
+
+  it('invalid set leaves the file on disk byte-for-byte unchanged', () => {
+    const store = new SettingsStore(file)
+    store.set({ before: 12 })
+    const before = fs.readFileSync(file, 'utf-8')
+    const mtime = fs.statSync(file).mtimeMs
+    const r = store.set({
+      before: 99,
+      after: -1,
+      lowPerfMode: 'yes' as unknown as boolean,
+      autoclip: { ...DEFAULT_SETTINGS.autoclip, gap: 1000 }
+    })
+    expect(r.persisted).toBe(true)
+    expect(r.settings.before).toBe(12)
+    expect(fs.readFileSync(file, 'utf-8')).toBe(before)
+    expect(fs.statSync(file).mtimeMs).toBe(mtime)
+  })
+
+  it('a listener that throws does not abort set nor starve other listeners', () => {
+    const store = new SettingsStore(file)
+    vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const seen: number[] = []
+    store.onChange(() => {
+      throw new Error('boom')
+    })
+    store.onChange((s) => seen.push(s.before))
+    const r = store.set({ before: 4 })
+    expect(r.persisted).toBe(true)
+    expect(r.settings.before).toBe(4)
+    expect(seen).toEqual([4])
+    expect(JSON.parse(fs.readFileSync(file, 'utf-8')).before).toBe(4)
   })
 })

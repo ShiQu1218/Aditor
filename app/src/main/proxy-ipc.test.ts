@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { handleProxyGenerate, parseProxyDuration } from './proxy-ipc'
+import { handleProxyGenerate, handleProxyUsage, parseProxyDuration } from './proxy-ipc'
 
 function fakeSender(destroyed = false) {
   const sent: Array<{ channel: string; data: { videoPath: string; ratio: number } }> = []
@@ -89,5 +89,22 @@ describe('handleProxyGenerate', () => {
   it('路徑非字串 → 拒絕', async () => {
     const s = fakeSender()
     await expect(handleProxyGenerate(s, 42 as unknown as string, 1, { generateProxy: async () => 'o', now: () => 0 })).rejects.toThrow()
+  })
+})
+
+describe('handleProxyUsage', () => {
+  it('sums size and count of existing proxies for the given videos only', () => {
+    const sizes: Record<string, number> = { 'p/a.mp4': 100, 'p/c.mp4': 50 }
+    const res = handleProxyUsage(['a', 'b', 'c'], {
+      proxyPath: (v) => `p/${v}.mp4`,
+      statSize: (p) => (p in sizes ? sizes[p] : null)
+    })
+    expect(res).toEqual({ count: 2, bytes: 150 })
+  })
+
+  it('ignores non-string entries and non-array input', () => {
+    const deps = { proxyPath: (v: string) => `p/${v}`, statSize: () => 10 }
+    expect(handleProxyUsage('x', deps)).toEqual({ count: 0, bytes: 0 })
+    expect(handleProxyUsage(['a', 3, null], deps)).toEqual({ count: 1, bytes: 10 })
   })
 })

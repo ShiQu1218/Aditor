@@ -1,20 +1,9 @@
 import fs from 'fs'
 import path from 'path'
-import { DEFAULT_SETTINGS, SETTINGS_VERSION, Settings } from '../shared/settings'
+import { DEFAULT_SETTINGS, SETTINGS_RANGES, SETTINGS_VERSION, Settings, SettingsSetResult } from '../shared/settings'
 import { AutoClipParams } from '../shared/types'
 
-/** 數值欄位允許範圍（含端點；與 spec §3.2／§3.3 一致） */
-const RANGES = {
-  before: { min: 0, max: 30 },
-  after: { min: 0, max: 30 },
-  autoclip: {
-    n: { min: 1, max: 10 },
-    gap: { min: 5, max: 60 },
-    before: { min: 0, max: 30 },
-    after: { min: 0, max: 30 },
-    max_len: { min: 15, max: 300 }
-  }
-} as const
+const RANGES = SETTINGS_RANGES
 
 function isPlainObject(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v)
@@ -157,12 +146,17 @@ export function saveSettings(file: string, s: Settings): boolean {
 
 /**
  * 設定記憶體狀態＋持久化的唯一入口（main process）。
- * `set(partial)` 只套用合法欄位、寫檔並通知訂閱者；寫檔失敗時記憶體仍更新（下次 set 會再嘗試）。
+ * `set(partial)` 只套用合法欄位並通知訂閱者，回傳 `{ settings, persisted }`：
+ * 寫檔失敗時記憶體仍更新、`persisted=false`（呼叫端必須讓使用者看見），
+ * 之後任何一次 `set`（即使沒有欄位變更）都會再嘗試補寫。
+ * 沒有任何欄位實際變更且磁碟已是最新時不寫檔（磁碟內容與修改時間保持不變）。
  */
 export class SettingsStore {
   private file: string
   private settings: Settings
   private listeners: Array<(s: Settings) => void> = []
+  /** 記憶體領先磁碟（上次寫檔失敗）時為 true */
+  private dirty = false
 
   constructor(file: string) {
     this.file = file
@@ -173,14 +167,24 @@ export class SettingsStore {
     return cloneSettings(this.settings)
   }
 
-  set(partial: Partial<Settings>): Settings {
-    this.settings = applySettings(this.settings, partial)
-    saveSettings(this.file, this.settings)
+  set(partial: Partial<Settings>): SettingsSetResult {
+    const next = applySettings(this.settings, partial)
+    const changed = JSON.stringify(next) !== JSON.stringify(this.settings)
+    this.settings = next
+    let persisted = true
+    if (changed || this.dirty) {
+      persisted = saveSettings(this.file, this.settings)
+      this.dirty = !persisted
+    }
     const snapshot = cloneSettings(this.settings)
     for (const cb of [...this.listeners]) {
-      cb(snapshot)
+      try {
+        cb(cloneSettings(snapshot))
+      } catch (err) {
+        console.error('Settings listener failed:', err)
+      }
     }
-    return snapshot
+    return { settings: snapshot, persisted }
   }
 
   /** 訂閱變更；回傳解除訂閱函式。 */

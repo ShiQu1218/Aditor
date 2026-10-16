@@ -39,6 +39,34 @@ export interface Settings {
   lastProjectId: string | null
 }
 
+/** 數值範圍（含端點） */
+export interface SettingsRange {
+  readonly min: number
+  readonly max: number
+}
+
+/** 數值欄位允許範圍（含端點；與 spec §3.2／§3.3 一致）。main 驗證與設定畫面夾限共用的唯一來源。 */
+export const SETTINGS_RANGES = {
+  before: { min: 0, max: 30 },
+  after: { min: 0, max: 30 },
+  autoclip: {
+    n: { min: 1, max: 10 },
+    gap: { min: 5, max: 60 },
+    before: { min: 0, max: 30 },
+    after: { min: 0, max: 30 },
+    max_len: { min: 15, max: 300 }
+  }
+} as const
+
+/** `settings:set` 的回傳：實際生效的設定、是否已寫入磁碟，以及路徑驗證失敗的欄位訊息。 */
+export interface SettingsSetResult {
+  settings: Settings
+  /** false＝記憶體已更新但寫檔失敗（重啟後不會保留） */
+  persisted: boolean
+  /** main 對路徑類欄位的驗證錯誤（該欄位未被套用） */
+  errors?: Partial<Record<'defaultOutDir', string>>
+}
+
 /** 預設設定；首次使用者（無設定檔）即採用此值，行為與舊版相同。 */
 export const DEFAULT_SETTINGS: Settings = {
   version: SETTINGS_VERSION,

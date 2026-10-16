@@ -56,7 +56,9 @@ const api = {
         ipcRenderer.removeListener('proxy:progress', handler)
       }
     },
-    delete: (videoPath: string) => ipcRenderer.invoke('proxy:delete', videoPath)
+    delete: (videoPath: string) => ipcRenderer.invoke('proxy:delete', videoPath),
+    /** 傳入影片路徑清單，回傳其代理檔數量與總位元組（設定頁顯示佔用空間） */
+    usage: (videoPaths: string[]) => ipcRenderer.invoke('proxy:usage', videoPaths)
   },
   project: {
     showSaveDialog: (defaultName?: string) => ipcRenderer.invoke('project:showSaveDialog', defaultName),

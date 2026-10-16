@@ -9,16 +9,17 @@ import { createExportService, registerExportHandlers } from './export/export-ipc
 import { hasOpenH264, downloadOpenH264 } from './codecs'
 import { cacheFilePath, loadCacheDoc, saveCacheDoc } from './cache-io'
 import { SettingsStore } from './settings'
+import { registerSettingsHandlers } from './settings-ipc'
 import { WatchManager } from './watch'
 import { ProjectStore } from './projects'
 import { registerProjectHandlers } from './project-ipc'
 import { fileExistsSafe, isSafeLocalDirPath } from './safe-path'
-import { DEFAULT_SETTINGS, Settings } from '../shared/settings'
+import { DEFAULT_SETTINGS } from '../shared/settings'
 import { cacheDir, profileDir } from '../shared/paths'
 import { computeHlCount, createHlGuard, createSerialQueue, hlForSavedDoc } from './hl'
 import { createThrottle } from '../shared/throttle'
 import type { CacheDoc, Clip } from '../shared/types'
-import { handleProxyGenerate } from './proxy-ipc'
+import { handleProxyGenerate, handleProxyUsage } from './proxy-ipc'
 import { ProjectItem } from '../renderer/editor/project'
 import { i18n } from '../renderer/i18n/zh-TW'
 
@@ -261,6 +262,20 @@ export function registerIpcHandlers(
     return handleProxyGenerate(event.sender, videoPath, durationSec, { generateProxy })
   })
 
+  ipcMain.handle('proxy:usage', async (_, videoPaths: unknown) => {
+    const { proxyPath } = await import('./proxy')
+    return handleProxyUsage(videoPaths, {
+      proxyPath,
+      statSize: (file) => {
+        try {
+          return fs.statSync(file).size
+        } catch {
+          return null
+        }
+      }
+    })
+  })
+
   ipcMain.handle('proxy:delete', async (_, videoPath: string) => {
     const { proxyPath } = await import('./proxy')
     const p = proxyPath(videoPath)
@@ -364,17 +379,7 @@ export function registerIpcHandlers(
   registerExportHandlers(ipcMain, exportService)
 
   if (settings) {
-    settings.onChange((current) => {
-      for (const win of getWindows()) {
-        if (!win.isDestroyed()) {
-          win.webContents.send('settings:changed', current)
-        }
-      }
-    })
-
-    ipcMain.handle('settings:get', () => settings.get())
-
-    ipcMain.handle('settings:set', (_, partial: Partial<Settings>) => settings.set(partial))
+    registerSettingsHandlers(ipcMain, settings, getWindows)
   }
 
   return { cancelExport: () => exportService.cancelAndWait() }

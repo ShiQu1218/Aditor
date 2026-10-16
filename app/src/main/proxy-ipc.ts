@@ -47,3 +47,24 @@ export async function handleProxyGenerate(
     finished = true
   }
 }
+
+export interface ProxyUsageDeps {
+  proxyPath: (videoPath: string) => string
+  /** 檔案大小（bytes）；檔案不存在回 null */
+  statSize: (file: string) => number | null
+}
+
+/** 設定頁「代理檔佔用空間」：只統計傳入影片各自的代理檔（與 `proxy:delete` 的範圍一致）。 */
+export function handleProxyUsage(videoPaths: unknown, deps: ProxyUsageDeps): { count: number; bytes: number } {
+  let count = 0
+  let bytes = 0
+  if (!Array.isArray(videoPaths)) return { count, bytes }
+  for (const v of videoPaths) {
+    if (typeof v !== 'string' || v.length === 0) continue
+    const size = deps.statSize(deps.proxyPath(v))
+    if (size === null) continue
+    count += 1
+    bytes += size
+  }
+  return { count, bytes }
+}
