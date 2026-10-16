@@ -9,6 +9,29 @@ from .profile import Profile
 
 _ROW_PAD = 6  # 關鍵字所在列上下容許的偏移（像素）
 
+# 助攻之後的子關鍵字（擊倒／消滅）：兩者都沒過各自門檻時的相對判定。
+# 依據三語言所有助攻 fixture：錯誤子關鍵字最高 0.36、正確子關鍵字最低 0.80（test_assist_sub_floor_and_lead_sit_inside_fixture_gap）。
+# 低對比錄影（壓縮、縮放）下正確者會落在門檻略下，錯誤者仍只有 ~0.25–0.35，因此用「贏家夠強且領先夠多」判定。
+ASSIST_SUB_FLOOR = 0.45
+ASSIST_SUB_LEAD = 0.25
+
+
+def pick_assist_sub(scores: dict[str, float], thr: dict[str, float]) -> str | None:
+    """scores／thr 的鍵為 "knock"、"elim"。回傳助攻之後的類型（"knock"／"elim"）或 None（無法判斷）。
+
+    有關鍵字過自己門檻 → 與舊行為相同（過門檻者中分數最高）；都沒過 → 相對判定：
+    贏家 ≥ ASSIST_SUB_FLOOR 且領先另一個 ≥ ASSIST_SUB_LEAD。"""
+    passing = [k for k in scores if scores[k] >= thr[k]]
+    if passing:
+        return max(passing, key=lambda k: scores[k])
+    ranked = sorted(scores, key=lambda k: scores[k], reverse=True)
+    if len(ranked) < 2:
+        return None
+    win, other = ranked[0], ranked[1]
+    if scores[win] >= ASSIST_SUB_FLOOR and scores[win] - scores[other] >= ASSIST_SUB_LEAD:
+        return win
+    return None
+
 
 def _imread_gray(path) -> np.ndarray:
     return cv2.imdecode(np.fromfile(str(path), dtype=np.uint8), cv2.IMREAD_GRAYSCALE)
@@ -283,12 +306,13 @@ class Detector:
             rx = x + self.tpl["assist"].shape[1] // 2  # 右側搜尋區從助攻範本中段起，容許間距
             lo, hi = max(0, y - _ROW_PAD), y + h + _ROW_PAD
             sub = wm[lo:hi, rx:]
-            best = None
             knock_key = "assist_knock" if "assist_knock" in self.tpl else "knock"
-            for key, canon in ((knock_key, "knock"), ("elim", "elim")):
-                sc, sx, sy = _match(sub, self.tpl[key])
-                if sc >= self.thr[key] and (best is None or sc > best[0]):
-                    best = (sc, canon, rx + sx, lo + sy, key)
+            keys = {"knock": knock_key, "elim": "elim"}
+            found = {c: _match(sub, self.tpl[k]) for c, k in keys.items()}
+            pick = pick_assist_sub({c: m[0] for c, m in found.items()},
+                                   {c: self.thr[k] for c, k in keys.items()})
+            best = None if pick is None else (found[pick][0], pick, rx + found[pick][1],
+                                              lo + found[pick][2], keys[pick])
             x1 = None
             if best is None:
                 kind, edge, ky = "assist_elim", assist_end, y

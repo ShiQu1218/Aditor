@@ -215,3 +215,55 @@ def test_yellow_names_colorblind_mode(lang_ctx):
         if done >= 5:
             break
     assert done >= 3
+
+
+# --- Fix-ML-2：助攻後子關鍵字（擊倒／消滅）的相對判定 ---
+
+def test_pick_assist_sub_threshold_path_unchanged():
+    from apexhl.detect import pick_assist_sub
+    thr = {"knock": 0.6, "elim": 0.6}
+    assert pick_assist_sub({"knock": 0.85, "elim": 0.22}, thr) == "knock"
+    assert pick_assist_sub({"knock": 0.25, "elim": 0.83}, thr) == "elim"
+    assert pick_assist_sub({"knock": 0.70, "elim": 0.65}, thr) == "knock"  # 兩者都過門檻：高分者（舊行為）
+
+
+def test_pick_assist_sub_low_contrast_winner_by_margin():
+    """低對比錄影（壓縮、縮放）下，正確的子關鍵字常落在門檻略下（實測約 0.5–0.6），但另一個只有 ~0.25。"""
+    from apexhl.detect import pick_assist_sub
+    thr = {"knock": 0.6, "elim": 0.6}
+    assert pick_assist_sub({"knock": 0.55, "elim": 0.25}, thr) == "knock"
+    assert pick_assist_sub({"knock": 0.20, "elim": 0.52}, thr) == "elim"
+
+
+def test_pick_assist_sub_ambiguous_or_weak_is_none():
+    from apexhl.detect import pick_assist_sub
+    thr = {"knock": 0.6, "elim": 0.6}
+    assert pick_assist_sub({"knock": 0.30, "elim": 0.25}, thr) is None   # 贏家太弱（<底線）
+    assert pick_assist_sub({"knock": 0.55, "elim": 0.45}, thr) is None   # 領先不足
+    assert pick_assist_sub({"knock": 0.0, "elim": 0.0}, thr) is None
+
+
+def test_assist_sub_floor_and_lead_sit_inside_fixture_gap():
+    """底線／領先的依據：三個語言所有助攻 fixture 的「錯誤子關鍵字」最大分（實測 0.36）與
+    「正確子關鍵字」最小分（0.80）；底線須高於前者至少 _GAP、領先須小於正確與錯誤分數的最小差。"""
+    from conftest import LangCtx
+    from apexhl.detect import ASSIST_SUB_FLOOR, ASSIST_SUB_LEAD, _match, _ink_box, white_mask
+    wrong, right, leads = [], [], []
+    for lang in ("zh-TW", "en", "ja"):
+        c = LangCtx(lang)
+        d, p = c.detector, c.profile
+        kk = "assist_knock" if "assist_knock" in d.tpl else "knock"
+        for name, lab in c.items(kind_not_null=True, exclude_fadein=True):
+            if not lab["kind"].startswith("assist"):
+                continue
+            b, _ = c.load(name)
+            wm = white_mask(d._scaled(b, d.h_scale), p)
+            s, x, y = d._hit(wm, "assist", _ink_box(wm, rows_limit=p.line1_rows))
+            h = d.tpl["knock"].shape[0]
+            rx = x + d.tpl["assist"].shape[1] // 2
+            sub = wm[max(0, y - 6):y + h + 6, rx:]
+            sk, se = _match(sub, d.tpl[kk])[0], _match(sub, d.tpl["elim"])[0]
+            good, bad = (sk, se) if lab["kind"] == "assist_knock" else (se, sk)
+            wrong.append(bad); right.append(good); leads.append(good - bad)
+    assert max(wrong) + _GAP <= ASSIST_SUB_FLOOR <= min(right) - _GAP
+    assert ASSIST_SUB_LEAD <= min(leads) - _GAP
