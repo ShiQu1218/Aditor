@@ -1,4 +1,5 @@
 import path from 'path'
+import { app } from 'electron'
 
 /**
  * E2E 測試掛鉤（`APEXHL_E2E=1` 才生效；環境變數缺席時回傳 null，正式行為完全不變）。
@@ -13,7 +14,9 @@ export interface E2EConfig {
   exportFfmpeg: { bin: string; prefixArgs: string[] } | null
 }
 
-export function resolveE2EConfig(env: NodeJS.ProcessEnv, testDir: string): E2EConfig | null {
+/** `isPackaged` 為 true（正式安裝版）時一律關閉：環境變數不能改變 appData、引擎或 ffmpeg 的執行檔。 */
+export function resolveE2EConfig(env: NodeJS.ProcessEnv, testDir: string, isPackaged: boolean): E2EConfig | null {
+  if (isPackaged) return null
   if (env.APEXHL_E2E !== '1') return null
   const node = env.APEXHL_E2E_NODE || 'node'
   return {
@@ -32,5 +35,11 @@ export function e2eTestDir(): string {
 }
 
 export function currentE2EConfig(): E2EConfig | null {
-  return resolveE2EConfig(process.env, e2eTestDir())
+  let packaged = false
+  try {
+    packaged = app?.isPackaged === true
+  } catch {
+    // 非 Electron 環境（單元測試）視為未打包
+  }
+  return resolveE2EConfig(process.env, e2eTestDir(), packaged)
 }

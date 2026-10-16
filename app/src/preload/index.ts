@@ -42,9 +42,10 @@ const api = {
     getState: () => ipcRenderer.invoke('queue:getState')
   },
   cache: {
-    load: (path: string) => ipcRenderer.invoke('cache:load', path),
     loadByVideo: (videoPath: string) => ipcRenderer.invoke('cache:loadByVideo', videoPath),
-    save: (doc: unknown) => ipcRenderer.invoke('cache:save', doc)
+    save: (doc: unknown) => ipcRenderer.invoke('cache:save', doc),
+    /** 離開工作室／關閉視窗時用：阻塞到 main 已把快取寫入磁碟 */
+    saveSync: (doc: unknown): boolean => ipcRenderer.sendSync('cache:saveSync', doc) === true
   },
   proxy: {
     get: (videoPath: string) => ipcRenderer.invoke('proxy:get', videoPath),

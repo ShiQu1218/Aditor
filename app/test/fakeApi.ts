@@ -56,9 +56,9 @@ export function createFakeApi(opts: FakeApiOptions = {}) {
       getState: vi.fn(async () => ({ queue: { analyzing: null, queued: [] }, current: null }))
     },
     cache: {
-      load: vi.fn(async () => null),
       loadByVideo: vi.fn(async () => null),
-      save: vi.fn(async () => true)
+      save: vi.fn(async () => true),
+      saveSync: vi.fn(() => true)
     },
     proxy: {
       get: vi.fn(async () => null),
@@ -75,7 +75,6 @@ export function createFakeApi(opts: FakeApiOptions = {}) {
     },
     projects: {
       save: vi.fn(async () => true),
-      load: vi.fn(async () => null),
       list: vi.fn(async () => []),
       remove: vi.fn(async () => true),
       flushSync: vi.fn(() => true),

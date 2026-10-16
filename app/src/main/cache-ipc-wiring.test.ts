@@ -84,4 +84,22 @@ describe('cache:loadByVideo 依 cacheLocation 設定讀取', () => {
     expect(await handlers.get('library:computeHl')!({}, video)).toBe(1)
     expect(updates).toContainEqual({ hl: 1 })
   })
+
+  test('I1：cache:save 忽略 renderer 的 cache_path，寫到由影片推得的快取位置；影片不在影片庫則拒絕', async () => {
+    const video = path.join(dir, 'videos', 's.mp4')
+    fs.mkdirSync(path.dirname(video), { recursive: true })
+    const store = new SettingsStore(path.join(dir, 'settings.json'))
+    const updates: unknown[] = []
+    const library = { get: (p: string) => (p === video ? { path: video, status: 'done' } : undefined), update: (_p: string, u: unknown) => void updates.push(u), getEntries: () => [] } as any
+    const queue = { on: () => {}, payload: () => ({}), enqueue: () => {}, cancel: () => {} } as any
+    registerIpcHandlers(library, queue, () => [], undefined, store)
+    const save = handlers.get('cache:save')!
+    const evil = path.join(dir, 'startup', 'evil.cmd')
+    expect(await save({}, { cache_path: evil, video: { path: video }, events: [], clips: [] })).toBe(true)
+    expect(fs.existsSync(evil)).toBe(false)
+    const dest = cacheFilePath(video, cacheDir(), false)
+    expect(JSON.parse(fs.readFileSync(dest, 'utf-8')).cache_path).toBe(dest)
+    expect(await save({}, { cache_path: evil, video: { path: path.join(dir, 'videos', 'other.mp4') }, events: [] })).toBe(false)
+    expect(handlers.has('cache:load')).toBe(false)
+  })
 })

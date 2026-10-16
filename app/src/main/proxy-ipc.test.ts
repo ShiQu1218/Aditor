@@ -38,11 +38,11 @@ describe('handleProxyGenerate', () => {
       onProgress?.(1) // 完成一律送出
       return 'out.mp4'
     })
-    const r = await handleProxyGenerate(s, 'a.mp4', 60, { generateProxy: gen, now: () => now })
+    const r = await handleProxyGenerate(s, 'D:/v/a.mp4', 60, { generateProxy: gen, now: () => now })
     expect(r).toBe('out.mp4')
     expect(gen.mock.calls[0][2]).toBe(60)
     expect(s.sent.map((m) => m.data.ratio)).toEqual([0.1, 0.3, 1])
-    expect(s.sent.every((m) => m.channel === 'proxy:progress' && m.data.videoPath === 'a.mp4')).toBe(true)
+    expect(s.sent.every((m) => m.channel === 'proxy:progress' && m.data.videoPath === 'D:/v/a.mp4')).toBe(true)
   })
 
   it('視窗已銷毀就不送', async () => {
@@ -51,7 +51,7 @@ describe('handleProxyGenerate', () => {
       on?.(0.5)
       return 'o'
     }
-    await handleProxyGenerate(s, 'a.mp4', 60, { generateProxy: gen, now: () => 0 })
+    await handleProxyGenerate(s, 'D:/v/a.mp4', 60, { generateProxy: gen, now: () => 0 })
     expect(s.sent).toEqual([])
   })
 
@@ -64,13 +64,13 @@ describe('handleProxyGenerate', () => {
       on?.(0.5)
       return 'o'
     }
-    await expect(handleProxyGenerate(s, 'a.mp4', 60, { generateProxy: gen, now: () => 0 })).resolves.toBe('o')
+    await expect(handleProxyGenerate(s, 'D:/v/a.mp4', 60, { generateProxy: gen, now: () => 0 })).resolves.toBe('o')
   })
 
   it('duration 無效 → 以 undefined 傳給 generateProxy（無百分比）', async () => {
     const s = fakeSender()
     const gen = vi.fn(async (_p: string, _o?: (r: number) => void, _d?: number) => 'o')
-    await handleProxyGenerate(s, 'a.mp4', NaN, { generateProxy: gen, now: () => 0 })
+    await handleProxyGenerate(s, 'D:/v/a.mp4', NaN, { generateProxy: gen, now: () => 0 })
     expect(gen.mock.calls[0][2]).toBeUndefined()
   })
 
@@ -81,9 +81,19 @@ describe('handleProxyGenerate', () => {
       late = on
       throw new Error('ffmpeg failed')
     }
-    await expect(handleProxyGenerate(s, 'a.mp4', 60, { generateProxy: gen, now: () => 0 })).rejects.toThrow('ffmpeg failed')
+    await expect(handleProxyGenerate(s, 'D:/v/a.mp4', 60, { generateProxy: gen, now: () => 0 })).rejects.toThrow('ffmpeg failed')
     late?.(0.9)
     expect(s.sent).toEqual([])
+  })
+
+  it('不安全的路徑（URL／concat:／UNC／非影片副檔名）→ 拒絕，不呼叫 ffmpeg（Minor 13）', async () => {
+    for (const bad of ['http://x/a.mp4', 'concat:a|b', '\\srv\s\a.mp4', 'D:/v/a.exe', 'a.mp4']) {
+      let called = false
+      await expect(
+        handleProxyGenerate(fakeSender(), bad, 1, { generateProxy: async () => ((called = true), 'o'), now: () => 0 })
+      ).rejects.toThrow()
+      expect(called).toBe(false)
+    }
   })
 
   it('路徑非字串 → 拒絕', async () => {

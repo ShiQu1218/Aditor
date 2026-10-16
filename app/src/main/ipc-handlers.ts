@@ -13,7 +13,8 @@ import { registerSettingsHandlers } from './settings-ipc'
 import { WatchManager } from './watch'
 import { ProjectStore } from './projects'
 import { registerProjectHandlers } from './project-ipc'
-import { fileExistsSafe, isSafeLocalDirPath } from './safe-path'
+import { fileExistsSafe, isSafeLocalDirPath, isSafeLocalVideoPath } from './safe-path'
+import { createPathGrants, loadGrantedProject, planCacheSave, saveGrantedProject } from './ipc-guards'
 import { DEFAULT_SETTINGS } from '../shared/settings'
 import { currentE2EConfig } from './e2e'
 import { cacheDir, profileDir } from '../shared/paths'
@@ -232,28 +233,38 @@ export function registerIpcHandlers(
     broadcastUpdated()
   })
 
-  ipcMain.handle('cache:load', async (_, cachePath: string) => loadCacheDoc(cachePath))
-
   // 由影片路徑推得快取檔（無副作用、不啟動分析）；工作室載入用
   ipcMain.handle('cache:loadByVideo', async (_, videoPath: string) => loadCacheDoc(resolveCacheFile(videoPath, cacheDir(), cacheBeside())))
 
   // 工作室存檔時同步影片庫的「N 精華」＝目前待確認建議數（重新分析的建議尚未重算＝清除，交給惰性重算）。
   // 修訂號 bump：較早開始的 computeHl 不能再蓋掉這個較新的值
-  ipcMain.handle(
-    'cache:save',
-    async (_, doc: { cache_path: string; video?: { path?: string }; clips?: Clip[]; app?: { suggestionsPending?: boolean } }) => {
-      const ok = saveCacheDoc(doc)
-      const videoPath = doc?.video?.path
-      if (ok && videoPath && library.get(videoPath)) {
-        hlGuard.bump(normalizePath(videoPath))
-        library.update(videoPath, { hl: hlForSavedDoc(doc) })
-        broadcastUpdated()
-      }
-      return ok
+  // 目的地由 main 依影片路徑推得（忽略 renderer 的 cache_path），影片必須在影片庫內（I1）
+  type SavedDoc = { cache_path?: string; video?: { path?: string }; clips?: Clip[]; app?: { suggestionsPending?: boolean } }
+  const saveCacheFromRenderer = (doc: SavedDoc): boolean => {
+    const plan = planCacheSave(doc, library, cacheDir(), cacheBeside())
+    if (!plan) return false
+    const ok = saveCacheDoc(plan.doc)
+    const videoPath = doc.video?.path
+    if (ok && videoPath) {
+      hlGuard.bump(normalizePath(videoPath))
+      library.update(videoPath, { hl: hlForSavedDoc(plan.doc) })
+      broadcastUpdated()
     }
-  )
+    return ok
+  }
+  ipcMain.handle('cache:save', async (_, doc: SavedDoc) => saveCacheFromRenderer(doc))
+  // 離開工作室／關閉視窗時用：阻塞到快取已寫入磁碟（I4）
+  ipcMain.on('cache:saveSync', (event, doc: SavedDoc) => {
+    try {
+      event.returnValue = saveCacheFromRenderer(doc)
+    } catch (err) {
+      console.error('[Cache] saveSync failed:', err)
+      event.returnValue = false
+    }
+  })
 
-  ipcMain.handle('proxy:get', async (_, videoPath: string) => {
+  ipcMain.handle('proxy:get', async (_, videoPath: unknown) => {
+    if (!isSafeLocalVideoPath(videoPath)) return null
     const { proxyPath } = await import('./proxy')
     const p = proxyPath(videoPath)
     return fs.existsSync(p) ? p : null
@@ -279,7 +290,8 @@ export function registerIpcHandlers(
     })
   })
 
-  ipcMain.handle('proxy:delete', async (_, videoPath: string) => {
+  ipcMain.handle('proxy:delete', async (_, videoPath: unknown) => {
+    if (!isSafeLocalVideoPath(videoPath)) return false
     const { proxyPath } = await import('./proxy')
     const p = proxyPath(videoPath)
     if (fs.existsSync(p)) {
@@ -289,6 +301,7 @@ export function registerIpcHandlers(
     return false
   })
 
+  const pathGrants = createPathGrants()
   ipcMain.handle('project:showSaveDialog', async (event, defaultName?: string) => {
     const win = BrowserWindow.fromWebContents(event.sender)
     const res = await dialog.showSaveDialog(win || (undefined as unknown as BrowserWindow), {
@@ -296,7 +309,9 @@ export function registerIpcHandlers(
       defaultPath: defaultName || 'project.apexproj.json',
       filters: [{ name: 'Apex Highlighter Project', extensions: ['apexproj.json', 'json'] }]
     })
-    return res.canceled ? null : res.filePath
+    if (res.canceled || !res.filePath) return null
+    pathGrants.grant('save', res.filePath)
+    return res.filePath
   })
 
   ipcMain.handle('project:showOpenDialog', async (event) => {
@@ -306,33 +321,15 @@ export function registerIpcHandlers(
       properties: ['openFile'],
       filters: [{ name: 'Apex Highlighter Project', extensions: ['apexproj.json', 'json'] }]
     })
-    return res.canceled || res.filePaths.length === 0 ? null : res.filePaths[0]
+    if (res.canceled || res.filePaths.length === 0) return null
+    pathGrants.grant('open', res.filePaths[0])
+    return res.filePaths[0]
   })
 
-  ipcMain.handle('project:save', async (_, filePath: string, content: string) => {
-    try {
-      const dir = path.dirname(filePath)
-      if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true })
-      }
-      fs.writeFileSync(filePath, content, 'utf-8')
-      return true
-    } catch (err) {
-      console.error('Failed to save project:', err)
-      return false
-    }
-  })
+  // 只讀寫使用者剛在對話框選過的路徑（一次性授權）；renderer 無法指定任意檔案（I1）
+  ipcMain.handle('project:save', async (_, filePath: unknown, content: unknown) => saveGrantedProject(pathGrants, filePath, content))
 
-  ipcMain.handle('project:load', async (_, filePath: string) => {
-    try {
-      if (fs.existsSync(filePath)) {
-        return fs.readFileSync(filePath, 'utf-8')
-      }
-    } catch (err) {
-      console.error('Failed to load project:', err)
-    }
-    return null
-  })
+  ipcMain.handle('project:load', async (_, filePath: unknown) => loadGrantedProject(pathGrants, filePath))
 
   ipcMain.handle('export:detectEncoders', async () => {
     return detectEncoders()

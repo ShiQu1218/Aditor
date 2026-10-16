@@ -1,4 +1,6 @@
 /** proxy:generate 的 IPC 處理本體（可注入假 sender / generateProxy 以便測試）。 */
+import { isSafeLocalVideoPath } from './safe-path'
+
 export interface ProgressSender {
   isDestroyed(): boolean
   send(channel: string, data: { videoPath: string; ratio: number }): void
@@ -22,8 +24,8 @@ export async function handleProxyGenerate(
   durationSec: unknown,
   deps: ProxyIpcDeps
 ): Promise<string> {
-  if (typeof videoPath !== 'string' || videoPath.length === 0) {
-    throw new Error('proxy:generate 需要影片路徑字串')
+  if (!isSafeLocalVideoPath(videoPath)) {
+    throw new Error('proxy:generate 需要本機影片路徑')
   }
   const now = deps.now ?? Date.now
   let finished = false

@@ -10,6 +10,7 @@ import { registerIpcHandlers } from './ipc-handlers'
 import { createCloseGate } from './project-ipc'
 import { buildAnalyzeArgs, resolveAnalyzeProfileDir } from './settings-derived'
 import { currentE2EConfig } from './e2e'
+import { sanitizeAnalyzeArgs, sanitizeAutoclipArgs, sanitizeDeriveArgs, sanitizeProbeArgs } from './ipc-guards'
 import { appDataDir, cacheDir, engineCommand, ffmpegExecutable, profileDir } from '../shared/paths'
 
 // E2E 掛鉤（僅 APEXHL_E2E=1）：暫存 appData／userData，測試不碰使用者資料；正式執行時為 null
@@ -113,13 +114,13 @@ async function initEngineAndServices(): Promise<void> {
   const handlers = registerIpcHandlers(library, queue, () => (mainWindow ? [mainWindow] : []), engineClient, settingsStore, watchManager, projectStore, () => closeGate?.ack())
   cancelExport = handlers.cancelExport
 
-  ipcMain.handle('engine:probe', async (_, videoPath: string) => {
-    return engineClient?.request('probe', { path: videoPath }).promise
+  ipcMain.handle('engine:probe', async (_, videoPath: unknown) => {
+    return engineClient?.request('probe', sanitizeProbeArgs(videoPath)).promise
   })
 
-  ipcMain.handle('engine:analyze', async (event, args: Record<string, unknown>) => {
+  ipcMain.handle('engine:analyze', async (event, args: unknown) => {
     // renderer 只知道影片路徑；引擎需要的 profile_dir／cache_dir 由主程序補上（命中快取時直接回傳）
-    const req = engineClient?.request('analyze', buildAnalyzeArgs({ profile_dir: templateProfileDir, cache_dir: cacheDir() }, settingsStore?.get(), args), (progress) => {
+    const req = engineClient?.request('analyze', buildAnalyzeArgs({ profile_dir: templateProfileDir, cache_dir: cacheDir() }, settingsStore?.get(), sanitizeAnalyzeArgs(args)), (progress) => {
       event.sender.send('engine:progress', progress)
     })
     return req?.promise
@@ -130,12 +131,12 @@ async function initEngineAndServices(): Promise<void> {
     return { cancelled: true }
   })
 
-  ipcMain.handle('engine:derive', async (_, args: Record<string, unknown>) => {
-    return engineClient?.request('derive', { profile_dir: resolveAnalyzeProfileDir(templateProfileDir, settingsStore?.get()), ...args }).promise
+  ipcMain.handle('engine:derive', async (_, args: unknown) => {
+    return engineClient?.request('derive', { ...sanitizeDeriveArgs(args), profile_dir: resolveAnalyzeProfileDir(templateProfileDir, settingsStore?.get()) }).promise
   })
 
-  ipcMain.handle('engine:autoclip', async (_, args: Record<string, unknown>) => {
-    return engineClient?.request('autoclip', args).promise
+  ipcMain.handle('engine:autoclip', async (_, args: unknown) => {
+    return engineClient?.request('autoclip', sanitizeAutoclipArgs(args)).promise
   })
 }
 
