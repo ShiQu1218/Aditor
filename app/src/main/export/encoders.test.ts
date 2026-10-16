@@ -35,3 +35,23 @@ Encoders:
     expect(pickEncoder([])).toBeNull()
   })
 })
+
+import { encoderTestArgs, testEncoder } from './encoders'
+
+describe('hardware encoder probing (I10)', () => {
+  it('uses a frame size above NVENC/AMF/QSV minimums (not 16x16)', () => {
+    const args = encoderTestArgs('h264_nvenc')
+    const src = args[args.indexOf('-i') + 1]
+    const m = /s=(\d+)x(\d+)/.exec(src)!
+    expect(Number(m[1])).toBeGreaterThanOrEqual(256)
+    expect(Number(m[2])).toBeGreaterThanOrEqual(256)
+    expect(args).toContain('h264_nvenc')
+  })
+
+  it('gives up on a hung driver after the timeout and reports unusable', async () => {
+    const t0 = Date.now()
+    const ok = await testEncoder(process.execPath, 'h264_nvenc', undefined, { timeoutMs: 300, prefixArgs: ['-e', 'setTimeout(() => {}, 60000)'], args: [] })
+    expect(ok).toBe(false)
+    expect(Date.now() - t0).toBeLessThan(5000)
+  })
+})

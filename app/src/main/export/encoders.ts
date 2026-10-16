@@ -2,6 +2,7 @@ import { spawn } from 'child_process'
 import fs from 'fs'
 import path from 'path'
 import { codecsDir } from '../../shared/paths'
+import { killTree } from './killTree'
 
 export function parseEncoderList(stdout: string): string[] {
   const result: string[] = []
@@ -26,22 +27,38 @@ export function pickEncoder(available: string[]): string | null {
   return null
 }
 
-function testEncoder(ffmpegBin: string, encoder: string, extraEnv?: Record<string, string>): Promise<boolean> {
+/** NVENC／AMF／QSV 都有最小畫面尺寸限制（NVENC 約 145x49 以上），測試畫面用 256x256 才不會誤判硬體不可用。 */
+export function encoderTestArgs(encoder: string): string[] {
+  return ['-f', 'lavfi', '-i', 'color=c=black:s=256x256:d=0.1', '-c:v', encoder, '-f', 'null', '-']
+}
+
+const ENCODER_TEST_TIMEOUT_MS = 10_000
+
+/** 實際編一小段測試畫面；驅動卡住時逾時（預設 10 秒）就視為不可用並終止程序。 */
+export function testEncoder(
+  ffmpegBin: string,
+  encoder: string,
+  extraEnv?: Record<string, string>,
+  opts: { timeoutMs?: number; prefixArgs?: string[]; args?: string[] } = {}
+): Promise<boolean> {
   return new Promise((resolve) => {
-    const proc = spawn(
-      ffmpegBin,
-      ['-f', 'lavfi', '-i', 'color=c=black:s=16x16:d=0.1', '-c:v', encoder, '-f', 'null', '-'],
-      {
-        env: { ...process.env, ...extraEnv },
-        stdio: 'ignore'
-      }
-    )
-    proc.on('close', (code) => {
-      resolve(code === 0)
+    let settled = false
+    const finish = (ok: boolean): void => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      resolve(ok)
+    }
+    const proc = spawn(ffmpegBin, [...(opts.prefixArgs ?? []), ...(opts.args ?? encoderTestArgs(encoder))], {
+      env: { ...process.env, ...extraEnv },
+      stdio: 'ignore',
+      windowsHide: true
     })
-    proc.on('error', () => {
-      resolve(false)
-    })
+    const timer = setTimeout(() => {
+      void killTree(proc).then(() => finish(false))
+    }, opts.timeoutMs ?? ENCODER_TEST_TIMEOUT_MS)
+    proc.on('close', (code) => finish(code === 0))
+    proc.on('error', () => finish(false))
   })
 }
 
