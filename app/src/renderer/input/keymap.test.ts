@@ -177,6 +177,24 @@ describe('resolveKey 矩陣', () => {
   })
 })
 
+describe('focusToast（Alt+T：鍵盤直達最新 Toast 的〔復原〕）', () => {
+  test('works on every screen and inside text inputs (Alt chords are never plain typing)', () => {
+    for (const screen of ['library', 'studio', 'settings'] as const) {
+      expect(resolveKey(k('t', { altKey: true }), ctx({ screen }))).toBe('focusToast')
+      expect(resolveKey(k('T', { altKey: true }), ctx({ screen, target: 'text' }))).toBe('focusToast')
+    }
+  })
+  test('not with Shift/Ctrl, not on repeat, and a plain "t" is nothing', () => {
+    expect(resolveKey(k('t', { altKey: true, shiftKey: true }), ctx())).toBeNull()
+    expect(resolveKey(k('t', { altKey: true, ctrlKey: true }), ctx())).toBeNull()
+    expect(resolveKey(k('t', { altKey: true, repeat: true }), ctx())).toBeNull()
+    expect(resolveKey(k('t'), ctx())).toBeNull()
+  })
+  test('a studio overlay still blocks it (only Esc is live under a dialog)', () => {
+    expect(resolveKey(k('t', { altKey: true }), ctx({ overlayOpen: true }))).toBeNull()
+  })
+})
+
 describe('overlayOpen 阻擋底下的工作室', () => {
   const open = (o: Partial<KeyCtx> = {}): KeyCtx => ctx({ overlayOpen: true, ...o })
   test('studio: nothing but Esc resolves while an overlay is open', () => {

@@ -15,6 +15,7 @@ export const windowExportApi: ExportApi = {
   openFolder: async (dir) => (await api().openFolder(dir)) as boolean,
   start: async (opts) => (await api().start(opts)) as never,
   cancel: async () => (await api().cancel()) as { cancelled: boolean },
+  checkOutDir: async (dir) => (await api().checkOutDir(dir)) as { ok: true } | { ok: false; reason: string },
   diskSpace: async (dir) => (await api().diskSpace(dir)) as { freeBytes: number; totalBytes: number },
   onProgress: (cb) => {
     try {

@@ -12,6 +12,7 @@ import { useLocalNow } from '../lib/localDay'
 import { filterEntries, type LibraryKind } from '../lib/libraryFilter'
 import { useKeymap } from '../hooks/useShortcuts'
 import { useToast } from '../shell/ToastHost'
+import { useOverlay } from '../shell/OverlayHost'
 import { useQueueStore } from '../queue/QueueProvider'
 import { i18n } from '../i18n/zh-TW'
 import { subscribeStudioSettings } from '../studio/studioSettings'
@@ -26,6 +27,7 @@ interface LibraryScreenProps {
 
 export function LibraryScreen({ onSelectVideo, onOpenSettings }: LibraryScreenProps): JSX.Element {
   const toast = useToast()
+  const overlay = useOverlay()
   const queueStore = useQueueStore()
   const [entries, setEntries] = useState<LibraryEntry[]>([])
   const [query, setQuery] = useState('')
@@ -67,6 +69,7 @@ export function LibraryScreen({ onSelectVideo, onOpenSettings }: LibraryScreenPr
     {
       focusSearch: () => searchRef.current?.focus(),
       toggleFavoriteFilter: () => setFavoriteOnly((v) => !v),
+      showShortcuts: overlay.openShortcuts,
       // Esc 只走 keymap（已排除 IME 組字）：最上層優先——開啟中的卡片選單 → 搜尋字串 → 無動作
       closeOverlay: () => {
         const action = resolveLibraryEscape({ menuOpen: openMenuClose.current !== null, query: queryRef.current })
@@ -183,7 +186,7 @@ export function LibraryScreen({ onSelectVideo, onOpenSettings }: LibraryScreenPr
           ) : (
             <VirtualGrid
               groups={groups}
-              renderCard={(entry) => (
+              renderCard={(entry, active) => (
                 <VideoCard
                   key={entry.path}
                   entry={entry}
@@ -193,6 +196,7 @@ export function LibraryScreen({ onSelectVideo, onOpenSettings }: LibraryScreenPr
                   onRetry={handleRetry}
                   onMenuChange={handleMenuChange}
                   proxySuggest={proxySuggest}
+                  active={active}
                 />
               )}
             />

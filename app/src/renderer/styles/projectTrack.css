@@ -169,6 +169,7 @@
 .pclip .cap span:first-child { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pclip .cap .mono { flex: none; opacity: 0.85; }
 .pclip.sel { border-color: var(--text-1); }
+.pclip:focus-visible { box-shadow: inset var(--focus-ring); }
 .pclip.cur { box-shadow: 0 0 0 1px var(--text-1) inset; }
 .pclip .prog { position: absolute; left: 0; bottom: 0; height: 3px; background: var(--text-1); z-index: 4; }
 .pclip.missing { border-style: dashed; border-color: var(--danger); }
@@ -202,6 +203,7 @@
   background: transparent;
 }
 .add-slot:hover { color: var(--text-1); background: var(--bg-hover); }
+.track-list { display: contents; }
 .track-empty { align-self: center; font-size: var(--fs-small); padding: 0 8px; }
 
 /* ---- 新專案對話框（spec §3.7） ---- */

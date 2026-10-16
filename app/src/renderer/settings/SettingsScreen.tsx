@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { useKeymap } from '../hooks/useShortcuts'
 import { useMediaQuery } from '../hooks/useMediaQuery'
+import { useOptionalOverlay } from '../shell/OverlayHost'
 import { settingsI18n } from '../i18n/zh-TW'
 import { SettingRow } from './SettingRow'
 import { SettingsNav } from './SettingsNav'
@@ -49,6 +50,7 @@ export function SettingsScreen({ controller, initialQuery = '', initialCategory 
   const searchRef = useRef<HTMLInputElement>(null)
   const panelRef = useRef<HTMLDivElement>(null)
   const narrow = useMediaQuery('(max-width: 899px)')
+  const overlay = useOptionalOverlay()
 
   useEffect(() => {
     void ctrl.start()
@@ -62,7 +64,8 @@ export function SettingsScreen({ controller, initialQuery = '', initialCategory 
         searchRef.current?.focus()
         searchRef.current?.select()
       },
-      closeOverlay: () => setQuery('')
+      closeOverlay: () => setQuery(''),
+      showShortcuts: overlay?.openShortcuts
     },
     { screen: 'settings' }
   )

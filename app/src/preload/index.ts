@@ -105,6 +105,8 @@ const api = {
     /** 中止進行中的匯出（ffmpeg 與子程序一併終止、刪除未完成的輸出） */
     cancel: () => ipcRenderer.invoke('export:cancel'),
     diskSpace: (dir: string) => ipcRenderer.invoke('export:diskSpace', dir),
+    /** 開始前檢查輸出資料夾（存在、是資料夾、可寫入）；回傳 { ok } 或 { ok:false, reason } */
+    checkOutDir: (dir: string) => ipcRenderer.invoke('export:checkOutDir', dir),
     onProgress: (callback: (data: unknown) => void) => {
       const handler = (_: unknown, data: unknown) => callback(data)
       ipcRenderer.on('export:progress', handler)

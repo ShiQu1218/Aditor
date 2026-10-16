@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { EngineEvent, EventType, isCounted } from '../../shared/types'
 import { listWindow } from '../lib/listWindow'
 import { autoScrollDue, cursorScrollTarget, rovingTarget } from '../lib/listCursor'
+import { rovingStep } from '../a11y/roving'
 import { i18n } from '../i18n/zh-TW'
 import { EventRow } from './EventRow'
 
@@ -128,6 +129,7 @@ export function EventsTab({
     if (!el) return
     pendingFocus.current = null
     const focused = document.activeElement as HTMLElement | null
+    if (focused && el.contains(focused)) return // 焦點已在這一列內（例如剛按了列內控制項）：不搶
     const inEv = typeof focused?.closest === 'function' && focused.closest('[data-zone="ev"]') !== null
     if (inEv || focused === document.body || focused === null) el.focus({ preventScroll: true })
   })
@@ -169,11 +171,23 @@ export function EventsTab({
     if (idx < w.start || idx >= w.end) el.focus({ preventScroll: true })
   }
 
+  // Home／End：焦點在列本身時跳到第一／最後一筆（↑↓ 由 keymap 的 listPrev／listNext 處理）
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>): void => {
+    if ((e.key !== 'Home' && e.key !== 'End') || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey || e.nativeEvent.isComposing) return
+    const row = e.target as HTMLElement
+    if (!row.classList?.contains('ev-row')) return
+    const at = filtered.findIndex((x) => x.id === row.dataset.evId)
+    const next = rovingStep({ count: filtered.length, index: at, key: e.key, columns: 1, orientation: 'vertical' })
+    if (next === null) return
+    e.preventDefault()
+    onCursorChange(filtered[next].id)
+  }
+
   const live = events.filter((e) => !e.deleted)
   const counted = live.filter((e) => isCounted(e)).length
 
   return (
-    <div className="ev-tab" data-zone="ev" role="tabpanel" aria-label={t.ariaLabel}>
+    <div className="ev-tab" id="aside-panel" data-zone="ev" role="tabpanel" aria-labelledby="aside-tab-ev">
       <div className="ev-head">
         <span className="ev-sum">
           {t.counted} <b>{counted}</b>
@@ -188,6 +202,7 @@ export function EventsTab({
         className="ev-scroll"
         tabIndex={-1}
         onScroll={handleScroll}
+        onKeyDown={handleKeyDown}
       >
         {filtered.length === 0 ? (
           <p className="dim ev-empty">{events.length === 0 ? t.empty : t.noMatch}</p>

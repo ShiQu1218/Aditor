@@ -1,4 +1,5 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useId, useRef, useState } from 'react'
+import { useFocusTrap } from '../a11y/useFocusTrap'
 import { EventType } from '../../shared/types'
 import { formatTime } from '../../shared/time'
 import { i18n } from '../i18n/zh-TW'
@@ -21,9 +22,9 @@ export function AddEventDialog({ time, onCancel, onConfirm }: AddEventDialogProp
   const [type, setType] = useState<EventType>('knock')
   const boxRef = useRef<HTMLDivElement>(null)
 
-  useEffect(() => {
-    boxRef.current?.focus()
-  }, [])
+  const titleId = useId()
+  // 焦點陷阱＋Esc 取消＋關閉後還原焦點（共用 a11y/focusTrap）；開啟時聚焦對話框本身，Enter 直接確認
+  useFocusTrap(boxRef, { onEscape: onCancel, initialFocus: () => boxRef.current })
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
@@ -32,9 +33,6 @@ export function AddEventDialog({ time, onCancel, onConfirm }: AddEventDialogProp
         if (!enterConfirms(e.target as HTMLElement | null)) return
         e.preventDefault()
         onConfirm(type)
-      } else if (e.key === 'Escape') {
-        e.preventDefault()
-        onCancel()
       }
     }
     window.addEventListener('keydown', onKey)
@@ -50,11 +48,11 @@ export function AddEventDialog({ time, onCancel, onConfirm }: AddEventDialogProp
         className="add-event"
         role="dialog"
         aria-modal="true"
-        aria-label={t.title.replace('{time}', formatTime(time))}
+        aria-labelledby={titleId}
         tabIndex={-1}
         onClick={(e) => e.stopPropagation()}
       >
-        <h3>{t.title.replace('{time}', formatTime(time))}</h3>
+        <h3 id={titleId}>{t.title.replace('{time}', formatTime(time))}</h3>
         <fieldset className="add-event-types">
           <legend>{t.type}</legend>
           {CHIP_TYPES.map((key) => (

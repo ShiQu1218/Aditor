@@ -1,4 +1,5 @@
-import React, { useEffect, useRef } from 'react'
+import React, { useEffect, useId, useRef } from 'react'
+import { useFocusTrap } from '../a11y/useFocusTrap'
 import type { QueueRow as QueueRowData } from '../../shared/queueState'
 import { formatEta } from '../../shared/eta'
 import { fileName } from '../library/VideoCard'
@@ -28,12 +29,11 @@ function QueuePopoverBody({ onClose, variant = 'rail', anchorRef }: Omit<QueuePo
   const summary = useQueueSummary()
   const popRef = useRef<HTMLDivElement>(null)
 
+  const titleId = useId()
+  // Esc 關閉＋焦點陷阱＋關閉後焦點回到圖示欄的佇列按鈕
+  useFocusTrap(popRef, { onEscape: onClose })
+
   useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') {
-        onClose()
-      }
-    }
     const onMouseDown = (e: MouseEvent): void => {
       const target = e.target as Node
       if (popRef.current?.contains(target) || anchorRef?.current?.contains(target)) {
@@ -41,18 +41,16 @@ function QueuePopoverBody({ onClose, variant = 'rail', anchorRef }: Omit<QueuePo
       }
       onClose()
     }
-    window.addEventListener('keydown', onKeyDown)
     window.addEventListener('mousedown', onMouseDown)
     return () => {
-      window.removeEventListener('keydown', onKeyDown)
       window.removeEventListener('mousedown', onMouseDown)
     }
   }, [onClose, anchorRef])
 
   return (
-    <div ref={popRef} className={`pop qpop${variant === 'strip' ? ' strip' : ''}`} role="dialog" aria-label={t.title}>
+    <div ref={popRef} className={`pop qpop${variant === 'strip' ? ' strip' : ''}`} role="dialog" aria-labelledby={titleId}>
       <header className="qpop-head">
-        <h3>{t.title}</h3>
+        <h3 id={titleId}>{t.title}</h3>
         <span className="dim">{t.oneAtATime}</span>
       </header>
       {summary.total === 0 ? (

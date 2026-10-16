@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { autoScrollDue, cursorScrollTarget, rovingTarget } from './listCursor'
+import { autoScrollDue, cursorScrollTarget, revealScrollTarget, rovingTarget } from './listCursor'
 
 const base = { rowHeight: 44, viewHeight: 440, count: 300 } // 可視 10 列，最大 scrollTop = 300*44-440 = 12760
 
@@ -51,5 +51,20 @@ describe('autoScrollDue (playhead follow rate limit)', () => {
     expect(autoScrollDue(1000, 0, 500)).toBe(true)
     expect(autoScrollDue(1200, 1000, 500)).toBe(false)
     expect(autoScrollDue(1500, 1000, 500)).toBe(true)
+  })
+})
+
+describe('revealScrollTarget (variable-height content, e.g. grid rows under date headers)', () => {
+  const base = { scrollTop: 100, viewHeight: 200, contentHeight: 1000 }
+  test('already fully visible -> null', () => {
+    expect(revealScrollTarget({ ...base, top: 150, height: 80 })).toBeNull()
+  })
+  test('above the window -> align top; below -> align bottom', () => {
+    expect(revealScrollTarget({ ...base, top: 40, height: 80 })).toBe(40)
+    expect(revealScrollTarget({ ...base, top: 330, height: 80 })).toBe(210)
+  })
+  test('clamped to the scrollable range', () => {
+    expect(revealScrollTarget({ ...base, top: 0, height: 80 })).toBe(0)
+    expect(revealScrollTarget({ ...base, top: 950, height: 200 })).toBe(800)
   })
 })

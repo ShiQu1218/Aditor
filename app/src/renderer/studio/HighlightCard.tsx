@@ -20,6 +20,8 @@ export interface HighlightCardProps {
   onSkip: (clip: Clip) => void
   onRestore: (clip: Clip) => void
   onRemove: (clip: Clip) => void
+  /** 焦點進入卡片（含內部按鈕）時設為作用中（不預覽、不 seek） */
+  onFocusCard: (clip: Clip) => void
 }
 
 /**
@@ -27,7 +29,7 @@ export interface HighlightCardProps {
  * 列表列本身不可用 `<button>`（keymap 規則）——以 div＋roving tabindex 實作。
  */
 export const HighlightCard = forwardRef<HTMLDivElement, HighlightCardProps>(function HighlightCard(
-  { clip, events, big, active, onSelect, onPreview, onAccept, onSkip, onRestore, onRemove },
+  { clip, events, big, active, onSelect, onPreview, onAccept, onSkip, onRestore, onRemove, onFocusCard },
   ref
 ) {
   const t = i18n.studio.hl
@@ -38,6 +40,8 @@ export const HighlightCard = forwardRef<HTMLDivElement, HighlightCardProps>(func
   const badge =
     clip.origin === 'manual' ? t.badgeManual : status === 'suggested' ? t.badgeSuggested : t.badgeAccepted
   const timeLabel = `${formatTime(clip.start)}–${formatTime(clip.end)}`
+  // roving tabindex：只有作用中卡片的內部按鈕在 Tab 順序內（其餘仍可用滑鼠點擊）
+  const inner = active ? 0 : -1
 
   return (
     <div
@@ -46,7 +50,9 @@ export const HighlightCard = forwardRef<HTMLDivElement, HighlightCardProps>(func
       tabIndex={active ? 0 : -1}
       className={`hl-card${big ? ' big' : ''}${status === 'skipped' ? ' skipped' : ''}${active ? ' active' : ''}`}
       aria-label={`${title}，${timeLabel}`}
+      data-clip-id={clip.id}
       onClick={() => onSelect(clip)}
+      onFocus={() => onFocusCard(clip)}
     >
       <div className="hl-thumb" aria-hidden="true">
         <span className={`hl-badge ${clip.origin === 'manual' ? 'manual' : status}`}>{badge}</span>
@@ -71,6 +77,7 @@ export const HighlightCard = forwardRef<HTMLDivElement, HighlightCardProps>(func
             <>
               <button
                 type="button"
+                tabIndex={inner}
                 className="icon-btn hl-preview"
                 aria-label={t.preview}
                 onClick={(e) => {
@@ -83,6 +90,7 @@ export const HighlightCard = forwardRef<HTMLDivElement, HighlightCardProps>(func
               <div className="hl-actions-spacer" />
               <button
                 type="button"
+                tabIndex={inner}
                 className="btn-ghost hl-skip"
                 onClick={(e) => {
                   e.stopPropagation()
@@ -93,6 +101,7 @@ export const HighlightCard = forwardRef<HTMLDivElement, HighlightCardProps>(func
               </button>
               <button
                 type="button"
+                tabIndex={inner}
                 className="btn-accent hl-accept"
                 onClick={(e) => {
                   e.stopPropagation()
@@ -114,6 +123,7 @@ export const HighlightCard = forwardRef<HTMLDivElement, HighlightCardProps>(func
               <div className="hl-actions-spacer" />
               <button
                 type="button"
+                tabIndex={inner}
                 className="btn-ghost hl-remove"
                 onClick={(e) => {
                   e.stopPropagation()
@@ -128,6 +138,7 @@ export const HighlightCard = forwardRef<HTMLDivElement, HighlightCardProps>(func
           {status === 'skipped' && (
             <button
               type="button"
+              tabIndex={inner}
               className="btn-ghost hl-restore"
               onClick={(e) => {
                 e.stopPropagation()

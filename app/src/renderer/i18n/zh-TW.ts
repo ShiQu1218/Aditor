@@ -455,6 +455,13 @@ export const shellI18n = {
     mainNav: '主要導覽'
   },
   settings: { title: '設定' },
+  shortcutsDialog: {
+    title: '快捷鍵說明',
+    close: '關閉',
+    hint: '按 Esc 關閉。輸入框內輸入的字元不會觸發快捷鍵。',
+    keysLabel: '按鍵'
+  },
+  toastHost: { label: '通知' },
   keymap: {
     scope: {
       global: '全域',
@@ -498,6 +505,7 @@ export const shellI18n = {
       backToSource: '返回來源模式',
       closeOverlay: '關閉浮層／清除選取',
       showShortcuts: '快捷鍵說明',
+      focusToast: '聚焦最新通知（可按〔復原〕）',
       focusSearch: '聚焦搜尋',
       toggleFavoriteFilter: '切換只顯示收藏',
       seekSelectedEvent: '跳到選取事件',

@@ -33,6 +33,10 @@ function fake(over: Partial<Record<keyof ExportApi, unknown>> = {}): Fake {
       return 'C:/codecs/openh264.dll'
     },
     selectOutDir: async () => 'D:/out2',
+    checkOutDir: async (dir: string) => {
+      calls.push(['checkOutDir', dir])
+      return { ok: true }
+    },
     diskSpace: async (dir: string) => {
       calls.push(['diskSpace', dir])
       return { freeBytes: 10 * 1024 ** 3, totalBytes: 100 * 1024 ** 3 }
@@ -84,6 +88,48 @@ describe('exportController wiring', () => {
     await c.init('D:/gone')
     expect(c.getState().outDirError).toContain('資料夾不存在')
     expect(c.getState().disk).toBeNull()
+  })
+
+  test('output dir that is not writable becomes a settings-state blocker before start (checkOutDir), disk space is not queried', async () => {
+    const f = fake({ checkOutDir: async () => ({ ok: false, reason: '輸出資料夾無法寫入' }) })
+    const c = createExportController(f.api)
+    await c.init('D:/readonly')
+    expect(c.getState().outDirError).toContain('輸出資料夾無法寫入')
+    expect(c.getState().disk).toBeNull()
+    expect(f.calls.some((x) => x[0] === 'diskSpace')).toBe(false)
+    // 阻擋中不會呼叫 export:start
+    await c.start([{ id: 'a', source: 'D:/v.mp4', start: 0, end: 5 }])
+    expect(f.calls.some((x) => x[0] === 'start')).toBe(false)
+  })
+
+  test('choosing another folder re-checks it and clears the blocker', async () => {
+    let ok = false
+    const checked: string[] = []
+    const f = fake({
+      checkOutDir: async (dir: string) => {
+        checked.push(dir)
+        return ok ? { ok: true } : { ok: false, reason: '輸出資料夾不存在' }
+      }
+    })
+    const c = createExportController(f.api)
+    await c.init('D:/gone')
+    expect(c.getState().outDirError).toContain('不存在')
+    ok = true
+    await c.chooseOutDir() // fake selectOutDir -> D:/out2
+    expect(c.getState().outDirError).toBeNull()
+    expect(c.getState().settings.outDir).toBe('D:/out2')
+    expect(checked).toEqual(['D:/gone', 'D:/out2'])
+  })
+
+  test('a checkOutDir IPC failure also becomes a blocker rather than an exception', async () => {
+    const f = fake({
+      checkOutDir: async () => {
+        throw new Error('ipc down')
+      }
+    })
+    const c = createExportController(f.api)
+    await c.init('D:/x')
+    expect(c.getState().outDirError).toContain('ipc down')
   })
 
   test('null defaultOutDir → outDirError set (must choose a folder)', async () => {

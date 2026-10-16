@@ -36,6 +36,7 @@ export const COMMANDS = [
   'backToSource',
   'closeOverlay',
   'showShortcuts',
+  'focusToast',
   'focusSearch',
   'toggleFavoriteFilter',
   'seekSelectedEvent',
@@ -177,6 +178,9 @@ function resolveInner(e: KeyInput, ctx: KeyCtx): Command | null {
     return ctx.mode === 'project' ? 'backToSource' : 'closeOverlay'
   }
 
+  // Alt+T：把焦點移到最新的 Toast（讓〔復原〕可由鍵盤直接到達；任何畫面、輸入框內也作用）
+  if (e.altKey && !e.shiftKey && e.key.toLowerCase() === 't') return 'focusToast'
+
   if (ctx.screen === 'studio' && e.altKey) {
     // Alt+←/→：只在專案軌，輸入框與原生控制項聚焦時也作用（規則 1：Ctrl/Alt 除外）
     if (ctx.zone !== 'proj') return null
@@ -290,6 +294,7 @@ export const KEY_TABLE: KeyRow[] = [
   row('backToSource', 'Esc', S.studio),
   row('closeOverlay', 'Esc', S.global),
   row('showShortcuts', '?', S.global),
+  row('focusToast', 'Alt+T', S.global),
   row('focusSearch', 'Ctrl+F', `${S.library}／${S.settings}`),
   row('toggleFavoriteFilter', 'Ctrl+D', S.library),
   row('seekSelectedEvent', 'Enter', S.ev),

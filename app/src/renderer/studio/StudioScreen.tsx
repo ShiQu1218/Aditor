@@ -57,6 +57,8 @@ import { createMode, currentItem, isForeign, reconcileMode, reduceMode } from '.
 import { NoticeAction, proxyBusyNotice, studioNotice, StudioNotice } from './notices'
 import { createAnnouncer } from './liveAnnouncer'
 import { guardCommand, SourceEditCommand } from './modeGuard'
+import { eventAriaLabel } from './reasons'
+import { navReference, type NavAnchor } from './eventNav'
 import { isAnyOverlayOpen, OverlayState, topOverlay } from './overlays'
 import { fileUrl, onVideoError, planSeek, routeTimeUpdate } from './seekPlan'
 import { loadStudioDoc } from './studioLoader'
@@ -501,13 +503,17 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
     [duration, sourcePlayTime, seekTo, announce]
   )
 
+  /** 剛由 Ctrl+←/→ 跳到的事件（播放頭停在其 lead-in 時，以事件時間為下一次導覽的基準；見 eventNav） */
+  const navAnchorRef = useRef<NavAnchor | null>(null)
   const seekEvent = useCallback(
     (dir: 1 | -1) => {
-      const ev = nextEvent(state.doc.events, currentTimeRef.current, dir, state.filter)
+      const ev = nextEvent(state.doc.events, navReference(currentTimeRef.current, navAnchorRef.current), dir, state.filter)
       if (!ev) return
       const target = leadInSeek(ev.t, cfg.before)
       seekTo(target)
-      announce(i18n.studio.live.playhead.replace('{time}', formatTime(target)))
+      navAnchorRef.current = { eventT: ev.t, seekT: target }
+      // 播報事件本身：類型、時間、計入與否（不計入含原因），而不只是播放頭時間
+      announce(eventAriaLabel(ev))
     },
     [state.doc.events, state.filter, seekTo, announce, cfg.before]
   )
@@ -1191,8 +1197,12 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
   const deleteSelectedItem = useCallback(() => {
     const id = selProjId
     if (!id) return
+    // 刪除後選取相鄰片段（後一段優先），鍵盤焦點才不會掉到 body
+    const items = projectRef.current.items
+    const at = items.findIndex((i) => i.id === id)
+    const neighbor = items[at + 1] ?? items[at - 1] ?? null
     apply(removeItem(projectRef.current, id))
-    setSelProjId(null)
+    setSelProjId(neighbor ? neighbor.id : null)
     toast({
       message: i18n.studio.toast.deletedItem,
       action: { label: i18n.studio.toast.undo, run: undo }
@@ -1291,10 +1301,10 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
     addEvent: addEventAt !== null,
     autoClip: autoClipOpen,
     newProject: projDlgOpen,
-    hostDialog: overlay.isOpen,
+    hostDialog: overlay.isOpen && overlay.kind !== 'shortcuts',
     exportDrawer: exportOpen,
     queuePopover: overlay.queueOpen,
-    shortcuts: false
+    shortcuts: overlay.kind === 'shortcuts'
   }
   const overlayOpen = isAnyOverlayOpen(overlayState)
   const overlayStateRef = useRef(overlayState)
@@ -1310,6 +1320,7 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
         setAutoClipOpen(false)
         break
       case 'hostDialog':
+      case 'shortcuts':
         overlay.close()
         break
       case 'exportDrawer':
@@ -1374,6 +1385,7 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
       saveProjectFile: handleSaveProjectFile,
       openExport: handleOpenExport,
       toggleAside: () => setAsideOpen((v) => !v),
+      showShortcuts: overlay.openShortcuts,
       backToSource,
       closeOverlay
     },
@@ -1461,6 +1473,7 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
         asideOpen={asideOpen}
         onBack={handleBack}
         onAutoClip={() => setAutoClipOpen((v) => !v)}
+        autoClipOpen={autoClipOpen}
         onQuick={handleQuickOrSplit}
         onExport={handleOpenExport}
         exportOpen={exportOpen}
@@ -1584,6 +1597,7 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
             hlCount={state.clips.length}
             evCount={eventCount}
             grayed={foreign}
+            locked={exporting}
           >
             {tab === 'hl' ? (
               <HighlightsTab

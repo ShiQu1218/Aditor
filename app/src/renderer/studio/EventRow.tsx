@@ -67,6 +67,7 @@ export const EventRow = forwardRef<HTMLDivElement, EventRowProps>(function Event
       role="listitem"
       tabIndex={active ? 0 : -1}
       aria-label={eventAriaLabel(ev)}
+      data-ev-id={ev.id}
       onClick={(e) => {
         const el = e.target as HTMLElement
         if (el.closest('button') || el.closest('input')) return
@@ -78,6 +79,7 @@ export const EventRow = forwardRef<HTMLDivElement, EventRowProps>(function Event
         type="checkbox"
         checked={selected}
         disabled={Boolean(ev.deleted)}
+        tabIndex={active ? 0 : -1}
         aria-label={t.checkbox}
         onChange={() => onToggleSelect(ev.id)}
       />
@@ -87,10 +89,11 @@ export const EventRow = forwardRef<HTMLDivElement, EventRowProps>(function Event
         {typeLabel}
         <small>{sub}</small>
       </span>
-      <TriState value={ev.counted_override ?? null} onChange={(v) => onSetOverride(ev.id, v)} />
+      <TriState value={ev.counted_override ?? null} onChange={(v) => onSetOverride(ev.id, v)} tabIndex={active ? 0 : -1} />
       <button
         type="button"
         className="icon-btn ev-del"
+        tabIndex={active ? 0 : -1}
         aria-label={t.delete}
         disabled={Boolean(ev.deleted)}
         onClick={(e) => {

@@ -11,6 +11,7 @@ export function installExportFixtureApi(kind: DrawerFixture): void {
     downloadOpenH264: () => new Promise<string>(() => undefined),
     selectOutDir: async () => 'D:/Videos/Apex',
     openFolder: async () => true,
+    checkOutDir: async () => ({ ok: true }),
     diskSpace: async () => ({ freeBytes: 212 * GB, totalBytes: 500 * GB }),
     start: () =>
       new Promise((resolve) => {

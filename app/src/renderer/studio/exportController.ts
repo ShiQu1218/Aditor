@@ -20,6 +20,8 @@ export interface ExportApi {
   openFolder(dir: string): Promise<boolean>
   start(opts: unknown): Promise<StartResult>
   cancel(): Promise<{ cancelled: boolean }>
+  /** 開始前檢查輸出資料夾是否存在且可寫入 */
+  checkOutDir(dir: string): Promise<{ ok: true } | { ok: false; reason: string }>
   diskSpace(dir: string): Promise<{ freeBytes: number; totalBytes: number }>
   onProgress(cb: (data: unknown) => void): () => void
   onOpenH264Progress(cb: (ratio: number) => void): () => void
@@ -116,6 +118,17 @@ export function createExportController(api: ExportApi, initialName = 'highlight'
       set({ disk: null, outDirError: i18n.export.blockNoOutDir })
       return
     }
+    // 先確認資料夾存在且可寫入：壞資料夾在設定頁就是阻擋條件，不等到按下開始才失敗
+    try {
+      const check = await api.checkOutDir(dir)
+      if (!check.ok) {
+        set({ disk: null, outDirError: `${i18n.export.blockOutDirInvalid}（${check.reason}）` })
+        return
+      }
+    } catch (e) {
+      set({ disk: null, outDirError: `${i18n.export.blockOutDirInvalid}（${errMsg(e)}）` })
+      return
+    }
     try {
       const d = await api.diskSpace(dir)
       set({ disk: d, outDirError: null })
@@ -204,6 +217,7 @@ export function createExportController(api: ExportApi, initialName = 'highlight'
       set({ outDirError: i18n.export.blockNoOutDir })
       return
     }
+    if (state.outDirError) return // 輸出資料夾檢查未通過：與按鈕停用同一條件，不送出 export:start
     lastItems = items
     const startedAt = Date.now()
     set({ phase: 'running', progress: { percent: 0, jobIndex: 0, totalJobs: 1, outTimeSeconds: 0 }, result: null })

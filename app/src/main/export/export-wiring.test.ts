@@ -25,7 +25,7 @@ describe('export IPC wiring', () => {
     const registered: string[] = []
     registerExportHandlers({ handle: (ch) => registered.push(ch) }, createExportService())
     for (const m of ipcHandlers.matchAll(/ipcMain\.handle\('(export:[A-Za-z0-9]+)'/g)) registered.push(m[1])
-    expect(invoked.length).toBe(8)
+    expect(invoked.length).toBe(9)
     for (const ch of invoked) expect(registered, ch).toContain(ch)
   })
 

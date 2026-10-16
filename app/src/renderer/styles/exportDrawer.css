@@ -13,6 +13,7 @@
   border-left: 1px solid var(--line-strong);
   outline: none;
 }
+.xd:focus-visible { box-shadow: inset var(--focus-ring); }
 .xd-head {
   flex: none;
   height: 44px;

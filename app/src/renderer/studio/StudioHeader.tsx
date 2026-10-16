@@ -13,6 +13,8 @@ interface StudioHeaderProps {
   asideOpen: boolean
   onBack: () => void
   onAutoClip: () => void
+  /** AI 浮層是否開啟（aria-expanded） */
+  autoClipOpen?: boolean
   onQuick: () => void
   onExport: () => void
   /** 匯出抽屜是否開啟（aria-expanded） */
@@ -32,6 +34,7 @@ export function StudioHeader({
   asideOpen,
   onBack,
   onAutoClip,
+  autoClipOpen = false,
   onQuick,
   onExport,
   exportOpen,
@@ -52,7 +55,14 @@ export function StudioHeader({
         </div>
       </div>
       <div className="studio-head-actions">
-        <button type="button" className="btn-ghost" data-autoclip="toggle" onClick={onAutoClip}>
+        <button
+          type="button"
+          className="btn-ghost"
+          data-autoclip="toggle"
+          aria-haspopup="dialog"
+          aria-expanded={autoClipOpen}
+          onClick={onAutoClip}
+        >
           <Sparkles className="ic sm" /> {t.autoClip}
         </button>
         <button type="button" className="btn-ghost" onClick={onQuick}>

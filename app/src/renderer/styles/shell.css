@@ -20,6 +20,28 @@
 .toast { background: var(--bg-popover); border: 1px solid var(--line-strong); border-radius: var(--r-sm); padding: 10px 14px; box-shadow: var(--shadow-pop); display: flex; align-items: center; gap: 12px; font-weight: 700; }
 .toast button { border: 0; background: none; color: var(--accent-bright); font-weight: 700; padding: 0; }
 
+/* 快捷鍵說明對話框（由 KEY_TABLE 產生；見 shell/ShortcutsDialog.tsx） */
+.sc-dialog {
+  width: min(720px, calc(100vw - 2 * var(--sp-6)));
+  max-height: calc(100vh - 2 * var(--sp-6));
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-popover);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-pop);
+}
+.sc-head { flex: none; display: flex; align-items: center; gap: var(--sp-2); padding: var(--sp-3) var(--sp-4); border-bottom: 1px solid var(--line); }
+.sc-head h2 { flex: 1; font-family: var(--font-display); font-size: var(--fs-subtitle); }
+.sc-body { flex: 1; min-height: 0; overflow-y: auto; padding: var(--sp-2) var(--sp-4) var(--sp-4); }
+.sc-body:focus-visible { outline: none; box-shadow: inset var(--focus-ring); }
+.sc-group h3 { margin: var(--sp-4) 0 var(--sp-1); font-size: var(--fs-small); font-weight: var(--fw-bold); color: var(--text-2); }
+.sc-list { margin: 0; }
+.sc-row { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-4); padding: 6px 0; border-bottom: 1px solid var(--line); }
+.sc-row dt { color: var(--text-1); }
+.sc-row dd { margin: 0; display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; flex: none; }
+.sc-hint { flex: none; margin: 0; padding: var(--sp-2) var(--sp-4) var(--sp-3); color: var(--text-3); font-size: var(--fs-small); }
+
 /* Overlay（對話框容器） */
 .overlay-host { position: fixed; inset: 0; z-index: 100; background: var(--bg-scrim); display: grid; place-items: center; }
 

@@ -10,21 +10,36 @@ export interface CursorScrollParams {
   count: number
 }
 
+export interface RevealParams {
+  /** 目標矩形在內容座標中的頂端與高度 */
+  top: number
+  height: number
+  scrollTop: number
+  viewHeight: number
+  /** 內容總高度 */
+  contentHeight: number
+}
+
 /**
- * 游標列要完整看見所需的 scrollTop；已完全可見回傳 null。
- * 在視窗上方＝對齊列頂；在下方＝列底對齊視窗底；結果夾在 [0, 內容高-視窗高]。
+ * 目標矩形要完整看見所需的 scrollTop；已完全可見回傳 null。
+ * 在視窗上方＝對齊頂端；在下方＝底端對齊視窗底；結果夾在 [0, 內容高-視窗高]。
+ * 清單（等高列）與網格（含日期表頭，列高不一）共用。
  */
-export function cursorScrollTarget({ index, rowHeight, scrollTop, viewHeight, count }: CursorScrollParams): number | null {
-  if (count <= 0 || index < 0 || index >= count) return null
-  const max = Math.max(0, count * rowHeight - viewHeight)
-  const top = index * rowHeight
-  const bottom = top + rowHeight
+export function revealScrollTarget({ top, height, scrollTop, viewHeight, contentHeight }: RevealParams): number | null {
+  const max = Math.max(0, contentHeight - viewHeight)
+  const bottom = top + height
   let target: number
   if (top < scrollTop) target = top
   else if (bottom > scrollTop + viewHeight) target = bottom - viewHeight
   else return null
   target = Math.min(max, Math.max(0, target))
   return target === scrollTop ? null : target
+}
+
+/** 游標列要完整看見所需的 scrollTop（等高列的清單）；已完全可見回傳 null。 */
+export function cursorScrollTarget({ index, rowHeight, scrollTop, viewHeight, count }: CursorScrollParams): number | null {
+  if (count <= 0 || index < 0 || index >= count) return null
+  return revealScrollTarget({ top: index * rowHeight, height: rowHeight, scrollTop, viewHeight, contentHeight: count * rowHeight })
 }
 
 /** roving tabindex：游標列已渲染就用它，否則用第一個已渲染列，確保清單永遠可由 Tab 進入。 */

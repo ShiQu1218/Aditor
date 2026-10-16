@@ -3,6 +3,7 @@ import type { Clip, EngineEvent } from '../../shared/types'
 import { formatTime } from '../../shared/time'
 import { suggestionCount } from '../../shared/clips'
 import { totalDuration, type Project } from '../editor/project'
+import { rovingStep } from '../a11y/roving'
 import { i18n } from '../i18n/zh-TW'
 import { HighlightCard } from './HighlightCard'
 
@@ -52,14 +53,27 @@ export function HighlightsTab({
     const el = cardRefs.current.get(activeId)
     if (!el) return
     const focused = document.activeElement as HTMLElement | null
+    if (focused && el.contains(focused)) return // 焦點已在這張卡片內（例如剛按了內部按鈕）：不搶
     const inHl = typeof focused?.closest === 'function' && focused.closest('[data-zone="hl"]') !== null
     if (inHl || focused === document.body || focused === null) el.focus()
   }, [activeId])
 
+  // Home／End：焦點在卡片本身時跳到第一／最後一張（↑↓ 由 keymap 的 listPrev／listNext 處理，只走建議）
+  const onListKeyDown = (e: React.KeyboardEvent<HTMLDivElement>): void => {
+    if ((e.key !== 'Home' && e.key !== 'End') || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey || e.nativeEvent.isComposing) return
+    const card = (e.target as HTMLElement).closest<HTMLElement>('[data-clip-id]')
+    if (!card || card !== e.target) return
+    const at = clips.findIndex((c) => c.id === card.dataset.clipId)
+    const next = rovingStep({ count: clips.length, index: at, key: e.key, columns: 1, orientation: 'vertical' })
+    if (next === null) return
+    e.preventDefault()
+    onActiveChange(clips[next].id)
+  }
+
   const pending = suggestionCount(clips)
 
   return (
-    <div className="hl-tab" data-zone="hl" role="tabpanel" aria-label={i18n.studio.tabs.hl}>
+    <div className="hl-tab" id="aside-panel" data-zone="hl" role="tabpanel" aria-labelledby="aside-tab-hl">
       <div className="hl-list-head">
         <span className="dim">{t.pending.replace('{n}', String(pending))}</span>
         <div className="hl-view">
@@ -93,7 +107,7 @@ export function HighlightsTab({
             <p className="dim">{t.emptyHint}</p>
           </div>
         ) : (
-          <div className="hl-list" role="list">
+          <div className="hl-list" role="list" onKeyDown={onListKeyDown}>
             {clips.map((c) => (
               <HighlightCard
                 key={c.id}
@@ -114,6 +128,7 @@ export function HighlightsTab({
                 onSkip={onSkip}
                 onRestore={onRestore}
                 onRemove={onRemove}
+                onFocusCard={(clip) => onActiveChange(clip.id)}
               />
             ))}
           </div>

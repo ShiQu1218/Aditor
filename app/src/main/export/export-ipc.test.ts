@@ -199,6 +199,25 @@ describe('IPC 接線（假 ipcMain / webContents）', () => {
     expect(fs.readdirSync(outDir)).toEqual([])
   }, 15000)
 
+  it('export:checkOutDir：存在且可寫入 → ok；不存在／是檔案／不合法路徑 → ok:false 並附原因（不丟錯）', async () => {
+    const { invoke, sender, handlers } = setup()
+    expect(handlers.has('export:checkOutDir')).toBe(true)
+    expect(await invoke('export:checkOutDir', sender, outDir)).toEqual({ ok: true })
+    // 檢查用的暫存探測檔不留在資料夾裡
+    expect(fs.readdirSync(outDir).filter((f) => f.startsWith('.apexhl-write-test'))).toEqual([])
+    const missing = await invoke('export:checkOutDir', sender, path.join(root, 'nope'))
+    expect(missing).toMatchObject({ ok: false })
+    expect(missing.reason).toContain('不存在')
+    const file = await invoke('export:checkOutDir', sender, source)
+    expect(file).toMatchObject({ ok: false })
+    expect(file.reason).toContain('不是資料夾')
+    for (const bad of [42, '', 'relative/dir', '\\server\share', null]) {
+      const r = await invoke('export:checkOutDir', sender, bad)
+      expect(r).toMatchObject({ ok: false })
+      expect(typeof r.reason).toBe('string')
+    }
+  })
+
   it('export:diskSpace 回傳有限數字；不合法的目錄被拒絕', async () => {
     const { invoke, sender } = setup()
     const r = await invoke('export:diskSpace', sender, outDir)

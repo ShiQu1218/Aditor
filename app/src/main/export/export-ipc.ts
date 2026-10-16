@@ -1,6 +1,6 @@
 /**
  * 匯出相關 IPC 的處理本體（不依賴 electron，可用假 ipcMain／webContents 測試）。
- * 頻道：`export:start`、`export:cancel`、`export:diskSpace`；進度經 `export:progress` 只送給發出請求的視窗。
+ * 頻道：`export:start`、`export:cancel`、`export:diskSpace`、`export:checkOutDir`；進度經 `export:progress` 只送給發出請求的視窗。
  */
 import fs from 'fs'
 import path from 'path'
@@ -213,6 +213,20 @@ export function createExportService(deps: ExportServiceDeps = {}) {
     await c.done
   }
 
+  /**
+   * 開始前檢查輸出資料夾（存在、是資料夾、可寫入）；與 `export:start` 共用同一個 assertWritableDir，
+   * 讓壞資料夾在設定頁就成為阻擋條件，而不是按下開始後才出現失敗頁。回傳結果而非丟錯（錯誤訊息才不會被 IPC 加前綴）。
+   */
+  async function checkOutDir(dir: unknown): Promise<{ ok: true } | { ok: false; reason: string }> {
+    if (!isSafeLocalDirPath(dir)) return { ok: false, reason: '輸出資料夾路徑不正確' }
+    try {
+      await assertWritableDir(path.resolve(dir))
+      return { ok: true }
+    } catch (err) {
+      return { ok: false, reason: (err as Error).message }
+    }
+  }
+
   async function diskSpace(dir: unknown): Promise<{ freeBytes: number; totalBytes: number }> {
     if (!isSafeLocalDirPath(dir)) throw new Error('磁碟路徑不正確')
     const resolved = path.resolve(dir)
@@ -222,7 +236,7 @@ export function createExportService(deps: ExportServiceDeps = {}) {
     return { freeBytes: Number(s.bavail) * Number(s.bsize), totalBytes: Number(s.blocks) * Number(s.bsize) }
   }
 
-  return { start, cancel, cancelAndWait, diskSpace, isRunning: () => current !== null }
+  return { start, cancel, cancelAndWait, diskSpace, checkOutDir, isRunning: () => current !== null }
 }
 
 export type ExportService = ReturnType<typeof createExportService>
@@ -231,4 +245,5 @@ export function registerExportHandlers(ipcMain: IpcMainLike, service: ExportServ
   ipcMain.handle('export:start', (event, opts: unknown) => service.start(event.sender, opts))
   ipcMain.handle('export:cancel', () => service.cancel())
   ipcMain.handle('export:diskSpace', (_event, dir: unknown) => service.diskSpace(dir))
+  ipcMain.handle('export:checkOutDir', (_event, dir: unknown) => service.checkOutDir(dir))
 }

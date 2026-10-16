@@ -12,11 +12,13 @@ interface RailProps {
   onNavigate: (v: RailView) => void
   onShortcuts?: () => void
   onQueue?: () => void
+  /** 佇列浮層是否開啟（aria-expanded） */
+  queueOpen?: boolean
   /** 供佇列浮層判斷「點擊外部」時排除觸發按鈕 */
   queueButtonRef?: React.Ref<HTMLButtonElement>
 }
 
-export function Rail({ active, projectCount, onNavigate, onShortcuts, onQueue, queueButtonRef }: RailProps): JSX.Element {
+export function Rail({ active, projectCount, onNavigate, onShortcuts, onQueue, queueOpen = false, queueButtonRef }: RailProps): JSX.Element {
   const t = shellI18n.rail
   const btn = (view: RailView, tip: string, label: string, icon: JSX.Element, badge?: number) => (
     <button
@@ -40,12 +42,21 @@ export function Rail({ active, projectCount, onNavigate, onShortcuts, onQueue, q
         className="rail-btn"
         data-tip={t.queue}
         aria-label={t.queue}
+        aria-haspopup="dialog"
+        aria-expanded={queueOpen}
         ref={queueButtonRef}
         onClick={onQueue}
       >
         <QueueRing />
       </button>
-      <button className="rail-btn" data-tip={t.shortcuts} aria-label={t.shortcutsLabel} onClick={onShortcuts}>
+      <button
+        type="button"
+        className="rail-btn"
+        data-tip={t.shortcuts}
+        aria-label={t.shortcutsLabel}
+        aria-haspopup="dialog"
+        onClick={onShortcuts}
+      >
         <Keyboard className="ic lg" />
       </button>
       {btn('settings', t.settings, t.settings, <SlidersHorizontal className="ic lg" />)}

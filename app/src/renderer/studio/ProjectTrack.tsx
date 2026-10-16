@@ -4,7 +4,8 @@ import { i18n } from '../i18n/zh-TW'
 import { ChevronDown, Copy, FilePlus2, FolderOpen, Redo2, Save, Scissors, Trash2, Undo2 } from '../components/icons'
 import type { Project, ProjectItem } from '../editor/project'
 import type { SaveState } from '../editor/ProjectProvider'
-import { nextTrapIndex } from './focusTrap'
+import { useFocusTrap } from '../a11y/useFocusTrap'
+import { rovingStep } from '../a11y/roving'
 import { dropIndex, itemWidth, trimFromDrag, trimUpperBound } from '../editor/trackLayout'
 import { sourceBadge } from '../editor/sourceColors'
 
@@ -134,39 +135,38 @@ export function ProjectTrack(props: ProjectTrackProps): JSX.Element {
     setNameDraft(project.name)
   }, [project.name])
 
+  // roving tabindex：選取的片段（無選取時第一段）是整條軌道唯一的 Tab 停靠點
+  const rovingId = project.items.some((i) => i.id === selectedId) ? selectedId : (project.items[0]?.id ?? null)
+  /** 焦點在軌道的片段上（鍵盤選取改變、重排或刪除後才把焦點帶到新的選取片段） */
+  const focusInTrack = useRef(false)
+
+  useEffect(() => {
+    if (!focusInTrack.current || !selectedId) return
+    const track = trackRef.current
+    const el = track ? Array.from(track.querySelectorAll<HTMLElement>('[data-item-id]')).find((c) => c.dataset.itemId === selectedId) : undefined
+    if (!el) return
+    const active = document.activeElement as HTMLElement | null
+    if (active === el || (active && el.contains(active))) return
+    if (active === null || active === document.body || active.closest('.pclip')) el.focus()
+  }, [selectedId, project.items])
+
+  /** Home／End：焦點在片段本身時跳到第一／最後一段（←→ 由 keymap 的 selectPrevItem／selectNextItem 處理） */
+  const onChipKeyDown = (e: React.KeyboardEvent<HTMLElement>): void => {
+    if ((e.key !== 'Home' && e.key !== 'End') || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey || e.nativeEvent.isComposing) return
+    if (!(e.target as HTMLElement).classList.contains('pclip')) return
+    const at = project.items.findIndex((i) => i.id === rovingId)
+    const next = rovingStep({ count: project.items.length, index: at, key: e.key, columns: 1, orientation: 'horizontal' })
+    if (next === null) return
+    e.preventDefault()
+    onSelect(project.items[next].id)
+  }
+
   useEffect(() => {
     onDialogOpenChange(newDlgOpen)
   }, [newDlgOpen, onDialogOpenChange])
 
-  // 新專案對話框：開啟時記住原焦點並聚焦第一個選項、Tab 在框內循環、Esc 只處理一次、關閉還原焦點
-  useEffect(() => {
-    if (!newDlgOpen) return
-    const prev = document.activeElement as HTMLElement | null
-    const box = dlgBoxRef.current
-    const focusables = (): HTMLElement[] =>
-      box ? Array.from(box.querySelectorAll<HTMLElement>('button:not([disabled])')) : []
-    focusables()[0]?.focus()
-    const onKey = (e: KeyboardEvent): void => {
-      if (e.isComposing || e.keyCode === 229) return
-      if (e.key === 'Escape') {
-        e.preventDefault()
-        e.stopPropagation() // 只由此處理，不再傳給全域 keymap
-        setNewDlgOpen(false)
-      } else if (e.key === 'Tab') {
-        const list = focusables()
-        const i = nextTrapIndex(list.length, list.indexOf(document.activeElement as HTMLElement), e.shiftKey)
-        if (i >= 0) {
-          e.preventDefault()
-          list[i].focus()
-        }
-      }
-    }
-    window.addEventListener('keydown', onKey, true)
-    return () => {
-      window.removeEventListener('keydown', onKey, true)
-      if (prev && document.contains(prev)) prev.focus()
-    }
-  }, [newDlgOpen])
+  // 新專案對話框：焦點陷阱（開啟時聚焦第一個選項、Tab 在框內循環、Esc 只處理一次、關閉還原焦點）
+  useFocusTrap(dlgBoxRef, { active: newDlgOpen, onEscape: () => setNewDlgOpen(false) })
 
   const commitName = useCallback(() => {
     const trimmed = nameDraft.trim()
@@ -419,8 +419,20 @@ export function ProjectTrack(props: ProjectTrackProps): JSX.Element {
           </button>
         </div>
 
-        <div className="track" ref={trackRef} role="list" aria-label={t.title} tabIndex={0}>
+        <div
+          className="track"
+          ref={trackRef}
+          onFocus={() => {
+            focusInTrack.current = true
+          }}
+          onBlur={(e) => {
+            const to = e.relatedTarget as Node | null
+            if (to && !e.currentTarget.contains(to)) focusInTrack.current = false
+          }}
+        >
           {project.items.length === 0 && <span className="dim track-empty">{t.empty}</span>}
+          {/* 清單本身只含片段（listitem）；〔＋從來源加入〕按鈕與插入線留在清單外（display: contents 不影響版面） */}
+          <div className="track-list" role="list" aria-label={t.title}>
           {project.items.map((item, i) => {
             const dragging = reorder?.id === item.id
             const preview = trimDrag?.id === item.id ? trimDrag : null
@@ -436,7 +448,8 @@ export function ProjectTrack(props: ProjectTrackProps): JSX.Element {
                 key={item.id}
                 data-item-id={item.id}
                 role="listitem"
-                tabIndex={-1}
+                tabIndex={item.id === rovingId ? 0 : -1}
+                aria-current={selectedId === item.id ? 'true' : undefined}
                 className={`pclip${selectedId === item.id ? ' sel' : ''}${cur ? ' cur' : ''}${miss ? ' missing' : ''}${dragging ? ' drag-src' : ''}`}
                 style={{ width: `${itemWidth(len)}px` }}
                 title={miss ? t.missing : undefined}
@@ -445,6 +458,11 @@ export function ProjectTrack(props: ProjectTrackProps): JSX.Element {
                   .replace('{label}', label)
                   .replace('{time}', formatTime(len))}
                 onClick={() => handleCardClick(item)}
+                onFocus={(e) => {
+                  // 焦點進入片段（Tab／點擊）＝選取它；內部控制項沒有（把手是 <i>）
+                  if (e.target === e.currentTarget && selectedId !== item.id) onSelect(item.id)
+                }}
+                onKeyDown={onChipKeyDown}
                 onPointerDown={(e) => handleCardDown(e, item)}
                 onPointerMove={handleCardMove}
                 onPointerUp={handleCardUp}
@@ -476,6 +494,7 @@ export function ProjectTrack(props: ProjectTrackProps): JSX.Element {
               </div>
             )
           })}
+          </div>
           {reorder && <span className="drop-line" style={{ left: `${reorder.x}px` }} />}
           <button type="button" className="add-slot" onClick={onAddFromSource}>
             <span aria-hidden="true">＋</span>
@@ -492,11 +511,11 @@ export function ProjectTrack(props: ProjectTrackProps): JSX.Element {
             className="np-dlg"
             role="dialog"
             aria-modal="true"
-            aria-label={dlg.title}
+            aria-labelledby="np-title"
             tabIndex={-1}
             onClick={(e) => e.stopPropagation()}
           >
-            <h3>{dlg.title}</h3>
+            <h3 id="np-title">{dlg.title}</h3>
             <div className="sub">
               {dlg.body.replace('{name}', project.name).replace('{n}', String(project.items.length))}
             </div>

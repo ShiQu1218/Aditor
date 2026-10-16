@@ -1,4 +1,5 @@
-import React, { useEffect, useReducer, useRef, useState } from 'react'
+import React, { useEffect, useId, useReducer, useRef, useState } from 'react'
+import { useFocusTrap } from '../a11y/useFocusTrap'
 import type { AutoClipParams, Clip, EngineEvent } from '../../shared/types'
 import { formatTime } from '../../shared/time'
 import { useDebounced } from '../hooks/useDebounced'
@@ -60,16 +61,9 @@ export function AutoClipPopover({
     // 參數／事件變動時下一輪 effect 會發新序號的 request，舊回應因序號不符被丟棄
   }, [debounced, events, duration])
 
-  // Esc 關閉（輸入框聚焦時也要生效 → preventDefault 讓 keymap 不重複處理）
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent): void => {
-      if (e.key !== 'Escape') return
-      e.preventDefault()
-      onClose()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [onClose])
+  // Esc 關閉（輸入框聚焦時也有效；捕捉階段處理後不再傳給 keymap）＋焦點陷阱＋關閉後還原焦點
+  const titleId = useId()
+  useFocusTrap(boxRef, { onEscape: onClose })
 
   // 點浮層外關閉（略過觸發按鈕，避免與開關切換互撞）
   useEffect(() => {
@@ -100,8 +94,8 @@ export function AutoClipPopover({
   const applicable = canApply(est, params)
 
   return (
-    <div className="autoclip-pop" ref={boxRef} role="dialog" aria-label={t.title}>
-      <h3>{t.title}</h3>
+    <div className="autoclip-pop" ref={boxRef} role="dialog" aria-labelledby={titleId}>
+      <h3 id={titleId}>{t.title}</h3>
       <p className="dim ac-desc">{t.desc}</p>
 
       <div className="ac-fields">

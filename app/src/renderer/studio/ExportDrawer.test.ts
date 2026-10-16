@@ -31,6 +31,7 @@ function fakeApi(over: Record<string, unknown> = {}): { api: ExportApi; resolveS
     openh264Status: async () => ({ installed: false }),
     downloadOpenH264: async () => 'x',
     selectOutDir: async () => 'D:/o',
+    checkOutDir: async () => ({ ok: true }),
     openFolder: async () => true,
     diskSpace: async () => ({ freeBytes: 200 * GB, totalBytes: 500 * GB }),
     start: () => new Promise((r) => (resolveStart = r)),

@@ -7,6 +7,8 @@ export interface TriStateProps {
   onChange: (value: boolean | null) => void
   /** aria 群組名稱（列內為「計入統計」） */
   label?: string
+  /** roving tabindex：清單中非作用列傳 -1（預設 0） */
+  tabIndex?: number
 }
 
 const OPTIONS: Array<{ value: boolean | null; cls: string }> = [
@@ -19,7 +21,7 @@ const OPTIONS: Array<{ value: boolean | null; cls: string }> = [
  * 計入三態分段按鈕〔自動｜計入｜不計〕（spec §3.2.3）：
  * 一眼可見目前 `counted_override`，取代舊版循環按鈕。
  */
-export function TriState({ value, onChange, label }: TriStateProps): JSX.Element {
+export function TriState({ value, onChange, label, tabIndex = 0 }: TriStateProps): JSX.Element {
   const t = i18n.studio.ev
   const text: Record<string, string> = { auto: t.auto, yes: t.yes, no: t.no }
   return (
@@ -30,6 +32,7 @@ export function TriState({ value, onChange, label }: TriStateProps): JSX.Element
           <button
             key={o.cls}
             type="button"
+            tabIndex={tabIndex}
             className={`tri-btn${on ? ' on' : ''}${on && o.cls !== 'auto' ? ` ${o.cls}` : ''}`}
             aria-pressed={on}
             onClick={(e) => {
