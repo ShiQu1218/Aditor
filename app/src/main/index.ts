@@ -9,7 +9,15 @@ import { ProjectStore } from './projects'
 import { registerIpcHandlers } from './ipc-handlers'
 import { createCloseGate } from './project-ipc'
 import { buildAnalyzeArgs } from './settings-derived'
+import { currentE2EConfig } from './e2e'
 import { appDataDir, cacheDir, engineCommand, ffmpegExecutable, profileDir } from '../shared/paths'
+
+// E2E 掛鉤（僅 APEXHL_E2E=1）：暫存 appData／userData，測試不碰使用者資料；正式執行時為 null
+const e2e = currentE2EConfig()
+if (e2e?.appData) {
+  process.env.APPDATA = e2e.appData
+  app.setPath('userData', join(e2e.appData, 'electron-userdata'))
+}
 
 let mainWindow: BrowserWindow | null = null
 let engineClient: EngineClient | null = null
@@ -72,7 +80,7 @@ async function initEngineAndServices(): Promise<void> {
     process.env.PATH = `${binDir}${resolve(join(__dirname, '..')) ? ';' : ''}${process.env.PATH || ''}`
   }
 
-  const cmd = engineCommand(app.isPackaged)
+  const cmd = e2e?.fakeEngine ?? engineCommand(app.isPackaged)
   engineClient = new EngineClient(cmd)
   try {
     const res = await engineClient.start()

@@ -15,6 +15,7 @@ import { ProjectStore } from './projects'
 import { registerProjectHandlers } from './project-ipc'
 import { fileExistsSafe, isSafeLocalDirPath } from './safe-path'
 import { DEFAULT_SETTINGS } from '../shared/settings'
+import { currentE2EConfig } from './e2e'
 import { cacheDir, profileDir } from '../shared/paths'
 import { computeHlCount, createHlGuard, createSerialQueue, hlForSavedDoc } from './hl'
 import { createThrottle } from '../shared/throttle'
@@ -376,6 +377,8 @@ export function registerIpcHandlers(
 
   // 匯出：start／cancel／diskSpace（驗證、單一匯出、視窗關閉即取消都在 export-ipc.ts）
   const exportService = createExportService({
+    // E2E（APEXHL_E2E_FAKE_FFMPEG=1）才有值；正式執行為 undefined＝沿用預設 ffmpeg
+    ffmpeg: currentE2EConfig()?.exportFfmpeg ?? undefined,
     probe: engine ? (source) => engine.request('probe', { path: source }).promise : undefined
   })
   registerExportHandlers(ipcMain, exportService)

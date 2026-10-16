@@ -1,4 +1,5 @@
 import readline from 'readline'
+import { createE2EHandler } from './fake-engine-e2e.mjs'
 
 const mode = process.env.FAKE_ENGINE_MODE || 'normal'
 
@@ -22,6 +23,9 @@ if (mode === 'chunked_ready') {
   send({ type: 'ready', engine_version: '0.1.0' })
 }
 
+// E2E 模式：FAKE_ENGINE_MODE=e2e → 回傳引擎形狀的合成分析結果（見 fake-engine-e2e.mjs）
+const e2eHandle = mode === 'e2e' ? createE2EHandler(send) : null
+
 const rl = readline.createInterface({
   input: process.stdin,
   output: process.stdout,
@@ -40,6 +44,11 @@ rl.on('line', (line) => {
   }
 
   const { id, cmd, args } = req
+
+  if (e2eHandle) {
+    void e2eHandle(req)
+    return
+  }
 
   if (cmd === 'crash') {
     process.exit(1)
