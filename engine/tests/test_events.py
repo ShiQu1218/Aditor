@@ -59,10 +59,11 @@ def test_short_flicker_same_event():
 
 
 def test_name_change_new_event():
+    # 兩則橫幅之間有淡出（一格空白）→ 不同敵人（最終審查 I1：無空白的名字改變不再分裂，見下方）
     a, b = sig(1), sig(2)
-    frames = seq("KKK", name=a) + seq("KKK", name=b, t0=0.75)
+    frames = seq("KKK", name=a) + seq("KKK", name=b, t0=1.0)
     ev, _ = run(frames)
-    assert len(ev) == 2 and ev[1].t == 0.75
+    assert len(ev) == 2 and ev[1].t == 1.0
     assert ev[0].name_sig == a.to_b64()
 
 
@@ -157,9 +158,9 @@ def test_single_frame_name_jitter_does_not_split():
 
 def test_two_consecutive_frames_of_new_name_split_from_first_different_frame():
     a, b = sig(1), sig(2)
-    frames = seq("KKK", name=a) + seq("KK", name=b, t0=0.75)
+    frames = seq("KKK", name=a) + seq("KK", name=b, t0=1.0)  # 中間一格空白
     ev, _ = run(frames)
-    assert [e.t for e in ev] == [0.0, 0.75]
+    assert [e.t for e in ev] == [0.0, 1.0]
     assert ev[1].name_sig == b.to_b64()
 
 
@@ -221,10 +222,10 @@ def test_jitter_run_uses_representative_sig_not_first_frame():
 def test_jitter_between_two_enemies_still_splits_once():
     a, b = sig(1), sig(2)
     frames = seq("KKK", name=a)
-    frames += [(0.75, fr("knock", sig(400))), (1.0, fr("knock", sig(401)))]  # 兩格各自不同的抖動
-    frames += seq("KKK", name=b, t0=1.25)
+    frames += [(1.0, fr("knock", sig(400))), (1.25, fr("knock", sig(401)))]  # 空白一格後，兩格各自不同的抖動
+    frames += seq("KKK", name=b, t0=1.5)
     ev, _ = run(frames)
-    assert len(ev) == 2 and ev[0].t == 0.0 and ev[1].t == 1.25
+    assert len(ev) == 2 and ev[0].t == 0.0 and ev[1].t == 1.5
     assert ev[1].name_sig == b.to_b64()
 
 
@@ -446,10 +447,26 @@ def test_i1_fade_out_fragments_of_assist_banner_do_not_split():
     assert len(ev) == 1
 
 
-def test_i1_unrelated_narrow_name_without_gap_still_splits():
-    # 不是殘片（相關性低）→ 仍視為另一個敵人
+def test_i1_unrelated_name_without_gap_or_score_dip_is_jitter():
+    # 實測（held-out）：HUD 遮擋後剩下的墨寬度驟降、內容與原名字無關（不是裁切殘片），分數不變、沒有空白格。
+    # 遊戲同一時間只有一個中央橫幅，換敵人必有淡出（空白）或分數凹陷 → 這種變化併入同一個 run
+    a, b = sig(23, 300), sig(24, 55)
+    frames = _runs((0.0, "knock", [a, a, a, a, a, a]), (1.5, "knock", [b, b]))
+    ev, _ = run(frames)
+    assert len(ev) == 1 and ev[0].name_sig == a.to_b64()
+
+
+def test_i1_unrelated_name_after_gap_splits():
     a, b = sig(23, 100), sig(24, 55)
-    frames = _runs((0.0, "knock", [a, a, a, a]), (1.0, "knock", [b, b, b]))
+    frames = _runs((0.0, "knock", [a, a, a, a]), (1.25, "knock", [b, b, b]))  # 一格空白
+    ev, _ = run(frames)
+    assert len(ev) == 2 and ev[1].t == 1.25
+
+
+def test_i1_unrelated_name_with_score_dip_splits():
+    a, b = sig(25, 100), sig(26, 80)
+    frames = [(i * 0.25, fr("knock", a, score=0.9)) for i in range(4)]
+    frames += [(1.0, fr("knock", b, score=0.6)), (1.25, fr("knock", b, score=0.6)), (1.5, fr("knock", b, score=0.9))]
     ev, _ = run(frames)
     assert len(ev) == 2 and ev[1].t == 1.0
 
@@ -497,3 +514,22 @@ def test_i3_alt_sig_ignored_when_run_has_red_names():
               (0.75, fr("knock", None, alt=junk))]
     ev, _ = run(frames)
     assert len(ev) == 1 and ev[0].name_sig == a.to_b64()
+
+
+def test_i3_knock_without_any_readable_name_still_pairs_with_following_elim():
+    # 擊倒的紅字名與白字備援都讀不到：時間配對仍成立，兩者共用偽指紋（derive 才能去重），且不與其他事件相關
+    frames = [(i * 0.25, fr("knock", None)) for i in range(4)]
+    frames += _runs((4.0, "elim", [sig(600), sig(601), sig(602), sig(603)]))
+    frames += [(10.0 + i * 0.25, fr("knock", None)) for i in range(4)]   # 另一個同樣讀不到名字的擊倒
+    ev, _ = run(frames)
+    assert ev[0].name_sig is not None and ev[1].name_sig == ev[0].name_sig
+    assert ev[2].name_sig is None   # 沒有補刀配對的擊倒維持 None
+    from apexhl.derive import sig_similar
+    assert not sig_similar(ev[0].name_sig, sig(7).to_b64(), PROFILE.name_sig_threshold)
+
+
+def test_i3_unreadable_knock_does_not_pair_with_elim_that_has_a_reliable_name():
+    b = sig(9, 70)
+    frames = [(i * 0.25, fr("knock", None)) for i in range(4)] + _runs((4.0, "elim", [b, b, b]))
+    ev, _ = run(frames)
+    assert ev[0].name_sig is None and ev[1].name_sig == b.to_b64()

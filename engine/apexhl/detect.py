@@ -365,6 +365,8 @@ class Detector:
             sig = self._name_sig(banner, wm, edge, y, h, True)
             # 「再次擊倒」的名字是白字：紅字名取不到時另備一份白字＋紅字的指紋（I3），供追蹤器去重／配對
             alt = self._name_sig(banner, wm, edge, y, h, False) if sig is None else None
+            if alt is not None and alt.bits.mean() < 0.03:
+                alt = None  # 筆畫太細縮成全空的指紋沒有鑑別力
             return result("knock", s, x, dmg, sig, alt)
 
         hit = self._hit(wm, "elim_done", box)

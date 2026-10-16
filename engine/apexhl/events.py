@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import hashlib
+
+import numpy as np
+
 from apexhl.detect import fragment_of as fragment_related
 from apexhl.detect import related_name, same_name
 from apexhl.models import COUNTING_TYPES, Event, FrameResult, NameSig, SpecInterval
@@ -17,8 +21,16 @@ LINK_MIN_WIDTH = 24  # 參與連結的指紋最小寬度（再窄的殘片相關
 _KNOCK_TYPES = frozenset({"knock", "assist_knock"})
 _FINISH_TYPES = frozenset({"elim", "assist_elim"})
 _ASSIST_KINDS = frozenset({"assist_knock", "assist_elim"})
+SPLIT_SCORE_DIP = 0.12   # 關鍵字分數凹陷（相對於 run 內的中位數）達這麼多，視為橫幅被換掉的不連續點
 ASSIST_MIX_WINDOW = 1.0  # 助攻橫幅淡入的前幾格，子關鍵字（擊倒／消滅）常讀不準：run 開始後這麼多秒內互相接納
 _MAX_SIGS = 40  # 每個 run 最多納入代表簽名計算的指紋數（橫幅最長約 10 秒 = 40 格；超過者仍參與比對但不入池）
+
+
+def _pseudo_sig(seed_text: str) -> NameSig:
+    """決定性的偽名字指紋（高 16、寬 40 的隨機位元），僅用於「讀不到名字」的擊倒與其補刀的配對。"""
+    seed = int.from_bytes(hashlib.sha256(seed_text.encode()).digest()[:8], "big")
+    rng = np.random.default_rng(seed)
+    return NameSig(40, (rng.random((NameSig.HEIGHT, 40)) > 0.5).astype(np.uint8))
 
 
 class _Run:
@@ -36,6 +48,7 @@ class _Run:
         # 暫列格：與代表簽名不同的最新一格，需下一格也是同一個新名字才確認分裂
         self.pending: tuple[float, FrameResult] | None = None
         self.paired = False  # 這次擊倒是否已被某個補刀配對
+        self.discontinuity = False  # 最後一個「與本 run 名字相符」的畫格之後，是否出現過空白格（橫幅淡出）
         self._sigs: list[NameSig] = []   # 已確認（非暫列）格的指紋，依時間排序
         self._support: list[int] = []    # 與各指紋「同一人」的其他指紋數
         self._fb_sigs: list[NameSig] = []      # 備援指紋（白字名，I3）：整個 run 沒有紅字名時才採用
@@ -196,12 +209,22 @@ class EventTracker:
         if run is not None and t - run.last_t - STEP < GAP - _EPS and run.accepts(r.kind, t):
             if run.matches(r):
                 run.add(t, r)
+                run.discontinuity = False
             else:
+                if t - run.last_t > STEP + _EPS:
+                    run.discontinuity = True
                 pend = run.pending
                 if (pend is not None and t - pend[0] < STEP + _EPS
                         and same_name(pend[1].name_sig, r.name_sig, self._threshold)):
                     if run.stable:
-                        self._split(run, pend, t, r)
+                        if self._is_break(run, pend, r):
+                            self._split(run, pend, t, r)
+                            return
+                        # 沒有任何不連續（無空白格、分數沒凹陷）的名字改變 = HUD 遮擋／淡出造成的抖動（I1）：
+                        # 遊戲同一時間只顯示一個中央橫幅，換成另一個敵人的橫幅一定會經過淡出（空白）或分數凹陷
+                        run.commit_pending()
+                        run.add(t, r)
+                        self._emit(run)
                         return
                     # 舊 run 從未有過穩定名字（亮／藍背景抖動）：視為同一提示，改採穩定後的名字
                     run.commit_pending()
@@ -217,6 +240,17 @@ class EventTracker:
                       and abs(t - self._resume_start) < _EPS)
         self._run = run = _Run(self._threshold, suppressed)
         run.add(t, r)
+
+    @staticmethod
+    def _is_break(run: _Run, pend: tuple[float, FrameResult], r: FrameResult) -> bool:
+        """舊 run 與「新名字」之間有沒有不連續：舊名字最後出現之後有空白格，或關鍵字分數明顯凹陷。"""
+        if run.discontinuity:
+            return True
+        base = sorted(f.score for _, f in run.frames[:-1])
+        if not base:
+            return False
+        ref = base[len(base) // 2]
+        return min(pend[1].score, r.score) < ref - SPLIT_SCORE_DIP
 
     def _split(self, old: _Run, pend: tuple[float, FrameResult], t: float, r: FrameResult) -> None:
         """不同名字連續 2 格才分裂；新事件從第一個不同格起算，並把暫列格自舊 run 移出。"""
@@ -258,15 +292,21 @@ class EventTracker:
                     break
             if target is None and ev.type in _FINISH_TYPES:
                 for prev in reversed(self._closed):
-                    if (prev.event is None or prev.event.name_sig is None or prev.paired
+                    if (prev.event is None or prev.paired
                             or prev.event.type not in _KNOCK_TYPES
                             or run.first_t - prev.first_t > PAIR_WINDOW):
                         continue
                     if self._contradicts(prev, run):
                         continue
+                    if prev.event.name_sig is None and run.stable_sigs():
+                        continue  # 擊倒讀不到名字、補刀卻有可靠名字：無法證明是同一人，保守不配對
                     target = prev
                     break
             if target is not None:
+                if target.event.name_sig is None:
+                    # 擊倒完全讀不到名字（例如白字名也取不到）：配對成立時兩者共用一個由擊倒 id 決定的
+                    # 偽指紋，derive 才能把補刀標為重複；偽指紋與任何真實名字或其他偽指紋都不相關
+                    target.event.name_sig = _pseudo_sig(target.event.id).to_b64()
                 ev.name_sig = target.event.name_sig
                 if ev.type in _FINISH_TYPES and target.event.type in _KNOCK_TYPES:
                     target.paired = True
