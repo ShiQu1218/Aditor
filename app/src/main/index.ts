@@ -1,5 +1,6 @@
 import { app, BrowserWindow, dialog, ipcMain } from 'electron'
 import { createDirtyGuard } from './dirty-guard'
+import { createQuitGuard } from './quit-guard'
 import { i18n } from '../renderer/i18n/zh-TW'
 import { join, resolve } from 'path'
 import { EngineClient } from './engine'
@@ -119,6 +120,9 @@ async function initEngineAndServices(): Promise<void> {
     console.error('[Engine] Failed to start engine:', err)
   }
 
+  // 上次中斷遺留的代理檔半成品
+  ;(await import('./proxy')).cleanStaleProxyPartials()
+
   const templateProfileDir = profileDir(app.isPackaged)
 
   library = new Library(join(appDataDir(), 'library.json'))
@@ -181,15 +185,20 @@ app.whenReady().then(async () => {
   })
 })
 
-app.on('before-quit', () => {
-  library?.flush()
-  void cancelExport?.()
+// 結束前等匯出／代理檔 ffmpeg 被終止、半成品刪除、引擎停止（I7）；逾時 5 秒仍會退出
+const quitGuard = createQuitGuard({
+  tasks: [
+    () => library?.flush(),
+    () => cancelExport?.(),
+    async () => (await import('./proxy')).cancelAllProxies(),
+    () => watchManager?.stop(),
+    () => engineClient?.stop()
+  ],
+  quit: () => app.quit(),
+  timeoutMs: 5000
 })
+app.on('before-quit', (e) => quitGuard.onBeforeQuit(e))
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
-    watchManager?.stop()
-    engineClient?.stop()
-    app.quit()
-  }
+  if (process.platform !== 'darwin') app.quit()
 })
