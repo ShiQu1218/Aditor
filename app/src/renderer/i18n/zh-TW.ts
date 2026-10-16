@@ -690,8 +690,7 @@ export const settingsI18n = {
       desc: 'MIT 授權。隨附 LGPL 版 ffmpeg。',
       keywords: ['版本', '授權', '關於', 'license', 'version', 'mit', 'ffmpeg'],
       version: 'Apex Highlighter {version}',
-      licenses: '第三方授權',
-      licensesHint: '授權清單頁面將在後續更新提供。'
+      licenses: '第三方授權'
     },
     trademark: {
       title: '商標聲明',

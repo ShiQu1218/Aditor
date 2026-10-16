@@ -391,7 +391,13 @@ export function SettingControl(props: ControlProps): JSX.Element | null {
       return (
         <div className="set-inline">
           <span className="set-value">{fillTemplate(t.about.version, { version: appVersion() })}</span>
-          <button id={ids.ctl} type="button" className="set-btn sm" disabled aria-describedby={describedBy(ids)}>
+          <button
+            id={ids.ctl}
+            type="button"
+            className="set-btn sm"
+            aria-describedby={describedBy(ids)}
+            onClick={() => void window.api?.app?.openLicenses?.()}
+          >
             {t.about.licenses}
           </button>
         </div>

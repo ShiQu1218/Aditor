@@ -52,6 +52,23 @@ export function engineCommand(isPackaged: boolean): {
   }
 }
 
+/** 隨安裝包附帶的第三方授權清單：打包＝resources 根目錄，開發＝repo 根目錄。 */
+export function noticesFile(isPackaged: boolean): string {
+  return bundledDocFile(isPackaged, 'THIRD_PARTY_NOTICES.md')
+}
+
+export function licenseFile(isPackaged: boolean): string {
+  return bundledDocFile(isPackaged, 'LICENSE')
+}
+
+function bundledDocFile(isPackaged: boolean, name: string): string {
+  if (isPackaged) {
+    const resPath = (process as unknown as { resourcesPath?: string }).resourcesPath || path.join(__dirname, '..', '..')
+    return path.join(resPath, name)
+  }
+  return path.resolve(__dirname, '../../..', name)
+}
+
 export function ffmpegExecutable(isPackaged: boolean): string {
   if (process.env.APEXHL_FFMPEG) {
     return process.env.APEXHL_FFMPEG

@@ -166,10 +166,9 @@ describe('SettingsScreen markup（renderToString + fake window.api 資料）', (
 
   test('rows whose backend does not exist are disabled with grey explanatory text', async () => {
     const html = await render({ initialCategory: 'c' })
-    // 第三方授權：停用按鈕＋灰字說明＋aria-describedby 指向說明
-    expect(html).toMatch(/<button[^>]*id="set-about"[^>]*disabled/)
-    expect(html).toContain('授權清單頁面將在後續更新提供。')
-    expect(html).toMatch(/id="set-about"[^>]*aria-describedby="[^"]*set-about-reason/)
+    // 第三方授權（I11）：已可使用，不再是停用列
+    expect(html).not.toMatch(/<button[^>]*id="set-about"[^>]*disabled/)
+    expect(html).not.toContain('授權清單頁面將在後續更新提供。')
     expect(html).toMatch(/class="set-desc set-grey"/)
     // OpenH264 重新下載：停用並說明原因
     expect(html).toMatch(/<button[^>]*id="set-openh264"[^>]*disabled/)

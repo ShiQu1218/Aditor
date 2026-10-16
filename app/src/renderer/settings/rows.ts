@@ -224,8 +224,7 @@ export const SETTING_ROWS: SettingRow[] = [
     title: t.row.about.title,
     desc: t.row.about.desc,
     keywords: [...t.row.about.keywords],
-    control: { kind: 'about' },
-    disabledReason: t.row.about.licensesHint
+    control: { kind: 'about' }
   },
   {
     id: 'trademark',

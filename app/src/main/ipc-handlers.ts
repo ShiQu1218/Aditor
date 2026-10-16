@@ -17,7 +17,7 @@ import { fileExistsSafe, isSafeLocalDirPath, isSafeLocalVideoPath } from './safe
 import { createPathGrants, loadGrantedProject, planCacheSave, saveGrantedProject } from './ipc-guards'
 import { DEFAULT_SETTINGS } from '../shared/settings'
 import { currentE2EConfig } from './e2e'
-import { cacheDir, profileDir } from '../shared/paths'
+import { cacheDir, noticesFile, profileDir } from '../shared/paths'
 import { computeHlCount, createHlGuard, createSerialQueue, hlForSavedDoc } from './hl'
 import { createThrottle } from '../shared/throttle'
 import type { CacheDoc, Clip } from '../shared/types'
@@ -332,6 +332,13 @@ export function registerIpcHandlers(
   ipcMain.handle('project:save', async (_, filePath: unknown, content: unknown) => saveGrantedProject(pathGrants, filePath, content))
 
   ipcMain.handle('project:load', async (_, filePath: unknown) => loadGrantedProject(pathGrants, filePath))
+
+  // 用系統預設程式開啟打包內的第三方授權清單（I11）
+  ipcMain.handle('app:openLicenses', async () => {
+    const file = noticesFile(app.isPackaged)
+    if (!fs.existsSync(file)) return false
+    return (await shell.openPath(file)) === ''
+  })
 
   ipcMain.handle('export:detectEncoders', async () => {
     return detectEncoders()

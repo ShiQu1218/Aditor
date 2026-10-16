@@ -99,6 +99,10 @@ const api = {
     /** 通知 main：flush 完成，可以關閉視窗。 */
     flushDone: () => ipcRenderer.send('projects:flushDone')
   },
+  app: {
+    /** 開啟隨安裝包附帶的第三方授權清單 */
+    openLicenses: () => ipcRenderer.invoke('app:openLicenses')
+  },
   settings: {
     get: () => ipcRenderer.invoke('settings:get'),
     set: (partial: unknown) => ipcRenderer.invoke('settings:set', partial),
