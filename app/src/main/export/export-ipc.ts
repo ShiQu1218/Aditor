@@ -4,7 +4,7 @@
  */
 import fs from 'fs'
 import path from 'path'
-import { buildJobs, escapeConcatPath, StreamProbe } from './plan'
+import { buildJobs, escapeConcatPath, resolveFreeBaseName, StreamProbe } from './plan'
 import { runExport, RunExportOptions, RunProgress } from './run'
 import { isSafeLocalDirPath, isSafeLocalVideoPath, fileExistsSafe } from '../safe-path'
 import { estimateOutputBytes } from '../../shared/exportEstimate'
@@ -102,16 +102,20 @@ export async function validateExportRequest(raw: unknown): Promise<ValidatedRequ
   return { items, mode: r.mode, quality: r.quality, encoder, outDir, baseName: sanitizeBaseName(r.baseName) }
 }
 
+/** 取不到資訊時的預設：編碼／解析度採常見值，幀率、像素格式、音訊規格標為未知（0／空字串），相容性判斷會保守處理。 */
 const DEFAULT_PROBE: StreamProbe = {
   vcodec: 'h264',
   width: 1920,
   height: 1080,
-  fps: 60,
-  pix_fmt: 'yuv420p',
-  acodec: 'aac',
-  sample_rate: 48000,
-  channels: 2
+  fps: 0,
+  pix_fmt: '',
+  acodec: '',
+  sample_rate: 0,
+  channels: 0
 }
+
+const posNum = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : 0)
+const str = (v: unknown): string => (typeof v === 'string' ? v : '')
 
 export type ExportStartResult =
   | { ok: true; outputs: string[]; notices: string[] }
@@ -141,8 +145,20 @@ export function createExportService(deps: ExportServiceDeps = {}) {
         let info: StreamProbe = { ...DEFAULT_PROBE }
         if (deps.probe) {
           try {
-            const p = (await deps.probe(item.source)) as { codec?: string; width?: number; height?: number } | null
-            if (p) info = { ...info, vcodec: p.codec || 'h264', width: p.width || 1920, height: p.height || 1080 }
+            const p = (await deps.probe(item.source)) as Record<string, unknown> | null
+            if (p) {
+              // 引擎目前只提供 codec／解析度；有提供的其他欄位才採用，否則維持未知
+              info = {
+                vcodec: str(p.codec) || 'h264',
+                width: posNum(p.width) || 1920,
+                height: posNum(p.height) || 1080,
+                fps: posNum(p.fps),
+                pix_fmt: str(p.pix_fmt),
+                acodec: str(p.acodec),
+                sample_rate: posNum(p.sample_rate),
+                channels: posNum(p.channels)
+              }
+            }
           } catch {
             // 取不到資訊就用預設值
           }
@@ -151,14 +167,18 @@ export function createExportService(deps: ExportServiceDeps = {}) {
       }
       if (ac.signal.aborted) return { ok: false, cancelled: true, outputs: [], notices: [] }
 
-      const { jobs, notices } = buildJobs(req.items, req, probes)
+      // 不覆蓋既有檔案：同名就改成「<名稱> (2)」（I6）
+      const free = resolveFreeBaseName(req.outDir, req.baseName, req.mode, req.items.length, (p) => fs.existsSync(p))
+      const naming = { ...req, baseName: free.baseName }
+      const { jobs, notices, concatListContent: normalizedList } = buildJobs(req.items, naming, probes)
+      if (free.renamed) notices.push(`輸出資料夾已有同名檔案，已改用「${free.baseName}」，不會覆蓋原有檔案`)
       // 防禦：輸出檔必須直接位於 outDir 內
       for (const j of jobs) {
         if (path.dirname(path.resolve(j.output)) !== req.outDir) throw new RequestError('輸出路徑不正確')
       }
       const totalDur = req.items.reduce((s, it) => s + Math.max(0, it.end - it.start), 0)
-      let concatListContent: string | undefined
-      if (req.mode === 'concat') {
+      let concatListContent: string | undefined = normalizedList
+      if (req.mode === 'concat' && !concatListContent) {
         const lines: string[] = []
         for (const it of req.items) {
           lines.push(`file ${escapeConcatPath(it.source)}`, `inpoint ${it.start.toFixed(3)}`, `outpoint ${it.end.toFixed(3)}`)

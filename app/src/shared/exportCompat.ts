@@ -38,6 +38,11 @@ export function concatCompatible(probes: StreamProbe[]): { ok: boolean; reason?:
     return { ok: true }
   }
 
+  // 引擎 probe 目前只提供 codec／解析度；幀率、像素格式、音訊規格未知（0／空字串）時無法證明相容，保守地視為不相容
+  if (probes.some((p) => !(p.fps > 0) || !p.pix_fmt || !p.acodec || !(p.sample_rate > 0) || !(p.channels > 0))) {
+    return { ok: false, reason: '無法確認幀率、像素格式或音訊規格是否一致' }
+  }
+
   const first = probes[0]
   for (let i = 1; i < probes.length; i++) {
     const p = probes[i]

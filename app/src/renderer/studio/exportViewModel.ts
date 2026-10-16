@@ -45,7 +45,8 @@ export interface ExportViewModel {
 }
 
 function toProbe(i: SourceInfo): StreamProbe {
-  return { vcodec: i.codec, width: i.width, height: i.height, fps: 60, pix_fmt: 'yuv420p', acodec: 'aac', sample_rate: 48000, channels: 2 }
+  // 幀率、像素格式與音訊規格引擎 probe 沒提供：以 0／空字串表示未知（見 concatCompatible）
+  return { vcodec: i.codec, width: i.width, height: i.height, fps: 0, pix_fmt: '', acodec: '', sample_rate: 0, channels: 0 }
 }
 
 /** 匯出設定頁的衍生狀態（純函式）。相容性判斷沿用 shared/exportCompat（與 main 的 buildJobs 同一份）。 */
@@ -68,8 +69,9 @@ export function exportViewModel(project: Project, plan: ExportPlan | null, enc: 
   let copyAvailable = true
   if (plan && plan.mode === 'concat') {
     const probes: StreamProbe[] = []
-    for (const it of items) {
-      const info = plan.sources[it.source]
+    // 同一來源只算一次（重複片段來自同一支影片，本來就相容）
+    for (const src of new Set(items.map((it) => it.source))) {
+      const info = plan.sources[src]
       if (info) probes.push(toProbe(info))
     }
     const check = concatCompatible(probes)

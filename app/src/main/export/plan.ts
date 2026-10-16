@@ -11,6 +11,8 @@ export interface FfmpegJob {
   args: string[]
   output: string
   tempFiles?: string[]
+  /** 中間檔（正規化後的單段）：不算成品，結束後刪除 */
+  intermediate?: boolean
 }
 
 export class NoEncoderError extends Error {
@@ -45,12 +47,13 @@ export function buildJobs(
     baseName: string
   },
   probes: Map<string, StreamProbe>
-): { jobs: FfmpegJob[]; notices: string[] } {
+): { jobs: FfmpegJob[]; notices: string[]; concatListContent?: string } {
   const notices: string[] = []
   let effectiveQuality = opts.quality
 
   if (opts.mode === 'concat' && opts.quality === 'copy') {
-    const probeList = items.map((it) => probes.get(it.source)).filter((p): p is StreamProbe => !!p)
+    // 同一來源只比對一次
+    const probeList = [...new Set(items.map((it) => it.source))].map((src) => probes.get(src)).filter((p): p is StreamProbe => !!p)
     const check = concatCompatible(probeList)
     if (!check.ok) {
       effectiveQuality = 'precise'
@@ -84,11 +87,12 @@ export function buildJobs(
         ]
         jobs.push({ args, output })
       } else {
+        // -ss 放在 -i 前面：轉碼時同樣是精準 seek，但不必從檔頭解碼到起點（I8）
         const args = [
-          '-i',
-          item.source,
           '-ss',
           item.start.toFixed(3),
+          '-i',
+          item.source,
           '-t',
           dur,
           '-c:v',
@@ -105,6 +109,9 @@ export function buildJobs(
     })
   } else {
     // mode === 'concat'
+    if (effectiveQuality === 'precise' && needsNormalize(items, probes)) {
+      return buildNormalizedConcat(items, opts, probes, notices)
+    }
     const output = path.join(opts.outDir, `${opts.baseName}.mp4`)
     const listLines: string[] = []
 
@@ -152,4 +159,70 @@ export function buildJobs(
   }
 
   return { jobs, notices }
+}
+
+function needsNormalize(items: ProjectItem[], probes: Map<string, StreamProbe>): boolean {
+  const sources = [...new Set(items.map((it) => it.source))]
+  if (sources.length <= 1) return false
+  const list = sources.map((src) => probes.get(src)).filter((p): p is StreamProbe => !!p)
+  return list.length < sources.length || !concatCompatible(list).ok
+}
+
+/**
+ * 多來源且規格不一定相同的精準合併：concat demuxer 會用第一個檔案的解碼器解全部輸入，來源的 codec／解析度／幀率不同就會壞掉。
+ * 所以每段先轉成相同規格（解析度、幀率、像素格式、音訊取樣率與聲道）的中間檔，最後用 concat demuxer 直接 copy。
+ */
+function buildNormalizedConcat(
+  items: ProjectItem[],
+  opts: { outDir: string; baseName: string; encoder?: string },
+  probes: Map<string, StreamProbe>,
+  notices: string[]
+): { jobs: FfmpegJob[]; notices: string[]; concatListContent: string } {
+  const first = probes.get(items[0].source)
+  const w = first && first.width > 0 ? first.width : 1920
+  const h = first && first.height > 0 ? first.height : 1080
+  const fps = first && first.fps > 0 ? first.fps : 60
+  const vf = [
+    `scale=${w}:${h}:force_original_aspect_ratio=decrease`,
+    `pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2`,
+    `fps=${fps}`,
+    'format=yuv420p'
+  ].join(',')
+  const tag = Math.random().toString(36).slice(2, 8)
+  const jobs: FfmpegJob[] = []
+  const list: string[] = []
+  items.forEach((item, idx) => {
+    const output = path.join(opts.outDir, `.apexhl-seg-${tag}-${idx + 1}.mp4`)
+    const dur = Math.max(0.1, item.end - item.start).toFixed(3)
+    jobs.push({
+      intermediate: true,
+      output,
+      args: ['-ss', item.start.toFixed(3), '-i', item.source, '-t', dur, '-vf', vf, '-c:v', opts.encoder!, '-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-ac', '2', '-y', output]
+    })
+    list.push(`file ${escapeConcatPath(output)}`)
+  })
+  const output = path.join(opts.outDir, `${opts.baseName}.mp4`)
+  jobs.push({ output, args: ['-f', 'concat', '-safe', '0', '-i', 'LIST_FILE_PLACEHOLDER', '-c', 'copy', '-y', output] })
+  notices.push('來源規格不同，已先將每段轉成相同規格再合併')
+  return { jobs, notices, concatListContent: list.join('\n') + '\n' }
+}
+
+/**
+ * 找一個不會覆蓋既有檔案的檔名主體（I6）：依序嘗試 `<base>`、`<base> (2)`、`<base> (3)`…，
+ * 直到該模式會產生的所有輸出檔都不存在。
+ */
+export function resolveFreeBaseName(
+  outDir: string,
+  baseName: string,
+  mode: 'separate' | 'concat',
+  count: number,
+  exists: (p: string) => boolean
+): { baseName: string; renamed: boolean } {
+  const outputs = (b: string): string[] =>
+    mode === 'separate' ? Array.from({ length: count }, (_, i) => path.join(outDir, `${b}_${i + 1}.mp4`)) : [path.join(outDir, `${b}.mp4`)]
+  for (let n = 1; n < 1000; n++) {
+    const candidate = n === 1 ? baseName : `${baseName} (${n})`
+    if (!outputs(candidate).some(exists)) return { baseName: candidate, renamed: n > 1 }
+  }
+  return { baseName: `${baseName} (${Date.now()})`, renamed: true }
 }

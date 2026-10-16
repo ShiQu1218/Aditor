@@ -33,9 +33,11 @@ describe('exportViewModel', () => {
     expect(vm.extraSecondsHint).toBeNull()
   })
 
-  test('matching params in concat keep copy available, separate mode is always copy-capable', () => {
+  test('concat: one source repeated keeps copy; two sources with unconfirmable fps/audio fall back to precise (I9); separate is always copy-capable', () => {
+    const same = proj([['1', A, 0, 10], ['2', A, 20, 30]])
+    expect(exportViewModel(same, plan(), HW).copyAvailable).toBe(true)
     const p = proj([['1', A, 0, 10], ['2', B, 5, 15]])
-    expect(exportViewModel(p, plan(), HW).copyAvailable).toBe(true)
+    expect(exportViewModel(p, plan(), HW).copyAvailable).toBe(false)
     const mixed = plan({ mode: 'separate', sources: { [A]: { codec: 'h264', width: 1, height: 1 }, [B]: { codec: 'hevc', width: 2, height: 2 } } })
     expect(exportViewModel(p, mixed, HW).copyAvailable).toBe(true)
   })

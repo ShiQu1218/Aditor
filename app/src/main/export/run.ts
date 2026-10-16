@@ -79,6 +79,18 @@ async function removeFile(p: string): Promise<void> {
 
 class JobFailure extends Error {}
 
+/** 目標已存在就改成 `<name> (2).mp4`、`<name> (3).mp4`…；不存在則原樣回傳。 */
+export function freeOutputPath(target: string): string {
+  if (!fs.existsSync(target)) return target
+  const ext = path.extname(target)
+  const stem = path.join(path.dirname(target), path.basename(target, ext))
+  for (let n = 2; n < 10000; n++) {
+    const candidate = `${stem} (${n})${ext}`
+    if (!fs.existsSync(candidate)) return candidate
+  }
+  return `${stem} (${Date.now()})${ext}`
+}
+
 /**
  * 依序執行 ffmpeg jobs。每個輸出先寫到 `<name>.partial.mp4`，成功後 rename 成正式檔名。
  * 中止（signal）：殺掉 ffmpeg 及其子孫程序、刪除目前 job 的 partial 檔、保留已完成的輸出，
@@ -112,6 +124,7 @@ export async function runExport(opts: RunExportOptions, control: RunExportContro
       if (signal?.aborted) return { ok: false, cancelled: true, outputs: completed }
       const job = jobs[i]
       const partial = partialPathFor(job.output)
+      if (job.intermediate) tempFilesToClean.push(job.output)
       // 輸出參數（最後一個 `-y <output>`）改寫到 partial 路徑
       let args = job.args.map((a) => (a === job.output ? partial : a))
 
@@ -203,13 +216,15 @@ export async function runExport(opts: RunExportOptions, control: RunExportContro
         return { ok: false, cancelled: true, outputs: completed }
       }
 
+      // 中間檔留在原處，最後一併刪除；成品若遇到同名檔案（匯出期間才出現的）絕不覆蓋，改用「 (2)」之類的名稱（I6）
+      const finalPath = job.intermediate ? job.output : freeOutputPath(job.output)
       try {
-        await fs.promises.rename(partial, job.output)
+        await fs.promises.rename(partial, finalPath)
       } catch (err) {
         await removeFile(partial)
         throw new JobFailure(`無法完成輸出檔：${(err as Error).message}`)
       }
-      completed.push(job.output)
+      if (!job.intermediate) completed.push(finalPath)
     }
   } catch (err) {
     return { ok: false, error: (err as Error).message, outputs: completed }

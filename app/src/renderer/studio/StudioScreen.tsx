@@ -1110,7 +1110,7 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
       project,
       missingItemIds,
       { path: videoPath, info: { codec: doc.video.codec, width: doc.video.width, height: doc.video.height }, keyframes: doc.keyframes ?? [] },
-      async (src) => (await window.api?.probe?.(src)) ?? null
+      async (src) => (await window.api?.engine?.probe?.(src)) ?? null
     ).then((b) => {
       if (!cancelled) setExportBase(b)
     })
