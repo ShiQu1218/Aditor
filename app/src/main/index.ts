@@ -1,4 +1,6 @@
-import { app, BrowserWindow, ipcMain } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain } from 'electron'
+import { createDirtyGuard } from './dirty-guard'
+import { i18n } from '../renderer/i18n/zh-TW'
 import { join, resolve } from 'path'
 import { EngineClient } from './engine'
 import { Library } from './library'
@@ -28,6 +30,7 @@ let queue: AnalysisQueue | null = null
 let settingsStore: SettingsStore | null = null
 let watchManager: WatchManager | null = null
 let closeGate: ReturnType<typeof createCloseGate> | null = null
+let dirtyGuard: ReturnType<typeof createDirtyGuard> | null = null
 let cancelExport: (() => Promise<void>) | null = null
 /** renderer 未回應 flush 時最多等多久才關閉視窗 */
 const CLOSE_FLUSH_TIMEOUT_MS = 1500
@@ -59,9 +62,31 @@ function createWindow(): void {
     timeoutMs: CLOSE_FLUSH_TIMEOUT_MS,
     rendererAlive: () => !win.isDestroyed() && !win.webContents.isDestroyed() && !win.webContents.isCrashed()
   })
-  win.on('close', (e) => closeGate?.onClose(e))
+  // 專案自動儲存關閉且有未另存變更時，先詢問（I5）；通過後才進入 flush 握手
+  dirtyGuard = createDirtyGuard({
+    prompt: async () => {
+      const t = i18n.dialog
+      const r = await dialog.showMessageBox(win, {
+        type: 'question',
+        title: t.unsavedCloseTitle,
+        message: t.unsavedCloseMessage,
+        buttons: [t.unsavedSave, t.unsavedDiscard, t.unsavedCancel],
+        defaultId: 0,
+        cancelId: 2,
+        noLink: true
+      })
+      return r.response === 0 ? 'save' : r.response === 1 ? 'discard' : 'cancel'
+    },
+    requestSave: () => win.webContents.send('projects:saveAndCloseRequest'),
+    close: () => win.close()
+  })
+  win.on('close', (e) => {
+    if (dirtyGuard?.onClose(e)) return
+    closeGate?.onClose(e)
+  })
   win.on('closed', () => {
     closeGate = null
+    dirtyGuard = null
     // 視窗關閉：進行中的匯出一併取消，ffmpeg 不會變成孤兒（webContents 'destroyed' 也會觸發同一個取消）
     void cancelExport?.()
   })
@@ -117,6 +142,9 @@ async function initEngineAndServices(): Promise<void> {
 
   const handlers = registerIpcHandlers(library, queue, () => (mainWindow ? [mainWindow] : []), engineClient, settingsStore, watchManager, projectStore, () => closeGate?.ack())
   cancelExport = handlers.cancelExport
+
+  ipcMain.on('projects:setDirty', (_e, dirty: unknown) => dirtyGuard?.setDirty(dirty === true))
+  ipcMain.on('projects:saveAndCloseDone', (_e, ok: unknown) => (ok === true ? dirtyGuard?.saved() : dirtyGuard?.saveAborted()))
 
   ipcMain.handle('engine:probe', async (_, videoPath: unknown) => {
     return engineClient?.request('probe', sanitizeProbeArgs(videoPath)).promise

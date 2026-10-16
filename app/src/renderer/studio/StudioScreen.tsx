@@ -139,6 +139,7 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
     openFile,
     saveFile,
     saveState,
+    unsaved,
     missingItemIds
   } = useProject()
   const toast = useToast()
@@ -1615,7 +1616,13 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
             canUndo={canUndo}
             canRedo={canRedo}
             onNewProject={handleNewProjectConfirmed}
-            onOpenFile={() => void openFile()}
+            unsaved={unsaved}
+            onOpenFile={(saveFirst) =>
+              void (async () => {
+                if (saveFirst && !(await saveFile())) return
+                await openFile()
+              })()
+            }
             onSaveFile={handleSaveProjectFile}
             onAddFromSource={addFirstSuggestion}
             onDialogOpenChange={setProjDlgOpen}

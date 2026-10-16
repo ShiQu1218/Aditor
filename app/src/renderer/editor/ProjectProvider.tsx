@@ -43,6 +43,8 @@ export interface ProjectContextValue {
   saveState: SaveState
   /** 最近一次成功寫入的 timestamp（ms）。 */
   lastSavedAt: number | null
+  /** 專案自動儲存關閉時，上次另存後是否有未儲存的變更（I5）。 */
+  unsaved: boolean
   /** 開啟檔案時檢查到的缺失來源（Task 13 顯示用）。 */
   lastMissingSources: string[]
   /** 來源缺失的片段 id（由 lastMissingSources 衍生，不進專案檔；UI 警示且不可預覽）。 */
@@ -236,6 +238,20 @@ export function ProjectProvider({ children }: { children: React.ReactNode }): JS
     }
   }, [session])
 
+  // 回報未儲存狀態給 main（關窗前詢問）；使用者選「儲存」時另存檔案並回報結果（I5）
+  useEffect(() => {
+    window.api?.projects?.setDirty?.(state.unsaved)
+  }, [state.unsaved])
+  useEffect(() => {
+    const off = window.api?.projects?.onSaveAndCloseRequest?.(() => {
+      void saveFile().then(
+        (p) => window.api?.projects?.saveAndCloseDone?.(p !== null),
+        () => window.api?.projects?.saveAndCloseDone?.(false)
+      )
+    })
+    return () => off?.()
+  }, [saveFile])
+
   const missingIds = useMemo(() => missingItemIds(state.project, lastMissingSources), [state.project, lastMissingSources])
 
   const value = useMemo<ProjectContextValue>(
@@ -249,6 +265,7 @@ export function ProjectProvider({ children }: { children: React.ReactNode }): JS
       saveFile,
       saveState: state.saveState,
       lastSavedAt: state.lastSavedAt,
+      unsaved: state.unsaved,
       lastMissingSources,
       missingItemIds: missingIds
     }),

@@ -45,7 +45,10 @@ export interface ProjectTrackProps {
   canRedo: boolean
   /** 〔新專案〕：有片段時先開對話框；saveFirst=true 表示「另存檔案後新增」 */
   onNewProject: (saveFirst: boolean) => void
-  onOpenFile: () => void
+  /** 開啟檔案；saveFirst=true 表示「另存檔案後開啟」（只在有未儲存變更時由對話框觸發） */
+  onOpenFile: (saveFirst: boolean) => void
+  /** 專案自動儲存關閉且有未另存的變更：新專案／開啟檔案先確認（I5） */
+  unsaved?: boolean
   onSaveFile: () => void
   /** ＋從來源加入：加入第一段待確認建議（沒有時 Toast） */
   onAddFromSource: () => void
@@ -107,6 +110,7 @@ export function ProjectTrack(props: ProjectTrackProps): JSX.Element {
     canRedo,
     onNewProject,
     onOpenFile,
+    unsaved = false,
     onSaveFile,
     onAddFromSource,
     onDialogOpenChange
@@ -119,6 +123,8 @@ export function ProjectTrack(props: ProjectTrackProps): JSX.Element {
   const [trimDrag, setTrimDrag] = useState<TrimDrag | null>(null)
   const [reorder, setReorder] = useState<ReorderDrag | null>(null)
   const [newDlgOpen, setNewDlgOpen] = useState(false)
+  const [dlgMode, setDlgMode] = useState<'new' | 'open'>('new')
+  const openDlg = i18n.studio.openFileDlg
 
   const trackRef = useRef<HTMLDivElement>(null)
   const trimRef = useRef<{ item: ProjectItem; edge: 'start' | 'end'; startX: number; pxPerSec: number; upper: number; moved: boolean } | null>(null)
@@ -316,8 +322,18 @@ export function ProjectTrack(props: ProjectTrackProps): JSX.Element {
 
   const requestNewProject = useCallback(() => {
     if (project.items.length === 0) return // mock：空專案時不動作
+    setDlgMode('new')
     setNewDlgOpen(true)
   }, [project.items.length])
+
+  const requestOpenFile = useCallback(() => {
+    if (!unsaved || project.items.length === 0) {
+      onOpenFile(false)
+      return
+    }
+    setDlgMode('open')
+    setNewDlgOpen(true)
+  }, [unsaved, project.items.length, onOpenFile])
 
   const statusText = saveState === 'saving' ? t.saving : saveState === 'error' ? t.saveError : t.saved
 
@@ -411,7 +427,7 @@ export function ProjectTrack(props: ProjectTrackProps): JSX.Element {
           <button type="button" className="btn-ghost sm" onClick={requestNewProject}>
             {t.newProject}
           </button>
-          <button type="button" className="btn-ghost sm" onClick={onOpenFile}>
+          <button type="button" className="btn-ghost sm" onClick={requestOpenFile}>
             {t.openFile}
           </button>
           <button type="button" className="btn-ghost sm" onClick={onSaveFile}>
@@ -515,33 +531,37 @@ export function ProjectTrack(props: ProjectTrackProps): JSX.Element {
             tabIndex={-1}
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 id="np-title">{dlg.title}</h3>
+            <h3 id="np-title">{dlgMode === 'open' ? openDlg.title : dlg.title}</h3>
             <div className="sub">
-              {dlg.body.replace('{name}', project.name).replace('{n}', String(project.items.length))}
+              {(dlgMode === 'open' ? openDlg.body : unsaved ? dlg.bodyUnsaved : dlg.body)
+                .replace('{name}', project.name)
+                .replace('{n}', String(project.items.length))}
             </div>
             <div className="foot">
               <button type="button" className="btn-ghost" onClick={() => setNewDlgOpen(false)}>
-                {dlg.cancel}
+                {dlgMode === 'open' ? openDlg.cancel : dlg.cancel}
               </button>
               <button
                 type="button"
                 className="btn-ghost"
                 onClick={() => {
                   setNewDlgOpen(false)
-                  onNewProject(true)
+                  if (dlgMode === 'open') onOpenFile(true)
+                  else onNewProject(true)
                 }}
               >
-                {dlg.saveThenNew}
+                {dlgMode === 'open' ? openDlg.saveThenOpen : dlg.saveThenNew}
               </button>
               <button
                 type="button"
                 className="btn-accent"
                 onClick={() => {
                   setNewDlgOpen(false)
-                  onNewProject(false)
+                  if (dlgMode === 'open') onOpenFile(false)
+                  else onNewProject(false)
                 }}
               >
-                {dlg.directNew}
+                {dlgMode === 'open' ? openDlg.directOpen : dlg.directNew}
               </button>
             </div>
           </div>

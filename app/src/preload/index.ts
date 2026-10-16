@@ -84,6 +84,18 @@ const api = {
         ipcRenderer.removeListener('projects:flushRequest', handler)
       }
     },
+    /** 回報「專案自動儲存關閉且有未另存變更」；main 關窗前會詢問。 */
+    setDirty: (dirty: boolean) => ipcRenderer.send('projects:setDirty', dirty),
+    /** main 詢問後使用者選「儲存」：renderer 另存檔案。 */
+    onSaveAndCloseRequest: (callback: () => void) => {
+      const handler = () => callback()
+      ipcRenderer.on('projects:saveAndCloseRequest', handler)
+      return () => {
+        ipcRenderer.removeListener('projects:saveAndCloseRequest', handler)
+      }
+    },
+    /** 另存結果：成功時 main 關閉視窗；取消或失敗則維持開啟。 */
+    saveAndCloseDone: (ok: boolean) => ipcRenderer.send('projects:saveAndCloseDone', ok),
     /** 通知 main：flush 完成，可以關閉視窗。 */
     flushDone: () => ipcRenderer.send('projects:flushDone')
   },

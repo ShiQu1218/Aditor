@@ -18,7 +18,12 @@ export const i18n = {
     addWatchFolderTitle: '選擇要監看的資料夾（新影片自動匯入）',
     saveProjectTitle: '儲存剪輯專案',
     openProjectTitle: '開啟剪輯專案',
-    selectOutDirTitle: '選擇匯出目標資料夾'
+    selectOutDirTitle: '選擇匯出目標資料夾',
+    unsavedCloseTitle: '尚未儲存的專案變更',
+    unsavedCloseMessage: '專案自動儲存已關閉，目前專案有尚未另存的變更。要在關閉前儲存嗎？',
+    unsavedSave: '儲存',
+    unsavedDiscard: '不儲存',
+    unsavedCancel: '取消'
   },
   library: {
     title: '影片庫',
@@ -335,10 +340,18 @@ export const i18n = {
       stepperDec: '−0.5 秒',
       stepperInc: '+0.5 秒'
     },
+    openFileDlg: {
+      title: '開啟其他專案？',
+      body: '目前專案「{name}」有尚未另存的變更（專案自動儲存已關閉）；開啟檔案會取代目前專案。',
+      cancel: '取消',
+      saveThenOpen: '另存檔案後開啟',
+      directOpen: '直接開啟'
+    },
     newProjectDlg: {
       title: '建立新專案？',
       body: '目前專案「{name}」有 {n} 段，已自動儲存在 %APPDATA%\\ApexHighlighter\\projects\\，之後可從「開啟檔案」或專案清單找回。尚未另存成 .apexproj.json 檔案。',
       cancel: '取消',
+      bodyUnsaved: '目前專案「{name}」有 {n} 段，專案自動儲存已關閉，且有尚未另存的變更；直接新增會遺失這些變更。',
       saveThenNew: '另存檔案後新增',
       directNew: '直接新增'
     },

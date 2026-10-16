@@ -14,6 +14,8 @@ export interface SessionState {
   saveState: SaveState
   /** 最近一次成功寫入的 timestamp（ms）。 */
   lastSavedAt: number | null
+  /** 專案自動儲存關閉時，上次另存（或新建／開啟）後是否又有變更（I5：關窗、新專案、開啟檔案要先確認）。 */
+  unsaved: boolean
 }
 
 /** 寫入通道：`save` 為一般 IPC；`saveSync` 為關閉視窗用的同步 IPC（回傳前 main 已寫入磁碟）。 */
@@ -71,6 +73,7 @@ export class ProjectSession {
   private listeners = new Set<() => void>()
   private writeSeq = 0
   private state: SessionState
+  private unsaved = false
 
   constructor(opts: SessionOptions) {
     this.io = opts.io
@@ -103,7 +106,8 @@ export class ProjectSession {
       canUndo: this.history.canUndo,
       canRedo: this.history.canRedo,
       saveState,
-      lastSavedAt
+      lastSavedAt,
+      unsaved: this.unsaved
     }
   }
 
@@ -124,7 +128,10 @@ export class ProjectSession {
     }
     void result.then(
       () => {
-        if (seq === this.writeSeq) this.commit('saved', this.now())
+        if (seq === this.writeSeq) {
+          this.unsaved = false
+          this.commit('saved', this.now())
+        }
       },
       () => {
         if (seq === this.writeSeq) this.commit('error')
@@ -141,14 +148,18 @@ export class ProjectSession {
   /** 設定載入（或設定面板切換）後呼叫：決定自動儲存開關並放行／丟棄待寫內容。 */
   settingsLoaded(projectAutosave: unknown): void {
     const enabled = this.boot.settingsLoaded(projectAutosave)
+    // 設定載入前的編輯原本留在待寫佇列；自動儲存關閉會丟掉它們，所以要記成「未儲存」
+    if (!enabled && this.autosave.hasPendingWrite) this.unsaved = true
     this.autosave.setEnabled(enabled)
     this.autosave.setHeld(false)
+    this.commit()
   }
 
   /** 啟動還原結果；回傳是否已套用（使用者已編輯就保留目前專案與歷史）。 */
   restored(project: ProjectWithId | null): boolean {
     if (!this.boot.restored(project !== null) || !project) return false
     this.history = new History<ProjectWithId>(project)
+    this.unsaved = false
     this.commit('saved', null)
     return true
   }
@@ -159,6 +170,7 @@ export class ProjectSession {
     this.boot.edit()
     const withId: ProjectWithId = { ...next, id: (next as Partial<ProjectWithId>).id ?? this.history.current.id }
     this.history.push(withId)
+    this.markEdited()
     this.commit()
     this.autosave.update(withId)
   }
@@ -167,6 +179,7 @@ export class ProjectSession {
     if (!this.history.canUndo) return
     this.boot.edit()
     const p = this.history.undo()
+    this.markEdited()
     this.commit()
     this.autosave.update(p)
   }
@@ -175,6 +188,7 @@ export class ProjectSession {
     if (!this.history.canRedo) return
     this.boot.edit()
     const p = this.history.redo()
+    this.markEdited()
     this.commit()
     this.autosave.update(p)
   }
@@ -184,6 +198,7 @@ export class ProjectSession {
     this.boot.edit()
     this.autosave.flush()
     this.history = new History<ProjectWithId>({ ...emptyProject(), id: this.newId() })
+    this.unsaved = false
     this.commit('saved', null)
   }
 
@@ -193,8 +208,13 @@ export class ProjectSession {
     this.autosave.flush()
     const opened: ProjectWithId = { ...project, id: this.newId() }
     this.history = new History<ProjectWithId>(opened)
+    this.unsaved = false
     this.commit('saved', null)
     this.autosave.update(opened)
+  }
+
+  private markEdited(): void {
+    if (!this.autosave.isEnabled) this.unsaved = true
   }
 
   setSaveError(): void {
@@ -205,7 +225,9 @@ export class ProjectSession {
     this.commit('saving')
   }
 
+  /** 另存成檔案成功：目前內容已落地。 */
   setSaved(): void {
+    this.unsaved = false
     this.commit('saved', this.now())
   }
 

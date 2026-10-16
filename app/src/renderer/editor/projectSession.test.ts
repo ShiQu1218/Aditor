@@ -332,3 +332,58 @@ describe('project file import / export', () => {
     expect(() => deserializeProject(text)).toThrow()
   })
 })
+
+describe('unsaved changes while autosave is off (I5)', () => {
+  test('edits with autosave off mark the session unsaved; nothing is written', async () => {
+    const { s, io } = mk()
+    s.settingsLoaded(false)
+    expect(s.getState().unsaved).toBe(false)
+    s.apply(withItems(initial, 'a'))
+    expect(s.getState().unsaved).toBe(true)
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(io.save).not.toHaveBeenCalled()
+    s.undo()
+    expect(s.getState().unsaved).toBe(true)
+  })
+
+  test('edits made before settings load, then autosave resolves to off, count as unsaved', () => {
+    const { s } = mk()
+    s.apply(withItems(initial, 'a'))
+    s.settingsLoaded(false)
+    expect(s.getState().unsaved).toBe(true)
+  })
+
+  test('autosave on: never unsaved once the write lands', async () => {
+    const { s } = mk()
+    s.settingsLoaded(true)
+    s.apply(withItems(initial, 'a'))
+    await vi.advanceTimersByTimeAsync(500)
+    expect(s.getState().unsaved).toBe(false)
+  })
+
+  test('saving to a file, new project and open file clear the flag', () => {
+    const { s } = mk()
+    s.settingsLoaded(false)
+    s.apply(withItems(initial, 'a'))
+    s.setSaved()
+    expect(s.getState().unsaved).toBe(false)
+    s.apply(withItems(initial, 'a', 'b'))
+    expect(s.getState().unsaved).toBe(true)
+    s.newProject()
+    expect(s.getState().unsaved).toBe(false)
+    s.apply(withItems(initial, 'a'))
+    s.openProject(createProject('from file'))
+    expect(s.getState().unsaved).toBe(false)
+  })
+
+  test('turning autosave on later and editing writes and clears the flag', async () => {
+    const { s, io } = mk()
+    s.settingsLoaded(false)
+    s.apply(withItems(initial, 'a'))
+    s.settingsLoaded(true)
+    s.apply(withItems(initial, 'a', 'b'))
+    await vi.advanceTimersByTimeAsync(500)
+    expect(io.save).toHaveBeenCalledTimes(1)
+    expect(s.getState().unsaved).toBe(false)
+  })
+})
