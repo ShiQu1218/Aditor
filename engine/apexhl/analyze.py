@@ -225,7 +225,10 @@ def analyze(path: str, profile: Profile, *, cache_dir: Path, beside: bool = Fals
     if resuming:
         h_scale = float(old["analysis"].get("h_scale", 1.0))
         kw_doc = old["analysis"].get("keywords")
-        keywords = Keywords.from_dict(kw_doc) if kw_doc is not None else None
+        try:
+            keywords = Keywords.from_dict(kw_doc) if kw_doc is not None else None
+        except ValueError:
+            keywords = None  # partial 裡的樣板損毀：重新學習（並重新規劃各段，等同從頭分析）
         done_events = [Event.from_dict(e) for e in old.get("events", [])]
         done_spec = [SpecInterval.from_dict(s) for s in old.get("spectating", [])]
         base_raw = old.get("base_events")  # 重新分析前的舊事件（含使用者狀態），完成時合併

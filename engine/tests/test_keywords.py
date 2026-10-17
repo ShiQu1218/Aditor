@@ -34,6 +34,18 @@ def test_roundtrip_and_empty():
     assert Keywords.from_dict(None).empty and Keywords().empty
 
 
+@pytest.mark.parametrize("bad", [
+    {"assist": {"shape": [27, 64], "q8": "AAAA"}},            # 資料長度不足
+    {"assist": {"shape": [27], "q8": "AAAA"}},                # 形狀錯誤
+    {"knock": {"shape": [2, 2], "q8": "!!!not-base64!!!"}},   # base64 損毀
+    {"knock": "x"},
+    "x",
+])
+def test_from_dict_rejects_corrupt_cache_with_value_error(bad):
+    with pytest.raises(ValueError):
+        Keywords.from_dict(bad)
+
+
 def test_consensus_needs_three_anchors_and_some_ink():
     a = np.ones((4, 4), np.float32)
     assert _consensus([a, a]) is None

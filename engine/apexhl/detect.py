@@ -285,12 +285,23 @@ class Keywords:
 
     @classmethod
     def from_dict(cls, d: dict | None) -> "Keywords":
+        """還原快取中的樣板；格式不符（形狀、資料長度、base64）丟出 ValueError（呼叫端改為重新學習）。"""
         def dec(e):
             if not e:
                 return None
-            h, w = e["shape"]
-            raw = np.frombuffer(base64.b64decode(e["q8"]), dtype=np.uint8)
+            if not isinstance(e, dict):
+                raise ValueError("關鍵字樣板格式錯誤")
+            shape = e.get("shape")
+            if (not isinstance(shape, list) or len(shape) != 2
+                    or any(isinstance(x, bool) or not isinstance(x, int) or x <= 0 for x in shape)):
+                raise ValueError(f"關鍵字樣板形狀錯誤：{shape!r}")
+            h, w = shape
+            raw = np.frombuffer(base64.b64decode(e.get("q8") or "", validate=True), dtype=np.uint8)
+            if raw.size < h * w:
+                raise ValueError("關鍵字樣板資料長度不足")
             return (raw[: h * w].reshape(h, w).astype(np.float32)) / 255.0
+        if d is not None and not isinstance(d, dict):
+            raise ValueError("關鍵字樣板格式錯誤")
         d = d or {}
         return cls(dec(d.get("assist")), dec(d.get("knock")), bool(d.get("assist_by_knock", False)))
 

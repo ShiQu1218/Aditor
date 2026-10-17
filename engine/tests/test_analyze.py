@@ -160,6 +160,25 @@ def test_normal_partial_resume_does_not_recalibrate(tmp_path, profile, monkeypat
     assert doc["analysis"]["h_scale"] == 0.95
 
 
+def test_partial_with_corrupt_keywords_relearns_instead_of_crashing(tmp_path, profile, monkeypatch):
+    v = make_video(tmp_path, "plain.mp4", 8)
+    cache = tmp_path / "cache"
+    cancel = threading.Event()
+    with monkeypatch.context() as m:
+        m.setattr(az, "FrameStream", _CancelAt(3.0, cancel))
+        with pytest.raises(az.Cancelled):
+            az.analyze(str(v), profile, cache_dir=cache, cancel=cancel)
+    cp = cache_path(str(v), cache)
+    part = load_cache(cp)
+    part["analysis"]["keywords"] = {"assist": {"shape": [27, 64], "q8": "AAAA"}}  # 損毀
+    save_cache(cp, part)
+    learned = []
+    real = az.learn_keywords
+    monkeypatch.setattr(az, "learn_keywords", lambda *a, **k: learned.append(1) or real(*a, **k))
+    doc = az.analyze(str(v), profile, cache_dir=cache)
+    assert learned == [1] and doc["analysis"]["status"] == "done"
+
+
 # ---- 切段平行解碼（jobs） ----
 
 def test_plan_segments_overlap_and_last_segment():
