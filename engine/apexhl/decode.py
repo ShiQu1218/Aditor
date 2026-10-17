@@ -100,6 +100,11 @@ class FrameStream:
                         del self._stderr[:-STDERR_LIMIT]
         except (OSError, ValueError):
             pass
+        finally:
+            try:
+                pipe.close()  # 讀到 EOF（行程已結束）即釋放管線；硬體回退時舊行程的 stderr 不會留著
+            except OSError:
+                pass
 
     def _spawn(self, hwaccel: bool, start: float | None = None) -> subprocess.Popen:
         start = self.start if start is None else start
@@ -141,6 +146,11 @@ class FrameStream:
         rc = proc.wait()
         if rc != 0 and not self._closed:
             if hwaccel or k == k0:
+                # 回退會產生新的 ffmpeg 行程並取代 self._proc；先關掉這個已結束行程的 stdout，避免管線控制代碼洩漏
+                try:
+                    proc.stdout.close()
+                except OSError:
+                    pass
                 raise _Failed(k)  # 硬體解碼中途失敗（TDR、裝置遺失）：從下一格改用軟體繼續（I7）
             raise DecodeError(f"ffmpeg 異常結束（{rc}）", self.stderr_tail)
 

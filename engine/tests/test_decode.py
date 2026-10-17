@@ -162,13 +162,16 @@ def test_hw_failure_mid_stream_continues_in_software_on_the_same_time_grid(tmp_p
     frame_bytes = bw * (bh + sh) * 3
     real_spawn = FrameStream._spawn
     calls = []
+    hw_procs = []
 
     def spawn(self, hwaccel, start=None):
         calls.append((hwaccel, start))
         if hwaccel:
             code = f"import sys; sys.stdout.buffer.write(bytes({frame_bytes} * 3)); sys.stdout.flush(); sys.exit(1)"
-            return subprocess.Popen([sys.executable, "-c", code], stdout=subprocess.PIPE,
-                                    stderr=subprocess.PIPE, bufsize=0)
+            hw = subprocess.Popen([sys.executable, "-c", code], stdout=subprocess.PIPE,
+                                  stderr=subprocess.PIPE, bufsize=0)
+            hw_procs.append(hw)
+            return hw
         return real_spawn(self, hwaccel, start)
     monkeypatch.setattr(FrameStream, "_spawn", spawn)
     fs = FrameStream(str(v), profile, codec="h264")
@@ -176,6 +179,8 @@ def test_hw_failure_mid_stream_continues_in_software_on_the_same_time_grid(tmp_p
     assert fs.used_hwaccel is False
     assert calls[0][0] is True and calls[1] == (False, pytest.approx(0.75))  # 中途失敗不重試 p010le
     assert ts == pytest.approx([i * 0.25 for i in range(12)])
+    # 失敗的硬體行程被軟體行程取代後，它的 stdout 管線已關閉（不洩漏控制代碼）
+    assert hw_procs and hw_procs[0].stdout.closed
 
 
 def _nvenc_10bit(tmp_path):
