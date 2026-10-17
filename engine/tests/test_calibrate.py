@@ -85,3 +85,29 @@ def test_calibration_honours_no_hwaccel(tmp_path, profile, monkeypatch):
     info = VideoInfo("x.mp4", 100.0, 1920, 1080, "h264", 0.0, 1, 0.0)
     cal.calibrate("x.mp4", info, profile, hwaccel=False)
     assert seen and not any(seen)
+
+
+def test_learn_keywords_failing_segment_stops_the_others_and_reports_the_real_error(profile, monkeypatch):
+    """關鍵字學習切段平行時，一段解碼失敗 → 其他段立刻停止（不必各自掃完 900 秒），且回報的是真正的錯誤。"""
+    import time
+    from apexhl import calibrate as cal
+    from apexhl.decode import DecodeError
+    from apexhl.errors import Cancelled
+    from apexhl.models import VideoInfo
+
+    stopped = []
+
+    def fake_scan(path, prof, scale, start, end, cancel, codec, hwaccel, abort=None):
+        if start == 0.0:
+            raise DecodeError("boom")
+        assert abort is not None and abort.wait(timeout=10), "其他段沒有收到停止通知"
+        stopped.append(start)
+        raise Cancelled()
+
+    monkeypatch.setattr(cal, "_scan_segment", fake_scan)
+    info = VideoInfo("x.mp4", 600.0, 1920, 1080, "h264", 0.0, 1, 0.0)
+    t0 = time.monotonic()
+    with pytest.raises(DecodeError):
+        cal.learn_keywords("x.mp4", info, profile, 1.0, jobs=4)
+    assert time.monotonic() - t0 < 5
+    assert len(stopped) == 3

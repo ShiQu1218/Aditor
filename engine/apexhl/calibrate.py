@@ -184,12 +184,14 @@ def build_keywords(cols: list[AnchorCollector]) -> Keywords:
 
 
 def _scan_segment(path: str, profile: Profile, scale: float, start: float, end: float,
-                  cancel: threading.Event | None, codec: str | None, hwaccel: bool) -> AnchorCollector:
+                  cancel: threading.Event | None, codec: str | None, hwaccel: bool,
+                  abort: threading.Event | None = None) -> AnchorCollector:
+    """abort：其他段已失敗時由 learn_keywords 設定，本段立刻停止（不必解碼完整段才回報錯誤）。"""
     col = AnchorCollector(profile, Detector(profile, scale))
     stream = FrameStream(path, profile, start=start, end=end, codec=codec, hwaccel=hwaccel)
     try:
         for t, banner, spec in stream:
-            if cancel is not None and cancel.is_set():
+            if (cancel is not None and cancel.is_set()) or (abort is not None and abort.is_set()):
                 raise Cancelled()
             col.feed(t, banner)
             if col.full(t):
@@ -211,9 +213,28 @@ def learn_keywords(path: str, info: VideoInfo, profile: Profile, scale: float, *
     if n == 1:
         return build_keywords([_scan_segment(path, profile, scale, 0.0, total, cancel, info.codec, hwaccel)])
     from concurrent.futures import ThreadPoolExecutor
+    abort = threading.Event()
+
+    def scan(a: float, b: float) -> AnchorCollector:
+        try:
+            return _scan_segment(path, profile, scale, a, b, cancel, info.codec, hwaccel, abort)
+        except BaseException:
+            abort.set()  # 一段失敗 → 其他段立刻停止
+            raise
+
+    cols: list[AnchorCollector] = []
+    error: BaseException | None = None
     with ThreadPoolExecutor(max_workers=n) as ex:
-        futs = [ex.submit(_scan_segment, path, profile, scale, a, b, cancel, info.codec, hwaccel) for a, b in spans]
-        cols = [f.result() for f in futs]
+        futs = [ex.submit(scan, a, b) for a, b in spans]
+        for f in futs:
+            try:
+                cols.append(f.result())
+            except BaseException as e:  # noqa: BLE001
+                # 真正的錯誤優先於「因其他段失敗而停止」的 Cancelled（使用者取消時全部都是 Cancelled）
+                if error is None or (isinstance(error, Cancelled) and not isinstance(e, Cancelled)):
+                    error = e
+    if error is not None:
+        raise error
     return build_keywords(cols)
 
 
