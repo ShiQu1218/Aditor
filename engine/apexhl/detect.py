@@ -1,6 +1,6 @@
 """單格偵測：圖示偵測（icon_detect）＋敵人名字指紋＋觀戰提示條，把一格 (banner, spec) 轉成 FrameResult（spec §5.2）。
 
-同時放名字指紋的比對函式（same_name／fragment_of／related_name），events 與 derive 共用。"""
+同時放名字指紋的比對函式（same_name／fragment_of），events 與 derive 共用。"""
 from __future__ import annotations
 
 import base64
@@ -119,11 +119,6 @@ def fragment_of(a: NameSig | None, b: NameSig | None) -> bool:
         return False
     res = cv2.matchTemplate(pl, ps, cv2.TM_CCOEFF_NORMED)
     return bool(np.isfinite(res).any() and float(np.nanmax(res)) >= FRAGMENT_THRESHOLD)
-
-
-def related_name(a: NameSig | None, b: NameSig | None, threshold: float) -> bool:
-    """兩個指紋是否可能是同一敵人：同名（same_name）或其中一方是另一方的殘片。"""
-    return same_name(a, b, threshold) or fragment_of(a, b)
 
 
 def _segments(cols: np.ndarray) -> list[tuple[int, int]]:
