@@ -392,6 +392,8 @@ export const i18n = {
     qualityPrecise: '精準重新編碼',
     qualityPreciseDesc: '起訖點精準到畫格；速度取決於編碼器',
     encoder: '編碼器',
+    encoderAuto: '自動（依 NVENC、QSV、AMF 順序）',
+    encoderCopyNote: '編碼器只在「精準重新編碼」時使用；快速無損不重新編碼。',
     encoderDetected: '{name}（偵測到）',
     encoderOpenh264: 'OpenH264（CPU，畫質較低）',
     encoderOpenh264Missing: 'OpenH264（尚未下載）',

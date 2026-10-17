@@ -152,10 +152,10 @@ function SettingsBody({ state, vm, project, items, sourceCount, on }: ExportDraw
         <select
           className="xd-select"
           aria-label={t.encoder}
-          value={s.encoder || encoderOptions[0]}
-          disabled={vm.effectiveQuality !== 'precise'}
+          value={s.encoderChoice}
           onChange={(e) => on.encoder(e.target.value)}
         >
+          <option value="auto">{t.encoderAuto}</option>
           {encoderOptions.map((e) => (
             <option key={e} value={e}>
               {e === 'libopenh264' && !state.openh264Installed && state.encoders.length === 0 ? t.encoderOpenh264Missing : encoderLabel(e)}
@@ -163,6 +163,7 @@ function SettingsBody({ state, vm, project, items, sourceCount, on }: ExportDraw
           ))}
         </select>
         {!hasHw && <div className="xd-muted xd-hint">{t.encoderHint}</div>}
+        {vm.effectiveQuality !== 'precise' && <div className="xd-muted xd-hint">{t.encoderCopyNote}</div>}
       </fieldset>
 
       <fieldset className="xd-sec">

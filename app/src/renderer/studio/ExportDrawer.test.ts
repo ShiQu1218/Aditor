@@ -221,4 +221,16 @@ describe('export path hygiene', () => {
       expect(src, f).not.toContain('backdrop-filter')
     }
   })
+
+  test('encoder select offers 自動 plus every detected encoder, and stays enabled in copy mode', async () => {
+    const f = fakeApi({ detectEncoders: async () => ['h264_nvenc', 'h264_amf'] })
+    const c = createExportController(f.api)
+    await c.init('D:/o')
+    const m = renderToStaticMarkup(React.createElement(ExportDrawer, { controller: c, project, base, onClose: () => undefined }))
+    expect(m).toContain('value="auto"')
+    expect(m).toContain('value="h264_nvenc"')
+    expect(m).toContain('value="h264_amf"')
+    expect(m).not.toContain('value="h264_qsv"')
+    expect(m).not.toMatch(/<select[^>]*aria-label="編碼器"[^>]*disabled/)
+  })
 })

@@ -169,6 +169,55 @@ describe('exportController wiring', () => {
     expect(f.calls.find((x) => x[0] === 'start')![1]).toMatchObject({ quality: 'precise', encoder: 'h264_nvenc' })
   })
 
+  describe('encoder choice', () => {
+    const both = { detectEncoders: async () => ['h264_nvenc', 'h264_amf', 'libopenh264'] }
+
+    test('default is auto: follows the NVENC > QSV > AMF > OpenH264 priority', async () => {
+      const f = fake(both)
+      const c = createExportController(f.api)
+      await c.init('D:/out')
+      expect(c.getState().settings.encoderChoice).toBe('auto')
+      expect(c.getState().settings.encoder).toBe('h264_nvenc')
+    })
+
+    test('choosing AMF sends h264_amf to export:start', async () => {
+      const f = fake(both)
+      const c = createExportController(f.api)
+      await c.init('D:/out')
+      await c.setQuality('precise')
+      c.setEncoder('h264_amf')
+      expect(c.getState().settings.encoder).toBe('h264_amf')
+      void c.start(ITEMS)
+      await flush()
+      expect(f.calls.find((x) => x[0] === 'start')![1]).toMatchObject({ encoder: 'h264_amf' })
+    })
+
+    test('switching back to auto restores the priority pick; unavailable encoders are ignored', async () => {
+      const f = fake(both)
+      const c = createExportController(f.api)
+      await c.init('D:/out')
+      c.setEncoder('h264_amf')
+      c.setEncoder('h264_qsv')
+      expect(c.getState().settings.encoder).toBe('h264_amf')
+      c.setEncoder('auto')
+      expect(c.getState().settings.encoderChoice).toBe('auto')
+      expect(c.getState().settings.encoder).toBe('h264_nvenc')
+    })
+
+    test('a chosen encoder that disappears after re-detection falls back to auto', async () => {
+      let list = ['h264_nvenc', 'h264_amf']
+      const f = fake({ detectEncoders: async () => list })
+      const c = createExportController(f.api)
+      await c.init('D:/out')
+      c.setEncoder('h264_amf')
+      list = ['h264_nvenc']
+      await c.setQuality('precise')
+      await c.redetect()
+      expect(c.getState().settings.encoderChoice).toBe('auto')
+      expect(c.getState().settings.encoder).toBe('h264_nvenc')
+    })
+  })
+
   test('cancel calls export:cancel and a cancelled result lists completed outputs', async () => {
     const f = fake()
     const c = createExportController(f.api)

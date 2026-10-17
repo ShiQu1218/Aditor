@@ -37,7 +37,10 @@ export type ExportPhase = 'settings' | 'running' | 'done' | 'failed'
 export interface ExportSettings {
   mode: 'concat' | 'separate'
   quality: 'copy' | 'precise'
+  /** 實際送到 main 的編碼器（由 encoderChoice 與偵測結果算出） */
   encoder: string
+  /** 使用者的選擇：'auto'＝依優先序；否則是偵測到可用的編碼器名稱 */
+  encoderChoice: string
   outDir: string | null
   baseName: string
 }
@@ -79,10 +82,17 @@ export interface ExportState {
 }
 
 const ENCODER_PRIORITY = ['h264_nvenc', 'h264_qsv', 'h264_amf', 'libopenh264']
+export const ENCODER_AUTO = 'auto'
 
 function pickEncoder(encoders: string[]): string {
   for (const e of ENCODER_PRIORITY) if (encoders.includes(e)) return e
   return encoders[0] ?? ''
+}
+
+/** 'auto' 或已不可用的選擇＝依優先序挑；否則採用使用者選的編碼器。 */
+function resolveEncoder(choice: string, encoders: string[]): { choice: string; encoder: string } {
+  if (choice !== ENCODER_AUTO && encoders.includes(choice)) return { choice, encoder: choice }
+  return { choice: ENCODER_AUTO, encoder: pickEncoder(encoders) }
 }
 
 function errMsg(e: unknown): string {
@@ -92,7 +102,7 @@ function errMsg(e: unknown): string {
 export function createExportController(api: ExportApi, initialName = 'highlight') {
   let state: ExportState = {
     phase: 'settings',
-    settings: { mode: 'concat', quality: 'copy', encoder: '', outDir: null, baseName: initialName },
+    settings: { mode: 'concat', quality: 'copy', encoder: '', encoderChoice: ENCODER_AUTO, outDir: null, baseName: initialName },
     encoders: [],
     openh264Installed: false,
     detected: false,
@@ -150,8 +160,13 @@ export function createExportController(api: ExportApi, initialName = 'highlight'
     } catch {
       installed = false
     }
-    const keep = encoders.includes(state.settings.encoder) ? state.settings.encoder : pickEncoder(encoders)
-    set({ encoders, openh264Installed: installed, detected: true, settings: { ...state.settings, encoder: keep } })
+    const r = resolveEncoder(state.settings.encoderChoice, encoders)
+    set({
+      encoders,
+      openh264Installed: installed,
+      detected: true,
+      settings: { ...state.settings, encoder: r.encoder, encoderChoice: r.choice }
+    })
   }
 
   async function init(defaultOutDir: string | null): Promise<void> {
@@ -190,7 +205,7 @@ export function createExportController(api: ExportApi, initialName = 'highlight'
     offH264 = null
     await detect()
     if (state.encoders.includes('libopenh264')) {
-      setSettings({ encoder: 'libopenh264', quality: 'precise' })
+      setSettings({ encoder: 'libopenh264', encoderChoice: 'libopenh264', quality: 'precise' })
       set({ h264: { step: 'idle', ratio: 1, error: null } })
     } else {
       setSettings({ quality: 'copy' })
@@ -311,7 +326,13 @@ export function createExportController(api: ExportApi, initialName = 'highlight'
     init,
     setMode: (mode: ExportSettings['mode']): void => setSettings({ mode }),
     setQuality,
-    setEncoder: (encoder: string): void => setSettings({ encoder }),
+    /** 'auto' 或偵測到可用的編碼器；不可用的名稱忽略。 */
+    setEncoder: (choice: string): void => {
+      if (choice !== ENCODER_AUTO && !state.encoders.includes(choice)) return
+      const r = resolveEncoder(choice, state.encoders)
+      setSettings({ encoder: r.encoder, encoderChoice: r.choice })
+    },
+    redetect: detect,
     setBaseName: (baseName: string): void => setSettings({ baseName }),
     chooseOutDir,
     openFolder,
