@@ -108,21 +108,6 @@
 .notice-desc { color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .notice-actions { margin-left: auto; display: flex; align-items: center; gap: var(--sp-2); flex: none; }
 
-/* ---- 脈絡橫幅（專案模式） ---- */
-.ctx-banner {
-  flex: none;
-  display: flex;
-  align-items: center;
-  gap: var(--sp-2);
-  padding: 8px var(--sp-3);
-  border-radius: var(--r-sm);
-  border: 1px solid var(--accent);
-  background: var(--accent-soft);
-  font-size: var(--fs-small);
-}
-.ctx-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ctx-banner .btn-ghost { margin-left: auto; flex: none; }
-
 /* ---- 播放器舞台 ---- */
 .stage {
   position: relative;

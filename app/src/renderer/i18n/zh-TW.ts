@@ -167,10 +167,6 @@ export const i18n = {
       spectating: '觀戰中'
     },
     recentCounted: '近 90 秒計入 {n}',
-    context: {
-      text: '正在預覽專案片段 #{i}「{label}」，來源影片 {name}',
-      backToSource: '返回來源 Esc'
-    },
     notices: {
       engineErrorTitle: '分析引擎異常結束',
       engineErrorText: '分析引擎異常結束（代碼 {code}）。不會遺失已完成進度，可接續分析。',

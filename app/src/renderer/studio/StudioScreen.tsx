@@ -27,7 +27,6 @@ import { i18n } from '../i18n/zh-TW'
 import { AddEventDialog } from './AddEventDialog'
 import { Aside } from './Aside'
 import { AutoClipPopover } from './AutoClipPopover'
-import { ContextBanner } from './ContextBanner'
 import {
   acceptToProject,
   applyAutoClip,
@@ -1468,15 +1467,6 @@ export function StudioScreen({ videoPath, onBack, onOpenVideo, playbackRequest, 
       <div className="studio-body">
         <div className="studio-main">
           {shownNotice && <NoticeBar notice={shownNotice} busy={proxyState === 'generating'} onAction={handleNoticeAction} />}
-          {mode.mode === 'project' && previewItem && (
-            <ContextBanner
-              index={previewIndex}
-              label={`${formatTime(previewItem.start)}–${formatTime(previewItem.end)}`}
-              sourceName={baseName(previewItem.source)}
-              onBackToSource={backToSource}
-            />
-          )}
-
           <PlayerStage
             videoRef={videoRef}
             src={videoSrc}
