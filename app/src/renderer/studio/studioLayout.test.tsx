@@ -40,7 +40,8 @@ describe('工作室版面與操作', () => {
     const buttons = Array.from(document.querySelectorAll('.plane-head button')).slice(-3)
     expect(buttons.map((b) => b.textContent?.trim())).toEqual([T.track.newProject, T.track.addExternalVideo, T.exportCount.replace('{n}', '0')])
     click(quick)
-    expect(document.querySelectorAll('.pclip')).toHaveLength(1)
+    expect(quick.getAttribute('aria-pressed')).toBe('true')
+    expect(document.querySelectorAll('.pclip')).toHaveLength(0)
     const exportButton = document.querySelector('.plane-head > .btn-accent')!
     click(exportButton)
     await flush(20)

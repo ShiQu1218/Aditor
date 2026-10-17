@@ -1,9 +1,8 @@
 import { describe, expect, test } from 'vitest'
-import type { EngineEvent, EventType } from '../../shared/types'
+import type { EngineEvent } from '../../shared/types'
 import type { LayoutItem } from './layout'
-import { boxSelect, hitDensity, hitItem } from './select'
+import { hitDensity, hitItem } from './select'
 
-const ALL = new Set<EventType>(['knock', 'elim'])
 const ev = (id: string, t: number, over: Partial<EngineEvent> = {}): EngineEvent => ({
   id,
   t,
@@ -16,21 +15,6 @@ const ev = (id: string, t: number, over: Partial<EngineEvent> = {}): EngineEvent
   counted_override: null,
   source: 'auto',
   ...over
-})
-
-describe('boxSelect', () => {
-  const events = [
-    ev('a', 10),
-    ev('b', 20),
-    ev('c', 30, { deleted: true }),
-    ev('d', 40, { type: 'assist_elim' }),
-    ev('e', 50)
-  ]
-  test('boxSelect inclusive bounds, swaps reversed range, ignores deleted/filtered', () => {
-    expect(boxSelect(events, 10, 50, ALL)).toEqual(['a', 'b', 'e'])
-    expect(boxSelect(events, 50, 20, ALL)).toEqual(['b', 'e'])
-    expect(boxSelect(events, 21, 29, ALL)).toEqual([])
-  })
 })
 
 describe('hit testing', () => {

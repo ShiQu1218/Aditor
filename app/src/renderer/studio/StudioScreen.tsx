@@ -4,7 +4,6 @@ import '../styles/projectTrack.css'
 import { CacheDoc, Clip, EventType } from '../../shared/types'
 import { formatTime, toCurrentTime } from '../../shared/time'
 import { viewerReducer, ViewerState } from '../viewer/state'
-import { createClipAt } from '../timeline/clips'
 import { leadInSeek, STUDIO_SETTINGS_DEFAULTS, subscribeStudioSettings, type StudioSettings } from './studioSettings'
 import { nextEvent } from '../timeline/model'
 import { TimelineCanvas, TimelineHandle } from '../timeline/TimelineCanvas'
@@ -162,12 +161,17 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
   const [asideOpen, setAsideOpen] = useState(true)
   const [addEventAt, setAddEventAt] = useState<number | null>(null)
   const [autoClipOpen, setAutoClipOpen] = useState(false)
+  const [bladeMode, setBladeMode] = useState(false)
+  const [sourceTrim, setSourceTrim] = useState<{ id: string; edge: 'start' | 'end'; t: number } | null>(null)
+  const hoverPreviewRef = useRef<{ time: number; playing: boolean } | null>(null)
+  const scrubSessionRef = useRef<{ item: ProjectItem | null; time: number; playing: boolean } | null>(null)
+  const previewRestoreRef = useRef<{ id: string; time: number; playing: boolean } | null>(null)
   const [activeClipId, setActiveClipId] = useState<string | null>(null)
   /** 專案軌選取片段（Alt+←/→、Ctrl+D、Delete、Enter 作用對象） */
   const [selProjId, setSelProjId] = useState<string | null>(null)
   /** 新專案對話框開啟中（暫停全域 keymap） */
   const [projDlgOpen, setProjDlgOpen] = useState(false)
-  /** 設定快照（自動放置建議、浮層預設參數、專案軌收合、前後秒數、代理檔建議）；尚未讀到時以 DEFAULT_SETTINGS 為準 */
+  /** 設定快照（自動放置建議、浮層預設參數、專案軌收合、事件前秒數、代理檔建議）；尚未讀到時以 DEFAULT_SETTINGS 為準 */
   const [settings, setSettings] = useState<StudioSettings | null>(null)
   /** 尚未讀到設定時以預設值運作（自動放置建議仍等 settings 讀到才執行） */
   const cfg = settings ?? STUDIO_SETTINGS_DEFAULTS
@@ -186,7 +190,12 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
   const [live, setLive] = useState('')
 
   const duration = state.doc.video?.duration || 100
+  const displayedProject = useMemo(() => sourceTrim
+    ? trimItem(project, sourceTrim.id, sourceTrim.edge, sourceTrim.t, duration) : project, [project, sourceTrim, duration])
   const previewItem = currentItem(mode, project)
+  const sourceProjectItem = previewItem ?? displayedProject.items.find((item) => item.id === selProjId)
+  const sourceRange = sourceProjectItem && normPath(sourceProjectItem.source) === normPath(videoPath)
+    ? displayedProject.items.find((item) => item.id === sourceProjectItem.id) ?? null : null
   const foreign = isForeign(mode, project)
 
   // 專案軌收合：'auto' 依視窗高度（≤800px 收合）；使用者切換後記進 settings
@@ -425,6 +434,7 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
   /** 來源播放頭目前的時間（預覽中／換檔中以保存的來源時間為準）。 */
   const sourcePlayTime = useCallback((): number => {
     const el = videoRef.current
+    if (hoverPreviewRef.current) return hoverPreviewRef.current.time
     if (
       !el ||
       previewRef.current.item ||
@@ -472,6 +482,47 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
     },
     [requestSeek]
   )
+
+  /** 拖曳先暫停；放開後依原播放狀態恢復，取消則還原原本的專案預覽。 */
+  const startScrub = useCallback((): void => {
+    const el = videoRef.current
+    scrubSessionRef.current = { item: previewRef.current.item, time: el?.currentTime ?? 0, playing: !!el && !el.paused }
+    el?.pause()
+  }, [])
+  const endScrub = useCallback((cancelled: boolean): void => {
+    const session = scrubSessionRef.current
+    scrubSessionRef.current = null
+    if (!session) return
+    if (cancelled && session.item && projectRef.current.items.some((item) => item.id === session.item!.id)) {
+      if (modeRef.current.mode === 'project') {
+        dispatchMode({ type: 'playItem', item: session.item })
+        requestSeek(session.time, videoSrcRef.current, session.playing)
+        return
+      }
+      previewRestoreRef.current = { id: session.item.id, time: session.time, playing: session.playing }
+      dispatchMode({ type: 'playItem', item: session.item })
+    } else requestSeek(currentTimeRef.current, sourceSrcRef.current, session.playing)
+  }, [requestSeek])
+
+  /** 刀片懸停只換預覽影格，來源播放頭與儲存時間保持原位。 */
+  const hoverSeek = useCallback((t: number | null): void => {
+    const el = videoRef.current
+    if (t === null) {
+      const session = hoverPreviewRef.current
+      hoverPreviewRef.current = null
+      if (session) requestSeek(session.time, sourceSrcRef.current, session.playing)
+      return
+    }
+    if (modeRef.current.mode !== 'source') return
+    if (!hoverPreviewRef.current) {
+      const time = sourcePlayTime()
+      hoverPreviewRef.current = { time, playing: !!el && !el.paused }
+      currentTimeRef.current = time
+      setCurrentTime(time)
+      el?.pause()
+    }
+    requestSeek(t, sourceSrcRef.current, false)
+  }, [requestSeek, sourcePlayTime])
 
   /** 返回來源（Esc／橫幅按鈕）：還原進入專案模式前保存的來源播放頭。 */
   const backToSource = useCallback(() => {
@@ -555,6 +606,7 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
 
   /** <video> 播到實際檔尾：片段尾端超出影片長度時也要能接續，不可卡住。 */
   const handleVideoEnded = useCallback((): void => {
+    if (hoverPreviewRef.current) return
     const item = previewRef.current.item
     if (item && loadedSrcRef.current === videoSrcRef.current) advanceFrom(item)
   }, [advanceFrom])
@@ -572,6 +624,7 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
 
   // 播放頭時間：來源時間與專案預覽時間分流（見 routeTimeUpdate）；專案模式依序接續
   const handleTimeUpdate = useCallback((t: number) => {
+    if (hoverPreviewRef.current) return
     const item = previewRef.current.item
     const route = routeTimeUpdate({
       previewSrc: item ? videoSrcRef.current : null,
@@ -594,9 +647,11 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
   useEffect(() => {
     if (!previewItem) return
     advancedForRef.current = null
-    const start = Math.max(0, previewItem.start)
+    const restore = previewRestoreRef.current
+    previewRestoreRef.current = null
+    const start = restore?.id === previewItem.id ? restore.time : Math.max(0, previewItem.start)
     setPreviewTime(start)
-    requestSeek(start, videoSrc, true)
+    requestSeek(start, videoSrc, restore?.id === previewItem.id ? restore.playing : true)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [previewItem?.id, previewItem?.start])
 
@@ -774,19 +829,20 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
     }
   }, [mode.mode, currentTime, apply, toast])
 
-  /** 快速剪輯（Ctrl+Q，來源模式）：建立手動片段並同步加入專案（spec §3.6）。 */
+  /** 來源模式切換刀片；專案模式仍在播放頭分割。 */
   const handleQuickOrSplit = useCallback(() => {
-    if (mode.mode === 'project') {
-      splitProjectAtPlayhead()
-      return
-    }
-    const clip = createClipAt(sourcePlayTime(), cfg.before, cfg.after, duration)
-    dispatch({ type: 'addClip', clip })
+    if (mode.mode === 'project') splitProjectAtPlayhead()
+    else setBladeMode((enabled) => !enabled)
+  }, [mode.mode, splitProjectAtPlayhead])
+
+  const createBladeClip = useCallback((start: number, end: number): void => {
+    const clip: Clip = { id: `c_${crypto.randomUUID()}`, start, end, origin: 'manual', event_ids: [], status: 'accepted' }
     const res = acceptToProject(clip, videoPath, projectRef.current)
     if (res.added.length === 0) return
+    dispatch({ type: 'addClip', clip })
     apply(addItems(projectRef.current, res.added))
     toast({
-      message: i18n.studio.toast.addedProject.replace('{sec}', String(Math.round(clip.end - clip.start))),
+      message: i18n.studio.toast.addedProject.replace('{sec}', String(Math.round(end - start))),
       action: {
         label: i18n.studio.toast.undo,
         run: guarded('editClips', () => {
@@ -795,7 +851,11 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
         })
       }
     })
-  }, [mode.mode, splitProjectAtPlayhead, sourcePlayTime, duration, videoPath, apply, toast, guarded, cfg.before, cfg.after])
+  }, [videoPath, apply, toast, guarded])
+
+  useEffect(() => {
+    if (mode.mode !== 'source') setBladeMode(false)
+  }, [mode.mode])
 
   /** 處理完目前建議後，把作用中卡片移到下一個建議（以處理前的清單計算）。 */
   const advanceActive = useCallback(
@@ -1038,6 +1098,20 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
     },
     [apply, videoPath, duration]
   )
+
+  /** 拖曳只更新顯示草稿，最後才透過既有 API 建立一筆可復原的編輯。 */
+  const trimSourceProjectItem = useCallback((id: string, edge: 'start' | 'end', t: number, phase: 'preview' | 'commit' | 'cancel'): void => {
+    if (phase === 'preview') setSourceTrim({ id, edge, t })
+    else {
+      setSourceTrim(null)
+      const item = projectRef.current.items.find((item) => item.id === id)
+      if (phase === 'commit' && item) {
+        const next = trimItem(projectRef.current, id, edge, t, duration)
+        const trimmed = next.items.find((item) => item.id === id)!
+        if (trimmed.start !== item.start || trimmed.end !== item.end) trimProjectItem(id, edge, t)
+      }
+    }
+  }, [duration, trimProjectItem])
 
   const moveProjectItem = useCallback(
     (id: string, toIndex: number) => {
@@ -1337,6 +1411,7 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
             onAddEvent={gAddEvent}
             mode={mode.mode}
             onQuick={handleQuickOrSplit}
+            bladeMode={bladeMode}
             onAutoClip={() => setAutoClipOpen((v) => !v)}
             autoClipOpen={autoClipOpen}
             onToggleFilter={(t) => dispatch({ type: 'setFilter', filter: toggleFilter(state.filter, t) })}
@@ -1352,18 +1427,27 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
               clips={state.clips}
               filter={state.filter}
               onSeek={seekTo}
+              onScrubStart={startScrub}
+              onScrubEnd={endScrub}
+              onHoverSeek={hoverSeek}
+              bladeMode={bladeMode && mode.mode === 'source'}
+              onBladeModeChange={setBladeMode}
+              onBladeRange={createBladeClip}
+              onBladeTooShort={() => toast({ message: i18n.timeline.bladeTooShort })}
+              disabled={overlayOpen || exporting}
+              projectItem={sourceRange}
+              onProjectTrim={trimSourceProjectItem}
               onSelectEvent={handleSelectEvent}
               seekBefore={cfg.before}
               onUpdateClip={(clip) => dispatch({ type: 'updateClip', clip })}
               currentEventId={activeEvent?.id}
               getPlayTime={sourcePlayTime}
               playing={isPlaying}
-              onPlayToggle={togglePlay}
             />
           </div>
 
           <ProjectTrack
-            project={project}
+            project={displayedProject}
             collapsed={projCollapsed}
             onToggleCollapsed={toggleProjCollapsed}
             selectedId={selProjId}
@@ -1414,7 +1498,7 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
               onRestore={restoreClip}
               onRemove={removeFromProject}
               onTuneParams={() => setAutoClipOpen(true)}
-              project={project}
+              project={displayedProject}
               onAddAll={addAllSuggestions}
             />
           </Aside>

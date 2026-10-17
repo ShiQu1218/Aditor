@@ -228,6 +228,8 @@ function resolveInner(e: KeyInput, ctx: KeyCtx): Command | null {
   }
   if (e.shiftKey) return null
   switch (e.key.toLowerCase()) {
+    case 'b':
+      return native ? null : 'quickOrSplit'
     case 's':
       return 'speed'
     case 'm':
@@ -262,7 +264,7 @@ export const KEY_TABLE: KeyRow[] = [
   row('zoomIn', 'Ctrl+= ／ Ctrl+滾輪', S.studio),
   row('zoomOut', 'Ctrl+-', S.studio),
   row('zoomReset', 'Ctrl+0', S.studio),
-  row('quickOrSplit', 'Ctrl+Q', S.studio),
+  row('quickOrSplit', 'Ctrl+Q ／ B', S.studio),
   row('addEvent', 'M', S.studio),
   row('setStart', '[', S.studio),
   row('setEnd', ']', S.studio),

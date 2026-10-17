@@ -38,6 +38,10 @@ const theme: Theme = {
   clipSuggestFill: 'T_sugFill',
   clipLine: 'T_clipLine',
   clipFill: 'T_clipFill',
+  projectLine: 'T_projectLine',
+  projectFill: 'T_projectFill',
+  bladeLine: 'T_bladeLine',
+  bladeFill: 'T_bladeFill',
   events: {
     knock: 'C_knock',
     assist_knock: 'C_ak',
@@ -137,6 +141,39 @@ beforeAll(() => vi.stubGlobal('Path2D', FakePath2D))
 afterAll(() => vi.unstubAllGlobals())
 
 describe('drawTimeline', () => {
+  test('selected project range uses a distinct fill and always shows both trim handles', () => {
+    const { ctx, calls } = makeCtx()
+    drawTimeline(ctx, model([], {
+      clips: [clip('suggested', 100, 200)],
+      projectItem: { id: 'p', source: 'v.mp4', start: 100, end: 200 }
+    }), theme)
+    expect(calls.some((c) => c.name === 'fillRect' && c.fillStyle === theme.clipSuggestFill)).toBe(true)
+    expect(calls.find((c) => c.name === 'fillRect' && c.fillStyle === theme.projectFill)?.args)
+      .toEqual([100, EVENT_TOP, 100, 86])
+    const handles = calls.filter((c) => c.name === 'fillRect' && c.fillStyle === theme.projectLine)
+    expect(handles.map((c) => c.args[0])).toEqual([98, 196])
+  })
+
+  test.each([[100, 200], [200, 100]])('blade marker %s and hover %s fill the same sorted range', (anchor, hover) => {
+    const { ctx, calls } = makeCtx()
+    drawTimeline(ctx, model([], { blade: { enabled: true, anchor, hover } }), theme)
+    expect(calls.find((c) => c.name === 'fillRect' && c.fillStyle === theme.bladeFill)?.args)
+      .toEqual([100, EVENT_TOP, 100, 86])
+    expect(calls.filter((c) => c.name === 'stroke' && c.strokeStyle === theme.bladeLine)).toHaveLength(2)
+    expect(calls.find((c) => c.name === 'fillRect' && c.fillStyle === theme.bladeLine)?.args)
+      .toEqual([anchor - 4, 0, 8, 8])
+  })
+
+  test('leaving the track keeps only the blade marker; disabled mode paints none', () => {
+    const left = makeCtx()
+    drawTimeline(left.ctx, model([], { blade: { enabled: true, anchor: 100, hover: null } }), theme)
+    expect(left.calls.some((c) => c.fillStyle === theme.bladeFill)).toBe(false)
+    expect(left.calls.filter((c) => c.name === 'stroke' && c.strokeStyle === theme.bladeLine)).toHaveLength(1)
+    const disabled = makeCtx()
+    drawTimeline(disabled.ctx, model([], { blade: { enabled: false, anchor: 100, hover: 200 } }), theme)
+    expect(disabled.calls.some((c) => c.strokeStyle === theme.bladeLine || c.fillStyle === theme.bladeFill)).toBe(false)
+  })
+
   test('density mode draws no event shapes, only ticks and heat bars', () => {
     const { events, duration } = genLong()
     const v: View = { duration, start: 0, span: duration, width: 1400 }
@@ -383,6 +420,10 @@ describe('readTheme', () => {
       expect(a.events[type]).toBe('V' + SHAPES[type].colorVar)
     }
     expect(a.heatRgb).toBe('V--tl-heat')
+    expect(a.projectLine).toBe('V--tl-project-line')
+    expect(a.projectFill).toBe('V--tl-project-fill')
+    expect(a.bladeLine).toBe('V--tl-blade-line')
+    expect(a.bladeFill).toBe('V--tl-blade-fill')
     resetThemeCache()
   })
 })
@@ -407,7 +448,7 @@ describe('interactionReducer', () => {
     }
     return { state, outcome }
   }
-  const down = { type: 'down', x: 100, y: 60, button: 0, shift: false, space: false } as const
+  const down = { type: 'down', x: 100, y: 60, button: 0, shift: false } as const
 
   test('mousedown -> move(3px) -> up = click', () => {
     const r = run([down, { type: 'move', x: 103, y: 60 }, { type: 'up', x: 103, y: 60 }])
@@ -415,24 +456,24 @@ describe('interactionReducer', () => {
     expect(r.state.phase).toBe('idle')
   })
 
-  test('exactly 4px is still a click; 5px becomes box', () => {
+  test('exactly 4px is still a click; 5px becomes scrub', () => {
     expect(run([down, { type: 'move', x: 104, y: 60 }, { type: 'up', x: 104, y: 60 }]).outcome).toBe('click')
-    expect(run([down, { type: 'move', x: 105, y: 60 }]).state.phase).toBe('box')
-    expect(run([down, { type: 'move', x: 105, y: 60 }, { type: 'up', x: 105, y: 60 }]).outcome).toBe('box')
+    expect(run([down, { type: 'move', x: 105, y: 60 }]).state.phase).toBe('scrub')
+    expect(run([down, { type: 'move', x: 105, y: 60 }, { type: 'up', x: 105, y: 60 }]).outcome).toBe('scrub')
   })
 
-  test('a box stays a box when the pointer returns near the start', () => {
+  test('a scrub stays a scrub when the pointer returns near the start', () => {
     const r = run([down, { type: 'move', x: 130, y: 60 }, { type: 'move', x: 101, y: 60 }, { type: 'up', x: 101, y: 60 }])
-    expect(r.outcome).toBe('box')
+    expect(r.outcome).toBe('scrub')
   })
 
-  test('space+down = pan, takes priority over handle and box', () => {
+  test('middle button takes priority over handle', () => {
     const r = run([
-      { ...down, space: true, handle: { clipId: 'c', edge: 'start' } },
+      { ...down, button: 1, handle: { clipId: 'c', edge: 'start' } },
       { type: 'move', x: 140, y: 60 }
     ])
     expect(r.state.phase).toBe('pan')
-    expect(run([{ ...down, space: true }, { type: 'up', x: 100, y: 60 }]).outcome).toBe('pan')
+    expect(run([{ ...down, button: 1 }, { type: 'up', x: 100, y: 60 }]).outcome).toBe('pan')
   })
 
   test('middle button = pan', () => {

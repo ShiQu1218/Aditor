@@ -5,6 +5,7 @@ import { cleanupMounted, click, focusEl, installDomShims, mount, press } from '.
 import { mountStudio, type StudioMount } from '../../../test/studioHarness'
 import { i18n } from '../i18n/zh-TW'
 import { TimelineCanvas, TimelineHandle } from './TimelineCanvas'
+import { resetThemeCache } from './draw'
 
 type Props = React.ComponentProps<typeof TimelineCanvas>
 const props: Props = {
@@ -38,10 +39,12 @@ function pointer(type: string, clientX: number): void {
 }
 
 let frames: Map<number, FrameRequestCallback>
+let frameTime = 0
 let studio: StudioMount | null = null
 beforeEach(() => {
   installDomShims({ width: 1000, height: 700 })
   frames = new Map()
+  frameTime = 0
   let id = 0
   vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
     frames.set(++id, callback)
@@ -56,13 +59,171 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 function nextFrame(): void {
+  frameTime += 16
   act(() => {
     for (const [id, callback] of Array.from(frames)) {
       frames.delete(id)
-      callback(0)
+      callback(frameTime)
     }
   })
 }
+
+function mouse(type: string, x: number, init: MouseEventInit = {}): void {
+  const target = type !== 'mouseup' ? q('.tl-wrap') : window
+  act(() => { target.dispatchEvent(new MouseEvent(type, { clientX: x, clientY: 110, button: 0, buttons: 1, bubbles: true, ...init })) })
+}
+
+describe('source timeline gestures', () => {
+  test('dragging blank track seeks once per frame; release seeks the exact final position', () => {
+    const onSeek = vi.fn()
+    const onScrubStart = vi.fn()
+    const onScrubEnd = vi.fn()
+    mount(<TimelineCanvas {...props} onSeek={onSeek} onScrubStart={onScrubStart} onScrubEnd={onScrubEnd} />)
+    mouse('mousedown', 100)
+    mouse('mousemove', 200)
+    mouse('mousemove', 350)
+    expect(onScrubStart).toHaveBeenCalledTimes(1)
+    expect(onSeek).not.toHaveBeenCalled()
+    nextFrame()
+    expect(onSeek).toHaveBeenCalledTimes(1)
+    expect(onSeek).toHaveBeenLastCalledWith(210)
+    mouse('mousemove', 450)
+    mouse('mouseup', 700)
+    expect(onSeek).toHaveBeenLastCalledWith(420)
+    expect(onScrubEnd).toHaveBeenCalledWith(false)
+    nextFrame()
+    expect(onSeek).toHaveBeenCalledTimes(2)
+    expect(q('.tl-wrap').querySelector('.tl-boxsel')).toBeNull()
+  })
+
+  test('playhead starts scrubbing immediately, even before crossing the drag threshold', () => {
+    const onSeek = vi.fn()
+    const onScrubStart = vi.fn()
+    mount(<TimelineCanvas {...props} onSeek={onSeek} onScrubStart={onScrubStart} />)
+    mouse('mousedown', 500, { clientY: 5 })
+    expect(onScrubStart).toHaveBeenCalledTimes(1)
+    mouse('mousemove', 502)
+    nextFrame()
+    expect(onSeek).toHaveBeenLastCalledWith(301.2)
+    mouse('mouseup', 502)
+  })
+
+  test.each(['Escape', 'blur', 'lost buttons'])('%s cancels pending seeks and restores the live original time', (cancel) => {
+    const onSeek = vi.fn()
+    const onScrubEnd = vi.fn()
+    mount(<TimelineCanvas {...props} playing getPlayTime={() => 42} onSeek={onSeek} onScrubEnd={onScrubEnd} />)
+    mouse('mousedown', 100)
+    mouse('mousemove', 300)
+    nextFrame()
+    mouse('mousemove', 400)
+    if (cancel === 'Escape') expect(press(window, 'Escape').defaultPrevented).toBe(true)
+    else if (cancel === 'blur') act(() => { window.dispatchEvent(new Event('blur')) })
+    else mouse('mousemove', 400, { buttons: 0 })
+    expect(onSeek).toHaveBeenLastCalledWith(42)
+    expect(onScrubEnd).toHaveBeenCalledWith(true)
+    const n = onSeek.mock.calls.length
+    mouse('mouseup', 900)
+    nextFrame()
+    expect(onSeek).toHaveBeenCalledTimes(n)
+  })
+
+  test('edge scrubbing scrolls detail mode while the pointer is stationary and clamps at the end', () => {
+    const onSeek = vi.fn()
+    mount(<TimelineCanvas {...props} onSeek={onSeek} />)
+    click(modeButton('detail'))
+    mouse('mousedown', 500)
+    mouse('mousemove', 1000)
+    nextFrame()
+    expect(start()).toBeGreaterThan(285)
+    const first = start()
+    nextFrame()
+    expect(start()).toBeGreaterThan(first)
+    expectMode('detail')
+    for (let i = 0; i < 400; i++) nextFrame()
+    expect(start()).toBe(570)
+    expect(onSeek).toHaveBeenLastCalledWith(600)
+    mouse('mouseup', 1100)
+  })
+
+  test('project handles win over suggested clip handles and commit only on release', () => {
+    const onProjectTrim = vi.fn()
+    const onUpdateClip = vi.fn()
+    const onSeek = vi.fn()
+    mount(<TimelineCanvas {...props} currentTime={60} onSeek={onSeek} onProjectTrim={onProjectTrim} onUpdateClip={onUpdateClip}
+      projectItem={{ id: 'p', source: 'v', start: 60, end: 180 }}
+      clips={[{ id: 'c', start: 60, end: 180, origin: 'ai', event_ids: [], status: 'suggested' }]} />)
+    mouse('mousedown', 100, { clientY: 60 })
+    mouse('mousemove', 150, { clientY: 60 })
+    expect(onProjectTrim).toHaveBeenLastCalledWith('p', 'start', 90, 'preview')
+    expect(onProjectTrim.mock.calls.some((call) => call[3] === 'commit')).toBe(false)
+    mouse('mouseup', 200, { clientY: 60 })
+    expect(onProjectTrim).toHaveBeenLastCalledWith('p', 'start', 120, 'commit')
+    expect(onUpdateClip).not.toHaveBeenCalled()
+    expect(onSeek).not.toHaveBeenCalled()
+  })
+
+  test('blade clicks never seek or trim; hover preview coalesces and leaving cancels pending preview', () => {
+    const onSeek = vi.fn()
+    const onHoverSeek = vi.fn()
+    const onBladeRange = vi.fn()
+    mount(<TimelineCanvas {...props} bladeMode onSeek={onSeek} onHoverSeek={onHoverSeek} onBladeRange={onBladeRange} />)
+    mouse('mousemove', 100)
+    mouse('mousemove', 200)
+    nextFrame()
+    expect(onHoverSeek).toHaveBeenLastCalledWith(120)
+    expect(q('.tl-wrap').style.cursor).toBe('crosshair')
+    expect(q('.tl-tip').textContent).toBe('2:00')
+    mouse('mousedown', 300)
+    mouse('mouseup', 300)
+    mouse('mousedown', 100)
+    mouse('mouseup', 100)
+    expect(onBladeRange).toHaveBeenCalledWith(60, 180)
+    expect(onSeek).not.toHaveBeenCalled()
+    mouse('mousemove', 400)
+    mouse('mouseout', 400, { relatedTarget: document.body })
+    expect(onHoverSeek).toHaveBeenLastCalledWith(null)
+    const n = onHoverSeek.mock.calls.length
+    nextFrame()
+    expect(onHoverSeek).toHaveBeenCalledTimes(n)
+  })
+
+  test('opening an overlay cancels a scrub; blade markers survive the overlay and toggling off resets the cursor', () => {
+    const onSeek = vi.fn()
+    const onScrubEnd = vi.fn()
+    const onBladeRange = vi.fn()
+    const p = { ...props, onSeek, onScrubEnd, onBladeRange }
+    const m = mount(<TimelineCanvas {...p} />)
+    mouse('mousedown', 100)
+    mouse('mousemove', 200)
+    act(() => m.root.render(<TimelineCanvas {...p} disabled />))
+    expect(onSeek).toHaveBeenLastCalledWith(300)
+    expect(onScrubEnd).toHaveBeenCalledWith(true)
+    act(() => m.root.render(<TimelineCanvas {...p} bladeMode />))
+    mouse('mousedown', 100)
+    act(() => m.root.render(<TimelineCanvas {...p} bladeMode disabled />))
+    expect(press(window, 'Escape').defaultPrevented).toBe(false)
+    act(() => m.root.render(<TimelineCanvas {...p} bladeMode />))
+    mouse('mousedown', 200)
+    expect(onBladeRange).toHaveBeenCalledWith(60, 120)
+    act(() => m.root.render(<TimelineCanvas {...p} />))
+    expect(q('.tl-wrap').style.cursor).toBe('pointer')
+  })
+
+  test('switching theme invalidates the canvas color cache', async () => {
+    resetThemeCache()
+    const read = vi.spyOn(window, 'getComputedStyle')
+    const m = mount(<TimelineCanvas {...props} projectItem={{ id: 'p', source: 'v', start: 60, end: 180 }} />)
+    nextFrame()
+    read.mockClear()
+    await act(async () => { document.documentElement.dataset.theme = 'light' })
+    nextFrame()
+    expect(read).toHaveBeenCalledWith(document.documentElement)
+    m.unmount()
+    delete document.documentElement.dataset.theme
+    read.mockRestore()
+    resetThemeCache()
+  })
+})
 
 describe('source timeline zoom controls', () => {
   test('toolbar precedes the track, scrollbar follows it, and full extent fills the thumb', () => {

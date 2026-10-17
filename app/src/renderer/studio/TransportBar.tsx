@@ -19,6 +19,7 @@ interface TransportBarProps {
   onAddEvent: () => void
   mode: 'source' | 'project'
   onQuick: () => void
+  bladeMode: boolean
   onAutoClip: () => void
   autoClipOpen: boolean
   onToggleFilter: (t: EventType) => void
@@ -39,6 +40,7 @@ export function TransportBar({
   onAddEvent,
   mode,
   onQuick,
+  bladeMode,
   onAutoClip,
   autoClipOpen,
   onToggleFilter
@@ -62,7 +64,13 @@ export function TransportBar({
         {speed}x
       </button>
       <div className="transport-spacer" />
-      <button type="button" className="btn-ghost" onClick={onQuick}>
+      <button
+        type="button"
+        className="btn-ghost"
+        aria-pressed={mode === 'source' ? bladeMode : undefined}
+        title={mode === 'source' ? i18n.timeline.bladeHint : undefined}
+        onClick={onQuick}
+      >
         <Scissors className="ic sm" /> {mode === 'project' ? i18n.studio.splitClip : i18n.studio.quickClip} <kbd>{i18n.studio.quickClipKey}</kbd>
       </button>
       <button

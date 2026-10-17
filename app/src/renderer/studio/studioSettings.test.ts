@@ -1,7 +1,6 @@
 import { describe, expect, test } from 'vitest'
 import { DEFAULT_SETTINGS } from '../../shared/settings'
 import { leadInSeek, subscribeStudioSettings, toStudioSettings, type StudioSettings } from './studioSettings'
-import { createClipAt } from '../timeline/clips'
 import { studioNotice } from './notices'
 import { planSuggestions } from './highlights'
 import { readFileSync } from 'fs'
@@ -11,25 +10,20 @@ const weak = { supported: false, smooth: false, powerEfficient: false }
 
 describe('toStudioSettings（純決策）', () => {
   test('缺值／型別錯誤 → 預設；合法值保留', () => {
-    expect(toStudioSettings(undefined)).toMatchObject({ before: 8, after: 4, proxySuggest: true, autoSuggestOnOpen: true })
+    expect(toStudioSettings(undefined)).toMatchObject({ before: 8, proxySuggest: true, autoSuggestOnOpen: true })
     const s = toStudioSettings({ before: 3, after: 'x', proxySuggest: false, autoclip: { ...DEFAULT_SETTINGS.autoclip, n: 5 } })
     expect(s.before).toBe(3)
-    expect(s.after).toBe(DEFAULT_SETTINGS.after)
+    expect(s).not.toHaveProperty('after')
     expect(s.proxySuggest).toBe(false)
     expect(s.autoclip.n).toBe(5)
   })
 })
 
-describe('leadInSeek / 快速剪輯使用設定的前後秒數', () => {
+describe('leadInSeek 使用設定的前秒數', () => {
   test('leadInSeek = max(0, t - before)', () => {
     expect(leadInSeek(30, 8)).toBe(22)
     expect(leadInSeek(30, 3)).toBe(27)
     expect(leadInSeek(2, 8)).toBe(0)
-  })
-  test('createClipAt 吃 settings.before/after（不再固定 8/4）', () => {
-    const s = toStudioSettings({ before: 5, after: 2 })
-    const c = createClipAt(100, s.before, s.after, 600)
-    expect([c.start, c.end]).toEqual([95, 102])
   })
 })
 
@@ -89,7 +83,7 @@ describe('subscribeStudioSettings：讀取＋settings:changed 即時生效', () 
     await tick()
     expect(seen.at(-1)).toMatchObject({ before: 10, proxySuggest: false })
     f.emit({ ...DEFAULT_SETTINGS, before: 2, after: 9, proxySuggest: true, autoclip: { ...DEFAULT_SETTINGS.autoclip, n: 9 } })
-    expect(seen.at(-1)).toMatchObject({ before: 2, after: 9, proxySuggest: true })
+    expect(seen.at(-1)).toMatchObject({ before: 2, proxySuggest: true })
     expect(seen.at(-1)!.autoclip.n).toBe(9)
     off()
     expect(f.listeners.size).toBe(0)
@@ -117,23 +111,23 @@ describe('subscribeStudioSettings：讀取＋settings:changed 即時生效', () 
   test('沒有 api／get 失敗 → 回退預設，不拋錯', async () => {
     const seen: StudioSettings[] = []
     subscribeStudioSettings(undefined, (s) => seen.push(s))
-    expect(seen.at(-1)).toMatchObject({ before: 8, after: 4 })
+    expect(seen.at(-1)).toMatchObject({ before: 8 })
     const bad = { settings: { get: async () => Promise.reject(new Error('x')) } }
     const seen2: StudioSettings[] = []
     subscribeStudioSettings(bad, (s) => seen2.push(s))
     await tick()
-    expect(seen2.at(-1)).toMatchObject({ before: 8, after: 4, autoSuggestOnOpen: false })
+    expect(seen2.at(-1)).toMatchObject({ before: 8, autoSuggestOnOpen: false })
   })
 })
 
 describe('StudioScreen 接線（原始碼掃描：不得再有寫死的 8/4）', () => {
   const src = readFileSync(resolve(__dirname, 'StudioScreen.tsx'), 'utf-8')
-  test('快速剪輯、合輯、事件 lead-in seek 都用設定值', () => {
+  test('事件 lead-in seek 使用設定值；刀片不使用前後秒數', () => {
     expect(src).not.toMatch(/createClipAt\([^)]*,\s*8,\s*4,/)
     expect(src).not.toMatch(/ev\.t\s*-\s*8/)
     expect(src).not.toMatch(/^\s*8,\s*\n\s*4,\s*\n\s*duration/m)
     expect(src).toMatch(/subscribeStudioSettings\(/)
-    expect(src).toMatch(/createClipAt\(sourcePlayTime\(\),\s*cfg\.before,\s*cfg\.after/)
+    expect(src).not.toContain('createClipAt')
     expect(src).toMatch(/proxySuggest:\s*cfg\.proxySuggest/)
     expect(src).toMatch(/seekBefore=\{cfg\.before\}/)
   })

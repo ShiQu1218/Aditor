@@ -1,18 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { MouseEvent as ReactMouseEvent, MutableRefObject, RefObject } from 'react'
-import type { Clip, EngineEvent, EventType } from '../../shared/types'
+import type { Clip, EngineEvent } from '../../shared/types'
 import { isCounted } from '../../shared/types'
 import { formatTime } from '../../shared/time'
 import { i18n } from '../i18n/zh-TW'
-import { targetKindOf } from '../input/focusZone'
 import { resizeClip } from './clips'
 import { EVENT_TOP } from './draw'
 import { TimelineLayout, zoomToCluster } from './layout'
 import { View, pan, timeToX, xToTime, zoom } from './model'
-import { boxSelect, hitDensity, hitItem } from './select'
-import { idleArbiter, spaceArbiter, type SpaceArbiter } from './spacePlay'
+import { hitDensity, hitItem } from './select'
+import { playheadTarget } from './Playhead'
+import { bladeReducer, initialBlade, type BladeAction, type BladeState } from './blade'
+import type { ProjectItem } from '../editor/project'
 
-/** 拖曳超過此距離（px，水平）才視為框選 */
+/** 拖曳超過此距離（px，水平）才視為拖曳播放頭 */
 export const DRAG_THRESHOLD_PX = 4
 /** 片段把手命中區 ±7 px */
 export const HANDLE_HIT_PX = 7
@@ -23,45 +24,48 @@ export const ITEM_HIT_Y: [number, number] = [28, 100]
 export interface HandleRef {
   clipId: string
   edge: 'start' | 'end'
+  project?: boolean
 }
 
 export interface IState {
-  phase: 'idle' | 'pressed' | 'box' | 'pan' | 'handle'
+  phase: 'idle' | 'pressed' | 'scrub' | 'pan' | 'handle'
   x0: number
   y0: number
   shift: boolean
   handle?: HandleRef
 }
 export type IAction =
-  | { type: 'down'; x: number; y: number; button: number; shift: boolean; space: boolean; handle?: HandleRef | null }
+  | { type: 'down'; x: number; y: number; button: number; shift: boolean; playhead?: boolean; handle?: HandleRef | null }
   | { type: 'move'; x: number; y: number }
   | { type: 'up'; x: number; y: number }
   | { type: 'cancel' }
-export type IOutcome = 'click' | 'box' | 'pan' | 'handle' | null
+export type IOutcome = 'click' | 'scrub' | 'pan' | 'handle' | null
 
 export const initialInteraction: IState = { phase: 'idle', x0: 0, y0: 0, shift: false }
 
 /**
- * 滑鼠互動狀態機（純函式）。優先序：Space／中鍵平移 > 片段把手 > 一般按下（click 或框選）。
- * 框選門檻：水平位移 >4 px；一旦成為框選就不會因游標回到起點而退回 click。
+ * 滑鼠互動狀態機（純函式）。優先序：中鍵平移 > 播放頭 > 片段把手 > 一般按下（click 或 scrub）。
+ * 拖曳門檻：水平位移 >4 px；一旦開始 scrub 就不退回 click。
  */
 export function interactionReducer(s: IState, a: IAction): { state: IState; outcome: IOutcome } {
   switch (a.type) {
     case 'down': {
       const base = { x0: a.x, y0: a.y, shift: a.shift }
-      if (a.button === 1 || a.space) return { state: { ...base, phase: 'pan' }, outcome: null }
+      if (a.button !== 0 && a.button !== 1) return { state: s, outcome: null }
+      if (a.button === 1) return { state: { ...base, phase: 'pan' }, outcome: null }
+      if (a.playhead) return { state: { ...base, phase: 'scrub' }, outcome: null }
       if (a.handle) return { state: { ...base, phase: 'handle', handle: a.handle }, outcome: null }
       return { state: { ...base, phase: 'pressed' }, outcome: null }
     }
     case 'move':
       if (s.phase === 'pressed' && Math.abs(a.x - s.x0) > DRAG_THRESHOLD_PX) {
-        return { state: { ...s, phase: 'box' }, outcome: null }
+        return { state: { ...s, phase: 'scrub' }, outcome: null }
       }
       return { state: s, outcome: null }
     case 'up': {
       if (s.phase === 'idle') return { state: s, outcome: null }
       const outcome: IOutcome =
-        s.phase === 'pressed' ? 'click' : s.phase === 'box' ? 'box' : s.phase === 'pan' ? 'pan' : 'handle'
+        s.phase === 'pressed' ? 'click' : s.phase === 'scrub' ? 'scrub' : s.phase === 'pan' ? 'pan' : 'handle'
       return { state: initialInteraction, outcome }
     }
     case 'cancel':
@@ -102,58 +106,6 @@ export function attachGestureEscape(
   }
   target.addEventListener('keydown', onKey as EventListener, true)
   return () => target.removeEventListener('keydown', onKey as EventListener, true)
-}
-
-export interface SpaceArbiterBinding {
-  isActive: () => boolean
-  onPlay: () => void
-  getArbiter?: () => SpaceArbiter
-  setArbiter?: (a: SpaceArbiter) => void
-  onHold?: () => void
-  onRelease?: () => void
-}
-
-/**
- * 空白鍵仲裁的 window 綁定（spec §3.2.2）。輕按＝放開時切換播放；按住 >200 ms 後才有資格成為平移，平移不觸發播放。
- * keydown 必須用 capture 階段並 preventDefault：全域 keymap（bubble、keydown 即 play）會跳過 defaultPrevented 的事件。
- * 若用 bubble，監聽器的註冊順序決定誰先跑——時間軸晚於 keymap 才掛載時 keymap 會先在 keydown 播放一次，
- * 這裡又在 keyup 播放一次，造成「按一下空白鍵馬上變回去」。
- */
-export function attachSpaceArbiter(
-  target: Pick<Window, 'addEventListener' | 'removeEventListener'>,
-  b: SpaceArbiterBinding
-): () => void {
-  let local: SpaceArbiter = idleArbiter
-  const get = b.getArbiter ?? ((): SpaceArbiter => local)
-  const set =
-    b.setArbiter ??
-    ((a: SpaceArbiter): void => {
-      local = a
-    })
-  const down = (e: KeyboardEvent): void => {
-    if (e.code !== 'Space' || e.isComposing || e.keyCode === 229) return
-    // 文字欄位／原生控制項的 Space 保留原生行為
-    if (targetKindOf(e.target as HTMLElement | null) !== 'none') return
-    if (!b.isActive()) return
-    const r = spaceArbiter(get(), { type: 'keydown', now: performance.now() })
-    set(r.state)
-    if (!r.state.pending && !r.state.panned) return
-    e.preventDefault()
-    b.onHold?.()
-  }
-  const up = (e: KeyboardEvent): void => {
-    if (e.code !== 'Space' || e.isComposing) return
-    const r = spaceArbiter(get(), { type: 'keyup', now: performance.now() })
-    set(r.state)
-    if (r.play) b.onPlay()
-    b.onRelease?.()
-  }
-  target.addEventListener('keydown', down as EventListener, true)
-  target.addEventListener('keyup', up as EventListener)
-  return () => {
-    target.removeEventListener('keydown', down as EventListener, true)
-    target.removeEventListener('keyup', up as EventListener)
-  }
 }
 
 /** 取消時需還原的片段（把手拖曳中途取消＝片段維持原樣） */
@@ -247,33 +199,51 @@ export function tooltipAt(layout: TimelineLayout, mx: number, my: number): strin
 
 /* ---------------- Hook ---------------- */
 
+/** 靠近兩端時以視窗跨度決定捲動速度；全覽不捲動。 */
+export function scrubAutoPan(view: View, x: number, elapsed = 16): View {
+  if (view.width <= 0 || view.span >= view.duration) return view
+  const margin = Math.min(36, view.width / 4)
+  const speed = x < margin ? -Math.min(1, (margin - x) / margin)
+    : x > view.width - margin ? Math.min(1, (x - view.width + margin) / margin) : 0
+  return speed === 0 ? view : pan(view, speed * view.span * 0.025 * Math.min(32, elapsed) / 16)
+}
+
 export interface InteractionOptions {
   wrapRef: RefObject<HTMLDivElement>
   view: View
   setView: (fn: (v: View) => View) => void
+  onAutoScroll: (fn: (v: View) => View) => void
   onZoom?: (factor: number, anchor: number) => void
   duration: number
   height: number
   layoutRef: MutableRefObject<TimelineLayout>
   clips: Clip[]
-  events: EngineEvent[]
-  filter: Set<EventType>
-  /** 點事件圖示 seek 到 t - seekBefore（秒） */
+  projectItem?: ProjectItem | null
+  onProjectTrim?: (id: string, edge: 'start' | 'end', t: number, phase: 'preview' | 'commit' | 'cancel') => void
   seekBefore: number
+  currentTime: number
+  getPlayTime?: () => number
+  playing?: boolean
   onSeek: (t: number) => void
+  onScrubStart?: () => void
+  onScrubEnd?: (cancelled: boolean) => void
+  onHoverSeek?: (t: number | null) => void
+  bladeMode?: boolean
+  onBladeModeChange?: (enabled: boolean) => void
+  onBladeRange?: (start: number, end: number) => void
+  onBladeTooShort?: () => void
+  disabled?: boolean
   onSelectEvent?: (e: EngineEvent) => void
   onToggleSelect?: (id: string) => void
-  onBoxSelect?: (ids: string[], t1: number, t2: number, additive: boolean) => void
   onUpdateClip?: (clip: Clip) => void
-  /** 空白鍵輕按（放開時未平移）＝切換播放；由 spaceArbiter 仲裁後呼叫 */
-  onPlayToggle?: () => void
 }
 
 export interface InteractionResult {
   onMouseDown: (e: ReactMouseEvent<HTMLElement>) => void
   onMouseMove: (e: ReactMouseEvent<HTMLElement>) => void
   onMouseLeave: () => void
-  box: { x0: number; x1: number } | null
+  interacting: boolean
+  blade: BladeState
   hoverClipId: string | null
   cursor: string
   tip: { x: number; y: number; text: string } | null
@@ -282,15 +252,18 @@ export interface InteractionResult {
 export function useTimelineInteractions(opts: InteractionOptions): InteractionResult {
   const o = useRef(opts)
   o.current = opts
-
   const st = useRef<IState>(initialInteraction)
   const panStart = useRef<{ clientX: number; start: number } | null>(null)
-  const downT = useRef(0)
-  const arbRef = useRef<SpaceArbiter>(idleArbiter)
   const originalClip = useRef<Clip | null>(null)
-  const insideRef = useRef(false)
-
-  const [box, setBox] = useState<{ x0: number; x1: number } | null>(null)
+  const scrubStart = useRef<{ time: number; view: View } | null>(null)
+  const lastSeek = useRef<number | null>(null)
+  const cancelGestureRef = useRef<() => void>(() => undefined)
+  const pointer = useRef<{ clientX: number; clientY: number } | null>(null)
+  const frame = useRef<number | null>(null)
+  const lastFrame = useRef<number | null>(null)
+  const bladeRef = useRef(initialBlade)
+  const [blade, setBlade] = useState(initialBlade)
+  const [interacting, setInteracting] = useState(false)
   const [hoverClipId, setHoverClipId] = useState<string | null>(null)
   const [cursor, setCursor] = useState('pointer')
   const [tip, setTip] = useState<{ x: number; y: number; text: string } | null>(null)
@@ -301,83 +274,162 @@ export function useTimelineInteractions(opts: InteractionOptions): InteractionRe
       ? { x: pointerToX(clientX, r.left, r.width, o.current.view.width), y: clientY - r.top }
       : { x: 0, y: 0 }
   }, [])
-
-  /** 空白鍵是否讓時間軸處於「平移待命」或已平移（游標回饋用） */
-  const spaceHeld = (): boolean => arbRef.current.pending || arbRef.current.panned
+  const timeAt = (x: number, view = o.current.view): number =>
+    Math.max(0, Math.min(o.current.duration, xToTime(x, view)))
 
   const apply = useCallback((a: IAction): IOutcome => {
     const r = interactionReducer(st.current, a)
     st.current = r.state
     return r.outcome
   }, [])
+  const applyBlade = useCallback((a: BladeAction): void => {
+    const r = bladeReducer(bladeRef.current, a)
+    bladeRef.current = r.state
+    setBlade(r.state)
+    if (r.range) o.current.onBladeRange?.(...r.range)
+    if (r.tooShort) o.current.onBladeTooShort?.()
+  }, [])
+  const stopFrame = useCallback((): void => {
+    if (frame.current !== null) cancelAnimationFrame(frame.current)
+    frame.current = null
+    lastFrame.current = null
+  }, [])
+  const beginScrub = useCallback((): void => {
+    if (scrubStart.current) return
+    const cur = o.current
+    scrubStart.current = {
+      time: playheadTarget({ playing: cur.playing, time: cur.currentTime, getTime: cur.getPlayTime }),
+      view: cur.view
+    }
+    lastSeek.current = null
+    cur.onScrubStart?.()
+    setCursor('grabbing')
+  }, [])
 
-  const onMouseDown = useCallback(
-    (e: ReactMouseEvent<HTMLElement>) => {
-      if (e.button !== 0 && e.button !== 1) return
-      const { x, y } = local(e.clientX, e.clientY)
+  const projectHandle = (x: number, y: number): HandleRef | null => {
+    const cur = o.current
+    const item = cur.projectItem
+    if (!item) return null
+    const hit = handleAt([{ ...item, origin: 'manual', event_ids: [] }], cur.view, x, y, cur.height)
+    return hit ? { ...hit, project: true } : null
+  }
+  const seekFrame = useCallback((): void => {
+    if (frame.current !== null) return
+    const tick = (now: number): void => {
+      frame.current = null
       const cur = o.current
-      // 空白鍵仲裁：按住 >200 ms 後才視為平移；未達門檻的按下不觸發播放
-      const gate = spaceArbiter(arbRef.current, { type: 'pointerdown', now: performance.now() })
-      arbRef.current = gate.state
-      const handle = handleAt(cur.clips, cur.view, x, y, cur.height)
-      apply({ type: 'down', x, y, button: e.button, shift: e.shiftKey || e.ctrlKey, space: gate.pan, handle })
-      downT.current = xToTime(x, cur.view)
-      originalClip.current = handle ? (cur.clips.find((c) => c.id === handle.clipId) ?? null) : null
-      if (st.current.phase === 'pan') {
-        e.preventDefault()
-        panStart.current = { clientX: e.clientX, start: cur.view.start }
-        setCursor('grabbing')
-      } else if (st.current.phase === 'handle') {
-        setCursor('ew-resize')
+      if (!pointer.current || cur.disabled) return
+      const { x } = local(pointer.current.clientX, pointer.current.clientY)
+      if (st.current.phase === 'scrub') {
+        const view = scrubAutoPan(cur.view, x, lastFrame.current === null ? 16 : now - lastFrame.current)
+        lastFrame.current = now
+        if (view.start !== cur.view.start) cur.onAutoScroll(() => view)
+        const t = timeAt(x, view)
+        if (t !== lastSeek.current) cur.onSeek(t)
+        lastSeek.current = t
+        frame.current = requestAnimationFrame(tick)
+      } else if (bladeRef.current.enabled && bladeRef.current.hover !== null) {
+        cur.onHoverSeek?.(bladeRef.current.hover)
       }
-      setTip(null)
-      o.current.wrapRef.current?.focus()
-    },
-    [apply, local]
-  )
+    }
+    frame.current = requestAnimationFrame(tick)
+  }, [local])
 
-  // 拖曳中的移動與放開掛在 window，游標離開時間軸也不中斷
+  const onMouseDown = useCallback((e: ReactMouseEvent<HTMLElement>): void => {
+    const cur = o.current
+    if (cur.disabled || (e.button !== 0 && e.button !== 1)) return
+    e.preventDefault()
+    const { x, y } = local(e.clientX, e.clientY)
+    pointer.current = { clientX: e.clientX, clientY: e.clientY }
+    cur.wrapRef.current?.focus()
+    if (e.button === 0 && bladeRef.current.enabled) {
+      applyBlade({ type: 'click', t: timeAt(x) })
+      seekFrame()
+      return
+    }
+    const headX = timeToX(playheadTarget({ playing: cur.playing, time: cur.currentTime, getTime: cur.getPlayTime }), cur.view)
+    const handle = projectHandle(x, y) ?? handleAt(cur.clips, cur.view, x, y, cur.height)
+    const playhead = !handle && Math.abs(x - headX) <= HANDLE_HIT_PX
+    apply({ type: 'down', x, y, button: e.button, shift: e.shiftKey || e.ctrlKey, playhead, handle })
+    originalClip.current = handle && !handle.project ? cur.clips.find((c) => c.id === handle.clipId) ?? null : null
+    setInteracting(true)
+    if (st.current.phase === 'pan') {
+      panStart.current = { clientX: e.clientX, start: cur.view.start }
+      setCursor('grabbing')
+    } else if (st.current.phase === 'handle') setCursor('ew-resize')
+    else if (st.current.phase === 'scrub') {
+      beginScrub()
+      seekFrame()
+    }
+    setTip(null)
+  }, [apply, applyBlade, beginScrub, local, seekFrame])
+
+  // 拖曳掛在 window；離開軌道後持續更新，Esc／失焦則還原。
   useEffect(() => {
+    const updateHandle = (x: number, phase: 'preview' | 'commit'): void => {
+      const cur = o.current
+      const h = st.current.handle
+      if (!h) return
+      if (h.project) cur.onProjectTrim?.(h.clipId, h.edge, timeAt(x), phase)
+      else {
+        const clip = originalClip.current
+        if (clip) cur.onUpdateClip?.(resizeClip(clip, h.edge, timeAt(x), cur.duration))
+      }
+    }
     const cancelGesture = (): void => {
+      stopFrame()
+      const cur = o.current
       const restore = cancelRestore(st.current, originalClip.current)
+      const h = st.current.handle
+      if (h?.project) cur.onProjectTrim?.(h.clipId, h.edge, 0, 'cancel')
+      if (scrubStart.current) {
+        const original = scrubStart.current
+        cur.onSeek(original.time)
+        cur.onAutoScroll(() => original.view)
+        cur.onScrubEnd?.(true)
+      }
+      scrubStart.current = null
       apply({ type: 'cancel' })
       originalClip.current = null
       panStart.current = null
-      setBox(null)
-      setCursor(spaceHeld() ? 'grab' : 'pointer')
-      if (restore) o.current.onUpdateClip?.(restore)
+      setInteracting(false)
+      setCursor(bladeRef.current.enabled ? 'crosshair' : 'pointer')
+      if (restore) cur.onUpdateClip?.(restore)
     }
+    cancelGestureRef.current = cancelGesture
     const onMove = (e: MouseEvent): void => {
       if (st.current.phase === 'idle') return
       if (shouldCancel(st.current.phase, { type: 'move', buttons: e.buttons })) return cancelGesture()
       const { x, y } = local(e.clientX, e.clientY)
+      pointer.current = { clientX: e.clientX, clientY: e.clientY }
       apply({ type: 'move', x, y })
       const cur = o.current
-      const s = st.current
-      if (s.phase === 'pan' && panStart.current) {
+      if (st.current.phase === 'pan' && panStart.current) {
         const dt = ((panStart.current.clientX - e.clientX) / Math.max(1, cur.view.width)) * cur.view.span
         const target = panStart.current.start + dt
         cur.setView((v) => pan(v, target - v.start))
-      } else if (s.phase === 'handle' && s.handle && cur.onUpdateClip) {
-        const clip = cur.clips.find((c) => c.id === s.handle!.clipId)
-        if (clip) cur.onUpdateClip(resizeClip(clip, s.handle.edge, xToTime(x, cur.view), cur.duration))
-      } else if (s.phase === 'box') {
-        setBox({ x0: s.x0, x1: x })
+      } else if (st.current.phase === 'handle') updateHandle(x, 'preview')
+      else if (st.current.phase === 'scrub') {
+        beginScrub()
+        seekFrame()
       }
     }
     const onUp = (e: MouseEvent): void => {
-      if (st.current.phase === 'idle') return
-      const { x, y } = local(e.clientX, e.clientY)
       const s = st.current
-      const outcome = apply({ type: 'up', x, y })
+      if (s.phase === 'idle' || e.button !== (s.phase === 'pan' ? 1 : 0)) return
+      const { x, y } = local(e.clientX, e.clientY)
       const cur = o.current
-      setBox(null)
+      stopFrame()
+      if (s.phase === 'handle') updateHandle(x, 'commit')
+      const outcome = apply({ type: 'up', x, y })
       panStart.current = null
-      setCursor(spaceHeld() ? 'grab' : 'pointer')
-      if (outcome === 'box') {
-        const t1 = Math.min(downT.current, xToTime(x, cur.view))
-        const t2 = Math.max(downT.current, xToTime(x, cur.view))
-        cur.onBoxSelect?.(boxSelect(cur.events, t1, t2, cur.filter), t1, t2, s.shift)
+      originalClip.current = null
+      setInteracting(false)
+      setCursor(bladeRef.current.enabled ? 'crosshair' : 'pointer')
+      if (outcome === 'scrub') {
+        cur.onSeek(timeAt(x))
+        scrubStart.current = null
+        cur.onScrubEnd?.(false)
       } else if (outcome === 'click') {
         const L = cur.layoutRef.current
         const inZone = s.y0 >= ITEM_HIT_Y[0] && s.y0 <= ITEM_HIT_Y[1]
@@ -387,23 +439,31 @@ export function useTimelineInteractions(opts: InteractionOptions): InteractionRe
           if (s.shift) cur.onToggleSelect?.(ev.id)
           else if (cur.onSelectEvent) cur.onSelectEvent(ev)
           else cur.onSeek(Math.max(0, ev.t - cur.seekBefore))
-        } else if (hit) {
-          cur.setView((v) => zoomToCluster(hit, v))
-        } else {
-          cur.onSeek(Math.max(0, Math.min(cur.duration, xToTime(s.x0, cur.view))))
-        }
+        } else if (hit) cur.setView((v) => zoomToCluster(hit, v))
+        else cur.onSeek(timeAt(s.x0))
       }
     }
-    const onBlur = (): void => {
-      arbRef.current = idleArbiter
-      if (shouldCancel(st.current.phase, { type: 'blur' })) cancelGesture()
-      else setCursor('pointer')
+    const leavePreview = (): void => {
+      stopFrame()
+      applyBlade({ type: 'leave' })
+      o.current.onHoverSeek?.(null)
+      setTip(null)
     }
-    const detachEsc = attachGestureEscape(
-      window,
-      () => (shouldCancel(st.current.phase, { type: 'escape' }) ? st.current.phase : 'idle'),
-      cancelGesture
-    )
+    const onBlur = (): void => {
+      if (shouldCancel(st.current.phase, { type: 'blur' })) cancelGesture()
+      leavePreview()
+    }
+    const detachEsc = attachGestureEscape(window,
+      () => st.current.phase !== 'idle' ? st.current.phase
+        : bladeRef.current.enabled && !o.current.disabled ? 'pressed' : 'idle',
+      () => {
+        if (st.current.phase !== 'idle') return cancelGesture()
+        applyBlade({ type: 'escape' })
+        if (!bladeRef.current.enabled) {
+          leavePreview()
+          o.current.onBladeModeChange?.(false)
+        }
+      })
     window.addEventListener('mousemove', onMove)
     window.addEventListener('mouseup', onUp)
     window.addEventListener('blur', onBlur)
@@ -412,35 +472,36 @@ export function useTimelineInteractions(opts: InteractionOptions): InteractionRe
       window.removeEventListener('mouseup', onUp)
       window.removeEventListener('blur', onBlur)
       detachEsc()
+      stopFrame()
+      if (scrubStart.current) {
+        o.current.onSeek(scrubStart.current.time)
+        o.current.onScrubEnd?.(true)
+      }
+      const h = st.current.handle
+      if (h?.project) o.current.onProjectTrim?.(h.clipId, h.edge, 0, 'cancel')
+      o.current.onHoverSeek?.(null)
     }
-  }, [apply, local])
+  }, [apply, applyBlade, beginScrub, local, seekFrame, stopFrame])
 
-  // 空白鍵仲裁（spec §3.2.2）：游標在時間軸內或時間軸聚焦時接管 Space（實作見 attachSpaceArbiter）。
-  useEffect(
-    () =>
-      attachSpaceArbiter(window, {
-        isActive: () => insideRef.current || document.activeElement === o.current.wrapRef.current,
-        onPlay: () => o.current.onPlayToggle?.(),
-        getArbiter: () => arbRef.current,
-        setArbiter: (a) => {
-          arbRef.current = a
-        },
-        onHold: () => {
-          if (st.current.phase === 'idle') setCursor('grab')
-        },
-        onRelease: () => {
-          if (st.current.phase === 'idle') setCursor('pointer')
-        }
-      }),
-    []
-  )
+  useEffect(() => {
+    if ((opts.bladeMode || opts.disabled) && st.current.phase !== 'idle') cancelGestureRef.current()
+    applyBlade({ type: 'enable', enabled: !!opts.bladeMode })
+    if (!opts.bladeMode || opts.disabled) {
+      stopFrame()
+      if (opts.disabled) applyBlade({ type: 'leave' })
+      o.current.onHoverSeek?.(null)
+      if (!opts.bladeMode) setCursor('pointer')
+      setTip(null)
+    }
+  }, [opts.bladeMode, opts.disabled, applyBlade, stopFrame])
 
-  // 滾輪：Ctrl＝縮放（錨點為游標）；已放大時＝平移。需 passive:false 才能 preventDefault
+  // 滾輪：Ctrl＝縮放（錨點為游標）；已放大時＝平移。
   useEffect(() => {
     const el = opts.wrapRef.current
     if (!el) return
     const onWheel = (e: WheelEvent): void => {
       const cur = o.current
+      if (cur.disabled || st.current.phase !== 'idle') return
       const { x } = local(e.clientX, e.clientY)
       if (e.ctrlKey) {
         e.preventDefault()
@@ -450,38 +511,47 @@ export function useTimelineInteractions(opts: InteractionOptions): InteractionRe
         else cur.setView((v) => zoom(v, factor, anchor))
       } else if (cur.view.span < cur.view.duration) {
         e.preventDefault()
-        const dt = (e.deltaY / 100) * cur.view.span * 0.15
-        cur.setView((v) => pan(v, dt))
+        cur.setView((v) => pan(v, (e.deltaY / 100) * v.span * 0.15))
       }
     }
     el.addEventListener('wheel', onWheel, { passive: false })
     return () => el.removeEventListener('wheel', onWheel)
   }, [opts.wrapRef, local])
 
-  const onMouseMove = useCallback(
-    (e: ReactMouseEvent<HTMLElement>) => {
-      insideRef.current = true
-      if (st.current.phase !== 'idle') return
-      const { x, y } = local(e.clientX, e.clientY)
-      const cur = o.current
+  const onMouseMove = useCallback((e: ReactMouseEvent<HTMLElement>): void => {
+    if (st.current.phase !== 'idle' || o.current.disabled) return
+    const { x, y } = local(e.clientX, e.clientY)
+    const cur = o.current
+    let text: string | null
+    if (bladeRef.current.enabled) {
+      pointer.current = { clientX: e.clientX, clientY: e.clientY }
+      applyBlade({ type: 'move', t: timeAt(x) })
+      seekFrame()
+      text = formatTime(timeAt(x))
+      setCursor('crosshair')
+    } else {
       const clip = clipAt(cur.clips, cur.view, x, y)
-      setHoverClipId(clip ? clip.id : null)
-      const handle = handleAt(cur.clips, cur.view, x, y, cur.height)
-      setCursor(spaceHeld() ? 'grab' : handle ? 'ew-resize' : 'pointer')
-      const text = tooltipAt(cur.layoutRef.current, x, y)
-      const next = text ? { x: Math.min(x + 10, Math.max(0, cur.view.width - 260)), y: Math.max(y - 34, 24), text } : null
-      setTip((prev) => (tipChanged(prev, next) ? next : prev))
-    },
-    [local]
-  )
-
-  const onMouseLeave = useCallback(() => {
-    insideRef.current = false
-    if (st.current.phase === 'idle') {
-      setHoverClipId(null)
-      setTip(null)
+      setHoverClipId(clip?.id ?? null)
+      const handle = projectHandle(x, y) ?? handleAt(cur.clips, cur.view, x, y, cur.height)
+      const headX = timeToX(playheadTarget({ playing: cur.playing, time: cur.currentTime, getTime: cur.getPlayTime }), cur.view)
+      setCursor(handle ? 'ew-resize' : Math.abs(x - headX) <= HANDLE_HIT_PX ? 'grab' : 'pointer')
+      text = tooltipAt(cur.layoutRef.current, x, y)
     }
-  }, [])
+    const next = text ? { x: Math.min(x + 10, Math.max(0, cur.view.width - 260)), y: Math.max(y - 34, 24), text } : null
+    setTip((prev) => tipChanged(prev, next) ? next : prev)
+  }, [applyBlade, local, seekFrame])
 
-  return { onMouseDown, onMouseMove, onMouseLeave, box, hoverClipId, cursor, tip }
+  const onMouseLeave = useCallback((): void => {
+    if (bladeRef.current.enabled) {
+      stopFrame()
+      applyBlade({ type: 'leave' })
+      o.current.onHoverSeek?.(null)
+    }
+    if (st.current.phase !== 'idle') return
+    setHoverClipId(null)
+    setTip(null)
+  }, [applyBlade, stopFrame])
+
+  return { onMouseDown, onMouseMove, onMouseLeave, interacting, blade, hoverClipId,
+    cursor: blade.enabled && st.current.phase === 'idle' ? 'crosshair' : cursor, tip }
 }

@@ -62,6 +62,16 @@ describe('resolveKey 矩陣', () => {
     expect(resolveKey(k('q', { ctrlKey: true }), ctx({ target: 'native' }))).toBe('quickOrSplit')
   })
 
+  test('B toggles blade mode or splits; modifiers, controls and overlays keep their own behavior', () => {
+    expect(resolveKey(k('b'), ctx({ mode: 'source' }))).toBe('quickOrSplit')
+    expect(resolveKey(k('b'), ctx({ mode: 'project' }))).toBe('quickOrSplit')
+    expect(resolveKey(k('b', { repeat: true }), ctx())).toBeNull()
+    expect(resolveKey(k('b'), ctx({ target: 'text' }))).toBeNull()
+    expect(resolveKey(k('b'), ctx({ target: 'native' }))).toBeNull()
+    expect(resolveKey(k('b'), ctx({ overlayOpen: true }))).toBeNull()
+    expect(resolveKey(k('b', { ctrlKey: true }), ctx())).toBe('toggleAside')
+  })
+
   test('Alt+ArrowLeft/Right only in proj zone', () => {
     expect(resolveKey(k('ArrowLeft', { altKey: true }), ctx({ zone: 'proj' }))).toBe('moveItemLeft')
     expect(resolveKey(k('ArrowRight', { altKey: true }), ctx({ zone: 'proj' }))).toBe('moveItemRight')

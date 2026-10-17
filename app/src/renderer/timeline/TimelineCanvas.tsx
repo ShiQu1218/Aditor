@@ -5,10 +5,10 @@ import { Clip, EngineEvent, EventType, SpecInterval } from '../../shared/types'
 import { View, TimelineZoom, ZoomMode, maxCustomZoom, pan, resizeTimeline, setCustomZoom, setZoomMode, updateTimelineView, zoomTimeline } from './model'
 import { i18n } from '../i18n/zh-TW'
 import { layoutTimeline, TimelineLayout } from './layout'
-import { createRedrawScheduler, DrawModel, drawTimeline, readTheme } from './draw'
+import { createRedrawScheduler, DrawModel, drawTimeline, readTheme, resetThemeCache } from './draw'
 import { Playhead, playheadTarget } from './Playhead'
 import { TimelineScrollbar } from './TimelineScrollbar'
-import { useTimelineInteractions } from './useTimelineInteractions'
+import { useTimelineInteractions, type InteractionOptions } from './useTimelineInteractions'
 
 /** 命令式時間軸操作（keymap 的 Ctrl +/−/0 由外層呼叫）。 */
 export interface TimelineHandle {
@@ -17,7 +17,9 @@ export interface TimelineHandle {
   zoomReset: () => void
 }
 
-interface TimelineCanvasProps {
+interface TimelineCanvasProps extends Pick<InteractionOptions,
+  'projectItem' | 'onProjectTrim' | 'onScrubStart' | 'onScrubEnd' | 'onHoverSeek' |
+  'bladeMode' | 'onBladeModeChange' | 'onBladeRange' | 'onBladeTooShort' | 'disabled'> {
   duration: number
   currentTime: number
   events: EngineEvent[]
@@ -36,12 +38,9 @@ interface TimelineCanvasProps {
   /** 點事件圖示時 seek 到 t - seekBefore（預設 8 秒；僅在未提供 onSelectEvent 時使用） */
   seekBefore?: number
   onToggleSelect?: (id: string) => void
-  onBoxSelect?: (ids: string[], t1: number, t2: number, additive: boolean) => void
   /** 播放中以 rAF 讀取目前時間（例如 video.currentTime），播放頭不經 React 重繪 */
   getPlayTime?: () => number
   playing?: boolean
-  /** 空白鍵輕按（未平移）＝切換播放 */
-  onPlayToggle?: () => void
 }
 
 const EMPTY_SET: Set<string> = new Set()
@@ -66,10 +65,18 @@ export const TimelineCanvas = React.forwardRef<TimelineHandle, TimelineCanvasPro
     activeClipId = null,
     seekBefore = 8,
     onToggleSelect,
-    onBoxSelect,
+    projectItem,
+    onProjectTrim,
+    onScrubStart,
+    onScrubEnd,
+    onHoverSeek,
+    bladeMode,
+    onBladeModeChange,
+    onBladeRange,
+    onBladeTooShort,
+    disabled,
     getPlayTime,
-    playing,
-    onPlayToggle
+    playing
   }: TimelineCanvasProps,
   ref
 ): JSX.Element {
@@ -126,24 +133,6 @@ export const TimelineCanvas = React.forwardRef<TimelineHandle, TimelineCanvasPro
     [changeZoom]
   )
 
-  // 細節視窗隨 seek／播放頭移動；播放時直接讀即時時間，避免 timeupdate 落後
-  useEffect(() => {
-    if (mode !== 'detail') return
-    setZoomState((state) => setZoomMode(state, 'detail', playheadTarget(playback.current)))
-  }, [mode, currentTime, playing])
-  const hasPlayTime = !!getPlayTime
-  useEffect(() => {
-    if (mode !== 'detail' || !playing || !hasPlayTime) return
-    let id = 0
-    const tick = (): void => {
-      setZoomState((state) => state.mode === 'detail'
-        ? setZoomMode(state, 'detail', playheadTarget(playback.current)) : state)
-      id = requestAnimationFrame(tick)
-    }
-    id = requestAnimationFrame(tick)
-    return () => cancelAnimationFrame(id)
-  }, [mode, playing, hasPlayTime])
-
   const layout = useMemo(() => layoutTimeline(events, view, filter), [events, view, filter])
   const layoutRef = useRef<TimelineLayout>(layout)
   layoutRef.current = layout
@@ -157,16 +146,46 @@ export const TimelineCanvas = React.forwardRef<TimelineHandle, TimelineCanvasPro
     height,
     layoutRef,
     clips,
-    events,
-    filter,
     seekBefore,
+    currentTime,
+    getPlayTime,
+    playing,
     onSeek,
     onSelectEvent,
     onToggleSelect,
-    onBoxSelect,
+    projectItem,
+    onProjectTrim,
+    onScrubStart,
+    onScrubEnd,
+    onHoverSeek,
+    bladeMode,
+    onBladeModeChange,
+    onBladeRange,
+    onBladeTooShort,
+    disabled,
     onUpdateClip,
-    onPlayToggle
+    onAutoScroll: (update) => setZoomState((state) => ({ ...state, view: update(state.view) }))
   })
+
+  const following = !ix.interacting && ix.blade.hover === null
+
+  // 細節視窗隨 seek／播放頭移動；播放時直接讀即時時間，避免 timeupdate 落後
+  useEffect(() => {
+    if (mode !== 'detail' || !following) return
+    setZoomState((state) => setZoomMode(state, 'detail', playheadTarget(playback.current)))
+  }, [mode, currentTime, playing, following])
+  const hasPlayTime = !!getPlayTime
+  useEffect(() => {
+    if (mode !== 'detail' || !playing || !hasPlayTime || !following) return
+    let id = 0
+    const tick = (): void => {
+      setZoomState((state) => state.mode === 'detail'
+        ? setZoomMode(state, 'detail', playheadTarget(playback.current)) : state)
+      id = requestAnimationFrame(tick)
+    }
+    id = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(id)
+  }, [mode, playing, hasPlayTime, following])
 
   // 低效能模式（設定即時切換）：熱度條降為 60 格並重繪
   const lowPerf = useSyncExternalStore(subscribeLowPerf, isLowPerf, isLowPerf)
@@ -183,7 +202,9 @@ export const TimelineCanvas = React.forwardRef<TimelineHandle, TimelineCanvasPro
     currentId: currentEventId,
     hoverClipId: ix.hoverClipId,
     activeClipId,
-    lowPerf
+    lowPerf,
+    projectItem,
+    blade: ix.blade
   }
 
   const paint = useCallback((): void => {
@@ -205,11 +226,19 @@ export const TimelineCanvas = React.forwardRef<TimelineHandle, TimelineCanvasPro
 
   const scheduler = useMemo(() => createRedrawScheduler(paint), [paint])
   useEffect(() => () => scheduler.dispose(), [scheduler])
+  useEffect(() => {
+    const observer = new MutationObserver(() => {
+      resetThemeCache()
+      scheduler.invalidate()
+    })
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] })
+    return () => observer.disconnect()
+  }, [scheduler])
 
   // 靜態層：只在資料／縮放／尺寸／選取／hover 改變時以 rAF 合併重繪（currentTime 不在其中）
   useEffect(() => {
     scheduler.invalidate()
-  }, [scheduler, view, layout, spectating, clips, selected, currentEventId, ix.hoverClipId, activeClipId, height, lowPerf])
+  }, [scheduler, view, layout, spectating, clips, selected, currentEventId, ix.hoverClipId, activeClipId, height, lowPerf, projectItem, ix.blade])
 
   return (
     <div className="tl-source" data-zone="src">
@@ -255,12 +284,6 @@ export const TimelineCanvas = React.forwardRef<TimelineHandle, TimelineCanvasPro
       >
         <canvas ref={canvasRef} />
         <Playhead time={currentTime} view={view} getTime={getPlayTime} playing={playing} />
-        {ix.box && (
-          <div
-            className="tl-boxsel"
-            style={{ left: Math.min(ix.box.x0, ix.box.x1), width: Math.abs(ix.box.x1 - ix.box.x0) }}
-          />
-        )}
         {ix.tip && (
           <div className="tl-tip" style={{ left: ix.tip.x, top: ix.tip.y }}>
             {ix.tip.text}

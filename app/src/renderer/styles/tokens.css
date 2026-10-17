@@ -55,6 +55,10 @@
   --tl-clip-line: #f6f6f6; /* 已加入／手動：白色實線 2px＋勾選角標 */
   --tl-clip-fill: rgba(255, 255, 255, 0.16);
   --tl-playhead: #ffffff;
+  --tl-project-line: #56d6c5;
+  --tl-project-fill: rgba(86, 214, 197, 0.22);
+  --tl-blade-line: #ffd166;
+  --tl-blade-fill: rgba(255, 209, 102, 0.2);
 
   /* 字型 */
   --font-display: 'Montserrat', 'Noto Sans TC', 'Microsoft JhengHei UI', 'Segoe UI', sans-serif;
@@ -112,4 +116,11 @@
     --dur-fast: 0ms;
     --dur-base: 0ms;
   }
+}
+
+:root[data-theme='light'] {
+  --tl-project-line: #087f73;
+  --tl-project-fill: rgba(8, 127, 115, 0.18);
+  --tl-blade-line: #946000;
+  --tl-blade-fill: rgba(148, 96, 0, 0.18);
 }

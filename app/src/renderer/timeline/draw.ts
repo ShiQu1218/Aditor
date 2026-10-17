@@ -6,6 +6,8 @@ import type { TimelineLayout } from './layout'
 import { View, timeToX } from './model'
 import { heatBinCount } from '../perf/lowPerf'
 import { EVENT_TYPES, SHAPES, glyphPath, shapeFor, shapePath } from './eventShapes'
+import type { BladeState } from './blade'
+import type { ProjectItem } from '../editor/project'
 
 export type Ctx2D = CanvasRenderingContext2D
 
@@ -40,6 +42,10 @@ export interface Theme {
   clipSuggestFill: string
   clipLine: string
   clipFill: string
+  projectLine: string
+  projectFill: string
+  bladeLine: string
+  bladeFill: string
   events: Record<EventType, string>
 }
 
@@ -58,6 +64,8 @@ export interface DrawModel {
   unanalyzed?: SpecInterval[]
   hoverClipId?: string | null
   activeClipId?: string | null
+  projectItem?: ProjectItem | null
+  blade?: BladeState
   /** 低效能模式：熱度條降為 HEAT_BINS_LOWPERF 格 */
   lowPerf?: boolean
 }
@@ -66,7 +74,7 @@ export interface DrawModel {
 
 let cachedTheme: Theme | null = null
 
-/** 僅供測試使用：單一深色主題，執行期不需要因 token 變更而重讀 */
+/** 主題切換與測試時使色票快取失效。 */
 export function resetThemeCache(): void {
   cachedTheme = null
 }
@@ -97,6 +105,10 @@ export function readTheme(getVar: (name: string) => string = defaultGetVar): The
     clipSuggestFill: getVar('--tl-clip-suggest-fill'),
     clipLine: getVar('--tl-clip-line'),
     clipFill: getVar('--tl-clip-fill'),
+    projectLine: getVar('--tl-project-line'),
+    projectFill: getVar('--tl-project-fill'),
+    bladeLine: getVar('--tl-blade-line'),
+    bladeFill: getVar('--tl-blade-fill'),
     events
   }
   return cachedTheme
@@ -262,6 +274,49 @@ function drawClips(g: Ctx2D, m: DrawModel, th: Theme, bot: number): void {
   }
 }
 
+function drawProjectRange(g: Ctx2D, m: DrawModel, th: Theme, bot: number): void {
+  const item = m.projectItem
+  if (!item) return
+  const x0 = timeToX(item.start, m.view)
+  const x1 = timeToX(item.end, m.view)
+  if (x1 < 0 || x0 > m.width) return
+  g.fillStyle = th.projectFill
+  g.fillRect(x0, EVENT_TOP, x1 - x0, bot - EVENT_TOP)
+  g.strokeStyle = th.projectLine
+  g.lineWidth = 2
+  g.setLineDash([])
+  g.strokeRect(x0 + 0.5, EVENT_TOP + 0.5, Math.max(1, x1 - x0), bot - EVENT_TOP - 1)
+  g.fillStyle = th.projectLine
+  g.fillRect(x0 - 2, EVENT_TOP + 6, HANDLE_W, bot - EVENT_TOP - 12)
+  g.fillRect(x1 - 4, EVENT_TOP + 6, HANDLE_W, bot - EVENT_TOP - 12)
+}
+
+function drawBlade(g: Ctx2D, m: DrawModel, th: Theme, bot: number): void {
+  const blade = m.blade
+  if (!blade?.enabled) return
+  const anchor = blade.anchor === null ? null : timeToX(blade.anchor, m.view)
+  const hover = blade.hover === null ? null : timeToX(blade.hover, m.view)
+  if (anchor !== null && hover !== null) {
+    g.fillStyle = th.bladeFill
+    g.fillRect(Math.min(anchor, hover), EVENT_TOP, Math.abs(hover - anchor), bot - EVENT_TOP)
+  }
+  g.strokeStyle = th.bladeLine
+  g.lineWidth = 2
+  for (const x of [anchor, hover]) {
+    if (x === null || x < 0 || x > m.width) continue
+    g.setLineDash(x === anchor ? [] : [4, 3])
+    g.beginPath()
+    g.moveTo(x, 0)
+    g.lineTo(x, bot)
+    g.stroke()
+  }
+  g.setLineDash([])
+  if (anchor !== null && anchor >= 0 && anchor <= m.width) {
+    g.fillStyle = th.bladeLine
+    g.fillRect(anchor - 4, 0, 8, 8)
+  }
+}
+
 function drawDensityEvents(g: Ctx2D, m: DrawModel, th: Theme): void {
   const sel = m.selected
   for (const it of m.layout.items) {
@@ -406,6 +461,8 @@ export function drawTimeline(g: Ctx2D, m: DrawModel, th: Theme): void {
   drawUnanalyzed(g, m, th)
   drawHeat(g, m, th, bot)
   drawClips(g, m, th, bot)
+  drawProjectRange(g, m, th, bot)
   if (m.layout.mode === 'density') drawDensityEvents(g, m, th)
   else drawIconEvents(g, m, th, bot)
+  drawBlade(g, m, th, bot)
 }

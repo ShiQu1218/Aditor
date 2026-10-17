@@ -1,4 +1,4 @@
-/* 時間軸塢（canvas 靜態層＋DOM 播放頭／框選／tooltip）。顏色一律來自 tokens.css */
+/* 時間軸塢（canvas 靜態層＋DOM 播放頭／tooltip）。顏色一律來自 tokens.css */
 .tl-source { min-width: 0; background: var(--tl-bg); }
 .tl-toolbar {
   display: flex;
@@ -85,15 +85,6 @@
   border-top-color: var(--tl-playhead);
   border-bottom: 0;
 }
-.tl-boxsel {
-  position: absolute;
-  top: 38px;
-  bottom: 6px;
-  z-index: 2;
-  pointer-events: none;
-  background: var(--bg-active);
-  border: 1px solid var(--line-strong);
-}
 .tl-tip {
   position: absolute;
   z-index: 6;
@@ -105,4 +96,10 @@
   font-size: var(--fs-small);
   pointer-events: none;
   white-space: nowrap;
+}
+
+.transport .btn-ghost[aria-pressed='true'] {
+  background: var(--tl-blade-fill);
+  color: var(--tl-blade-line);
+  box-shadow: inset 0 0 0 1px var(--tl-blade-line);
 }

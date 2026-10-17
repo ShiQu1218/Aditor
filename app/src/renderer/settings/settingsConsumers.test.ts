@@ -22,7 +22,8 @@ const FIELD_CONSUMERS: Record<string, Array<[string, RegExp]>> = {
   lowPerfAsked: [['renderer/perf/lowPerfPrompt.ts', /lowPerfAsked/]],
   proxySuggest: [['renderer/studio/notices.ts', /proxySuggest/], ['renderer/library/VideoCard.tsx', /proxySuggest/]],
   before: [['renderer/studio/StudioScreen.tsx', /cfg\.before/]],
-  after: [['renderer/studio/StudioScreen.tsx', /cfg\.after/]],
+  // 刀片改用兩點起訖；後秒數只保留舊設定的讀寫相容性。
+  after: [['main/settings.ts', /after: pickNumber\(s\.after/]],
   autoclip: [['renderer/studio/highlights.ts', /settings\.autoclip/], ['renderer/studio/StudioScreen.tsx', /cfg\.autoclip/], ['main/ipc-handlers.ts', /\.autoclip/]],
   autoSuggestOnOpen: [['renderer/studio/highlights.ts', /settings\.autoSuggestOnOpen/]],
   projectAutosave: [['renderer/editor/ProjectProvider.tsx', /projectAutosave/]],

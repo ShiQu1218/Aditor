@@ -1,20 +1,7 @@
 import { describe, it, expect } from 'vitest'
-import { createClipAt, resizeClip } from './clips'
+import { resizeClip } from './clips'
 
 describe('Timeline Clips', () => {
-  it('createClipAt clamps to [0,duration]', () => {
-    // t=2, before=8, after=4, duration=100 -> start clamped to 0, end=6
-    const c1 = createClipAt(2, 8, 4, 100)
-    expect(c1.start).toBe(0)
-    expect(c1.end).toBe(6)
-    expect(c1.origin).toBe('manual')
-
-    // t=98, before=8, after=4, duration=100 -> start=90, end clamped to 100
-    const c2 = createClipAt(98, 8, 4, 100)
-    expect(c2.start).toBe(90)
-    expect(c2.end).toBe(100)
-  })
-
   it('resizeClip enforces minLen and bounds', () => {
     const clip = { id: 'c1', start: 10, end: 20, origin: 'manual' as const, event_ids: [] }
 

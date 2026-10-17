@@ -6,6 +6,7 @@ import { layoutTimeline } from './layout'
 import type { View } from './model'
 import { playheadTarget } from './Playhead'
 import { hitDensity } from './select'
+import { bladeReducer, initialBlade, MIN_BLADE_LENGTH } from './blade'
 import {
   IAction,
   IState,
@@ -13,10 +14,10 @@ import {
   initialInteraction,
   interactionReducer,
   attachGestureEscape,
-  attachSpaceArbiter,
   swallowEscape,
   pointerToX,
   shouldCancel,
+  scrubAutoPan,
   tipChanged,
   tooltipAt
 } from './useTimelineInteractions'
@@ -37,8 +38,57 @@ const ev = (id: string, t: number, over: Partial<EngineEvent> = {}): EngineEvent
 })
 const view: View = { duration: 1000, start: 0, span: 1000, width: 1000 }
 
+describe('bladeReducer', () => {
+  const enabled = bladeReducer(initialBlade, { type: 'enable', enabled: true }).state
+
+  test.each([[30, 45], [45, 30]])('clicks %s then %s sort the range and keep blade mode enabled', (a, b) => {
+    const first = bladeReducer(enabled, { type: 'click', t: a })
+    expect(first.state.anchor).toBe(a)
+    const hover = bladeReducer(first.state, { type: 'move', t: b })
+    expect(hover.state).toMatchObject({ anchor: a, hover: b })
+    const second = bladeReducer(hover.state, { type: 'click', t: b })
+    expect(second.range).toEqual([30, 45])
+    expect(second.state).toEqual({ enabled: true, anchor: null, hover: b })
+    expect(bladeReducer(second.state, { type: 'click', t: 60 }).state.anchor).toBe(60)
+  })
+
+  test('short range retains the anchor; exactly the minimum duration succeeds', () => {
+    const first = bladeReducer(enabled, { type: 'click', t: 30 }).state
+    expect(bladeReducer(first, { type: 'click', t: 30.1 })).toMatchObject({ state: first, tooShort: true })
+    expect(bladeReducer(first, { type: 'click', t: 30 + MIN_BLADE_LENGTH }).range).toEqual([30, 30.5])
+  })
+
+  test('leave hides the hover but preserves the anchor; Esc cancels the anchor before exiting', () => {
+    const first = bladeReducer(enabled, { type: 'click', t: 30 }).state
+    const leave = bladeReducer(first, { type: 'leave' }).state
+    expect(leave).toEqual({ enabled: true, anchor: 30, hover: null })
+    const escape = bladeReducer(leave, { type: 'escape' }).state
+    expect(escape).toEqual(enabled)
+    expect(bladeReducer(escape, { type: 'escape' }).state).toEqual(initialBlade)
+  })
+
+  test('disabled mode ignores pointer input; turning it off clears unfinished work', () => {
+    expect(bladeReducer(initialBlade, { type: 'click', t: 30 }).state).toBe(initialBlade)
+    const first = bladeReducer(enabled, { type: 'click', t: 30 }).state
+    expect(bladeReducer(first, { type: 'enable', enabled: false }).state).toEqual(initialBlade)
+  })
+})
+
+describe('scrub auto scroll', () => {
+  const detail = { ...view, start: 100, span: 30 }
+  test('only the edge scrolls, and both ends clamp to the source bounds', () => {
+    expect(scrubAutoPan(detail, 500)).toBe(detail)
+    expect(scrubAutoPan(view, 1000)).toBe(view)
+    expect(scrubAutoPan(detail, 0).start).toBeLessThan(100)
+    expect(scrubAutoPan(detail, 1000).start).toBeGreaterThan(100)
+    expect(scrubAutoPan({ ...detail, start: 0 }, -100).start).toBe(0)
+    expect(scrubAutoPan({ ...detail, start: 970 }, 1100).start).toBe(970)
+    expect(scrubAutoPan({ ...detail, width: 0 }, 0).start).toBe(100)
+  })
+})
+
 describe('gesture cancellation', () => {
-  const down = { type: 'down', x: 100, y: 60, button: 0, shift: false, space: false } as const
+  const down = { type: 'down', x: 100, y: 60, button: 0, shift: false } as const
   const run = (actions: IAction[]): { state: IState; outcome: string | null } => {
     let state = initialInteraction
     let outcome: string | null = null
@@ -51,7 +101,7 @@ describe('gesture cancellation', () => {
   }
 
   test('shouldCancel: blur / Escape cancel any active gesture, never idle', () => {
-    for (const phase of ['pressed', 'box', 'pan', 'handle'] as const) {
+    for (const phase of ['pressed', 'scrub', 'pan', 'handle'] as const) {
       expect(shouldCancel(phase, { type: 'blur' })).toBe(true)
       expect(shouldCancel(phase, { type: 'escape' })).toBe(true)
     }
@@ -60,13 +110,13 @@ describe('gesture cancellation', () => {
   })
 
   test('shouldCancel: move with no buttons pressed cancels an active gesture', () => {
-    expect(shouldCancel('box', { type: 'move', buttons: 0 })).toBe(true)
+    expect(shouldCancel('scrub', { type: 'move', buttons: 0 })).toBe(true)
     expect(shouldCancel('pan', { type: 'move', buttons: 0 })).toBe(true)
-    expect(shouldCancel('box', { type: 'move', buttons: 1 })).toBe(false)
+    expect(shouldCancel('scrub', { type: 'move', buttons: 1 })).toBe(false)
     expect(shouldCancel('idle', { type: 'move', buttons: 0 })).toBe(false)
   })
 
-  test('blur mid-box: idle afterwards, plain moves do not box-select, later up fires nothing', () => {
+  test('blur mid-scrub: idle afterwards, plain moves do not seek, later up fires nothing', () => {
     const r = run([down, { type: 'move', x: 160, y: 60 }, { type: 'cancel' }, { type: 'move', x: 300, y: 60 }])
     expect(r.state.phase).toBe('idle')
     const u = run([down, { type: 'move', x: 160, y: 60 }, { type: 'cancel' }, { type: 'up', x: 300, y: 60 }])
@@ -74,9 +124,9 @@ describe('gesture cancellation', () => {
   })
 
   test('blur mid-pan: idle afterwards and up is ignored', () => {
-    const r = run([{ ...down, space: true }, { type: 'move', x: 150, y: 60 }, { type: 'cancel' }])
+    const r = run([{ ...down, button: 1 }, { type: 'move', x: 150, y: 60 }, { type: 'cancel' }])
     expect(r.state.phase).toBe('idle')
-    expect(run([{ ...down, space: true }, { type: 'cancel' }, { type: 'up', x: 1, y: 1 }]).outcome).toBeNull()
+    expect(run([{ ...down, button: 1 }, { type: 'cancel' }, { type: 'up', x: 1, y: 1 }]).outcome).toBeNull()
   })
 
   test('mouseup outside after pressed (cancelled by the next move): no seek', () => {
@@ -176,14 +226,14 @@ describe('Escape swallowing', () => {
 
   test('swallowEscape is true only for non-idle phases', () => {
     expect(swallowEscape('idle')).toBe(false)
-    for (const p of ['pressed', 'box', 'pan', 'handle'] as const) expect(swallowEscape(p)).toBe(true)
+    for (const p of ['pressed', 'scrub', 'pan', 'handle'] as const) expect(swallowEscape(p)).toBe(true)
   })
 
   test('with a gesture active, Escape cancels it and never reaches the global keymap', () => {
     const { win, press } = fakeWindow()
     const closeOverlay = vi.fn()
     attachKeymap(win as Window, () => ({ handlers: { closeOverlay }, screen: 'studio', mode: 'source', overlayOpen: true }))
-    let phase: IState['phase'] = 'box'
+    let phase: IState['phase'] = 'scrub'
     const cancel = vi.fn(() => {
       phase = 'idle'
     })
@@ -226,7 +276,7 @@ describe('Escape swallowing', () => {
     for (const opts of [{ isComposing: true }, { keyCode: 229 }]) {
       const { win, press } = fakeWindow()
       const cancel = vi.fn()
-      attachGestureEscape(win, () => 'box', cancel)
+      attachGestureEscape(win, () => 'scrub', cancel)
       const e = press('Escape', opts)
       expect(cancel).not.toHaveBeenCalled()
       expect(e.defaultPrevented).toBe(false)
@@ -235,7 +285,7 @@ describe('Escape swallowing', () => {
 
   test('after a real Escape cancels the gesture, the next Escape passes through', () => {
     const { win, press } = fakeWindow()
-    let phase: IState['phase'] = 'box'
+    let phase: IState['phase'] = 'scrub'
     const cancel = vi.fn(() => {
       phase = 'idle'
     })
@@ -258,79 +308,5 @@ describe('playheadTarget hardening', () => {
     expect(playheadTarget({ playing: true, time: 7, getTime: () => NaN })).toBe(7)
     expect(playheadTarget({ playing: true, time: 7, getTime: () => Infinity })).toBe(7)
     expect(playheadTarget({ playing: true, time: 7, getTime: () => 0 })).toBe(0)
-  })
-})
-
-describe('Space on the timeline plays/pauses exactly once (keydown keymap vs keyup arbiter)', () => {
-  type L = (e: KeyboardEvent) => void
-  function fakeWindow() {
-    const l: Record<string, { cap: L[]; bub: L[] }> = { keydown: { cap: [], bub: [] }, keyup: { cap: [], bub: [] } }
-    const win = {
-      addEventListener: (t: string, fn: L, capture?: boolean) => void l[t][capture ? 'cap' : 'bub'].push(fn),
-      removeEventListener: (t: string, fn: L, capture?: boolean) => {
-        const a = l[t][capture ? 'cap' : 'bub']
-        a.splice(a.indexOf(fn), 1)
-      }
-    } as unknown as Pick<Window, 'addEventListener' | 'removeEventListener'>
-    const fire = (type: 'keydown' | 'keyup', target: unknown = null): void => {
-      const e = {
-        type,
-        key: ' ',
-        code: 'Space',
-        keyCode: 32,
-        isComposing: false,
-        repeat: false,
-        ctrlKey: false,
-        metaKey: false,
-        altKey: false,
-        shiftKey: false,
-        target,
-        defaultPrevented: false,
-        preventDefault() {
-          e.defaultPrevented = true
-        },
-        stopPropagation() {}
-      }
-      for (const fn of [...l[type].cap, ...l[type].bub]) fn(e as unknown as KeyboardEvent)
-    }
-    return { win, fire }
-  }
-
-  test.each(['keymap registered first', 'arbiter registered first'])('%s: one tap toggles once', (order) => {
-    const { win, fire } = fakeWindow()
-    const toggle = vi.fn()
-    const mountKeymap = (): (() => void) =>
-      attachKeymap(win as Window, () => ({ handlers: { play: toggle }, screen: 'studio', mode: 'source', overlayOpen: false }))
-    const mountArbiter = (): (() => void) => attachSpaceArbiter(win, { isActive: () => true, onPlay: toggle })
-    if (order === 'keymap registered first') {
-      mountKeymap()
-      mountArbiter()
-    } else {
-      mountArbiter()
-      mountKeymap()
-    }
-    fire('keydown')
-    fire('keyup')
-    expect(toggle).toHaveBeenCalledTimes(1)
-  })
-
-  test('inactive arbiter leaves Space to the keymap (keydown plays, keyup does nothing)', () => {
-    const { win, fire } = fakeWindow()
-    const toggle = vi.fn()
-    attachKeymap(win as Window, () => ({ handlers: { play: toggle }, screen: 'studio', mode: 'source', overlayOpen: false }))
-    attachSpaceArbiter(win, { isActive: () => false, onPlay: toggle })
-    fire('keydown')
-    fire('keyup')
-    expect(toggle).toHaveBeenCalledTimes(1)
-  })
-
-  test('Space on a native control (a focused button) is left alone', () => {
-    const { win, fire } = fakeWindow()
-    const toggle = vi.fn()
-    attachSpaceArbiter(win, { isActive: () => true, onPlay: toggle })
-    const button = { tagName: 'BUTTON', getAttribute: () => null }
-    fire('keydown', button)
-    fire('keyup', button)
-    expect(toggle).not.toHaveBeenCalled()
   })
 })
