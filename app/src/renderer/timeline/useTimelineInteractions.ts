@@ -251,6 +251,7 @@ export interface InteractionOptions {
   wrapRef: RefObject<HTMLDivElement>
   view: View
   setView: (fn: (v: View) => View) => void
+  onZoom?: (factor: number, anchor: number) => void
   duration: number
   height: number
   layoutRef: MutableRefObject<TimelineLayout>
@@ -444,7 +445,9 @@ export function useTimelineInteractions(opts: InteractionOptions): InteractionRe
       if (e.ctrlKey) {
         e.preventDefault()
         const anchor = xToTime(x, cur.view)
-        cur.setView((v) => zoom(v, e.deltaY < 0 ? 0.7 : 1.4, anchor))
+        const factor = e.deltaY < 0 ? 0.7 : 1.4
+        if (cur.onZoom) cur.onZoom(factor, anchor)
+        else cur.setView((v) => zoom(v, factor, anchor))
       } else if (cur.view.span < cur.view.duration) {
         e.preventDefault()
         const dt = (e.deltaY / 100) * cur.view.span * 0.15

@@ -7,7 +7,17 @@ import {
   pan,
   heatmap,
   hitTestEvent,
-  nextEvent
+  nextEvent,
+  DETAIL_SPAN,
+  TimelineZoom,
+  maxCustomZoom,
+  resizeTimeline,
+  scrollStartAt,
+  setCustomZoom,
+  setZoomMode,
+  timelineScroll,
+  updateTimelineView,
+  zoomTimeline
 } from './model'
 import { EngineEvent, EventType } from '../../shared/types'
 
@@ -110,5 +120,94 @@ describe('Timeline Model', () => {
 
     const allTypes = new Set<EventType>(['knock', 'assist_knock'])
     expect(nextEvent(events, 10, 1, allTypes)?.id).toBe('2')
+  })
+})
+
+describe('Timeline zoom modes', () => {
+  const full = (duration = 600): TimelineZoom => ({
+    mode: 'full', customZoom: 1,
+    view: { duration, start: 0, span: duration, width: 1000 }
+  })
+
+  it('full extent fills the viewport and ignores panning', () => {
+    const state = setZoomMode(setCustomZoom(full(), 4, 300), 'full', 300)
+    expect(state.view).toEqual(full().view)
+    expect(updateTimelineView(state, (v) => pan(v, 100))).toBe(state)
+    expect(timelineScroll(state.view)).toEqual({ left: 0, width: 1000, maxStart: 0 })
+    expect(scrollStartAt(state.view, 800, 0)).toBe(0)
+  })
+
+  it('detail keeps a fixed 30-second window centred on the playhead and clamps at the ends', () => {
+    const detail = setZoomMode(full(), 'detail', 300)
+    expect(detail.view.span).toBe(DETAIL_SPAN)
+    expect(detail.view.start).toBe(285)
+    expect(setZoomMode(detail, 'detail', 400).view.start).toBe(385)
+    expect(setZoomMode(detail, 'detail', 2).view.start).toBe(0)
+    expect(setZoomMode(detail, 'detail', 599).view.start).toBe(570)
+    expect(setZoomMode(detail, 'detail', 300)).toBe(detail)
+  })
+
+  it('switching modes preserves the custom multiplier', () => {
+    const custom = setCustomZoom(full(), 8, 300)
+    expect(custom.view.span).toBe(75)
+    const detail = setZoomMode(setZoomMode(custom, 'full', 400), 'detail', 400)
+    expect(detail.customZoom).toBe(8)
+    const restored = setZoomMode(detail, 'custom', 400)
+    expect(restored.mode).toBe('custom')
+    expect(restored.view.span).toBe(75)
+    expect(restored.view.start).toBe(362.5)
+  })
+
+  it('manual zoom enters custom mode, keeps the pointer anchor and clamps the multiplier', () => {
+    const state = zoomTimeline(full(), 0.5, 150)
+    expect(state.mode).toBe('custom')
+    expect(timeToX(150, state.view)).toBe(timeToX(150, full().view))
+    expect(state.customZoom).toBe(2)
+    expect(setCustomZoom(state, 1000, 150).view.span).toBe(10)
+    expect(setCustomZoom(state, -1, 150).view.span).toBe(600)
+    expect(zoomTimeline(full(), 2, 300).mode).toBe('custom')
+  })
+
+  it('manual pan and cluster zoom enter custom mode without changing unrelated view data', () => {
+    const detail = setZoomMode(full(), 'detail', 300)
+    const panned = updateTimelineView(detail, (v) => pan(v, 20))
+    expect(panned.mode).toBe('custom')
+    expect(panned.view.start).toBe(305)
+    expect(panned.view.span).toBe(30)
+    expect(panned.customZoom).toBe(20)
+    const clustered = updateTimelineView(full(), (v) => ({ ...v, start: 200, span: 20 }))
+    expect(clustered.customZoom).toBe(30)
+  })
+
+  it('scroll thumb reflects visible proportion and supports dragging with an arbitrary grab offset', () => {
+    const view = setCustomZoom(full(), 4, 300).view
+    expect(timelineScroll(view)).toEqual({ left: 375, width: 250, maxStart: 450 })
+    expect(scrollStartAt(view, 500, 25)).toBe(285)
+    expect(scrollStartAt(view, -500, 25)).toBe(0)
+    expect(scrollStartAt(view, 2000, 25)).toBe(450)
+    expect(scrollStartAt({ ...view, width: 0 }, 500, 25)).toBe(view.start)
+  })
+
+  it('resize and duration changes preserve modes and custom magnification within bounds', () => {
+    const custom = setCustomZoom(full(), 4, 300)
+    const resized = resizeTimeline(custom, 1200, 800, 300)
+    expect(resized.mode).toBe('custom')
+    expect(resized.view.span).toBe(300)
+    expect(resized.customZoom).toBe(4)
+    expect(resizeTimeline(custom, 20, 800, 300).view).toEqual({ duration: 20, width: 800, span: 10, start: 10 })
+    expect(resizeTimeline(full(), 1200, 800, 300).view.span).toBe(1200)
+    expect(resizeTimeline(setZoomMode(full(), 'detail', 300), 1200, 800, 500).view.start).toBe(485)
+    expect(resizeTimeline(custom, 600, 1000, 300)).toBe(custom)
+  })
+
+  it('short or zero-duration sources remain finite and cannot scroll beyond the source', () => {
+    expect(maxCustomZoom(0)).toBe(1)
+    const state = resizeTimeline(full(), 0, 0, 0)
+    for (const mode of ['full', 'detail', 'custom'] as const) {
+      const next = setZoomMode(state, mode, 300)
+      expect(next.view).toEqual({ duration: 1, width: 0, span: 1, start: 0 })
+      expect(timelineScroll(next.view)).toEqual({ left: 0, width: 0, maxStart: 0 })
+    }
+    expect(zoomTimeline(full(5), 0.01, 2).view.span).toBe(5)
   })
 })

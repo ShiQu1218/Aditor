@@ -28,7 +28,6 @@ const theme: Theme = {
   text1: 'T_text1',
   text2: 'T_text2',
   text3: 'T_text3',
-  raised: 'T_raised',
   popover: 'T_popover',
   onShape: 'T_onShape',
   spectatingFill: 'T_specFill',
@@ -173,6 +172,58 @@ describe('drawTimeline', () => {
     const fills = calls.filter((c) => c.name === 'fill').map((c) => c.fillStyle)
     expect(fills).toEqual(expect.arrayContaining(['C_knock', 'C_elim', 'C_wipe']))
     expect(SHAPES.squad_wipe.shape).toBe('star')
+  })
+
+  test('density ticks retain every banner colour and uncounted opacity', () => {
+    const types = Object.keys(SHAPES) as EventType[]
+    const events = types.map((type, i) => ev(String(i), 100 + i * 150, { type, counted: i !== 1 }))
+    const m = model(events, {}, { ...view, width: 30 })
+    expect(m.layout.mode).toBe('density')
+    const { ctx, calls } = makeCtx()
+    drawTimeline(ctx, m, theme)
+    const ticks = calls.filter((c) => c.name === 'fillRect' && c.args[2] === 2 && c.args[3] === 10)
+    expect(ticks.map((c) => c.fillStyle)).toEqual(types.map((type) => theme.events[type]))
+    expect(ticks.map((c) => c.globalAlpha)).toEqual([1, 0.65, 1, 1, 1])
+  })
+
+  test('a single-type cluster uses its banner colour for the pill and counted bar', () => {
+    const { ctx, calls } = makeCtx()
+    drawTimeline(ctx, model([ev('a', 300, { type: 'assist_elim' }), ev('b', 305, { type: 'assist_elim' })]), theme)
+    const pill = calls.filter((c) => c.name === 'fillRect' && c.args[3] === 20)
+    expect(pill).toHaveLength(1)
+    expect(pill[0].fillStyle).toBe('C_ae')
+    const bar = calls.filter((c) => c.name === 'fillRect' && c.args[1] === 80 && c.args[3] === 2)
+    expect(bar).toHaveLength(1)
+    expect(bar[0].fillStyle).toBe('C_ae')
+  })
+
+  test('mixed clusters split colours in proportion to type counts; the bar counts only included events', () => {
+    const events = [ev('a', 300), ev('b', 303), ev('c', 306, { type: 'assist_knock', counted: false })]
+    const { ctx, calls } = makeCtx()
+    drawTimeline(ctx, model(events, { selected: new Set(['c']) }), theme)
+    const pill = calls.filter((c) => c.name === 'fillRect' && c.args[3] === 20)
+    expect(pill.map((c) => c.fillStyle)).toEqual(['C_knock', 'C_ak'])
+    expect(pill[0].args[2] as number).toBeCloseTo((pill[1].args[2] as number) * 2)
+    expect(pill.map((c) => c.globalAlpha)).toEqual([1, 0.65])
+    const bar = calls.filter((c) => c.name === 'fillRect' && c.args[1] === 80 && c.args[3] === 2)
+    expect(bar.map((c) => c.fillStyle)).toEqual(['C_knock'])
+    expect(bar[0].args[2]).toBeCloseTo((28 - 8) * 2 / 3)
+    expect(texts(calls)).toContain('×3')
+    expect(calls.some((c) => c.name === 'roundRect' && c.args[3] === 26)).toBe(true)
+    expect(calls.some((c) => c.name === 'clip')).toBe(true)
+  })
+
+  test('unknown banners use the same fallback colour in density and cluster views', () => {
+    const events = [ev('a', 300, { type: 'future_banner' as EventType }), ev('b', 301)]
+    for (const width of [10, 1000]) {
+      const { ctx, calls } = makeCtx()
+      const v = { ...view, width }
+      const layout = layoutTimeline(events, v, new Set([...ALL, 'future_banner' as EventType]))
+      drawTimeline(ctx, model(events, { layout }, v), theme)
+      const marks = calls.filter((c) => c.name === 'fillRect' && (c.args[3] === 10 || c.args[3] === 20))
+      expect(marks.length).toBeGreaterThan(0)
+      expect(marks.every((c) => c.fillStyle === 'C_knock')).toBe(true)
+    }
   })
 
   test('uncounted events use reduced alpha 0.65 and outline', () => {
@@ -328,7 +379,9 @@ describe('readTheme', () => {
     const b = readTheme(getVar)
     expect(b).toBe(a)
     expect(getVar.mock.calls.length).toBe(calls)
-    expect(a.events.knock).toBe('V--ev-knock')
+    for (const type of Object.keys(SHAPES) as EventType[]) {
+      expect(a.events[type]).toBe('V' + SHAPES[type].colorVar)
+    }
     expect(a.heatRgb).toBe('V--tl-heat')
     resetThemeCache()
   })

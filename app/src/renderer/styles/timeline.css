@@ -1,4 +1,44 @@
 /* 時間軸塢（canvas 靜態層＋DOM 播放頭／框選／tooltip）。顏色一律來自 tokens.css */
+.tl-source { min-width: 0; background: var(--tl-bg); }
+.tl-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-1);
+  padding: var(--sp-1) var(--sp-2);
+  border-bottom: 1px solid var(--line);
+}
+.tl-mode {
+  padding: var(--sp-1) var(--sp-2);
+  border: 1px solid transparent;
+  border-radius: var(--r-xs);
+  background: transparent;
+  color: var(--text-2);
+  font-size: var(--fs-small);
+  cursor: pointer;
+}
+.tl-mode:hover { background: var(--bg-raised); color: var(--text-1); }
+.tl-mode[aria-pressed='true'] { background: var(--bg-active); border-color: var(--line-strong); color: var(--text-1); }
+.tl-custom-zoom { width: 120px; max-width: 100%; margin-left: auto; accent-color: var(--text-1); }
+.tl-scrollbar {
+  position: relative;
+  height: 16px;
+  border-top: 1px solid var(--line);
+  background: var(--bg-app);
+  touch-action: none;
+  user-select: none;
+}
+.tl-scrollbar-thumb {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  border-radius: var(--r-pill);
+  background: var(--text-3);
+  cursor: grab;
+}
+.tl-scrollbar-thumb:hover { background: var(--text-2); }
+.tl-scrollbar[aria-disabled='true'] .tl-scrollbar-thumb { cursor: default; }
+.tl-mode:focus-visible, .tl-custom-zoom:focus-visible, .tl-scrollbar:focus-visible { outline: none; box-shadow: inset var(--focus-ring); }
 .tl-wrap {
   position: relative;
   width: 100%;

@@ -1,11 +1,13 @@
-import React, { useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import React, { useCallback, useEffect, useId, useImperativeHandle, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { isLowPerf, subscribeLowPerf } from '../perf/lowPerf'
 import '../styles/timeline.css'
 import { Clip, EngineEvent, EventType, SpecInterval } from '../../shared/types'
-import { View, zoom } from './model'
+import { View, TimelineZoom, ZoomMode, maxCustomZoom, pan, resizeTimeline, setCustomZoom, setZoomMode, updateTimelineView, zoomTimeline } from './model'
+import { i18n } from '../i18n/zh-TW'
 import { layoutTimeline, TimelineLayout } from './layout'
 import { createRedrawScheduler, DrawModel, drawTimeline, readTheme } from './draw'
-import { Playhead } from './Playhead'
+import { Playhead, playheadTarget } from './Playhead'
+import { TimelineScrollbar } from './TimelineScrollbar'
 import { useTimelineInteractions } from './useTimelineInteractions'
 
 /** 命令式時間軸操作（keymap 的 Ctrl +/−/0 由外層呼叫）。 */
@@ -74,22 +76,29 @@ export const TimelineCanvas = React.forwardRef<TimelineHandle, TimelineCanvasPro
   const wrapRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
-  const [view, setView] = useState<View>(() => ({
-    duration: Math.max(1, duration),
-    start: 0,
-    span: Math.max(1, duration),
-    width: 800
+  const [zoomState, setZoomState] = useState<TimelineZoom>(() => ({
+    mode: 'full',
+    customZoom: 1,
+    view: { duration: Math.max(1, duration), start: 0, span: Math.max(1, duration), width: 800 }
   }))
+  const { view, mode } = zoomState
+  const customZoom = Math.min(maxCustomZoom(view.duration), Math.max(1, zoomState.customZoom))
+  const canvasId = useId()
+  const playback = useRef({ playing, time: currentTime, getTime: getPlayTime })
+  playback.current = { playing, time: currentTime, getTime: getPlayTime }
+  const setView = useCallback((update: (v: View) => View): void => {
+    setZoomState((state) => updateTimelineView(state, update))
+  }, [])
+  const changeMode = (next: ZoomMode): void => {
+    setZoomState((state) => setZoomMode(state, next, playheadTarget(playback.current)))
+  }
+  const changeZoom = useCallback((factor: number): void => {
+    setZoomState((state) => zoomTimeline(state, factor, state.view.start + state.view.span / 2))
+  }, [])
 
-  // 時長改變：原本是完整檢視者跟著新時長，否則夾在範圍內
+  // 時長改變時保留模式與自訂倍率，並夾在新來源範圍內
   useEffect(() => {
-    const d = Math.max(1, duration)
-    setView((v) => {
-      if (v.duration === d) return v
-      const full = v.span >= v.duration - 1e-6
-      const span = full ? d : Math.min(d, v.span)
-      return { ...v, duration: d, span, start: Math.max(0, Math.min(d - span, v.start)) }
-    })
+    setZoomState((state) => resizeTimeline(state, duration, state.view.width, playheadTarget(playback.current)))
   }, [duration])
 
   // 寬度：ResizeObserver
@@ -98,7 +107,7 @@ export const TimelineCanvas = React.forwardRef<TimelineHandle, TimelineCanvasPro
     if (!el) return
     const update = (): void => {
       const w = el.clientWidth
-      setView((v) => (v.width === w ? v : { ...v, width: w }))
+      setZoomState((state) => resizeTimeline(state, state.view.duration, w, playheadTarget(playback.current)))
     }
     update()
     const ro = new ResizeObserver(update)
@@ -110,12 +119,30 @@ export const TimelineCanvas = React.forwardRef<TimelineHandle, TimelineCanvasPro
   useImperativeHandle(
     ref,
     () => ({
-      zoomIn: () => setView((v) => zoom(v, ZOOM_IN_FACTOR, v.start + v.span / 2)),
-      zoomOut: () => setView((v) => zoom(v, ZOOM_OUT_FACTOR, v.start + v.span / 2)),
-      zoomReset: () => setView((v) => ({ ...v, start: 0, span: v.duration }))
+      zoomIn: () => changeZoom(ZOOM_IN_FACTOR),
+      zoomOut: () => changeZoom(ZOOM_OUT_FACTOR),
+      zoomReset: () => changeMode('full')
     }),
-    []
+    [changeZoom]
   )
+
+  // 細節視窗隨 seek／播放頭移動；播放時直接讀即時時間，避免 timeupdate 落後
+  useEffect(() => {
+    if (mode !== 'detail') return
+    setZoomState((state) => setZoomMode(state, 'detail', playheadTarget(playback.current)))
+  }, [mode, currentTime, playing])
+  const hasPlayTime = !!getPlayTime
+  useEffect(() => {
+    if (mode !== 'detail' || !playing || !hasPlayTime) return
+    let id = 0
+    const tick = (): void => {
+      setZoomState((state) => state.mode === 'detail'
+        ? setZoomMode(state, 'detail', playheadTarget(playback.current)) : state)
+      id = requestAnimationFrame(tick)
+    }
+    id = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(id)
+  }, [mode, playing, hasPlayTime])
 
   const layout = useMemo(() => layoutTimeline(events, view, filter), [events, view, filter])
   const layoutRef = useRef<TimelineLayout>(layout)
@@ -125,6 +152,7 @@ export const TimelineCanvas = React.forwardRef<TimelineHandle, TimelineCanvasPro
     wrapRef,
     view,
     setView,
+    onZoom: (factor, anchor) => setZoomState((state) => zoomTimeline(state, factor, anchor)),
     duration,
     height,
     layoutRef,
@@ -184,29 +212,62 @@ export const TimelineCanvas = React.forwardRef<TimelineHandle, TimelineCanvasPro
   }, [scheduler, view, layout, spectating, clips, selected, currentEventId, ix.hoverClipId, activeClipId, height, lowPerf])
 
   return (
-    <div
-      ref={wrapRef}
-      className="tl-wrap"
-      data-zone="src"
-      tabIndex={0}
-      style={{ height, cursor: ix.cursor }}
-      onMouseDown={ix.onMouseDown}
-      onMouseMove={ix.onMouseMove}
-      onMouseLeave={ix.onMouseLeave}
-    >
-      <canvas ref={canvasRef} />
-      <Playhead time={currentTime} view={view} getTime={getPlayTime} playing={playing} />
-      {ix.box && (
-        <div
-          className="tl-boxsel"
-          style={{ left: Math.min(ix.box.x0, ix.box.x1), width: Math.abs(ix.box.x1 - ix.box.x0) }}
+    <div className="tl-source" data-zone="src">
+      <div className="tl-toolbar" role="toolbar" aria-label={i18n.timeline.zoomToolbar}>
+        {(['full', 'detail', 'custom'] as const).map((value) => (
+          <button
+            key={value}
+            type="button"
+            className="tl-mode"
+            aria-pressed={mode === value}
+            title={i18n.timeline.zoomTips[value]}
+            onClick={() => changeMode(value)}
+          >
+            {i18n.timeline.zoomModes[value]}
+          </button>
+        ))}
+        <input
+          className="tl-custom-zoom"
+          type="range"
+          min={0}
+          max={Math.log2(maxCustomZoom(view.duration))}
+          step="any"
+          value={Math.log2(customZoom)}
+          aria-label={i18n.timeline.customZoom}
+          aria-valuetext={`${customZoom.toFixed(1)}×`}
+          title={i18n.timeline.zoomTips.custom}
+          onChange={(e) => {
+            const multiplier = 2 ** Number(e.currentTarget.value)
+            setZoomState((state) => setCustomZoom(state, multiplier, state.view.start + state.view.span / 2))
+          }}
         />
-      )}
-      {ix.tip && (
-        <div className="tl-tip" style={{ left: ix.tip.x, top: ix.tip.y }}>
-          {ix.tip.text}
-        </div>
-      )}
+      </div>
+      <div
+        id={canvasId}
+        ref={wrapRef}
+        className="tl-wrap"
+        data-zone="src"
+        tabIndex={0}
+        style={{ height, cursor: ix.cursor }}
+        onMouseDown={ix.onMouseDown}
+        onMouseMove={ix.onMouseMove}
+        onMouseLeave={ix.onMouseLeave}
+      >
+        <canvas ref={canvasRef} />
+        <Playhead time={currentTime} view={view} getTime={getPlayTime} playing={playing} />
+        {ix.box && (
+          <div
+            className="tl-boxsel"
+            style={{ left: Math.min(ix.box.x0, ix.box.x1), width: Math.abs(ix.box.x1 - ix.box.x0) }}
+          />
+        )}
+        {ix.tip && (
+          <div className="tl-tip" style={{ left: ix.tip.x, top: ix.tip.y }}>
+            {ix.tip.text}
+          </div>
+        )}
+      </div>
+      <TimelineScrollbar view={view} controls={canvasId} onScroll={(start) => setView((v) => pan(v, start - v.start))} />
     </div>
   )
 })

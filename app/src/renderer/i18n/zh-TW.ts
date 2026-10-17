@@ -103,6 +103,15 @@ export const i18n = {
     waiting: '等待分析'
   },
   timeline: {
+    zoomToolbar: '來源時間軸縮放',
+    zoomModes: { full: '全覽縮放', detail: '細節縮放', custom: '自訂縮放' },
+    zoomTips: {
+      full: '整部影片填滿時間軸（Ctrl+0）',
+      detail: '以播放頭為中心顯示 30 秒，播放時跟隨',
+      custom: '保留自訂倍率；拖曳滑桿或按 Ctrl+滾輪、Ctrl+＋／－ 調整'
+    },
+    customZoom: '自訂縮放倍率',
+    scrollbar: '來源時間軸水平捲動',
     densityHint: '密度檢視 · {n} 個事件 · 放大（Ctrl +／滾輪）顯示個別圖示',
     spectating: '觀戰（不計入）',
     clipAi: 'AI',
@@ -300,10 +309,7 @@ export const i18n = {
       prevEvent: '上一個事件',
       nextEvent: '下一個事件',
       addEvent: '＋事件',
-      filterLabel: '事件類型篩選',
-      zoomIn: '放大',
-      zoomOut: '縮小',
-      zoomReset: '重設縮放'
+      filterLabel: '事件類型篩選'
     },
     track: {
       title: '專案',
@@ -501,7 +507,7 @@ export const shellI18n = {
       seekFwd: '前進 5 秒',
       zoomIn: '時間軸放大',
       zoomOut: '時間軸縮小',
-      zoomReset: '時間軸縮放重設',
+      zoomReset: '時間軸全覽縮放',
       quickOrSplit: '快速剪輯（專案模式：在播放頭分割）',
       addEvent: '新增事件',
       setStart: '目前片段起點＝播放頭',

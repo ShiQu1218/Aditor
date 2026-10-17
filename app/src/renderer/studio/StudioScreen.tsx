@@ -20,7 +20,6 @@ import { createExportController } from './exportController'
 import { windowExportApi } from './exportApi'
 import { buildPlanBase, ExportPlanBase } from './exportPlanBase'
 import { useEditorLock } from '../editor/useEditorLock'
-import { RefreshCw, ZoomIn, ZoomOut } from '../components/icons'
 import { checkSmooth, PlayabilityResult } from '../media/playability'
 import { Command } from '../input/keymap'
 import { drawerFixtureRequested, longFixtureRequested } from '../dev/fixture'
@@ -1586,17 +1585,6 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
               playing={isPlaying}
               onPlayToggle={togglePlay}
             />
-            <div className="tl-zoom">
-              <button type="button" className="icon-btn" aria-label={i18n.studio.transport.zoomOut} onClick={() => tlRef.current?.zoomOut()}>
-                <ZoomOut className="ic" />
-              </button>
-              <button type="button" className="icon-btn" aria-label={i18n.studio.transport.zoomIn} onClick={() => tlRef.current?.zoomIn()}>
-                <ZoomIn className="ic" />
-              </button>
-              <button type="button" className="icon-btn" aria-label={i18n.studio.transport.zoomReset} onClick={() => tlRef.current?.zoomReset()}>
-                <RefreshCw className="ic" />
-              </button>
-            </div>
           </div>
 
           <ProjectTrack

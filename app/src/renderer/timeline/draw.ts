@@ -28,7 +28,6 @@ export interface Theme {
   text1: string
   text2: string
   text3: string
-  raised: string
   popover: string
   /** 實心圖示上的字形顏色（深色） */
   onShape: string
@@ -88,7 +87,6 @@ export function readTheme(getVar: (name: string) => string = defaultGetVar): The
     text1: getVar('--text-1'),
     text2: getVar('--text-2'),
     text3: getVar('--text-3'),
-    raised: getVar('--bg-raised'),
     popover: getVar('--bg-popover'),
     onShape: getVar('--bg-app'),
     spectatingFill: getVar('--tl-spectating-fill'),
@@ -274,7 +272,7 @@ function drawDensityEvents(g: Ctx2D, m: DrawModel, th: Theme): void {
       g.fillRect(x - 1, EVENT_TOP + 6, 4, 14)
     }
     g.globalAlpha = isCounted(e) ? 1 : 0.65
-    g.fillStyle = th.events[e.type as EventType] ?? th.text2
+    g.fillStyle = th.events[e.type as EventType] ?? th.events.knock
     g.fillRect(x, EVENT_TOP + 8, 2, 10)
   }
   g.globalAlpha = 1
@@ -330,25 +328,52 @@ function drawSingle(g: Ctx2D, e: EngineEvent, x: number, m: DrawModel, th: Theme
   }
 }
 
-function drawCluster(g: Ctx2D, events: EngineEvent[], countedCount: number, x: number, m: DrawModel, th: Theme): void {
+function drawCluster(g: Ctx2D, events: EngineEvent[], x: number, m: DrawModel, th: Theme): void {
   const n = events.length
   const label = '×' + n
   const w = g.measureText(label).width + 16
   const y = ICON_Y
-  g.fillStyle = th.raised
+  // 依各類型的事件數分段上色；未知類型沿用單一事件的擊倒色
+  const segments = new Map<string, { count: number; counted: number }>()
+  for (const e of events) {
+    const color = th.events[e.type as EventType] ?? th.events.knock
+    const segment = segments.get(color) ?? { count: 0, counted: 0 }
+    segment.count++
+    if (isCounted(e)) segment.counted++
+    segments.set(color, segment)
+  }
+  g.save()
+  g.beginPath()
+  g.roundRect(x - w / 2, y - 10, w, 20, 10)
+  g.clip()
+  let left = x - w / 2
+  for (const [color, segment] of segments) {
+    const width = w * segment.count / n
+    g.globalAlpha = segment.counted > 0 ? 1 : 0.65
+    g.fillStyle = color
+    g.fillRect(left, y - 10, width, 20)
+    left += width
+  }
+  g.restore()
+  g.globalAlpha = 1
   g.strokeStyle = th.text1
   g.lineWidth = 1.5
   g.beginPath()
   g.roundRect(x - w / 2, y - 10, w, 20, 10)
-  g.fill()
   g.stroke()
-  g.fillStyle = th.text1
+  g.fillStyle = th.onShape
   g.textBaseline = 'middle'
   g.fillText(label, x - w / 2 + 8, y + 1)
   g.textBaseline = 'top'
   // 計入比例小條
-  g.fillStyle = th.text3
-  g.fillRect(x - w / 2 + 4, y + 14, (w - 8) * (countedCount / n), 2)
+  left = x - w / 2 + 4
+  for (const [color, segment] of segments) {
+    const width = (w - 8) * segment.counted / n
+    if (width === 0) continue
+    g.fillStyle = color
+    g.fillRect(left, y + 14, width, 2)
+    left += width
+  }
   if (events.some((e) => m.selected.has(e.id) || m.currentId === e.id)) {
     g.strokeStyle = th.text1
     g.lineWidth = 2
@@ -361,7 +386,7 @@ function drawCluster(g: Ctx2D, events: EngineEvent[], countedCount: number, x: n
 function drawIconEvents(g: Ctx2D, m: DrawModel, th: Theme, bot: number): void {
   for (const it of m.layout.items) {
     if (it.events.length === 1) drawSingle(g, it.events[0], it.x, m, th, bot)
-    else drawCluster(g, it.events, it.countedCount, it.x, m, th)
+    else drawCluster(g, it.events, it.x, m, th)
   }
 }
 

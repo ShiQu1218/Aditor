@@ -7,6 +7,77 @@ export interface View {
   width: number
 }
 
+export type ZoomMode = 'full' | 'detail' | 'custom'
+export interface TimelineZoom {
+  mode: ZoomMode
+  customZoom: number
+  view: View
+}
+
+export const DETAIL_SPAN = 30
+const MIN_SPAN = 10
+
+export function maxCustomZoom(duration: number): number {
+  return Math.max(1, duration / MIN_SPAN)
+}
+
+function centeredView(view: View, span: number, time: number): View {
+  const start = Math.max(0, Math.min(view.duration - span, time - span / 2))
+  return view.span === span && view.start === start ? view : { ...view, span, start }
+}
+
+/** 自訂倍率獨立保存，切換全覽／細節不會覆寫。 */
+export function setZoomMode(state: TimelineZoom, mode: ZoomMode, time: number): TimelineZoom {
+  const { view } = state
+  const span = mode === 'full' ? view.duration : mode === 'detail'
+    ? Math.min(DETAIL_SPAN, view.duration)
+    : view.duration / Math.min(maxCustomZoom(view.duration), Math.max(1, state.customZoom))
+  const next = centeredView(view, span, mode === 'full' ? 0 : time)
+  return state.mode === mode && next === view ? state : { ...state, mode, view: next }
+}
+
+/** 捲動、滾輪與群集縮放共用入口；全覽的無效平移維持原模式。 */
+export function updateTimelineView(state: TimelineZoom, update: (view: View) => View): TimelineZoom {
+  const view = update(state.view)
+  if (view.start === state.view.start && view.span === state.view.span) return state
+  return { mode: 'custom', customZoom: view.duration / view.span, view }
+}
+
+export function zoomTimeline(state: TimelineZoom, factor: number, anchor: number): TimelineZoom {
+  const view = zoom(state.view, factor, anchor)
+  return { mode: 'custom', customZoom: view.duration / view.span, view }
+}
+
+export function setCustomZoom(state: TimelineZoom, value: number, anchor: number): TimelineZoom {
+  const multiplier = Math.max(1, Math.min(maxCustomZoom(state.view.duration), value))
+  return zoomTimeline(state, state.view.duration / multiplier / state.view.span, anchor)
+}
+
+export function resizeTimeline(state: TimelineZoom, duration: number, width: number, time: number): TimelineZoom {
+  const d = Math.max(1, duration)
+  if (state.view.duration === d && state.view.width === width) return state
+  const next = { ...state, view: { ...state.view, duration: d, width } }
+  if (state.mode !== 'custom') return setZoomMode(next, state.mode, time)
+  const span = d / Math.min(maxCustomZoom(d), Math.max(1, state.customZoom))
+  return { ...next, view: { ...next.view, span, start: Math.max(0, Math.min(d - span, next.view.start)) } }
+}
+
+/** 捲軸尺寸以軌寬的像素表示；全覽時拇指佔滿且不能捲動。 */
+export function timelineScroll(view: View): { left: number; width: number; maxStart: number } {
+  const width = Math.max(0, view.width)
+  if (view.duration <= 0 || view.span >= view.duration) return { left: 0, width, maxStart: 0 }
+  return {
+    left: (view.start / view.duration) * width,
+    width: (view.span / view.duration) * width,
+    maxStart: view.duration - view.span
+  }
+}
+
+export function scrollStartAt(view: View, x: number, grabOffset: number): number {
+  if (view.width <= 0) return view.start
+  return Math.max(0, Math.min(timelineScroll(view).maxStart, (x - grabOffset) / view.width * view.duration))
+}
+
 export function timeToX(t: number, view: View): number {
   if (view.span <= 0) return 0
   return ((t - view.start) / view.span) * view.width

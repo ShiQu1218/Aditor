@@ -235,20 +235,6 @@
 .studio-tl { position: relative; flex: none; border-radius: var(--r-sm); overflow: hidden; }
 /* foreign：來源軌 40% 灰化（仍可點擊＝回來源模式） */
 .studio-tl.grayed { opacity: 0.4; }
-.tl-zoom {
-  position: absolute;
-  right: 8px;
-  bottom: 8px;
-  z-index: 4;
-  display: flex;
-  gap: 2px;
-  padding: 2px;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--r-pill);
-  background: var(--bg-popover);
-}
-.tl-zoom .icon-btn { width: 26px; height: 26px; }
-.tl-zoom .ic { width: 14px; height: 14px; }
 
 /* ---- 專案軌 ---- */
 /* 樣式在 projectTrack.css（Task 13 完整取代唯讀占位） */
