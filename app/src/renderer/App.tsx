@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { LibraryScreen } from './library/LibraryScreen'
-import { StudioScreen } from './studio/StudioScreen'
+import { StudioScreen, type ProjectPlaybackRequest } from './studio/StudioScreen'
 import { LONG_FIXTURE_PATH, longFixtureRequested, lowPerfFixtureRequested, projectFixtureRequested, settingsFixtureRequested } from './dev/fixture'
 import { ProjectProvider, useProject } from './editor/ProjectProvider'
 import { FocusZoneProvider } from './input/FocusZoneProvider'
@@ -43,6 +43,7 @@ function AppContent(): JSX.Element {
   const [currentVideo, setCurrentVideo] = useState<string | null>(() =>
     longFixtureRequested() ? LONG_FIXTURE_PATH : null
   )
+  const [playbackRequest, setPlaybackRequest] = useState<ProjectPlaybackRequest | undefined>()
 
   // 僅開發模式：fixture 專案（截圖用），只放一次；內容動態載入，正式 bundle 不含
   const fixtureDoneRef = useRef(false)
@@ -56,7 +57,8 @@ function AppContent(): JSX.Element {
     })
   }, [apply])
 
-  const handleSelectVideo = (path: string) => {
+  const handleSelectVideo = (path: string, request?: ProjectPlaybackRequest) => {
+    setPlaybackRequest(request)
     setCurrentVideo(path)
     setView('studio')
   }
@@ -69,7 +71,16 @@ function AppContent(): JSX.Element {
 
   let page: JSX.Element
   if (view === 'studio' && currentVideo) {
-    page = <StudioScreen key={currentVideo} videoPath={currentVideo} onBack={() => setView('library')} />
+    page = (
+      <StudioScreen
+        key={currentVideo}
+        videoPath={currentVideo}
+        onOpenVideo={handleSelectVideo}
+        playbackRequest={playbackRequest}
+        onPlaybackRequestConsumed={() => setPlaybackRequest(undefined)}
+        onBack={() => { setPlaybackRequest(undefined); setView('library') }}
+      />
+    )
   } else if (view === 'settings') {
     page = fxReady ? (
       <SettingsScreen initialQuery={settingsFx?.q} initialCategory={settingsFx?.cat} />

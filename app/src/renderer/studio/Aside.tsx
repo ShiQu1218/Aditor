@@ -4,17 +4,16 @@ import { Sparkles } from '../components/icons'
 
 interface AsideProps {
   hlCount: number
-  grayed: boolean
   locked: boolean
   children: React.ReactNode
 }
 
 /** 工作室側欄：精華清單。 */
-export function Aside({ hlCount, grayed, locked, children }: AsideProps): JSX.Element {
+export function Aside({ hlCount, locked, children }: AsideProps): JSX.Element {
   const t = i18n.studio.tabs
   return (
     <aside
-      className={`studio-aside${grayed ? ' grayed' : ''}`}
+      className="studio-aside"
       aria-label={t.asideLabel}
       data-editor-lock
       {...(locked ? ({ inert: '', 'aria-disabled': 'true' } as Record<string, string>) : {})}

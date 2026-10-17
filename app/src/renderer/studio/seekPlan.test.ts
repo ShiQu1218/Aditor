@@ -32,8 +32,8 @@ describe('routeTimeUpdate', () => {
     expect(routeTimeUpdate({ previewSrc: null, sourceSrc: src, loadedSrc: foreign, pending: false })).toBe('ignore')
     expect(routeTimeUpdate({ previewSrc: null, sourceSrc: src, loadedSrc: src, pending: true })).toBe('ignore')
   })
-  test('project mode: foreign preview time goes to preview, never to the source time', () => {
-    expect(routeTimeUpdate({ previewSrc: foreign, sourceSrc: src, loadedSrc: foreign, pending: false })).toBe('preview')
+  test('project mode: loaded source time drives both project progress and source playhead', () => {
+    expect(routeTimeUpdate({ previewSrc: src, sourceSrc: src, loadedSrc: src, pending: false })).toBe('preview')
   })
   test('project mode: ignores updates until the previewed file is loaded', () => {
     expect(routeTimeUpdate({ previewSrc: foreign, sourceSrc: src, loadedSrc: src, pending: false })).toBe('ignore')

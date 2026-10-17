@@ -234,8 +234,6 @@
 
 /* ---- 來源時間軸 ---- */
 .studio-tl { position: relative; flex: none; border-radius: var(--r-sm); overflow: hidden; }
-/* foreign：來源軌 40% 灰化（仍可點擊＝回來源模式） */
-.studio-tl.grayed { opacity: 0.4; }
 
 /* ---- 專案軌 ---- */
 /* 樣式在 projectTrack.css（Task 13 完整取代唯讀占位） */
@@ -250,8 +248,6 @@
   border-left: 1px solid var(--line);
   background: var(--bg-surface);
 }
-/* foreign：側欄灰化且停用 */
-.studio-aside.grayed { opacity: 0.5; pointer-events: none; }
 .aside-tabs { display: flex; border-bottom: 1px solid var(--line); }
 .aside-tab {
   margin: 0;

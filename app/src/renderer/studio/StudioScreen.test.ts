@@ -53,7 +53,7 @@ function render(props: { preloadedDoc?: CacheDoc } = {}): string {
         React.createElement(
           ProjectProvider,
           null,
-          React.createElement(StudioScreen, { videoPath: 'C:\\v\\a.mp4', onBack: () => undefined, ...props })
+          React.createElement(StudioScreen, { videoPath: 'C:\\v\\a.mp4', onBack: () => undefined, onOpenVideo: () => undefined, ...props })
         )
       )
     )

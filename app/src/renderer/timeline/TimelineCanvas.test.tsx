@@ -226,6 +226,23 @@ describe('source timeline gestures', () => {
 })
 
 describe('source timeline zoom controls', () => {
+  test('project playback keeps custom zoom and scrolls an offscreen playhead into view', () => {
+    let time = 300
+    const render = (currentTime: number, playing = false): React.ReactElement => <TimelineCanvas {...props} currentTime={currentTime} followProject playing={playing} getPlayTime={() => time} />
+    const m = mount(render(300))
+    setRange(3)
+    const zoom = slider().value
+    act(() => m.root.render(render(510)))
+    expectMode('custom')
+    expect(slider().value).toBe(zoom)
+    expect(start()).toBe(472.5)
+    time = 599
+    act(() => m.root.render(render(510, true)))
+    nextFrame()
+    expect(start()).toBe(525)
+    expect(q('.tl-playhead').style.opacity).toBe('1')
+  })
+
   test('toolbar precedes the track, scrollbar follows it, and full extent fills the thumb', () => {
     mount(<TimelineCanvas {...props} />)
     expectMode('full')

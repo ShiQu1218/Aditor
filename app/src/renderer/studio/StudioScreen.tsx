@@ -12,6 +12,7 @@ import { useMediaQuery } from '../hooks/useMediaQuery'
 import { useToast } from '../shell/ToastHost'
 import { useOverlay } from '../shell/OverlayHost'
 import { useProject } from '../editor/ProjectProvider'
+import { importExternalVideos } from '../editor/externalVideos'
 import { addItems, duplicateItem, moveItem, Project, ProjectItem, removeItem, splitItem, trimItem } from '../editor/project'
 import { nextAfter, nextPlayableItem } from '../editor/sequence'
 import { ExportDrawer } from './ExportDrawer'
@@ -49,7 +50,7 @@ import { StudioHeader } from './StudioHeader'
 import { StudioBlockedView, StudioLoadErrorView, StudioLoadingView } from './StudioStates'
 import { TransportBar } from './TransportBar'
 import { chipCounts, nearCount, toggleFilter } from './chips'
-import { createMode, currentItem, isForeign, reconcileMode, reduceMode } from './mode'
+import { createMode, currentItem, reconcileMode, reduceMode } from './mode'
 import { NoticeAction, proxyBusyNotice, studioNotice, StudioNotice } from './notices'
 import { createAnnouncer } from './liveAnnouncer'
 import { guardCommand, SourceEditCommand } from './modeGuard'
@@ -60,9 +61,17 @@ import { isAnyOverlayOpen, OverlayState, topOverlay } from './overlays'
 import { fileUrl, onVideoError, planSeek, routeTimeUpdate } from './seekPlan'
 import { loadStudioDoc } from './studioLoader'
 
+export interface ProjectPlaybackRequest {
+  playItemId: string
+  speed: number
+}
+
 interface StudioScreenProps {
   videoPath: string
   onBack: () => void
+  onOpenVideo: (path: string, request: ProjectPlaybackRequest) => void
+  playbackRequest?: ProjectPlaybackRequest
+  onPlaybackRequestConsumed?: () => void
   /** 測試接縫：直接給定已載入的文件（略過載入流程；SSR 冒煙測試用） */
   preloadedDoc?: CacheDoc
 }
@@ -121,7 +130,7 @@ function initViewerState(init: { videoPath: string; doc?: CacheDoc }): ViewerSta
  * 模式膠囊／脈絡橫幅、狀態列（引擎異常、代理檔建議）、事件篩選 chip 帶計數。
  * 專案軌（Track 13）：片段卡、拖曳重排、把手微調、軌頭操作與新專案對話框。
  */
-export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenProps): JSX.Element {
+export function StudioScreen({ videoPath, onBack, onOpenVideo, playbackRequest, onPlaybackRequestConsumed, preloadedDoc }: StudioScreenProps): JSX.Element {
   const {
     project,
     apply,
@@ -152,12 +161,12 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
   const [state, dispatch] = useReducer(viewerReducer, { videoPath, doc: preloadedDoc }, initViewerState)
   const [mode, dispatchMode] = useReducer(reduceMode, videoPath, createMode)
 
-  /** 來源播放頭（專案預覽期間保持不動，返回來源時還原） */
+  /** 來源播放頭（專案預覽時同步片段在來源中的時間） */
   const [currentTime, setCurrentTime] = useState(0)
   /** 專案預覽中的影片時間（只驅動專案軌進度／分割／續播） */
   const [previewTime, setPreviewTime] = useState(0)
   const [isPlaying, setIsPlaying] = useState(false)
-  const [speed, setSpeed] = useState(1.0)
+  const [speed, setSpeed] = useState(playbackRequest?.speed ?? 1.0)
   const [asideOpen, setAsideOpen] = useState(true)
   const [addEventAt, setAddEventAt] = useState<number | null>(null)
   const [autoClipOpen, setAutoClipOpen] = useState(false)
@@ -196,7 +205,16 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
   const sourceProjectItem = previewItem ?? displayedProject.items.find((item) => item.id === selProjId)
   const sourceRange = sourceProjectItem && normPath(sourceProjectItem.source) === normPath(videoPath)
     ? displayedProject.items.find((item) => item.id === sourceProjectItem.id) ?? null : null
-  const foreign = isForeign(mode, project)
+  const allowUnanalyzed = useRef(Boolean(playbackRequest)).current
+  const switchingSourceRef = useRef(false)
+  const importingRef = useRef(false)
+  const mountedRef = useRef(true)
+  useEffect(() => {
+    mountedRef.current = true
+    return () => { mountedRef.current = false }
+  }, [])
+  const stateRef = useRef(state)
+  stateRef.current = state
 
   // 專案軌收合：'auto' 依視窗高度（≤800px 收合）；使用者切換後記進 settings
   const autoCollapse = useMediaQuery('(max-height: 800px)')
@@ -245,8 +263,9 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
           return entries?.find((e) => normPath(e.path) === normPath(p))?.status ?? null
         },
         cacheLoad: async (p) => ((await api?.cache?.loadByVideo?.(p)) as CacheDoc | null) ?? null,
-        analyze: async (args) => ((await api?.engine?.analyze?.(args)) as CacheDoc | null) ?? null
-      })
+        analyze: async (args) => ((await api?.engine?.analyze?.(args)) as CacheDoc | null) ?? null,
+        probe: async (p) => (await api?.engine?.probe?.(p)) ?? null
+      }, allowUnanalyzed)
       if (cancelled) return
       if (outcome.kind === 'blocked') {
         setBlocked(true)
@@ -308,6 +327,38 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
     if (!state.dirty) return
     cacheSaver.current!.update(state.doc)
   }, [state.dirty, state.doc])
+
+  // 未分析的來源先開放剪輯；佇列完成後只更新文件，保留播放與尚未落盤的編輯。
+  useEffect(() => {
+    if (!loaded || state.doc.analysis.status === 'done') return
+    let cancelled = false
+    let refreshing = false
+    const refresh = async (): Promise<void> => {
+      if (refreshing) return
+      refreshing = true
+      try {
+        const entries = await window.api.library.getEntries()
+        if (cancelled || !entries.some((e: { path: string; status: string }) => normPath(e.path) === normPath(videoPath) && e.status === 'done')) return
+        const doc: CacheDoc | null = await window.api.cache.loadByVideo(videoPath)
+        if (cancelled || doc?.analysis.status !== 'done') return
+        const previous = stateRef.current
+        const merged = viewerReducer(previous, { type: 'analysisResult', doc })
+        cacheSaver.current!.cancelPending()
+        if (previous.dirty || previous.clips.length || previous.doc.events.some((e) => e.source === 'manual')) {
+          cacheSaver.current!.update(merged.doc)
+        }
+        dispatch({ type: 'analysisResult', doc })
+        setAnalysisGen((g) => g + 1)
+      } catch {
+        if (!cancelled) toast({ message: i18n.studio.toast.analysisRefreshFailed })
+      } finally {
+        refreshing = false
+      }
+    }
+    const off = window.api?.library?.onUpdated?.(() => { void refresh() })
+    void refresh()
+    return () => { cancelled = true; off?.() }
+  }, [loaded, state.doc.analysis.status, videoPath, toast])
 
   /* ---------------- 設定與自動放置建議 ---------------- */
 
@@ -378,7 +429,7 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
       },
     [toast]
   )
-  /** 來源播放頭的即時值（專案預覽期間保持不動） */
+  /** 來源播放頭的即時值 */
   const currentTimeRef = useRef(0)
   /** 目前 <video> 已載入完成的 src（loadedmetadata 後才有值；換檔時清空） */
   const loadedSrcRef = useRef<string | null>(null)
@@ -386,10 +437,7 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
   const pendingSeekRef = useRef<{ t: number; play: boolean } | null>(null)
 
   const sourceSrc = useMemo(() => fileUrl(proxyPath ?? videoPath), [proxyPath, videoPath])
-  const videoSrc = useMemo(
-    () => (foreign && previewItem ? fileUrl(previewItem.source) : sourceSrc),
-    [foreign, previewItem, sourceSrc]
-  )
+  const videoSrc = sourceSrc
   const sourceSrcRef = useRef(sourceSrc)
   sourceSrcRef.current = sourceSrc
   const videoSrcRef = useRef(videoSrc)
@@ -420,24 +468,23 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
     }
   }, [])
 
-  // 換檔：舊的「已載入」標記失效；來源模式換檔（例如代理檔就緒）時保住播放位置
+  // 換檔：舊的「已載入」標記失效；代理檔就緒時保住來源／專案預覽的位置與播放狀態
   const prevSrcRef = useRef(videoSrc)
   useEffect(() => {
     if (prevSrcRef.current === videoSrc) return
     prevSrcRef.current = videoSrc
     loadedSrcRef.current = null
-    if (!pendingSeekRef.current && !previewRef.current.item && currentTimeRef.current > 0) {
-      pendingSeekRef.current = { t: currentTimeRef.current, play: false }
+    if (!pendingSeekRef.current) {
+      pendingSeekRef.current = { t: currentTimeRef.current, play: isPlaying }
     }
   }, [videoSrc])
 
-  /** 來源播放頭目前的時間（預覽中／換檔中以保存的來源時間為準）。 */
+  /** 來源播放頭目前的時間（換檔中以保存的時間為準）。 */
   const sourcePlayTime = useCallback((): number => {
     const el = videoRef.current
     if (hoverPreviewRef.current) return hoverPreviewRef.current.time
     if (
       !el ||
-      previewRef.current.item ||
       pendingSeekRef.current ||
       loadedSrcRef.current !== sourceSrcRef.current
     ) {
@@ -524,7 +571,7 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
     requestSeek(t, sourceSrcRef.current, false)
   }, [requestSeek, sourcePlayTime])
 
-  /** 返回來源（Esc／橫幅按鈕）：還原進入專案模式前保存的來源播放頭。 */
+  /** 返回來源（Esc／橫幅按鈕）：停在目前片段的來源時間，方便接續剪輯。 */
   const backToSource = useCallback(() => {
     if (modeRef.current.mode !== 'project') return
     dispatchMode({ type: 'backToSource' })
@@ -573,6 +620,55 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
   /** 已為某片段觸發過換段（避免 timeupdate／影格回呼／ended 對同一段重複換） */
   const advancedForRef = useRef<string | null>(null)
 
+  /** 同來源直接播放；跨來源先同步存檔，再交由 App 重新掛載並接續指定片段。 */
+  const playProjectItem = useCallback((item: ProjectItem): void => {
+    if (switchingSourceRef.current) return
+    if (missingRef.current.has(item.id)) {
+      toast({ message: i18n.studio.track.missingToast })
+      return
+    }
+    if (normPath(item.source) !== normPath(videoPath)) {
+      if (exportCtl.getState().phase === 'running') {
+        videoRef.current?.pause()
+        toast({ message: i18n.export.backBlocked })
+        return
+      }
+      if (stateRef.current.dirty) {
+        try {
+          if (window.api.cache.saveSync(stateRef.current.doc) === false) throw new Error('cache save')
+          cacheSaver.current!.cancelPending()
+        } catch {
+          videoRef.current?.pause()
+          toast({ message: i18n.studio.toast.sourceSaveFailed })
+          return
+        }
+      } else cacheSaver.current!.flushSync()
+      switchingSourceRef.current = true
+      videoRef.current?.pause()
+      loadedSrcRef.current = null
+      onOpenVideo(item.source, { playItemId: item.id, speed: speedRef.current })
+      return
+    }
+    setSelProjId(item.id)
+    if (previewRef.current.item?.id === item.id) {
+      advancedForRef.current = null
+      currentTimeRef.current = item.start
+      setCurrentTime(item.start)
+      setPreviewTime(item.start)
+      requestSeek(item.start, sourceSrcRef.current, true)
+    } else dispatchMode({ type: 'playItem', item })
+  }, [videoPath, exportCtl, toast, onOpenVideo, requestSeek])
+
+  const consumedRequest = useRef(false)
+  useEffect(() => {
+    if (!loaded || !playbackRequest || consumedRequest.current) return
+    const item = project.items.find((i) => i.id === playbackRequest.playItemId)
+    if (!item) return
+    consumedRequest.current = true
+    playProjectItem(item)
+    onPlaybackRequestConsumed?.()
+  }, [loaded, playbackRequest, project.items, playProjectItem, onPlaybackRequestConsumed])
+
   /** 離開 item 往下一段：跳過來源缺失的片段；全缺失或沒有下一段就暫停（缺失時 Toast）。 */
   const advanceFrom = useCallback(
     (item: ProjectItem): void => {
@@ -580,13 +676,13 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
       advancedForRef.current = item.id
       const r = nextPlayableItem(projectRef.current, item.id, missingRef.current)
       if (r.kind === 'item') {
-        dispatchMode({ type: 'playItem', item: r.item })
+        playProjectItem(r.item)
         return
       }
       videoRef.current?.pause()
       if (r.kind === 'allMissing') toast({ message: i18n.studio.track.restMissingToast })
     },
-    [toast]
+    [toast, playProjectItem]
   )
 
   /** 播放時間 t 已到片段尾端 → 換段（可跨影片）。 */
@@ -600,7 +696,7 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
   )
 
   const handlePlayingChange = useCallback((playing: boolean): void => {
-    if (playing) advancedForRef.current = null // 使用者重新播放：允許再次在片段尾端暫停／換段
+    if (playing && !switchingSourceRef.current) advancedForRef.current = null // 使用者重新播放：允許再次在片段尾端暫停／換段
     setIsPlaying(playing)
   }, [])
 
@@ -622,9 +718,9 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
     else setVideoMissing(true)
   }, [toast])
 
-  // 播放頭時間：來源時間與專案預覽時間分流（見 routeTimeUpdate）；專案模式依序接續
+  // 專案預覽同步來源播放頭，並依序接續片段；換檔期間忽略舊影片殘留事件。
   const handleTimeUpdate = useCallback((t: number) => {
-    if (hoverPreviewRef.current) return
+    if (hoverPreviewRef.current || switchingSourceRef.current) return
     const item = previewRef.current.item
     const route = routeTimeUpdate({
       previewSrc: item ? videoSrcRef.current : null,
@@ -633,11 +729,9 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
       pending: pendingSeekRef.current !== null
     })
     if (route === 'ignore') return
-    if (route === 'source') {
-      currentTimeRef.current = t
-      setCurrentTime(t)
-      return
-    }
+    currentTimeRef.current = t
+    setCurrentTime(t)
+    if (route === 'source') return
     setPreviewTime(t)
     if (!item) return
     advanceIfEnded(item, t)
@@ -650,6 +744,8 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
     const restore = previewRestoreRef.current
     previewRestoreRef.current = null
     const start = restore?.id === previewItem.id ? restore.time : Math.max(0, previewItem.start)
+    currentTimeRef.current = start
+    setCurrentTime(start)
     setPreviewTime(start)
     requestSeek(start, videoSrc, restore?.id === previewItem.id ? restore.playing : true)
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -660,7 +756,7 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
   useEffect(() => {
     const el = videoRef.current
     const item = previewItem
-    if (!el || !item) return
+    if (!el || !item || !isPlaying) return
     const check = (): void => {
       if (loadedSrcRef.current !== videoSrcRef.current || pendingSeekRef.current) return
       if (el.currentTime >= item.end) advanceFrom(item)
@@ -686,7 +782,7 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
     }
     const timer = window.setInterval(check, 100)
     return () => window.clearInterval(timer)
-  }, [previewItem, advanceFrom])
+  }, [previewItem, advanceFrom, isPlaying])
 
   /* ---------------- 模式膠囊／脈絡 ---------------- */
 
@@ -1071,24 +1167,6 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
     prevItemCount.current = n
   }, [project.items, selProjId])
 
-  /** 播放片段（卡片點擊／Enter）：缺失來源只 Toast，不進專案模式。 */
-  const playProjectItem = useCallback(
-    (item: ProjectItem) => {
-      if (missingItemIds.has(item.id)) {
-        toast({ message: i18n.studio.track.missingToast })
-        return
-      }
-      if (modeRef.current.mode === 'source') {
-        // 進入專案模式：保存來源播放頭，返回來源時還原
-        const t = sourcePlayTime()
-        currentTimeRef.current = t
-        setCurrentTime(t)
-      }
-      dispatchMode({ type: 'playItem', item })
-    },
-    [missingItemIds, toast, sourcePlayTime]
-  )
-
   /** 把手／步進微調：同影片夾在影片長度內；其他來源無長度資訊不設上界。 */
   const trimProjectItem = useCallback(
     (id: string, edge: 'start' | 'end', t: number) => {
@@ -1202,21 +1280,35 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
     toast({ message: i18n.studio.toast.newProject })
   }, [newProject, toast])
 
-  /** 外部影片先加入影片庫，再逐一排入分析佇列。 */
+  /** 外部影片整批加入專案，一次 Undo；先播放第一個成功取得長度的新片段。 */
   const handleAddExternalVideo = useCallback(() => {
+    if (importingRef.current || exportCtl.getState().phase === 'running') return
+    importingRef.current = true
     void (async () => {
       try {
         const api = window.api
         if (!api) return
         const paths: string[] = await api.library.selectFiles()
-        if (paths.length === 0) return
-        await api.library.add(paths)
-        for (const path of paths) await api.queue.enqueue(path)
+        if (paths.length === 0 || !mountedRef.current) return
+        const { items, failed } = await importExternalVideos(paths, api)
+        if (!mountedRef.current || switchingSourceRef.current) return
+        if (failed.length) toast({ message: i18n.studio.toast.externalVideoIncomplete.replace('{names}', failed.map(baseName).join('、')) })
+        if (exportCtl.getState().phase === 'running') {
+          toast({ message: i18n.export.backBlocked })
+          return
+        }
+        if (!items.length) return
+        const firstIndex = projectRef.current.items.length
+        const next = addItems(projectRef.current, items)
+        apply(next)
+        playProjectItem(next.items[firstIndex])
       } catch {
         toast({ message: i18n.studio.toast.addExternalFailed })
+      } finally {
+        importingRef.current = false
       }
     })()
-  }, [toast])
+  }, [toast, exportCtl, apply, playProjectItem])
 
   /** ＋從來源加入：加入第一段待確認建議（mock 行為）；沒有時 Toast。 */
   const addFirstSuggestion = useCallback(() => {
@@ -1417,7 +1509,7 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
             onToggleFilter={(t) => dispatch({ type: 'setFilter', filter: toggleFilter(state.filter, t) })}
           />
 
-          <div className={`studio-tl${foreign ? ' grayed' : ''}`} data-editor-lock>
+          <div className="studio-tl" data-editor-lock>
             <TimelineCanvas
               ref={tlRef}
               duration={duration}
@@ -1443,6 +1535,7 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
               currentEventId={activeEvent?.id}
               getPlayTime={sourcePlayTime}
               playing={isPlaying}
+              followProject={mode.mode === 'project'}
             />
           </div>
 
@@ -1484,7 +1577,6 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
         {asideOpen && (
           <Aside
             hlCount={state.clips.length}
-            grayed={foreign}
             locked={exporting}
           >
             <HighlightsTab

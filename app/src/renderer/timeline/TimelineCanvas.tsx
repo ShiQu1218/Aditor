@@ -41,6 +41,8 @@ interface TimelineCanvasProps extends Pick<InteractionOptions,
   /** 播放中以 rAF 讀取目前時間（例如 video.currentTime），播放頭不經 React 重繪 */
   getPlayTime?: () => number
   playing?: boolean
+  /** 專案預覽時，自訂縮放也要讓來源播放頭保持可見。 */
+  followProject?: boolean
 }
 
 const EMPTY_SET: Set<string> = new Set()
@@ -76,7 +78,8 @@ export const TimelineCanvas = React.forwardRef<TimelineHandle, TimelineCanvasPro
     onBladeTooShort,
     disabled,
     getPlayTime,
-    playing
+    playing,
+    followProject
   }: TimelineCanvasProps,
   ref
 ): JSX.Element {
@@ -168,24 +171,31 @@ export const TimelineCanvas = React.forwardRef<TimelineHandle, TimelineCanvasPro
   })
 
   const following = !ix.interacting && ix.blade.hover === null
+  const followPlayhead = useCallback((state: TimelineZoom): TimelineZoom => {
+    const time = playheadTarget(playback.current)
+    if (state.mode === 'detail') return setZoomMode(state, 'detail', time)
+    if (followProject && state.mode === 'custom' && (time < state.view.start || time >= state.view.start + state.view.span)) {
+      return setZoomMode(state, 'custom', time)
+    }
+    return state
+  }, [followProject])
 
   // 細節視窗隨 seek／播放頭移動；播放時直接讀即時時間，避免 timeupdate 落後
   useEffect(() => {
-    if (mode !== 'detail' || !following) return
-    setZoomState((state) => setZoomMode(state, 'detail', playheadTarget(playback.current)))
-  }, [mode, currentTime, playing, following])
+    if (!following) return
+    setZoomState(followPlayhead)
+  }, [mode, currentTime, playing, following, followPlayhead])
   const hasPlayTime = !!getPlayTime
   useEffect(() => {
-    if (mode !== 'detail' || !playing || !hasPlayTime || !following) return
+    if ((mode !== 'detail' && !(mode === 'custom' && followProject)) || !playing || !hasPlayTime || !following) return
     let id = 0
     const tick = (): void => {
-      setZoomState((state) => state.mode === 'detail'
-        ? setZoomMode(state, 'detail', playheadTarget(playback.current)) : state)
+      setZoomState(followPlayhead)
       id = requestAnimationFrame(tick)
     }
     id = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(id)
-  }, [mode, playing, hasPlayTime, following])
+  }, [mode, playing, hasPlayTime, following, followProject, followPlayhead])
 
   // 低效能模式（設定即時切換）：熱度條降為 60 格並重繪
   const lowPerf = useSyncExternalStore(subscribeLowPerf, isLowPerf, isLowPerf)

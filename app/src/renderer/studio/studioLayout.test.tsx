@@ -62,18 +62,22 @@ describe('工作室版面與操作', () => {
     expect(ai.getAttribute('aria-expanded')).toBe('false')
   })
 
-  test('加入外部影片依序選檔、加入影片庫及排入分析', async () => {
+  test('加入外部影片依序選檔、加入影片庫及排入分析，整批加入專案並播放第一段', async () => {
     const paths = ['D:/a.mp4', 'D:/b.mp4']
     const select = vi.fn(async () => paths)
     const add = vi.fn(async () => undefined)
     const enqueue = vi.fn(async () => undefined)
-    s = await mountStudio({ api: { overrides: { library: { selectFiles: select, add }, queue: { enqueue } } } })
+    const onOpenVideo = vi.fn()
+    s = await mountStudio({ onOpenVideo, api: { overrides: { library: { selectFiles: select, add }, queue: { enqueue }, engine: { probe: async () => ({ duration: 120 }) } } } })
     click(buttonByText(document, T.track.addExternalVideo)!)
     await flush()
     expect(select).toHaveBeenCalledTimes(1)
     expect(add).toHaveBeenCalledWith(paths)
     expect(enqueue.mock.calls).toEqual([['D:/a.mp4'], ['D:/b.mp4']])
     expect(add.mock.invocationCallOrder[0]).toBeLessThan(enqueue.mock.invocationCallOrder[0])
+    expect(document.querySelectorAll('.pclip')).toHaveLength(2)
+    expect(onOpenVideo).toHaveBeenCalledWith(paths[0], expect.objectContaining({ playItemId: document.querySelector('.pclip')!.getAttribute('data-item-id') }))
+    press(document.body, 'z', { ctrlKey: true })
     expect(document.querySelectorAll('.pclip')).toHaveLength(0)
   })
 
@@ -83,6 +87,24 @@ describe('工作室版面與操作', () => {
     await flush()
     expect(s.fake.api.library.add).not.toHaveBeenCalled()
     expect(s.fake.api.queue.enqueue).not.toHaveBeenCalled()
+  })
+
+  test('部分長度探測失敗會通知、保留影片庫匯入，並播放其餘成功的新片段', async () => {
+    const onOpenVideo = vi.fn()
+    s = await mountStudio({
+      onOpenVideo,
+      api: { overrides: {
+        library: { selectFiles: async () => ['D:/bad.mp4', 'D:/good.mp4'] },
+        engine: { probe: async (path: string) => path.includes('bad') ? null : { duration: 42 } }
+      } }
+    })
+    click(buttonByText(document, T.track.addExternalVideo)!)
+    await flush()
+    expect(s.fake.api.library.add).toHaveBeenCalledWith(['D:/bad.mp4', 'D:/good.mp4'])
+    expect(s.fake.api.library.remove).not.toHaveBeenCalled()
+    expect(document.querySelector('.toast')?.textContent).toContain('bad.mp4')
+    expect(document.querySelectorAll('.pclip')).toHaveLength(1)
+    expect(onOpenVideo).toHaveBeenCalledWith('D:/good.mp4', expect.anything())
   })
 
   test('匯入失敗顯示通知且不排入分析', async () => {

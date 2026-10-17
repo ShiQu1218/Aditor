@@ -11,7 +11,7 @@ export function planSeek(i: { loadedSrc: string | null; wantedSrc: string }): 'n
 
 /**
  * timeupdate 的去向：
- * - 專案預覽中：預覽檔已載入且無待套用 seek → 'preview'（不動來源播放頭）
+ * - 專案預覽中：預覽檔已載入且無待套用 seek → 'preview'（同步來源與專案播放頭）
  * - 來源模式：來源檔已載入且無待套用 seek → 'source'
  * - 其餘（舊影片殘留事件、換檔過渡）→ 'ignore'
  */

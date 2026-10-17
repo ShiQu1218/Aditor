@@ -1,6 +1,7 @@
 import { describe, expect, test, vi } from 'vitest'
 import type { CacheDoc } from '../../shared/types'
 import { loadStudioDoc, type LoaderDeps } from './studioLoader'
+import type { VideoInfo } from '../../shared/types'
 
 const doc = (status: string): CacheDoc =>
   ({ version: 1, video: { path: 'a', duration: 50 }, analysis: { status }, events: [], spectating: [], clips: [] }) as unknown as CacheDoc
@@ -26,6 +27,25 @@ function deps(over: Partial<LoaderDeps> = {}): LoaderDeps & { calls: string[] } 
 }
 
 describe('loadStudioDoc', () => {
+  test('project source without cache opens a real empty timeline without starting another analysis', async () => {
+    const d = deps({ getStatus: async () => 'analyzing', cacheLoad: async () => null, probe: vi.fn(async () => ({ path: 'b', duration: 123 }) as VideoInfo) })
+    const out = await loadStudioDoc('b', d, true)
+    expect(out).toMatchObject({ kind: 'ready', from: 'metadata', doc: { video: { path: 'b', duration: 123 }, analysis: { status: 'partial' }, events: [], clips: [] } })
+    expect(d.analyze).not.toHaveBeenCalled()
+  })
+
+  test('project source uses an existing cache even while queued', async () => {
+    const d = deps({ getStatus: async () => 'pending' })
+    expect(await loadStudioDoc('b', d, true)).toMatchObject({ kind: 'ready', from: 'cache' })
+    expect(d.analyze).not.toHaveBeenCalled()
+  })
+
+  test.each([0, -1, NaN, Infinity])('project source rejects invalid metadata duration %s', async (duration) => {
+    const d = deps({ cacheLoad: async () => null, probe: async () => ({ duration }) as VideoInfo })
+    expect(await loadStudioDoc('b', d, true)).toMatchObject({ kind: 'error' })
+    expect(d.analyze).not.toHaveBeenCalled()
+  })
+
   test('entry done + cache hit: cache only, analyze never called', async () => {
     const d = deps()
     const out = await loadStudioDoc('a.mp4', d)

@@ -2,7 +2,7 @@ import type { Project, ProjectItem } from '../editor/project'
 
 /**
  * 工作室模式：來源模式播放目前開啟的影片；專案模式依序預覽專案片段。
- * `sourceVideo` 是「開啟的影片」，不因預覽別的來源片段而改變（spec §3.5）。
+ * `sourceVideo` 是目前工作室來源；跨來源片段由 App 換檔並重新掛載。
  */
 export interface ModeState {
   mode: 'source' | 'project'
@@ -36,17 +36,6 @@ export function reduceMode(state: ModeState, action: ModeAction): ModeState {
 export function currentItem(state: ModeState, project: Project): ProjectItem | null {
   if (state.mode !== 'project' || !state.curItemId) return null
   return project.items.find((i) => i.id === state.curItemId) ?? null
-}
-
-function samePath(a: string, b: string): boolean {
-  return a.replace(/\\/g, '/').toLowerCase() === b.replace(/\\/g, '/').toLowerCase()
-}
-
-/** 目前專案片段的來源 ≠ 開啟的影片（側欄與來源軌需灰化）。 */
-export function isForeign(state: ModeState, project: Project): boolean {
-  const item = currentItem(state, project)
-  if (!item) return false
-  return !samePath(item.source, state.sourceVideo)
 }
 
 /** 預覽中的片段不存在（例如被復原移除）→ 退回來源模式；其餘原樣回傳。 */
