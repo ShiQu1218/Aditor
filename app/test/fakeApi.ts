@@ -42,7 +42,7 @@ export function createFakeApi(opts: FakeApiOptions = {}) {
       addDroppedFiles: vi.fn(async (_files: File[]) => []),
       remove: vi.fn(async () => undefined),
       toggleFavorite: vi.fn(async () => undefined),
-      selectFiles: vi.fn(async () => undefined),
+      selectFiles: vi.fn(async () => [] as string[]),
       selectFolder: vi.fn(async () => undefined),
       getWatchFolders: vi.fn(async () => []),
       addWatchFolder: vi.fn(async () => undefined),
@@ -69,12 +69,6 @@ export function createFakeApi(opts: FakeApiOptions = {}) {
       delete: vi.fn(async () => true),
       usage: vi.fn(async () => ({ count: 0, bytes: 0 }))
     },
-    project: {
-      showSaveDialog: vi.fn(async () => null),
-      showOpenDialog: vi.fn(async () => null),
-      save: vi.fn(async () => true),
-      load: vi.fn(async () => null)
-    },
     projects: {
       save: vi.fn(async () => true),
       list: vi.fn(async () => []),
@@ -82,10 +76,7 @@ export function createFakeApi(opts: FakeApiOptions = {}) {
       flushSync: vi.fn(() => true),
       onFlushRequest: sub('projects:flushRequest'),
       lastError: vi.fn(async () => null),
-      flushDone: vi.fn(),
-      setDirty: vi.fn(),
-      onSaveAndCloseRequest: sub('projects:saveAndCloseRequest'),
-      saveAndCloseDone: vi.fn()
+      flushDone: vi.fn()
     },
     settings: {
       get: vi.fn(async () => settings),

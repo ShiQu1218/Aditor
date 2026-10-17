@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { formatTime } from '../../shared/time'
 import { i18n } from '../i18n/zh-TW'
-import { ChevronDown, Copy, FilePlus2, FolderOpen, Redo2, Save, Scissors, Trash2, Undo2 } from '../components/icons'
+import { ChevronDown, Copy, Download, Redo2, Scissors, Trash2, Undo2 } from '../components/icons'
 import type { Project, ProjectItem } from '../editor/project'
 import type { SaveState } from '../editor/ProjectProvider'
 import { useFocusTrap } from '../a11y/useFocusTrap'
@@ -43,13 +43,11 @@ export interface ProjectTrackProps {
   onRedo: () => void
   canUndo: boolean
   canRedo: boolean
-  /** 〔新專案〕：有片段時先開對話框；saveFirst=true 表示「另存檔案後新增」 */
-  onNewProject: (saveFirst: boolean) => void
-  /** 開啟檔案；saveFirst=true 表示「另存檔案後開啟」（只在有未儲存變更時由對話框觸發） */
-  onOpenFile: (saveFirst: boolean) => void
-  /** 專案自動儲存關閉且有未另存的變更：新專案／開啟檔案先確認（I5） */
-  unsaved?: boolean
-  onSaveFile: () => void
+  onNewProject: () => void
+  onAddExternalVideo: () => void
+  onExport: () => void
+  exportOpen: boolean
+  exportPercent: number | null
   /** ＋從來源加入：加入第一段待確認建議（沒有時 Toast） */
   onAddFromSource: () => void
   /** 新專案對話框開關（供呼叫端停用全域 keymap） */
@@ -109,9 +107,10 @@ export function ProjectTrack(props: ProjectTrackProps): JSX.Element {
     canUndo,
     canRedo,
     onNewProject,
-    onOpenFile,
-    unsaved = false,
-    onSaveFile,
+    onAddExternalVideo,
+    onExport,
+    exportOpen,
+    exportPercent,
     onAddFromSource,
     onDialogOpenChange
   } = props
@@ -123,9 +122,6 @@ export function ProjectTrack(props: ProjectTrackProps): JSX.Element {
   const [trimDrag, setTrimDrag] = useState<TrimDrag | null>(null)
   const [reorder, setReorder] = useState<ReorderDrag | null>(null)
   const [newDlgOpen, setNewDlgOpen] = useState(false)
-  const [dlgMode, setDlgMode] = useState<'new' | 'open'>('new')
-  const openDlg = i18n.studio.openFileDlg
-
   const trackRef = useRef<HTMLDivElement>(null)
   const trimRef = useRef<{ item: ProjectItem; edge: 'start' | 'end'; startX: number; pxPerSec: number; upper: number; moved: boolean } | null>(null)
   const orderRef = useRef<{ id: string; startX: number; dragging: boolean } | null>(null)
@@ -322,26 +318,15 @@ export function ProjectTrack(props: ProjectTrackProps): JSX.Element {
 
   const requestNewProject = useCallback(() => {
     if (project.items.length === 0) return // mock：空專案時不動作
-    setDlgMode('new')
     setNewDlgOpen(true)
   }, [project.items.length])
 
-  const requestOpenFile = useCallback(() => {
-    if (!unsaved || project.items.length === 0) {
-      onOpenFile(false)
-      return
-    }
-    setDlgMode('open')
-    setNewDlgOpen(true)
-  }, [unsaved, project.items.length, onOpenFile])
-
-  const statusText = saveState === 'saving' ? t.saving : saveState === 'error' ? t.saveError : t.saved
+  const statusText = saveState === 'saving' ? t.saving : saveState === 'error' ? t.saveError : saveState === 'pending' ? t.pending : t.saved
 
   return (
     <section
       className={`project-lane${collapsed ? ' collapsed' : ''}`}
       data-zone="proj"
-      data-editor-lock
       aria-label={t.title}
     >
       <div className="lane-label">
@@ -351,92 +336,103 @@ export function ProjectTrack(props: ProjectTrackProps): JSX.Element {
 
       <div className="plane">
         <div className="plane-head">
+          <div className="plane-head-edit" data-editor-lock>
+            <button
+              type="button"
+              className="icon-btn fold"
+              title={t.collapse}
+              aria-label={t.collapse}
+              aria-expanded={!collapsed}
+              onClick={onToggleCollapsed}
+            >
+              <ChevronDown className="ic sm" />
+            </button>
+            <input
+              className="pname"
+              value={nameDraft}
+              aria-label={t.nameLabel}
+              onChange={(e) => setNameDraft(e.target.value)}
+              onBlur={commitName}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') (e.currentTarget as HTMLInputElement).blur()
+                else if (e.key === 'Escape') {
+                  e.currentTarget.value = project.name
+                  setNameDraft(project.name)
+                  ;(e.currentTarget as HTMLInputElement).blur()
+                }
+              }}
+            />
+            <span className="proj-info dim">
+              {t.itemCount.replace('{n}', String(project.items.length))} · {t.total.replace('{time}', formatTime(total))}
+              <span className="xtra"> · {t.sources.replace('{n}', String(sources.length))}</span>
+            </span>
+            <span className={`sub-save ${saveState}`} title={statusText}>
+              <i />
+              {statusText}
+            </span>
+            <span className="grow" />
+            {sel && (
+              <span className="insp">
+                <span className="dim">#{selIndex + 1}</span>
+                <span className="stepper">
+                  <button type="button" aria-label={`${t.stepperStart} ${t.stepperDec}`} onClick={() => nudge('start', -0.5)}>
+                    −
+                  </button>
+                  <span>{fmt1(sel.start)}</span>
+                  <button type="button" aria-label={`${t.stepperStart} ${t.stepperInc}`} onClick={() => nudge('start', 0.5)}>
+                    +
+                  </button>
+                </span>
+                <span className="dim">→</span>
+                <span className="stepper">
+                  <button type="button" aria-label={`${t.stepperEnd} ${t.stepperDec}`} onClick={() => nudge('end', -0.5)}>
+                    −
+                  </button>
+                  <span>{fmt1(sel.end)}</span>
+                  <button type="button" aria-label={`${t.stepperEnd} ${t.stepperInc}`} onClick={() => nudge('end', 0.5)}>
+                    +
+                  </button>
+                </span>
+              </span>
+            )}
+            <button type="button" className="icon-btn" title={t.splitTitle} aria-label={t.split} onClick={onSplit}>
+              <Scissors className="ic sm" />
+            </button>
+            <button type="button" className="icon-btn" title={t.duplicate} aria-label={t.duplicate} disabled={!sel} onClick={onDuplicate}>
+              <Copy className="ic sm" />
+            </button>
+            <button type="button" className="icon-btn" title={t.delete} aria-label={t.delete} disabled={!sel} onClick={onDelete}>
+              <Trash2 className="ic sm" />
+            </button>
+            <button type="button" className="icon-btn" title={t.undo} aria-label={t.undo} disabled={!canUndo} onClick={onUndo}>
+              <Undo2 className="ic sm" />
+            </button>
+            <button type="button" className="icon-btn" title={t.redo} aria-label={t.redo} disabled={!canRedo} onClick={onRedo}>
+              <Redo2 className="ic sm" />
+            </button>
+            <button type="button" className="btn-ghost sm" onClick={requestNewProject}>
+              {t.newProject}
+            </button>
+            <button type="button" className="btn-ghost sm" onClick={onAddExternalVideo}>
+              {t.addExternalVideo}
+            </button>
+          </div>
           <button
             type="button"
-            className="icon-btn fold"
-            title={t.collapse}
-            aria-label={t.collapse}
-            aria-expanded={!collapsed}
-            onClick={onToggleCollapsed}
+            className="btn-accent sm"
+            aria-haspopup="dialog"
+            aria-expanded={exportOpen}
+            aria-label={exportPercent !== null ? i18n.export.badgeLabel.replace('{pct}', String(exportPercent)) : undefined}
+            onClick={onExport}
           >
-            <ChevronDown className="ic sm" />
-          </button>
-          <input
-            className="pname"
-            value={nameDraft}
-            aria-label={t.nameLabel}
-            onChange={(e) => setNameDraft(e.target.value)}
-            onBlur={commitName}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') (e.currentTarget as HTMLInputElement).blur()
-              else if (e.key === 'Escape') {
-                e.currentTarget.value = project.name
-                setNameDraft(project.name)
-                ;(e.currentTarget as HTMLInputElement).blur()
-              }
-            }}
-          />
-          <span className="proj-info dim">
-            {t.itemCount.replace('{n}', String(project.items.length))} · {t.total.replace('{time}', formatTime(total))}
-            <span className="xtra"> · {t.sources.replace('{n}', String(sources.length))}</span>
-          </span>
-          <span className={`sub-save ${saveState}`} title={statusText}>
-            <i />
-            {statusText}
-          </span>
-          <span className="grow" />
-          {sel && (
-            <span className="insp">
-              <span className="dim">#{selIndex + 1}</span>
-              <span className="stepper">
-                <button type="button" aria-label={`${t.stepperStart} ${t.stepperDec}`} onClick={() => nudge('start', -0.5)}>
-                  −
-                </button>
-                <span>{fmt1(sel.start)}</span>
-                <button type="button" aria-label={`${t.stepperStart} ${t.stepperInc}`} onClick={() => nudge('start', 0.5)}>
-                  +
-                </button>
-              </span>
-              <span className="dim">→</span>
-              <span className="stepper">
-                <button type="button" aria-label={`${t.stepperEnd} ${t.stepperDec}`} onClick={() => nudge('end', -0.5)}>
-                  −
-                </button>
-                <span>{fmt1(sel.end)}</span>
-                <button type="button" aria-label={`${t.stepperEnd} ${t.stepperInc}`} onClick={() => nudge('end', 0.5)}>
-                  +
-                </button>
-              </span>
-            </span>
-          )}
-          <button type="button" className="icon-btn" title={t.splitTitle} aria-label={t.split} onClick={onSplit}>
-            <Scissors className="ic sm" />
-          </button>
-          <button type="button" className="icon-btn" title={t.duplicate} aria-label={t.duplicate} disabled={!sel} onClick={onDuplicate}>
-            <Copy className="ic sm" />
-          </button>
-          <button type="button" className="icon-btn" title={t.delete} aria-label={t.delete} disabled={!sel} onClick={onDelete}>
-            <Trash2 className="ic sm" />
-          </button>
-          <button type="button" className="icon-btn" title={t.undo} aria-label={t.undo} disabled={!canUndo} onClick={onUndo}>
-            <Undo2 className="ic sm" />
-          </button>
-          <button type="button" className="icon-btn" title={t.redo} aria-label={t.redo} disabled={!canRedo} onClick={onRedo}>
-            <Redo2 className="ic sm" />
-          </button>
-          <button type="button" className="btn-ghost sm" onClick={requestNewProject}>
-            {t.newProject}
-          </button>
-          <button type="button" className="btn-ghost sm" onClick={requestOpenFile}>
-            {t.openFile}
-          </button>
-          <button type="button" className="btn-ghost sm" onClick={onSaveFile}>
-            {t.saveFile}
+            <Download className="ic sm" /> {i18n.studio.exportCount.replace('{n}', String(project.items.length))}
+            {exportPercent !== null && <span className="xd-badge">{i18n.export.badge.replace('{pct}', String(exportPercent))}</span>}
           </button>
         </div>
 
         <div
           className="track"
+          data-editor-lock
           ref={trackRef}
           onFocus={() => {
             focusInTrack.current = true
@@ -531,37 +527,25 @@ export function ProjectTrack(props: ProjectTrackProps): JSX.Element {
             tabIndex={-1}
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 id="np-title">{dlgMode === 'open' ? openDlg.title : dlg.title}</h3>
+            <h3 id="np-title">{dlg.title}</h3>
             <div className="sub">
-              {(dlgMode === 'open' ? openDlg.body : unsaved ? dlg.bodyUnsaved : dlg.body)
+              {dlg.body
                 .replace('{name}', project.name)
                 .replace('{n}', String(project.items.length))}
             </div>
             <div className="foot">
               <button type="button" className="btn-ghost" onClick={() => setNewDlgOpen(false)}>
-                {dlgMode === 'open' ? openDlg.cancel : dlg.cancel}
-              </button>
-              <button
-                type="button"
-                className="btn-ghost"
-                onClick={() => {
-                  setNewDlgOpen(false)
-                  if (dlgMode === 'open') onOpenFile(true)
-                  else onNewProject(true)
-                }}
-              >
-                {dlgMode === 'open' ? openDlg.saveThenOpen : dlg.saveThenNew}
+                {dlg.cancel}
               </button>
               <button
                 type="button"
                 className="btn-accent"
                 onClick={() => {
                   setNewDlgOpen(false)
-                  if (dlgMode === 'open') onOpenFile(false)
-                  else onNewProject(false)
+                  onNewProject()
                 }}
               >
-                {dlgMode === 'open' ? openDlg.directOpen : dlg.directNew}
+                {dlg.confirm}
               </button>
             </div>
           </div>

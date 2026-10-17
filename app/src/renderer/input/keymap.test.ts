@@ -27,25 +27,23 @@ const ctx = (o: Partial<KeyCtx> = {}): KeyCtx => ({
 
 describe('resolveKey 矩陣', () => {
   test('Enter on native button is not handled (null)', () => {
-    for (const zone of ['src', 'hl', 'ev', 'proj', null] as const) {
+    for (const zone of ['src', 'hl', 'proj', null] as const) {
       expect(resolveKey(k('Enter'), ctx({ zone, target: 'native' }))).toBeNull()
     }
   })
 
-  test('Enter: hl→acceptSuggestion, ev→seekSelectedEvent, proj→playItem, src→null', () => {
+  test('Enter: hl→acceptSuggestion, proj→playItem, src→null', () => {
     expect(resolveKey(k('Enter'), ctx({ zone: 'hl' }))).toBe('acceptSuggestion')
-    expect(resolveKey(k('Enter'), ctx({ zone: 'ev' }))).toBe('seekSelectedEvent')
     expect(resolveKey(k('Enter'), ctx({ zone: 'proj' }))).toBe('playItem')
     expect(resolveKey(k('Enter'), ctx({ zone: 'src' }))).toBeNull()
   })
 
   test('Delete by zone', () => {
     expect(resolveKey(k('Delete'), ctx({ zone: 'hl' }))).toBe('skipSuggestion')
-    expect(resolveKey(k('Delete'), ctx({ zone: 'ev' }))).toBe('deleteSelectedEvents')
     expect(resolveKey(k('Delete'), ctx({ zone: 'proj' }))).toBe('deleteProjectItem')
     expect(resolveKey(k('Delete'), ctx({ zone: 'src' }))).toBeNull()
     expect(resolveKey(k('Delete'), ctx({ zone: 'hl', target: 'native' }))).toBeNull()
-    expect(resolveKey(k('Delete'), ctx({ zone: 'ev', target: 'text' }))).toBeNull()
+    expect(resolveKey(k('Delete'), ctx({ zone: 'hl', target: 'text' }))).toBeNull()
   })
 
   test('Shift 組合先於無 Shift：redo / openExport', () => {
@@ -70,7 +68,7 @@ describe('resolveKey 矩陣', () => {
     expect(resolveKey(k('ArrowLeft', { altKey: true }), ctx({ zone: 'proj', target: 'native' }))).toBe(
       'moveItemLeft'
     )
-    for (const zone of ['src', 'hl', 'ev', null] as const) {
+    for (const zone of ['src', 'hl', null] as const) {
       expect(resolveKey(k('ArrowLeft', { altKey: true }), ctx({ zone }))).toBeNull()
       expect(resolveKey(k('ArrowRight', { altKey: true }), ctx({ zone }))).toBeNull()
     }
@@ -81,18 +79,18 @@ describe('resolveKey 矩陣', () => {
     expect(resolveKey(k('d', { ctrlKey: true }), ctx({ zone: 'src' }))).toBeNull()
   })
 
-  test('text input swallows plain keys but not Ctrl+S / Ctrl+Z', () => {
+  test('text input keeps plain keys; removed Ctrl+S is inert and Ctrl+Z still works', () => {
     const t = ctx({ target: 'text', zone: 'src' })
     for (const key of [' ', 's', 'm', '[', ']', '?', 'Enter', 'Delete', 'ArrowLeft', 'ArrowRight']) {
       expect(resolveKey(k(key), t)).toBeNull()
     }
-    expect(resolveKey(k('s', { ctrlKey: true }), t)).toBe('saveProjectFile')
+    expect(resolveKey(k('s', { ctrlKey: true }), t)).toBeNull()
     expect(resolveKey(k('z', { ctrlKey: true }), t)).toBe('undo')
   })
 
-  test('Space on button returns null; Space elsewhere returns play', () => {
-    expect(resolveKey(k(' '), ctx({ target: 'native' }))).toBeNull()
-    for (const zone of ['src', 'hl', 'ev', 'proj', null] as const) {
+  test('Space on buttons and elsewhere returns play', () => {
+    expect(resolveKey(k(' '), ctx({ target: 'native' }))).toBe('play')
+    for (const zone of ['src', 'hl', 'proj', null] as const) {
       expect(resolveKey(k(' '), ctx({ zone }))).toBe('play')
     }
   })
@@ -151,21 +149,21 @@ describe('resolveKey 矩陣', () => {
     expect(resolveKey(k('ArrowRight'), ctx({ zone: 'src', target: 'native' }))).toBeNull()
     expect(resolveKey(k('ArrowRight'), ctx({ zone: 'proj' }))).toBe('selectNextItem')
     expect(resolveKey(k('ArrowLeft'), ctx({ zone: 'proj' }))).toBe('selectPrevItem')
-    expect(resolveKey(k('ArrowDown'), ctx({ zone: 'ev' }))).toBe('listNext')
+    expect(resolveKey(k('ArrowDown'), ctx({ zone: 'hl' }))).toBe('listNext')
     expect(resolveKey(k('ArrowUp'), ctx({ zone: 'hl' }))).toBe('listPrev')
     expect(resolveKey(k('ArrowUp'), ctx({ zone: 'src' }))).toBeNull()
     expect(resolveKey(k('ArrowLeft'), ctx({ zone: 'hl' }))).toBeNull()
-    expect(resolveKey(k('ArrowDown'), ctx({ zone: 'ev', target: 'native' }))).toBeNull()
+    expect(resolveKey(k('ArrowDown'), ctx({ zone: 'hl', target: 'native' }))).toBeNull()
     expect(resolveKey(k('ArrowRight', { shiftKey: true }), ctx({ zone: 'proj' }))).toBeNull()
-    expect(resolveKey(k('ArrowLeft', { ctrlKey: true }), ctx({ zone: 'ev' }))).toBe('prevEvent')
+    expect(resolveKey(k('ArrowLeft', { ctrlKey: true }), ctx({ zone: 'hl' }))).toBe('prevEvent')
     expect(resolveKey(k('ArrowRight', { ctrlKey: true }), ctx({ target: 'native' }))).toBe('nextEvent')
     expect(resolveKey(k('=', { ctrlKey: true }), ctx())).toBe('zoomIn')
     expect(resolveKey(k('+', { ctrlKey: true, shiftKey: true }), ctx())).toBe('zoomIn')
     expect(resolveKey(k('-', { ctrlKey: true }), ctx())).toBe('zoomOut')
     expect(resolveKey(k('0', { ctrlKey: true }), ctx())).toBe('zoomReset')
-    expect(resolveKey(k('m', { ctrlKey: true }), ctx())).toBe('supercut')
+    expect(resolveKey(k('m', { ctrlKey: true }), ctx())).toBeNull()
     expect(resolveKey(k('b', { ctrlKey: true }), ctx())).toBe('toggleAside')
-    expect(resolveKey(k('s', { ctrlKey: true }), ctx())).toBe('saveProjectFile')
+    expect(resolveKey(k('s', { ctrlKey: true }), ctx())).toBeNull()
     expect(resolveKey(k('x', { ctrlKey: true }), ctx())).toBeNull()
   })
 
@@ -248,7 +246,7 @@ describe('IME / AltGr / Esc / Alt / repeat', () => {
       expect(resolveKey(k('ArrowLeft', { altKey: true }), ctx({ zone: 'proj', target }))).toBe('moveItemLeft')
       expect(resolveKey(k('ArrowRight', { altKey: true }), ctx({ zone: 'proj', target }))).toBe('moveItemRight')
     }
-    expect(resolveKey(k('ArrowLeft', { altKey: true }), ctx({ zone: 'ev', target: 'text' }))).toBeNull()
+    expect(resolveKey(k('ArrowLeft', { altKey: true }), ctx({ zone: 'hl', target: 'text' }))).toBeNull()
   })
   test('repeat 僅連續類指令可通過', () => {
     const r = { repeat: true }
@@ -257,7 +255,7 @@ describe('IME / AltGr / Esc / Alt / repeat', () => {
     expect(resolveKey(k('=', { ctrlKey: true, ...r }), ctx())).toBe('zoomIn')
     expect(resolveKey(k('ArrowLeft', { altKey: true, ...r }), ctx({ zone: 'proj' }))).toBe('moveItemLeft')
     expect(resolveKey(k('ArrowRight', r), ctx({ zone: 'proj' }))).toBe('selectNextItem')
-    expect(resolveKey(k('ArrowDown', r), ctx({ zone: 'ev' }))).toBe('listNext')
+    expect(resolveKey(k('ArrowDown', r), ctx({ zone: 'hl' }))).toBe('listNext')
     expect(resolveKey(k('q', { ctrlKey: true, ...r }), ctx())).toBeNull()
     expect(resolveKey(k('s', { ctrlKey: true, ...r }), ctx())).toBeNull()
     expect(resolveKey(k('e', { ctrlKey: true, shiftKey: true, ...r }), ctx())).toBeNull()
@@ -291,7 +289,7 @@ describe('KEY_TABLE', () => {
   const zoneOfScope = (scope: string): KeyCtx['zone'] => {
     if (scope.includes('來源')) return 'src'
     if (scope.includes('精華')) return 'hl'
-    if (scope.includes('事件')) return 'ev'
+    if (scope.includes('事件')) return null
     if (scope.includes('專案軌')) return 'proj'
     return null
   }
@@ -378,7 +376,7 @@ describe('useKeymap 核心（createKeyDownHandler / attachKeymap）', () => {
     const second = vi.fn()
     let cur = state({ play: first })
     const detach = attachKeymap(fakeWin, () => cur)
-    expect(listeners.size).toBe(1)
+    expect(listeners.size).toBe(2)
     cur = state({ play: second })
     ;[...listeners].forEach((fn) => fn(evt(' ')))
     expect(first).not.toHaveBeenCalled()
@@ -429,8 +427,8 @@ describe('focusZone helpers', () => {
     }
   })
   test('zoneOf walks up to data-zone', () => {
-    const wrap = el('DIV', { 'data-zone': 'ev' })
-    expect(zoneOf(el('DIV', {}, el('SPAN', {}, wrap)))).toBe('ev')
+    const wrap = el('DIV', { 'data-zone': 'hl' })
+    expect(zoneOf(el('DIV', {}, el('SPAN', {}, wrap)))).toBe('hl')
     expect(zoneOf(el('DIV', { 'data-zone': 'bogus' }))).toBeNull()
     expect(zoneOf(null)).toBeNull()
   })

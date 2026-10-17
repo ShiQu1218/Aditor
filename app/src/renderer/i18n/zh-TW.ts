@@ -16,14 +16,7 @@ export const i18n = {
     videoFilter: '影片檔案',
     selectFolderTitle: '選擇包含錄影的資料夾',
     addWatchFolderTitle: '選擇要監看的資料夾（新影片自動匯入）',
-    saveProjectTitle: '儲存剪輯專案',
-    openProjectTitle: '開啟剪輯專案',
-    selectOutDirTitle: '選擇匯出目標資料夾',
-    unsavedCloseTitle: '尚未儲存的專案變更',
-    unsavedCloseMessage: '專案自動儲存已關閉，目前專案有尚未另存的變更。要在關閉前儲存嗎？',
-    unsavedSave: '儲存',
-    unsavedDiscard: '不儲存',
-    unsavedCancel: '取消'
+    selectOutDirTitle: '選擇匯出目標資料夾'
   },
   library: {
     title: '影片庫',
@@ -137,12 +130,10 @@ export const i18n = {
   },
   viewer: {
     back: '返回影片庫',
-    events: '事件清單',
     clips: '片段清單',
     noEvents: '無偵測事件',
     noClips: '無建立片段',
     autoClip: 'AI 自動剪輯',
-    createSupercut: '建立合輯',
     sendToProject: '傳送至專案 (Ctrl+E)',
     addEvent: '新增事件 (M)',
     quickClip: '快速剪輯 (Ctrl+Q)',
@@ -150,10 +141,6 @@ export const i18n = {
     zoomIn: '放大 (Ctrl +)',
     zoomOut: '縮小 (Ctrl -)',
     zoomReset: '重設縮放 (Ctrl 0)',
-    overrideCount: '計入統計',
-    overrideUncount: '不計入',
-    overrideAuto: '自動判定',
-    deleteEvent: '刪除事件',
     suggestProxyTitle: '播放可能不流暢',
     suggestProxyDesc: '偵測到您的系統解碼效能較低，建議產生代理檔以獲得更流暢的預覽。',
     generateProxy: '產生代理檔'
@@ -204,19 +191,16 @@ export const i18n = {
       added: '已加入專案',
       alreadyInProject: '專案已有此片段',
       relinkHint: '已回到影片庫：請移除失效的項目後，重新匯入檔案所在的位置。',
-      projectRestoreCorrupt: '上次的專案檔已損毀，已保留備份並建立新專案。可從「開啟檔案」找回備份。',
+      projectRestoreCorrupt: '上次的專案檔已損毀，已保留備份並建立新專案。備份保留在專案自動儲存目錄。',
       projectRestoreUnsupported: '上次的專案檔來自較新的版本，無法開啟；已建立新專案，原檔未被變更。',
       addedProject: '已加入專案（{sec} 秒）',
       skipped: '已略過這段建議',
       removedFromProject: '已移出專案片段',
       undo: '復原',
-      deletedEvents: '已刪除 {n} 個事件',
       copied: '已複製錯誤訊息',
-      derived: '已重新推導計入結果',
-      boxSelected: '框選了 {n} 個事件（{range}）',
       deletedItem: '已刪除專案片段',
-      newProject: '已建立新專案；舊專案已自動儲存，可從「開啟檔案」或專案清單找回',
-      savedAs: '已另存為 {name}（專案本身已自動儲存）',
+      addExternalFailed: '加入外部影片失敗，請稍後重試',
+      newProject: '已建立新專案；舊專案已保留在自動儲存目錄',
       noSuggestions: '沒有待加入的片段',
       splitHint: '請先在專案軌選取片段，並把播放頭移到片段內部',
       sourceOnlyEdit: '回到來源後才能編輯事件'
@@ -225,7 +209,6 @@ export const i18n = {
       events: '{n} 個事件'
     },
     live: {
-      selected: '已選取 {n} 個事件',
       event: '{type} · {time}',
       playhead: '播放頭 {time}',
       zoomIn: '時間軸放大',
@@ -240,8 +223,7 @@ export const i18n = {
     },
     tabs: {
       hl: '精華',
-      ev: '事件',
-      asideLabel: '精華與事件'
+      asideLabel: '精華'
     },
     hl: {
       title: '{n} 殺精華',
@@ -262,31 +244,14 @@ export const i18n = {
       remove: '移出',
       stale: '來源事件已更新',
       empty: '找不到符合條件的精華',
-      emptyHint: '可調整 AI 參數，或改用事件分頁建立合輯。',
+      emptyHint: '可調整 AI 參數，或使用快速剪輯。',
       tuneParams: '調整 AI 參數',
       projectSummary: '專案已有 {n} 段 · 總長 {time}'
     },
-    ev: {
-      ariaLabel: '事件清單',
-      hint: '單擊跳轉；勾選或 Shift+點時間軸選取',
-      counted: '計入',
-      uncounted: '不計入',
-      empty: '尚無偵測事件',
-      noMatch: '沒有符合篩選條件的事件',
-      checkbox: '選取',
-      damageLine: '含傷害行',
+    eventReasons: {
       reasonDeleted: '已刪除',
       reasonForced: '強制計入',
-      reasonForcedOff: '強制不計入',
-      auto: '自動',
-      yes: '計入',
-      no: '不計',
-      triLabel: '計入統計',
-      delete: '刪除（可復原）',
-      selected: '已選 {n} 個事件',
-      clear: '清除',
-      supercut: '建立合輯',
-      supercutKey: 'Ctrl M'
+      reasonForcedOff: '強制不計入'
     },
     autoClipPopover: {
       title: 'AI 自動剪輯',
@@ -315,7 +280,7 @@ export const i18n = {
       title: '專案',
       itemCount: '{n} 段',
       total: '總長 {time}',
-      empty: '尚無片段，從精華或事件加入',
+      empty: '尚無片段，從精華或快速剪輯加入',
       addFromSource: '從來源加入',
       addKey: 'Ctrl E',
       addAll: '全部加入',
@@ -330,9 +295,9 @@ export const i18n = {
       undo: '復原 (Ctrl+Z)',
       redo: '重做 (Ctrl+Y)',
       newProject: '新專案',
-      openFile: '開啟檔案',
-      saveFile: '另存檔案',
+      addExternalVideo: '加入外部影片',
       saved: '已自動儲存',
+      pending: '尚待儲存',
       saving: '儲存中…',
       saveError: '儲存失敗',
       itemAria: '片段 {i} {label} {time}',
@@ -345,20 +310,11 @@ export const i18n = {
       stepperDec: '−0.5 秒',
       stepperInc: '+0.5 秒'
     },
-    openFileDlg: {
-      title: '開啟其他專案？',
-      body: '目前專案「{name}」有尚未另存的變更（專案自動儲存已關閉）；開啟檔案會取代目前專案。',
-      cancel: '取消',
-      saveThenOpen: '另存檔案後開啟',
-      directOpen: '直接開啟'
-    },
     newProjectDlg: {
       title: '建立新專案？',
-      body: '目前專案「{name}」有 {n} 段，已自動儲存在 %APPDATA%\\ApexHighlighter\\projects\\，之後可從「開啟檔案」或專案清單找回。尚未另存成 .apexproj.json 檔案。',
-      cancel: '取消',
-      bodyUnsaved: '目前專案「{name}」有 {n} 段，專案自動儲存已關閉，且有尚未另存的變更；直接新增會遺失這些變更。',
-      saveThenNew: '另存檔案後新增',
-      directNew: '直接新增'
+      confirm: '建立新專案',
+      body: '目前專案「{name}」有 {n} 段，建立新專案前會先儲存在專案自動儲存目錄。',
+      cancel: '取消'
     },
     addEvent: {
       title: '新增事件（{time}）',
@@ -369,15 +325,12 @@ export const i18n = {
     },
     shelves: {
       empty: '尚無資料',
-      hlPlaceholder: '精華清單將顯示 AI 建議與手動片段',
-      evPlaceholder: '事件清單將顯示所有偵測事件'
+      hlPlaceholder: '精華清單將顯示 AI 建議與手動片段'
     },
     sideHints: {
-      hlCount: '精華 {n}',
-      evCount: '事件 {n}'
+      hlCount: '精華 {n}'
     },
     search: {
-      events: '搜尋事件',
       clips: '搜尋精華'
     }
   },
@@ -493,7 +446,6 @@ export const shellI18n = {
       studio: '工作室',
       source: '來源時間軸',
       hl: '精華清單',
-      ev: '事件清單',
       proj: '專案軌',
       library: '影片庫',
       settings: '設定'
@@ -512,11 +464,9 @@ export const shellI18n = {
       addEvent: '新增事件',
       setStart: '目前片段起點＝播放頭',
       setEnd: '目前片段終點＝播放頭',
-      supercut: '選取事件建立合輯',
       addAllToProject: '加入專案（全部建議）',
       acceptSuggestion: '加入目前建議',
       skipSuggestion: '略過目前建議',
-      deleteSelectedEvents: '刪除選取事件',
       deleteProjectItem: '刪除選取片段',
       duplicateItem: '複製選取片段',
       moveItemLeft: '選取片段往前移',
@@ -524,16 +474,14 @@ export const shellI18n = {
       playItem: '播放該片段',
       undo: '復原',
       redo: '重做',
-      saveProjectFile: '另存專案檔',
       openExport: '開啟匯出抽屜',
       toggleAside: '顯示／隱藏側欄',
       backToSource: '返回來源模式',
-      closeOverlay: '關閉浮層／清除選取',
+      closeOverlay: '關閉浮層',
       showShortcuts: '快捷鍵說明',
       focusToast: '聚焦最新通知（可按〔復原〕）',
       focusSearch: '聚焦搜尋',
       toggleFavoriteFilter: '切換只顯示收藏',
-      seekSelectedEvent: '跳到選取事件',
       selectPrevItem: '選取上一個片段',
       selectNextItem: '選取下一個片段',
       listPrev: '上一項',

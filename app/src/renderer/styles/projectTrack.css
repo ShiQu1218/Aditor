@@ -39,23 +39,27 @@
 
 /* ---- 軌頭 ---- */
 .plane-head {
-  height: 34px;
+  min-height: 34px;
   flex: none;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
-  padding: 0 10px;
+  padding: 4px 10px;
   font-size: var(--fs-small);
   color: var(--text-2);
   border-bottom: 1px solid var(--line);
   white-space: nowrap;
   overflow: hidden;
 }
-.plane-head > * { flex: none; }
+.plane-head-edit { display: contents; }
+.plane-head > *,
+.plane-head-edit > * { flex: none; }
 .plane-head .grow { flex: 1 1 0; min-width: 0; }
 .plane-head .icon-btn { width: 26px; height: 26px; }
 .plane-head .icon-btn .ic { width: 15px; height: 15px; }
-.plane-head .btn-ghost { height: 26px; padding: 0 8px; }
+.plane-head .btn-ghost,
+.plane-head .btn-accent { height: 26px; padding: 0 8px; }
 .plane-head .fold .ic { transition: transform var(--dur-fast) var(--ease); }
 .project-lane.collapsed .fold .ic { transform: rotate(-90deg); }
 
@@ -76,6 +80,7 @@
 .proj-info b { color: var(--text-1); }
 .sub-save { display: inline-flex; align-items: center; gap: 4px; font-size: var(--fs-caption); color: var(--text-3); }
 .sub-save i { width: 6px; height: 6px; border-radius: 50%; background: var(--success); }
+.sub-save.pending i,
 .sub-save.saving i { background: var(--warning); }
 .sub-save.error i { background: var(--danger); }
 
@@ -233,5 +238,6 @@
   .plane-head input.pname { width: 110px; }
   .sub-save { font-size: 0; gap: 0; }
   .sub-save i { width: 8px; height: 8px; }
-  .plane-head .btn-ghost { padding: 0 6px; }
+  .plane-head .btn-ghost,
+  .plane-head .btn-accent { padding: 0 6px; }
 }

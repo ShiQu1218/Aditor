@@ -91,6 +91,10 @@ export class AutosaveController<T> {
   }
 
   dispose(): void {
+    this.cancelPending()
+  }
+
+  cancelPending(): void {
     this.clearTimer()
     this.pending = null
     this.hasPending = false

@@ -8,8 +8,8 @@ describe('guardCommand (source-doc mutating commands in project mode)', () => {
     expect(guardCommand('source', cmd)).toBe('allow')
     expect(guardCommand('project', cmd)).toBe('blocked')
   })
-  test('covers add event, supercut, delete events, override', () => {
-    for (const c of ['addEvent', 'supercut', 'deleteSelectedEvents', 'deleteEvent', 'setOverride']) {
+  test('covers event and source clip editing', () => {
+    for (const c of ['addEvent', 'editClips']) {
       expect(SOURCE_EDIT_COMMANDS).toContain(c)
     }
   })

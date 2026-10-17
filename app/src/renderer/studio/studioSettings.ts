@@ -8,9 +8,9 @@ export interface StudioSettings {
   /** AI 浮層與自動建議共用的預設參數 */
   autoclip: AutoClipParams
   projectTrackCollapsed: 'auto' | boolean
-  /** 快速剪輯／合輯／事件 lead-in seek 的事件前秒數 */
+  /** 快速剪輯／事件 lead-in seek 的事件前秒數 */
   before: number
-  /** 快速剪輯／合輯的事件後秒數 */
+  /** 快速剪輯的事件後秒數 */
   after: number
   /** 無硬體解碼／不可播放時是否建議代理檔 */
   proxySuggest: boolean

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { mergeSelection, viewerReducer, ViewerState } from './state'
+import { viewerReducer, ViewerState } from './state'
 import { CacheDoc, Clip, EngineEvent, EventType } from '../../shared/types'
 
 function makeTestDoc(): CacheDoc {
@@ -57,41 +57,9 @@ function makeTestDoc(): CacheDoc {
 }
 
 describe('viewerReducer', () => {
-  it('derived merges only counted fields into the CURRENT events (delete and override during await survive)', () => {
-    const base = { doc: makeTestDoc(), selected: new Set<string>(), filter: new Set<EventType>(), clips: [], dirty: false }
-    let s: ViewerState = viewerReducer(base, { type: 'setOverride', id: 'e1', value: true })
-    s = viewerReducer(s, { type: 'deleteEvent', id: 'e2' })
-    // 回應來自 setOverride 之前的快照：e1 未被覆寫、e2 未刪除
-    const stale = makeTestDoc().events.map((e) => ({ ...e, counted: false, counted_reason: 'dup' }))
-    s = viewerReducer(s, { type: 'derived', events: stale })
-    const e1 = s.doc.events.find((e) => e.id === 'e1')!
-    const e2 = s.doc.events.find((e) => e.id === 'e2')!
-    expect(s.doc.events).toHaveLength(2)
-    expect(e1.counted_override).toBe(true)
-    expect(e1.counted_reason).toBe('dup')
-    expect(e2.deleted).toBe(true)
-  })
-
-  it('deleteEvent marks deleted, keeps event', () => {
-    const initialState: ViewerState = {
-      doc: makeTestDoc(),
-      selected: new Set(),
-      filter: new Set<EventType>(['knock', 'assist_knock', 'assist_elim', 'elim', 'squad_wipe']),
-      clips: [],
-      dirty: false
-    }
-
-    const state = viewerReducer(initialState, { type: 'deleteEvent', id: 'e1' })
-    expect(state.doc.events.length).toBe(2)
-    const e1 = state.doc.events.find((e) => e.id === 'e1')
-    expect(e1?.deleted).toBe(true)
-    expect(state.dirty).toBe(true)
-  })
-
   it('addManualEvent creates manual event with null sig', () => {
     const initialState: ViewerState = {
       doc: makeTestDoc(),
-      selected: new Set(),
       filter: new Set<EventType>(['knock']),
       clips: [],
       dirty: false
@@ -112,29 +80,9 @@ describe('viewerReducer', () => {
     expect(state.dirty).toBe(true)
   })
 
-  it('setOverride cycles true/false/null', () => {
-    const initialState: ViewerState = {
-      doc: makeTestDoc(),
-      selected: new Set(),
-      filter: new Set(),
-      clips: [],
-      dirty: false
-    }
-
-    let state = viewerReducer(initialState, { type: 'setOverride', id: 'e1', value: true })
-    expect(state.doc.events[0].counted_override).toBe(true)
-
-    state = viewerReducer(state, { type: 'setOverride', id: 'e1', value: false })
-    expect(state.doc.events[0].counted_override).toBe(false)
-
-    state = viewerReducer(state, { type: 'setOverride', id: 'e1', value: null })
-    expect(state.doc.events[0].counted_override).toBeNull()
-  })
-
   it('setAiClips replaces only ai clips', () => {
     const initialState: ViewerState = {
       doc: makeTestDoc(),
-      selected: new Set(),
       filter: new Set(),
       clips: [
         { id: 'c_manual', start: 5, end: 15, origin: 'manual', event_ids: [] },
@@ -157,16 +105,15 @@ describe('viewerReducer', () => {
   it('corrections survive analysis result', () => {
     const initialState: ViewerState = {
       doc: makeTestDoc(),
-      selected: new Set(),
       filter: new Set(),
       clips: [{ id: 'cm1', start: 1, end: 5, origin: 'manual', event_ids: [] }],
       dirty: true
     }
 
-    // User modified e1 (t=10): deleted it, and added manual event at t=50
-    let state = viewerReducer(initialState, { type: 'deleteEvent', id: 'e1' })
-    state = viewerReducer(state, { type: 'setOverride', id: 'e2', value: false })
-    state = viewerReducer(state, { type: 'addManualEvent', t: 50, eventType: 'elim' })
+    // 保留舊版快取的刪除／覆寫；重新分析仍保留這些既有資料。
+    initialState.doc.events[0].deleted = true
+    initialState.doc.events[1].counted_override = false
+    const state = viewerReducer(initialState, { type: 'addManualEvent', t: 50, eventType: 'elim' })
 
     // Incoming fresh analysis result
     const freshDoc = makeTestDoc()
@@ -214,7 +161,6 @@ describe('viewerReducer', () => {
   describe('clip status actions', () => {
     const base = (): ViewerState => ({
       doc: makeTestDoc(),
-      selected: new Set(),
       filter: new Set(),
       clips: [{ id: 'c1', start: 1, end: 5, origin: 'ai', event_ids: [], status: 'suggested' }],
       dirty: false
@@ -235,15 +181,6 @@ describe('viewerReducer', () => {
       expect(s.dirty).toBe(true)
     })
 
-    it('restoreEvent undeletes and marks dirty', () => {
-      const b = base()
-      let s = viewerReducer(b, { type: 'deleteEvent', id: 'e1' })
-      s = { ...s, dirty: false }
-      s = viewerReducer(s, { type: 'restoreEvent', id: 'e1' })
-      expect(s.doc.events.find((e) => e.id === 'e1')?.deleted).toBeFalsy()
-      expect(s.dirty).toBe(true)
-    })
-
     it('setClips normalizes legacy clips', () => {
       const legacy = [{ id: 'x', start: 3, end: 8, origin: 'ai' }] as unknown as Clip[]
       const s = viewerReducer(base(), { type: 'setClips', clips: legacy })
@@ -255,7 +192,6 @@ describe('viewerReducer', () => {
   describe('clip status guards、重新分析合併與載入', () => {
     const base = (clips: Clip[] = []): ViewerState => ({
       doc: makeTestDoc(),
-      selected: new Set(),
       filter: new Set(),
       clips,
       dirty: false
@@ -286,12 +222,6 @@ describe('viewerReducer', () => {
 
       const skippedManual = base([{ id: 'm1', start: 1, end: 5, origin: 'manual', event_ids: [], status: 'skipped' }])
       expect(viewerReducer(skippedManual, { type: 'restoreClip', id: 'm1' })).toBe(skippedManual)
-    })
-
-    it('restoreEvent no-ops for missing id or event that is not deleted', () => {
-      const s = base()
-      expect(viewerReducer(s, { type: 'restoreEvent', id: 'nope' })).toBe(s)
-      expect(viewerReducer(s, { type: 'restoreEvent', id: 'e1' })).toBe(s)
     })
 
     it('reanalyze keeps accepted (marked stale), replaces suggested/skipped and adds new suggestions', () => {
@@ -342,37 +272,4 @@ describe('viewerReducer', () => {
     })
   })
 
-  describe('mergeSelection 與 setSelection', () => {
-    const base = (): ViewerState => ({
-      doc: makeTestDoc(),
-      selected: new Set(['a']),
-      filter: new Set(),
-      clips: [],
-      dirty: false
-    })
-
-    it('box selection adds to / replaces selection depending on modifier', () => {
-      const cur = new Set(['a'])
-      expect(mergeSelection(cur, ['b', 'c'], 'replace')).toEqual(new Set(['b', 'c']))
-      expect(mergeSelection(cur, ['b'], 'add')).toEqual(new Set(['a', 'b']))
-      expect(mergeSelection(cur, ['a', 'b'], 'toggle')).toEqual(new Set(['b']))
-      // 原集合不被修改
-      expect(cur).toEqual(new Set(['a']))
-    })
-
-    it('setSelection action applies replace / add / toggle in state without dirty', () => {
-      let s = viewerReducer(base(), { type: 'setSelection', ids: ['x', 'y'], mode: 'replace' })
-      expect(s.selected).toEqual(new Set(['x', 'y']))
-      expect(s.dirty).toBe(false)
-
-      s = viewerReducer(s, { type: 'setSelection', ids: ['z'], mode: 'add' })
-      expect(s.selected).toEqual(new Set(['x', 'y', 'z']))
-
-      s = viewerReducer(s, { type: 'setSelection', ids: ['x'], mode: 'toggle' })
-      expect(s.selected).toEqual(new Set(['y', 'z']))
-
-      s = viewerReducer(s, { type: 'setSelection', ids: [], mode: 'replace' })
-      expect(s.selected).toEqual(new Set())
-    })
-  })
 })

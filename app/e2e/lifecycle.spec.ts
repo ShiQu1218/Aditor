@@ -69,35 +69,6 @@ test('hand-corrupted project file: backup .bak.<ts>.json is created and the app 
   }
 })
 
-test('project file with a UNC source does not hang: loads in < 5 s and the clip shows as missing', async ({ launch, videos }) => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'apexhl-e2e-unc-'))
-  try {
-    const file = path.join(dir, 'unc.apexproj.json')
-    fs.writeFileSync(
-      file,
-      JSON.stringify({ version: 1, name: 'UNC 專案', items: [{ id: 'u1', source: '\\\\nonexistent-host\\share\\x.mp4', start: 0, end: 3 }] }),
-      'utf-8'
-    )
-    const app = await launch()
-    const { page } = app
-    await importAndAnalyze(page, [videos.videos[0].path], ['E2E clip A'])
-    await openStudio(page, 'E2E clip A')
-    await app.electronApp.evaluate(({ dialog }, f) => {
-      dialog.showOpenDialog = (async () => ({ canceled: false, filePaths: [f] })) as unknown as typeof dialog.showOpenDialog
-    }, file)
-    const t0 = Date.now()
-    await page.getByRole('button', { name: i18n.studio.track.openFile }).click()
-    await expect(page.locator('.pclip.missing')).toBeVisible({ timeout: 5000 })
-    expect(Date.now() - t0).toBeLessThan(5000)
-    await expect(page.locator('.pclip')).toHaveCount(1)
-    // 介面沒有卡住：仍可操作
-    await page.keyboard.press('?')
-    await expect(page.locator('.sc-dialog')).toBeVisible()
-  } finally {
-    fs.rmSync(dir, { recursive: true, force: true })
-  }
-})
-
 test('export cancel kills the fake-ffmpeg process tree and removes .partial; a second export is refused', async ({ launch, videos }) => {
   const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'apexhl-e2e-out-'))
   const pidDir = fs.mkdtempSync(path.join(os.tmpdir(), 'apexhl-e2e-pid-'))

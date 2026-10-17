@@ -73,7 +73,7 @@ export function HighlightsTab({
   const pending = suggestionCount(clips)
 
   return (
-    <div className="hl-tab" id="aside-panel" data-zone="hl" role="tabpanel" aria-labelledby="aside-tab-hl">
+    <div className="hl-tab" id="aside-panel" data-zone="hl" role="region" aria-labelledby="aside-tab-hl">
       <div className="hl-list-head">
         <span className="dim">{t.pending.replace('{n}', String(pending))}</span>
         <div className="hl-view">

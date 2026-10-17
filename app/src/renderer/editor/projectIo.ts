@@ -111,10 +111,3 @@ export function createRefreshGate(minMs: number, now: () => number = Date.now): 
     return true
   }
 }
-
-/** 匯出成檔案（`.apexproj.json`）的內容：去掉內部 id，兩份副本才不會共用同一個 id。 */
-export function serializeProjectFile(p: ProjectWithId): string {
-  const { id: _id, ...rest } = p
-  void _id
-  return JSON.stringify(rest, null, 2)
-}

@@ -18,11 +18,9 @@ export const COMMANDS = [
   'addEvent',
   'setStart',
   'setEnd',
-  'supercut',
   'addAllToProject',
   'acceptSuggestion',
   'skipSuggestion',
-  'deleteSelectedEvents',
   'deleteProjectItem',
   'duplicateItem',
   'moveItemLeft',
@@ -30,7 +28,6 @@ export const COMMANDS = [
   'playItem',
   'undo',
   'redo',
-  'saveProjectFile',
   'openExport',
   'toggleAside',
   'backToSource',
@@ -39,7 +36,6 @@ export const COMMANDS = [
   'focusToast',
   'focusSearch',
   'toggleFavoriteFilter',
-  'seekSelectedEvent',
   'selectPrevItem',
   'selectNextItem',
   'listPrev',
@@ -112,14 +108,10 @@ function resolveCtrl(e: KeyInput, ctx: KeyCtx): Command | null {
       return 'undo'
     case 'y':
       return 'redo'
-    case 's':
-      return 'saveProjectFile'
     case 'e':
       return 'addAllToProject'
     case 'q':
       return 'quickOrSplit' // 來源／專案模式由執行端依 mode 決定
-    case 'm':
-      return 'supercut'
     case 'b':
       return 'toggleAside'
     case 'd':
@@ -200,20 +192,18 @@ function resolveInner(e: KeyInput, ctx: KeyCtx): Command | null {
   const native = ctx.target === 'native'
   const isSpace = e.code === 'Space' || e.key === ' '
 
-  // 原生控制項保留 Space／Enter／方向鍵／Delete
-  if (isSpace) return native ? null : 'play'
+  // 工作室 Space 一律播放；原生控制項保留 Enter／方向鍵／Delete
+  if (isSpace) return 'play'
 
   switch (e.key) {
     case 'Enter':
       if (native) return null
       if (ctx.zone === 'hl') return 'acceptSuggestion'
-      if (ctx.zone === 'ev') return 'seekSelectedEvent'
       if (ctx.zone === 'proj') return 'playItem'
       return null
     case 'Delete':
       if (native) return null
       if (ctx.zone === 'hl') return 'skipSuggestion'
-      if (ctx.zone === 'ev') return 'deleteSelectedEvents'
       if (ctx.zone === 'proj') return 'deleteProjectItem'
       return null
     case 'ArrowLeft':
@@ -229,7 +219,7 @@ function resolveInner(e: KeyInput, ctx: KeyCtx): Command | null {
     case 'ArrowUp':
     case 'ArrowDown':
       if (native || e.shiftKey) return null
-      if (ctx.zone !== 'hl' && ctx.zone !== 'ev') return null
+      if (ctx.zone !== 'hl') return null
       return e.key === 'ArrowUp' ? 'listPrev' : 'listNext'
     case '[':
       return 'setStart'
@@ -276,11 +266,9 @@ export const KEY_TABLE: KeyRow[] = [
   row('addEvent', 'M', S.studio),
   row('setStart', '[', S.studio),
   row('setEnd', ']', S.studio),
-  row('supercut', 'Ctrl+M', S.studio),
   row('addAllToProject', 'Ctrl+E', S.studio),
   row('acceptSuggestion', 'Enter', S.hl),
   row('skipSuggestion', 'Delete', S.hl),
-  row('deleteSelectedEvents', 'Delete', S.ev),
   row('deleteProjectItem', 'Delete', S.proj),
   row('duplicateItem', 'Ctrl+D', S.proj),
   row('moveItemLeft', 'Alt+←', S.proj),
@@ -288,7 +276,6 @@ export const KEY_TABLE: KeyRow[] = [
   row('playItem', 'Enter', S.proj),
   row('undo', 'Ctrl+Z', S.studio),
   row('redo', 'Ctrl+Y ／ Ctrl+Shift+Z', S.studio),
-  row('saveProjectFile', 'Ctrl+S', S.studio),
   row('openExport', 'Ctrl+Shift+E', S.studio),
   row('toggleAside', 'Ctrl+B', S.studio),
   row('backToSource', 'Esc', S.studio),
@@ -297,9 +284,8 @@ export const KEY_TABLE: KeyRow[] = [
   row('focusToast', 'Alt+T', S.global),
   row('focusSearch', 'Ctrl+F', `${S.library}／${S.settings}`),
   row('toggleFavoriteFilter', 'Ctrl+D', S.library),
-  row('seekSelectedEvent', 'Enter', S.ev),
   row('selectPrevItem', '←', S.proj),
   row('selectNextItem', '→', S.proj),
-  row('listPrev', '↑', `${S.hl}／${S.ev}`),
-  row('listNext', '↓', `${S.hl}／${S.ev}`)
+  row('listPrev', '↑', S.hl),
+  row('listNext', '↓', S.hl)
 ]

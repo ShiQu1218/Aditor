@@ -1,69 +1,28 @@
 import { CacheDoc, Clip, ClipStatus, EngineEvent, EventType } from '../../shared/types'
 import { mergeOnReanalyze, normalizeClips } from '../../shared/clips'
-import { mergeDerived } from '../studio/eventActions'
 
 export interface ViewerState {
   doc: CacheDoc
-  selected: Set<string>
   filter: Set<EventType>
   clips: Clip[]
   dirty: boolean
 }
 
-/**
- * 選取集合合併（純函式，原集合不被修改；spec §3.2.2）：
- * - `replace`：框選（無修飾鍵）＝以新集合取代
- * - `add`：框選加選（Shift／Ctrl）
- * - `toggle`：Shift／Ctrl+點單一事件＝切換
- */
-export function mergeSelection(current: Set<string>, ids: Iterable<string>, mode: SelectionMode): Set<string> {
-  if (mode === 'replace') return new Set(ids)
-  const next = new Set(current)
-  for (const id of ids) {
-    if (mode === 'add') next.add(id)
-    else if (next.has(id)) next.delete(id)
-    else next.add(id)
-  }
-  return next
-}
-
-export type SelectionMode = 'replace' | 'add' | 'toggle'
-
 export type ViewerAction =
-  | { type: 'deleteEvent'; id: string }
   | { type: 'addManualEvent'; t: number; eventType: EventType }
-  | { type: 'setOverride'; id: string; value: boolean | null }
-  | { type: 'toggleSelectEvent'; id: string }
-  | { type: 'setSelection'; ids: readonly string[]; mode: SelectionMode }
   | { type: 'setFilter'; filter: Set<EventType> }
   | { type: 'addClip'; clip: Clip }
   | { type: 'updateClip'; clip: Clip }
   | { type: 'removeClip'; id: string }
   | { type: 'setAiClips'; clips: Clip[] }
   | { type: 'acceptClip' | 'skipClip' | 'restoreClip'; id: string }
-  | { type: 'restoreEvent'; id: string }
   | { type: 'setClips'; clips: Clip[] }
   | { type: 'applyClips'; clips: Clip[] }
   | { type: 'applySuggestions'; clips: Clip[] }
-  | { type: 'derived'; events: EngineEvent[] }
   | { type: 'analysisResult'; doc: CacheDoc }
 
 export function viewerReducer(state: ViewerState, action: ViewerAction): ViewerState {
   switch (action.type) {
-    case 'deleteEvent': {
-      const events = state.doc.events.map((e) => {
-        if (e.id === action.id) {
-          return { ...e, deleted: true }
-        }
-        return e
-      })
-      return {
-        ...state,
-        doc: { ...state.doc, events },
-        dirty: true
-      }
-    }
-
     case 'addManualEvent': {
       const newEvent: EngineEvent = {
         id: `m${Date.now()}`,
@@ -82,40 +41,6 @@ export function viewerReducer(state: ViewerState, action: ViewerAction): ViewerS
         ...state,
         doc: { ...state.doc, events },
         dirty: true
-      }
-    }
-
-    case 'setOverride': {
-      const events = state.doc.events.map((e) => {
-        if (e.id === action.id) {
-          return { ...e, counted_override: action.value }
-        }
-        return e
-      })
-      return {
-        ...state,
-        doc: { ...state.doc, events },
-        dirty: true
-      }
-    }
-
-    case 'toggleSelectEvent': {
-      const nextSelected = new Set(state.selected)
-      if (nextSelected.has(action.id)) {
-        nextSelected.delete(action.id)
-      } else {
-        nextSelected.add(action.id)
-      }
-      return {
-        ...state,
-        selected: nextSelected
-      }
-    }
-
-    case 'setSelection': {
-      return {
-        ...state,
-        selected: mergeSelection(state.selected, action.ids, action.mode)
       }
     }
 
@@ -181,13 +106,6 @@ export function viewerReducer(state: ViewerState, action: ViewerAction): ViewerS
       return { ...state, clips, doc: { ...state.doc, clips }, dirty: true }
     }
 
-    case 'restoreEvent': {
-      const target = state.doc.events.find((e) => e.id === action.id)
-      if (!target || !target.deleted) return state
-      const events = state.doc.events.map((e) => (e.id === action.id ? { ...e, deleted: false } : e))
-      return { ...state, doc: { ...state.doc, events }, dirty: true }
-    }
-
     case 'setClips': {
       const clips = normalizeClips(action.clips)
       return { ...state, clips, doc: { ...state.doc, clips } }
@@ -206,14 +124,6 @@ export function viewerReducer(state: ViewerState, action: ViewerAction): ViewerS
       const clips = normalizeClips(action.clips)
       const app = state.doc.app ? { ...state.doc.app, suggestionsPending: false } : state.doc.app
       return { ...state, clips, doc: { ...state.doc, clips, app }, dirty: true }
-    }
-
-    case 'derived': {
-      // 只把推導欄位（counted／counted_reason）合併進「目前」事件，不整批取代（避免蓋掉 await 期間的編輯）
-      return {
-        ...state,
-        doc: { ...state.doc, events: mergeDerived(state.doc.events, action.events) }
-      }
     }
 
     case 'analysisResult': {

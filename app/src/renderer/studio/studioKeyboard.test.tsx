@@ -22,8 +22,6 @@ const tabbable = (root: ParentNode): HTMLElement[] =>
   Array.from(root.querySelectorAll<HTMLElement>('button, input, select, [tabindex]')).filter(
     (e) => e.tabIndex >= 0 && !(e as HTMLButtonElement).disabled
   )
-const tab = (name: string): HTMLElement =>
-  qa('[role="tab"]').find((t) => (t.textContent ?? '').includes(name)) as HTMLElement
 const live = (): string => q('.studio .sr-only[aria-live="polite"]')?.textContent ?? ''
 
 describe('highlights list (roving tabindex)', () => {
@@ -74,73 +72,6 @@ describe('highlights list (roving tabindex)', () => {
     expect(qa('.pclip').length).toBe(0)
     expect(qa('.hl-card')[0].querySelector('.hl-accept')).not.toBeNull() // 回到建議
     expect(q('.toast')).toBeNull()
-  })
-})
-
-describe('aside tablist (roving tabindex)', () => {
-  test('only the selected tab is a tab stop; arrows/Home/End switch tabs and move focus', async () => {
-    s = await mountStudio()
-    const tabs = () => qa('.aside-tab')
-    expect(tabs().map((t) => t.tabIndex)).toEqual([0, -1])
-    expect(tabs()[0].getAttribute('aria-selected')).toBe('true')
-    focusEl(tabs()[0])
-    press(tabs()[0], 'ArrowRight')
-    await flush()
-    expect(tabs()[1].getAttribute('aria-selected')).toBe('true')
-    expect(document.activeElement).toBe(tabs()[1])
-    expect(tabs().map((t) => t.tabIndex)).toEqual([-1, 0])
-    press(tabs()[1], 'Home')
-    await flush()
-    expect(document.activeElement).toBe(tabs()[0])
-    expect(q('.hl-tab')).not.toBeNull()
-    press(tabs()[0], 'End')
-    await flush()
-    expect(q('.ev-tab')).not.toBeNull()
-  })
-
-  test('tabs control their panels (aria-controls ↔ labelledby)', async () => {
-    s = await mountStudio()
-    const selected = qa('.aside-tab').find((t) => t.getAttribute('aria-selected') === 'true')!
-    const panel = document.getElementById(selected.getAttribute('aria-controls')!)!
-    expect(panel.getAttribute('role')).toBe('tabpanel')
-    expect(panel.getAttribute('aria-labelledby')).toBe(selected.id)
-  })
-})
-
-describe('events list (roving tabindex + virtualization)', () => {
-  test('one tab stop; End/Home scroll the virtualized list and keep the focus on a rendered row', async () => {
-    s = await mountStudio()
-    click(tab('事件'))
-    await flush()
-    const rows = () => qa('.ev-row')
-    expect(rows().length).toBeGreaterThan(5)
-    expect(rows().length).toBeLessThan(80) // 虛擬化
-    const owners = new Set(tabbable(q('.ev-scroll')!).map((e) => e.closest('.ev-row')))
-    expect(owners.size).toBe(1)
-    const first = rows()[0]
-    focusEl(first)
-    press(first, 'End')
-    await flush()
-    const focused = document.activeElement as HTMLElement
-    expect(focused.classList.contains('ev-row')).toBe(true)
-    expect(focused.tabIndex).toBe(0)
-    expect((q('.ev-scroll') as HTMLElement).scrollTop).toBeGreaterThan(0)
-    const lastId = s.doc.events.filter((e) => ['knock', 'assist_knock', 'assist_elim', 'elim', 'squad_wipe'].includes(e.type)).slice(-1)[0].id
-    expect(focused.getAttribute('aria-label')).toBe(eventAriaLabel(s.doc.events.find((e) => e.id === lastId)!))
-    press(focused, 'Home')
-    await flush()
-    expect(document.activeElement).toBe(rows()[0])
-    expect((q('.ev-scroll') as HTMLElement).scrollTop).toBe(0)
-  })
-
-  test('controls inside a non-active row are not tab stops', async () => {
-    s = await mountStudio()
-    click(tab('事件'))
-    await flush()
-    const rows = qa('.ev-row')
-    for (const r of rows.slice(1, 4)) {
-      for (const c of Array.from(r.querySelectorAll<HTMLElement>('input, button'))) expect(c.tabIndex).toBe(-1)
-    }
   })
 })
 
@@ -227,15 +158,7 @@ describe('keyboard announcements (aria-live)', () => {
     expect(live()).toContain('：')
   })
 
-  test('changing the selection announces the new count', async () => {
-    s = await mountStudio()
-    click(tab('事件'))
-    await flush()
-    const cb = q<HTMLInputElement>('.ev-row input[type="checkbox"]')!
-    click(cb)
-    await flush()
-    expect(live()).toContain('已選取 1 個事件')
-  })
+
 })
 
 describe('shortcuts help + dialogs inside the studio', () => {
@@ -264,5 +187,60 @@ describe('shortcuts help + dialogs inside the studio', () => {
     press(document.activeElement as Element, 'Escape')
     expect(q('.add-event')).toBeNull()
     expect(document.activeElement).toBe(card)
+  })
+})
+
+
+describe('工作室 Space 仲裁', () => {
+  const release = (target: Element): KeyboardEvent => {
+    const event = new KeyboardEvent('keyup', { key: ' ', code: 'Space', bubbles: true, cancelable: true })
+    act(() => { target.dispatchEvent(event) })
+    return event
+  }
+
+  test('分割或複製後 Space 只播放，不再次操作片段', async () => {
+    s = await mountStudio({ items: [{ id: 'i1', source: STUDIO_VIDEO, start: 10, end: 20 }] })
+    click(q('.pclip')!)
+    act(() => { q<HTMLVideoElement>('video')!.currentTime = 15 })
+    const split = q('[aria-label="分割"]')!
+    focusEl(split)
+    click(split)
+    expect(qa('.pclip')).toHaveLength(2)
+    expect(press(split, ' ').defaultPrevented).toBe(true)
+    expect(release(split).defaultPrevented).toBe(true)
+    expect(qa('.pclip')).toHaveLength(2)
+    const duplicate = q('[aria-label="複製片段 (Ctrl+D)"]')!
+    focusEl(duplicate)
+    click(duplicate)
+    expect(qa('.pclip')).toHaveLength(3)
+    expect(press(duplicate, ' ').defaultPrevented).toBe(true)
+    expect(release(duplicate).defaultPrevented).toBe(true)
+    expect(qa('.pclip')).toHaveLength(3)
+  })
+
+  test('所有工作室按鈕都阻止 Space 的原生 click，長按不重複切換播放', async () => {
+    s = await mountStudio()
+    const play = vi.spyOn(HTMLMediaElement.prototype, 'play')
+    const pause = vi.spyOn(HTMLMediaElement.prototype, 'pause')
+    for (const button of qa<HTMLButtonElement>('.studio button').filter((b) => !b.disabled)) {
+      focusEl(button)
+      play.mockClear()
+      pause.mockClear()
+      expect(press(button, ' ').defaultPrevented).toBe(true)
+      expect(press(button, ' ', { repeat: true }).defaultPrevented).toBe(true)
+      expect(release(button).defaultPrevented).toBe(true)
+      expect(play.mock.calls.length + pause.mock.calls.length).toBe(1)
+    }
+    play.mockRestore()
+    pause.mockRestore()
+  })
+
+  test('重新命名欄位與組字保留空白輸入', async () => {
+    s = await mountStudio()
+    const input = q<HTMLInputElement>('.pname')!
+    focusEl(input)
+    expect(press(input, ' ').defaultPrevented).toBe(false)
+    expect(release(input).defaultPrevented).toBe(false)
+    expect(press(input, ' ', { isComposing: true }).defaultPrevented).toBe(false)
   })
 })

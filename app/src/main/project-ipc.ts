@@ -16,7 +16,7 @@ export function registerProjectHandlers(
   ipc: IpcLike,
   store: ProjectStore,
   settings?: SettingsStore,
-  onFlushDone?: () => void
+  onFlushDone?: (ok: boolean) => void
 ): void {
   const remember = (id: string): void => {
     try {
@@ -43,7 +43,7 @@ export function registerProjectHandlers(
     }
   })
 
-  ipc.on('projects:flushDone', () => onFlushDone?.())
+  ipc.on('projects:flushDone', (_event, ok?: boolean) => onFlushDone?.(ok !== false))
 
   ipc.handle('projects:load', async (_e, id: string) => store.load(id))
   // 啟動還原遇到損毀／過新版本時，renderer 用它顯示 notice（I12）
@@ -74,7 +74,7 @@ export interface CloseGateOptions {
  */
 export function createCloseGate(opts: CloseGateOptions): {
   onClose: (e: { preventDefault(): void }) => void
-  ack: () => void
+  ack: (ok?: boolean) => void
 } {
   let state: 'idle' | 'waiting' | 'done' = 'idle'
   let timer: ReturnType<typeof setTimeout> | null = null
@@ -97,6 +97,13 @@ export function createCloseGate(opts: CloseGateOptions): {
       timer = setTimeout(finish, opts.timeoutMs)
       opts.request()
     },
-    ack: finish
+    ack(ok = true) {
+      if (ok) finish()
+      else if (state === 'waiting') {
+        if (timer) clearTimeout(timer)
+        timer = null
+        state = 'idle'
+      }
+    }
   }
 }

@@ -35,8 +35,8 @@ function harness(menuOpen: boolean, query: string) {
   const log: string[] = []
   let listener: ((e: KeyboardEvent) => void) | null = null
   const target = {
-    addEventListener: (_: string, fn: unknown) => {
-      listener = fn as (e: KeyboardEvent) => void
+    addEventListener: (type: string, fn: unknown) => {
+      if (type === 'keydown') listener = fn as (e: KeyboardEvent) => void
     },
     removeEventListener: () => undefined
   }
