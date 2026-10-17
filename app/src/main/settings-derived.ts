@@ -9,11 +9,14 @@ export function analyzeSettingArgs(s: AnalyzeSettings | undefined): { hwaccel: b
   return { hwaccel: cur.decode !== 'software', beside: cur.cacheLocation === 'besideVideo' }
 }
 
-/** 組 analyze 請求：以 base 為底、疊上 renderer 傳來的欄位，但 hwaccel／beside 一律以設定為準。 */
+/**
+ * 組 analyze 請求：renderer 傳來的欄位（path／force）為底，main 決定的 base（profile_dir／cache_dir）
+ * 與設定導出的 hwaccel／beside 一律覆蓋其上——renderer 不得指定範本或快取目錄（縱深防禦，不只靠 sanitizeAnalyzeArgs）。
+ */
 export function buildAnalyzeArgs(
   base: Record<string, unknown>,
   settings: AnalyzeSettings | undefined,
   rendererArgs: Record<string, unknown>
 ): Record<string, unknown> {
-  return { ...base, ...rendererArgs, ...analyzeSettingArgs(settings) }
+  return { ...rendererArgs, ...base, ...analyzeSettingArgs(settings) }
 }

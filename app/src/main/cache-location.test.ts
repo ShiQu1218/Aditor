@@ -75,4 +75,14 @@ describe('analyzeSettingArgs：decode／cacheLocation → 引擎參數', () => {
     )
     expect(out).toEqual({ profile_dir: 'p', cache_dir: 'c', path: 'D:/v.mp4', hwaccel: false, beside: false })
   })
+  it('buildAnalyzeArgs：renderer 傳來的 profile_dir／cache_dir 不得蓋過 main 決定的值', () => {
+    const out = buildAnalyzeArgs(
+      { profile_dir: 'p', cache_dir: 'c' },
+      { ...DEFAULT_SETTINGS },
+      { path: 'D:/v.mp4', profile_dir: 'C:\\evil', cache_dir: 'C:\\evil-cache' }
+    )
+    expect(out.profile_dir).toBe('p')
+    expect(out.cache_dir).toBe('c')
+    expect(out.path).toBe('D:/v.mp4')
+  })
 })
