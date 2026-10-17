@@ -73,7 +73,10 @@ class IconFrame:
 
 
 def _read_gray(path: Path) -> np.ndarray:
-    return cv2.imdecode(np.fromfile(str(path), dtype=np.uint8), cv2.IMREAD_GRAYSCALE)
+    img = cv2.imdecode(np.fromfile(str(path), dtype=np.uint8), cv2.IMREAD_GRAYSCALE)
+    if img is None:
+        raise ValueError(f"圖示樣板無法解碼：{path}")
+    return img
 
 
 def _rs(t: np.ndarray, s: float) -> np.ndarray:

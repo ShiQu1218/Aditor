@@ -8,6 +8,8 @@ import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from .icon_detect import ICON_NAMES
+
 
 class ProfileError(Exception):
     pass
@@ -33,6 +35,12 @@ class Profile:
     dedupe_window: float
     dir: Path = field(default_factory=Path)
 
+
+# red 的選用子規則（色盲模式名字色）與其必要欄位；detect.red_mask 直接取用這些鍵
+_RED_SUBRULES = {
+    "yellow": ("r_min", "g_min", "b_max", "rb_min", "rg_max"),
+    "pink": ("r_min", "g_min", "rg_min", "bg_min", "rb_min"),
+}
 
 _REQUIRED = ["templates_version", "banner_roi", "spec_roi", "white", "red", "spectating",
              "name_sig_threshold", "dedupe_window"]
@@ -95,12 +103,22 @@ def load_profile(dir: Path) -> Profile:
         _num(doc["red"].get(k), f"red.{k}", 0, 255)
     if "r_diff_min" in doc["red"]:
         _num(doc["red"]["r_diff_min"], "red.r_diff_min", 0, 255)
+    for sub, keys in _RED_SUBRULES.items():
+        if sub not in doc["red"]:
+            continue
+        rule = doc["red"][sub]
+        if not isinstance(rule, dict):
+            raise _err(f"欄位 red.{sub} 必須是物件")
+        for k in keys:
+            _num(rule.get(k), f"red.{sub}.{k}", -255, 255)
     if not isinstance(doc["spectating"], list):
         raise _err("欄位 spectating 必須是陣列")
     specs: list[SpecTemplate] = []
     for i, v in enumerate(doc["spectating"]):
         if not isinstance(v, dict) or not isinstance(v.get("file"), str) or not v["file"]:
             raise _err(f"spectating[{i}] 必須有字串欄位 file")
+        if Path(v["file"]).name != v["file"] or v["file"] in (".", ".."):
+            raise _err(f"spectating[{i}].file 必須是設定檔資料夾內的檔名（不可含路徑）：{v['file']!r}")
         thr = _num(v.get("threshold"), f"spectating[{i}].threshold", 0.0, 1.0, lo_open=True)
         specs.append(SpecTemplate(v["file"], thr, _white(v.get("white", white), f"spectating[{i}].white")))
     p = Profile(
@@ -111,4 +129,7 @@ def load_profile(dir: Path) -> Profile:
     for spec in specs:
         if not (dir / spec.file).exists():
             raise ProfileError(f"範本檔遺失：{spec.file}")
+    for name in ICON_NAMES:
+        if not (dir / f"{name}.png").exists():
+            raise ProfileError(f"範本檔遺失：{name}.png")
     return p

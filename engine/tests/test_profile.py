@@ -62,6 +62,22 @@ def test_missing_spectating_template_file(tmp_path):
         load_profile(d)
 
 
+@pytest.mark.parametrize("name", ICON_NAMES)
+def test_missing_icon_template_file(tmp_path, name):
+    d = _copy(tmp_path)
+    (d / f"{name}.png").unlink()
+    with pytest.raises(ProfileError, match=f"{name}.png"):
+        load_profile(d)
+
+
+def test_undecodable_icon_template_raises_clear_error(tmp_path):
+    from apexhl.icon_detect import IconDetector
+    d = _copy(tmp_path)
+    (d / "chev.png").write_bytes(b"not a png")
+    with pytest.raises(ValueError, match="chev.png"):
+        IconDetector(d)
+
+
 def test_missing_profile_and_bad_json(tmp_path):
     with pytest.raises(ProfileError):
         load_profile(tmp_path)
@@ -88,6 +104,10 @@ def test_required_key_missing(tmp_path, key):
     (lambda d: d.update(spectating={}), "spectating"),
     (lambda d: d["spectating"][0].update(threshold=1.5), "threshold"),
     (lambda d: d["spectating"][0].pop("file"), "file"),
+    (lambda d: d["spectating"][0].update(file="../profile.json"), "file"),
+    (lambda d: d["red"]["yellow"].pop("rg_max"), "red.yellow.rg_max"),
+    (lambda d: d["red"].update(pink="x"), "red.pink"),
+    (lambda d: d["red"]["pink"].update(bg_min="a"), "red.pink.bg_min"),
 ])
 def test_invalid_field_rejected(tmp_path, mutate, match):
     with pytest.raises(ProfileError, match=match):
