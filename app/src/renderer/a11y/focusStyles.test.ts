@@ -57,14 +57,7 @@ describe('visible focus (spec §3.8, Task 12 review)', () => {
     }
   })
 
-  test('programmatically focused list containers (.ev-scroll) show where focus is, with an inset ring that overflow cannot clip', () => {
-    const rule = all.find((r) => r.selector === '.ev-scroll:focus-visible')
-    expect(rule).toBeTruthy()
-    expect(rule!.body).toMatch(/inset\s+var\(--focus-ring\)/)
-    expect(all.some((r) => r.selector === '.ev-scroll:focus' && hidesOutline(r) && !/:focus-visible/.test(r.selector))).toBe(false)
-  })
-
-  test.each(['.ev-row', '.pclip', '.sc-body', '.xd'])('%s has an inset focus ring (clipped containers cannot hide it)', (sel) => {
+  test.each(['.pclip', '.sc-body', '.xd'])('%s has an inset focus ring (clipped containers cannot hide it)', (sel) => {
     const rule = all.find((r) => r.selector.split(',').map((x) => x.trim()).includes(`${sel}:focus-visible`))
     expect(rule, sel).toBeTruthy()
     expect(rule!.body).toMatch(/inset/)

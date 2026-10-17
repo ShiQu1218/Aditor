@@ -1,10 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore } from 'react'
 import '../styles/studio.css'
 import '../styles/projectTrack.css'
-import { CacheDoc, Clip, EngineEvent, EventType } from '../../shared/types'
+import { CacheDoc, Clip, EventType } from '../../shared/types'
 import { formatTime, toCurrentTime } from '../../shared/time'
 import { viewerReducer, ViewerState } from '../viewer/state'
-import { createClipAt, supercut } from '../timeline/clips'
+import { createClipAt } from '../timeline/clips'
 import { leadInSeek, STUDIO_SETTINGS_DEFAULTS, subscribeStudioSettings, type StudioSettings } from './studioSettings'
 import { nextEvent } from '../timeline/model'
 import { TimelineCanvas, TimelineHandle } from '../timeline/TimelineCanvas'
@@ -43,8 +43,6 @@ import {
   planSuggestions,
   removeProjectItems
 } from './highlights'
-import { createLatestGate, planBatchDelete, planBoxSelect, planDeleteEvents } from './eventActions'
-import { EventsTab } from './EventsTab'
 import { HighlightsTab } from './HighlightsTab'
 import { NoticeBar } from './NoticeBar'
 import { PlayerStage } from './PlayerStage'
@@ -114,7 +112,6 @@ function initialDoc(videoPath: string): CacheDoc {
 function initViewerState(init: { videoPath: string; doc?: CacheDoc }): ViewerState {
   return {
     doc: init.doc ?? initialDoc(init.videoPath),
-    selected: new Set<string>(),
     filter: new Set(DEFAULT_FILTER),
     clips: [],
     dirty: false
@@ -135,10 +132,7 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
     canUndo,
     canRedo,
     newProject,
-    openFile,
-    saveFile,
     saveState,
-    unsaved,
     missingItemIds
   } = useProject()
   const toast = useToast()
@@ -166,13 +160,10 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
   const [previewTime, setPreviewTime] = useState(0)
   const [isPlaying, setIsPlaying] = useState(false)
   const [speed, setSpeed] = useState(1.0)
-  const [tab, setTab] = useState<'hl' | 'ev'>('hl')
   const [asideOpen, setAsideOpen] = useState(true)
   const [addEventAt, setAddEventAt] = useState<number | null>(null)
   const [autoClipOpen, setAutoClipOpen] = useState(false)
   const [activeClipId, setActiveClipId] = useState<string | null>(null)
-  /** 事件清單鍵盤游標（roving tabindex；↑↓ 移動） */
-  const [evCursorId, setEvCursorId] = useState<string | null>(null)
   /** 專案軌選取片段（Alt+←/→、Ctrl+D、Delete、Enter 作用對象） */
   const [selProjId, setSelProjId] = useState<string | null>(null)
   /** 新專案對話框開啟中（暫停全域 keymap） */
@@ -211,15 +202,6 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
   // 專案狀態的最新快照（Toast〔復原〕在觸發後才執行，不能閉包舊值）
   const projectRef = useRef(project)
   projectRef.current = project
-
-  // 選取集合的最新快照（框選 Toast 的〔建立合輯〕在稍後才執行）
-  const selectedRef = useRef(state.selected)
-  selectedRef.current = state.selected
-
-  // 文件的最新快照與 derive 序號閘門（亂序回應丟棄）
-  const docRef = useRef(state.doc)
-  docRef.current = state.doc
-  const deriveGate = useRef(createLatestGate())
 
   // 片段的最新快照（建議合併在 await 之後才執行，不能閉包舊值）
   const clipsRef = useRef(state.clips)
@@ -355,7 +337,6 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
         // 套用後清除旗標並存檔：同一次重新分析只合併一次，之後使用者的略過不會被覆蓋
         // （autoclip 失敗時不清除，下次開啟再試）
         dispatch({ type: 'applySuggestions', clips: mergeSuggestions(plan.kind, clipsRef.current, fresh) })
-        setTab('hl')
       } catch (err) {
         console.error('Failed to place AI suggestions:', err)
       }
@@ -364,17 +345,10 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
 
   // 精華分頁開啟時確保有作用中卡片（roving tabindex 的第一站）
   useEffect(() => {
-    if (tab !== 'hl') return
     setActiveClipId((prev) =>
       prev && state.clips.some((c) => c.id === prev) ? prev : nextSuggestion(state.clips, null, 1)
     )
-  }, [tab, state.clips])
-
-  // 事件分頁的 filter 後清單（鍵盤游標／Enter 跳轉共用）
-  const evFiltered = useMemo(
-    () => state.doc.events.filter((e) => state.filter.has(e.type as EventType)),
-    [state.doc.events, state.filter]
-  )
+  }, [state.clips])
 
   /* ---------------- 播放控制 ---------------- */
 
@@ -809,7 +783,6 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
     }
     const clip = createClipAt(sourcePlayTime(), cfg.before, cfg.after, duration)
     dispatch({ type: 'addClip', clip })
-    setTab('hl')
     const res = acceptToProject(clip, videoPath, projectRef.current)
     if (res.added.length === 0) return
     apply(addItems(projectRef.current, res.added))
@@ -817,7 +790,7 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
       message: i18n.studio.toast.addedProject.replace('{sec}', String(Math.round(clip.end - clip.start))),
       action: {
         label: i18n.studio.toast.undo,
-        run: guarded('supercut', () => {
+        run: guarded('editClips', () => {
           apply(res.undo(projectRef.current))
           dispatch({ type: 'removeClip', id: clip.id })
         })
@@ -856,7 +829,7 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
           ),
           action: {
             label: i18n.studio.toast.undo,
-            run: guarded('supercut', () => {
+            run: guarded('editClips', () => {
               apply(undo.project(projectRef.current))
               dispatch({ type: undo.clipStatus === 'suggested' ? 'restoreClip' : 'acceptClip', id: clip.id })
             })
@@ -876,7 +849,7 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
       dispatch({ type: 'skipClip', id: clip.id })
       toast({
         message: i18n.studio.toast.skipped,
-        action: { label: i18n.studio.toast.undo, run: guarded('supercut', () => dispatch({ type: 'restoreClip', id: clip.id })) }
+        action: { label: i18n.studio.toast.undo, run: guarded('editClips', () => dispatch({ type: 'restoreClip', id: clip.id })) }
       })
       advanceActive(clip.id)
     },
@@ -900,7 +873,7 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
         message: i18n.studio.toast.removedFromProject,
         action: {
           label: i18n.studio.toast.undo,
-          run: guarded('supercut', () => {
+          run: guarded('editClips', () => {
             if (items.length > 0) apply(addItems(projectRef.current, items))
             dispatch(manual ? { type: 'addClip', clip } : { type: 'acceptClip', id: clip.id })
           })
@@ -923,7 +896,7 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
       message: i18n.studio.toast.addedProject.replace('{sec}', String(secs)),
       action: {
         label: i18n.studio.toast.undo,
-        run: guarded('supercut', () => {
+        run: guarded('editClips', () => {
           apply(removeProjectItems(projectRef.current, plan.addedIds))
           for (const c of suggested) dispatch({ type: 'restoreClip', id: c.id })
         })
@@ -942,153 +915,6 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
     const clip = state.clips.find((c) => c.id === activeClipId)
     if (clip && isSuggested(clip)) skipClip(clip)
   }, [state.clips, activeClipId, skipClip])
-
-  const handleToggleSelect = useCallback((id: string) => {
-    dispatch({ type: 'setSelection', ids: [id], mode: 'toggle' })
-  }, [])
-
-  const clearSelection = useCallback(() => {
-    dispatch({ type: 'setSelection', ids: [], mode: 'replace' })
-  }, [])
-
-  /** 建立合輯（Ctrl+M／底欄／框選 Toast）：勾選事件 → 片段 → 同步加入專案，單一 Toast〔復原〕。 */
-  const runSupercut = useCallback(() => {
-    const ids = selectedRef.current
-    if (ids.size === 0) return
-    const clips = supercut(
-      state.doc.events.filter((e) => !e.deleted),
-      ids,
-      cfg.before,
-      cfg.after,
-      duration
-    )
-    if (clips.length === 0) return
-    let next: Project = projectRef.current
-    const addedIds: string[] = []
-    for (const c of clips) {
-      dispatch({ type: 'addClip', clip: c })
-      const res = acceptToProject(c, videoPath, next)
-      if (res.added.length > 0) next = addItems(next, res.added)
-      for (const it of res.added) addedIds.push(it.id)
-    }
-    apply(next)
-    dispatch({ type: 'setSelection', ids: [], mode: 'replace' })
-    setTab('hl')
-    const secs = Math.round(clips.reduce((sum, c) => sum + Math.max(0, c.end - c.start), 0))
-    toast({
-      message: i18n.studio.toast.addedProject.replace('{sec}', String(secs)),
-      action: {
-        label: i18n.studio.toast.undo,
-        run: guarded('supercut', () => {
-          if (addedIds.length > 0) apply(removeProjectItems(projectRef.current, addedIds))
-          for (const c of clips) dispatch({ type: 'removeClip', id: c.id })
-        })
-      }
-    })
-  }, [state.doc.events, duration, videoPath, apply, toast, guarded, cfg.before, cfg.after])
-
-  /** Delete（事件區）：有勾選刪勾選的；沒有勾選則刪游標列。〔復原〕同時還原選取。 */
-  const handleDeleteSelected = useCallback(() => {
-    const ids = planDeleteEvents(state.selected, evCursorId, state.doc.events)
-    if (ids.length === 0) return
-    const plan = planBatchDelete(ids, state.selected)
-    for (const id of plan.ids) dispatch({ type: 'deleteEvent', id })
-    dispatch({ type: 'setSelection', ids: [], mode: 'replace' })
-    toast({
-      message: i18n.studio.toast.deletedEvents.replace('{n}', String(plan.ids.length)),
-      action: {
-        label: i18n.studio.toast.undo,
-        run: guarded('deleteEvent', () => {
-          plan.ids.forEach((id) => dispatch({ type: 'restoreEvent', id }))
-          dispatch({ type: 'setSelection', ids: plan.undoSelection, mode: 'replace' })
-        })
-      }
-    })
-  }, [state.selected, state.doc.events, evCursorId, toast, guarded])
-
-  const handleDeleteEvent = useCallback(
-    (id: string) => {
-      dispatch({ type: 'deleteEvent', id })
-      if (selectedRef.current.has(id)) {
-        dispatch({
-          type: 'setSelection',
-          ids: [...selectedRef.current].filter((x) => x !== id),
-          mode: 'replace'
-        })
-      }
-      toast({
-        message: i18n.studio.toast.deletedEvents.replace('{n}', '1'),
-        action: { label: i18n.studio.toast.undo, run: guarded('deleteEvent', () => dispatch({ type: 'restoreEvent', id })) }
-      })
-    },
-    [toast]
-  )
-
-  /** 三態變更：先套用 override，再呼叫引擎 derive 重新推導 counted 與原因；成功時 Toast。 */
-  const handleSetOverride = useCallback(
-    (id: string, value: boolean | null) => {
-      dispatch({ type: 'setOverride', id, value })
-      const api = window.api
-      if (!api?.engine?.derive) return
-      // 以最新事件為快照；回應只合併 counted／counted_reason（見 mergeDerived／reducer），
-      // 且亂序到達的舊回應依序號丟棄，await 期間的刪除或 override 編輯不會被蓋掉
-      const events = docRef.current.events.map((e) => (e.id === id ? { ...e, counted_override: value } : e))
-      const ticket = deriveGate.current.next()
-      void (async () => {
-        try {
-          const res = (await api.engine.derive({
-            events,
-            spectating: docRef.current.spectating
-          })) as {
-            events: EngineEvent[]
-          } | null
-          if (!deriveGate.current.isLatest(ticket)) return
-          if (res?.events) {
-            dispatch({ type: 'derived', events: res.events })
-            toast({ message: i18n.studio.toast.derived })
-          }
-        } catch (err) {
-          console.error('Failed to derive counted reasons:', err)
-        }
-      })()
-    },
-    [toast, guarded]
-  )
-
-  /** 框選（時間軸拖曳空白）：Shift／Ctrl＝加選，否則取代；完成 Toast〔建立合輯〕。 */
-  const handleBoxSelect = useCallback(
-    (ids: string[], t1: number, t2: number, additive: boolean) => {
-      const plan = planBoxSelect(ids, additive)
-      if (!plan) return // 框到 0 個事件：不 Toast、不清除既有選取
-      dispatch({ type: 'setSelection', ids, mode: plan.mode })
-      setTab('ev')
-      toast({
-        message: i18n.studio.toast.boxSelected
-          .replace('{n}', String(ids.length))
-          .replace('{range}', `${formatTime(t1)}–${formatTime(t2)}`),
-        action: { label: i18n.studio.ev.supercut, run: guarded('supercut', runSupercut) }
-      })
-    },
-    [toast, runSupercut, guarded]
-  )
-
-  /** ↑↓：精華分頁移動建議卡；事件分頁移動游標（到底環繞）。 */
-  const moveListCursor = useCallback(
-    (dir: 1 | -1) => {
-      if (tab === 'hl') {
-        setActiveClipId((prev) => nextSuggestion(state.clips, prev, dir))
-        return
-      }
-      if (evFiltered.length === 0) return
-      setEvCursorId((prev) => {
-        const at = prev ? evFiltered.findIndex((e) => e.id === prev) : -1
-        const base = at >= 0 ? at : dir === 1 ? -1 : 0
-        const i = (((base + dir) % evFiltered.length) + evFiltered.length) % evFiltered.length
-        return evFiltered[i].id
-      })
-    },
-    [tab, state.clips, evFiltered]
-  )
 
   const projectRefForExport = useRef(project)
   projectRefForExport.current = project
@@ -1171,8 +997,7 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
     (clips: Clip[]) => {
       suggestSeq.current++ // 尚未回來的自動建議不得覆蓋使用者剛套用的結果
       dispatch({ type: 'applyClips', clips: applyAutoClip(clipsRef.current, clips) })
-      setTab('hl')
-    },
+      },
     []
   )
 
@@ -1296,36 +1121,29 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
     setSettings((prev) => (prev ? { ...prev, projectTrackCollapsed: next } : prev))
   }, [projCollapsed])
 
-  /** 〔新專案〕：空專案不動作；有片段時開對話框（spec §3.7）。 */
-  const requestNewProject = useCallback(() => {
-    if (projectRef.current.items.length === 0) return
-    setProjDlgOpen(true)
-  }, [])
+  /** 新專案建立前由 session 同步儲存舊專案；失敗時保留目前內容。 */
+  const handleNewProjectConfirmed = useCallback(() => {
+    if (!newProject()) return
+    setSelProjId(null)
+    prevItemCount.current = 0
+    toast({ message: i18n.studio.toast.newProject })
+  }, [newProject, toast])
 
-  /** 對話框確認：saveFirst＝先另存檔案（取消則中止）。 */
-  const handleNewProjectConfirmed = useCallback(
-    (saveFirst: boolean) => {
-      void (async () => {
-        if (saveFirst) {
-          const saved = await saveFile()
-          if (!saved) return
-        }
-        newProject()
-        setSelProjId(null)
-        prevItemCount.current = 0
-        toast({ message: i18n.studio.toast.newProject })
-      })()
-    },
-    [saveFile, newProject, toast]
-  )
-
-  /** 另存檔案（Ctrl+S／軌頭）：成功才 Toast（顯示檔名）。 */
-  const handleSaveProjectFile = useCallback(() => {
+  /** 外部影片先加入影片庫，再逐一排入分析佇列。 */
+  const handleAddExternalVideo = useCallback(() => {
     void (async () => {
-      const saved = await saveFile()
-      if (saved) toast({ message: i18n.studio.toast.savedAs.replace('{name}', baseName(saved)) })
+      try {
+        const api = window.api
+        if (!api) return
+        const paths: string[] = await api.library.selectFiles()
+        if (paths.length === 0) return
+        await api.library.add(paths)
+        for (const path of paths) await api.queue.enqueue(path)
+      } catch {
+        toast({ message: i18n.studio.toast.addExternalFailed })
+      }
     })()
-  }, [saveFile, toast])
+  }, [toast])
 
   /** ＋從來源加入：加入第一段待確認建議（mock 行為）；沒有時 Toast。 */
   const addFirstSuggestion = useCallback(() => {
@@ -1338,11 +1156,6 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
 
   const openAddEvent = useCallback(() => setAddEventAt(sourcePlayTime()), [sourcePlayTime])
   const gAddEvent = useMemo(() => guarded('addEvent', openAddEvent), [guarded, openAddEvent])
-  const gSupercut = useMemo(() => guarded('supercut', runSupercut), [guarded, runSupercut])
-  const gDeleteSelected = useMemo(() => guarded('deleteSelectedEvents', handleDeleteSelected), [guarded, handleDeleteSelected])
-  const gDeleteEvent = useMemo(() => guarded('deleteEvent', handleDeleteEvent), [guarded, handleDeleteEvent])
-  const gSetOverride = useMemo(() => guarded('setOverride', handleSetOverride), [guarded, handleSetOverride])
-
   /* ---------------- 浮層（任一開啟時 keymap 只剩 Esc 關最上層） ---------------- */
 
   const overlayState: OverlayState = {
@@ -1358,7 +1171,7 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
   const overlayStateRef = useRef(overlayState)
   overlayStateRef.current = overlayState
 
-  /** Esc：先關最上層浮層；沒有浮層時清除選取。（新專案對話框與佇列浮層自行處理 Esc。） */
+  /** Esc：關閉最上層浮層。（新專案對話框與佇列浮層自行處理 Esc。） */
   const closeOverlay = useCallback(() => {
     switch (topOverlay(overlayStateRef.current)) {
       case 'addEvent':
@@ -1376,13 +1189,10 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
         if (exportCtl.getState().phase !== 'running') exportCtl.finish()
         setExportOpen(false)
         break
-      case null:
-        clearSelection()
-        break
       default:
         break
     }
-  }, [overlay, clearSelection, exportCtl])
+  }, [overlay, exportCtl])
 
   /* ---------------- keymap（spec §3.2.7） ---------------- */
 
@@ -1408,19 +1218,11 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
       },
       quickOrSplit: handleQuickOrSplit,
       addEvent: gAddEvent,
-      supercut: gSupercut,
       addAllToProject: addAllSuggestions,
       acceptSuggestion: handleAcceptSuggestion,
       skipSuggestion: handleSkipSuggestion,
-      listPrev: () => moveListCursor(-1),
-      listNext: () => moveListCursor(1),
-      deleteSelectedEvents: gDeleteSelected,
-      seekSelectedEvent: () => {
-        const id = [...state.selected][0]
-        const ev =
-          state.doc.events.find((e) => e.id === id) ?? evFiltered.find((e) => e.id === evCursorId)
-        if (ev) handleSelectEvent(ev)
-      },
+      listPrev: () => setActiveClipId((prev) => nextSuggestion(state.clips, prev, -1)),
+      listNext: () => setActiveClipId((prev) => nextSuggestion(state.clips, prev, 1)),
       playItem: playSelectedItem,
       deleteProjectItem: deleteSelectedItem,
       duplicateItem: duplicateSelectedItem,
@@ -1430,7 +1232,6 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
       selectNextItem: () => selectProjectItem(1),
       undo,
       redo,
-      saveProjectFile: handleSaveProjectFile,
       openExport: handleOpenExport,
       toggleAside: () => setAsideOpen((v) => !v),
       showShortcuts: overlay.openShortcuts,
@@ -1440,7 +1241,7 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
     { screen: 'studio', mode: mode.mode, overlayOpen }
   )
 
-  /* ---------------- aria-live（朗讀目前事件／選取數） ---------------- */
+  /* ---------------- aria-live（朗讀目前事件） ---------------- */
 
   const activeEvent = useMemo(() => {
     let best: { id: string; t: number; type: string } | null = null
@@ -1453,18 +1254,6 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
     return best
   }, [state.doc.events, currentTime])
 
-  // 事件分頁開啟時確保游標落在清單內（roving tabindex 的第一站）；預設落在播放頭事件，沒有則第一筆
-  useEffect(() => {
-    if (tab !== 'ev') return
-    setEvCursorId((prev) => {
-      if (prev && evFiltered.some((e) => e.id === prev)) return prev
-      const cur = activeEvent && evFiltered.find((e) => e.id === activeEvent.id)
-      return cur?.id ?? evFiltered[0]?.id ?? null
-    })
-    // activeEvent 隨播放頭變動，不應反覆重設游標：只在開啟分頁與篩選變動時評估
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab, evFiltered])
-
   const prevActiveId = useRef<string | null>(null)
   useEffect(() => {
     if (activeEvent?.id === prevActiveId.current) return
@@ -1474,13 +1263,6 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
       setLive(i18n.studio.live.event.replace('{type}', type).replace('{time}', formatTime(activeEvent.t)))
     }
   }, [activeEvent])
-
-  const prevSelectedCount = useRef(0)
-  useEffect(() => {
-    if (state.selected.size === prevSelectedCount.current) return
-    prevSelectedCount.current = state.selected.size
-    setLive(i18n.studio.live.selected.replace('{n}', String(state.selected.size)))
-  }, [state.selected.size])
 
   /* ---------------- render ---------------- */
 
@@ -1510,16 +1292,8 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
         title={baseName(videoPath)}
         meta={meta}
         statusDone={state.doc.analysis.status === 'done'}
-        mode={mode.mode}
-        exportCount={project.items.length}
         asideOpen={asideOpen}
         onBack={handleBack}
-        onAutoClip={() => setAutoClipOpen((v) => !v)}
-        autoClipOpen={autoClipOpen}
-        onQuick={handleQuickOrSplit}
-        onExport={handleOpenExport}
-        exportOpen={exportOpen}
-        exportPercent={exporting ? (exportState.progress?.percent ?? 0) : null}
         onToggleAside={() => setAsideOpen((v) => !v)}
       />
 
@@ -1562,6 +1336,10 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
             onPrevEvent={() => seekEvent(-1)}
             onNextEvent={() => seekEvent(1)}
             onAddEvent={gAddEvent}
+            mode={mode.mode}
+            onQuick={handleQuickOrSplit}
+            onAutoClip={() => setAutoClipOpen((v) => !v)}
+            autoClipOpen={autoClipOpen}
             onToggleFilter={(t) => dispatch({ type: 'setFilter', filter: toggleFilter(state.filter, t) })}
           />
 
@@ -1578,10 +1356,7 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
               onSelectEvent={handleSelectEvent}
               seekBefore={cfg.before}
               onUpdateClip={(clip) => dispatch({ type: 'updateClip', clip })}
-              selected={state.selected}
               currentEventId={activeEvent?.id}
-              onToggleSelect={handleToggleSelect}
-              onBoxSelect={handleBoxSelect}
               getPlayTime={sourcePlayTime}
               playing={isPlaying}
               onPlayToggle={togglePlay}
@@ -1625,14 +1400,10 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
             canUndo={canUndo}
             canRedo={canRedo}
             onNewProject={handleNewProjectConfirmed}
-            unsaved={unsaved}
-            onOpenFile={(saveFirst) =>
-              void (async () => {
-                if (saveFirst && !(await saveFile())) return
-                await openFile()
-              })()
-            }
-            onSaveFile={handleSaveProjectFile}
+            onAddExternalVideo={handleAddExternalVideo}
+            onExport={handleOpenExport}
+            exportOpen={exportOpen}
+            exportPercent={exporting ? (exportState.progress?.percent ?? 0) : null}
             onAddFromSource={addFirstSuggestion}
             onDialogOpenChange={setProjDlgOpen}
           />
@@ -1640,44 +1411,24 @@ export function StudioScreen({ videoPath, onBack, preloadedDoc }: StudioScreenPr
 
         {asideOpen && (
           <Aside
-            tab={tab}
-            onTab={setTab}
             hlCount={state.clips.length}
-            evCount={eventCount}
             grayed={foreign}
             locked={exporting}
           >
-            {tab === 'hl' ? (
-              <HighlightsTab
-                clips={state.clips}
-                events={state.doc.events}
-                activeId={activeClipId}
-                onActiveChange={setActiveClipId}
-                onPreview={previewClip}
-                onAccept={acceptClip}
-                onSkip={skipClip}
-                onRestore={restoreClip}
-                onRemove={removeFromProject}
-                onTuneParams={() => setAutoClipOpen(true)}
-                project={project}
-                onAddAll={addAllSuggestions}
-              />
-            ) : (
-              <EventsTab
-                events={state.doc.events}
-                filter={state.filter}
-                selected={state.selected}
-                currentId={activeEvent?.id ?? null}
-                cursorId={evCursorId}
-                onCursorChange={setEvCursorId}
-                onSeek={handleSelectEvent}
-                onToggleSelect={handleToggleSelect}
-                onSetOverride={gSetOverride}
-                onDelete={gDeleteEvent}
-                onClearSelection={clearSelection}
-                onSupercut={gSupercut}
-              />
-            )}
+            <HighlightsTab
+              clips={state.clips}
+              events={state.doc.events}
+              activeId={activeClipId}
+              onActiveChange={setActiveClipId}
+              onPreview={previewClip}
+              onAccept={acceptClip}
+              onSkip={skipClip}
+              onRestore={restoreClip}
+              onRemove={removeFromProject}
+              onTuneParams={() => setAutoClipOpen(true)}
+              project={project}
+              onAddAll={addAllSuggestions}
+            />
           </Aside>
         )}
       </div>

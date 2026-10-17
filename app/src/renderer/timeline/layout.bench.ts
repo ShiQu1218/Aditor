@@ -4,7 +4,6 @@ import { bench, describe } from 'vitest'
 import type { EventType } from '../../shared/types'
 import { genLong } from '../../../test/fixtures/genEvents'
 import { CARD, cardRowHeight, computeGrid } from '../lib/gridLayout'
-import { listWindow } from '../lib/listWindow'
 import { layoutTimeline } from './layout'
 import type { View } from './model'
 
@@ -32,11 +31,5 @@ describe('library computeGrid 500 entries', () => {
   })
   bench('scrollTop mid-list', () => {
     computeGrid({ width: 1286, cardMin: CARD.min, gap: CARD.gap, rowHeight, headerHeight: CARD.headerH, groups, scrollTop: 20000, viewHeight: 700, overscanRows: CARD.overscanRows })
-  })
-})
-
-describe('event list listWindow', () => {
-  bench('6000 rows, 44 px', () => {
-    listWindow({ count: 6000, rowHeight: 44, scrollTop: 100000, viewHeight: 600, overscan: 6 })
   })
 })

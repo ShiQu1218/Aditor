@@ -2,7 +2,7 @@ import React from 'react'
 import { EventType } from '../../shared/types'
 import { formatTime } from '../../shared/time'
 import { i18n } from '../i18n/zh-TW'
-import { Pause, Play, SkipBack, SkipForward } from '../components/icons'
+import { Pause, Play, Scissors, SkipBack, SkipForward, Sparkles } from '../components/icons'
 import { EventFilterChips } from './EventFilterChips'
 
 interface TransportBarProps {
@@ -17,10 +17,14 @@ interface TransportBarProps {
   onPrevEvent: () => void
   onNextEvent: () => void
   onAddEvent: () => void
+  mode: 'source' | 'project'
+  onQuick: () => void
+  onAutoClip: () => void
+  autoClipOpen: boolean
   onToggleFilter: (t: EventType) => void
 }
 
-/** 傳輸列：播放／上下事件／時間／速度、事件類型 chip（帶計數）、新增事件。 */
+/** 傳輸列：播放／上下事件／時間／速度、快速剪輯／AI、事件類型 chip（帶計數）、新增事件。 */
 export function TransportBar({
   playing,
   currentTime,
@@ -33,6 +37,10 @@ export function TransportBar({
   onPrevEvent,
   onNextEvent,
   onAddEvent,
+  mode,
+  onQuick,
+  onAutoClip,
+  autoClipOpen,
   onToggleFilter
 }: TransportBarProps): JSX.Element {
   const t = i18n.studio.transport
@@ -54,6 +62,19 @@ export function TransportBar({
         {speed}x
       </button>
       <div className="transport-spacer" />
+      <button type="button" className="btn-ghost" onClick={onQuick}>
+        <Scissors className="ic sm" /> {mode === 'project' ? i18n.studio.splitClip : i18n.studio.quickClip} <kbd>{i18n.studio.quickClipKey}</kbd>
+      </button>
+      <button
+        type="button"
+        className="btn-ghost"
+        data-autoclip="toggle"
+        aria-haspopup="dialog"
+        aria-expanded={autoClipOpen}
+        onClick={onAutoClip}
+      >
+        <Sparkles className="ic sm" /> {i18n.studio.autoClip}
+      </button>
       <EventFilterChips counts={counts} filter={filter} onToggle={onToggleFilter} />
       <button type="button" className="btn-ghost" onClick={onAddEvent}>
         {t.addEvent} <kbd>M</kbd>

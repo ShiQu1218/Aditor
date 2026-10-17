@@ -146,10 +146,6 @@ export function trimItem(
   }
 }
 
-export function serializeProject(p: Project): string {
-  return JSON.stringify(p, null, 2)
-}
-
 export type ProjectShapeError = { kind: 'unsupported' | 'format'; message: string }
 
 /** 檢查任意資料是否為合法專案（版本、name、items 逐項形狀）；合法回 null。 */
@@ -178,11 +174,4 @@ export function projectShapeError(data: unknown): ProjectShapeError | null {
     if (!ok) return { kind: 'format', message: `items[${i}] 格式不符` }
   }
   return null
-}
-
-export function deserializeProject(jsonStr: string): Project {
-  const data = JSON.parse(jsonStr)
-  const err = projectShapeError(data)
-  if (err) throw new Error(`Invalid project file format: ${err.message}`)
-  return data as Project
 }

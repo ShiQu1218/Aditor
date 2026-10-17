@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { createClipAt, resizeClip, supercut, mergeOverlapping } from './clips'
-import { EngineEvent } from '../../shared/types'
+import { createClipAt, resizeClip } from './clips'
 
 describe('Timeline Clips', () => {
   it('createClipAt clamps to [0,duration]', () => {
@@ -39,48 +38,5 @@ describe('Timeline Clips', () => {
     // Resize end < start + minLen
     const r5 = resizeClip(clip, 'end', 11, 100, 2)
     expect(r5.end).toBe(12)
-  })
-
-  it('supercut merges overlapping windows', () => {
-    // Events at 100, 105. with before=8, after=4:
-    // Event 100: [92, 104]
-    // Event 105: [97, 109]
-    // Overlapping, should merge to [92, 109]
-    const events: EngineEvent[] = [
-      { id: 'e1', t: 100, type: 'knock', counted: true, counted_override: null, score: 0.9, damage_line: true, name_sig: null, counted_reason: '', source: 'auto' },
-      { id: 'e2', t: 105, type: 'knock', counted: true, counted_override: null, score: 0.9, damage_line: true, name_sig: null, counted_reason: '', source: 'auto' },
-      { id: 'e3', t: 150, type: 'knock', counted: true, counted_override: null, score: 0.9, damage_line: true, name_sig: null, counted_reason: '', source: 'auto' }
-    ]
-
-    const selectedIds = new Set(['e1', 'e2'])
-    const clips = supercut(events, selectedIds, 8, 4, 200)
-    expect(clips.length).toBe(1)
-    expect(clips[0].start).toBe(92)
-    expect(clips[0].end).toBe(109)
-    expect(clips[0].event_ids).toEqual(['e1', 'e2'])
-  })
-
-  it('mergeOverlapping combines clips and event_ids', () => {
-    const clips = [
-      { id: 'c1', start: 10, end: 20, origin: 'manual' as const, event_ids: ['e1'] },
-      { id: 'c2', start: 18, end: 30, origin: 'manual' as const, event_ids: ['e2'] },
-      { id: 'c3', start: 40, end: 50, origin: 'manual' as const, event_ids: ['e3'] }
-    ]
-    const merged = mergeOverlapping(clips)
-    expect(merged.length).toBe(2)
-    expect(merged[0]).toEqual({
-      id: 'c1',
-      start: 10,
-      end: 30,
-      origin: 'manual',
-      event_ids: ['e1', 'e2']
-    })
-    expect(merged[1]).toEqual({
-      id: 'c3',
-      start: 40,
-      end: 50,
-      origin: 'manual',
-      event_ids: ['e3']
-    })
   })
 })

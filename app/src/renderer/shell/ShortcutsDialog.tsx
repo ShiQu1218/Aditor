@@ -10,7 +10,6 @@ const SCOPE_ORDER = [
   shellI18n.keymap.scope.studio,
   shellI18n.keymap.scope.source,
   shellI18n.keymap.scope.hl,
-  shellI18n.keymap.scope.ev,
   shellI18n.keymap.scope.proj,
   shellI18n.keymap.scope.library,
   `${shellI18n.keymap.scope.library}／${shellI18n.keymap.scope.settings}`

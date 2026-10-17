@@ -1,4 +1,4 @@
-import React, { useEffect, useId, useReducer, useRef, useState } from 'react'
+import React, { useEffect, useId, useLayoutEffect, useReducer, useRef, useState } from 'react'
 import { useFocusTrap } from '../a11y/useFocusTrap'
 import type { AutoClipParams, Clip, EngineEvent } from '../../shared/types'
 import { formatTime } from '../../shared/time'
@@ -43,6 +43,26 @@ export function AutoClipPopover({
   const seqRef = useRef(0)
   const boxRef = useRef<HTMLDivElement>(null)
   const debounced = useDebounced(params, 250)
+
+  const [position, setPosition] = useState({ top: 8, left: 8 })
+  // 跟隨播放列的觸發按鈕，並維持浮層在視窗範圍內。
+  useLayoutEffect(() => {
+    const place = (): void => {
+      const anchor = document.querySelector('[data-autoclip="toggle"]')?.getBoundingClientRect()
+      const box = boxRef.current?.getBoundingClientRect()
+      if (!anchor || !box) return
+      const left = Math.max(8, Math.min(anchor.left, window.innerWidth - box.width - 8))
+      const top = Math.max(8, Math.min(anchor.top - box.height - 8, window.innerHeight - box.height - 8))
+      setPosition({ top, left })
+    }
+    place()
+    window.addEventListener('resize', place)
+    window.addEventListener('scroll', place, true)
+    return () => {
+      window.removeEventListener('resize', place)
+      window.removeEventListener('scroll', place, true)
+    }
+  }, [])
 
   // 即時預估：去抖 250ms 後呼叫既有 engine.autoclip（引擎不可用／失敗時維持「計算中…」並停用套用）
   useEffect(() => {
@@ -94,7 +114,7 @@ export function AutoClipPopover({
   const applicable = canApply(est, params)
 
   return (
-    <div className="autoclip-pop" ref={boxRef} role="dialog" aria-labelledby={titleId}>
+    <div className="autoclip-pop" style={position} ref={boxRef} role="dialog" aria-labelledby={titleId}>
       <h3 id={titleId}>{t.title}</h3>
       <p className="dim ac-desc">{t.desc}</p>
 

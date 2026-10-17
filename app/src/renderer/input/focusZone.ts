@@ -1,6 +1,6 @@
 // 焦點區（focus zone）與事件目標分類。純 DOM 輔助，不依賴 React，方便在 node 環境測試。
 
-export type Zone = 'src' | 'hl' | 'ev' | 'proj' | null
+export type Zone = 'src' | 'hl' | 'proj' | null
 export type TargetKind = 'native' | 'text' | 'none'
 
 /** 結構上與 HTMLElement 相容的最小介面（測試可用假物件）。 */
@@ -12,7 +12,7 @@ export interface ElementLike {
   getAttribute(name: string): string | null
 }
 
-const ZONES = new Set(['src', 'hl', 'ev', 'proj'])
+const ZONES = new Set(['src', 'hl', 'proj'])
 const TEXT_ROLES = new Set(['textbox', 'searchbox', 'combobox', 'spinbutton'])
 const NATIVE_ROLES = new Set([
   'slider',
@@ -44,7 +44,7 @@ function isEditable(el: ElementLike): boolean {
  * button/select/a/role=slider|tab|menuitem|switch…/非文字 input → native；
  * 文字 input/textarea/contenteditable/role=textbox… → text；其餘（含 role=option/listbox/row/gridcell/listitem）→ none。
  *
- * 清單列（hl/ev/proj 的 role=option/listitem）不可使用 <button>，
+ * 清單列（hl/proj 的 role=option/listitem）不可使用 <button>，
  * 否則 Enter/Delete 區域鍵會被原生控制項規則放行（resolveKey 回傳 null）。
  */
 export function targetKindOf(el: ElementLike | null | undefined): TargetKind {

@@ -172,7 +172,7 @@ describe('planSuggestions + mergeSuggestions (real data flow)', () => {
   })
 
   test('REAL load flow: fresh studio (empty state) + main-rewritten doc with suggestionsPending -> stale accepted kept, new suggested placed, flag cleared; second open does nothing', () => {
-    const fresh0 = { doc: doc(), selected: new Set<string>(), filter: new Set<never>(), clips: [] as Clip[], dirty: false }
+    const fresh0 = { doc: doc(), filter: new Set<never>(), clips: [] as Clip[], dirty: false }
     // main 在重新分析後改寫的文件：手動片段＋已加入（stale）的 AI 片段，旗標 suggestionsPending
     const onDisk = doc({
       events: [ev('e1', 100), ev('e2', 105), ev('e3', 110)],
@@ -214,7 +214,7 @@ describe('planSuggestions + mergeSuggestions (real data flow)', () => {
   })
 
   test('flag cleared without touching clips when there is nothing to suggest (applySuggestions keeps docs without app untouched)', () => {
-    const base = { doc: doc({ clips: [clip('m1', 10, { origin: 'manual', status: 'accepted' })] }), selected: new Set<string>(), filter: new Set<never>(), clips: [] as Clip[], dirty: false }
+    const base = { doc: doc({ clips: [clip('m1', 10, { origin: 'manual', status: 'accepted' })] }), filter: new Set<never>(), clips: [] as Clip[], dirty: false }
     const s = viewerReducer(base, { type: 'applySuggestions', clips: base.doc.clips })
     expect(s.doc.app).toBeUndefined()
     const pending = viewerReducer(

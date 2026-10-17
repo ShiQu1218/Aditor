@@ -8,7 +8,7 @@ import { i18n } from '../i18n/zh-TW'
  * 未知的 counted_reason 原樣顯示（向前相容引擎新增值）。
  */
 export function eventReason(e: EngineEvent): string {
-  const t = i18n.studio.ev
+  const t = i18n.studio.eventReasons
   if (e.deleted) return t.reasonDeleted
   if (e.counted_override === true) return t.reasonForced
   if (e.counted_override === false) return t.reasonForcedOff

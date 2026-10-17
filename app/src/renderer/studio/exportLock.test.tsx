@@ -13,7 +13,7 @@ afterEach(() => {
 
 const q = <T extends Element = HTMLElement>(sel: string): T | null => document.querySelector<T>(sel)
 const qa = <T extends Element = HTMLElement>(sel: string): T[] => Array.from(document.querySelectorAll<T>(sel))
-const LOCKED = ['.studio-aside', '.studio-tl', '.project-lane']
+const LOCKED = ['.studio-aside', '.studio-tl', '.plane-head-edit', '.project-lane .track']
 
 describe('export lock', () => {
   test('while an export runs the side panel, project track and source timeline are inert; they unlock when it ends', async () => {
@@ -45,12 +45,17 @@ describe('export lock', () => {
       expect(el.hasAttribute('inert'), `${sel} inert`).toBe(true)
       expect(el.getAttribute('aria-disabled'), `${sel} aria-disabled`).toBe('true')
     }
-    // 徽章狀態：頂欄匯出按鈕顯示進度
-    expect(q('.studio-head .xd-badge')?.textContent).toContain('%')
+    // 徽章狀態：專案軌匯出按鈕顯示進度
+    expect(q('.plane-head .xd-badge')?.textContent).toContain('%')
 
     // 縮小抽屜、收起再展開側欄：新掛載的側欄也必須是 inert
     press(document.activeElement ?? document.body, 'Escape')
     expect(q('.xd')).toBeNull()
+    const exportButton = q('.plane-head > .btn-accent')!
+    expect(exportButton.closest('[inert]')).toBeNull()
+    click(exportButton)
+    expect(q('.xd')).not.toBeNull()
+    press(document.activeElement ?? document.body, 'Escape')
     press(document.body, 'b', { ctrlKey: true })
     expect(q('.studio-aside')).toBeNull()
     press(document.body, 'b', { ctrlKey: true })

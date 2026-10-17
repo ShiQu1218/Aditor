@@ -1,8 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test, vi, type Mock } from 'vitest'
 import { createProject } from './project'
 import { ProjectSession, createSessionIo, type SessionIo } from './projectSession'
-import { serializeProjectFile } from './projectIo'
-import { deserializeProject } from './project'
 import type { ProjectWithId } from './projectIo'
 
 const item = (id: string) => ({ id, source: 'C:/v/a.mp4', start: 0, end: 1 })
@@ -31,7 +29,7 @@ describe('saveState transitions', () => {
     s.settingsLoaded(true)
     expect(s.getState().saveState).toBe('saved')
     s.apply(withItems(initial, 'a'))
-    expect(s.getState().saveState).toBe('saved') // 去抖中尚未開始寫
+    expect(s.getState().saveState).toBe('pending') // 去抖中尚未開始寫
     await vi.advanceTimersByTimeAsync(500)
     expect(io.save).toHaveBeenCalledTimes(1)
     expect(s.getState().lastSavedAt).toBe(1234)
@@ -188,7 +186,7 @@ describe('boot ordering', () => {
   })
 })
 
-describe('newProject / openProject', () => {
+describe('newProject', () => {
   test('newProject does not write an empty project until the first edit', async () => {
     const { s, io } = mk()
     s.settingsLoaded(true)
@@ -209,24 +207,12 @@ describe('newProject / openProject', () => {
     s.settingsLoaded(true)
     s.apply(withItems(initial, 'a'))
     s.newProject()
-    expect(io.save).toHaveBeenCalledTimes(1)
-    expect(io.save.mock.calls[0][0].id).toBe('p_init')
+    expect(io.saveSync).toHaveBeenCalledTimes(1)
+    expect(io.saveSync.mock.calls[0][0].id).toBe('p_init')
     await vi.advanceTimersByTimeAsync(2000)
-    expect(io.save).toHaveBeenCalledTimes(1)
+    expect(io.saveSync).toHaveBeenCalledTimes(1)
   })
 
-  test('openProject assigns a fresh id, resets history and saves it', async () => {
-    const { s, io } = mk()
-    s.settingsLoaded(true)
-    s.apply(withItems(initial, 'x'))
-    s.openProject({ ...createProject('檔案'), items: [item('f1')] })
-    expect(s.getState().project.id).toMatch(/^p_new/)
-    expect(s.getState().project.id).not.toBe('p_init')
-    expect(s.getState().canUndo).toBe(false)
-    await vi.advanceTimersByTimeAsync(500)
-    const saved = io.save.mock.calls.map((c) => c[0].id)
-    expect(saved).toEqual(['p_init', s.getState().project.id])
-  })
 })
 
 describe('close-time flush', () => {
@@ -249,14 +235,16 @@ describe('close-time flush', () => {
     expect(io.saveSync).toHaveBeenCalledTimes(1)
   })
 
-  test('flushSync with nothing pending or autosave disabled sends nothing', () => {
+  test('flushSync skips clean projects but saves edits with autosave disabled', () => {
     const { s, io } = mk()
     s.settingsLoaded(true)
     s.flushSync()
+    expect(io.saveSync).not.toHaveBeenCalled()
     s.settingsLoaded(false)
     s.apply(withItems(initial, 'a'))
     s.flushSync()
-    expect(io.saveSync).not.toHaveBeenCalled()
+    expect(io.saveSync).toHaveBeenCalledTimes(1)
+    expect(s.getState().unsaved).toBe(false)
   })
 })
 
@@ -309,30 +297,6 @@ describe('createSessionIo (lastProjectId lives in main)', () => {
   })
 })
 
-describe('project file import / export', () => {
-  test('serializeProjectFile strips the internal id', () => {
-    const text = serializeProjectFile(withItems(initial, 'a'))
-    expect(JSON.parse(text).id).toBeUndefined()
-    expect(JSON.parse(text).items).toHaveLength(1)
-  })
-
-  test('openProject ignores any id carried by the file, so two opened copies never share one', () => {
-    const text = JSON.stringify({ ...createProject('x'), id: 'p_shared', items: [item('a')] })
-    const { s } = mk()
-    s.openProject(deserializeProject(text))
-    const first = s.getState().project.id
-    s.openProject(deserializeProject(text))
-    expect(first).not.toBe('p_shared')
-    expect(s.getState().project.id).not.toBe('p_shared')
-    expect(s.getState().project.id).not.toBe(first)
-  })
-
-  test('deserializeProject rejects malformed items', () => {
-    const text = JSON.stringify({ version: 1, name: 'x', items: [{ id: 'a' }] })
-    expect(() => deserializeProject(text)).toThrow()
-  })
-})
-
 describe('unsaved changes while autosave is off (I5)', () => {
   test('edits with autosave off mark the session unsaved; nothing is written', async () => {
     const { s, io } = mk()
@@ -361,21 +325,6 @@ describe('unsaved changes while autosave is off (I5)', () => {
     expect(s.getState().unsaved).toBe(false)
   })
 
-  test('saving to a file, new project and open file clear the flag', () => {
-    const { s } = mk()
-    s.settingsLoaded(false)
-    s.apply(withItems(initial, 'a'))
-    s.setSaved()
-    expect(s.getState().unsaved).toBe(false)
-    s.apply(withItems(initial, 'a', 'b'))
-    expect(s.getState().unsaved).toBe(true)
-    s.newProject()
-    expect(s.getState().unsaved).toBe(false)
-    s.apply(withItems(initial, 'a'))
-    s.openProject(createProject('from file'))
-    expect(s.getState().unsaved).toBe(false)
-  })
-
   test('turning autosave on later and editing writes and clears the flag', async () => {
     const { s, io } = mk()
     s.settingsLoaded(false)
@@ -385,5 +334,50 @@ describe('unsaved changes while autosave is off (I5)', () => {
     await vi.advanceTimersByTimeAsync(500)
     expect(io.save).toHaveBeenCalledTimes(1)
     expect(s.getState().unsaved).toBe(false)
+  })
+})
+
+describe('同步儲存的資料保護', () => {
+  test('非同步寫入尚未完成時，關窗仍送出最新快照', async () => {
+    const { s, io } = mk()
+    let complete: () => void = () => undefined
+    io.save.mockImplementationOnce(() => new Promise<void>((resolve) => { complete = resolve }))
+    s.settingsLoaded(true)
+    s.apply(withItems(initial, 'a'))
+    vi.advanceTimersByTime(500)
+    s.apply(withItems(initial, 'a', 'b'))
+    expect(s.flushSync()).toBe(true)
+    expect(io.saveSync.mock.calls[0][0].items).toHaveLength(2)
+    complete()
+    await Promise.resolve()
+    expect(s.getState().saveState).toBe('saved')
+    expect(s.getState().unsaved).toBe(false)
+  })
+
+  test('同步儲存失敗保留編輯與錯誤狀態，重試成功後清除', () => {
+    const { s, io } = mk()
+    s.settingsLoaded(false)
+    s.apply(withItems(initial, 'a'))
+    io.saveSync.mockImplementationOnce(() => { throw new Error('磁碟已滿') })
+    expect(s.newProject()).toBe(false)
+    expect(s.getState().project.id).toBe('p_init')
+    expect(s.getState().unsaved).toBe(true)
+    expect(s.getState().saveState).toBe('error')
+    expect(s.flushSync()).toBe(true)
+    expect(s.getState().saveState).toBe('saved')
+  })
+
+  test('舊專案的非同步結果不會覆蓋新專案的狀態', async () => {
+    const { s, io } = mk()
+    let reject: (e: Error) => void = () => undefined
+    io.save.mockImplementationOnce(() => new Promise<void>((_resolve, fail) => { reject = fail }))
+    s.settingsLoaded(true)
+    s.apply(withItems(initial, 'a'))
+    vi.advanceTimersByTime(500)
+    expect(s.newProject()).toBe(true)
+    reject(new Error('舊寫入失敗'))
+    await Promise.resolve()
+    expect(s.getState().saveState).toBe('saved')
+    expect(s.getState().project.id).toMatch(/^p_new/)
   })
 })

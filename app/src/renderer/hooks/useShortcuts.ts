@@ -22,6 +22,7 @@ export function createKeyDownHandler(getState: () => KeymapState): (e: KeyboardE
     if (e.defaultPrevented) return
     const el = e.target as HTMLElement | null
     const cur = getState()
+    if (isStudioSpace(e, cur)) e.preventDefault()
     const cmd = resolveKey(e, {
       screen: cur.screen,
       mode: cur.mode,
@@ -37,14 +38,28 @@ export function createKeyDownHandler(getState: () => KeymapState): (e: KeyboardE
   }
 }
 
+/** 工作室的空白鍵不可觸發原生按鈕；文字欄位與組字仍交給瀏覽器。 */
+function isStudioSpace(e: KeyboardEvent, state: KeymapState): boolean {
+  return state.screen === 'studio' && (e.code === 'Space' || e.key === ' ') &&
+    !e.ctrlKey && !e.metaKey && !e.altKey && !e.isComposing && e.keyCode !== 229 &&
+    targetKindOf(e.target as HTMLElement | null) !== 'text'
+}
+
 /** 綁定到 target 並回傳解除函式。 */
 export function attachKeymap(
   target: Pick<Window, 'addEventListener' | 'removeEventListener'>,
   getState: () => KeymapState
 ): () => void {
   const onKeyDown = createKeyDownHandler(getState)
+  const onKeyUp = (e: KeyboardEvent): void => {
+    if (isStudioSpace(e, getState())) e.preventDefault()
+  }
   target.addEventListener('keydown', onKeyDown as EventListener)
-  return () => target.removeEventListener('keydown', onKeyDown as EventListener)
+  target.addEventListener('keyup', onKeyUp as EventListener)
+  return () => {
+    target.removeEventListener('keydown', onKeyDown as EventListener)
+    target.removeEventListener('keyup', onKeyUp as EventListener)
+  }
 }
 
 /**

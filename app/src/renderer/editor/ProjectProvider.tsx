@@ -7,14 +7,13 @@ import React, {
   useState,
   useSyncExternalStore
 } from 'react'
-import { Project, ProjectItem, createProject, deserializeProject } from './project'
+import { Project, ProjectItem, createProject } from './project'
 import {
   ProjectWithId,
   createRefreshGate,
   missingItemIds,
   newProjectId,
   restoreLastProject,
-  serializeProjectFile,
   validateSources
 } from './projectIo'
 import { ProjectSession, SaveState, createSessionIo } from './projectSession'
@@ -33,18 +32,12 @@ export interface ProjectContextValue {
   apply: (next: Project) => void
   undo: () => void
   redo: () => void
-  /** 開新專案（新的 id 與空的 undo 歷史；第一次編輯前不寫入磁碟）。 */
-  newProject: () => void
-  /** 從磁碟開啟專案檔（`.apexproj.json`）；一律指派新的專案 id。 */
-  openFile: () => Promise<void>
-  /** 另存專案檔到磁碟（不含內部 id）；回傳實際儲存路徑（取消或失敗時 null，供 Toast 文案）。 */
-  saveFile: () => Promise<string | null>
+  /** 新建前同步儲存舊專案；儲存失敗時保留原專案。 */
+  newProject: () => boolean
   /** 自動儲存狀態（Task 13 顯示用）。 */
   saveState: SaveState
   /** 最近一次成功寫入的 timestamp（ms）。 */
   lastSavedAt: number | null
-  /** 專案自動儲存關閉時，上次另存後是否有未儲存的變更（I5）。 */
-  unsaved: boolean
   /** 啟動還原時專案檔損毀／版本過新（顯示一次 notice）。 */
   restoreNotice: 'corrupt' | 'unsupported' | null
   /** 開啟檔案時檢查到的缺失來源（Task 13 顯示用）。 */
@@ -72,7 +65,6 @@ function createInitialProject(): ProjectWithId {
  * `ProjectSession`／`ProjectBoot`（純 TS、可單元測試）；這裡只負責訂閱並接上 IPC 與視窗事件：
  * - 啟動：先載入設定（得知 autosave 開關）再還原上次專案；還原不會蓋掉還原前的編輯
  * - 關閉：`beforeunload`／`pagehide` 以 sendSync 同步送出最新專案；main 關窗前也會要求 flush
- * - 開啟／另存檔案對話框
  */
 export function ProjectProvider({ children }: { children: React.ReactNode }): JSX.Element {
   const sessionRef = useRef<ProjectSession | null>(null)
@@ -146,12 +138,17 @@ export function ProjectProvider({ children }: { children: React.ReactNode }): JS
 
   // 關閉視窗：同步送出最新專案（阻塞到 main 寫完）；main 在 close 事件也會要求 flush 並等待 ack
   useEffect(() => {
-    const flush = (): void => session.flushSync()
+    const flush = (event: Event): void => {
+      if (!session.flushSync() && event.type === 'beforeunload') {
+        event.preventDefault()
+        ;(event as BeforeUnloadEvent).returnValue = ''
+      }
+    }
     window.addEventListener('beforeunload', flush)
     window.addEventListener('pagehide', flush)
     const offRequest = window.api?.projects?.onFlushRequest?.(() => {
-      session.flushSync()
-      window.api?.projects?.flushDone?.()
+      const ok = session.flushSync()
+      window.api?.projects?.flushDone?.(ok)
     })
     return () => {
       window.removeEventListener('beforeunload', flush)
@@ -174,59 +171,11 @@ export function ProjectProvider({ children }: { children: React.ReactNode }): JS
         if (!isEditorLocked()) session.redo()
       },
       newProject: () => {
-        if (isEditorLocked()) return
+        if (isEditorLocked() || !session.newProject()) return false
         setLastMissingSources([])
-        session.newProject()
+        return true
       }
     }),
-    [session]
-  )
-
-  const openFile = useMemo(
-    () => async (): Promise<void> => {
-      const api = window.api
-      if (!api || isEditorLocked()) return
-      const filePath = await api.project?.showOpenDialog?.()
-      if (!filePath) return
-      const content = await api.project?.load?.(filePath)
-      if (typeof content !== 'string') {
-        session.setSaveError()
-        return
-      }
-      try {
-        // 驗證形狀；id 由 session 指派新的（檔案內的 id 一律忽略）
-        const parsed = deserializeProject(content)
-        setLastMissingSources([])
-        session.openProject(parsed)
-        const opened = session.getState().project
-        const { missing } = await validateSources(opened, (source) => api.library.fileExists(source))
-        if (session.getState().project === opened) setLastMissingSources(missing)
-      } catch {
-        session.setSaveError()
-      }
-    },
-    [session]
-  )
-
-  const saveFile = useMemo(
-    () => async (): Promise<string | null> => {
-      const api = window.api
-      if (!api) return null
-      const snapshot = session.getState().project
-      const filePath = await api.project?.showSaveDialog?.(`${snapshot.name}.apexproj.json`)
-      if (!filePath) return null
-      session.setSaving()
-      try {
-        // 匯出檔不帶內部 id，兩份副本才不會共用同一個 id
-        const ok = await api.project?.save?.(filePath, serializeProjectFile(snapshot))
-        if (ok) session.setSaved()
-        else session.setSaveError()
-        return ok ? filePath : null
-      } catch {
-        session.setSaveError()
-        return null
-      }
-    },
     [session]
   )
 
@@ -251,20 +200,6 @@ export function ProjectProvider({ children }: { children: React.ReactNode }): JS
     }
   }, [session])
 
-  // 回報未儲存狀態給 main（關窗前詢問）；使用者選「儲存」時另存檔案並回報結果（I5）
-  useEffect(() => {
-    window.api?.projects?.setDirty?.(state.unsaved)
-  }, [state.unsaved])
-  useEffect(() => {
-    const off = window.api?.projects?.onSaveAndCloseRequest?.(() => {
-      void saveFile().then(
-        (p) => window.api?.projects?.saveAndCloseDone?.(p !== null),
-        () => window.api?.projects?.saveAndCloseDone?.(false)
-      )
-    })
-    return () => off?.()
-  }, [saveFile])
-
   const missingIds = useMemo(() => missingItemIds(state.project, lastMissingSources), [state.project, lastMissingSources])
 
   const value = useMemo<ProjectContextValue>(
@@ -274,16 +209,13 @@ export function ProjectProvider({ children }: { children: React.ReactNode }): JS
       canUndo: state.canUndo,
       canRedo: state.canRedo,
       ...actions,
-      openFile,
-      saveFile,
       saveState: state.saveState,
       lastSavedAt: state.lastSavedAt,
-      unsaved: state.unsaved,
       restoreNotice,
       lastMissingSources,
       missingItemIds: missingIds
     }),
-    [state, actions, openFile, saveFile, lastMissingSources, missingIds, restoreNotice]
+    [state, actions, lastMissingSources, missingIds, restoreNotice]
   )
 
   return <ProjectContext.Provider value={value}>{children}</ProjectContext.Provider>

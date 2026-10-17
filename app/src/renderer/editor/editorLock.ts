@@ -1,5 +1,5 @@
 /**
- * 編輯鎖定（匯出進行中）：資料層旗標（ProjectProvider 的 apply／undo／redo／新專案／開啟檔案會檢查）
+ * 編輯鎖定（匯出進行中）：資料層旗標（ProjectProvider 的 apply／undo／redo／新專案會檢查）
  * ＋ 介面層 `inert`（專案軌與來源時間軸標 `data-editor-lock`，不可點擊、不可聚焦）。
  */
 export const LOCK_SELECTOR = '[data-editor-lock]'

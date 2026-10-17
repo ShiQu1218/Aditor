@@ -181,6 +181,7 @@
 .transport {
   flex: none;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--sp-2);
 }
@@ -267,6 +268,7 @@
 .studio-aside.grayed { opacity: 0.5; pointer-events: none; }
 .aside-tabs { display: flex; border-bottom: 1px solid var(--line); }
 .aside-tab {
+  margin: 0;
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -278,7 +280,6 @@
   font-size: var(--fs-body);
   font-weight: var(--fw-bold);
 }
-.aside-tab:hover { color: var(--text-1); }
 .aside-tab.on { color: var(--text-1); border-bottom-color: var(--accent); }
 .aside-panel { flex: 1; min-height: 0; overflow-y: auto; padding: var(--sp-3); }
 
@@ -419,127 +420,9 @@
 .hl-foot > .dim { flex: 1; min-width: 0; font-size: var(--fs-caption); }
 .hl-foot .btn-accent { height: 28px; }
 
-/* ---- 事件分頁（spec §3.2.3） ---- */
-.ev-tab { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-.ev-head {
-  flex: none;
-  display: flex;
-  align-items: center;
-  gap: var(--sp-2);
-  padding: 2px var(--sp-3) 0;
-  font-size: var(--fs-small);
-  color: var(--text-2);
-}
-.ev-sum b { color: var(--text-1); }
-.ev-hint { margin-left: auto; font-size: var(--fs-caption); }
-.ev-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: var(--sp-2) var(--sp-3); }
-.ev-scroll:focus-visible { outline: none; box-shadow: inset var(--focus-ring); }
-/* 列／片段在捲動容器內（overflow 會裁掉外側光暈）：焦點環畫在內側 */
-.ev-row:focus-visible { box-shadow: inset var(--focus-ring); }
-.ev-empty { padding: 24px 0; text-align: center; }
-
-/* 列高固定 44 px（40＋4 列距）＝listWindow 的 rowHeight */
-.ev-row {
-  height: 40px;
-  margin-bottom: 4px;
-  display: grid;
-  grid-template-columns: 16px 24px 42px minmax(0, 1fr) auto 22px;
-  gap: 6px;
-  align-items: center;
-  padding: 0 var(--sp-2);
-  border: 1px solid transparent;
-  border-radius: var(--r-sm);
-  background: var(--bg-raised);
-  cursor: pointer;
-}
-.ev-row:hover { border-color: var(--line-strong); }
-.ev-row.sel { border-color: var(--text-1); background: var(--bg-active); }
-.ev-row.cur { box-shadow: inset 3px 0 0 var(--accent); }
-.ev-row.deleted { opacity: 0.35; text-decoration: line-through; }
-.ev-row input[type='checkbox'] { accent-color: var(--accent); margin: 0; cursor: pointer; }
-.ev-time { font-size: var(--fs-body); font-weight: var(--fw-bold); }
-.ev-lbl {
-  font-weight: var(--fw-bold);
-  display: flex;
-  flex-direction: column;
-  line-height: 1.2;
-  min-width: 0;
-  white-space: nowrap;
-}
-.ev-lbl small {
-  font-weight: var(--fw-regular);
-  color: var(--text-3);
-  font-size: var(--fs-caption);
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.ev-del { width: 22px; height: 22px; }
-.ev-foot {
-  flex: none;
-  display: flex;
-  align-items: center;
-  gap: var(--sp-2);
-  padding: 10px var(--sp-3);
-  border-top: 1px solid var(--line);
-}
-.ev-foot > .dim { flex: 1; min-width: 0; font-size: var(--fs-caption); }
-.ev-foot .btn-ghost { height: 28px; }
-.ev-foot .btn-accent { height: 28px; }
-
-/* 事件圖示：形狀＋顏色＋字形三重編碼；不計入＝淡底＋型色字形 */
-.evt {
-  --evt-c: var(--text-3);
-  display: inline-grid;
-  place-items: center;
-  width: 22px;
-  height: 22px;
-  background: var(--evt-c);
-  color: var(--bg-app);
-  flex: none;
-}
-.evt-glyph { width: 70%; height: 70%; }
-.evt[data-type='knock'] { --evt-c: var(--ev-knock); border-radius: 50%; }
-.evt[data-type='elim'] { --evt-c: var(--ev-elim); border-radius: 4px; }
-.evt[data-type='assist_knock'] {
-  --evt-c: var(--ev-assist-knock);
-  clip-path: polygon(25% 3%, 75% 3%, 100% 50%, 75% 97%, 25% 97%, 0 50%);
-}
-.evt[data-type='assist_elim'] {
-  --evt-c: var(--ev-assist-elim);
-  clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
-}
-.evt[data-type='squad_wipe'] {
-  --evt-c: var(--ev-squad-wipe);
-  clip-path: polygon(50% 0, 62% 33%, 98% 35%, 70% 57%, 80% 92%, 50% 72%, 20% 92%, 30% 57%, 2% 35%, 38% 33%);
-}
-.evt.off {
-  background: color-mix(in srgb, var(--evt-c) 14%, transparent);
-  color: var(--evt-c);
-  opacity: var(--ev-uncounted-alpha);
-}
-
-/* 計入三態分段〔自動｜計入｜不計〕 */
-.tri { display: inline-flex; border: 1px solid var(--line-strong); border-radius: var(--r-xs); overflow: hidden; }
-.tri-btn {
-  height: 22px;
-  padding: 0 5px;
-  border: 0;
-  background: transparent;
-  color: var(--text-3);
-  font-size: var(--fs-caption);
-  font-weight: var(--fw-bold);
-  cursor: pointer;
-}
-.tri-btn + .tri-btn { border-left: 1px solid var(--line-strong); }
-.tri-btn.on { background: var(--text-1); color: var(--bg-app); }
-.tri-btn.on.no { background: var(--text-disabled); color: var(--text-1); }
-.tri-btn.on.yes { background: var(--success); color: var(--bg-app); }
-
 /* ---- AI 自動剪輯浮層（spec §3.2.4） ---- */
 .autoclip-pop {
-  position: absolute;
-  top: calc(var(--topbar-h) + 8px);
-  right: 240px;
+  position: fixed;
   z-index: 40;
   width: 350px;
   display: flex;

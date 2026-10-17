@@ -87,7 +87,7 @@ describe('axe-core (jsdom) — no serious/critical violations', () => {
     }
   })
 
-  test('Studio: highlights tab, events tab and project track with items', async () => {
+  test('Studio: highlights and project track with items', async () => {
     const s = await mountStudio({
       items: [
         { id: 'i1', source: 'fixture://long', start: 10, end: 20 },
@@ -97,11 +97,6 @@ describe('axe-core (jsdom) — no serious/critical violations', () => {
     try {
       expect(document.querySelectorAll('.hl-card').length).toBeGreaterThan(0)
       await expectNoSeriousViolations('studio / highlights tab')
-      const evTab = Array.from(document.querySelectorAll<HTMLElement>('[role="tab"]')).find((t) => t.textContent?.includes('事件'))!
-      click(evTab)
-      await flush()
-      expect(document.querySelectorAll('.ev-row').length).toBeGreaterThan(0)
-      await expectNoSeriousViolations('studio / events tab')
       // 對話框狀態：新增事件、AI 浮層
       press(document.body, 'm')
       expect(document.querySelector('.add-event')).not.toBeNull()

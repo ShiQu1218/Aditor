@@ -134,8 +134,10 @@ describe('new-project dialog (ProjectTrack)', () => {
       canUndo: false,
       canRedo: false,
       onNewProject: vi.fn(),
-      onOpenFile: () => undefined,
-      onSaveFile: () => undefined,
+      onAddExternalVideo: () => undefined,
+      onExport: () => undefined,
+      exportOpen: false,
+      exportPercent: null,
       onAddFromSource: () => undefined,
       onDialogOpenChange: () => undefined
     }
@@ -155,13 +157,13 @@ describe('new-project dialog (ProjectTrack)', () => {
     expect(document.activeElement).toBe(trigger)
   })
 
-  test('"direct new" calls onNewProject(false) from the keyboard-reachable button', () => {
+  test('confirm calls onNewProject from the keyboard-reachable button', () => {
     const props = trackProps()
     const m = mount(<ProjectTrack {...props} />)
     click(buttonByText(m.container, '新專案') as HTMLElement)
     const direct = m.container.querySelector('.np-dlg .btn-accent') as HTMLElement
     click(direct)
-    expect(props.onNewProject).toHaveBeenCalledWith(false)
+    expect(props.onNewProject).toHaveBeenCalledWith()
   })
 })
 

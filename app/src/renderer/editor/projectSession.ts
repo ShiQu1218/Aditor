@@ -4,7 +4,7 @@ import { ProjectBoot } from './projectBoot'
 import { AutosaveController } from './useAutosave'
 import { ProjectWithId, newProjectId } from './projectIo'
 
-export type SaveState = 'saved' | 'saving' | 'error'
+export type SaveState = 'saved' | 'pending' | 'saving' | 'error'
 
 export interface SessionState {
   project: ProjectWithId
@@ -14,7 +14,7 @@ export interface SessionState {
   saveState: SaveState
   /** 最近一次成功寫入的 timestamp（ms）。 */
   lastSavedAt: number | null
-  /** 專案自動儲存關閉時，上次另存（或新建／開啟）後是否又有變更（I5：關窗、新專案、開啟檔案要先確認）。 */
+  /** 目前是否有尚未成功寫入的編輯（包含去抖等待中）。 */
   unsaved: boolean
 }
 
@@ -148,8 +148,6 @@ export class ProjectSession {
   /** 設定載入（或設定面板切換）後呼叫：決定自動儲存開關並放行／丟棄待寫內容。 */
   settingsLoaded(projectAutosave: unknown): void {
     const enabled = this.boot.settingsLoaded(projectAutosave)
-    // 設定載入前的編輯原本留在待寫佇列；自動儲存關閉會丟掉它們，所以要記成「未儲存」
-    if (!enabled && this.autosave.hasPendingWrite) this.unsaved = true
     this.autosave.setEnabled(enabled)
     this.autosave.setHeld(false)
     this.commit()
@@ -171,7 +169,7 @@ export class ProjectSession {
     const withId: ProjectWithId = { ...next, id: (next as Partial<ProjectWithId>).id ?? this.history.current.id }
     this.history.push(withId)
     this.markEdited()
-    this.commit()
+    this.commit('pending')
     this.autosave.update(withId)
   }
 
@@ -180,7 +178,7 @@ export class ProjectSession {
     this.boot.edit()
     const p = this.history.undo()
     this.markEdited()
-    this.commit()
+    this.commit('pending')
     this.autosave.update(p)
   }
 
@@ -189,51 +187,40 @@ export class ProjectSession {
     this.boot.edit()
     const p = this.history.redo()
     this.markEdited()
-    this.commit()
+    this.commit('pending')
     this.autosave.update(p)
   }
 
   /** 新專案：先寫出舊專案待寫內容；空專案不落地，第一次編輯才寫。 */
-  newProject(): void {
+  newProject(): boolean {
+    if (!this.flushSync()) return false
     this.boot.edit()
-    this.autosave.flush()
     this.history = new History<ProjectWithId>({ ...emptyProject(), id: this.newId() })
     this.unsaved = false
     this.commit('saved', null)
-  }
-
-  /** 開啟專案檔：一律指派新 id（兩份副本不共用 id），歷史重置並立即排入儲存。 */
-  openProject(project: Project): void {
-    this.boot.edit()
-    this.autosave.flush()
-    const opened: ProjectWithId = { ...project, id: this.newId() }
-    this.history = new History<ProjectWithId>(opened)
-    this.unsaved = false
-    this.commit('saved', null)
-    this.autosave.update(opened)
+    return true
   }
 
   private markEdited(): void {
-    if (!this.autosave.isEnabled) this.unsaved = true
-  }
-
-  setSaveError(): void {
-    this.commit('error')
-  }
-
-  setSaving(): void {
-    this.commit('saving')
-  }
-
-  /** 另存成檔案成功：目前內容已落地。 */
-  setSaved(): void {
-    this.unsaved = false
-    this.commit('saved', this.now())
+    this.unsaved = true
+    this.writeSeq++
   }
 
   /** 關閉視窗：同步送出最新待寫專案（阻塞到 main 寫完）。 */
-  flushSync(): void {
-    this.autosave.flushSync()
+  flushSync(): boolean {
+    this.autosave.cancelPending()
+    if (!this.unsaved) return true
+    // 即使自動儲存關閉、設定尚未載入或非同步儲存尚未完成，也要寫出最新內容。
+    this.writeSeq++
+    try {
+      this.io.saveSync(this.history.current)
+      this.unsaved = false
+      this.commit('saved', this.now())
+      return true
+    } catch {
+      this.commit('error')
+      return false
+    }
   }
 
   dispose(): void {

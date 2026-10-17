@@ -37,8 +37,10 @@ function props(over: Partial<ProjectTrackProps> = {}): ProjectTrackProps {
     canUndo: false,
     canRedo: false,
     onNewProject: noop,
-    onOpenFile: noop,
-    onSaveFile: noop,
+    onAddExternalVideo: noop,
+    onExport: noop,
+    exportOpen: false,
+    exportPercent: null,
     onAddFromSource: noop,
     onDialogOpenChange: noop,
     ...over

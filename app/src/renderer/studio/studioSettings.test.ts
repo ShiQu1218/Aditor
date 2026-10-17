@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest'
 import { DEFAULT_SETTINGS } from '../../shared/settings'
 import { leadInSeek, subscribeStudioSettings, toStudioSettings, type StudioSettings } from './studioSettings'
-import { createClipAt, supercut } from '../timeline/clips'
+import { createClipAt } from '../timeline/clips'
 import { studioNotice } from './notices'
 import { planSuggestions } from './highlights'
 import { readFileSync } from 'fs'
@@ -20,19 +20,16 @@ describe('toStudioSettings（純決策）', () => {
   })
 })
 
-describe('leadInSeek / 快速剪輯 / 合輯使用設定的前後秒數', () => {
+describe('leadInSeek / 快速剪輯使用設定的前後秒數', () => {
   test('leadInSeek = max(0, t - before)', () => {
     expect(leadInSeek(30, 8)).toBe(22)
     expect(leadInSeek(30, 3)).toBe(27)
     expect(leadInSeek(2, 8)).toBe(0)
   })
-  test('createClipAt／supercut 吃 settings.before/after（不再固定 8/4）', () => {
+  test('createClipAt 吃 settings.before/after（不再固定 8/4）', () => {
     const s = toStudioSettings({ before: 5, after: 2 })
     const c = createClipAt(100, s.before, s.after, 600)
     expect([c.start, c.end]).toEqual([95, 102])
-    const ev = [{ id: 'e', t: 50, type: 'knock', conf: 1, counted: true, deleted: false }] as never
-    const [sc] = supercut(ev, new Set(['e']), s.before, s.after, 600)
-    expect([sc.start, sc.end]).toEqual([45, 52])
   })
 })
 

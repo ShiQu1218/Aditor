@@ -14,7 +14,7 @@ import { WatchManager } from './watch'
 import { ProjectStore } from './projects'
 import { registerProjectHandlers } from './project-ipc'
 import { fileExistsSafe, isSafeLocalDirPath, isSafeLocalVideoPath } from './safe-path'
-import { createPathGrants, loadGrantedProject, planCacheSave, saveGrantedProject } from './ipc-guards'
+import { planCacheSave } from './ipc-guards'
 import { DEFAULT_SETTINGS } from '../shared/settings'
 import { currentE2EConfig } from './e2e'
 import { appDataDir, cacheDir, noticesFile } from '../shared/paths'
@@ -57,7 +57,7 @@ export function registerIpcHandlers(
   settings?: SettingsStore,
   watch?: WatchManager,
   projectStore?: ProjectStore,
-  onProjectFlushDone?: () => void
+  onProjectFlushDone?: (ok: boolean) => void
 ): { cancelExport: () => Promise<void> } {
   // 快取位置設定（每次讀取，變更免重啟）：與引擎 analyze 的 beside 同一規則
   const cacheBeside = (): boolean => settings?.get().cacheLocation === 'besideVideo'
@@ -302,38 +302,6 @@ export function registerIpcHandlers(
     }
     return false
   })
-
-  const pathGrants = createPathGrants()
-  ipcMain.handle('project:showSaveDialog', async (event, defaultName?: string) => {
-    const win = BrowserWindow.fromWebContents(event.sender)
-    const res = await dialog.showSaveDialog(win || (undefined as unknown as BrowserWindow), {
-      title: i18n.dialog.saveProjectTitle,
-      defaultPath: defaultName || 'project.apexproj.json',
-      filters: [{ name: 'Apex Highlighter Project', extensions: ['apexproj.json', 'json'] }]
-    })
-    if (res.canceled || !res.filePath) return null
-    pathGrants.grant('save', res.filePath)
-    return res.filePath
-  })
-
-  ipcMain.handle('project:showOpenDialog', async (event) => {
-    const win = BrowserWindow.fromWebContents(event.sender)
-    const res = await dialog.showOpenDialog(win || (undefined as unknown as BrowserWindow), {
-      title: i18n.dialog.openProjectTitle,
-      properties: ['openFile'],
-      // 自動儲存的專案（含損毀備份）都在這裡，方便找回（I12）
-      defaultPath: path.join(appDataDir(), 'projects'),
-      filters: [{ name: 'Apex Highlighter Project', extensions: ['apexproj.json', 'json'] }]
-    })
-    if (res.canceled || res.filePaths.length === 0) return null
-    pathGrants.grant('open', res.filePaths[0])
-    return res.filePaths[0]
-  })
-
-  // 只讀寫使用者剛在對話框選過的路徑（一次性授權）；renderer 無法指定任意檔案（I1）
-  ipcMain.handle('project:save', async (_, filePath: unknown, content: unknown) => saveGrantedProject(pathGrants, filePath, content))
-
-  ipcMain.handle('project:load', async (_, filePath: unknown) => loadGrantedProject(pathGrants, filePath))
 
   // 用系統預設程式開啟打包內的第三方授權清單（I11）
   ipcMain.handle('app:openLicenses', async () => {

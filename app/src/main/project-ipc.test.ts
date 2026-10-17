@@ -108,6 +108,20 @@ describe('createCloseGate', () => {
     expect(e2.preventDefault).not.toHaveBeenCalled()
   })
 
+  test('儲存失敗不關窗且可重試', () => {
+    const request = vi.fn()
+    const close = vi.fn()
+    const gate = createCloseGate({ request, close, timeoutMs: 1500 })
+    gate.onClose(ev())
+    gate.ack(false)
+    vi.advanceTimersByTime(2000)
+    expect(close).not.toHaveBeenCalled()
+    gate.onClose(ev())
+    expect(request).toHaveBeenCalledTimes(2)
+    gate.ack(true)
+    expect(close).toHaveBeenCalledTimes(1)
+  })
+
   test('timeout closes even when renderer never answers', () => {
     const close = vi.fn()
     const gate = createCloseGate({ request: vi.fn(), close, timeoutMs: 1500 })
