@@ -12,11 +12,11 @@ from typing import Callable
 from . import ENGINE_VERSION
 from .cache import (cache_path, load_cache, merge_clips, merge_reanalysis,
                     needs_reanalysis, save_cache)
-from .calibrate import calibrate
+from .calibrate import calibrate, learn_keywords
 from .decode import FrameStream, is_gpu_path
 from .errors import Cancelled
 from .derive import derive
-from .detect import Detector
+from .detect import Detector, Keywords
 from .events import EventTracker
 from .models import Clip, Event, SpecInterval
 from .probe import keyframes, probe
@@ -159,7 +159,7 @@ def _segments_from_doc(raw, duration: float) -> list[_Seg] | None:
 
 def _make_doc(info, profile: Profile, status: str, progress_t: float, h_scale: float | None,
               events: list[Event], spectating: list[SpecInterval], clips: list[Clip],
-              segments: list[dict] | None = None) -> dict:
+              segments: list[dict] | None = None, keywords: Keywords | None = None) -> dict:
     """h_scale＝本支影片校準出的圖示尺度（欄位名沿用舊版，None＝尚未校準）。"""
     doc = {
         "version": 1,
@@ -173,6 +173,8 @@ def _make_doc(info, profile: Profile, status: str, progress_t: float, h_scale: f
     }
     if segments:
         doc["analysis"]["segments"] = segments
+    if keywords is not None:
+        doc["analysis"]["keywords"] = keywords.to_dict()  # 這支影片學到的擊殺關鍵字樣板（接續分析沿用）
     return doc
 
 
@@ -194,6 +196,10 @@ def _resumable(old: dict | None, info, profile: Profile) -> bool:
             and abs(float(v.get("mtime", -1.0)) - info.mtime) < 1e-6
             and a.get("engine_version") == ENGINE_VERSION
             and a.get("templates_version") == profile.templates_version)
+
+
+def _learn_jobs(info, jobs: int | None, hwaccel: bool) -> int:
+    return auto_jobs(is_gpu_path(info.codec, hwaccel)) if jobs is None else max(1, int(jobs))
 
 
 def analyze(path: str, profile: Profile, *, cache_dir: Path, beside: bool = False,
@@ -218,6 +224,8 @@ def analyze(path: str, profile: Profile, *, cache_dir: Path, beside: bool = Fals
             resuming = segs is not None  # 格式不符就當作沒有可接續的 partial
     if resuming:
         h_scale = float(old["analysis"].get("h_scale", 1.0))
+        kw_doc = old["analysis"].get("keywords")
+        keywords = Keywords.from_dict(kw_doc) if kw_doc is not None else None
         done_events = [Event.from_dict(e) for e in old.get("events", [])]
         done_spec = [SpecInterval.from_dict(s) for s in old.get("spectating", [])]
         base_raw = old.get("base_events")  # 重新分析前的舊事件（含使用者狀態），完成時合併
@@ -226,6 +234,7 @@ def analyze(path: str, profile: Profile, *, cache_dir: Path, beside: bool = Fals
             segs = [_Seg(0.0, info.duration, True, info.duration, p, p)]
     else:
         h_scale = None  # 於 base_events 備妥後校準（可被取消）
+        keywords = None
         done_events, done_spec = [], []
         base_raw = None
         if old is not None:
@@ -233,9 +242,12 @@ def analyze(path: str, profile: Profile, *, cache_dir: Path, beside: bool = Fals
             base_raw = old.get("base_events") if partial else old.get("events")
     base_events = [Event.from_dict(e) for e in base_raw] if base_raw else []
     manual_clips = merge_clips(old_clips, [])
-    if h_scale is None:
+    if h_scale is None or keywords is None:
         try:
-            h_scale = calibrate(path, info, profile, cancel=cancel, hwaccel=hwaccel)
+            if h_scale is None:
+                h_scale = calibrate(path, info, profile, cancel=cancel, hwaccel=hwaccel)
+            keywords = learn_keywords(path, info, profile, h_scale, cancel=cancel, hwaccel=hwaccel,
+                                      jobs=_learn_jobs(info, jobs, hwaccel))
         except Cancelled:
             doc = _make_doc(info, profile, "partial", 0.0, None, [], [], manual_clips)  # h_scale=None：尚未校準
             if base_events:
@@ -286,7 +298,7 @@ def analyze(path: str, profile: Profile, *, cache_dir: Path, beside: bool = Fals
         evs, spec = combined()
         doc = _make_doc(info, profile, "partial", sum(sg.contribution(sg.snap_progress) for sg in segs),
                         h_scale, evs, spec, manual_clips,
-                        [sg.to_dict() for sg in segs] if len(segs) > 1 else None)
+                        [sg.to_dict() for sg in segs] if len(segs) > 1 else None, keywords)
         if base_events:
             doc["base_events"] = [e.to_dict() for e in base_events]
         return doc
@@ -302,7 +314,7 @@ def analyze(path: str, profile: Profile, *, cache_dir: Path, beside: bool = Fals
 
     def work(sg: _Seg) -> None:
         own_from, frm = sg.resume_plan()
-        detector = Detector(profile, h_scale)
+        detector = Detector(profile, h_scale, keywords=keywords)
         tracker = EventTracker(profile)
         kw = {"end": sg.dec_end} if sg.dec_end is not None else {}
         stream = FrameStream(path, profile, start=frm, hwaccel=hwaccel, codec=info.codec, **kw)
@@ -384,7 +396,8 @@ def analyze(path: str, profile: Profile, *, cache_dir: Path, beside: bool = Fals
     if base_events:
         raw, unmatched = merge_reanalysis(base_events, raw)
     final = derive(raw, spectating, profile)
-    doc = _make_doc(info, profile, "done", info.duration, h_scale, final, spectating, manual_clips)
+    doc = _make_doc(info, profile, "done", info.duration, h_scale, final, spectating, manual_clips,
+                    keywords=keywords)
     doc["keyframes"] = kf
     doc["unmatched"] = [e.to_dict() for e in unmatched]
     _save(cp, doc, cache_dir)

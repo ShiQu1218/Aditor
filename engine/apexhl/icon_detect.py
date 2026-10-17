@@ -233,3 +233,10 @@ class IconDetector:
         g = cv2.cvtColor(np.ascontiguousarray(banner_bgr[ROW0:ROW1]), cv2.COLOR_BGR2GRAY)
         s, _, _, sc = self._best(g, "chev")
         return s, sc
+
+    def maybe_banner(self, banner_bgr: np.ndarray) -> bool:
+        """便宜的初篩（箭頭或握手有跡象）：學習錨點時只對這些格做完整特徵計算。"""
+        g = cv2.cvtColor(np.ascontiguousarray(banner_bgr[ROW0:ROW1]), cv2.COLOR_BGR2GRAY)
+        if self._best(g, "chev")[0] >= 0.6:
+            return True
+        return self._best(g, "hand")[0] >= 0.85

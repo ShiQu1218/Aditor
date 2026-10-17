@@ -221,9 +221,7 @@ class EventTracker:
         if r.kind is None:
             if run is None:
                 return
-            if r.hint == "other":
-                self._run = None  # 別種橫幅出現：結束進行中的事件
-            elif r.hint == "cont" and run.family == "P" and t - run.reach_t - STEP < GAP - _EPS:
+            if r.hint == "cont" and run.family == "P" and t - run.reach_t - STEP < GAP - _EPS:
                 run.cont_ts.append(t)
                 self._emit(run)
             return

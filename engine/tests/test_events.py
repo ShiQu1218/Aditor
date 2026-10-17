@@ -136,8 +136,8 @@ def test_pair_then_gap_t_unchanged():
 
 
 def test_kind_change_lone_first_frame_not_established():
-    # 別種橫幅（獨立消滅、小隊抹殺等）只有 1 格：不成事件，也不接在擊倒上
-    frames = seq("KKK", kind="knock") + [(0.75, fr(hint="other"))] + seq("..", t0=1.0)
+    # 獨立消滅等別種橫幅（Detector 視同沒有橫幅）只有 1 格：不成事件，也不接在擊倒上
+    frames = seq("KKK", kind="knock") + seq("...", t0=0.75)
     ev, _ = run(frames)
     assert [e.type for e in ev] == ["knock"]
 
@@ -283,10 +283,12 @@ def test_cont_frames_extend_a_banner_but_do_not_count_as_hits():
     assert ev == []
 
 
-def test_other_banner_ends_the_current_event():
-    frames = seq("KKK") + [(0.75, fr(hint="other"))] + seq("KKK", t0=1.0)
-    ev, _ = run(frames)
-    assert [e.t for e in ev] == [0.0, 1.0]
+def test_single_non_kill_frame_inside_a_banner_is_noise_but_two_end_it():
+    # 橫幅至少停留約 8 格：單格判斷不確定（JP 523.0 型）併入同一事件；連續 2 格非擊殺格（別種橫幅、被驗證擋掉的橫幅）結束事件
+    ev, _ = run(seq("KKK.KKK"))
+    assert len(ev) == 1
+    ev, _ = run(seq("KKK..KKK"))
+    assert [e.t for e in ev] == [0.0, 1.25]
 
 
 def test_assist_elim_is_its_own_family():

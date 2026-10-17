@@ -3,6 +3,8 @@
 同時放名字指紋的比對函式（same_name／fragment_of／related_name），events 與 derive 共用。"""
 from __future__ import annotations
 
+import base64
+
 import cv2
 import numpy as np
 
@@ -211,7 +213,129 @@ def read_name_sig(row_bgr: np.ndarray, profile: Profile) -> NameSig | None:
     return sig
 
 
-# 沒有擊殺意義、但會中斷當前事件的橫幅類型（獨立消滅、小隊抹殺、REVIVE／CRATE REVEAL 等三人加分）
+# ---- 每支影片自學的「擊殺關鍵字」樣板（與語言無關的驗證） ----
+# 單人加分圖示也用在許多非擊殺橫幅（弱者獎勵、旗幟取回、敵方小隊已消滅、安全區、進化球…，分數數字甚至與助攻相同），
+# 圖示與分數都分不開，只有橫幅文字不同。文字隨語言不同，所以不用預先做好的文字樣板，而是**從這支影片自己學**：
+# - 助攻前綴：助攻消滅橫幅（握手圖示很可靠）握手右側的前幾個字（「助攻，」「ASSIST,」「アシスト、」），
+#   助攻擊倒橫幅的行首是同一段字（沒有握手）。
+# - 擊倒關鍵字：擊倒橫幅（敵人色名字＋傷害行，很可靠）名字左側的字（「擊倒」「KNOCKED DOWN」），
+#   助攻擊倒橫幅在名字前也是同一個字（日文的助攻擊倒不是，靠助攻前綴）。
+# 候選橫幅的第一行白字遮罩與樣板的最大正規化相關 ≥ KW_THRESHOLD 才算擊殺橫幅。
+KW_THRESHOLD = 0.7      # 開發集 H950：真橫幅畫格 25 百分位 0.93（10 百分位 0.6–0.66）、非擊殺橫幅 99 百分位 0.62–0.68
+PREFIX_W = 64           # 助攻前綴樣板寬（像素，已是校準後尺度）
+KEYWORD_W = 36          # 擊倒關鍵字樣板寬（名字左側）
+KW_MIN_INK = 0.04       # 樣板的筆畫比例下限（避免全空樣板）
+
+
+INK_SCALE = 100.0       # 頂帽亮度差到這個值就算滿分的筆畫（0–1 連續值）
+_INK_K = cv2.getStructuringElement(cv2.MORPH_RECT, (7, 7))
+
+
+def ink_mask(bgr: np.ndarray, profile: Profile) -> np.ndarray:
+    """關鍵字樣板用的文字筆畫圖（0–1 連續值）：局部頂帽（細亮筆畫相對於局部背景的亮度差）。
+    不用絕對白色門檻：低對比錄影（驗收片 test-TC 的文字偏灰，舊文字法在上面也只有 0.49–0.60 的分數）會漏字，
+    亮背景（雪地、天空、沙地）會混入背景塊。連續值而不是二值化：二值化的文字樣圖樣彼此相關偏高
+    （開發集 H950 非擊殺橫幅誤接受 40–75%），連續值加較高門檻（KW_THRESHOLD）則誤接受 < 1%。"""
+    g = cv2.cvtColor(np.ascontiguousarray(bgr), cv2.COLOR_BGR2GRAY)
+    th = cv2.morphologyEx(g, cv2.MORPH_TOPHAT, _INK_K).astype(np.float32)
+    return np.clip(th / INK_SCALE, 0.0, 1.0)
+
+
+def _match_max(mask: np.ndarray, tpl: np.ndarray) -> float:
+    if mask.ndim < 2 or mask.shape[0] < tpl.shape[0] or mask.shape[1] < tpl.shape[1]:
+        return 0.0
+    res = cv2.matchTemplate(mask.astype(np.float32), tpl, cv2.TM_CCOEFF_NORMED)
+    res = np.nan_to_num(res, nan=0.0, posinf=0.0, neginf=0.0)
+    return float(res.max()) if res.size else 0.0
+
+
+MIN_ANCHOR_BANNERS = 3  # 至少要來自 3 個不同橫幅：同一個橫幅的連續畫格背景幾乎相同，只有跨橫幅才能多數決掉亮背景
+
+
+def _consensus(strips: list[np.ndarray], banners: int | None = None) -> np.ndarray | None:
+    """多個錨點的墨遮罩取多數決；錨點橫幅少於 MIN_ANCHOR_BANNERS 個（banners 未給時以錨點數計）
+    或樣板幾乎沒有墨 → None（不啟用該樣板）。"""
+    if (len(strips) if banners is None else banners) < MIN_ANCHOR_BANNERS:
+        return None
+    tpl = np.mean(strips, axis=0).astype(np.float32)   # 跨橫幅平均：每個橫幅不同的背景被平均掉，只剩共同的字
+    return tpl if float((tpl > 0.3).mean()) >= KW_MIN_INK else None
+
+
+class Keywords:
+    """每支影片學到的兩個樣板（None＝沒有足夠錨點，該樣板不啟用）。"""
+
+    def __init__(self, assist: np.ndarray | None = None, knock: np.ndarray | None = None,
+                 assist_by_knock: bool = False):
+        self.assist, self.knock = assist, knock
+        # 這支影片的助攻擊倒橫幅是否含擊倒關鍵字（繁中「助攻，擊倒」、英文「ASSIST, KNOCKED DOWN」是；
+        # 日文「アシスト、名前をダウン」不是）：學習時由「擊倒關鍵字命中的助攻擊倒橫幅」的數量決定
+        self.assist_by_knock = assist_by_knock
+
+    @property
+    def empty(self) -> bool:
+        return self.assist is None and self.knock is None
+
+    def to_dict(self) -> dict:
+        def enc(a):
+            if a is None:
+                return None
+            q = np.clip(np.rint(a * 255.0), 0, 255).astype(np.uint8)
+            return {"shape": list(a.shape), "q8": base64.b64encode(q.tobytes()).decode("ascii")}
+        return {"assist": enc(self.assist), "knock": enc(self.knock), "assist_by_knock": self.assist_by_knock}
+
+    @classmethod
+    def from_dict(cls, d: dict | None) -> "Keywords":
+        def dec(e):
+            if not e:
+                return None
+            h, w = e["shape"]
+            raw = np.frombuffer(base64.b64decode(e["q8"]), dtype=np.uint8)
+            return (raw[: h * w].reshape(h, w).astype(np.float32)) / 255.0
+        d = d or {}
+        return cls(dec(d.get("assist")), dec(d.get("knock")), bool(d.get("assist_by_knock", False)))
+
+    def scores(self, banner_bgr: np.ndarray, f, profile: Profile) -> tuple[float, float]:
+        """(助攻前綴分數, 擊倒關鍵字分數)；沒有該樣板時為 -1。"""
+        m = row_ink(banner_bgr, f, profile, pad=5)
+        a = _match_max(m[:, :f.plus_x], self.assist) if self.assist is not None else -1.0
+        k = _match_max(m[:, max(0, f.line_l - 4):f.plus_x], self.knock) if self.knock is not None else -1.0
+        return a, k
+
+
+def row_ink(banner_bgr: np.ndarray, f, profile: Profile, pad: int = 2) -> np.ndarray:
+    """第一行（箭頭同列）的文字筆畫圖（見 ink_mask）。"""
+    y0 = max(0, f.chev_y - pad)
+    y1 = min(banner_bgr.shape[0], f.chev_y + f.row_h + pad)
+    return ink_mask(banner_bgr[y0:y1], profile)
+
+
+def hand_strip(banner_bgr: np.ndarray, f, hand_hw: tuple[int, int], profile: Profile) -> np.ndarray | None:
+    """助攻消滅橫幅：握手圖示右側 PREFIX_W 像素的文字筆畫圖（助攻前綴的錨點）。"""
+    th, tw = hand_hw
+    x0 = f.hand_x + tw + 4
+    b = banner_bgr[max(0, f.hand_y - 2):f.hand_y + th + 2, x0:x0 + PREFIX_W]
+    if b.shape[1] != PREFIX_W or b.shape[0] < th + 2:
+        return None
+    return ink_mask(b, profile).astype(np.float32)
+
+
+def knock_strip(banner_bgr: np.ndarray, f, profile: Profile) -> np.ndarray | None:
+    """擊倒橫幅：敵人色名字左側 KEYWORD_W 像素的文字筆畫圖（擊倒關鍵字的錨點）。"""
+    y0 = max(0, f.chev_y - 2)
+    y1 = min(banner_bgr.shape[0], f.chev_y + f.row_h + 2)
+    row = banner_bgr[y0:y1, f.line_l:max(f.line_l, f.plus_x - 3)]
+    if row.size == 0:
+        return None
+    red = red_mask(row, profile) > 0
+    ink = _despeckle((white_mask(row, profile.white) > 0) | red)
+    segs = _segments((red & ink).any(axis=0))
+    if not segs or segs[0][0] < KEYWORD_W + 6:
+        return None
+    ns = segs[0][0]
+    return ink_mask(row[:, ns - 6 - KEYWORD_W:ns - 6], profile).astype(np.float32)
+
+
+# 沒有擊殺意義的橫幅類型當前事件的橫幅類型（獨立消滅、小隊抹殺、REVIVE／CRATE REVEAL 等三人加分）
 _OTHER_KINDS = frozenset({"elim", "squad_wipe", "score_other"})
 PRODUCT_KINDS = frozenset({"knock", "assist_knock", "assist_elim"})
 
@@ -219,9 +343,11 @@ PRODUCT_KINDS = frozenset({"knock", "assist_knock", "assist_elim"})
 class Detector:
     """單格偵測器：icon_scale 由 calibrate 每支影片決定一次，之後單尺度比對（速度）。"""
 
-    def __init__(self, profile: Profile, icon_scale: float = 1.0, params: IconParams | None = None):
+    def __init__(self, profile: Profile, icon_scale: float = 1.0, params: IconParams | None = None,
+                 keywords: Keywords | None = None):
         self.profile = profile
         self.icon_scale = icon_scale
+        self.keywords = keywords if keywords is not None and not keywords.empty else None
         self.icons = IconDetector(Path(profile.dir), scales=(icon_scale,), params=params)
         # 觀戰樣板依白字門檻分組：同一組只算一次遮罩
         groups: dict[tuple, list[tuple[np.ndarray, float]]] = {}
@@ -246,19 +372,48 @@ class Detector:
         row = banner_bgr[y0:y1, f.line_l:max(f.line_l, x1)]
         return read_name_sig(row, self.profile)
 
+    def _verify(self, banner_bgr: np.ndarray, f, kind: str) -> str | None:
+        """用這支影片學到的關鍵字樣板驗證單人加分橫幅；沒有樣板時不驗證。
+
+        - 助攻前綴命中（行首是「助攻，」之類）→ 助攻擊倒（沒有敵人色名字時，修正圖示線索判錯的擊倒）。
+        - 擊倒關鍵字命中 → 維持圖示線索的類型。
+        - 都不命中 → None（非擊殺橫幅）；但只驗證「有對應樣板」的類別：擊倒要有擊倒樣板；助攻擊倒要有助攻前綴樣板，
+          或這支影片的助攻橫幅含擊倒關鍵字（assist_by_knock）。沒有對應樣板（影片裡沒有足夠的錨點可學；
+          日文式的助攻橫幅不含擊倒關鍵字）時維持原判。"""
+        kw = self.keywords
+        if kw is None:
+            return kind
+        a, k = kw.scores(banner_bgr, f, self.profile)
+        if a >= KW_THRESHOLD:
+            return "assist_knock" if f.name_color - f.name_color_bg < self.icons.p.name_color_min else kind
+        if k >= KW_THRESHOLD:
+            return kind
+        # 只有「有對應樣板可驗證」的類別才會被擋：擊倒要有擊倒關鍵字樣板；助攻擊倒要有助攻前綴樣板
+        if kind == "knock":
+            verifiable = kw.knock is not None
+        else:
+            verifiable = kw.assist is not None or (kw.assist_by_knock and kw.knock is not None)
+        return None if verifiable else kind
+
     def detect(self, banner_bgr: np.ndarray, spec_bgr: np.ndarray) -> FrameResult:
         spectating = self._spectating(spec_bgr)
         f = self.icons.features(banner_bgr)
         p = self.icons.p
         kind = f.kind
         if kind in ("knock", "assist_knock"):
+            kind = self._verify(banner_bgr, f, kind)
+            if kind is None:
+                # 單人加分圖示但文字不是擊倒／助攻（弱者獎勵、旗幟取回、敵方小隊已消滅…）：視同沒有橫幅
+                return FrameResult(None, 0.0, 0, False, None, spectating)
             sig = self._knock_sig(banner_bgr, f) if kind == "knock" else None
             dmg = f.line2_ink - f.line2_ink_bg >= p.line2_ink_min
             return FrameResult(kind, f.chev, f.chev_x, dmg, sig, spectating)
         if kind == "assist_elim":
             return FrameResult(kind, f.hand, f.hand_x, False, None, spectating)
         if kind in _OTHER_KINDS:
-            return FrameResult(None, 0.0, 0, False, None, spectating, hint="other")
+            # 別種橫幅（獨立消滅、小隊抹殺、REVIVE 等）：視同沒有橫幅。橫幅至少停留約 2 秒（8 格），
+            # 單格的圖示判斷不確定只是雜訊；連續 ≥ 2 格的非擊殺格依 GAP 規則自然結束進行中的事件。
+            return FrameResult(None, 0.0, 0, False, None, spectating)
         if f.chev >= p.chev_min and f.plus >= p.plus_min:
             # 有加分箭頭與「+」，但人形不確定（淡入淡出）：不算命中，但不中斷進行中的事件
             return FrameResult(None, 0.0, 0, False, None, spectating, hint="cont")

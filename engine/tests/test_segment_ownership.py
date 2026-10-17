@@ -77,7 +77,7 @@ class _FakeStream:
 class _FakeDetector:
     script: dict = {}
 
-    def __init__(self, profile, icon_scale=1.0):
+    def __init__(self, profile, icon_scale=1.0, keywords=None):
         pass
 
     def detect(self, banner, spec):
