@@ -115,6 +115,8 @@ class Server:
                     cancel = threading.Event()
                     self._current = (rid, cancel)
             th = threading.Thread(target=self._run, args=(rid, handler, args, cancel), daemon=True)
+            # 只保留仍在執行的工作緒（長時間執行的 IPC 工作階段不累積已結束的 Thread 物件）
+            self._threads = [t for t in self._threads if t.is_alive()]
             self._threads.append(th)
             th.start()
         except _Busy as e:
