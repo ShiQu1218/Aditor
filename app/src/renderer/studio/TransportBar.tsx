@@ -17,7 +17,6 @@ interface TransportBarProps {
   onPrevEvent: () => void
   onNextEvent: () => void
   onAddEvent: () => void
-  mode: 'source' | 'project'
   onQuick: () => void
   bladeMode: boolean
   onAutoClip: () => void
@@ -38,7 +37,6 @@ export function TransportBar({
   onPrevEvent,
   onNextEvent,
   onAddEvent,
-  mode,
   onQuick,
   bladeMode,
   onAutoClip,
@@ -67,11 +65,11 @@ export function TransportBar({
       <button
         type="button"
         className="btn-ghost"
-        aria-pressed={mode === 'source' ? bladeMode : undefined}
-        title={mode === 'source' ? i18n.timeline.bladeHint : undefined}
+        aria-pressed={bladeMode}
+        title={i18n.timeline.bladeHint}
         onClick={onQuick}
       >
-        <Scissors className="ic sm" /> {mode === 'project' ? i18n.studio.splitClip : i18n.studio.quickClip} <kbd>{i18n.studio.quickClipKey}</kbd>
+        <Scissors className="ic sm" /> {i18n.studio.quickClip} <kbd>{i18n.studio.quickClipKey}</kbd>
       </button>
       <button
         type="button"

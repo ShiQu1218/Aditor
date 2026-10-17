@@ -927,11 +927,19 @@ export function StudioScreen({ videoPath, onBack, onOpenVideo, playbackRequest, 
     }
   }, [mode.mode, currentTime, apply, toast])
 
-  /** 來源模式切換刀片；專案模式仍在播放頭分割。 */
+  /** 刀片模式（播放列按鈕／B）：專案預覽中先回到來源（停在目前影格）再開啟，切出的片段加到專案尾端。 */
+  const toggleBlade = useCallback(() => {
+    if (modeRef.current.mode === 'project') {
+      backToSource()
+      setBladeMode(true)
+    } else setBladeMode((enabled) => !enabled)
+  }, [backToSource])
+
+  /** Ctrl+Q：來源模式切換刀片；專案預覽中在播放頭分割。 */
   const handleQuickOrSplit = useCallback(() => {
     if (mode.mode === 'project') splitProjectAtPlayhead()
-    else setBladeMode((enabled) => !enabled)
-  }, [mode.mode, splitProjectAtPlayhead])
+    else toggleBlade()
+  }, [mode.mode, splitProjectAtPlayhead, toggleBlade])
 
   const createBladeClip = useCallback((start: number, end: number): void => {
     const clip: Clip = { id: `c_${crypto.randomUUID()}`, start, end, origin: 'manual', event_ids: [], status: 'accepted' }
@@ -1384,6 +1392,7 @@ export function StudioScreen({ videoPath, onBack, onOpenVideo, playbackRequest, 
         announce(i18n.studio.live.zoomReset)
       },
       quickOrSplit: handleQuickOrSplit,
+      blade: toggleBlade,
       addEvent: gAddEvent,
       addAllToProject: addAllSuggestions,
       acceptSuggestion: handleAcceptSuggestion,
@@ -1494,8 +1503,7 @@ export function StudioScreen({ videoPath, onBack, onOpenVideo, playbackRequest, 
             onPrevEvent={() => seekEvent(-1)}
             onNextEvent={() => seekEvent(1)}
             onAddEvent={gAddEvent}
-            mode={mode.mode}
-            onQuick={handleQuickOrSplit}
+            onQuick={toggleBlade}
             bladeMode={bladeMode}
             onAutoClip={() => setAutoClipOpen((v) => !v)}
             autoClipOpen={autoClipOpen}

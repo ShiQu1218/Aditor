@@ -172,14 +172,31 @@ describe('來源片軌播放器接線', () => {
     expect(q('.transport-time').textContent).toContain('1:30 /')
   })
 
-  test('B in project mode keeps the existing split behavior', async () => {
+  test('Ctrl+Q in project mode still splits at the playhead', async () => {
     studio = await mountStudio({ doc, clips: [], items: [{ id: 'p', source: STUDIO_VIDEO, start: 10, end: 30 }] })
     const { video } = player()
     click(q('.pclip'))
     act(() => { video.currentTime = 20 })
-    press(q('.pclip'), 'b')
+    press(q('.pclip'), 'q', { ctrlKey: true })
     expect(storedProject().items.map(({ start, end }) => [start, end])).toEqual([[10, 20], [20, 30]])
-    expect(buttonByText(q('.transport'), i18n.studio.splitClip)!.hasAttribute('aria-pressed')).toBe(false)
+  })
+
+  test.each(['B', 'transport button'])('%s in project mode leaves the preview and enters blade mode at the current frame', async (via) => {
+    studio = await mountStudio({ doc, clips: [], items: [{ id: 'p', source: STUDIO_VIDEO, start: 10, end: 30 }] })
+    const { video } = player()
+    click(q('.pclip'))
+    // 專案預覽中，播放列按鈕仍是「快速剪輯」，不是「分割」
+    expect(quick()).toBeTruthy()
+    expect(q('.transport').textContent).not.toContain('分割')
+    act(() => { video.currentTime = 20 })
+    if (via === 'B') press(q('.pclip'), 'b')
+    else click(quick())
+    expect(q('.mode-pill').textContent).toContain(i18n.studio.mode.source)
+    expect(quick().getAttribute('aria-pressed')).toBe('true')
+    expect(document.querySelectorAll('.pclip')).toHaveLength(1) // 沒有被分割
+    point(40)
+    point(55)
+    expect(storedProject().items.map(({ start, end }) => [start, end])).toEqual([[10, 30], [40, 55]])
   })
 
   test.each([true, false])('cancelling a project-mode scrub restores its preview position (before first seek=%s)', async (beforeFrame) => {
