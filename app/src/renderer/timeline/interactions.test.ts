@@ -13,6 +13,7 @@ import {
   initialInteraction,
   interactionReducer,
   attachGestureEscape,
+  attachSpaceArbiter,
   swallowEscape,
   pointerToX,
   shouldCancel,
@@ -257,5 +258,79 @@ describe('playheadTarget hardening', () => {
     expect(playheadTarget({ playing: true, time: 7, getTime: () => NaN })).toBe(7)
     expect(playheadTarget({ playing: true, time: 7, getTime: () => Infinity })).toBe(7)
     expect(playheadTarget({ playing: true, time: 7, getTime: () => 0 })).toBe(0)
+  })
+})
+
+describe('Space on the timeline plays/pauses exactly once (keydown keymap vs keyup arbiter)', () => {
+  type L = (e: KeyboardEvent) => void
+  function fakeWindow() {
+    const l: Record<string, { cap: L[]; bub: L[] }> = { keydown: { cap: [], bub: [] }, keyup: { cap: [], bub: [] } }
+    const win = {
+      addEventListener: (t: string, fn: L, capture?: boolean) => void l[t][capture ? 'cap' : 'bub'].push(fn),
+      removeEventListener: (t: string, fn: L, capture?: boolean) => {
+        const a = l[t][capture ? 'cap' : 'bub']
+        a.splice(a.indexOf(fn), 1)
+      }
+    } as unknown as Pick<Window, 'addEventListener' | 'removeEventListener'>
+    const fire = (type: 'keydown' | 'keyup', target: unknown = null): void => {
+      const e = {
+        type,
+        key: ' ',
+        code: 'Space',
+        keyCode: 32,
+        isComposing: false,
+        repeat: false,
+        ctrlKey: false,
+        metaKey: false,
+        altKey: false,
+        shiftKey: false,
+        target,
+        defaultPrevented: false,
+        preventDefault() {
+          e.defaultPrevented = true
+        },
+        stopPropagation() {}
+      }
+      for (const fn of [...l[type].cap, ...l[type].bub]) fn(e as unknown as KeyboardEvent)
+    }
+    return { win, fire }
+  }
+
+  test.each(['keymap registered first', 'arbiter registered first'])('%s: one tap toggles once', (order) => {
+    const { win, fire } = fakeWindow()
+    const toggle = vi.fn()
+    const mountKeymap = (): (() => void) =>
+      attachKeymap(win as Window, () => ({ handlers: { play: toggle }, screen: 'studio', mode: 'source', overlayOpen: false }))
+    const mountArbiter = (): (() => void) => attachSpaceArbiter(win, { isActive: () => true, onPlay: toggle })
+    if (order === 'keymap registered first') {
+      mountKeymap()
+      mountArbiter()
+    } else {
+      mountArbiter()
+      mountKeymap()
+    }
+    fire('keydown')
+    fire('keyup')
+    expect(toggle).toHaveBeenCalledTimes(1)
+  })
+
+  test('inactive arbiter leaves Space to the keymap (keydown plays, keyup does nothing)', () => {
+    const { win, fire } = fakeWindow()
+    const toggle = vi.fn()
+    attachKeymap(win as Window, () => ({ handlers: { play: toggle }, screen: 'studio', mode: 'source', overlayOpen: false }))
+    attachSpaceArbiter(win, { isActive: () => false, onPlay: toggle })
+    fire('keydown')
+    fire('keyup')
+    expect(toggle).toHaveBeenCalledTimes(1)
+  })
+
+  test('Space on a native control (a focused button) is left alone', () => {
+    const { win, fire } = fakeWindow()
+    const toggle = vi.fn()
+    attachSpaceArbiter(win, { isActive: () => true, onPlay: toggle })
+    const button = { tagName: 'BUTTON', getAttribute: () => null }
+    fire('keydown', button)
+    fire('keyup', button)
+    expect(toggle).not.toHaveBeenCalled()
   })
 })

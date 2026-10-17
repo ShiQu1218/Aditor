@@ -104,6 +104,58 @@ export function attachGestureEscape(
   return () => target.removeEventListener('keydown', onKey as EventListener, true)
 }
 
+export interface SpaceArbiterBinding {
+  isActive: () => boolean
+  onPlay: () => void
+  getArbiter?: () => SpaceArbiter
+  setArbiter?: (a: SpaceArbiter) => void
+  onHold?: () => void
+  onRelease?: () => void
+}
+
+/**
+ * 空白鍵仲裁的 window 綁定（spec §3.2.2）。輕按＝放開時切換播放；按住 >200 ms 後才有資格成為平移，平移不觸發播放。
+ * keydown 必須用 capture 階段並 preventDefault：全域 keymap（bubble、keydown 即 play）會跳過 defaultPrevented 的事件。
+ * 若用 bubble，監聽器的註冊順序決定誰先跑——時間軸晚於 keymap 才掛載時 keymap 會先在 keydown 播放一次，
+ * 這裡又在 keyup 播放一次，造成「按一下空白鍵馬上變回去」。
+ */
+export function attachSpaceArbiter(
+  target: Pick<Window, 'addEventListener' | 'removeEventListener'>,
+  b: SpaceArbiterBinding
+): () => void {
+  let local: SpaceArbiter = idleArbiter
+  const get = b.getArbiter ?? ((): SpaceArbiter => local)
+  const set =
+    b.setArbiter ??
+    ((a: SpaceArbiter): void => {
+      local = a
+    })
+  const down = (e: KeyboardEvent): void => {
+    if (e.code !== 'Space' || e.isComposing || e.keyCode === 229) return
+    // 文字欄位／原生控制項的 Space 保留原生行為
+    if (targetKindOf(e.target as HTMLElement | null) !== 'none') return
+    if (!b.isActive()) return
+    const r = spaceArbiter(get(), { type: 'keydown', now: performance.now() })
+    set(r.state)
+    if (!r.state.pending && !r.state.panned) return
+    e.preventDefault()
+    b.onHold?.()
+  }
+  const up = (e: KeyboardEvent): void => {
+    if (e.code !== 'Space' || e.isComposing) return
+    const r = spaceArbiter(get(), { type: 'keyup', now: performance.now() })
+    set(r.state)
+    if (r.play) b.onPlay()
+    b.onRelease?.()
+  }
+  target.addEventListener('keydown', down as EventListener, true)
+  target.addEventListener('keyup', up as EventListener)
+  return () => {
+    target.removeEventListener('keydown', down as EventListener, true)
+    target.removeEventListener('keyup', up as EventListener)
+  }
+}
+
 /** 取消時需還原的片段（把手拖曳中途取消＝片段維持原樣） */
 export function cancelRestore(s: IState, original: Clip | null): Clip | null {
   return s.phase === 'handle' && original ? original : null
@@ -362,36 +414,25 @@ export function useTimelineInteractions(opts: InteractionOptions): InteractionRe
     }
   }, [apply, local])
 
-  // 空白鍵仲裁（spec §3.2.2）：游標在時間軸內或時間軸聚焦時接管 Space。
-  // 輕按＝放開時切換播放（keydown 時 preventDefault 抑制全域 keymap 的 play，keymap 跳過 defaultPrevented）；
-  // 按住 >200 ms 後才有資格成為平移（由 onMouseDown 的 pointerdown 仲裁決定），平移不觸發播放。
-  useEffect(() => {
-    const active = (): boolean => insideRef.current || document.activeElement === o.current.wrapRef.current
-    const down = (e: KeyboardEvent): void => {
-      if (e.code !== 'Space' || e.isComposing || e.keyCode === 229) return
-      // 文字欄位／原生控制項的 Space 保留原生行為
-      if (targetKindOf(e.target as HTMLElement | null) !== 'none') return
-      if (!active()) return
-      const r = spaceArbiter(arbRef.current, { type: 'keydown', now: performance.now() })
-      arbRef.current = r.state
-      if (!r.state.pending && !r.state.panned) return
-      e.preventDefault()
-      if (st.current.phase === 'idle') setCursor('grab')
-    }
-    const up = (e: KeyboardEvent): void => {
-      if (e.code !== 'Space' || e.isComposing) return
-      const r = spaceArbiter(arbRef.current, { type: 'keyup', now: performance.now() })
-      arbRef.current = r.state
-      if (r.play) o.current.onPlayToggle?.()
-      if (st.current.phase === 'idle') setCursor('pointer')
-    }
-    window.addEventListener('keydown', down)
-    window.addEventListener('keyup', up)
-    return () => {
-      window.removeEventListener('keydown', down)
-      window.removeEventListener('keyup', up)
-    }
-  }, [])
+  // 空白鍵仲裁（spec §3.2.2）：游標在時間軸內或時間軸聚焦時接管 Space（實作見 attachSpaceArbiter）。
+  useEffect(
+    () =>
+      attachSpaceArbiter(window, {
+        isActive: () => insideRef.current || document.activeElement === o.current.wrapRef.current,
+        onPlay: () => o.current.onPlayToggle?.(),
+        getArbiter: () => arbRef.current,
+        setArbiter: (a) => {
+          arbRef.current = a
+        },
+        onHold: () => {
+          if (st.current.phase === 'idle') setCursor('grab')
+        },
+        onRelease: () => {
+          if (st.current.phase === 'idle') setCursor('pointer')
+        }
+      }),
+    []
+  )
 
   // 滾輪：Ctrl＝縮放（錨點為游標）；已放大時＝平移。需 passive:false 才能 preventDefault
   useEffect(() => {
