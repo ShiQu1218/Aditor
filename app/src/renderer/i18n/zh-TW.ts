@@ -667,13 +667,18 @@ export const settingsI18n = {
     },
     openh264: {
       title: 'OpenH264（CPU 編碼）',
-      desc: '僅在沒有硬體編碼器時使用；依授權不隨附，需在匯出面板同意後下載。',
+      desc: '僅在沒有硬體編碼器、或產生預覽代理檔時使用；依授權不隨附，同意後可從這裡下載。',
       keywords: ['openh264', 'cisco', 'cpu', '編碼'],
       installed: '已安裝',
       notInstalled: '尚未安裝',
       unknown: '狀態未知',
-      download: '重新下載',
-      downloadHint: '下載需在匯出面板同意授權後進行。'
+      download: '下載',
+      redownload: '重新下載',
+      consent: '為符合授權，本程式不隨附 OpenH264。同意後，會從 Cisco 官方網址 ciscobinary.openh264.org 下載官方 DLL（約 0.4 MB）。',
+      accept: '同意並下載',
+      decline: '取消',
+      downloading: '下載中 {pct}%',
+      failed: '下載 OpenH264 失敗：{msg}'
     },
     about: {
       title: '版本與授權',

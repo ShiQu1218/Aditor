@@ -162,16 +162,14 @@ describe('SettingsScreen markup（renderToString + fake window.api 資料）', (
     expect(html).not.toContain('class="set-hit"')
   })
 
-  test('rows whose backend does not exist are disabled with grey explanatory text', async () => {
+  test('no setting row is left hard-disabled; OpenH264 download is actionable', async () => {
     const html = await render({ initialCategory: 'c' })
     // 第三方授權（I11）：已可使用，不再是停用列
     expect(html).not.toMatch(/<button[^>]*id="set-about"[^>]*disabled/)
     expect(html).not.toContain('授權清單頁面將在後續更新提供。')
-    expect(html).toMatch(/class="set-desc set-grey"/)
-    // OpenH264 重新下載：停用並說明原因
-    expect(html).toMatch(/<button[^>]*id="set-openh264"[^>]*disabled/)
-    expect(html).toContain('下載需在匯出面板同意授權後進行。')
-    expect(html).toContain('data-disabled="true"')
+    // OpenH264 下載按鈕不再被硬性停用：設定頁可直接下載（點擊後先出現授權說明）
+    expect(html).not.toMatch(/<button[^>]*id="set-openh264"[^>]*disabled/)
+    expect(html).not.toContain('下載需在匯出面板同意授權後進行。')
   })
 
   test('the developer note 需新增 IPC never appears in any category or search markup', async () => {
@@ -277,7 +275,7 @@ describe('wiring: preload channel names match the main-process handlers', () => 
   })
 
   test('controller api shape is what preload exposes (names used by SettingsController exist)', () => {
-    for (const name of ['getEntries', 'getWatchFolders', 'addWatchFolder', 'removeWatchFolder', 'usage', 'detectEncoders', 'selectOutDir', 'openh264Status', 'onChanged']) {
+    for (const name of ['getEntries', 'getWatchFolders', 'addWatchFolder', 'removeWatchFolder', 'usage', 'detectEncoders', 'selectOutDir', 'openh264Status', 'downloadOpenH264', 'onOpenH264Progress', 'onChanged']) {
       expect(preload).toContain(`${name}:`)
     }
   })

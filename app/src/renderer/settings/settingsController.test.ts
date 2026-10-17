@@ -232,4 +232,74 @@ describe('SettingsController', () => {
     expect(c.getState().loadFailed).toBe(true)
     expect(c.getState().settings).toEqual(DEFAULT_SETTINGS)
   })
+
+  describe('OpenH264 download from settings', () => {
+    function withDownload(over: { fail?: string; installedAfter?: boolean } = {}) {
+      const rig = makeApi()
+      let installed = false
+      let progressCb: ((r: number) => void) | null = null
+      let unsubscribed = 0
+      rig.api.export!.openh264Status = async () => ({ installed })
+      rig.api.export!.downloadOpenH264 = async () => {
+        progressCb?.(0.5)
+        if (over.fail) throw new Error(over.fail)
+        installed = over.installedAfter ?? true
+        return 'C:/codecs/openh264.dll'
+      }
+      rig.api.export!.onOpenH264Progress = (cb) => {
+        progressCb = cb
+        return () => {
+          unsubscribed += 1
+        }
+      }
+      return { ...rig, unsub: () => unsubscribed }
+    }
+
+    test('requesting a download asks for consent first and downloads nothing', async () => {
+      const { api } = withDownload()
+      let called = 0
+      const orig = api.export!.downloadOpenH264!
+      api.export!.downloadOpenH264 = async () => {
+        called += 1
+        return orig()
+      }
+      const c = new SettingsController(api)
+      await c.start()
+      c.requestOpenH264Download()
+      expect(c.getState().openh264Download.step).toBe('consent')
+      expect(called).toBe(0)
+      c.cancelOpenH264Download()
+      expect(c.getState().openh264Download.step).toBe('idle')
+    })
+
+    test('confirming downloads, reports progress, refreshes status to installed and unsubscribes', async () => {
+      const { api, unsub } = withDownload()
+      const c = new SettingsController(api)
+      await c.start()
+      expect(c.getState().openh264).toBe(false)
+      c.requestOpenH264Download()
+      await c.confirmOpenH264Download()
+      expect(c.getState().openh264).toBe(true)
+      expect(c.getState().openh264Download.step).toBe('idle')
+      expect(unsub()).toBe(1)
+    })
+
+    test('a failed download shows the error and leaves status not installed', async () => {
+      const { api, unsub } = withDownload({ fail: 'HTTP 503' })
+      const c = new SettingsController(api)
+      await c.start()
+      c.requestOpenH264Download()
+      await c.confirmOpenH264Download()
+      expect(c.getState().openh264Download).toMatchObject({ step: 'error', error: 'HTTP 503' })
+      expect(c.getState().openh264).toBe(false)
+      expect(unsub()).toBe(1)
+    })
+
+    test('without a download api the request is ignored', async () => {
+      const c = new SettingsController(makeApi().api)
+      await c.start()
+      c.requestOpenH264Download()
+      expect(c.getState().openh264Download.step).toBe('idle')
+    })
+  })
 })

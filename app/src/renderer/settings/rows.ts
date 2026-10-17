@@ -194,9 +194,7 @@ export const SETTING_ROWS: SettingRow[] = [
     desc: t.row.openh264.desc,
     keywords: [...t.row.openh264.keywords],
     isNew: true,
-    control: { kind: 'openh264' },
-    // 下載需在匯出面板走授權同意流程；設定頁只顯示狀態
-    disabledReason: t.row.openh264.downloadHint
+    control: { kind: 'openh264' }
   },
   {
     id: 'about',

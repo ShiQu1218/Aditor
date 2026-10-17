@@ -136,6 +136,7 @@
 
 .set-inline { display: flex; align-items: center; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
 .set-value { color: var(--text-2); font-size: var(--fs-small); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 280px; }
+.set-value.wrap { white-space: normal; max-width: none; flex-basis: 100%; text-align: right; }
 .set-enc { margin-right: 10px; }
 .set-enc.ok { color: var(--success); }
 

@@ -40,7 +40,16 @@ export interface SettingsApi {
     detectEncoders(): Promise<string[]>
     selectOutDir(): Promise<string | null>
     openh264Status(): Promise<{ installed: boolean }>
+    downloadOpenH264?(): Promise<string>
+    onOpenH264Progress?(cb: (ratio: number) => void): () => void
   }
+}
+
+/** 設定頁的 OpenH264 下載流程：idle → consent（授權說明）→ downloading → idle／error。 */
+export interface OpenH264DownloadState {
+  step: 'idle' | 'consent' | 'downloading' | 'error'
+  ratio: number
+  error: string | null
 }
 
 export interface SettingsState {
@@ -56,6 +65,7 @@ export interface SettingsState {
   encoders: { status: 'idle' | 'loading' | 'ready'; list: string[] }
   /** null＝未知 */
   openh264: boolean | null
+  openh264Download: OpenH264DownloadState
 }
 
 export const INITIAL_SETTINGS_STATE: SettingsState = {
@@ -66,7 +76,8 @@ export const INITIAL_SETTINGS_STATE: SettingsState = {
   watch: { dirs: [], missing: [] },
   proxy: { status: 'idle', count: 0, bytes: 0 },
   encoders: { status: 'idle', list: [] },
-  openh264: null
+  openh264: null,
+  openh264Download: { step: 'idle', ratio: 0, error: null }
 }
 
 function isSetResult(v: unknown): v is SettingsSetResult {
@@ -282,5 +293,38 @@ export class SettingsController {
     } catch {
       this.patch({ openh264: null })
     }
+  }
+
+  // ── OpenH264 下載（授權同意後才下載；不論有無硬體編碼器都可手動安裝／重新下載） ──
+  requestOpenH264Download(): void {
+    if (!this.api.export?.downloadOpenH264) return
+    if (this.state.openh264Download.step === 'downloading') return
+    this.patch({ openh264Download: { step: 'consent', ratio: 0, error: null } })
+  }
+
+  cancelOpenH264Download(): void {
+    if (this.state.openh264Download.step === 'downloading') return
+    this.patch({ openh264Download: { step: 'idle', ratio: 0, error: null } })
+  }
+
+  async confirmOpenH264Download(): Promise<void> {
+    const exp = this.api.export
+    if (!exp?.downloadOpenH264 || this.state.openh264Download.step === 'downloading') return
+    this.patch({ openh264Download: { step: 'downloading', ratio: 0, error: null } })
+    const off = exp.onOpenH264Progress?.((ratio) => {
+      if (this.state.openh264Download.step === 'downloading') {
+        this.patch({ openh264Download: { step: 'downloading', ratio, error: null } })
+      }
+    })
+    try {
+      await exp.downloadOpenH264()
+    } catch (e) {
+      off?.()
+      this.patch({ openh264Download: { step: 'error', ratio: 0, error: e instanceof Error ? e.message : String(e) } })
+      return
+    }
+    off?.()
+    this.patch({ openh264Download: { step: 'idle', ratio: 1, error: null } })
+    await this.refreshEncoders()
   }
 }

@@ -42,10 +42,9 @@ describe('SETTING_ROWS（資料表）', () => {
     }
   })
 
-  test('rows whose backend does not exist are disabled with an explanation', () => {
-    const disabled = SETTING_ROWS.filter((r) => r.disabledReason)
-    expect(disabled.length).toBeGreaterThan(0)
-    for (const r of disabled) expect(r.disabledReason!.length).toBeGreaterThan(0)
+  test('any row that is disabled carries a non-empty explanation (OpenH264 is no longer disabled)', () => {
+    expect(SETTING_ROWS.find((r) => r.id === 'openh264')!.disabledReason).toBeUndefined()
+    for (const r of SETTING_ROWS.filter((r) => r.disabledReason)) expect(r.disabledReason!.length).toBeGreaterThan(0)
   })
 })
 

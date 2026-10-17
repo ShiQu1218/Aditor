@@ -376,14 +376,49 @@ export function SettingControl(props: ControlProps): JSX.Element | null {
     }
     case 'openh264': {
       const st = state.openh264
+      const dl = state.openh264Download
+      const busy = dl.step === 'downloading'
+      const pct = Math.round(dl.ratio * 100)
       return (
         <div className="set-inline">
           <span className="set-value">
-            {st === null ? t.openh264.unknown : st ? t.openh264.installed : t.openh264.notInstalled}
+            {busy
+              ? fillTemplate(t.openh264.downloading, { pct: String(pct) })
+              : st === null
+                ? t.openh264.unknown
+                : st
+                  ? t.openh264.installed
+                  : t.openh264.notInstalled}
           </span>
-          <button id={ids.ctl} type="button" className="set-btn sm" disabled aria-describedby={describedBy(ids)}>
-            {t.openh264.download}
-          </button>
+          {dl.step === 'consent' ? (
+            <>
+              <span className="set-value wrap" role="note">
+                {t.openh264.consent}
+              </span>
+              <button type="button" className="set-btn sm" onClick={() => void controller.confirmOpenH264Download()}>
+                {t.openh264.accept}
+              </button>
+              <button type="button" className="set-btn sm ghost" onClick={() => controller.cancelOpenH264Download()}>
+                {t.openh264.decline}
+              </button>
+            </>
+          ) : (
+            <button
+              id={ids.ctl}
+              type="button"
+              className="set-btn sm"
+              disabled={busy}
+              aria-describedby={describedBy(ids)}
+              onClick={() => controller.requestOpenH264Download()}
+            >
+              {st ? t.openh264.redownload : t.openh264.download}
+            </button>
+          )}
+          {dl.step === 'error' && (
+            <span className="set-err" role="alert">
+              {fillTemplate(t.openh264.failed, { msg: dl.error ?? '' })}
+            </span>
+          )}
         </div>
       )
     }
