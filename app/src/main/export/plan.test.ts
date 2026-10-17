@@ -5,7 +5,10 @@ import {
   buildJobs,
   resolveFreeBaseName,
   NoEncoderError,
-  StreamProbe
+  StreamProbe,
+  copyCutArgs,
+  concatList,
+  resolveQuality
 } from './plan'
 import { ProjectItem } from '../../renderer/editor/project'
 
@@ -187,8 +190,10 @@ describe('export plan: unknown stream info and mixed sources (I9)', () => {
       new Map([['C:/a.mp4', unknown()]])
     )
     expect(notices).toEqual([])
-    expect(jobs).toHaveLength(1)
-    expect(jobs[0].args).toContain('copy')
+    // 每段先 stream copy 成中間檔，最後一個 job 用 concat demuxer copy 接起來
+    expect(jobs).toHaveLength(3)
+    expect(jobs.slice(0, 2).every((j) => j.intermediate)).toBe(true)
+    for (const j of jobs) expect(j.args).toContain('copy')
   })
 
   it('two different sources with unknown details -> precise path with per-segment normalised intermediates + copy concat', () => {
@@ -204,8 +209,9 @@ describe('export plan: unknown stream info and mixed sources (I9)', () => {
     expect(last.intermediate).toBeFalsy()
     expect(last.args).toContain('concat')
     expect(last.args).toContain('LIST_FILE_PLACEHOLDER')
-    const copyIdx = last.args.indexOf('-c')
-    expect(last.args[copyIdx + 1]).toBe('copy')
+    // 視訊直接 copy，音訊（中間檔是 PCM）整條一次編成 AAC
+    expect(last.args[last.args.indexOf('-c:v') + 1]).toBe('copy')
+    expect(last.args[last.args.indexOf('-c:a') + 1]).toBe('aac')
     // 清單只含中間檔，不再用 inpoint/outpoint 直接讀來源
     expect(res.concatListContent).not.toContain('inpoint')
     for (const s of segs) expect(res.concatListContent).toContain(s.output.replace(/\\/g, '/'))
@@ -219,11 +225,12 @@ describe('export plan: unknown stream info and mixed sources (I9)', () => {
     expect(a.indexOf('-ss')).toBeLessThan(a.indexOf('-i'))
   })
 
-  it('compatible, fully known sources still use the single-pass concat demuxer', () => {
+  it('compatible, fully known sources stay lossless: per-segment stream copy + copy concat, no notice', () => {
     const k: StreamProbe = { vcodec: 'h264', width: 1920, height: 1080, fps: 60, pix_fmt: 'yuv420p', acodec: 'aac', sample_rate: 48000, channels: 2 }
     const res = buildJobs(items, { mode: 'concat', quality: 'copy', outDir: 'C:/out', baseName: 'h' }, new Map([['C:/a.mp4', k], ['C:/b.mp4', { ...k }]]))
-    expect(res.jobs).toHaveLength(1)
+    expect(res.jobs).toHaveLength(4)
     expect(res.notices).toEqual([])
+    expect(res.jobs.every((j) => !j.args.includes('-c:v'))).toBe(true)
   })
 })
 
@@ -239,5 +246,116 @@ describe('export plan: never overwrite existing files (I6)', () => {
     expect(resolveFreeBaseName('C:/out', 'h', 'concat', 1, () => false)).toEqual({ baseName: 'h', renamed: false })
     const r = resolveFreeBaseName('C:/out', 'h', 'concat', 1, (p) => p.replace(/\\/g, '/') === 'C:/out/h.mp4')
     expect(r).toEqual({ baseName: 'h (2)', renamed: true })
+  })
+})
+
+describe('export plan: clip boundaries play cleanly (no pre-roll, no overlapping timestamps)', () => {
+  const src = 'C:/rec/game.mkv'
+  const clipItems: ProjectItem[] = [
+    { id: '1', source: src, start: 13.4, end: 21.7 },
+    { id: '2', source: src, start: 45.1, end: 52.3 }
+  ]
+  const probes = new Map<string, StreamProbe>([[src, { vcodec: 'av1', width: 1920, height: 1080, fps: 0, pix_fmt: '', acodec: '', sample_rate: 0, channels: 0 }]])
+  const valueAfter = (args: string[], flag: string): string => args[args.indexOf(flag) + 1]
+
+  it('copy cut with a known keyframe starts exactly on it: seek past the ffmpeg 3/23 s dts heuristic, -itsoffset pulls time 0 back to the keyframe', () => {
+    const args = copyCutArgs(clipItems[0], { keyframe: 12, end: 21.708 }, 'C:/out/a.mp4')
+    const pad = 3 / 23 + 0.001
+    expect(Number(valueAfter(args, '-ss'))).toBeCloseTo(12 + pad, 6)
+    expect(Number(valueAfter(args, '-itsoffset'))).toBeCloseTo(pad, 6)
+    expect(args.indexOf('-ss')).toBeLessThan(args.indexOf('-i'))
+    expect(args.indexOf('-itsoffset')).toBeLessThan(args.indexOf('-i'))
+    // 從關鍵影格一路到修正後的終點（多出的開頭就是介面提示的「多出約 X 秒」）
+    expect(Number(valueAfter(args, '-t'))).toBeCloseTo(21.708 - 12, 6)
+    expect(valueAfter(args, '-c')).toBe('copy')
+    // 音訊不早於關鍵影格；不靠 edit list 藏畫面
+    expect(valueAfter(args, '-copypriorss:a')).toBe('0')
+    expect(args).not.toContain('-avoid_negative_ts')
+    expect(args.slice(-2)).toEqual(['-y', 'C:/out/a.mp4'])
+    // open GOP 的 leading B 幀（顯示時間早於關鍵影格）丟掉
+    expect(valueAfter(args, '-bsf:v')).toBe('noise=drop=lt(pts\\,startpts)')
+  })
+
+  it('a separate video cut keeps audio running until the last video frame has been shown', () => {
+    const args = copyCutArgs(clipItems[0], { keyframe: 12, end: 21.74, videoCut: 21.708 }, 'C:/out/a.mp4')
+    expect(Number(valueAfter(args, '-t'))).toBeCloseTo(9.74, 6)
+    // 視訊封包 DTS（相對輸出 0 點）≥ 9.708 的丟掉
+    expect(valueAfter(args, '-bsf:v')).toBe('noise=drop=lt(pts\\,startpts)+gte(dts*tb\\,9.708000)')
+  })
+
+  it('copy cut without keyframe info falls back to seeking the clip start and shifting everything to zero', () => {
+    const bad = [null, undefined, { keyframe: Number.NaN, end: 21.7 }, { keyframe: 14, end: 21.7 } /* 晚於起點：不可信 */, { keyframe: 12, end: 11 }]
+    for (const kf of bad) {
+      const args = copyCutArgs(clipItems[0], kf, 'C:/out/a.mp4')
+      expect(valueAfter(args, '-ss')).toBe('13.400')
+      expect(valueAfter(args, '-t')).toBe('8.300')
+      expect(valueAfter(args, '-avoid_negative_ts')).toBe('make_zero')
+      expect(args).not.toContain('-itsoffset')
+    }
+  })
+
+  it('every cut keeps one video + optional first audio track and drops source chapters/metadata', () => {
+    const jobs = [
+      ...buildJobs(clipItems, { mode: 'separate', quality: 'copy', outDir: 'C:/out', baseName: 'h', copyCuts: [{ keyframe: 12, end: 21.7 }, { keyframe: 43.75, end: 52.3 }] }, probes).jobs,
+      ...buildJobs(clipItems, { mode: 'separate', quality: 'precise', encoder: 'h264_nvenc', outDir: 'C:/out', baseName: 'h' }, probes).jobs
+    ]
+    for (const j of jobs) {
+      expect(j.args.join(' ')).toContain('-map 0:v:0 -map 0:a:0?')
+      expect(j.args.join(' ')).toContain('-map_metadata -1 -map_chapters -1')
+    }
+  })
+
+  it('separate copy uses the per-item cut', () => {
+    const { jobs } = buildJobs(clipItems, { mode: 'separate', quality: 'copy', outDir: 'C:/out', baseName: 'h', copyCuts: [{ keyframe: 12, end: 21.7 }, null] }, probes)
+    expect(jobs[0].args).toContain('-itsoffset')
+    expect(jobs[1].args).toContain('make_zero')
+  })
+
+  it('concat copy never reads the source through concat inpoint/outpoint (pre-roll packets overlapped the previous clip)', () => {
+    const cuts = [{ keyframe: 12, end: 21.7 }, { keyframe: 43.75, end: 52.3 }]
+    const res = buildJobs(clipItems, { mode: 'concat', quality: 'copy', outDir: 'C:/out', baseName: 'h', copyCuts: cuts }, probes)
+    expect(res.notices).toEqual([])
+    const [s1, s2, final] = res.jobs
+    expect(s1.intermediate && s2.intermediate).toBe(true)
+    expect(s1.output).toMatch(/\.apexhl-seg-\w+-1\.mp4$/)
+    expect(s1.args).toEqual(copyCutArgs(clipItems[0], cuts[0], s1.output))
+    expect(s2.args).toEqual(copyCutArgs(clipItems[1], cuts[1], s2.output))
+    expect(final.intermediate).toBeFalsy()
+    expect(final.args).toContain('LIST_FILE_PLACEHOLDER')
+    expect(valueAfter(final.args, '-c')).toBe('copy')
+    expect(res.concatListContent).not.toMatch(/inpoint|outpoint/)
+    expect(res.concatListContent).toBe(concatList([s1.output, s2.output]))
+  })
+
+  it('concat precise: each clip is encoded on its own with PCM audio (no AAC priming per junction), then video copied and audio encoded once', () => {
+    const res = buildJobs(clipItems, { mode: 'concat', quality: 'precise', encoder: 'h264_nvenc', outDir: 'C:/out', baseName: 'h' }, probes)
+    expect(res.jobs).toHaveLength(3)
+    const [s1, , final] = res.jobs
+    expect(s1.output).toMatch(/\.mov$/)
+    expect(valueAfter(s1.args, '-ss')).toBe('13.400')
+    expect(s1.args.indexOf('-ss')).toBeLessThan(s1.args.indexOf('-i'))
+    expect(valueAfter(s1.args, '-c:v')).toBe('h264_nvenc')
+    expect(valueAfter(s1.args, '-c:a')).toBe('pcm_s16le')
+    // 同一來源：不改解析度與幀率，也沒有「規格不同」提示
+    expect(s1.args).not.toContain('-vf')
+    expect(res.notices).toEqual([])
+    expect(valueAfter(final.args, '-c:v')).toBe('copy')
+    expect(valueAfter(final.args, '-c:a')).toBe('aac')
+    expect(valueAfter(final.args, '-af')).toMatch(/^aresample=async=1/)
+    expect(res.concatListContent).not.toMatch(/inpoint|outpoint/)
+  })
+
+  it('concatList writes a duration for every measured segment and skips unknown ones', () => {
+    expect(concatList(["C:\\o\\a'1.mp4", 'C:/o/b.mp4', 'C:/o/c.mp4'], [9.7171667, null, 0])).toBe(
+      "file 'C:/o/a'\\''1.mp4'\nduration 9.717167\nfile 'C:/o/b.mp4'\nfile 'C:/o/c.mp4'\n"
+    )
+  })
+
+  it('resolveQuality reports the fallback to precise for incompatible copy concat only', () => {
+    const two = new Map<string, StreamProbe>([...probes, ['C:/rec/other.mkv', probes.get(src)!]])
+    const mixed = [...clipItems, { id: '3', source: 'C:/rec/other.mkv', start: 1, end: 2 }]
+    expect(resolveQuality(mixed, { mode: 'concat', quality: 'copy' }, two).quality).toBe('precise')
+    expect(resolveQuality(mixed, { mode: 'separate', quality: 'copy' }, two)).toEqual({ quality: 'copy', notices: [] })
+    expect(resolveQuality(clipItems, { mode: 'concat', quality: 'copy' }, probes)).toEqual({ quality: 'copy', notices: [] })
   })
 })

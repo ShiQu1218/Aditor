@@ -17,7 +17,8 @@ export interface RunExportOptions {
   totalEstimatedSeconds: number
   outDir: string
   estimatedBytes: number
-  concatListContent?: string
+  /** concat 清單內容；給函式時在執行到用清單的 job 才呼叫（前面的中間檔都已完成，可量測實際長度） */
+  concatListContent?: string | (() => Promise<string>)
   /** ffmpeg 可執行檔與前置參數；預設 `APEXHL_FFMPEG` 或 PATH 上的 `ffmpeg`。測試用假 ffmpeg 時 bin=node、prefixArgs=[腳本]。 */
   ffmpeg?: { bin: string; prefixArgs?: string[] }
   /** concat 清單暫存目錄，預設 `%APPDATA%\ApexHighlighter\temp` */
@@ -105,7 +106,9 @@ export async function runExport(opts: RunExportOptions, control: RunExportContro
   if (signal?.aborted) return { ok: false, cancelled: true, outputs: completed }
 
   try {
-    await checkDiskSpace(opts.outDir, opts.estimatedBytes)
+    // 合輯先寫每段中間檔、再寫成品，中間檔到最後才刪：尖峰約需兩倍空間
+    const peakFactor = jobs.some((j) => j.intermediate) ? 2 : 1
+    await checkDiskSpace(opts.outDir, opts.estimatedBytes * peakFactor)
   } catch (err) {
     return { ok: false, error: (err as Error).message, outputs: completed }
   }
@@ -132,7 +135,9 @@ export async function runExport(opts: RunExportOptions, control: RunExportContro
         const tempDir = opts.tempDir ?? path.join(appDataDir(), 'temp')
         fs.mkdirSync(tempDir, { recursive: true })
         const tempFile = path.join(tempDir, `concat_${Date.now()}_${Math.random().toString(36).slice(2, 6)}.txt`)
-        fs.writeFileSync(tempFile, opts.concatListContent, 'utf-8')
+        const listContent = typeof opts.concatListContent === 'function' ? await opts.concatListContent() : opts.concatListContent
+        if (signal?.aborted) return { ok: false, cancelled: true, outputs: completed }
+        fs.writeFileSync(tempFile, listContent, 'utf-8')
         tempFilesToClean.push(tempFile)
         args = args.map((a) => (a === 'LIST_FILE_PLACEHOLDER' ? tempFile : a))
       }
