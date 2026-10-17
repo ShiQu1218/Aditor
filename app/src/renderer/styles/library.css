@@ -255,6 +255,10 @@
 
 .vcard-body {
   flex: none;
+  /* <button> 內的 flex 子項不會被拉伸到按鈕寬：不設寬度時會依完整檔名撐開，
+     檔名省略號失效、溢出卡片並讓影片庫出現橫向捲軸 */
+  width: 100%;
+  min-width: 0;
   box-sizing: border-box;
   height: var(--card-body-h);
   padding: 10px 12px;

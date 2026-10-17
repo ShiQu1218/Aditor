@@ -22,3 +22,16 @@ h1, h2, h3, h4 { line-height: var(--lh-tight); letter-spacing: 0; }
 .mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 kbd { font-family: var(--font-mono); font-size: 11px; padding: 1px 6px; border: 1px solid var(--line-strong); border-bottom-width: 2px; border-radius: var(--r-xs); color: var(--text-2); background: rgba(255,255,255,.04); }
 .hidden { display: none !important; }
+
+/* 捲軸：細、無箭頭、隨深色介面（預設的 Windows 淺色捲軸在深色介面上很突兀） */
+:root { color-scheme: dark; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--line-strong);
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover { background-color: var(--text-3); }
+::-webkit-scrollbar-button { display: none; }
