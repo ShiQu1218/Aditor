@@ -3,7 +3,8 @@
 expected.json 是人工逐一目視核對的事件（文字法時代建立，含 elim／squad_wipe）。產品範圍現在只有
 knock 與助攻，所以只比對 expected 中的 knock／assist_*：每一筆都必須被找到（類型相同、時間 ±0.5 秒）。
 圖示法在這支舊版錄影上有已知的額外事件（舊版「敵方小隊已消滅」「小隊抹殺」用單人加分圖示，見準確度報告），
-列在 KNOWN_EXTRA；出現清單以外的額外事件會失敗。"""
+列在 KNOWN_EXTRA；額外事件只能是清單內的（每支影片自學的擊殺關鍵字驗證目前把它們全部擋掉，所以通常沒有額外事件），
+出現清單以外的額外事件會失敗。"""
 import json
 import os
 from pathlib import Path
@@ -32,4 +33,4 @@ def test_golden(tmp_path, profile, jobs):
         assert hit is not None, (e, got)
         left.remove(hit)
     extra = [t for _, t in left]
-    assert len(extra) == len(KNOWN_EXTRA) and all(abs(a - b) <= 0.5 for a, b in zip(sorted(extra), KNOWN_EXTRA)), extra
+    assert all(any(abs(a - b) <= 0.5 for b in KNOWN_EXTRA) for a in extra), extra
