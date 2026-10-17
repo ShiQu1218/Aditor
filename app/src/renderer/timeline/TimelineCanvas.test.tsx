@@ -27,8 +27,8 @@ function setRange(value: number): void {
     slider().dispatchEvent(new Event('input', { bubbles: true }))
   })
 }
-function wheel(deltaY: number, ctrlKey = false): WheelEvent {
-  const event = new WheelEvent('wheel', { clientX: 400, deltaY, ctrlKey, bubbles: true, cancelable: true })
+function wheel(deltaY: number, ctrlKey = false, shiftKey = false): WheelEvent {
+  const event = new WheelEvent('wheel', { clientX: 400, deltaY, ctrlKey, shiftKey, bubbles: true, cancelable: true })
   act(() => { q('.tl-wrap').dispatchEvent(event) })
   return event
 }
@@ -253,7 +253,8 @@ describe('source timeline zoom controls', () => {
     expect(scrollbar().getAttribute('aria-controls')).toBe(q('.tl-wrap').id)
     expect(scrollbar().getAttribute('aria-disabled')).toBe('true')
     expect(q('.tl-scrollbar-thumb').style.width).toBe('1000px')
-    expect(wheel(100).defaultPrevented).toBe(false)
+    // 全覽時 Shift+滾輪沒有可平移的範圍：不攔截
+    expect(wheel(100, false, true).defaultPrevented).toBe(false)
     press(scrollbar(), 'End')
     expectMode('full')
     expect(start()).toBe(0)
@@ -315,15 +316,34 @@ describe('source timeline zoom controls', () => {
     expect(Number(slider().value)).toBeCloseTo(Math.log2(600 / 29.4))
   })
 
-  test('Ctrl+wheel zooms around the pointer; plain wheel pans and updates the thumb', () => {
+  test('plain wheel zooms centred on the playhead (not the pointer); Shift+wheel pans', () => {
     mount(<TimelineCanvas {...props} />)
-    expect(wheel(-100, true).defaultPrevented).toBe(true)
+    // 游標在 x=400（t=240），播放頭在 300：放大後播放頭置中
+    expect(wheel(-100).defaultPrevented).toBe(true)
     expectMode('custom')
-    expect(start()).toBeCloseTo(72)
+    expect(start()).toBeCloseTo(90) // span 420，以 300 為中心
     expect(q('.tl-scrollbar-thumb').style.width).toBe('700px')
-    expect(wheel(100).defaultPrevented).toBe(true)
-    expect(start()).toBeCloseTo(135)
-    expect(parseFloat(q('.tl-scrollbar-thumb').style.left)).toBeCloseTo(225)
+    expect(wheel(-100, true).defaultPrevented).toBe(true) // Ctrl+滾輪同樣縮放
+    expect(start()).toBeCloseTo(153)
+    const before = start()
+    expect(wheel(100, false, true).defaultPrevented).toBe(true)
+    expect(start()).toBeGreaterThan(before)
+  })
+
+  test('zoom buttons and the custom slider centre on the playhead', () => {
+    const ref = createRef<TimelineHandle>()
+    mount(<TimelineCanvas {...props} ref={ref} currentTime={250} />)
+    act(() => ref.current!.zoomIn()) // span 420，以 250 為中心
+    expect(start()).toBeCloseTo(40)
+    setRange(3) // 8×：span 75
+    expect(start()).toBeCloseTo(212.5)
+  })
+
+  test('centred zoom near the end clamps instead of running past the source', () => {
+    const ref = createRef<TimelineHandle>()
+    mount(<TimelineCanvas {...props} ref={ref} currentTime={580} />)
+    act(() => ref.current!.zoomIn())
+    expect(start()).toBeCloseTo(180) // [180, 600]
   })
 
   test('scrollbar dragging preserves the grab offset, clamps at the ends and never seeks', () => {

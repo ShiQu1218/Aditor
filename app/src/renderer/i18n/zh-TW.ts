@@ -101,13 +101,13 @@ export const i18n = {
     zoomTips: {
       full: '整部影片填滿時間軸（Ctrl+0）',
       detail: '以播放頭為中心顯示 30 秒，播放時跟隨',
-      custom: '保留自訂倍率；拖曳滑桿或按 Ctrl+滾輪、Ctrl+＋／－ 調整'
+      custom: '以播放頭為中心縮放；拖曳滑桿、滾輪或 Ctrl+＋／－ 調整，Shift+滾輪左右平移'
     },
     customZoom: '自訂縮放倍率',
     scrollbar: '來源時間軸水平捲動',
     bladeHint: '刀片模式（Ctrl+Q／B）：點兩下決定片段起訖並加入專案；Esc 取消標記，再按一次離開',
     bladeTooShort: '片段至少需要 0.5 秒，請重新選擇終點',
-    densityHint: '密度檢視 · {n} 個事件 · 放大（Ctrl +／滾輪）顯示個別圖示',
+    densityHint: '密度檢視 · {n} 個事件 · 放大（滾輪／Ctrl +）顯示個別圖示',
     spectating: '觀戰（不計入）',
     clipAi: 'AI',
     types: {

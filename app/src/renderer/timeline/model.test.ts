@@ -158,14 +158,31 @@ describe('Timeline zoom modes', () => {
     expect(restored.view.start).toBe(362.5)
   })
 
-  it('manual zoom enters custom mode, keeps the pointer anchor and clamps the multiplier', () => {
-    const state = zoomTimeline(full(), 0.5, 150)
+  it('manual zoom enters custom mode, centres the playhead and clamps the multiplier', () => {
+    const state = zoomTimeline(full(), 0.5, 200)
     expect(state.mode).toBe('custom')
-    expect(timeToX(150, state.view)).toBe(timeToX(150, full().view))
+    expect(state.view.span).toBe(300)
+    expect(state.view.start).toBe(50) // 200 置中：視窗 [50, 350]
+    expect(timeToX(200, state.view)).toBe(500)
     expect(state.customZoom).toBe(2)
     expect(setCustomZoom(state, 1000, 150).view.span).toBe(10)
     expect(setCustomZoom(state, -1, 150).view.span).toBe(600)
     expect(zoomTimeline(full(), 2, 300).mode).toBe('custom')
+  })
+
+  it('custom zoom centres on the playhead, not on the current view centre', () => {
+    // 先停在影片前段放大，再把播放頭移到 450 後調倍率：視窗應以 450 為中心
+    const zoomed = setCustomZoom(full(), 4, 100)
+    expect(zoomed.view.start).toBe(25)
+    const moved = setCustomZoom(zoomed, 8, 450)
+    expect(moved.view.span).toBe(75)
+    expect(moved.view.start).toBe(412.5)
+    expect(zoomTimeline(moved, 0.5, 450).view.start).toBeCloseTo(431.25)
+  })
+
+  it('centred zoom clamps at the source ends', () => {
+    expect(setCustomZoom(full(), 4, 5).view.start).toBe(0)
+    expect(setCustomZoom(full(), 4, 598).view.start).toBe(450)
   })
 
   it('manual pan and cluster zoom enter custom mode without changing unrelated view data', () => {

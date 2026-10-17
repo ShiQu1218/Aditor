@@ -43,14 +43,15 @@ export function updateTimelineView(state: TimelineZoom, update: (view: View) => 
   return { mode: 'custom', customZoom: view.duration / view.span, view }
 }
 
-export function zoomTimeline(state: TimelineZoom, factor: number, anchor: number): TimelineZoom {
-  const view = zoom(state.view, factor, anchor)
+/** 自訂縮放（滾輪、按鈕、快捷鍵、倍率滑桿）：縮放後視窗以 `center`（播放頭）為中心，到兩端時夾住。 */
+export function zoomTimeline(state: TimelineZoom, factor: number, center: number): TimelineZoom {
+  const view = centeredView(state.view, zoom(state.view, factor, center).span, center)
   return { mode: 'custom', customZoom: view.duration / view.span, view }
 }
 
-export function setCustomZoom(state: TimelineZoom, value: number, anchor: number): TimelineZoom {
+export function setCustomZoom(state: TimelineZoom, value: number, center: number): TimelineZoom {
   const multiplier = Math.max(1, Math.min(maxCustomZoom(state.view.duration), value))
-  return zoomTimeline(state, state.view.duration / multiplier / state.view.span, anchor)
+  return zoomTimeline(state, state.view.duration / multiplier / state.view.span, center)
 }
 
 export function resizeTimeline(state: TimelineZoom, duration: number, width: number, time: number): TimelineZoom {

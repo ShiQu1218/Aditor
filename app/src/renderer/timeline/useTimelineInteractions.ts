@@ -495,23 +495,28 @@ export function useTimelineInteractions(opts: InteractionOptions): InteractionRe
     }
   }, [opts.bladeMode, opts.disabled, applyBlade, stopFrame])
 
-  // 滾輪：Ctrl＝縮放（錨點為游標）；已放大時＝平移。
+  // 滾輪：縮放（onZoom 以播放頭為中心；Ctrl 亦同）；Shift＋滾輪或觸控板橫向滑動＝平移（已放大時）。
   useEffect(() => {
     const el = opts.wrapRef.current
     if (!el) return
     const onWheel = (e: WheelEvent): void => {
       const cur = o.current
       if (cur.disabled || st.current.phase !== 'idle') return
-      const { x } = local(e.clientX, e.clientY)
-      if (e.ctrlKey) {
+      const horizontal = e.shiftKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)
+      if (horizontal) {
+        if (cur.view.span >= cur.view.duration) return
         e.preventDefault()
-        const anchor = xToTime(x, cur.view)
-        const factor = e.deltaY < 0 ? 0.7 : 1.4
-        if (cur.onZoom) cur.onZoom(factor, anchor)
-        else cur.setView((v) => zoom(v, factor, anchor))
-      } else if (cur.view.span < cur.view.duration) {
-        e.preventDefault()
-        cur.setView((v) => pan(v, (e.deltaY / 100) * v.span * 0.15))
+        const delta = e.shiftKey && e.deltaX === 0 ? e.deltaY : e.deltaX
+        cur.setView((v) => pan(v, (delta / 100) * v.span * 0.15))
+        return
+      }
+      if (e.deltaY === 0) return
+      e.preventDefault()
+      const factor = e.deltaY < 0 ? 0.7 : 1.4
+      if (cur.onZoom) cur.onZoom(factor, xToTime(local(e.clientX, e.clientY).x, cur.view))
+      else {
+        const anchor = xToTime(local(e.clientX, e.clientY).x, cur.view)
+        cur.setView((v) => zoom(v, factor, anchor))
       }
     }
     el.addEventListener('wheel', onWheel, { passive: false })

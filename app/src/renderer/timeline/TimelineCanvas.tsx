@@ -102,8 +102,9 @@ export const TimelineCanvas = React.forwardRef<TimelineHandle, TimelineCanvasPro
   const changeMode = (next: ZoomMode): void => {
     setZoomState((state) => setZoomMode(state, next, playheadTarget(playback.current)))
   }
+  // 自訂縮放一律以播放頭為中心（滾輪、按鈕、快捷鍵、倍率滑桿）
   const changeZoom = useCallback((factor: number): void => {
-    setZoomState((state) => zoomTimeline(state, factor, state.view.start + state.view.span / 2))
+    setZoomState((state) => zoomTimeline(state, factor, playheadTarget(playback.current)))
   }, [])
 
   // 時長改變時保留模式與自訂倍率，並夾在新來源範圍內
@@ -125,7 +126,7 @@ export const TimelineCanvas = React.forwardRef<TimelineHandle, TimelineCanvasPro
     return () => ro.disconnect()
   }, [])
 
-  // 命令式縮放（keymap 的 Ctrl +/−/0）：錨點為目前視窗中心
+  // 命令式縮放（keymap 的 Ctrl +/−/0）：以播放頭為中心
   useImperativeHandle(
     ref,
     () => ({
@@ -144,7 +145,7 @@ export const TimelineCanvas = React.forwardRef<TimelineHandle, TimelineCanvasPro
     wrapRef,
     view,
     setView,
-    onZoom: (factor, anchor) => setZoomState((state) => zoomTimeline(state, factor, anchor)),
+    onZoom: changeZoom,
     duration,
     height,
     layoutRef,
@@ -277,7 +278,7 @@ export const TimelineCanvas = React.forwardRef<TimelineHandle, TimelineCanvasPro
           title={i18n.timeline.zoomTips.custom}
           onChange={(e) => {
             const multiplier = 2 ** Number(e.currentTarget.value)
-            setZoomState((state) => setCustomZoom(state, multiplier, state.view.start + state.view.span / 2))
+            setZoomState((state) => setCustomZoom(state, multiplier, playheadTarget(playback.current)))
           }}
         />
       </div>
