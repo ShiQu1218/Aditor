@@ -138,10 +138,8 @@ export function LibraryScreen({ onSelectVideo, onOpenSettings }: LibraryScreenPr
       e.preventDefault()
       setDragging(false)
       const files = Array.from(e.dataTransfer.files)
-        .map((f) => (f as File & { path?: string }).path)
-        .filter((p): p is string => Boolean(p))
       if (files.length > 0) {
-        void window.api?.library?.add?.(files)
+        void window.api?.library?.addDroppedFiles?.(files)
       }
     },
     []

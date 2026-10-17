@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron'
+import { contextBridge, ipcRenderer, webUtils } from 'electron'
 
 const api = {
   engine: {
@@ -18,6 +18,11 @@ const api = {
   library: {
     getEntries: () => ipcRenderer.invoke('library:getEntries'),
     add: (paths: string[]) => ipcRenderer.invoke('library:add', paths),
+    /** File.path 已移除；在 preload 解析拖入檔案的本機路徑，再沿用匯入流程。 */
+    addDroppedFiles: (files: File[]) => {
+      const paths = files.map((file) => webUtils.getPathForFile(file)).filter(Boolean)
+      return paths.length > 0 ? ipcRenderer.invoke('library:add', paths) : Promise.resolve([])
+    },
     remove: (path: string) => ipcRenderer.invoke('library:remove', path),
     toggleFavorite: (path: string) => ipcRenderer.invoke('library:toggleFavorite', path),
     selectFiles: () => ipcRenderer.invoke('library:selectFiles'),
