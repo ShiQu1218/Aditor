@@ -139,6 +139,23 @@ export function isSuggested(clip: Clip): boolean {
   return clip.origin === 'ai' && (clip.status ?? 'accepted') === 'suggested'
 }
 
+const normPath = (p: string): string => p.replace(/\\/g, '/').toLowerCase()
+
+/**
+ * 顯示用狀態：「已加入」以專案實際內容為準。專案中沒有同來源且時段重疊的片段
+ * （從專案區刪除、開新專案、復原加入…）時，已加入的片段顯示回建議，可再次加入。
+ * 用重疊而非起訖相同，片軌把手修剪過的專案片段仍算已加入。未變動者保留原物件。
+ */
+export function withProjectStatus(clips: Clip[], source: string, project: Project): Clip[] {
+  const src = normPath(source)
+  const ranges = project.items.filter((it) => normPath(it.source) === src)
+  return clips.map((c) => {
+    if ((c.status ?? 'accepted') !== 'accepted') return c
+    const inProject = ranges.some((it) => it.start < c.end && it.end > c.start)
+    return inProject ? c : { ...c, status: 'suggested' }
+  })
+}
+
 /**
  * 目前作用中的建議（`Enter` 加入、`Delete` 略過、`↑↓` 移動用）：
  * 跳過已加入／已略過與 status 缺省（舊檔視為已加入）者；找不到下一個時環繞。

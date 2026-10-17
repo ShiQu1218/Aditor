@@ -14,7 +14,8 @@ import {
   planSuggestions,
   removeProjectItems,
   shouldAutoPlace,
-  toSuggestions
+  toSuggestions,
+  withProjectStatus
 } from './highlights'
 
 function ev(id: string, t: number, over: Partial<EngineEvent> = {}): EngineEvent {
@@ -351,5 +352,38 @@ describe('planAddAll (Ctrl+E twice must not duplicate)', () => {
   })
   test('no suggestions -> nothing', () => {
     expect(planAddAll([], 'C:/v/a.mp4', empty).addedIds).toHaveLength(0)
+  })
+})
+
+describe('withProjectStatus（已加入＝專案內實際有對應片段）', () => {
+  const src = 'C:/v/a.mp4'
+  const item = (id: string, start: number, end: number, source = src): ProjectItem => ({ id, source, start, end })
+
+  test('accepted clip whose project item was removed shows as suggestion again', () => {
+    const clips = [clip('c1', 10, { status: 'accepted' }), clip('c2', 50, { status: 'accepted' })]
+    const shown = withProjectStatus(clips, src, createProject('P', [item('i2', 50, 60)]))
+    expect(shown.map((c) => c.status)).toEqual(['suggested', 'accepted'])
+  })
+
+  test('trimmed project item still counts as added (overlap, not exact match)', () => {
+    const shown = withProjectStatus([clip('c1', 10, { status: 'accepted' })], src, createProject('P', [item('i1', 12, 18)]))
+    expect(shown[0].status).toBe('accepted')
+  })
+
+  test('item from another source or touching only at the edge does not count', () => {
+    const p = createProject('P', [item('i1', 10, 20, 'C:/v/b.mp4'), item('i2', 20, 30)])
+    expect(withProjectStatus([clip('c1', 10, { status: 'accepted' })], src, p)[0].status).toBe('suggested')
+  })
+
+  test('legacy clips without status are treated as accepted; suggested/skipped untouched', () => {
+    const clips = [clip('c1', 10, { status: undefined }), clip('c2', 30), clip('c3', 50, { status: 'skipped' })]
+    const shown = withProjectStatus(clips, src, createProject('P'))
+    expect(shown.map((c) => c.status)).toEqual(['suggested', 'suggested', 'skipped'])
+  })
+
+  test('source paths compare case- and slash-insensitively; unchanged clips keep identity', () => {
+    const clips = [clip('c1', 10, { status: 'accepted' })]
+    const shown = withProjectStatus(clips, src, createProject('P', [item('i1', 10, 20, 'c:\\v\\A.mp4')]))
+    expect(shown[0]).toBe(clips[0])
   })
 })

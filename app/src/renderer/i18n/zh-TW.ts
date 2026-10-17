@@ -168,7 +168,7 @@ export const i18n = {
     },
     recentCounted: '近 90 秒計入 {n}',
     context: {
-      text: '正在預覽專案片段 #{i}「{label}」，來源影片 {name}（不是目前開啟的影片，來源軌與側欄暫時停用）',
+      text: '正在預覽專案片段 #{i}「{label}」，來源影片 {name}',
       backToSource: '返回來源 Esc'
     },
     notices: {

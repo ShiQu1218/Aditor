@@ -134,6 +134,8 @@ describe('專案片段與工作室來源同步', () => {
     await flush()
     expect(q('.studio-file').textContent).toBe('b.mp4')
     expect(q('.ctx-text').textContent).toContain('b.mp4')
+    // 已切到片段來源：橫幅不可再宣稱「不是目前開啟的影片／來源軌停用」
+    expect(q('.ctx-text').textContent).not.toMatch(/不是目前開啟的影片|暫時停用/)
     expect(document.querySelector('.grayed')).toBeNull()
     expect(q<HTMLVideoElement>('video')).not.toBe(a)
     expect(fake.api.cache.saveSync).toHaveBeenCalledTimes(1)

@@ -40,7 +40,8 @@ import {
   planAddAll,
   isSuggestionsPending,
   planSuggestions,
-  removeProjectItems
+  removeProjectItems,
+  withProjectStatus
 } from './highlights'
 import { HighlightsTab } from './HighlightsTab'
 import { NoticeBar } from './NoticeBar'
@@ -205,6 +206,8 @@ export function StudioScreen({ videoPath, onBack, onOpenVideo, playbackRequest, 
   const sourceProjectItem = previewItem ?? displayedProject.items.find((item) => item.id === selProjId)
   const sourceRange = sourceProjectItem && normPath(sourceProjectItem.source) === normPath(videoPath)
     ? displayedProject.items.find((item) => item.id === sourceProjectItem.id) ?? null : null
+  // 「已加入」以專案實際內容為準（專案區刪除／開新專案後卡片與片軌回到建議）
+  const shownClips = useMemo(() => withProjectStatus(state.clips, videoPath, displayedProject), [state.clips, videoPath, displayedProject])
   const allowUnanalyzed = useRef(Boolean(playbackRequest)).current
   const switchingSourceRef = useRef(false)
   const importingRef = useRef(false)
@@ -405,9 +408,9 @@ export function StudioScreen({ videoPath, onBack, onOpenVideo, playbackRequest, 
   // 精華分頁開啟時確保有作用中卡片（roving tabindex 的第一站）
   useEffect(() => {
     setActiveClipId((prev) =>
-      prev && state.clips.some((c) => c.id === prev) ? prev : nextSuggestion(state.clips, null, 1)
+      prev && shownClips.some((c) => c.id === prev) ? prev : nextSuggestion(shownClips, null, 1)
     )
-  }, [state.clips])
+  }, [shownClips])
 
   /* ---------------- 播放控制 ---------------- */
 
@@ -956,9 +959,9 @@ export function StudioScreen({ videoPath, onBack, onOpenVideo, playbackRequest, 
   /** 處理完目前建議後，把作用中卡片移到下一個建議（以處理前的清單計算）。 */
   const advanceActive = useCallback(
     (fromId: string) => {
-      setActiveClipId(nextSuggestion(state.clips, fromId, 1))
+      setActiveClipId(nextSuggestion(shownClips, fromId, 1))
     },
-    [state.clips]
+    [shownClips]
   )
 
   /** 預覽片段：退出專案模式並跳到片段起點（seekTo 負責回到來源與換檔後套用時間）。 */
@@ -1040,7 +1043,7 @@ export function StudioScreen({ videoPath, onBack, onOpenVideo, playbackRequest, 
 
   /** 全部加入（Ctrl+E／底欄）：以幂等的 planAddAll 加入，重複觸發不會產生重複片段；單一 Toast〔復原〕。 */
   const addAllSuggestions = useCallback(() => {
-    const suggested = state.clips.filter(isSuggested)
+    const suggested = shownClips.filter(isSuggested)
     if (suggested.length === 0) return
     const plan = planAddAll(suggested, videoPath, projectRef.current)
     for (const c of suggested) dispatch({ type: 'acceptClip', id: c.id })
@@ -1057,19 +1060,19 @@ export function StudioScreen({ videoPath, onBack, onOpenVideo, playbackRequest, 
         })
       }
     })
-  }, [state.clips, videoPath, apply, toast, guarded])
+  }, [shownClips, videoPath, apply, toast, guarded])
 
   /** 加入建議（Enter）：只處理目前作用中的建議。 */
   const handleAcceptSuggestion = useCallback(() => {
-    const clip = state.clips.find((c) => c.id === activeClipId)
+    const clip = shownClips.find((c) => c.id === activeClipId)
     if (clip && isSuggested(clip)) acceptClip(clip)
-  }, [state.clips, activeClipId, acceptClip])
+  }, [shownClips, activeClipId, acceptClip])
 
   /** 略過建議（Delete）：只處理目前作用中的建議。 */
   const handleSkipSuggestion = useCallback(() => {
-    const clip = state.clips.find((c) => c.id === activeClipId)
+    const clip = shownClips.find((c) => c.id === activeClipId)
     if (clip && isSuggested(clip)) skipClip(clip)
-  }, [state.clips, activeClipId, skipClip])
+  }, [shownClips, activeClipId, skipClip])
 
   const projectRefForExport = useRef(project)
   projectRefForExport.current = project
@@ -1312,10 +1315,10 @@ export function StudioScreen({ videoPath, onBack, onOpenVideo, playbackRequest, 
 
   /** ＋從來源加入：加入第一段待確認建議（mock 行為）；沒有時 Toast。 */
   const addFirstSuggestion = useCallback(() => {
-    const clip = state.clips.find(isSuggested)
+    const clip = shownClips.find(isSuggested)
     if (clip) acceptClip(clip)
     else toast({ message: i18n.studio.toast.noSuggestions })
-  }, [state.clips, acceptClip, toast])
+  }, [shownClips, acceptClip, toast])
 
   /* ---------------- 專案模式守衛（來源文件編輯類指令一律忽略＋Toast 提示） ---------------- */
 
@@ -1386,8 +1389,8 @@ export function StudioScreen({ videoPath, onBack, onOpenVideo, playbackRequest, 
       addAllToProject: addAllSuggestions,
       acceptSuggestion: handleAcceptSuggestion,
       skipSuggestion: handleSkipSuggestion,
-      listPrev: () => setActiveClipId((prev) => nextSuggestion(state.clips, prev, -1)),
-      listNext: () => setActiveClipId((prev) => nextSuggestion(state.clips, prev, 1)),
+      listPrev: () => setActiveClipId((prev) => nextSuggestion(shownClips, prev, -1)),
+      listNext: () => setActiveClipId((prev) => nextSuggestion(shownClips, prev, 1)),
       playItem: playSelectedItem,
       deleteProjectItem: deleteSelectedItem,
       duplicateItem: duplicateSelectedItem,
@@ -1516,7 +1519,7 @@ export function StudioScreen({ videoPath, onBack, onOpenVideo, playbackRequest, 
               currentTime={currentTime}
               events={state.doc.events}
               spectating={state.doc.spectating}
-              clips={state.clips}
+              clips={shownClips}
               filter={state.filter}
               onSeek={seekTo}
               onScrubStart={startScrub}
@@ -1580,7 +1583,7 @@ export function StudioScreen({ videoPath, onBack, onOpenVideo, playbackRequest, 
             locked={exporting}
           >
             <HighlightsTab
-              clips={state.clips}
+              clips={shownClips}
               events={state.doc.events}
               activeId={activeClipId}
               onActiveChange={setActiveClipId}
