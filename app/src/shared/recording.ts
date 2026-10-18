@@ -128,6 +128,8 @@ export type RecordingPhase =
 export interface RecordingStatus {
   phase: RecordingPhase
   backend: RecordingBackend
+  /** OBS 目前是否正在寫入影片；逐局模式在大廳為 false。 */
+  obsRecording?: boolean
   /** OBS 無法連線且未回退時，僅執行即時偵測。 */
   detectionOnly?: boolean
   /** 目前錄影工作；idle 時為 null */
@@ -157,6 +159,7 @@ export interface RecordingStatus {
 export const IDLE_RECORDING_STATUS: RecordingStatus = {
   phase: 'idle',
   backend: 'builtin',
+  obsRecording: false,
   detectionOnly: false,
   sessionId: null,
   startedAt: null,

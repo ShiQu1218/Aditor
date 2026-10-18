@@ -16,6 +16,8 @@ export type RecordingNoticeKind = 'matchStart' | 'matchEnd' | 'finalized' | 'dis
 export interface RecordingDeps {
   /** 密碼只在主程序由 safeStorage 解密，不經狀態或設定 IPC 回傳。 */
   getObsPassword?: () => string | undefined
+  /** 測試注入：逐局 OBS 結束後保留毫秒數（預設 MATCH_POST_PAD_SEC）。 */
+  obsMatchPostPadMs?: number
   obsReconnectBaseMs?: number
   /** 測試注入：等 OBS 寫完檔案時的輪詢間隔毫秒（預設 1000） */
   obsFileSettleMs?: number

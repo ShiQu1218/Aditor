@@ -7,6 +7,17 @@ import { ObsClient } from './obs-client'
 
 const OBS_STOP_POLL_MS = 100
 
+export interface ObsMatch {
+  index: number
+  recordStartedAt: number
+  outputPath?: string
+  stopped: boolean
+  liveCached: boolean
+  analysisQueued: boolean
+  liveTrusted: boolean
+  added?: boolean
+}
+
 export interface ObsMetadata {
   outputPath?: string
   recordStartedAt: number
@@ -26,6 +37,9 @@ export class ObsRecording extends EventEmitter {
   private reconnecting: Promise<void> | null = null
   private stopping = false
   stopped = false
+  readonly matches: ObsMatch[] = []
+  get perMatch(): boolean { return this.settings.mode === 'match' && !this.meta.adopted }
+  get recording(): boolean { return !this.stopped && (!this.perMatch || !!this.matches.at(-1)) }
 
   constructor(private dir: string, private settings: RecordingSettings, private password: string | undefined,
     private notice: (message: string) => void, private reconnectBaseMs = 1000) {
@@ -33,10 +47,17 @@ export class ObsRecording extends EventEmitter {
     this.client.on('record', (event: { outputState: string; outputPath?: string }) => {
       if (event.outputState === 'OBS_WEBSOCKET_OUTPUT_STARTED' && !this.meta.adopted) {
         this.meta.recordStartedAt = Date.now()
+        const match = this.matches.at(-1)
+        if (match && !match.stopped) {
+          match.recordStartedAt = this.meta.recordStartedAt
+          if (event.outputPath) match.outputPath = event.outputPath
+        }
         this.persist()
       }
       if (event.outputState === 'OBS_WEBSOCKET_OUTPUT_STOPPED') {
         this.stopped = true
+        const match = this.matches.at(-1)
+        if (match && !match.stopped) { match.stopped = true; match.outputPath = event.outputPath || match.outputPath }
         if (event.outputPath) this.meta.outputPath = event.outputPath
         this.persist()
         this.emit('stopped')
@@ -63,8 +84,31 @@ export class ObsRecording extends EventEmitter {
     if (status.outputActive) {
       if (!Number.isFinite(status.outputDuration) || status.outputDuration < 0) throw new Error('OBS 錄影時間回覆無效')
       this.meta.recordStartedAt = Date.now() - status.outputDuration
-    } else { this.meta.recordStartedAt = Date.now(); await this.client.start() }
+    } else if (this.settings.mode !== 'match') { this.meta.recordStartedAt = Date.now(); await this.client.start() }
+    else this.stopped = true
     this.ready = true
+    this.persist()
+    await this.flush()
+  }
+
+  async startMatch(index: number): Promise<void> {
+    if (!this.perMatch) return
+    if (this.matches.at(-1)?.stopped === false) throw new Error('上一局 OBS 錄影尚未完成，已保留工作')
+    if (!this.client.connected) await this.connect()
+    if ((await this.client.status()).outputActive) throw new Error('OBS 已有其他錄影，無法開始逐局錄影')
+    this.stopping = false
+    this.stopped = false
+    delete this.meta.outputPath
+    this.matches.push({ index, recordStartedAt: Date.now(), stopped: false, liveCached: false, analysisQueued: false, liveTrusted: false })
+    this.persist()
+    await this.flush()
+    try { await this.client.start() }
+    catch (error) {
+      // 指令可能已送達但回覆遺失；保留未完成狀態，交由復原確認。
+      this.persist()
+      await this.flush()
+      throw error
+    }
     this.persist()
     await this.flush()
   }
@@ -83,9 +127,14 @@ export class ObsRecording extends EventEmitter {
 
   private persist(): void {
     const snapshot = { ...this.meta }
-    this.writes = this.writes.then(() => writeJson(path.join(this.dir, 'obs.json'), snapshot))
+    const matches = this.matches.map((match) => ({ ...match }))
+    this.writes = this.writes.then(async () => {
+      await writeJson(path.join(this.dir, 'obs.json'), snapshot)
+      if (this.perMatch) await writeJson(path.join(this.dir, 'obs-matches.json'), matches)
+    })
     void this.writes.catch(() => {})
   }
+  async save(): Promise<void> { this.persist(); await this.flush() }
   async flush(): Promise<void> { await this.writes }
 
   private scheduleReconnect(): void {
@@ -129,6 +178,8 @@ export class ObsRecording extends EventEmitter {
           const outputPath = await this.client.stop()
           if (outputPath) this.meta.outputPath = outputPath
           this.stopped = true
+          const match = this.matches.at(-1)
+          if (match) { match.stopped = true; match.outputPath = outputPath || match.outputPath }
           this.persist()
         }
       } catch {
@@ -136,7 +187,7 @@ export class ObsRecording extends EventEmitter {
       }
     }
     await this.flush()
-    return true
+    return this.perMatch ? this.stopped : true
   }
 
   async close(): Promise<void> {

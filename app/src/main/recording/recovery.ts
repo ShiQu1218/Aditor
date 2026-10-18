@@ -1,6 +1,7 @@
 import fs from 'fs'
 import path from 'path'
 import { isSafeLocalDirPath } from '../safe-path'
+import { ObsRecoveryPending } from './obs-finalize'
 import { finalizeSession } from './finalize'
 import type { RecordingDeps } from './index'
 
@@ -26,7 +27,7 @@ export async function recoverSessions(
         try {
           const paths = await finalizeSession(path.join(root, entry.name), deps)
           if (paths.length) finalized(paths)
-        } catch (error) { failed(error) }
+        } catch (error) { if (!(error instanceof ObsRecoveryPending)) failed(error) }
       }
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') failed(error)
