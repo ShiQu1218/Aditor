@@ -504,6 +504,7 @@ export class RecordingSessionService implements RecordingService {
       while (session.cutPending && !session.ending) {
         session.cutPending = false
         await session.live.flush()
+        await session.live.prune()
         await cutMatches(session.dir, this.deps, {
           failed: session.failedCuts, onCut: (outputPath) => this.finalized([outputPath]), onError
         })

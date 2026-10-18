@@ -145,3 +145,18 @@ describe('LiveBuffer 段落佇列', () => {
     expect(covers({ length: 1, start: () => 0, end: () => 2 }, 2)).toBe(false)
   })
 })
+
+test('清單可從較晚序號開始並移除已清理片段', async () => {
+  const r = rig(16)
+  r.buffer.setSegments(r.segments.slice(8))
+  await drain(r.sb)
+  expect(r.onError).not.toHaveBeenCalled()
+  expect(r.fetchSegment.mock.calls.every(([seq]) => seq >= 9)).toBe(true)
+  r.buffer.setSegments(r.segments.slice(9))
+  r.clock.t = 0
+  r.buffer.revalidate()
+  await drain(r.sb)
+  expect(r.fetchSegment.mock.calls.every(([seq]) => seq >= 9)).toBe(true)
+  expect(r.onError).not.toHaveBeenCalled()
+  r.buffer.dispose()
+})

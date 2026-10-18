@@ -40,7 +40,7 @@ export function LiveScreen({ onBack, onOpenVideo, onOpenLibrary }: LiveScreenPro
   const state = live.state
   const obs = status.backend === 'obs'
   const end = state ? liveEnd(state) : 0
-  const retainStart = Math.max(0, end - RETAIN_SEC)
+  const retainStart = Math.max(state?.segments[0]?.pts ?? 0, end - RETAIN_SEC)
   const boundsRef = useRef({ start: retainStart, end })
   boundsRef.current = { start: retainStart, end }
   const bounds = useCallback(() => boundsRef.current, [])

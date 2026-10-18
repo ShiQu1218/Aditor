@@ -238,6 +238,8 @@ export interface LiveState {
  */
 export interface LiveUpdate {
   sessionId: string
+  /** 清理後仍可讀取的完整段落清單。 */
+  segments?: LiveSegment[]
   segment?: LiveSegment
   events?: LiveEvent[]
   spectating?: { start: number; end: number }[]
