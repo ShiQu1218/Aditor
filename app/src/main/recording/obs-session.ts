@@ -5,6 +5,8 @@ import type { RecordingSettings } from '../../shared/recording'
 import { writeJson } from './finalize'
 import { ObsClient } from './obs-client'
 
+const OBS_STOP_POLL_MS = 100
+
 export interface ObsMetadata {
   outputPath?: string
   recordStartedAt: number
@@ -49,9 +51,14 @@ export class ObsRecording extends EventEmitter {
 
   private connect(): Promise<void> { return this.client.connect(this.settings.obsHost, this.settings.obsPort, this.password) }
 
-  async start(): Promise<void> {
+  /** `stopGraceUntil`：剛停止自己的錄影時，OBS 仍會短暫回報錄影中；等它停下，不誤當成使用者的錄影沿用。 */
+  async start(stopGraceUntil = 0): Promise<void> {
     await this.connect()
-    const status = await this.client.status()
+    let status = await this.client.status()
+    while (status.outputActive && Date.now() < stopGraceUntil) {
+      await new Promise((resolve) => setTimeout(resolve, OBS_STOP_POLL_MS))
+      status = await this.client.status()
+    }
     this.meta.adopted = status.outputActive
     if (status.outputActive) {
       if (!Number.isFinite(status.outputDuration) || status.outputDuration < 0) throw new Error('OBS 錄影時間回覆無效')

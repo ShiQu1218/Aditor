@@ -19,6 +19,8 @@ export interface RecordingDeps {
   obsReconnectBaseMs?: number
   /** 測試注入：等 OBS 寫完檔案時的輪詢間隔毫秒（預設 1000） */
   obsFileSettleMs?: number
+  /** 測試注入：停止自己的 OBS 錄影後，多久內不把「錄影中」當成使用者的錄影沿用（預設 30000） */
+  obsStopGraceMs?: number
   probeVideo?: (file: string) => Promise<{ duration: number; width?: number; height?: number; codec?: string }>
   /** 每次需要時才讀，設定變更免重啟 */
   getSettings: () => RecordingSettings

@@ -35,7 +35,12 @@ interface ActiveSession {
   failedCuts: Set<number>
   backend: RecordingBackend
   obs: ObsRecording | null
+  /** apexrec 已回報 started（真的開始擷取） */
+  captured: boolean
 }
+
+/** 停止自己的 OBS 錄影後，這段時間內 OBS 回報「錄影中」視為仍在停止 */
+const OBS_STOP_GRACE_MS = 30_000
 
 function sessionId(): string {
   const date = new Date()
@@ -70,6 +75,8 @@ export class RecordingSessionService implements RecordingService {
   private statusTimer: ReturnType<typeof setTimeout> | null = null
   private capabilityRequests = new Set<ApexrecClient>()
   private pendingObs = new Map<string, ActiveSession>()
+  /** 上次由本 App 停止 OBS 錄影的時間（epoch ms） */
+  private obsStoppedAt = 0
 
   constructor(private deps: RecordingDeps) {
     this.watcher = new ApexWatcher(deps.findApexPid ?? findApexPid, deps.pollMs ?? 3000,
@@ -264,7 +271,7 @@ export class RecordingSessionService implements RecordingService {
       const client = new ApexrecClient(this.deps.recorderCommand)
       const live = this.createLive(id, dir)
       session = { pid, id, dir, outputDir, client, ending: false, warned: false, writes: Promise.resolve(), sequences: new Set(), live,
-        mode: settings.mode, cuts: Promise.resolve(), cutPending: false, cutting: false, failedCuts: new Set(), backend: settings.backend, obs: null }
+        mode: settings.mode, cuts: Promise.resolve(), cutPending: false, cutting: false, failedCuts: new Set(), backend: settings.backend, obs: null, captured: false }
       this.active = session
       this.update({ sessionId: id, startedAt, backend: settings.backend })
       const current = session
@@ -277,7 +284,7 @@ export class RecordingSessionService implements RecordingService {
           // 解密錯誤與連線錯誤採相同回退規則，密碼不放入設定快照。
           const password = this.deps.getObsPassword?.()
           current.obs = new ObsRecording(dir, settings, password, (message) => this.notice('warning', message), this.deps.obsReconnectBaseMs)
-          await current.obs.start()
+          await current.obs.start(this.obsStoppedAt + (this.deps.obsStopGraceMs ?? OBS_STOP_GRACE_MS))
           current.obs.on('stopped', () => {
             if (this.active === current && !current.ending) this.update({ detectionOnly: true })
             if (this.pendingObs.has(current.id)) void this.serialize(() => this.finishPendingObs(current))
@@ -339,6 +346,7 @@ export class RecordingSessionService implements RecordingService {
         if ((session.backend !== 'obs' && typeof event.encoder !== 'string') || !Number.isSafeInteger(event.width) || Number(event.width) <= 0 ||
             !Number.isSafeInteger(event.height) || Number(event.height) <= 0) return
         this.update({ phase: 'recording', encoder: typeof event.encoder === 'string' ? event.encoder : null, width: Number(event.width), height: Number(event.height), error: null })
+        session.captured = true
         if (session.obs) {
           const now = Date.now()
           session.writes = session.writes.then(() => session.obs!.captureStarted(now))
@@ -467,8 +475,22 @@ export class RecordingSessionService implements RecordingService {
     try {
       await session.writes
       await session.cuts
+      if (session.obs && !session.captured) {
+        // 擷取根本沒開始（例如遊戲正在關閉）：沒有可對齊的偵測結果。沿用的錄影不碰；
+        // 自己開始的錄影只停止，不把幾乎空白的 OBS 檔加入媒體庫。
+        if (!session.obs.meta.adopted) {
+          await session.obs.stop()
+          this.obsStoppedAt = Date.now()
+        }
+        await session.obs.close()
+        await fs.promises.rm(session.dir, { recursive: true, force: true })
+        this.active = null
+        this.idle()
+        return true
+      }
       if (session.obs) {
         const ready = await session.obs.stop()
+        if (!session.obs.meta.adopted) this.obsStoppedAt = Date.now()
         if (!ready) {
           this.pendingObs.set(session.id, session)
           this.active = null
