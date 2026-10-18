@@ -59,6 +59,12 @@ pub trait FrameConsumer: Send {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CaptureNotice {
     WindowLost,
+    GameHidden {
+        pts: i64,
+    },
+    GameVisible {
+        pts: i64,
+    },
     WindowFound {
         width: u32,
         height: u32,

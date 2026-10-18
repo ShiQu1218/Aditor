@@ -6,6 +6,7 @@
 //! - 影格：DDA 桌面 texture 直接交給消費者（消費者只排入 GPU 複製，見 `CapturedFrame`），
 //!   呼叫結束後才 `ReleaseFrame`，省掉一次全畫面複製。
 //! - 游標：DDA 的桌面影像本來就不含游標（游標另以 pointer shape 提供），這裡不合成，與 WGC 一致。
+//! - 前景視窗不屬於目標 PID 或已最小化時，持續送出 GPU 黑幀，避免錄到其他程式。
 //! - `DXGI_ERROR_ACCESS_LOST`（換解析度、切全螢幕、UAC 安全桌面）：丟掉 duplication 後重建。
 //! - 限制：螢幕旋轉（90°／180°／270°）時桌面影像是面板原生方向，目前原樣錄下並在 stderr 警告；
 //!   HDR 螢幕由 `DuplicateOutput1` 要求 BGRA，系統轉成 SDR（顏色可能偏淡）。
@@ -17,10 +18,12 @@ use std::time::{Duration, Instant};
 use anyhow::{bail, Context, Result};
 use windows::core::{Interface, HRESULT};
 use windows::Win32::Foundation::HWND;
-use windows::Win32::Graphics::Direct3D11::{ID3D11Texture2D, D3D11_TEXTURE2D_DESC};
+use windows::Win32::Graphics::Direct3D11::{
+    ID3D11Texture2D, D3D11_BIND_RENDER_TARGET, D3D11_TEXTURE2D_DESC, D3D11_USAGE_DEFAULT,
+};
 use windows::Win32::Graphics::Dxgi::Common::{
     DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_MODE_ROTATION, DXGI_MODE_ROTATION_IDENTITY,
-    DXGI_MODE_ROTATION_UNSPECIFIED,
+    DXGI_MODE_ROTATION_UNSPECIFIED, DXGI_SAMPLE_DESC,
 };
 use windows::Win32::Graphics::Dxgi::{
     CreateDXGIFactory1, IDXGIAdapter, IDXGIDevice, IDXGIFactory1, IDXGIOutput, IDXGIOutput1,
@@ -31,6 +34,9 @@ use windows::Win32::Graphics::Gdi::{MonitorFromWindow, HMONITOR, MONITOR_DEFAULT
 use windows::Win32::System::Performance::QueryPerformanceFrequency;
 use windows::Win32::UI::HiDpi::{
     SetThreadDpiAwarenessContext, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2,
+};
+use windows::Win32::UI::WindowsAndMessaging::{
+    GetForegroundWindow, GetWindowThreadProcessId, IsIconic,
 };
 
 use super::{
@@ -165,8 +171,8 @@ impl SlotGate {
         }
     }
 
-    /// 回傳對齊後的 pts；同一格已送過、或時間倒退時回傳 `None`。
-    fn accept(&mut self, pts: i64) -> Option<i64> {
+    /// 查詢下一格但不消耗，讓靜止桌面可先檢查前景，再決定是否補黑幀。
+    fn candidate(&mut self, pts: i64) -> Option<(i64, i64)> {
         if pts < 0 {
             return None;
         }
@@ -177,8 +183,145 @@ impl SlotGate {
         if self.last.is_some_and(|last| slot <= last) {
             return None;
         }
+        Some((slot, origin + (slot as i128 * ticks / self.fps) as i64))
+    }
+
+    /// 回傳對齊後的 pts；同一格已送過、或時間倒退時回傳 `None`。
+    fn accept(&mut self, pts: i64) -> Option<i64> {
+        let (slot, pts) = self.candidate(pts)?;
         self.last = Some(slot);
-        Some(origin + (slot as i128 * ticks / self.fps) as i64)
+        Some(pts)
+    }
+}
+
+/// 僅查詢視窗管理員，不開啟目標程序；查詢失敗或沒有前景視窗時一律視為隱藏。
+fn foreground_state() -> (Option<u32>, bool) {
+    // SAFETY: HWND 僅用於查詢；視窗消失時 PID 會維持 0，不會取得程序控制代碼。
+    unsafe {
+        let hwnd = GetForegroundWindow();
+        let mut pid = 0;
+        GetWindowThreadProcessId(hwnd, Some(&mut pid));
+        ((pid != 0).then_some(pid), IsIconic(hwnd).as_bool())
+    }
+}
+
+fn game_visible(pid: u32, foreground_pid: Option<u32>, iconic: bool) -> bool {
+    foreground_pid == Some(pid) && !iconic
+}
+
+/// 每個輸出時段最多查詢一次；靜止桌面也要輪詢，才能在沒有新 DDA 影格時切成黑畫面。
+struct Visibility {
+    checked: Option<i64>,
+    visible: bool,
+}
+
+impl Visibility {
+    fn new() -> Self {
+        Self {
+            checked: None,
+            visible: true,
+        }
+    }
+
+    fn update(
+        &mut self,
+        pid: u32,
+        pts: i64,
+        query: impl FnOnce() -> (Option<u32>, bool),
+    ) -> Option<CaptureNotice> {
+        if self.checked.is_some_and(|last| pts <= last) {
+            return None;
+        }
+        self.checked = Some(pts);
+        let (foreground_pid, iconic) = query();
+        let visible = game_visible(pid, foreground_pid, iconic);
+        if visible == self.visible {
+            return None;
+        }
+        self.visible = visible;
+        Some(if visible {
+            CaptureNotice::GameVisible { pts }
+        } else {
+            CaptureNotice::GameHidden { pts }
+        })
+    }
+}
+
+/// 只在初始化或尺寸改變時配置，清成不透明黑色後重複使用；不讀回 CPU。
+struct BlackFrame {
+    texture: ID3D11Texture2D,
+    size: (u32, u32),
+}
+
+impl BlackFrame {
+    fn new(gpu: &Gpu, size: (u32, u32)) -> Result<Self> {
+        let desc = D3D11_TEXTURE2D_DESC {
+            Width: size.0,
+            Height: size.1,
+            MipLevels: 1,
+            ArraySize: 1,
+            Format: DXGI_FORMAT_B8G8R8A8_UNORM,
+            SampleDesc: DXGI_SAMPLE_DESC {
+                Count: 1,
+                Quality: 0,
+            },
+            Usage: D3D11_USAGE_DEFAULT,
+            BindFlags: D3D11_BIND_RENDER_TARGET.0 as u32,
+            ..Default::default()
+        };
+        let mut texture = None;
+        let mut view = None;
+        // SAFETY: 同裝置、單層單取樣 BGRA texture；清除只寫入本物件擁有的資源。
+        let texture = unsafe {
+            gpu.device
+                .CreateTexture2D(&desc, None, Some(&mut texture))?;
+            let texture = texture.context("capture_failed: 缺少 DDA 黑幀 texture")?;
+            gpu.device
+                .CreateRenderTargetView(&texture, None, Some(&mut view))?;
+            let view = view.context("capture_failed: 缺少 DDA 黑幀 render target")?;
+            gpu.context
+                .ClearRenderTargetView(&view, &[0.0, 0.0, 0.0, 1.0]);
+            texture
+        };
+        Ok(Self { texture, size })
+    }
+
+    fn deliver(&self, consumer: &mut dyn FrameConsumer, pts: i64) {
+        consumer.on_frame(&CapturedFrame {
+            texture: &self.texture,
+            width: self.size.0,
+            height: self.size.1,
+            pts,
+        });
+    }
+}
+
+/// 新桌面影格與逾時補黑幀共用時段及前景快取，避免同格重複查詢或重複輸出。
+struct Output {
+    pid: u32,
+    gate: SlotGate,
+    visibility: Visibility,
+    black: BlackFrame,
+    notices: Sender<CaptureNotice>,
+}
+
+impl Output {
+    fn visible(&mut self, pts: i64) -> bool {
+        // AcquireNextFrame 已返回，這裡沒有持有 GPU 或消費者的鎖。
+        if let Some(notice) = self.visibility.update(self.pid, pts, foreground_state) {
+            let _ = self.notices.send(notice);
+        }
+        self.visibility.visible
+    }
+
+    fn idle(&mut self, consumer: &mut dyn FrameConsumer, now: i64) {
+        if let Some((_, pts)) = self.gate.candidate(now) {
+            if !self.visible(pts) {
+                if let Some(pts) = self.gate.accept(now) {
+                    self.black.deliver(consumer, pts);
+                }
+            }
+        }
     }
 }
 
@@ -399,7 +542,7 @@ impl Tracker {
 fn deliver(
     frame: &Acquired<'_>,
     consumer: &mut dyn FrameConsumer,
-    gate: &mut SlotGate,
+    output: &mut Output,
     freq: i64,
     origin: i64,
 ) -> Result<Option<(u32, u32)>> {
@@ -415,7 +558,7 @@ fn deliver(
     let Some(resource) = &frame.resource else {
         return Ok(None);
     };
-    let Some(pts) = gate.accept(pts) else {
+    let Some(pts) = output.gate.accept(pts) else {
         return Ok(None);
     };
     let texture: ID3D11Texture2D = resource.cast().context("DDA 影格不是 D3D11 texture")?;
@@ -425,12 +568,16 @@ fn deliver(
     if desc.Format != DXGI_FORMAT_B8G8R8A8_UNORM || desc.SampleDesc.Count != 1 {
         bail!("DDA 桌面影像格式 {} 不是 BGRA，略過", desc.Format.0);
     }
-    consumer.on_frame(&CapturedFrame {
-        texture: &texture,
-        width: desc.Width,
-        height: desc.Height,
-        pts,
-    });
+    if output.visible(pts) {
+        consumer.on_frame(&CapturedFrame {
+            texture: &texture,
+            width: desc.Width,
+            height: desc.Height,
+            pts,
+        });
+    } else {
+        output.black.deliver(consumer, pts);
+    }
     Ok(Some((desc.Width, desc.Height)))
 }
 
@@ -450,6 +597,13 @@ pub(super) fn run(
     let hwnd = find_window(opts.pid)?;
     let monitor = monitor_of(hwnd);
     let dup = Duplication::open(&gpu, monitor).context("capture_failed: 建立 DDA 擷取失敗")?;
+    let mut output = Output {
+        pid: opts.pid,
+        gate: SlotGate::new(opts.max_fps),
+        visibility: Visibility::new(),
+        black: BlackFrame::new(&gpu, dup.size).context("capture_failed: 建立 DDA 黑幀失敗")?,
+        notices: notices.clone(),
+    };
     let mut tracker = Tracker {
         pid: opts.pid,
         hwnd: Some(hwnd),
@@ -464,7 +618,6 @@ pub(super) fn run(
     tracker.announce(dup.size);
     tracker.dup = Some(dup);
     let _ = ready.send(Ok(()));
-    let mut gate = SlotGate::new(opts.max_fps);
     let poll = poll_interval(opts.max_fps);
     let mut format_warned = false;
     let mut next_check = Instant::now() + WINDOW_CHECK;
@@ -480,8 +633,15 @@ pub(super) fn run(
         if tracker.dup.is_none() {
             tracker.reopen(&gpu);
         }
+        if let Some(dup) = &tracker.dup {
+            if output.black.size != dup.size {
+                output.black = BlackFrame::new(&gpu, dup.size)
+                    .context("capture_failed: 調整 DDA 黑幀尺寸失敗")?;
+            }
+        }
         let Some(dup) = &tracker.dup else {
-            match stopped.recv_timeout(Duration::from_millis(50)) {
+            output.idle(consumer.as_mut(), clock::now_ticks() - opts.origin_ticks);
+            match stopped.recv_timeout(poll) {
                 Ok(()) | Err(mpsc::RecvTimeoutError::Disconnected) => break,
                 Err(mpsc::RecvTimeoutError::Timeout) => continue,
             }
@@ -493,7 +653,7 @@ pub(super) fn run(
                 match deliver(
                     &frame,
                     consumer.as_mut(),
-                    &mut gate,
+                    &mut output,
                     freq,
                     opts.origin_ticks,
                 ) {
@@ -511,7 +671,10 @@ pub(super) fn run(
         };
         match outcome {
             Ok(Some(size)) => tracker.announce(size),
-            Ok(None) => thread::sleep(poll),
+            Ok(None) => {
+                output.idle(consumer.as_mut(), clock::now_ticks() - opts.origin_ticks);
+                thread::sleep(poll);
+            }
             Err(AcquireError::Lost) => {
                 tracker.dup = None;
                 tracker.retry_at = Instant::now();
@@ -537,6 +700,155 @@ mod tests {
         DXGI_MODE_ROTATION_ROTATE180, DXGI_MODE_ROTATION_ROTATE270, DXGI_MODE_ROTATION_ROTATE90,
     };
     use windows::Win32::Graphics::Dxgi::DXGI_ERROR_INVALID_CALL;
+
+    #[test]
+    fn visibility_requires_target_foreground_pid_and_non_iconic_window() {
+        for (foreground, iconic, expected) in [
+            (Some(42), false, true),
+            (Some(42), true, false),
+            (Some(7), false, false),
+            (Some(7), true, false),
+            (None, false, false),
+            (None, true, false),
+        ] {
+            assert_eq!(game_visible(42, foreground, iconic), expected);
+        }
+    }
+
+    #[test]
+    fn visibility_queries_once_per_slot_and_reports_only_transitions() {
+        let mut visibility = Visibility::new();
+        let mut gate = SlotGate::new(60);
+        let mut queries = 0;
+        for (pts, foreground, iconic, expected) in [
+            (0, Some(42), false, None),
+            (
+                166_667,
+                Some(7),
+                false,
+                Some(CaptureNotice::GameHidden { pts: 166_666 }),
+            ),
+            (333_334, None, false, None),
+            (500_000, Some(42), true, None),
+            (
+                666_667,
+                Some(42),
+                false,
+                Some(CaptureNotice::GameVisible { pts: 666_666 }),
+            ),
+        ] {
+            let (_, pts) = gate.candidate(pts).unwrap();
+            assert_eq!(
+                visibility.update(42, pts, || {
+                    queries += 1;
+                    (foreground, iconic)
+                }),
+                expected
+            );
+            assert_eq!(visibility.update(42, pts, || panic!("同格重複查詢")), None);
+        }
+        assert_eq!(queries, 5);
+        let mut initially_hidden = Visibility::new();
+        assert_eq!(
+            initially_hidden.update(42, 0, || (None, false)),
+            Some(CaptureNotice::GameHidden { pts: 0 })
+        );
+    }
+
+    #[test]
+    fn hidden_frames_advance_without_desktop_updates_and_share_output_slots() {
+        let mut visibility = Visibility::new();
+        let mut gate = SlotGate::new(60);
+        assert_eq!(gate.accept(0), Some(0));
+        let mut output = Vec::new();
+        for now in (0..=TICKS_PER_SEC).step_by(10_000) {
+            if let Some((_, pts)) = gate.candidate(now) {
+                visibility.update(42, pts, || (None, false));
+                if !visibility.visible {
+                    if let Some(pts) = gate.accept(now) {
+                        output.push(pts);
+                    }
+                }
+            }
+        }
+        assert_eq!(output.len(), 60);
+        assert_eq!(output[0], TICKS_PER_SEC / 60);
+        assert_eq!(output.last(), Some(&TICKS_PER_SEC));
+        assert_eq!(encoder_drops(&output, 60), 0);
+        assert_eq!(gate.accept(TICKS_PER_SEC), None);
+    }
+
+    #[test]
+    fn gpu_idle_black_frames_reach_small_frames_without_desktop_updates() {
+        use crate::capture::small::{SmallFrameExtractor, SmallFrames};
+        use crate::types::FramesSpec;
+
+        struct Consumer {
+            extractor: SmallFrameExtractor,
+            frames: Vec<SmallFrames>,
+            captured: Vec<(i64, u32, u32)>,
+        }
+        impl FrameConsumer for Consumer {
+            fn on_frame(&mut self, frame: &CapturedFrame<'_>) {
+                self.captured.push((frame.pts, frame.width, frame.height));
+                if let Some(small) =
+                    self.extractor
+                        .on_frame(frame.texture, frame.width, frame.height, frame.pts)
+                {
+                    self.frames.push(small);
+                }
+            }
+        }
+        let gpu = Gpu::create().unwrap();
+        for size in [(960, 540), (1920, 1080)] {
+            let (notices, received) = mpsc::channel();
+            let mut output = Output {
+                pid: u32::MAX,
+                gate: SlotGate::new(60),
+                visibility: Visibility::new(),
+                black: BlackFrame::new(&gpu, size).unwrap(),
+                notices,
+            };
+            let mut consumer = Consumer {
+                extractor: SmallFrameExtractor::new(
+                    &gpu,
+                    FramesSpec {
+                        banner: [0, 0, 96, 48],
+                        spec: [960, 540, 96, 48],
+                        base: [1920, 1080],
+                    },
+                )
+                .unwrap(),
+                frames: Vec::new(),
+                captured: Vec::new(),
+            };
+            for slot in 0..4 {
+                let pts = slot * TICKS_PER_SEC / 4;
+                output.idle(&mut consumer, pts);
+                output.idle(&mut consumer, pts + 1);
+                // SAFETY: 只提交測試裝置的命令，讓非同步小圖讀回在下次取樣前完成。
+                unsafe { gpu.context.Flush() };
+                thread::sleep(Duration::from_millis(100));
+            }
+            assert_eq!(consumer.captured.len(), 4);
+            assert!(consumer.captured.iter().all(|f| (f.1, f.2) == size));
+            assert_eq!(
+                received.try_iter().collect::<Vec<_>>(),
+                vec![CaptureNotice::GameHidden { pts: 0 }]
+            );
+            assert_eq!(consumer.frames.len(), 3);
+            assert!(consumer.frames[0].thumb.is_some());
+            for (slot, small) in consumer.frames.iter().enumerate() {
+                assert_eq!(small.pts, slot as i64 * TICKS_PER_SEC / 4);
+                assert!(small
+                    .banner
+                    .iter()
+                    .chain(&small.spec)
+                    .chain(small.thumb.iter().flatten())
+                    .all(|&v| v == 0));
+            }
+        }
+    }
 
     #[test]
     fn locate_finds_adapter_and_output_owning_the_monitor() {

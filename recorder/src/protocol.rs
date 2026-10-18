@@ -99,6 +99,14 @@ pub enum Event {
         queue: u32,
     },
     WindowLost,
+    /// 僅 DDA：目標遊戲離開前景或最小化，錄影與小圖改送黑幀；pts 為錄影起點後的秒數。
+    GameHidden {
+        pts: f64,
+    },
+    /// 僅 DDA：目標遊戲重新成為未最小化的前景視窗；pts 為錄影起點後的秒數。
+    GameVisible {
+        pts: f64,
+    },
     WindowFound {
         width: u32,
         height: u32,
@@ -192,6 +200,21 @@ mod tests {
 
     #[test]
     fn serializes_events_and_replies() {
+        for (event, name) in [
+            (Event::GameHidden { pts: 1.25 }, "game_hidden"),
+            (Event::GameVisible { pts: 2.5 }, "game_visible"),
+        ] {
+            let value = serde_json::to_value(&event).unwrap();
+            assert_eq!(value["ev"], name);
+            assert_eq!(value.as_object().unwrap().len(), 2);
+            assert_eq!(
+                value["pts"],
+                match event {
+                    Event::GameHidden { pts } | Event::GameVisible { pts } => pts,
+                    _ => unreachable!(),
+                }
+            );
+        }
         let ev = Event::Segment {
             seq: 3,
             pts: 4.0,
