@@ -70,6 +70,7 @@ pub(super) struct Hardware {
 }
 impl Hardware {
     pub fn new(gpu: &Gpu, video: &VideoParams, format: AVPixelFormat) -> Result<Self> {
+        super::ffmpeg::check_version()?;
         // SAFETY: FFmpeg 配置相應 API 的 hwctx；COM into_raw 移交一個參照給 FFmpeg。
         unsafe {
             let device = Buffer::owned(av_hwdevice_ctx_alloc(AV_HWDEVICE_TYPE_D3D11VA))?;

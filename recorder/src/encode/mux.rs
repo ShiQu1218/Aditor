@@ -13,7 +13,7 @@ use anyhow::{ensure, Context, Result};
 
 use super::{
     ffi::*,
-    ffmpeg::{check, Encoder, Packet, AUDIO_BASE, TICK_BASE},
+    ffmpeg::{check, Encoder, Packet, AUDIO_BASE, AV_NOPTS_VALUE, TICK_BASE},
     SegmentInfo,
 };
 
@@ -152,6 +152,7 @@ impl Muxer {
             // SAFETY: 新封包與 stream 都屬於本 muxer，stream time_base 已由 write_header 確定。
             unsafe {
                 let p = &mut *packet.0;
+                ensure!(p.pts != AV_NOPTS_VALUE, "編碼封包缺少有效的 PTS 時間戳");
                 if !video && p.pts < 0 {
                     continue;
                 } // AAC 的編碼預滾不在錄影時間軸內。
@@ -271,5 +272,50 @@ impl Drop for Muxer {
                 avio_context_free(&mut self.io);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn missing_pts_is_rejected_before_updating_the_timeline() {
+        let dir = std::env::temp_dir().join(format!("apexrec-missing-pts-{}", std::process::id()));
+        fs::create_dir(&dir).unwrap();
+        let (sender, _receiver) = std::sync::mpsc::channel();
+        let mut muxer = Muxer {
+            context: ptr::null_mut(),
+            io: ptr::null_mut(),
+            output: Box::new(Output {
+                file: create_file(&dir.join("unused.mp4")).unwrap(),
+                error: None,
+            }),
+            dir: dir.clone(),
+            sender,
+            pending: Vec::new(),
+            boundaries: Vec::new(),
+            audio: true,
+            audio_until: i64::MIN,
+            start: None,
+            end: 0,
+            seq: 0,
+        };
+        for video in [true, false] {
+            let packet = Packet::new().unwrap();
+            // SAFETY: 封包由測試獨佔，模擬編碼器回傳缺少時間戳的封包。
+            unsafe {
+                (*packet.0).pts = AV_NOPTS_VALUE;
+            }
+            let error = muxer.push(vec![packet], video).unwrap_err();
+            assert!(error.to_string().contains("PTS"));
+            assert!(muxer.pending.is_empty());
+            assert!(muxer.boundaries.is_empty());
+            assert_eq!(muxer.start, None);
+            assert_eq!(muxer.end, 0);
+            assert_eq!(muxer.audio_until, i64::MIN);
+        }
+        drop(muxer);
+        fs::remove_dir_all(dir).unwrap();
     }
 }

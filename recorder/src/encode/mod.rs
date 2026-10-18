@@ -26,6 +26,7 @@ use windows::Win32::Graphics::Direct3D11::ID3D11Texture2D;
 
 use crate::gpu::Gpu;
 use crate::types::{Codec, EncodeAspect, EncodePreset};
+pub(crate) use ffmpeg::check_version;
 use ffmpeg::{Encoder, Frame};
 use hardware::{Copier, Hardware};
 
@@ -219,6 +220,7 @@ impl SegmentWriter {
         audio: bool,
         on_segment: Sender<SegmentInfo>,
     ) -> Result<Self> {
+        check_version()?;
         ensure!(
             video.width >= 2
                 && video.height >= 2

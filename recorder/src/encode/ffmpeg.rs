@@ -1,5 +1,5 @@
 //! 僅在擁有者執行緒存取的 FFmpeg 資源；所有失敗路徑都交由 Drop 釋放。
-use std::{ffi::CStr, ptr};
+use std::{ffi::CStr, ptr, sync::OnceLock};
 
 use anyhow::{bail, ensure, Result};
 
@@ -15,6 +15,39 @@ pub(super) const AUDIO_BASE: AVRational = AVRational {
 };
 pub(super) const EOF: i32 = -541478725;
 pub(super) const AGAIN: i32 = -11;
+// libavutil/avutil.h：未提供時間戳的哨兵值，不得當成錄影時間使用。
+pub(super) const AV_NOPTS_VALUE: i64 = i64::MIN;
+
+pub(crate) fn check_version() -> Result<()> {
+    static VERSION: OnceLock<Result<(), String>> = OnceLock::new();
+    let result = VERSION.get_or_init(|| {
+        // SAFETY: 版本查詢不存取任何 FFmpeg 結構；確認 ABI 後才可配置及讀寫欄位。
+        let versions = unsafe { [avutil_version(), avcodec_version(), avformat_version()] };
+        validate_versions(versions).map_err(|error| error.to_string())
+    });
+    match result {
+        Ok(()) => Ok(()),
+        Err(error) => bail!("{error}"),
+    }
+}
+
+fn validate_versions(versions: [u32; 3]) -> Result<()> {
+    for ((library, expected), version) in [
+        ("avutil", LIBAVUTIL_VERSION_MAJOR),
+        ("avcodec", LIBAVCODEC_VERSION_MAJOR),
+        ("avformat", LIBAVFORMAT_VERSION_MAJOR),
+    ]
+    .into_iter()
+    .zip(versions)
+    {
+        let major = version >> 16;
+        ensure!(
+            major == expected,
+            "FFmpeg {library} DLL 主版本不相容：綁定需要 {expected}，實際載入 {major}；請使用與綁定相符的 FFmpeg DLL"
+        );
+    }
+    Ok(())
+}
 
 pub(super) fn check(code: i32, action: &str) -> Result<()> {
     if code < 0 {
@@ -56,6 +89,7 @@ pub(super) struct Frame(pub *mut AVFrame);
 unsafe impl Send for Frame {}
 impl Frame {
     pub fn new() -> Result<Self> {
+        check_version()?;
         // SAFETY: 配置函式沒有前置條件。
         let raw = unsafe { av_frame_alloc() };
         ensure!(!raw.is_null(), "配置 AVFrame 失敗");
@@ -78,6 +112,7 @@ impl Drop for Frame {
 pub(super) struct Packet(pub *mut AVPacket);
 impl Packet {
     pub fn new() -> Result<Self> {
+        check_version()?;
         // SAFETY: 配置函式沒有前置條件。
         let raw = unsafe { av_packet_alloc() };
         ensure!(!raw.is_null(), "配置 AVPacket 失敗");
@@ -96,6 +131,7 @@ pub(super) struct Encoder(pub *mut AVCodecContext);
 unsafe impl Send for Encoder {}
 impl Encoder {
     pub fn allocate(name: &CStr) -> Result<Self> {
+        check_version()?;
         // SAFETY: name 是以 NUL 結尾的有效字串；codec 是 FFmpeg 靜態物件。
         unsafe {
             let codec = avcodec_find_encoder_by_name(name.as_ptr());
@@ -172,5 +208,32 @@ impl Drop for Encoder {
     fn drop(&mut self) {
         // SAFETY: 本物件獨佔 context；釋放會一併歸還硬體參照。
         unsafe { avcodec_free_context(&mut self.0) }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn versions_require_matching_majors_only() {
+        let versions = [
+            LIBAVUTIL_VERSION_MAJOR << 16 | 0x1234,
+            LIBAVCODEC_VERSION_MAJOR << 16 | 0x5678,
+            LIBAVFORMAT_VERSION_MAJOR << 16 | 0x9abc,
+        ];
+        validate_versions(versions).unwrap();
+        for (index, library) in ["avutil", "avcodec", "avformat"].into_iter().enumerate() {
+            for delta in [-1, 1] {
+                let mut mismatched = versions;
+                let expected = versions[index] >> 16;
+                let actual = (expected as i32 + delta) as u32;
+                mismatched[index] = actual << 16;
+                let error = validate_versions(mismatched).unwrap_err().to_string();
+                assert!(error.contains(library));
+                assert!(error.contains(&format!("綁定需要 {expected}")));
+                assert!(error.contains(&format!("實際載入 {actual}")));
+            }
+        }
     }
 }
