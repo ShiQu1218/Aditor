@@ -4,6 +4,7 @@
 //! 介面由骨架固定，實作者不得改動簽章。
 
 pub mod mix;
+mod process;
 
 use std::marker::PhantomData;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -34,7 +35,7 @@ use windows::Win32::System::Threading::{CreateEventW, WaitForSingleObject};
 
 use crate::clock::{now_ticks, TICKS_PER_SEC};
 use crate::protocol::{AudioDevice, AudioDevices};
-use crate::types::AudioConfig;
+use crate::types::{AudioConfig, RenderSource, AUDIO_RATE};
 use mix::{
     frames_from_ticks, ticks_from_frames, Format, Resampler, Sample, Timeline, BLOCK_FRAMES,
 };
@@ -58,39 +59,83 @@ pub fn list_devices() -> Result<AudioDevices> {
 pub struct AudioCapture {
     stop: Arc<AtomicBool>,
     workers: Vec<JoinHandle<()>>,
+    warning: Option<String>,
 }
 
 impl AudioCapture {
     /// `origin_ticks`：session 起點的 QPC tick；送出的 pts = 樣本 QPC − origin。
+    #[allow(dead_code)] // 保留既有裝置擷取介面供整合測試使用。
     pub fn start(cfg: &AudioConfig, origin_ticks: i64, sink: Box<dyn AudioSink>) -> Result<Self> {
+        Self::start_for_pid(cfg, 0, origin_ticks, sink)
+    }
+
+    pub fn start_for_pid(
+        cfg: &AudioConfig,
+        pid: u32,
+        origin_ticks: i64,
+        sink: Box<dyn AudioSink>,
+    ) -> Result<Self> {
         if !cfg.mic_gain.is_finite() || cfg.mic_gain < 0.0 {
             bail!("audio_failed: 麥克風增益必須是有限的非負數");
+        }
+        if !cfg.render_gain.is_finite() || !(0.0..=2.0).contains(&cfg.render_gain) {
+            bail!("audio_failed: 系統聲音增益必須介於 0 與 2");
         }
         let mut capture = Self {
             stop: Arc::new(AtomicBool::new(false)),
             workers: Vec::new(),
+            warning: None,
         };
-        let system = capture.spawn_endpoint(cfg.render.clone(), false)?;
-        let mic = if cfg.mic_enabled {
-            Some(capture.spawn_endpoint(cfg.capture.clone(), true)?)
+        let system = if cfg.render_enabled {
+            capture.optional_endpoint(
+                cfg.render.clone(),
+                false,
+                (cfg.render_source == RenderSource::Game).then_some(pid),
+            )?
         } else {
             None
         };
-        let gain = cfg.mic_gain;
+        let mut mic = if cfg.mic_enabled {
+            capture.optional_endpoint(cfg.capture.clone(), true, None)?
+        } else {
+            None
+        };
+        if let Some(mic) = &mut mic {
+            mic.format.mono = cfg.mic_mono;
+        }
+        let config = cfg.clone();
+        let stop = capture.stop.clone();
         // 混音另用工作執行緒；WASAPI 執行緒僅複製封包與 try_send，不等待消費者。
         let worker = thread::Builder::new()
             .name("apexrec-audio-mix".into())
-            .spawn(move || mix_loop(system, mic, origin_ticks, gain, sink))
+            .spawn(move || mix_loop(system, mic, origin_ticks, &config, &stop, sink))
             .context("audio_failed: 建立混音執行緒失敗")?;
         capture.workers.push(worker);
         Ok(capture)
+    }
+
+    pub fn take_warning(&mut self) -> Option<String> {
+        self.warning.take()
     }
 
     pub fn stop(mut self) {
         self.shutdown();
     }
 
-    fn spawn_endpoint(&mut self, id: String, mic: bool) -> Result<Source> {
+    fn optional_endpoint(
+        &mut self,
+        id: String,
+        mic: bool,
+        pid: Option<u32>,
+    ) -> Result<Option<Source>> {
+        match self.spawn_endpoint(id, mic, pid) {
+            Ok(source) => Ok(Some(source)),
+            Err(error) if format!("{error:#}").contains("audio_device_missing:") => Ok(None),
+            Err(error) => Err(error),
+        }
+    }
+
+    fn spawn_endpoint(&mut self, id: String, mic: bool, pid: Option<u32>) -> Result<Source> {
         let (packets_tx, packets_rx) = mpsc::sync_channel(PACKET_CAPACITY);
         let (ready_tx, ready_rx) = mpsc::sync_channel(1);
         let stop = Arc::clone(&self.stop);
@@ -104,14 +149,23 @@ impl AudioCapture {
                 .into(),
             )
             .spawn(move || {
-                let stream = match EndpointStream::open(&id, mic) {
+                let mut warning = None;
+                let opened = if let Some(pid) = pid {
+                    EndpointStream::open_process(pid).or_else(|error| {
+                        warning = Some(format!("無法只錄遊戲聲音，已改錄系統聲音：{error:#}"));
+                        EndpointStream::open(&id, false)
+                    })
+                } else {
+                    EndpointStream::open(&id, mic)
+                };
+                let stream = match opened {
                     Ok(stream) => stream,
                     Err(error) => {
-                        let _ = ready_tx.send(Err(format!("{error:#}")));
+                        let _ = ready_tx.send((Err(format!("{error:#}")), warning));
                         return;
                     }
                 };
-                if ready_tx.send(Ok(stream.format.clone())).is_err() {
+                if ready_tx.send((Ok(stream.format.clone()), warning)).is_err() {
                     return;
                 }
                 let dropped = AtomicU64::new(0);
@@ -126,10 +180,13 @@ impl AudioCapture {
             })
             .context("audio_failed: 建立音訊擷取執行緒失敗")?;
         self.workers.push(worker);
-        let format = ready_rx
+        let (format, warning) = ready_rx
             .recv_timeout(Duration::from_secs(5))
-            .context("audio_failed: 等待音訊裝置啟動失敗")?
-            .map_err(|message| anyhow::anyhow!("audio_failed: {message}"))?;
+            .context("audio_failed: 等待音訊裝置啟動失敗")?;
+        if warning.is_some() {
+            self.warning = warning;
+        }
+        let format = format.map_err(|message| anyhow::anyhow!("audio_failed: {message}"))?;
         Ok(Source::new(format, packets_rx))
     }
 
@@ -275,20 +332,52 @@ impl EndpointStream {
                 enumerator.GetDevice(PCWSTR(wide.as_ptr()))
             }
         }
-        .context("找不到指定的音訊裝置")?;
+        .map_err(|error| {
+            if id == "default" && error.code().0 == 0x80070490u32 as i32 {
+                anyhow::anyhow!("audio_device_missing: 沒有預設音訊裝置")
+            } else {
+                anyhow::anyhow!("找不到指定的音訊裝置：{error}")
+            }
+        })?;
         // SAFETY: 在目前執行緒啟用有效裝置的音訊介面。
         let client: IAudioClient =
             unsafe { device.Activate(CLSCTX_ALL, None) }.context("啟用音訊裝置失敗")?;
         // SAFETY: GetMixFormat 配置由 TaskMem 持有，直到 Initialize 返回後才釋放。
         let raw = TaskMem(unsafe { client.GetMixFormat() }.context("取得裝置混音格式失敗")?);
         let format = read_format(&raw)?;
+        Self::initialize(client, raw.0, format, mic, apartment)
+    }
+
+    fn open_process(pid: u32) -> Result<Self> {
+        let apartment = Apartment::enter()?;
+        let client = process::activate(pid)?;
+        let raw = WAVEFORMATEX {
+            wFormatTag: WAVE_FORMAT_IEEE_FLOAT as u16,
+            nChannels: 2,
+            nSamplesPerSec: AUDIO_RATE,
+            nAvgBytesPerSec: AUDIO_RATE * 8,
+            nBlockAlign: 8,
+            wBitsPerSample: 32,
+            cbSize: 0,
+        };
+        let format = Format::new(AUDIO_RATE, 2, 8, Sample::Float(32), 3)?;
+        Self::initialize(client, &raw, format, false, apartment)
+    }
+
+    fn initialize(
+        client: IAudioClient,
+        raw: *const WAVEFORMATEX,
+        format: Format,
+        mic: bool,
+        apartment: Apartment,
+    ) -> Result<Self> {
         // SAFETY: 不指定名稱與安全描述元，建立本程序擁有的 auto-reset 事件。
         let event = Event(unsafe { CreateEventW(None, false, false, None) }?);
         let flags =
             AUDCLNT_STREAMFLAGS_EVENTCALLBACK | if mic { 0 } else { AUDCLNT_STREAMFLAGS_LOOPBACK };
-        // SAFETY: 格式是裝置提供且仍有效的 mix format；shared event mode 的週期為 0。
+        // SAFETY: 格式指標於 Initialize 返回前保持有效；shared event mode 的週期為 0。
         let (capture, buffer_frames) = unsafe {
-            client.Initialize(AUDCLNT_SHAREMODE_SHARED, flags, 0, 0, raw.0, None)?;
+            client.Initialize(AUDCLNT_SHAREMODE_SHARED, flags, 0, 0, raw, None)?;
             client.SetEventHandle(event.0)?;
             (client.GetService()?, client.GetBufferSize()?)
         };
@@ -511,27 +600,34 @@ impl Source {
 }
 
 fn mix_loop(
-    mut system: Source,
+    mut system: Option<Source>,
     mut mic: Option<Source>,
     origin: i64,
-    gain: f32,
+    config: &AudioConfig,
+    stop: &AtomicBool,
     mut sink: Box<dyn AudioSink>,
 ) {
     let cursor = frames_from_ticks(now_ticks() - origin).max(0);
     let mut system_audio = Timeline::new(cursor);
     let mut mic_audio = Timeline::new(cursor);
     loop {
-        let result = system.drain(&mut system_audio, origin).and_then(|()| {
+        let result: Result<()> = (|| {
+            if let Some(system) = &mut system {
+                system.drain(&mut system_audio, origin)?;
+            }
             if let Some(mic) = &mut mic {
                 mic.drain(&mut mic_audio, origin)?;
             }
             Ok(())
-        });
+        })();
         if let Err(error) = result {
             eprintln!("audio_failed: 音訊格式轉換失敗：{error:#}");
             return;
         }
-        let finished = system.disconnected && mic.as_ref().is_none_or(|mic| mic.disconnected);
+        let finished = stop.load(Ordering::Acquire)
+            || ((system.is_some() || mic.is_some())
+                && system.as_ref().is_none_or(|source| source.disconnected)
+                && mic.as_ref().is_none_or(|source| source.disconnected));
         let now = frames_from_ticks(now_ticks() - origin);
         while now > system_audio.cursor {
             let frames = if finished {
@@ -541,13 +637,19 @@ fn mix_loop(
             };
             if !finished
                 && (system_audio.cursor + frames as i64 > now
-                    || !system_audio.ready(frames, now, 1440)
+                    || (system.is_some() && !system_audio.ready(frames, now, 1440))
                     || (mic.is_some() && !mic_audio.ready(frames, now, 9600)))
             {
                 break;
             }
             let pts = ticks_from_frames(system_audio.cursor);
-            let samples = mix::mix(&system_audio.take(frames), &mic_audio.take(frames), gain);
+            let samples = mix::mix(
+                &system_audio.take(frames),
+                &mic_audio.take(frames),
+                config.render_gain,
+                config.mic_gain,
+                config.mic_mono,
+            );
             sink.on_audio(&samples, pts);
         }
         if finished {

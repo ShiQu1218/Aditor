@@ -52,13 +52,24 @@ async function number(field: string, value: string): Promise<void> {
   await flush()
 }
 
+async function slider(field: string, value: string): Promise<void> {
+  const el = control<HTMLInputElement>(field)
+  act(() => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(el, value)
+    el.dispatchEvent(new Event('input', { bubbles: true }))
+    el.dispatchEvent(new Event('change', { bubbles: true }))
+  })
+  act(() => { el.dispatchEvent(new Event('pointerup', { bubbles: true })) })
+  await flush()
+}
+
 describe('錄影設定畫面與 controller', () => {
   test('完整列順序、label、啟用的一局一個檔及符合格式的編碼器／裝置選項', async () => {
     await show()
     expect(Array.from(document.querySelectorAll<HTMLElement>('[data-row]')).map((el) => el.dataset.row))
       .toEqual(Object.keys(t.rows).map((field) => `recording-${field}`))
     for (const field of Object.keys(t.rows)) {
-      const label = document.querySelector(`label[for="set-recording-${field}"]`)
+      const label = document.getElementById(`set-recording-${field}-title`)
       expect(label?.textContent).toBe(t.rows[field as keyof typeof t.rows].title)
       expect(control(field)?.getAttribute('aria-describedby')).toContain(`set-recording-${field}-desc`)
     }
@@ -68,8 +79,8 @@ describe('錄影設定畫面與 controller', () => {
     expect(options('encoder')).toEqual(['auto', 'hevc_nvenc'])
     expect(options('renderDevice')).toEqual(['default', 'speakers'])
     expect(options('captureDevice')).toEqual(['default', 'mic'])
-    expect(options('height')).toEqual(['0', '1440', '1080', '720'])
-    expect(options('fps')).toEqual(['30', '60', '120', '144'])
+    expect(options('height')).toEqual(['0', '720', '1080', '1440'])
+    expect(Array.from(control('fps').querySelectorAll('input')).map((el) => el.value)).toEqual(['10', '20', '30', '60', '90', '120'])
     expect(options('captureMethod')).toEqual(['wgc', 'dda'])
   })
 
@@ -85,22 +96,23 @@ describe('錄影設定畫面與 controller', () => {
     select('renderDevice', 'speakers')
     select('captureDevice', 'mic')
     select('height', '1080')
-    select('fps', '120')
+    click(control('fps').querySelector('input[value="120"]')!)
     select('mode', 'match')
     select('postAnalysis', 'none')
     select('captureMethod', 'dda')
     await flush()
-    await number('bitrateKbps', '25')
-    await number('micGain', '75')
+    select('bitrateKbps', '30000')
+    await flush()
+    await slider('micGain', '75')
     expect(r.controller.getState().settings?.recording).toMatchObject({
       autoRecord: false, codec: 'h264', encoder: 'h264_nvenc', renderDevice: 'speakers', captureDevice: 'mic',
-      height: 1080, fps: 120, mode: 'match', postAnalysis: 'none', bitrateKbps: 25000, micGain: 0.75, captureMethod: 'dda'
+      height: 1080, fps: 120, mode: 'match', postAnalysis: 'none', bitrateKbps: 30000, micGain: 0.75, captureMethod: 'dda'
     })
     cleanupMounted()
     mount(<SettingsScreen controller={new SettingsController(r.api)} initialCategory="recording" />)
     await flush()
     expect(control<HTMLInputElement>('autoRecord').checked).toBe(false)
-    expect(control<HTMLInputElement>('bitrateKbps').value).toBe('25')
+    expect(control<HTMLInputElement>('bitrateKbps').value).toBe('30000')
     expect(control<HTMLSelectElement>('encoder').value).toBe('h264_nvenc')
     expect(control<HTMLSelectElement>('mode').value).toBe('match')
   })
@@ -154,11 +166,11 @@ describe('錄影設定畫面與 controller', () => {
   test('連續設定操作以最新回傳快照為準；IPC 失敗重新讀取並解除訂閱', async () => {
     const r = rig()
     await r.controller.start()
-    await Promise.all([r.controller.setRecording('fps', 144), r.controller.setRecording('micEnabled', false)])
-    expect(r.controller.getState().settings?.recording).toMatchObject({ fps: 144, micEnabled: false })
+    await Promise.all([r.controller.setRecording('fps', 90), r.controller.setRecording('micEnabled', false)])
+    expect(r.controller.getState().settings?.recording).toMatchObject({ fps: 90, micEnabled: false })
     r.api.settings.set = async () => { throw new Error('ipc') }
     await r.controller.setRecording('mode', 'match')
-    expect(r.controller.getState().settings?.recording.fps).toBe(144)
+    expect(r.controller.getState().settings?.recording.fps).toBe(90)
     expect(r.controller.getState().settings?.recording.mode).toBe('session')
     expect(r.controller.getState().saveFailed).toBe(true)
     r.controller.stop()
@@ -172,4 +184,36 @@ describe('錄影設定畫面與 controller', () => {
     expect(document.querySelector('[data-row="recording-micGain"]')).not.toBeNull()
     expect(document.querySelector('#set-tab-recording .set-hit')).not.toBeNull()
   })
+  test('進階預設收合、搜尋自動展開，位元率保留清單外值及音源停用狀態', async () => {
+    const r = await show()
+    const sections = Array.from(document.querySelectorAll('details'))
+    expect(sections).toHaveLength(2)
+    expect(sections.every((el) => !el.open)).toBe(true)
+    expect(options('bitrateKbps')).toEqual(['5000', '8000', '10000', '15000', '20000', '30000', '40000', '50000', '60000', '80000', '100000', '150000'])
+    expect(Array.from(control('aspectMode').querySelectorAll('input')).every((el) => el.disabled)).toBe(true)
+    click(control('forceAspect'))
+    await flush()
+    expect(Array.from(control('aspectMode').querySelectorAll('input')).every((el) => !el.disabled)).toBe(true)
+    click(control('aspectMode').querySelector('input[value="stretch"]')!)
+    select('preset', 'quality')
+    click(control('gameAudioOnly'))
+    await flush()
+    expect(control<HTMLSelectElement>('renderDevice').disabled).toBe(true)
+    click(control('gameAudioOnly'))
+    click(control('systemAudioEnabled'))
+    click(control('micEnabled'))
+    await flush()
+    for (const field of ['renderDevice', 'systemGain', 'captureDevice', 'micGain']) expect(control<HTMLInputElement>(field).disabled).toBe(true)
+    expect(r.controller.getState().settings?.recording).toMatchObject({ forceAspect: true, aspectMode: 'stretch', preset: 'quality' })
+    r.set.mockClear()
+    act(() => r.emit({ ...structuredClone(DEFAULT_SETTINGS), recording: { ...DEFAULT_SETTINGS.recording, bitrateKbps: 23456 } }))
+    expect(control<HTMLSelectElement>('bitrateKbps').selectedOptions[0].textContent).toBe('目前：23456')
+    expect(r.set).not.toHaveBeenCalled()
+    cleanupMounted()
+    mount(<SettingsScreen controller={new SettingsController(r.api)} initialQuery="只錄遊戲" />)
+    await flush()
+    expect(control('gameAudioOnly')).not.toBeNull()
+    expect(document.querySelector('details')?.open).toBe(true)
+  })
+
 })

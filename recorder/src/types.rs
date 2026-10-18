@@ -70,6 +70,32 @@ pub enum CaptureMethod {
     Dda,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum EncodePreset {
+    #[default]
+    Speed,
+    Balanced,
+    Quality,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum EncodeAspect {
+    #[default]
+    Native,
+    Fit,
+    Stretch,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum RenderSource {
+    #[default]
+    Device,
+    Game,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct EncodeConfig {
     pub codec: Codec,
@@ -79,6 +105,10 @@ pub struct EncodeConfig {
     /// 輸出高度；0 = 原生解析度。寬度依比例並取偶數。
     pub height: u32,
     pub bitrate_kbps: u32,
+    #[serde(default)]
+    pub preset: EncodePreset,
+    #[serde(default)]
+    pub aspect: EncodeAspect,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -88,6 +118,44 @@ pub struct AudioConfig {
     pub capture: String,
     pub mic_gain: f32,
     pub mic_enabled: bool,
+    #[serde(default = "enabled")]
+    pub render_enabled: bool,
+    #[serde(default = "unity", deserialize_with = "render_gain")]
+    pub render_gain: f32,
+    #[serde(default)]
+    pub mic_mono: bool,
+    #[serde(default)]
+    pub render_source: RenderSource,
+}
+
+fn enabled() -> bool {
+    true
+}
+fn unity() -> f32 {
+    1.0
+}
+fn render_gain<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<f32, D::Error> {
+    let gain = f32::deserialize(deserializer)?;
+    if gain.is_finite() && (0.0..=2.0).contains(&gain) {
+        Ok(gain)
+    } else {
+        Err(serde::de::Error::custom("系統聲音增益必須介於 0 與 2"))
+    }
+}
+
+impl Default for AudioConfig {
+    fn default() -> Self {
+        Self {
+            render: "default".into(),
+            capture: "default".into(),
+            mic_gain: 1.0,
+            mic_enabled: true,
+            render_enabled: true,
+            render_gain: 1.0,
+            mic_mono: false,
+            render_source: RenderSource::Device,
+        }
+    }
 }
 
 /// 音訊混音後的固定格式。

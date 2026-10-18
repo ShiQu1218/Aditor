@@ -111,6 +111,24 @@
 .set-switch:disabled { opacity: 0.4; cursor: default; }
 
 .set-select { height: 32px; width: 200px; max-width: 100%; background: var(--bg-input); border: 1px solid var(--line-strong); border-radius: var(--r-sm); padding: 0 8px; color: var(--text-1); }
+.set-select:disabled { opacity: 0.4; }
+.set-recording-select { width: 200px; max-width: 100%; }
+.set-recording-select .set-desc { flex-basis: 100%; }
+
+.set-segmented { display: inline-flex; padding: 2px; margin: 0; border: 1px solid var(--line-strong); border-radius: var(--r-sm); background: var(--bg-input); }
+.set-segmented label { position: relative; cursor: pointer; }
+.set-segmented input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.set-segmented span { display: block; min-width: 34px; padding: 4px 8px; text-align: center; border-radius: var(--r-xs); color: var(--text-2); transition: background var(--dur-fast), color var(--dur-fast); }
+.set-segmented input:checked + span { background: var(--bg-active); color: var(--text-1); }
+.set-segmented input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 1px; }
+.set-segmented:disabled { opacity: 0.4; }
+.set-segmented:disabled label { cursor: default; }
+.set-gain { display: inline-flex; align-items: center; gap: 8px; width: 200px; max-width: 100%; }
+.set-gain input { flex: 1; min-width: 0; accent-color: var(--accent); }
+.set-gain output { width: 42px; text-align: right; font-size: var(--fs-small); color: var(--text-2); font-variant-numeric: tabular-nums; }
+.set-advanced { border-top: 1px solid var(--line); }
+.set-advanced summary { padding: 12px 0; color: var(--text-2); cursor: pointer; }
+.set-advanced summary:hover { color: var(--text-1); }
 
 .set-btn {
   height: 32px;

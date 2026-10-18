@@ -564,6 +564,68 @@ fn ipc_records_six_seconds_with_audio_segments_and_shared_frames() {
 }
 
 #[test]
+fn fit_encodes_non_widescreen_window_at_16_by_9_with_silent_track() {
+    let _guard = HARDWARE.lock().unwrap();
+    let _window = Window::open(800, 600);
+    let dir = directory();
+    let mut process = Process::open();
+    let mut request = start(&dir, 1, true);
+    request["encode"]["aspect"] = json!("fit");
+    request["encode"]["height"] = json!(720);
+    request["audio"]["render_enabled"] = json!(false);
+    request["audio"]["mic_enabled"] = json!(false);
+    process.send(request);
+    let started = process.until(|v| v["ev"] == "started" || v["ok"] == false);
+    assert_eq!(started["ev"], "started", "{started}");
+    assert_eq!(
+        (started["width"].as_u64(), started["height"].as_u64()),
+        (Some(1280), Some(720))
+    );
+    assert_eq!(process.reply(1)["ok"], true);
+    thread::sleep(Duration::from_secs(2));
+    process.exit();
+    verify_recording(&dir, &process, 2.0);
+    let output = Command::new(ffmpeg("ffprobe"))
+        .args([
+            "-v",
+            "error",
+            "-select_streams",
+            "v:0",
+            "-show_entries",
+            "stream=width,height",
+            "-of",
+            "json",
+        ])
+        .arg(dir.join("combined.mp4"))
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let probe: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(probe["streams"][0]["width"], 1280);
+    assert_eq!(probe["streams"][0]["height"], 720);
+    let decoded = Command::new(ffmpeg("ffmpeg"))
+        .args(["-v", "error", "-i"])
+        .arg(dir.join("combined.mp4"))
+        .args(["-frames:v", "1", "-pix_fmt", "rgb24", "-f", "rawvideo", "-"])
+        .output()
+        .unwrap();
+    assert!(decoded.status.success());
+    let pixel = |x: usize, y: usize| &decoded.stdout[(y * 1280 + x) * 3..(y * 1280 + x + 1) * 3];
+    assert!(
+        pixel(10, 360).iter().all(|value| *value < 12),
+        "左側應為黑邊"
+    );
+    assert!(
+        pixel(1270, 360).iter().all(|value| *value < 12),
+        "右側應為黑邊"
+    );
+    assert!(
+        pixel(640, 360).iter().any(|value| *value > 30),
+        "中間應保留來源畫面"
+    );
+}
+
+#[test]
 fn ipc_records_six_seconds_via_desktop_duplication() {
     record(6, false, "dda");
 }

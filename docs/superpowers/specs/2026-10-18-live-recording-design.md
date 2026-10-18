@@ -98,7 +98,9 @@
 ### 2.4 編碼設定
 
 - 編碼器：自動（HEVC 優先 → H.264；AV1 可選）。探測順序 NVENC → AMF → QSV；**沒有硬體編碼器就不錄**（不退回 CPU 編碼）。
-- 解析度：原生／1080p（縮放在 GPU，`scale_d3d11` 或 VideoProcessor）。FPS：60（預設）／原生上限 144。位元率預設 HEVC 1440p60 = 40 Mbps、1080p60 = 25 Mbps；H.264 ×1.5。
+- 解析度：原生／720p／1080p／1440p，縮放在 GPU VideoProcessor。FPS：10／20／30／60（預設）／90／120；舊設定 144 遷移成 120。位元率維持 kbps 儲存（2000–150000，預設 40000），選單提供 5000／8000／10000／15000／20000／30000／40000／50000／60000／80000／100000／150000，清單外已存值另列「目前：N」。
+- 編碼預設：速度優先（預設）／平衡／品質優先；NVENC 對應 p1／p4／p7，AMF `quality` 對應 speed／balanced／quality，QSV 對應 veryfast／medium／veryslow。品質越高，GPU 使用量越高。
+- 可選強制 16:9：適配（等比縮放並補黑邊）／拉伸；高度沿用指定高度或原生高度，寬度為高度 ×16/9 四捨五入至偶數。僅改編碼影像，小圖分析維持原始來源。
 - 音訊：48 kHz 立體聲 AAC 192 kbps。
 
 ### 2.5 安全措施
@@ -191,6 +193,8 @@ ROI 由 Python 端在 live 握手時傳給 apexrec（Python 讀 profile），ape
 
 錄影後端（內建／OBS：位址、連接埠、密碼、測試連線）；模式（一局一個檔／從頭錄到尾）；開機啟動並常駐系統匣（預設開）；自動錄影開關；錄影資料夾（預設＝監看資料夾，輸出檔由錄影流程直接加入媒體庫，監看端忽略 `.sessions/` 並以路徑去重）；畫質（編碼器、解析度、FPS、位元率）；聲音（系統裝置、麥克風裝置、麥克風音量、關閉麥克風）；錄後分析（不分析／關遊戲後／每局後低優先序）；磁碟門檻（提醒、停止）。
 
+內建錄影設定分成「一般／影像／音訊」；影像與音訊各有預設收合、搜尋時展開的「進階選項」。影像進階含強制 16:9（預設關）、裁切方式（適配，未強制時停用）、編碼格式、編碼器、編碼預設、擷取方式。音訊提供系統聲音與麥克風各自的開關、裝置及 0–200% 音量；進階含系統聲音只錄遊戲（預設關，啟用時忽略裝置）、麥克風強制單聲道（預設關）。兩個音源皆停用或沒有預設裝置時仍輸出靜音音軌。
+
 ### 4.2 系統匣與 App
 
 - 系統匣圖示：待命／錄影中（紅點）／錯誤；選單：打開 App、開始／停止錄影、暫停自動錄影、結束。
@@ -215,6 +219,8 @@ JSON-lines，stdin 指令、stdout 事件，stderr 為日誌。每行 ≤ 64 KB�
 指令：
 - `{"id":1,"cmd":"hello"}` → `{"id":1,"ok":true,"version":"0.1.0","encoders":["hevc_nvenc",…],"audio":{"render":[…],"capture":[…]}}`
 - `{"id":2,"cmd":"start","pid":1234,"session_dir":"…","session_id":"…","encode":{"codec":"hevc","encoder":"auto","fps":60,"height":0,"bitrate_kbps":40000},"audio":{"render":"default","capture":"default","mic_gain":1.0,"mic_enabled":true},"frames":{"banner":[x,y,w,h],"spec":[x,y,w,h],"base":[1920,1080]}}`（`encode` 為 `null` 時只擷取不編碼；選填 `"capture":"wgc"|"dda"`，預設 `wgc`，其他值為 `bad_request`）
+- `encode` 新增選填 `preset: "speed"|"balanced"|"quality"`（預設 speed）、`aspect: "native"|"fit"|"stretch"`（預設 native）；`audio` 新增選填 `render_enabled: bool`（true）、`render_gain: 0..2`（1.0）、`mic_mono: bool`（false）、`render_source: "device"|"game"`（device）。未知列舉及無效增益回覆 `bad_request`，省略欄位保留既有行為。
+- `render_source: "game"` 以 `ActivateAudioInterfaceAsync`／`AUDIOCLIENT_ACTIVATION_TYPE_PROCESS_LOOPBACK`／`PROCESS_LOOPBACK_MODE_INCLUDE_TARGET_PROCESS_TREE` 擷取錄影 PID 與子程序，請求 48 kHz float 立體聲並進入既有混音流程，不開啟程序 handle。需要 Windows 組建 20348 起的系統；啟用失敗時退回裝置 loopback，發出 `{"ev":"warning","code":"game_audio_unavailable","message":"…"}`，App 顯示非致命通知，錄影繼續。
 - `{"id":3,"cmd":"stop"}`；`{"id":4,"cmd":"ping"}`（小圖 ROI 只在 `start` 指定；要換 ROI 就 stop 再 start）
 
 事件（無 `id`）：`{"ev":"started","encoder":"hevc_nvenc","width":2560,"height":1440,"fps":60,"shm":"Local\\apexrec-…"}`、`{"ev":"segment","seq":12,"pts":22.0,"dur":2.0}`、`{"ev":"stats","fps_in":…,"fps_enc":…,"dropped":…,"q":…}`（每 5 秒）、`{"ev":"window_lost"}`、`{"ev":"stopped","reason":"…"}`、`{"ev":"error","code":"…","message":"…"}`。

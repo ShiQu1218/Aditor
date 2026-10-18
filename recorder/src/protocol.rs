@@ -111,6 +111,10 @@ pub enum Event {
         code: ErrorCode,
         message: String,
     },
+    Warning {
+        code: String,
+        message: String,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -191,7 +195,50 @@ mod tests {
     }
 
     #[test]
+    fn recording_options_default_and_reject_bad_values() {
+        let mut value = serde_json::json!({"id":9,"cmd":"start","pid":1,"session_dir":"x","session_id":"x",
+            "encode":{"codec":"hevc","encoder":"auto","fps":10,"height":0,"bitrate_kbps":40000},
+            "audio":{"render":"default","capture":"default","mic_gain":1.0,"mic_enabled":true},
+            "frames":{"banner":[1,2,3,4],"spec":[5,6,7,8],"base":[1920,1080]}});
+        let Command::Start(args) = parse_request(&value.to_string()).unwrap().cmd else {
+            panic!()
+        };
+        let encode = args.encode.unwrap();
+        assert_eq!(encode.preset, crate::types::EncodePreset::Speed);
+        assert_eq!(encode.aspect, crate::types::EncodeAspect::Native);
+        let audio = args.audio.unwrap();
+        assert!(audio.render_enabled);
+        assert_eq!(audio.render_gain, 1.0);
+        assert!(!audio.mic_mono);
+        assert_eq!(audio.render_source, crate::types::RenderSource::Device);
+        for (section, field, bad) in [
+            ("encode", "preset", serde_json::json!("unknown")),
+            ("encode", "aspect", serde_json::json!("crop")),
+            ("audio", "render_source", serde_json::json!("application")),
+            ("audio", "render_gain", serde_json::json!(-0.1)),
+            ("audio", "render_gain", serde_json::json!(2.1)),
+            ("audio", "mic_mono", serde_json::json!(1)),
+        ] {
+            value[section][field] = bad;
+            assert_eq!(parse_request(&value.to_string()).unwrap_err().0, Some(9));
+            value[section].as_object_mut().unwrap().remove(field);
+        }
+        value["encode"]["preset"] = serde_json::json!("quality");
+        value["encode"]["aspect"] = serde_json::json!("fit");
+        value["audio"]["render_source"] = serde_json::json!("game");
+        assert!(parse_request(&value.to_string()).is_ok());
+    }
+
+    #[test]
     fn serializes_events_and_replies() {
+        let warning = Event::Warning {
+            code: "game_audio_unavailable".into(),
+            message: "改錄系統聲音".into(),
+        };
+        assert_eq!(
+            serde_json::to_value(warning).unwrap(),
+            serde_json::json!({"ev":"warning","code":"game_audio_unavailable","message":"改錄系統聲音"})
+        );
         let ev = Event::Segment {
             seq: 3,
             pts: 4.0,

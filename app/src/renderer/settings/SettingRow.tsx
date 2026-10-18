@@ -27,7 +27,7 @@ export function SettingRow({ row, state, settings, controller }: SettingRowProps
     err: error ? `set-${row.id}-err` : undefined
   }
   const kind = row.control.kind
-  const grouped = GROUP_KINDS.has(kind)
+  const grouped = GROUP_KINDS.has(kind) || row.control.kind === 'recording' && ['fps', 'aspectMode'].includes(row.control.field)
   return (
     <div
       className={`set-row${WIDE_KINDS.has(kind) ? ' wide' : ''}${row.disabledReason ? ' is-disabled' : ''}`}

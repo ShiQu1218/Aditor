@@ -21,6 +21,8 @@ fn params(codec: Codec) -> VideoParams {
         codec,
         encoder: "auto".into(),
         bitrate_kbps: 4000,
+        preset: EncodePreset::Speed,
+        aspect: EncodeAspect::Native,
     }
 }
 fn temp_dir() -> std::path::PathBuf {

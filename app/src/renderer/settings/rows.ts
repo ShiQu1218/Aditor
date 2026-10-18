@@ -49,7 +49,12 @@ export interface SettingRow {
   control: ControlSpec
   /** 後端尚未提供：該列的控制項停用，並以灰色文字顯示此說明 */
   disabledReason?: string
+  advanced?: boolean
 }
+
+const VIDEO_FIELDS = new Set(['height', 'bitrateKbps', 'fps', 'forceAspect', 'aspectMode', 'codec', 'encoder', 'preset', 'captureMethod'])
+const AUDIO_FIELDS = new Set(['systemAudioEnabled', 'renderDevice', 'systemGain', 'micEnabled', 'captureDevice', 'micGain', 'gameAudioOnly', 'micMono'])
+const ADVANCED_FIELDS = new Set(['forceAspect', 'aspectMode', 'codec', 'encoder', 'preset', 'captureMethod', 'gameAudioOnly', 'micMono'])
 
 export const SETTING_ROWS: SettingRow[] = [
   // ── 影片與分析 ──
@@ -221,10 +226,11 @@ export const SETTING_ROWS: SettingRow[] = [
   ...Object.entries(recordingI18n.rows).map(([field, text]): SettingRow => ({
     id: `recording-${field}`,
     category: 'recording',
-    card: recordingI18n.card,
+    card: VIDEO_FIELDS.has(field) ? recordingI18n.cards.video : AUDIO_FIELDS.has(field) ? recordingI18n.cards.audio : recordingI18n.cards.general,
+    advanced: ADVANCED_FIELDS.has(field),
     title: text.title,
     desc: text.desc,
-    keywords: ['錄影', field],
+    keywords: ['錄影', field, ...(ADVANCED_FIELDS.has(field) ? [recordingI18n.advanced] : [])],
     control: { kind: 'recording', field: field as keyof RecordingSettings }
   }))
 ]

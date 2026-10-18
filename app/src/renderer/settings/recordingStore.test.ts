@@ -31,7 +31,7 @@ describe('錄影設定驗證與遷移', () => {
     expect(DEFAULT_SETTINGS.recording.autoRecord).toBe(true)
   })
 
-  test.each(['autoRecord', 'launchAtLogin', 'closeToTray', 'micEnabled', 'notifyMatch'] as const)('%s 僅接受布林值', (field) => {
+  test.each(['autoRecord', 'launchAtLogin', 'closeToTray', 'micEnabled', 'notifyMatch', 'forceAspect', 'systemAudioEnabled', 'gameAudioOnly', 'micMono'] as const)('%s 僅接受布林值', (field) => {
     for (const value of [false, true]) expect(migrate({ [field]: value })[field]).toBe(value)
     for (const value of [null, 0, 1, 'true', {}, []]) expect(migrate({ [field]: value })[field]).toBe(defaults[field])
   })
@@ -50,7 +50,9 @@ describe('錄影設定驗證與遷移', () => {
   test.each([
     ['mode', ['session', 'match']],
     ['codec', ['hevc', 'h264', 'av1']],
-    ['fps', [30, 60, 120, 144]],
+    ['preset', ['speed', 'balanced', 'quality']],
+    ['aspectMode', ['fit', 'stretch']],
+    ['fps', [10, 20, 30, 60, 90, 120]],
     ['height', [0, 720, 1080, 1440]],
     ['postAnalysis', ['none', 'afterExit', 'perMatch']],
     ['captureMethod', ['wgc', 'dda']]
@@ -112,7 +114,7 @@ describe('錄影設定驗證與遷移', () => {
     expect(res.persisted).toBe(true)
     store.set({ before: 15 })
     expect(new SettingsStore(file).get().recording.autoRecord).toBe(false)
-    const complete = { ...defaults, mode: 'match' as const, outputDir: dir, fps: 144 as const, micGain: 0.75, codec: 'av1' as const, encoder: 'av1_nvenc', notifyMatch: true }
+    const complete = { ...defaults, mode: 'match' as const, outputDir: dir, fps: 120 as const, micGain: 0.75, codec: 'av1' as const, encoder: 'av1_nvenc', notifyMatch: true }
     store.set({ recording: complete })
     store.set({ before: 16 })
     expect(new SettingsStore(file).get().recording).toEqual(complete)
@@ -121,7 +123,7 @@ describe('錄影設定驗證與遷移', () => {
   test('快照與 listener 不得修改內部或其他 listener 的 recording', () => {
     const store = new SettingsStore(file)
     store.get().recording.autoRecord = false
-    store.onChange((s) => { s.recording.fps = 144 })
+    store.onChange((s) => { s.recording.fps = 120 })
     const listener = vi.fn()
     store.onChange(listener)
     const result = store.set(patch({ fps: 30 }))
