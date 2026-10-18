@@ -163,7 +163,7 @@ export class LiveSession extends EventEmitter {
     this.scheduleWrite()
     this.emitUpdate({ match: { ...next[next.length - 1], index: next.length } })
     this.emit('stats')
-    this.emit('match', event.ev, next.length)
+    this.emit('match', event.ev, next.length, event.t)
   }
 
   private scheduleWrite(): void {

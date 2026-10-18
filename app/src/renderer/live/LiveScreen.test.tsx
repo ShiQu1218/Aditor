@@ -102,7 +102,7 @@ describe('liveModel', () => {
 
 describe('RecordingPanel 觀看當局', () => {
   test('OBS 顯示錄影結束後播放提示，仍保留事件與對局且不讀取段落', async () => {
-    const r = rig({ ...RECORDING, backend: 'obs' }, { ...LIVE, mime: null, segments: [] })
+    const r = rig({ ...RECORDING, backend: 'obs', obsRecording: true }, { ...LIVE, mime: null, segments: [] })
     screen()
     await settle()
     expect(document.body.textContent).toContain('OBS 錄影中，錄影結束後即可播放')
@@ -112,6 +112,13 @@ describe('RecordingPanel 觀看當局', () => {
     expect(r.api.readInit).not.toHaveBeenCalled()
     expect(r.api.readSegment).not.toHaveBeenCalled()
     expect(document.querySelector('[role="alert"]')).toBeNull()
+  })
+  test('OBS 大廳待命保留偵測狀態', async () => {
+    rig({ ...RECORDING, backend: 'obs', obsRecording: false }, { ...LIVE, mime: null, segments: [] })
+    screen()
+    await settle()
+    expect(document.body.textContent).toContain('待命（OBS，等待對局）')
+    expect(document.body.textContent).not.toContain('錄影中（OBS）')
   })
   test('只有錄影中可用，點擊開啟錄影中觀看', async () => {
     const r = rig()

@@ -111,12 +111,12 @@
 ### 2.6 OBS 模式（第 5 期）
 
 - OBS ≥ 28 的內建 WebSocket v5 伺服器（工具 → WebSocket 伺服器設定）；App 使用固定版 `obs-websocket-js@5.0.6`，連線與指令各約 3 秒逾時。所有控制只走網路，不接觸遊戲程序。
-- 偵測 Apex（自動或手動）時，先查 `GetRecordStatus`：尚未錄影才送 `StartRecord`；已在錄影則沿用（adopted），絕不對該錄影送開始或停止指令。Apex 結束／手動停止時停止擷取；自行開始的錄影送 `StopRecord`，沿用的錄影則繼續等候 OBS 停止事件（App 結束時解除監聽）。
+- 偵測 Apex（自動或手動）時，先查 `GetRecordStatus`：尚未錄影時，整段模式才立即送 `StartRecord`，逐局模式待命到開局；已在錄影則沿用（adopted），絕不對該錄影送開始或停止指令。Apex 結束／手動停止時停止擷取；自行開始的錄影送 `StopRecord`，沿用的錄影則繼續等候 OBS 停止事件（App 結束時解除監聽）。
 - `apexrec` 照常以相同 `capture` 與小圖範本啟動，但指定 `encode: null, audio: null`，live 擊殺與對局偵測路徑不變。OBS 無法連線時通知；預設本次回退內建錄影，關閉回退時只保留即時偵測。中途斷線不停止擷取，依 1、2、4…最多 30 秒退避重連，不重新送 `StartRecord`。重連後若已停止而錯過停止事件，v5 沒有歷史路徑查詢，通知使用者手動匯入並在結束偵測時無檔收尾。
 - `.sessions/<id>/recording.json` 記錄本次實際 `backend`、模式與分析設定；`obs.json` 以 `writeJson` 原子寫入 `{ outputPath?, recordStartedAt, captureStartedAt, adopted }`（epoch ms），路徑由 `StopRecord` 回覆或 `RecordStateChanged/OBS_WEBSOCKET_OUTPUT_STOPPED` 補入。OBS 起點取 `OUTPUT_STARTED` 的接收時間，沿用時取目前時間減 `outputDuration`（ms）；擷取起點優先讀 `session.json.started_at`，缺少時取 `started` 事件時間。快取事件時間＝live 秒數＋`(captureStartedAt-recordStartedAt)/1000`；復原用同一份資料，不以「零段落」判定沒有錄影。
 - 從頭錄到尾：原路徑加入媒體庫，不搬移、改名或刪除 OBS 原檔；用引擎 probe／ffprobe 取得時長，寫入平移且裁到影片範圍的 live 快取。可信結果略過完整分析，其餘依本次 `postAnalysis` 設定排入分析。
-- 一局一個檔：等 OBS 停止後才剪出每局，前後各留 `MATCH_PRE_PAD_SEC`／`MATCH_POST_PAD_SEC`（各 5 秒），ffmpeg 輸入端 `-ss/-to`、`-c copy`、`+faststart`，輸出到 App 錄影資料夾的 `Apex_<日期>_<時-分>.mp4`。切點會落在附近關鍵影格。沿用既有預留檔、`.part.mp4` 與 marker 補收尾機制，剪檔加入媒體庫並寫 live 快取；原檔保留且不加入媒體庫。沒有可剪的對局時改保留整段。
-- OBS 輸出不是可讀取的本機影片時通知並無檔收尾。即時畫面保留擊殺清單與對局資訊，顯示「OBS 錄影中，錄影結束後即可播放」，不建立段落播放器；僅偵測時明確標示未錄影。狀態包含實際 `backend`，系統匣與狀態顯示「錄影中（OBS）」。
+- 一局一個檔：自行控制的 OBS 在大廳只擷取偵測；match_start 才開始錄影（無法補錄前置時間），match_end 等到 max(現在, 結束時間＋5 秒) 停止；下一局開始會立即停止上一檔並重開。原檔直接入庫，不剪輯、不搬移。obs-matches.json 原子保存每局起點、停止路徑、快取及分析進度；每局後排 perMatch，結束時補 afterExit 並更新可信快取。復原會核對 OBS 錄影起點再停止，無法連線或確認歸屬時保留工作。沿用使用者錄影與沒有逐局狀態的舊版工作仍走原本整段錄影及剪檔流程。狀態 phase 保持 recording，obsRecording 區分待命與錄影。
+- OBS 輸出不是可讀取的本機影片時，舊版整段路徑通知並無檔收尾；逐局路徑保留工作供重試。即時畫面保留擊殺清單與對局資訊，顯示「OBS 錄影中，錄影結束後即可播放」，不建立段落播放器；僅偵測時明確標示未錄影。狀態包含實際 `backend`，系統匣與狀態依 obsRecording 顯示「錄影中（OBS）」或「待命（OBS，等待對局）」。
 
 ---
 

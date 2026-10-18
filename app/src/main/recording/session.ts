@@ -10,10 +10,11 @@ import { isSafeLocalDirPath } from '../safe-path'
 import { ApexWatcher, findApexPid } from './apex-watcher'
 import { ApexrecClient, RecorderError, type RecorderEvent } from './apexrec-client'
 import { diskFreeBytes, diskLevel } from './disk'
-import { cutMatches, finalizeSession, validateSessionDir, writeJson } from './finalize'
+import { MATCH_POST_PAD_SEC, cutMatches, finalizeSession, validateSessionDir, writeJson } from './finalize'
 import { recoverSessions } from './recovery'
 import { LiveSession } from './live-session'
 import { ObsClient } from './obs-client'
+import { finalizeObsMatches } from './obs-finalize'
 import { ObsRecording } from './obs-session'
 import type { RecordingDeps, RecordingNoticeKind } from './index'
 
@@ -35,6 +36,10 @@ interface ActiveSession {
   failedCuts: Set<number>
   backend: RecordingBackend
   obs: ObsRecording | null
+  obsFailed?: boolean
+  obsEndAt?: number
+  obsTimer?: ReturnType<typeof setTimeout>
+  obsWork: Promise<void>
   /** apexrec 已回報 started（真的開始擷取） */
   captured: boolean
 }
@@ -82,6 +87,7 @@ export class RecordingSessionService implements RecordingService {
   private pendingObs = new Map<string, ActiveSession>()
   /** 上次由本 App 停止 OBS 錄影的時間（epoch ms） */
   private obsStoppedAt = 0
+  private builtinFallbackPid: number | null = null
   /** 目前 PID 第一次被確認的時間 */
   private pidSeenAt = 0
   private startDelayTimer: ReturnType<typeof setTimeout> | null = null
@@ -92,6 +98,7 @@ export class RecordingSessionService implements RecordingService {
         this.pollWarning = false
         if (pid !== this.gamePid) {
           this.manualStopped = false
+          this.builtinFallbackPid = null
           this.blocked = false
           this.cancelRetry()
           this.pidSeenAt = Date.now()
@@ -236,11 +243,49 @@ export class RecordingSessionService implements RecordingService {
     live.on('stats', () => {
       if (this.active?.live === live) this.update({ kills: live.kills(), matchIndex: live.matchIndex() })
     })
-    live.on('match', (ev: 'match_start' | 'match_end', index: number) => {
+    live.on('match', (ev: 'match_start' | 'match_end', index: number, time: number) => {
       if (this.active?.live !== live) return
       if (ev === 'match_start') this.notice('matchStart', `第 ${index} 局開始`)
       else this.notice('matchEnd', `第 ${index} 局結束（計入擊殺 ${live.kills()}）`)
-      this.scheduleCuts(this.active)
+      const session = this.active
+      if (session.obs?.perMatch && !session.ending && !session.obsFailed) {
+        if (session.obsTimer) clearTimeout(session.obsTimer)
+        session.obsTimer = undefined
+        if (ev === 'match_start') {
+          session.obsEndAt = undefined
+          this.queueObs(session, async () => {
+            if (session.obsFailed) return
+            await this.stopObsMatch(session)
+            try { await session.obs!.startMatch(index); this.update({ obsRecording: true }) }
+            catch (error) {
+              session.obsFailed = true
+              this.notice('warning', `OBS 無法開始逐局錄影：${String(error)}`)
+              // 重新建立擷取工作，讓內建編碼器從新的時間軸開始。
+              const fallback = this.deps.getSettings().obsFallbackBuiltin
+              if (fallback) {
+                this.builtinFallbackPid = session.pid
+                void this.serialize(async () => {
+                  if (await this.finish() && this.running && this.gamePid && !this.manualStopped && !this.state.paused) {
+                    await this.begin(this.gamePid, true)
+                  }
+                })
+              } else {
+                await session.obs!.close()
+                session.obs = null
+                this.update({ obsRecording: false, detectionOnly: true })
+              }
+            }
+          })
+        } else {
+          const delay = Math.max(0, session.obs.meta.captureStartedAt + time * 1000 + (this.deps.obsMatchPostPadMs ?? MATCH_POST_PAD_SEC * 1000) - Date.now())
+          session.obsEndAt = Date.now() + delay
+          session.obsTimer = setTimeout(() => {
+            session.obsTimer = undefined
+            this.queueObs(session, () => this.stopObsMatch(session))
+          }, delay)
+        }
+      }
+      this.scheduleCuts(session)
     })
     return live
   }
@@ -277,9 +322,10 @@ export class RecordingSessionService implements RecordingService {
       !this.manualStopped && !this.blocked && !this.retryTimer && this.deps.getSettings().autoRecord
   }
 
-  private async begin(pid: number): Promise<boolean> {
+  private async begin(pid: number, builtin = false): Promise<boolean> {
     this.log(`begin pid=${pid} backend=${this.deps.getSettings().backend} capture=${this.deps.getSettings().captureMethod}`)
     const settings = { ...this.deps.getSettings() }
+    if (builtin || this.builtinFallbackPid === pid) settings.backend = 'builtin'
     const outputDir = settings.outputDir ?? this.deps.getWatchFolders()[0] ?? this.deps.defaultOutputDir
     this.update({ ...IDLE_RECORDING_STATUS, paused: this.state.paused, phase: 'starting' })
     let session: ActiveSession | null = null
@@ -305,7 +351,7 @@ export class RecordingSessionService implements RecordingService {
       const client = new ApexrecClient(this.deps.recorderCommand)
       const live = this.createLive(id, dir)
       session = { pid, id, dir, outputDir, client, ending: false, warned: false, writes: Promise.resolve(), sequences: new Set(), live,
-        mode: settings.mode, cuts: Promise.resolve(), cutPending: false, cutting: false, failedCuts: new Set(), backend: settings.backend, obs: null, captured: false }
+        mode: settings.mode, cuts: Promise.resolve(), cutPending: false, cutting: false, failedCuts: new Set(), backend: settings.backend, obs: null, obsWork: Promise.resolve(), captured: false }
       this.active = session
       this.update({ sessionId: id, startedAt, backend: settings.backend })
       const current = session
@@ -319,8 +365,10 @@ export class RecordingSessionService implements RecordingService {
           const password = this.deps.getObsPassword?.()
           current.obs = new ObsRecording(dir, settings, password, (message) => this.notice('warning', message), this.deps.obsReconnectBaseMs)
           await current.obs.start(this.obsStoppedAt + (this.deps.obsStopGraceMs ?? OBS_STOP_GRACE_MS))
+          this.update({ obsRecording: current.obs.recording })
           current.obs.on('stopped', () => {
-            if (this.active === current && !current.ending) this.update({ detectionOnly: true })
+            if (this.active === current && !current.ending) this.update(current.obs?.perMatch ? { obsRecording: false } : { detectionOnly: true })
+            if (current.obs?.perMatch && !current.ending) this.queueObs(current, () => this.completeObsMatches(current))
             if (this.pendingObs.has(current.id)) void this.serialize(() => this.finishPendingObs(current))
             else if (this.active === current && !current.ending && current.obs?.meta.adopted && current.obs.meta.outputPath) {
               this.manualStopped = true
@@ -446,6 +494,31 @@ export class RecordingSessionService implements RecordingService {
     })().catch(onError).finally(() => { session.cutting = false })
   }
 
+  private queueObs(session: ActiveSession, action: () => Promise<void>): void {
+    session.obsWork = session.obsWork.then(action).catch((error) => {
+      this.notice('error', `OBS 逐局錄影處理失敗，已保留工作：${String(error)}`)
+    })
+  }
+
+  private async stopObsMatch(session: ActiveSession): Promise<void> {
+    const obs = session.obs
+    if (!obs?.perMatch || !obs.recording) return
+    if (!await obs.stop()) throw new Error('OBS 尚未停止錄影')
+    this.update({ obsRecording: false })
+    await this.completeObsMatches(session)
+  }
+
+  private async completeObsMatches(session: ActiveSession): Promise<void> {
+    const obs = session.obs
+    if (!obs?.perMatch) return
+    await session.live.flush()
+    const config = JSON.parse(await fs.promises.readFile(path.join(session.dir, 'recording.json'), 'utf8'))
+    session.cuts = session.cuts.then(async () => {
+      const paths = await finalizeObsMatches(session.dir, this.deps, config, obs.matches, false, () => obs.save(), obs.meta)
+      if (paths.length) this.finalized(paths)
+    }).catch((error) => this.notice('error', `OBS 逐局影片入庫失敗，收尾時將重試：${String(error)}`))
+  }
+
   private async crashed(session: ActiveSession, error: Error): Promise<void> {
     if (this.active !== session || session.ending) return
     this.recordEvent(session, { ev: 'gap', pts: this.state.durationSec, message: error.message })
@@ -502,6 +575,8 @@ export class RecordingSessionService implements RecordingService {
     const session = this.active
     if (!session) return true
     session.ending = true
+    if (session.obsTimer) clearTimeout(session.obsTimer)
+    await session.obsWork
     this.clearDiskTimer()
     try { await session.client.stop() }
     catch (error) { this.notice('error', `錄影程序停止失敗，將收尾已完成段落：${String(error)}`) }
@@ -524,9 +599,17 @@ export class RecordingSessionService implements RecordingService {
         this.idle()
         return true
       }
+      if (session.obs?.perMatch && session.obs.recording) {
+        const deadline = session.obsEndAt ?? Date.now() + (this.deps.obsMatchPostPadMs ?? MATCH_POST_PAD_SEC * 1000)
+        const delay = Math.max(0, deadline - Date.now())
+        if (delay) await new Promise((resolve) => setTimeout(resolve, delay))
+        await this.stopObsMatch(session)
+        await session.cuts
+      }
       if (session.obs) {
         const ready = await session.obs.stop()
         if (!session.obs.meta.adopted) this.obsStoppedAt = Date.now()
+        if (!ready && session.obs.perMatch) throw new Error('OBS 逐局錄影尚未停止，已保留工作')
         if (!ready) {
           this.pendingObs.set(session.id, session)
           this.active = null

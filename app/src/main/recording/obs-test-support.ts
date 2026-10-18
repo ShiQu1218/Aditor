@@ -5,17 +5,19 @@ const { WebSocketServer } = require('ws')
 const { encode, decode } = require('@msgpack/msgpack')
 const hash = (value: string): string => createHash('sha256').update(value).digest('base64')
 
-export async function fakeObs(options: { password?: string; recording?: boolean; outputPath?: string; duration?: number; stall?: 'hello' | 'request' } = {}) {
+export async function fakeObs(options: { password?: string; recording?: boolean; outputPath?: string; outputPaths?: string[]; duration?: number; stall?: 'hello' | 'request' } = {}) {
   const server = new WebSocketServer({ host: '127.0.0.1', port: 0 })
   await new Promise<void>((resolve) => server.once('listening', resolve))
   let recording = options.recording ?? false
   const calls: string[] = []
+  let outputPath = options.outputPath ?? ''
+  let fileIndex = 0
   const sockets = new Set<any>()
   const send = (socket: any, value: object): void => socket.send(socket.protocol === 'obswebsocket.msgpack' ? encode(value) : JSON.stringify(value))
   const event = (outputState: string): void => {
     recording = outputState !== 'OBS_WEBSOCKET_OUTPUT_STOPPED'
     for (const socket of sockets) send(socket, { op: 5, d: { eventType: 'RecordStateChanged', eventIntent: 64,
-      eventData: { outputState, outputActive: recording, outputPath: options.outputPath ?? '' } } })
+      eventData: { outputState, outputActive: recording, outputPath } } })
   }
   server.on('connection', (socket: any) => {
     sockets.add(socket)
@@ -38,8 +40,8 @@ export async function fakeObs(options: { password?: string; recording?: boolean;
       let responseData: object = {}
       if (requestType === 'GetVersion') responseData = { obsVersion: '31.0.0', obsWebSocketVersion: '5.5.0' }
       if (requestType === 'GetRecordStatus') responseData = { outputActive: recording, outputDuration: options.duration ?? 10000 }
-      if (requestType === 'StartRecord') event('OBS_WEBSOCKET_OUTPUT_STARTED')
-      if (requestType === 'StopRecord') { event('OBS_WEBSOCKET_OUTPUT_STOPPED'); responseData = { outputPath: options.outputPath ?? '' } }
+      if (requestType === 'StartRecord') { outputPath = options.outputPaths?.[fileIndex++] ?? outputPath; event('OBS_WEBSOCKET_OUTPUT_STARTED') }
+      if (requestType === 'StopRecord') { event('OBS_WEBSOCKET_OUTPUT_STOPPED'); responseData = { outputPath } }
       send(socket, { op: 7, d: { requestType, requestId, requestStatus: { result: true, code: 100 }, responseData } })
     })
   })

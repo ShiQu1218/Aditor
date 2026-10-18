@@ -102,7 +102,7 @@ export function LiveScreen({ onBack, onOpenVideo, onOpenLibrary }: LiveScreenPro
       </div>
     </div>
   )
-  else if (obs) message = <div className="live-message" role="status">{status.detectionOnly ? t.detectionOnly : t.obsRecording}</div>
+  else if (obs) message = <div className="live-message" role="status">{status.detectionOnly ? t.detectionOnly : status.obsRecording === false ? rt.obsStandby : t.obsRecording}</div>
   else if (player.error?.kind === 'unsupported') message = <div className="live-message error" role="alert">{fill(t.unsupported, { mime: player.error.mime })}</div>
   else if (player.error?.kind === 'load') message = <div className="live-message error" role="alert">{fill(t.loadFailed, { message: player.error.message })}</div>
   else if (state && !state.mime) message = <div className="live-message">{t.waitingInit}</div>
@@ -113,7 +113,7 @@ export function LiveScreen({ onBack, onOpenVideo, onOpenLibrary }: LiveScreenPro
         <button type="button" className="icon-btn" aria-label={t.back} onClick={onBack}><ChevronLeft className="ic" /></button>
         <h1 id="live-title">{t.title}</h1>
         <div className="live-badges">
-          {sameSession && status.phase === 'recording' && <span className="live-badge rec">{status.detectionOnly ? rt.detectionOnly : obs ? rt.obsRecording : t.recording}</span>}
+          {sameSession && status.phase === 'recording' && <span className="live-badge rec">{status.detectionOnly ? rt.detectionOnly : obs ? status.obsRecording === false ? rt.obsStandby : rt.obsRecording : t.recording}</span>}
           <span className="live-badge">{sameSession && status.matchIndex !== null ? fill(t.match, { n: status.matchIndex }) : t.noMatch}</span>
           <span className="live-badge">{fill(t.kills, { n: sameSession ? status.kills : 0 })}</span>
         </div>

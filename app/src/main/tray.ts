@@ -45,7 +45,7 @@ export function createRecordingTray(opts: RecordingTrayOptions, deps: TrayDepend
     const image = icon(status)
     if (image !== shownImage) tray.setImage(image)
     shownImage = image
-    const label = status.phase === 'recording' ? status.detectionOnly ? '即時偵測中（未錄影）' : status.backend === 'obs' ? '錄影中（OBS）' : phaseLabels[status.phase] : phaseLabels[status.phase]
+    const label = status.phase === 'recording' ? status.detectionOnly ? '即時偵測中（未錄影）' : status.backend === 'obs' ? status.obsRecording === false ? '待命（OBS，等待對局）' : '錄影中（OBS）' : phaseLabels[status.phase] : phaseLabels[status.phase]
     tray.setToolTip(`Apex Highlighter — ${label}`)
     const active = status.phase === 'starting' || status.phase === 'recording'
     // 錄影中狀態每幾秒推播一次；選單開著時被換掉，點選就不會觸發，所以內容沒變就不重建。
