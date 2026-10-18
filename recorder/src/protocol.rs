@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::types::{AudioConfig, EncodeConfig, FramesSpec};
+use crate::types::{AudioConfig, CaptureMethod, EncodeConfig, FramesSpec};
 
 /// 單行上限（超過視為 bad_request）。
 pub const MAX_LINE_BYTES: usize = 64 * 1024;
@@ -32,6 +32,9 @@ pub struct StartArgs {
     pub encode: Option<EncodeConfig>,
     pub audio: Option<AudioConfig>,
     pub frames: FramesSpec,
+    /// 擷取方式；省略時為 `wgc`，未知值視為 bad_request。
+    #[serde(default)]
+    pub capture: CaptureMethod,
 }
 
 /// 回覆（帶 `id`）。
@@ -159,6 +162,23 @@ mod tests {
             panic!()
         };
         assert!(args.encode.is_none());
+        assert_eq!(args.capture, CaptureMethod::Wgc);
+    }
+
+    #[test]
+    fn parses_capture_method_and_rejects_unknown() {
+        let base = r#"{"id":4,"cmd":"start","pid":1,"session_dir":"x","session_id":"x","encode":null,"audio":null,"frames":{"banner":[1,2,3,4],"spec":[5,6,7,8],"base":[1920,1080]}"#;
+        for (value, expected) in [("wgc", CaptureMethod::Wgc), ("dda", CaptureMethod::Dda)] {
+            let line = format!(r#"{base},"capture":"{value}"}}"#);
+            let Command::Start(args) = parse_request(&line).unwrap().cmd else {
+                panic!("not start")
+            };
+            assert_eq!(args.capture, expected);
+        }
+        for bad in [r#""nvfbc""#, r#""DDA""#, "1", "null"] {
+            let line = format!(r#"{base},"capture":{bad}}}"#);
+            assert_eq!(parse_request(&line).unwrap_err().0, Some(4), "{bad}");
+        }
     }
 
     #[test]

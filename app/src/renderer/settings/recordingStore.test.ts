@@ -51,7 +51,8 @@ describe('錄影設定驗證與遷移', () => {
     ['codec', ['hevc', 'h264', 'av1']],
     ['fps', [30, 60, 120, 144]],
     ['height', [0, 720, 1080, 1440]],
-    ['postAnalysis', ['none', 'afterExit', 'perMatch']]
+    ['postAnalysis', ['none', 'afterExit', 'perMatch']],
+    ['captureMethod', ['wgc', 'dda']]
   ] as const)('%s 只接受允許的列舉值', (field, allowed) => {
     for (const value of allowed) expect(migrate({ [field]: value })[field]).toBe(value)
     for (const value of ['invalid', null, false, {}, [], -1, 999]) expect(migrate({ [field]: value })[field]).toBe(defaults[field])

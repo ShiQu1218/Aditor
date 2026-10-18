@@ -54,9 +54,6 @@ unsafe extern "system" fn paint(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) ->
                 GetClientRect(hwnd, &mut rect).unwrap();
                 static TICK: AtomicU32 = AtomicU32::new(0);
                 let tick = TICK.fetch_add(1, Ordering::Relaxed);
-                let brush = CreateSolidBrush(COLORREF(0x804020 + (tick % 64) * 0x010101));
-                FillRect(dc, &rect, brush);
-                let _ = DeleteObject(brush.into());
                 let block = RECT {
                     left: rect.right / 10,
                     top: rect.bottom / 5,
@@ -65,6 +62,11 @@ unsafe extern "system" fn paint(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) ->
                 };
                 let brush = CreateSolidBrush(COLORREF(0x0000ff));
                 FillRect(dc, &block, brush);
+                let _ = DeleteObject(brush.into());
+                // 背景不覆蓋紅色方塊：DDA 讀合成後的桌面，可能看到畫到一半的 GDI 視窗。
+                let _ = ExcludeClipRect(dc, block.left, block.top, block.right, block.bottom);
+                let brush = CreateSolidBrush(COLORREF(0x804020 + (tick % 64) * 0x010101));
+                FillRect(dc, &rect, brush);
                 let _ = DeleteObject(brush.into());
                 let _ = EndPaint(hwnd, &ps);
                 let _ = GdiFlush();
@@ -332,7 +334,8 @@ impl Mapping {
                         banner
                             .chunks_exact(3)
                             .all(|p| p[0] < 8 && p[1] < 8 && p[2] > 247),
-                        "banner 未擷取到紅色色塊"
+                        "banner 未擷取到紅色色塊：{:?}",
+                        &banner[..12]
                     );
                     assert_eq!((self.u32(36), self.u32(40)), (640, 360));
                     return seq;
@@ -490,15 +493,25 @@ fn resources(child: &Child) -> (f64, usize) {
     )
 }
 
-fn record(seconds: u64, perf: bool) {
+fn record(seconds: u64, perf: bool, capture: &str) {
     let _guard = HARDWARE.lock().unwrap();
-    let _window = Window::open(
-        if perf { 2560 } else { 1280 },
-        if perf { 1440 } else { 720 },
-    );
+    // DDA 擷取整個螢幕，小圖 ROI 以螢幕座標換算；測試視窗鋪滿主螢幕才與 WGC 的檢查一致。
+    // 新視窗出現有淡入動畫；DDA 看的是合成後的桌面，等畫面穩定再開始，避免第一張小圖還是舊桌面。
+    let _window = if capture == "dda" {
+        let window = Window::open(i32::MAX, i32::MAX);
+        thread::sleep(Duration::from_secs(1));
+        window
+    } else {
+        Window::open(
+            if perf { 2560 } else { 1280 },
+            if perf { 1440 } else { 720 },
+        )
+    };
     let dir = directory();
     let mut process = Process::open();
-    process.send(start(&dir, 1, true));
+    let mut request = start(&dir, 1, true);
+    request["capture"] = json!(capture);
+    process.send(request);
     let started = process.until(|v| v["ev"] == "started" || v["ok"] == false);
     assert_eq!(started["ev"], "started", "{started}");
     assert_eq!(process.reply(1)["ok"], true);
@@ -533,7 +546,7 @@ fn record(seconds: u64, perf: bool) {
             .rev()
             .find(|v| v["ev"] == "stats")
             .unwrap();
-        let report = json!({"seconds":elapsed,"logical_processors":cores,"cpu_percent_machine":(cpu_end-cpu_begin)/elapsed/f64::from(cores)*100.0,
+        let report = json!({"capture":capture,"seconds":elapsed,"logical_processors":cores,"cpu_percent_machine":(cpu_end-cpu_begin)/elapsed/f64::from(cores)*100.0,
             "peak_working_set_bytes":peak,"width":started["width"],"height":started["height"],"encoder":started["encoder"],"fps":started["fps"],
             "dropped":stats["dropped"],"small_dropped":stats["small_dropped"],"segment_bytes":index.iter().map(|s|s["bytes"].clone()).collect::<Vec<_>>(),"directory":dir});
         fs::write(
@@ -547,7 +560,12 @@ fn record(seconds: u64, perf: bool) {
 
 #[test]
 fn ipc_records_six_seconds_with_audio_segments_and_shared_frames() {
-    record(6, false);
+    record(6, false, "wgc");
+}
+
+#[test]
+fn ipc_records_six_seconds_via_desktop_duplication() {
+    record(6, false, "dda");
 }
 
 #[test]
@@ -617,6 +635,7 @@ fn cli_records_the_requested_window_and_reports_resources() {
     let report: Value = serde_json::from_slice(&output.stdout).unwrap();
     assert_eq!(report["encoder"], "hevc_nvenc");
     assert_eq!(report["width"], 1280);
+    assert_eq!(report["capture"], "wgc");
     assert!(report["cpu_percent_machine"].as_f64().unwrap() >= 0.0);
     assert!(report["peak_working_set_bytes"].as_u64().unwrap() > 0);
     assert!(!report["segment_bytes"].as_array().unwrap().is_empty());
@@ -648,5 +667,11 @@ fn audio_start_failure_releases_resources_and_eof_flushes_encoded_tail() {
 #[test]
 #[ignore = "60 秒實機資源量測；以 release apexrec 執行並保留 measurement.json"]
 fn measure_sixty_seconds_hevc_1440p60() {
-    record(60, true);
+    record(60, true, "wgc");
+}
+
+#[test]
+#[ignore = "60 秒實機資源量測（DDA 擷取整個螢幕）；以 release apexrec 執行並保留 measurement.json"]
+fn measure_sixty_seconds_hevc_1440p60_dda() {
+    record(60, true, "dda");
 }

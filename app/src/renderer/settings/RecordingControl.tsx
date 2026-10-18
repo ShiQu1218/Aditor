@@ -62,6 +62,9 @@ export function RecordingControl({ field, ids, state, settings, controller }: {
     case 'fps':
       options = [30, 60, 120, 144].map((value) => ({ value: String(value), label: String(value) }))
       break
+    case 'captureMethod':
+      options = [{ value: 'wgc', label: t.captureWgc }, { value: 'dda', label: t.captureDda }]
+      break
     case 'postAnalysis':
       options = [{ value: 'none', label: t.analysisNone }, { value: 'afterExit', label: t.analysisAfterExit }, { value: 'perMatch', label: t.analysisPerMatch }]
       break

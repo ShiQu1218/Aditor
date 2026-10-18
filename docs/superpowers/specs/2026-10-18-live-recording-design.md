@@ -111,6 +111,7 @@
 - 每 3 秒列舉程序，找 `r5apex.exe`／`r5apex_dx12.exe`。找到後把 PID 傳給 `apexrec`。
 - `apexrec` 依 PID 列舉頂層可見視窗（最大面積者）建立 WGC。視窗重建（換解析度／切全螢幕）時自動重建擷取並在 `events.jsonl` 記錄。
 - 獨佔全螢幕可能得到黑畫面：連續 3 秒全黑則改用 `CreateForMonitor`（遊戲視窗所在螢幕）。設定頁建議無邊框視窗。
+- 擷取方式可選 DDA（DXGI Desktop Duplication，設定「擷取方式」）：擷取遊戲視窗所在的整個螢幕，不要求 DWM 合成遊戲視窗，避免 WGC 視窗擷取讓全螢幕遊戲退出獨立翻轉而多一格延遲。裝置建在擁有該螢幕的顯示卡上；`AcquireNextFrame` 以 0 逾時輪詢（等待時會占住共用裝置鎖）；時間戳取 `LastPresentTime` 並以編碼器同樣的四捨五入規則對齊到 1/fps 格點。限制：同螢幕上蓋住遊戲的視窗也會被錄；旋轉螢幕維持面板原生方向；HDR 由系統轉成 SDR。
 
 ### 3.2 狀態機
 
@@ -204,7 +205,7 @@ JSON-lines，stdin 指令、stdout 事件，stderr 為日誌。每行 ≤ 64 KB�
 
 指令：
 - `{"id":1,"cmd":"hello"}` → `{"id":1,"ok":true,"version":"0.1.0","encoders":["hevc_nvenc",…],"audio":{"render":[…],"capture":[…]}}`
-- `{"id":2,"cmd":"start","pid":1234,"session_dir":"…","session_id":"…","encode":{"codec":"hevc","encoder":"auto","fps":60,"height":0,"bitrate_kbps":40000},"audio":{"render":"default","capture":"default","mic_gain":1.0,"mic_enabled":true},"frames":{"banner":[x,y,w,h],"spec":[x,y,w,h],"base":[1920,1080]}}`（`encode` 為 `null` 時只擷取不編碼）
+- `{"id":2,"cmd":"start","pid":1234,"session_dir":"…","session_id":"…","encode":{"codec":"hevc","encoder":"auto","fps":60,"height":0,"bitrate_kbps":40000},"audio":{"render":"default","capture":"default","mic_gain":1.0,"mic_enabled":true},"frames":{"banner":[x,y,w,h],"spec":[x,y,w,h],"base":[1920,1080]}}`（`encode` 為 `null` 時只擷取不編碼；選填 `"capture":"wgc"|"dda"`，預設 `wgc`，其他值為 `bad_request`）
 - `{"id":3,"cmd":"stop"}`；`{"id":4,"cmd":"ping"}`（小圖 ROI 只在 `start` 指定；要換 ROI 就 stop 再 start）
 
 事件（無 `id`）：`{"ev":"started","encoder":"hevc_nvenc","width":2560,"height":1440,"fps":60,"shm":"Local\\apexrec-…"}`、`{"ev":"segment","seq":12,"pts":22.0,"dur":2.0}`、`{"ev":"stats","fps_in":…,"fps_enc":…,"dropped":…,"q":…}`（每 5 秒）、`{"ev":"window_lost"}`、`{"ev":"stopped","reason":"…"}`、`{"ev":"error","code":"…","message":"…"}`。

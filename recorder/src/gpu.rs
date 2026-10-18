@@ -3,11 +3,14 @@
 use anyhow::{Context, Result};
 use windows::core::Interface;
 use windows::Win32::Foundation::HMODULE;
-use windows::Win32::Graphics::Direct3D::{D3D_DRIVER_TYPE_HARDWARE, D3D_FEATURE_LEVEL_11_0};
+use windows::Win32::Graphics::Direct3D::{
+    D3D_DRIVER_TYPE, D3D_DRIVER_TYPE_HARDWARE, D3D_DRIVER_TYPE_UNKNOWN, D3D_FEATURE_LEVEL_11_0,
+};
 use windows::Win32::Graphics::Direct3D11::{
     D3D11CreateDevice, ID3D11Device, ID3D11DeviceContext, ID3D11Multithread,
     D3D11_CREATE_DEVICE_BGRA_SUPPORT, D3D11_CREATE_DEVICE_VIDEO_SUPPORT, D3D11_SDK_VERSION,
 };
+use windows::Win32::Graphics::Dxgi::IDXGIAdapter;
 
 #[derive(Clone)]
 pub struct Gpu {
@@ -22,13 +25,23 @@ unsafe impl Sync for Gpu {}
 impl Gpu {
     /// 在預設硬體轉接器上建立裝置（BGRA＋video 支援，並開啟 multithread 保護）。
     pub fn create() -> Result<Self> {
+        Self::create_with(None, D3D_DRIVER_TYPE_HARDWARE)
+    }
+
+    /// 在指定轉接器上建立裝置（DDA 必須使用擁有目標螢幕的轉接器）。
+    pub fn create_on(adapter: &IDXGIAdapter) -> Result<Self> {
+        // 指定轉接器時 driver type 必須是 UNKNOWN。
+        Self::create_with(Some(adapter), D3D_DRIVER_TYPE_UNKNOWN)
+    }
+
+    fn create_with(adapter: Option<&IDXGIAdapter>, driver: D3D_DRIVER_TYPE) -> Result<Self> {
         let mut device = None;
         let mut context = None;
         // SAFETY: 標準 D3D11CreateDevice 呼叫；輸出參數由 windows crate 管理。
         unsafe {
             D3D11CreateDevice(
-                None,
-                D3D_DRIVER_TYPE_HARDWARE,
+                adapter,
+                driver,
                 HMODULE::default(),
                 D3D11_CREATE_DEVICE_BGRA_SUPPORT | D3D11_CREATE_DEVICE_VIDEO_SUPPORT,
                 Some(&[D3D_FEATURE_LEVEL_11_0]),
