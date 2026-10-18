@@ -235,14 +235,29 @@ struct Session {
     last_stats: Instant,
     previous: EncodeStats,
 }
+/// 目錄裡是否已有 apexrec 寫出的檔案（init、索引、session.json 或段落）。
+fn has_recorder_output(dir: &Path) -> Result<bool> {
+    for entry in fs::read_dir(dir).context("讀取錄影目錄失敗")? {
+        let name = entry.context("讀取錄影目錄失敗")?.file_name();
+        let name = name.to_string_lossy();
+        if matches!(name.as_ref(), "init.mp4" | "index.jsonl" | "session.json")
+            || (name.starts_with("seg_") && name.ends_with(".m4s"))
+        {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
 impl Session {
     fn open(args: &StartArgs, events: EventSink) -> Result<Self, BackendError> {
         let dir = Path::new(&args.session_dir);
         let prepare = || -> Result<()> {
             fs::create_dir_all(dir).context("建立錄影目錄失敗")?;
+            // 主程序會先寫自己的 recording.json；只拒絕已有本程式輸出的目錄，避免覆寫既有錄影。
             ensure!(
-                fs::read_dir(dir)?.next().is_none(),
-                "錄影目錄必須為空，避免覆寫既有工作"
+                !has_recorder_output(dir)?,
+                "錄影目錄已有錄影輸出，避免覆寫既有工作"
             );
             check_disk(dir)
         };
@@ -640,6 +655,21 @@ fn timestamp() -> Result<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn app_metadata_is_allowed_but_recorder_output_is_not() {
+        let dir = std::env::temp_dir().join(format!("apexrec-out-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        assert!(!has_recorder_output(&dir).unwrap());
+        fs::write(dir.join("recording.json"), "{}").unwrap();
+        assert!(!has_recorder_output(&dir).unwrap());
+        fs::write(dir.join("seg_000001.m4s"), "").unwrap();
+        assert!(has_recorder_output(&dir).unwrap());
+        fs::remove_file(dir.join("seg_000001.m4s")).unwrap();
+        fs::write(dir.join("index.jsonl"), "").unwrap();
+        assert!(has_recorder_output(&dir).unwrap());
+        fs::remove_dir_all(&dir).unwrap();
+    }
     #[test]
     fn output_dimensions_are_even_and_preserve_aspect_ratio() {
         assert_eq!(output_size(2560, 1440, 1080).unwrap(), (1920, 1080));

@@ -51,7 +51,9 @@ export function createRecordingTray(opts: RecordingTrayOptions, deps: TrayDepend
         enabled: status.phase !== 'finalizing',
         click: () => run(async () => {
           if (active) await opts.service.stopManual()
-          else if (!await opts.service.startManual()) opts.notifyError('無法開始錄影，請確認 Apex 已啟動並查看錄影狀態。')
+          else if (!await opts.service.startManual()) {
+            opts.notifyError(opts.service.status().error?.message ?? '無法開始錄影，請確認 Apex 正在執行。')
+          }
         })
       },
       {

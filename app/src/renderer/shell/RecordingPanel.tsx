@@ -34,7 +34,11 @@ export function RecordingPanel({ onClose, onWatchLive }: { onClose: () => void; 
     setActionError(null)
     try {
       if (action === 'start') {
-        if (!await api.startManual()) setActionError(t.apexNotRunning)
+        if (!await api.startManual()) {
+          // 失敗原因（例如錄影器錯誤）優先顯示；沒有錯誤才是找不到 Apex
+          const latest = await api.getStatus()
+          setActionError(latest.error?.message ?? t.apexNotRunning)
+        }
       } else if (action === 'stop') await api.stopManual()
       else await api.setPaused(paused!)
       await refresh()

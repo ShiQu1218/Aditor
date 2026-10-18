@@ -560,11 +560,11 @@ fn obs_mode_eof_and_failed_start_allow_restart_without_overwriting_files() {
     bad["frames"]["banner"] = json!([1919, 0, 8, 8]);
     process.send(bad);
     assert_eq!(process.reply(1)["code"], "bad_request");
-    fs::write(dir.join("keep.txt"), "保留既有資料").unwrap();
+    fs::write(dir.join("index.jsonl"), "保留既有資料").unwrap();
     process.send(start(&dir, 2, false));
     assert_eq!(process.reply(2)["ok"], false);
     assert_eq!(
-        fs::read_to_string(dir.join("keep.txt")).unwrap(),
+        fs::read_to_string(dir.join("index.jsonl")).unwrap(),
         "保留既有資料"
     );
     let dir = directory();
