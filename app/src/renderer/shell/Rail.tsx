@@ -1,5 +1,5 @@
 import React from 'react'
-import { LayoutGrid, Film, Keyboard, SlidersHorizontal, LogoMark } from '../components/icons'
+import { LayoutGrid, Film, Video, Keyboard, SlidersHorizontal, LogoMark } from '../components/icons'
 import { QueueRing } from './QueueRing'
 import { shellI18n } from '../i18n/zh-TW'
 import { recordingI18n } from '../i18n/zh-TW'
@@ -45,7 +45,7 @@ export function Rail({ active, projectCount, onNavigate, onShortcuts, onQueue, q
       <button type="button" className="rail-btn" data-tip={recordingI18n.title}
         aria-label={recordingPhase === 'recording' || recordingPhase === 'error' ? recordingI18n.phases[recordingPhase] : recordingI18n.title}
         aria-haspopup="dialog" onClick={onRecording}>
-        <Film className="ic lg" />
+        <Video className="ic lg" />
         {(recordingPhase === 'recording' || recordingPhase === 'error') && <span className={`rec-dot${recordingPhase === 'error' ? ' error' : ''}`} aria-hidden="true" />}
       </button>
       <div className="rail-spacer" />

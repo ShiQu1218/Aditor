@@ -1,5 +1,24 @@
 // 影片庫的純決策函式：卡片開啟行為與 Esc 的分層關閉。不依賴 React／DOM，便於單獨測試。
 import type { LibraryEntry } from '../../main/library'
+import type { QueueItemState } from '../../shared/queueState'
+import { i18n } from '../i18n/zh-TW'
+
+export function fileName(path: string): string {
+  return path.split(/[/\\]/).pop() || path
+}
+
+export function thumbnailUrl(path: string): string {
+  return `file://${encodeURI(path.replace(/\\/g, '/')).replace(/#/g, '%23').replace(/\?/g, '%3F')}`
+}
+
+/** 未排隊的 pending 與真正等待分析的項目分開顯示。 */
+export function cardStatusText(entry: Pick<LibraryEntry, 'status'>, queueState: QueueItemState): string {
+  const t = i18n.library.card
+  if (entry.status === 'done') return ''
+  if (entry.status === 'error') return t.error
+  if (entry.status === 'analyzing') return t.analyzing
+  return queueState === 'idle' ? t.notAnalyzed : t.waiting
+}
 
 export type CardActivation = 'open' | 'toast-not-analyzed' | 'toast-blocked' | 'none'
 

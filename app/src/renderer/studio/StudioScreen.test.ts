@@ -85,7 +85,8 @@ describe('StudioScreen SSR smoke', () => {
   test('not loaded yet: shows the loading view, never the fake default doc (1920×1080 / 100s)', () => {
     const out = render()
     expect(out).toContain('載入分析結果')
-    expect(out).not.toContain('class="studio"')
+    expect(out).not.toContain('class="stage"')
+    expect(out).not.toContain('<video')
     expect(out).not.toContain('1920×1080')
   })
 

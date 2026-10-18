@@ -33,6 +33,15 @@ describe('settings store（設定儲存）', () => {
     expect(JSON.parse(fs.readFileSync(file, 'utf-8')).before).toBe(10)
   })
 
+  it('同日影片列收合偏好寫入磁碟，重載保留，無效值不覆蓋', () => {
+    const store = new SettingsStore(file)
+    expect(store.get().sameDayVideosCollapsed).toBe(false)
+    expect(store.set({ sameDayVideosCollapsed: true }).persisted).toBe(true)
+    expect(new SettingsStore(file).get().sameDayVideosCollapsed).toBe(true)
+    store.set({ sameDayVideosCollapsed: 'auto' as unknown as boolean })
+    expect(loadSettings(file).sameDayVideosCollapsed).toBe(true)
+  })
+
   it('錄影新設定預設、舊 FPS 遷移、無效值與重新載入', () => {
     const store = new SettingsStore(file)
     expect(store.get().recording).toMatchObject({ preset: 'speed', forceAspect: false, aspectMode: 'fit',

@@ -30,6 +30,7 @@ const FIELD_CONSUMERS: Record<string, Array<[string, RegExp]>> = {
   projectAutosave: [['renderer/editor/ProjectProvider.tsx', /projectAutosave/]],
   defaultOutDir: [['renderer/studio/StudioScreen.tsx', /defaultOutDir/]],
   projectTrackCollapsed: [['renderer/studio/StudioScreen.tsx', /cfg\.projectTrackCollapsed/]],
+  sameDayVideosCollapsed: [['renderer/studio/SameDayVideos.tsx', /settings\.sameDayVideosCollapsed/]],
   lastProjectId: [['renderer/editor/projectIo.ts', /lastProjectId/], ['main/project-ipc.ts', /lastProjectId/]],
   // 錄影服務與系統匣由 A1／A3 接線；本任務驗證實際的設定讀寫與驗證入口。
   recording: [['main/settings.ts', /recording: pickRecording/], ['renderer/settings/RecordingControl.tsx', /controller\.setRecording/]]

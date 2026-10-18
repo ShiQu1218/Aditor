@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 // 匯出進行中的編輯鎖定：側欄、專案軌、來源時間軸一律 inert（不只是資料層默默拒絕），結束後解除。
-import { afterEach, describe, expect, test } from 'vitest'
+import { afterEach, describe, expect, test, vi } from 'vitest'
 import { cleanupMounted, click, flush, focusEl, installDomShims, press } from '../../../test/dom'
 import { mountStudio, STUDIO_VIDEO, type StudioMount } from '../../../test/studioHarness'
 
@@ -19,12 +19,15 @@ describe('export lock', () => {
   test('while an export runs the side panel, project track and source timeline are inert; they unlock when it ends', async () => {
     installDomShims({ width: 1366, height: 768 })
     let finish: (r: unknown) => void = () => undefined
+    const onOpenVideo = vi.fn()
     s = await mountStudio({
+      onOpenVideo,
       items: [
         { id: 'i1', source: STUDIO_VIDEO, start: 10, end: 20 },
         { id: 'i2', source: STUDIO_VIDEO, start: 100, end: 112 }
       ],
       api: {
+        entries: [STUDIO_VIDEO, 'D:/另一場.mp4'].map((path) => ({ path, addedAt: 1, favorite: false, progress: 1, status: 'done' })),
         settings: { defaultOutDir: 'D:/out' },
         overrides: { export: { start: () => new Promise((r) => (finish = r)) } }
       }
@@ -51,6 +54,9 @@ describe('export lock', () => {
     // 縮小抽屜、收起再展開側欄：新掛載的側欄也必須是 inert
     press(document.activeElement ?? document.body, 'Escape')
     expect(q('.xd')).toBeNull()
+    click(q('.same-day-card:not([aria-current])')!)
+    expect(onOpenVideo).not.toHaveBeenCalled()
+    expect(document.body.textContent).toContain('匯出')
     const exportButton = q('.plane-head > .btn-accent')!
     expect(exportButton.closest('[inert]')).toBeNull()
     click(exportButton)

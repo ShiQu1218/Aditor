@@ -3,6 +3,7 @@ import React from 'react'
 import {
   LayoutGrid,
   Film,
+  Video,
   Keyboard,
   SlidersHorizontal,
   ListVideo,
@@ -41,6 +42,7 @@ import {
 export {
   LayoutGrid,
   Film,
+  Video,
   Keyboard,
   SlidersHorizontal,
   ListVideo,
