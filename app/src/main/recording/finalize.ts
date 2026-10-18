@@ -171,6 +171,10 @@ async function remuxMatch(dir: string, deps: RecordingDeps, config: SessionSnaps
   let recorded = false
   try {
     await writeJson(pending, { output, part })
+    for (const file of segmentPaths(dir, entries)) {
+      const stat = await fs.promises.lstat(file)
+      if (!stat.isFile() || stat.isSymbolicLink()) throw new Error(`逐局剪檔缺少有效片段：${file}`)
+    }
     await remux(deps.ffmpegPath, segmentPaths(dir, entries), part)
     if (fs.existsSync(output)) throw new Error(`輸出影片已存在：${output}`)
     const cut: MatchCut = { index, ...match, firstSeq: entries[0].seq, lastSeq: entries.at(-1)!.seq,
@@ -258,7 +262,10 @@ export async function cutMatches(dir: string, deps: RecordingDeps, options: Matc
     const end = match.end
     if (end === null || (!finishing && !entries.some((entry) => entry.pts >= end + MATCH_POST_PAD_SEC))) continue
     const range = selectMatchEntries(entries, match.start, end)
-    if (!range.length) continue
+    if (!range.length) {
+      cutError(index, new Error('對局範圍沒有錄影片段，已保留工作'), options)
+      continue
+    }
     try {
       const cut = await remuxMatch(dir, deps, config, marker, index, { start: match.start, end }, range)
       await completeCut(dir, deps, config, marker, cut, range, finishing, trusted)
@@ -343,10 +350,15 @@ export async function finalizeSession(dir: string, deps: RecordingDeps): Promise
       const live = await readOptional<LiveFile>(path.join(dir, 'live.json'))
       const outputs = await cutMatches(dir, deps, { finishing: true })
       const matches = await readOptional<MatchMarker>(path.join(dir, 'matches.json'))
+      if (liveMatches(live).length && !matches?.cuts.length) throw new Error('對局沒有可剪出的片段，已保留工作')
       if (liveMatches(live).length && matches?.cuts.length) {
         await fs.promises.rm(dir, { recursive: true })
         return outputs
       }
+    }
+    if (config.mode === 'match' && await readOptional(path.join(dir, 'pruned.json'))) {
+      await fs.promises.rm(dir, { recursive: true })
+      return []
     }
     const { output, part } = await reserveOutput(outputDir, outputBase(config.startedAt))
     try {

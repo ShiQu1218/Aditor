@@ -4,6 +4,9 @@ import path from 'path'
 import { EventEmitter } from 'events'
 import { PassThrough, Writable } from 'stream'
 import { cutMatches, finalizeSession, selectMatchEntries } from './finalize'
+import { RecordingSessionService } from './session'
+import { pruneSegments } from './prune'
+import { recoverSessions } from './recovery'
 import { createRecordingService } from './index'
 import type { RecordingService, RecordingSettings } from '../../shared/recording'
 import * as disk from './disk'
@@ -399,4 +402,38 @@ describe('逐局錄影服務', () => {
     expect(r.finalized).toHaveBeenCalledTimes(2)
     expect(r.deps.enqueueAnalysis).toHaveBeenCalledTimes(2)
   })
+})
+
+it('清理過的工作可復原對局並保留倒數，無對局則不輸出', async () => {
+  const r = rig()
+  await pruneSegments(r.dir, entries, matches, null)
+  const done = vi.fn(); const failed = vi.fn()
+  await recoverSessions(r.deps, done, failed)
+  expect(failed).not.toHaveBeenCalled()
+  expect(remux.inputs[0]).toBe('初始化|' + entries.slice(2, 12).map(e => `${e.pts}|`).join(''))
+  expect(fs.existsSync(r.dir)).toBe(false)
+  const empty = rig()
+  empty.saveLive({ ...empty.live, matches: [] })
+  await pruneSegments(empty.dir, entries, [], null)
+  const count = remux.inputs.length
+  await recoverSessions(empty.deps, vi.fn(), failed)
+  expect(failed).not.toHaveBeenCalled()
+  expect(remux.inputs).toHaveLength(count)
+  expect(fs.existsSync(empty.dir)).toBe(false)
+})
+it('剪檔需要的片段遺失時明確失敗並保留工作', async () => {
+  const r = rig()
+  fs.unlinkSync(path.join(r.dir, 'seg_000005.m4s'))
+  await expect(finalizeSession(r.dir, r.deps)).rejects.toThrow()
+  expect(fs.existsSync(r.dir)).toBe(true)
+  expect(remux.inputs).toEqual([])
+})
+
+it.each([{ backend: 'builtin', mode: 'session' }, { backend: 'obs', mode: 'match' }])('其他模式不排清理：%j', async ({ backend, mode }) => {
+  const r = rig()
+  const service = new RecordingSessionService(r.deps) as any
+  const session = { backend, mode, ending: false, live: { prune: vi.fn() }, cuts: Promise.resolve() }
+  service.scheduleCuts(session)
+  await session.cuts
+  expect(session.live.prune).not.toHaveBeenCalled()
 })

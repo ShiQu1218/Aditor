@@ -145,6 +145,16 @@ export function useLivePlayer({ sessionId, mime, segments, bounds }: PlayerInput
     if (video?.paused) void video.play().catch(() => undefined)
   }, [seek])
 
+  const previousSegments = useRef(segments)
+  useEffect(() => {
+    const available = new Set(segments.map(s => s.seq))
+    if (previousSegments.current.some(s => !available.has(s.seq))) {
+      setError(error => error?.kind === 'load' ? null : error)
+    }
+    previousSegments.current = segments
+    bufferRef.current?.setSegments(segments)
+  }, [segments])
+
   const addSegment = useCallback((segment: LiveSegment): void => { bufferRef.current?.addSegment(segment) }, [])
 
   return { videoRef, current, playing, error, seek, togglePlay, jumpLive, addSegment }

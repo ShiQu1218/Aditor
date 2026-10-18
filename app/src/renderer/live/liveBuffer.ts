@@ -66,13 +66,11 @@ export class LiveBuffer {
   }
 
   setSegments(list: LiveSegment[]): void {
-    const seen = new Set(this.segments.map((s) => s.seq))
-    const fresh = list.filter((s) => !seen.has(s.seq))
-    if (fresh.length) this.segments = [...this.segments, ...fresh].sort((a, b) => a.pts - b.pts)
+    this.segments = [...list].sort((a, b) => a.pts - b.pts)
     this.pump()
   }
 
-  addSegment(segment: LiveSegment): void { this.setSegments([segment]) }
+  addSegment(segment: LiveSegment): void { this.setSegments([...this.segments.filter(s => s.seq !== segment.seq), segment]) }
 
   /** 錄影目前的結尾（秒）。 */
   liveEnd(): number {
@@ -131,11 +129,13 @@ export class LiveBuffer {
     this.busy = true
     this.options.fetchSegment(segment.seq).then((bytes) => {
       if (this.disposed) return
+      if (!this.segments.some(s => s.seq === segment.seq)) { this.busy = false; this.pump(); return }
       this.options.sourceBuffer.appendBuffer(bytes)
       this.appended.add(segment.seq)
     }).catch((error) => {
       if (this.disposed) return
       this.busy = false
+      if (!this.segments.some(s => s.seq === segment.seq)) { this.pump(); return }
       this.failures.set(segment.seq, (this.failures.get(segment.seq) ?? 0) + 1)
       if ((error as DOMException)?.name === 'QuotaExceededError') {
         // 配額不足：釋放播放頭之前的資料，下一輪（updateend）再抓這段。

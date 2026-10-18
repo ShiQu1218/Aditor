@@ -695,7 +695,7 @@ export const recordingI18n = {
     obsPort: { title: 'OBS 連接埠', desc: '預設為 4455。' },
     obsPassword: { title: 'OBS 密碼', desc: '密碼由系統加密儲存，無法查看已儲存的密碼。' },
     obsFallbackBuiltin: { title: 'OBS 連不上時改用內建錄影', desc: '關閉後仍繼續即時偵測，但不錄製影片。' },
-    mode: { title: '錄影模式', desc: '一局一個檔模式下，OBS 僅在對局期間錄影；內建錄影器整場持續錄影，每局結束後自動剪出該局（前後各留 5 秒），大廳畫面不保留；偵測不到對局時保留整段錄影' },
+    mode: { title: '錄影模式', desc: '一局一個檔模式下，OBS 僅在對局期間錄影；內建錄影器整場持續錄影，每局結束後自動剪出該局（前後各留 5 秒），只保留對局，大廳只暫存最近 15 秒，久待大廳不會持續占用磁碟；即時偵測無法運作時保留整段錄影' },
     outputDir: { title: '錄影資料夾', desc: '預設使用第一個監看資料夾；未設定時使用影片資料夾下的 Apex Highlighter。' },
     postAnalysis: { title: '錄後分析', desc: '「每局結束後」只在一局一個檔模式下於每局影片完成後立即分析；從頭錄到尾模式在收尾後分析' },
     diskWarnGb: { title: '磁碟提醒門檻', desc: '剩餘空間低於此值時通知。' },

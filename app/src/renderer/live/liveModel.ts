@@ -6,6 +6,7 @@ import { isCounted } from '../../shared/types'
 export function applyLiveUpdate(state: LiveState, update: LiveUpdate): LiveState {
   if (update.sessionId !== state.sessionId) return state
   let next = state
+  if (update.segments) next = { ...next, segments: update.segments }
   if (update.segment && !state.segments.some((s) => s.seq === update.segment!.seq)) {
     next = { ...next, segments: [...next.segments, update.segment] }
   }

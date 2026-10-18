@@ -10,6 +10,7 @@ import { EventEmitter } from 'events'
 import { isCounted } from '../../shared/types'
 import type { LiveEvent, LiveMatch, LiveSegment, LiveState, LiveUpdate } from '../../shared/recording'
 import { LiveEngine, type LiveMatchEvent, type LiveSnapshot, type LiveSpec } from './live-engine'
+import { pruneSegments } from './prune'
 import { initMimeType } from './mp4-codec'
 import { writeJson } from './finalize'
 import type { RecorderCommand } from './index'
@@ -74,6 +75,11 @@ export class LiveSession extends EventEmitter {
   private dirty = false
   private width: number | null = null
   private height: number | null = null
+  private pending: number | null = null
+  private healthy = false
+  private failed = false
+  private pruned = false
+  private restartedAt = -Infinity
 
   constructor(private options: LiveSessionOptions) { super() }
 
@@ -95,9 +101,14 @@ export class LiveSession extends EventEmitter {
     this.engine = engine
     engine.on('snapshot', (snap: LiveSnapshot) => this.onSnapshot(snap))
     engine.on('match', (event: LiveMatchEvent) => this.onMatch(event))
-    engine.on('failed', (error: Error) => this.options.notice(error.message))
+    engine.on('failed', (error: Error) => { this.failed = true; this.healthy = false; this.options.notice(error.message) })
     engine.on('warning', (message: string) => console.warn('[live]', message))
-    engine.on('restarting', ({ message }: { message: string }) => console.warn('[live] 重新啟動：', message))
+    engine.on('restarting', ({ message }: { message: string }) => {
+      this.healthy = false
+      if (this.pruned) this.failed = true
+      this.restartedAt = Date.now()
+      console.warn('[live] 重新啟動：', message)
+    })
     engine.start()
   }
 
@@ -105,6 +116,20 @@ export class LiveSession extends EventEmitter {
     if (this.segments.some((s) => s.seq === segment.seq)) return
     this.segments = [...this.segments, segment]
     this.emitUpdate({ segment })
+  }
+
+  async prune(): Promise<void> {
+    const healthy = (): boolean => !!this.engine && this.healthy && !this.failed && Date.now() - this.restartedAt >= 30_000
+    if (!healthy()) return
+    const beganAt = Date.now()
+    await pruneSegments(this.options.dir, this.segments, this.matches, this.pending, healthy, (sequences) => {
+      if (!sequences.length) return
+      this.pruned = true
+      if (this.restartedAt >= beganAt) this.failed = true
+      const removed = new Set(sequences)
+      this.segments = this.segments.filter(s => !removed.has(s.seq))
+      this.emitUpdate({ segments: [...this.segments] })
+    })
   }
 
   hasSegment(seq: number): boolean { return this.segments.some((s) => s.seq === seq) }
@@ -150,6 +175,7 @@ export class LiveSession extends EventEmitter {
   }
 
   private onSnapshot(snap: LiveSnapshot): void {
+    this.healthy = true
     this.snapshot = snap
     this.scheduleWrite()
     this.emitUpdate({ events: snap.events, spectating: snap.spectating })
@@ -157,6 +183,8 @@ export class LiveSession extends EventEmitter {
   }
 
   private onMatch(event: LiveMatchEvent): void {
+    if (event.ev === 'match_pending') this.pending = event.t
+    else if (event.ev === 'match_cancel' || event.ev === 'match_start') this.pending = null
     this.options.recordEvent({ ev: event.ev, t: event.t, reason: event.reason })
     if (event.ev === 'match_pending' || event.ev === 'match_cancel') {
       this.emit('match', event.ev, this.matches.length + 1, event.t)

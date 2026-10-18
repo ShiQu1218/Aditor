@@ -5,7 +5,7 @@ import { applyMatchEvent, countKills, LiveSession } from './live-session'
 import { createRecordingService, type RecordingDeps } from './index'
 import type { LiveEvent, LiveUpdate, RecordingService } from '../../shared/recording'
 import * as disk from './disk'
-import { fakeCommand, fakeLiveCommand, makeDeps, tempRoot, waitFor } from './test-support'
+import { fakeCommand, fakeLiveCommand, makeDeps, sessionDir, tempRoot, waitFor } from './test-support'
 
 const roots: string[] = []
 const services: RecordingService[] = []
@@ -159,4 +159,69 @@ it('倒數與取消僅記錄並轉送，不改變確認對局清單或擊殺', a
   await live.flush()
   expect((await live.state()).matches).toEqual(matches)
   expect(JSON.parse(fs.readFileSync(path.join(dir, 'live.json'), 'utf8')).matches).toEqual(matches)
+})
+
+it('未啟動、尚無快照、重啟等待及失效皆不清理；健康時移除播放清單並推播', async () => {
+  const dir = sessionDir(root())
+  const live = new LiveSession({ sessionId: '清理', dir, profileDir: dir, recordEvent: vi.fn(), notice: vi.fn() })
+  for (let i = 1; i <= 30; i++) {
+    fs.writeFileSync(path.join(dir, `seg_${String(i).padStart(6, '0')}.m4s`), '片段')
+    live.addSegment({ seq: i, pts: (i - 1) * 2, dur: 2 })
+  }
+  const internal = live as any
+  await live.prune()
+  expect(live.hasSegment(1)).toBe(true)
+  internal.engine = { engineVersion: () => null, quality: () => null }
+  await live.prune()
+  expect(live.hasSegment(1)).toBe(true)
+  internal.onSnapshot({ t: 60, events: [], spectating: [] })
+  internal.restartedAt = Date.now()
+  await live.prune()
+  expect(live.hasSegment(1)).toBe(true)
+  internal.restartedAt = Date.now() - 31_000
+  const update = vi.fn(); live.on('update', update)
+  await live.prune()
+  expect(live.hasSegment(1)).toBe(false)
+  await expect(live.readSegment(1)).rejects.toThrow('索引')
+  expect(update).toHaveBeenLastCalledWith(expect.objectContaining({ segments: expect.any(Array) }))
+  internal.failed = true
+  live.addSegment({ seq: 31, pts: 100, dur: 2 })
+  await live.prune()
+  expect(live.hasSegment(22)).toBe(true)
+  await live.flush()
+})
+
+it('倒數確認後持續保護至延遲結束；取消後解除保護', async () => {
+  const dir = sessionDir(root())
+  const live = new LiveSession({ sessionId: '倒數', dir, profileDir: dir, recordEvent: vi.fn(), notice: vi.fn() })
+  const internal = live as any
+  internal.engine = { engineVersion: () => null, quality: () => null }
+  internal.onSnapshot({ t: 0, events: [], spectating: [] })
+  const add = (from: number, to: number) => {
+    for (let i = from; i <= to; i++) {
+      fs.writeFileSync(path.join(dir, `seg_${String(i).padStart(6, '0')}.m4s`), '片段')
+      live.addSegment({ seq: i, pts: (i - 1) * 2, dur: 2 })
+    }
+  }
+  add(1, 15)
+  internal.onMatch({ ev: 'match_pending', t: 24, reason: '倒數' })
+  await live.prune()
+  expect(live.hasSegment(10)).toBe(true)
+  internal.onMatch({ ev: 'match_start', t: 24, reason: '倒數確認' })
+  add(16, 50)
+  await live.prune()
+  expect(live.hasSegment(23)).toBe(true)
+  internal.onMatch({ ev: 'match_end', t: 40, reason: '大廳延遲確認' })
+  await live.prune()
+  expect(live.hasSegment(23)).toBe(true)
+  expect(live.hasSegment(24)).toBe(false)
+  internal.onMatch({ ev: 'match_pending', t: 94, reason: '倒數' })
+  add(51, 70)
+  await live.prune()
+  expect(live.hasSegment(45)).toBe(true)
+  internal.onMatch({ ev: 'match_cancel', t: 140, reason: '取消' })
+  await live.prune()
+  expect(live.hasSegment(45)).toBe(false)
+  expect(live.hasSegment(10)).toBe(true)
+  await live.flush()
 })
