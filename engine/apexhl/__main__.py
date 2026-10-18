@@ -1,4 +1,4 @@
-"""命令列入口：python -m apexhl analyze|ipc。"""
+"""命令列入口：python -m apexhl analyze|matches|ipc|live。"""
 from __future__ import annotations
 
 import argparse
@@ -54,12 +54,19 @@ def main(argv: list[str] | None = None) -> int:
     ma.add_argument("--timeline", action="store_true", help="包含逐格場景時間軸")
     ma.add_argument("--no-hwaccel", action="store_true")
     sub.add_parser("ipc", help="JSON Lines IPC 伺服器")
+    li = sub.add_parser("live", help="即時偵測（讀 apexrec 共享記憶體，stdout 輸出 JSON Lines）")
+    li.add_argument("--shm", required=True, help="共享記憶體名稱（例如 Local\\apexrec-<sessionId>）")
+    li.add_argument("--profile-dir", required=True, help="圖示範本目錄（templates/icons）")
+    li.add_argument("--scene-dir", default=None, help="場景範本目錄（預設 templates/scene）")
     for s in (sys.stdout, sys.stderr):
         s.reconfigure(encoding="utf-8")
     a = ap.parse_args(argv)
     if a.cmd == "ipc":
         from apexhl.ipc import run
         return run()
+    if a.cmd == "live":
+        from apexhl.live import run as run_live
+        return run_live(a.shm, Path(a.profile_dir), Path(a.scene_dir) if a.scene_dir else None)
     try:
         if a.cmd == "matches":
             return _cmd_matches(a)
