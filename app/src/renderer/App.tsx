@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { LibraryScreen } from './library/LibraryScreen'
 import { StudioScreen, type ProjectPlaybackRequest } from './studio/StudioScreen'
+import { StudioLanding } from './studio/StudioLanding'
 import { LONG_FIXTURE_PATH, longFixtureRequested, lowPerfFixtureRequested, projectFixtureRequested, settingsFixtureRequested } from './dev/fixture'
 import { ProjectProvider, useProject } from './editor/ProjectProvider'
 import { FocusZoneProvider } from './input/FocusZoneProvider'
@@ -64,10 +65,8 @@ function AppContent(): JSX.Element {
     setView('studio')
   }
 
-  // 工作室在尚未選定影片時回到影片庫
   const handleNavigate = (v: RailView) => {
-    if (v === 'studio' && !currentVideo) setView('library')
-    else setView(v)
+    setView(v)
   }
 
   let page: JSX.Element
@@ -82,6 +81,8 @@ function AppContent(): JSX.Element {
         onBack={() => { setPlaybackRequest(undefined); setView('library') }}
       />
     )
+  } else if (view === 'studio') {
+    page = <StudioLanding onOpenVideo={handleSelectVideo} onBack={() => setView('library')} />
   } else if (view === 'live') {
     page = (
       <LiveScreen

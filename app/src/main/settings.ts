@@ -131,6 +131,7 @@ function applySettings(base: Settings, src: unknown): Settings {
     projectAutosave: pickBool(s.projectAutosave, base.projectAutosave),
     defaultOutDir: pickStringOrNull(s.defaultOutDir, base.defaultOutDir),
     projectTrackCollapsed: pickProjectTrackCollapsed(s.projectTrackCollapsed, base.projectTrackCollapsed),
+    sameDayVideosCollapsed: pickBool(s.sameDayVideosCollapsed, base.sameDayVideosCollapsed),
     lastProjectId: pickStringOrNull(s.lastProjectId, base.lastProjectId),
     lowPerfAsked: pickBool(s.lowPerfAsked, base.lowPerfAsked),
     recording: pickRecording(s.recording, base.recording)

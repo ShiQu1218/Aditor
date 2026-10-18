@@ -86,6 +86,54 @@
   padding: var(--sp-3);
 }
 
+/* ---- 同日影片列 ---- */
+.same-day-videos { flex: none; min-width: 0; }
+.studio > .same-day-videos { margin: var(--sp-3); }
+.same-day-head { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); }
+.same-day-head h2 { display: flex; align-items: baseline; gap: var(--sp-2); font-size: var(--fs-small); }
+.same-day-head h2 span { font-size: var(--fs-caption); font-weight: var(--fw-regular); }
+.same-day-head [aria-expanded='false'] .ic { transform: rotate(-90deg); }
+.same-day-list {
+  display: flex;
+  gap: var(--sp-2);
+  overflow-x: auto;
+  padding: 2px 2px var(--sp-1);
+  scroll-padding-inline: 2px;
+}
+.same-day-list[hidden] { display: none; }
+.same-day-card {
+  flex: 0 0 288px;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--bg-surface);
+  text-align: left;
+}
+.same-day-card:hover { background: var(--bg-hover); }
+.same-day-card[aria-current='true'] { border-color: var(--accent-bright); background: var(--bg-active); }
+.same-day-card:focus-visible { box-shadow: inset 0 0 0 2px var(--accent-bright); }
+.same-day-thumb {
+  width: 114px;
+  height: 64px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border-radius: var(--r-xs);
+  background: var(--bg-input);
+  color: var(--text-3);
+}
+.same-day-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.same-day-details { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.same-day-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-small); font-weight: var(--fw-bold); }
+.same-day-meta { color: var(--text-2); font-size: var(--fs-caption); }
+.same-day-status { display: flex; align-items: center; gap: 4px; color: var(--text-2); font-size: var(--fs-caption); }
+.same-day-status.error { color: var(--danger); }
+
 /* ---- 狀態列（Notice） ---- */
 .notice {
   flex: none;

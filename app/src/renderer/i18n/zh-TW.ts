@@ -149,6 +149,15 @@ export const i18n = {
   },
   studio: {
     back: '返回影片庫',
+    empty: '尚未有影片，先到影片庫加入或錄一場',
+    libraryReadFailed: '無法讀取影片庫，請稍後重試。',
+    sameDay: {
+      label: '同日影片',
+      count: '{n} 部影片',
+      collapse: '收合同日影片',
+      expand: '展開同日影片',
+      saveFailed: '收合偏好儲存失敗，請稍後再試。'
+    },
     openBlocked: '分析完成後才能開啟',
     statusDone: '分析完成',
     autoClip: 'AI 自動剪輯',
