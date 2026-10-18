@@ -42,7 +42,7 @@ export function RecordingControl({ field, ids, state, settings, controller }: {
   let options: Array<{ value: string; label: string; disabled?: boolean }>
   switch (field) {
     case 'mode':
-      options = [{ value: 'session', label: t.session }, { value: 'match', label: t.matchUnavailable, disabled: true }]
+      options = [{ value: 'session', label: t.session }, { value: 'match', label: t.match }]
       break
     case 'codec':
       options = [{ value: 'hevc', label: 'HEVC' }, { value: 'h264', label: 'H.264' }, { value: 'av1', label: 'AV1' }]

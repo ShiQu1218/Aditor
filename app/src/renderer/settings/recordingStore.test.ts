@@ -48,6 +48,7 @@ describe('錄影設定驗證與遷移', () => {
   })
 
   test.each([
+    ['mode', ['session', 'match']],
     ['codec', ['hevc', 'h264', 'av1']],
     ['fps', [30, 60, 120, 144]],
     ['height', [0, 720, 1080, 1440]],
@@ -60,9 +61,6 @@ describe('錄影設定驗證與遷移', () => {
 
   test.each(['builtin', 'obs', 'invalid', null, 1])('後端 %j 固定為 builtin', (backend) => {
     expect(migrate({ backend }).backend).toBe('builtin')
-  })
-  test.each(['session', 'match', 'invalid', null, 1])('模式 %j 固定為 session', (mode) => {
-    expect(migrate({ mode }).mode).toBe('session')
   })
 
   test('編碼器限硬體編碼且必須符合格式；換格式回到自動', () => {
@@ -114,8 +112,9 @@ describe('錄影設定驗證與遷移', () => {
     expect(res.persisted).toBe(true)
     store.set({ before: 15 })
     expect(new SettingsStore(file).get().recording.autoRecord).toBe(false)
-    const complete = { ...defaults, outputDir: dir, fps: 144 as const, micGain: 0.75, codec: 'av1' as const, encoder: 'av1_nvenc', notifyMatch: true }
+    const complete = { ...defaults, mode: 'match' as const, outputDir: dir, fps: 144 as const, micGain: 0.75, codec: 'av1' as const, encoder: 'av1_nvenc', notifyMatch: true }
     store.set({ recording: complete })
+    store.set({ before: 16 })
     expect(new SettingsStore(file).get().recording).toEqual(complete)
   })
 

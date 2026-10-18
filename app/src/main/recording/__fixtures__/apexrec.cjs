@@ -31,6 +31,21 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
     }
     send({ ev: 'started', encoder: 'hevc_nvenc', width: 1920, height: 1080, fps: 60, shm: 'Local\\fake' })
     send({ id: req.id, ok: true })
+    if (mode === 'match') {
+      const segment = (seq) => {
+        const entry = { seq, pts: (seq - 1) * 2, dur: 2 }
+        fs.writeFileSync(path.join(sessionDir, `seg_${String(seq).padStart(6, '0')}.m4s`), `${entry.pts}|`)
+        fs.appendFileSync(path.join(sessionDir, 'index.jsonl'), JSON.stringify(entry) + '\n')
+        send({ ev: 'segment', ...entry })
+      }
+      for (let seq = 1; seq <= 4; seq++) segment(seq)
+      const timer = setInterval(() => {
+        if (!fs.existsSync(process.env.FAKE_POST_PAD_GATE)) return
+        clearInterval(timer)
+        for (let seq = 5; seq < 5 + Number(process.env.FAKE_TAIL_SEGMENTS || 2); seq++) segment(seq)
+      }, 10)
+      return
+    }
     send({ ev: 'segment', seq: 1, pts: 0, dur: 2 })
     send({ ev: 'segment', seq: 2, pts: 2, dur: 2 })
     send({ ev: 'stats', fps_in: 60, fps_enc: 60, dropped: 3, queue: 0 })

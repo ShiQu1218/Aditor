@@ -8,7 +8,7 @@ import type { EngineEvent } from './types'
 /** 錄影後端；第 5 期才實作 'obs'，在那之前設定頁不提供選項。 */
 export type RecordingBackend = 'builtin' | 'obs'
 
-/** 'match'＝一局一個檔（第 4 期完成對局偵測後才可選）；'session'＝從頭錄到尾。 */
+/** 'match'＝持續錄影並逐局剪檔；'session'＝從頭錄到尾。 */
 export type RecordingMode = 'match' | 'session'
 
 /** 錄後完整分析（R9）：不分析／關閉 Apex 後（預設）／每局結束後以低優先序 */

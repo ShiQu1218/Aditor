@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import fs from 'fs'
 import path from 'path'
 import { finalizeSession } from './finalize'
-import { buildLiveCacheDoc, liveCounts } from './live-cache'
+import { buildLiveCacheDoc, liveCounts, writeLiveCache } from './live-cache'
 import { makeDeps, sessionDir, tempRoot } from './test-support'
 import { cacheFilePath } from '../cache-io'
 import type { EngineEvent } from '../../shared/types'
@@ -122,5 +122,26 @@ describe('live.json → 分析快取', () => {
     vi.spyOn(console, 'error').mockImplementation(() => undefined)
     expect(await finalizeSession(broken.dir, deps)).toEqual([broken.output])
     expect(fs.existsSync(broken.dir)).toBe(false)
+  })
+
+  it('寫入期間完成的完整分析不可被可信 live 快取覆蓋，暫存檔也不與引擎共用', async () => {
+    const base = root()
+    const deps = makeDeps(base)
+    deps.liveCachePath = (output) => output + '.apexhl.json'
+    const { dir, output } = finishedSession(base, 'none', { ...LIVE, quality: { complete: true } })
+    const cachePath = deps.liveCachePath(output)
+    fs.writeFileSync(cachePath, JSON.stringify({ analysis: { source: 'live' } }))
+    const full = JSON.stringify({ analysis: { status: 'done', engine_version: '0.3.0' }, events: [ev('full', 2)] })
+    const write = fs.promises.writeFile.bind(fs.promises)
+    vi.spyOn(fs.promises, 'writeFile').mockImplementation(async (file, data, options) => {
+      if (String(file).startsWith(cachePath)) {
+        expect(String(file)).not.toBe(cachePath + '.tmp')
+        fs.writeFileSync(cachePath, full)
+      }
+      await write(file, data, options)
+    })
+    expect(await writeLiveCache(dir, output, deps, undefined, { overwriteLive: true })).toBeNull()
+    expect(fs.readFileSync(cachePath, 'utf8')).toBe(full)
+    expect(fs.existsSync(cachePath + '.live.tmp')).toBe(false)
   })
 })

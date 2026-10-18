@@ -4,13 +4,13 @@ import { randomBytes } from 'crypto'
 import { EventEmitter } from 'events'
 import {
   IDLE_RECORDING_STATUS,
-  type LiveState, type LiveUpdate, type RecordingService, type RecordingStatus, type RecorderCapabilities
+  type LiveState, type LiveUpdate, type RecordingMode, type RecordingService, type RecordingStatus, type RecorderCapabilities
 } from '../../shared/recording'
 import { isSafeLocalDirPath } from '../safe-path'
 import { ApexWatcher, findApexPid } from './apex-watcher'
 import { ApexrecClient, RecorderError, type RecorderEvent } from './apexrec-client'
 import { diskFreeBytes, diskLevel } from './disk'
-import { finalizeSession, validateSessionDir, writeJson } from './finalize'
+import { cutMatches, finalizeSession, validateSessionDir, writeJson } from './finalize'
 import { recoverSessions } from './recovery'
 import { LiveSession } from './live-session'
 import type { RecordingDeps, RecordingNoticeKind } from './index'
@@ -26,6 +26,11 @@ interface ActiveSession {
   writes: Promise<void>
   sequences: Set<number>
   live: LiveSession
+  mode: RecordingMode
+  cuts: Promise<void>
+  cutPending: boolean
+  cutting: boolean
+  failedCuts: Set<number>
 }
 
 function sessionId(): string {
@@ -199,6 +204,7 @@ export class RecordingSessionService implements RecordingService {
       if (this.active?.live !== live) return
       if (ev === 'match_start') this.notice('matchStart', `第 ${index} 局開始`)
       else this.notice('matchEnd', `第 ${index} 局結束（計入擊殺 ${live.kills()}）`)
+      this.scheduleCuts(this.active)
     })
     return live
   }
@@ -234,10 +240,11 @@ export class RecordingSessionService implements RecordingService {
       await fs.promises.mkdir(dir)
       await validateSessionDir(dir)
       const startedAt = Date.now()
-      await writeJson(path.join(dir, 'recording.json'), { startedAt, postAnalysis: settings.postAnalysis })
+      await writeJson(path.join(dir, 'recording.json'), { startedAt, postAnalysis: settings.postAnalysis, mode: settings.mode })
       const client = new ApexrecClient(this.deps.recorderCommand)
       const live = this.createLive(id, dir)
-      session = { pid, id, dir, outputDir, client, ending: false, warned: false, writes: Promise.resolve(), sequences: new Set(), live }
+      session = { pid, id, dir, outputDir, client, ending: false, warned: false, writes: Promise.resolve(), sequences: new Set(), live,
+        mode: settings.mode, cuts: Promise.resolve(), cutPending: false, cutting: false, failedCuts: new Set() }
       this.active = session
       this.update({ sessionId: id, startedAt })
       const current = session
@@ -294,6 +301,7 @@ export class RecordingSessionService implements RecordingService {
             typeof event.dur === 'number' && Number.isFinite(event.dur) && event.dur > 0) {
           session.sequences.add(event.seq)
           session.live.addSegment({ seq: event.seq, pts: event.pts, dur: event.dur })
+          this.scheduleCuts(session)
           // 段落只更新快照，隨每五秒 stats 或階段變化推播，避免每段都送 IPC。
           this.update({ segments: session.sequences.size, durationSec: Math.max(this.state.durationSec, event.pts + event.dur) }, false)
         }
@@ -316,6 +324,26 @@ export class RecordingSessionService implements RecordingService {
           new RecorderError('recorder_stopped', `錄影意外停止：${String(event.reason)}`)))
         break
     }
+  }
+
+  /** 獨立於錄影控制鏈，合併剪檔期間的通知；停止時等目前剪檔完成才收尾。 */
+  private scheduleCuts(session: ActiveSession): void {
+    if (session.mode !== 'match' || session.ending) return
+    session.cutPending = true
+    if (session.cutting) return
+    session.cutting = true
+    const onError = (error: unknown): void => {
+      this.notice('error', `逐局剪檔失敗，錄影繼續，收尾時將重試：${String(error)}`)
+    }
+    session.cuts = (async () => {
+      while (session.cutPending && !session.ending) {
+        session.cutPending = false
+        await session.live.flush()
+        await cutMatches(session.dir, this.deps, {
+          failed: session.failedCuts, onCut: (outputPath) => this.finalized([outputPath]), onError
+        })
+      }
+    })().catch(onError).finally(() => { session.cutting = false })
   }
 
   private async crashed(session: ActiveSession, error: Error): Promise<void> {
@@ -381,6 +409,7 @@ export class RecordingSessionService implements RecordingService {
     await session.live.stop()
     try {
       await session.writes
+      await session.cuts
       const paths = await finalizeSession(session.dir, this.deps)
       this.active = null
       this.idle()
