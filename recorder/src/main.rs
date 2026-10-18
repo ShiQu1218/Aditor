@@ -17,6 +17,6 @@ mod types;
 
 fn main() {
     let events = ipc::EventSink::new(Box::new(std::io::stdout()));
-    let mut backend = session::Recorder::default();
+    let mut backend = session::Recorder;
     ipc::run(std::io::stdin().lock(), events, &mut backend);
 }
