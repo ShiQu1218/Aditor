@@ -21,7 +21,7 @@ use std::{
     cell::{Cell, RefCell},
     fs,
     os::windows::ffi::OsStrExt,
-    path::Path,
+    path::{Component, Path, Prefix},
     sync::{
         atomic::{AtomicBool, AtomicI64, AtomicU64, Ordering},
         mpsc::{self, Receiver, Sender, SyncSender},
@@ -59,6 +59,60 @@ struct Running {
     worker: JoinHandle<Result<(), BackendError>>,
 }
 
+impl Running {
+    fn stop(self) -> Result<(), BackendError> {
+        let was_active = self.active.load(Ordering::Acquire);
+        let _ = self.stop.send(());
+        let result = self
+            .worker
+            .join()
+            .map_err(|_| (ErrorCode::Internal, "錄影管理執行緒異常結束".into()))
+            .and_then(|result| result);
+        // 已自行停止的錯誤已由事件送出，後續 stop 只等待資源釋放。
+        if was_active {
+            result
+        } else {
+            Ok(())
+        }
+    }
+}
+
+struct WorkerGuard {
+    active: Arc<AtomicBool>,
+    events: EventSink,
+    announced: bool,
+}
+
+impl WorkerGuard {
+    fn complete(&mut self, result: &Result<(), BackendError>) {
+        let reason = match result {
+            Ok(()) => "requested",
+            Err((code, message)) => {
+                self.events.emit(&Event::Error {
+                    code: *code,
+                    message: message.clone(),
+                });
+                code.as_str()
+            }
+        };
+        self.active.store(false, Ordering::Release);
+        self.announced = false;
+        self.events.emit(&Event::Stopped {
+            reason: reason.into(),
+        });
+    }
+}
+
+impl Drop for WorkerGuard {
+    fn drop(&mut self) {
+        if self.announced {
+            self.complete(&Err((ErrorCode::Internal, "錄影管理執行緒異常結束".into())));
+        } else {
+            self.active.store(false, Ordering::Release);
+        }
+    }
+}
+
 impl Backend for Recorder {
     fn hello(&mut self) -> HelloInfo {
         HelloInfo {
@@ -88,6 +142,11 @@ impl Backend for Recorder {
             let worker = thread::Builder::new()
                 .name("apexrec-session".into())
                 .spawn(move || {
+                    let mut guard = WorkerGuard {
+                        active: worker_active,
+                        events: events.clone(),
+                        announced: false,
+                    };
                     let mut session = match Session::open(&args, events) {
                         Ok(session) => session,
                         Err(error) => {
@@ -95,22 +154,12 @@ impl Backend for Recorder {
                             return Err(error);
                         }
                     };
+                    guard.announced = true;
                     let _ = ready.send(Ok(()));
                     let result = session.run(&args.session_dir, &stopped);
                     let finish = session.finish();
                     let result = result.and(finish);
-                    let reason = match &result {
-                        Ok(()) => "requested".into(),
-                        Err((code, message)) => {
-                            session.events.emit(&Event::Error {
-                                code: *code,
-                                message: message.clone(),
-                            });
-                            format!("{code:?}").to_lowercase()
-                        }
-                    };
-                    worker_active.store(false, Ordering::Release);
-                    session.events.emit(&Event::Stopped { reason });
+                    guard.complete(&result);
                     result
                 })
                 .map_err(|e| failure(ErrorCode::Internal, e))?;
@@ -137,11 +186,14 @@ impl Backend for Recorder {
             let Some(running) = running.take() else {
                 return Ok(());
             };
-            let _ = running.stop.send(());
+            running.stop()
+        })
+    }
+    fn is_running(&self) -> bool {
+        RUNNING.with_borrow(|running| {
             running
-                .worker
-                .join()
-                .map_err(|_| (ErrorCode::Internal, "錄影管理執行緒異常結束".into()))?
+                .as_ref()
+                .is_some_and(|running| running.active.load(Ordering::Acquire))
         })
     }
 }
@@ -186,7 +238,8 @@ impl FrameConsumer for Consumer {
         let pts = frame.pts - origin;
         self.counts.input.fetch_add(1, Ordering::Relaxed);
         if let Some(writer) = writer {
-            let _ = writer.push_video(frame.texture, frame.width, frame.height, pts);
+            // 致命錯誤由 writer 保留，管理執行緒每輪檢查；一般佇列滿仍可丟格。
+            writer.push_video(frame.texture, frame.width, frame.height, pts);
         }
         let bucket = (pts as i128 * 4 / TICKS_PER_SEC as i128) as i64;
         if self.small_bucket != Some(bucket) {
@@ -481,6 +534,9 @@ impl Session {
         }
         loop {
             match self.notices.try_recv() {
+                Ok(CaptureNotice::Failed { message }) => {
+                    return Err((ErrorCode::CaptureFailed, message));
+                }
                 Ok(_) if !self.announced => {}
                 Ok(CaptureNotice::WindowLost) => self.events.emit(&Event::WindowLost),
                 Ok(CaptureNotice::GameHidden { pts }) => self.events.emit(&Event::GameHidden {
@@ -504,6 +560,11 @@ impl Session {
                 }
                 Err(mpsc::TryRecvError::Disconnected) => break,
             }
+        }
+        if let Some(writer) = &self.writer {
+            writer
+                .check_error()
+                .map_err(|e| failure(ErrorCode::EncodeFailed, e))?;
         }
         Ok(())
     }
@@ -557,14 +618,20 @@ impl Session {
         let stats = self.stats();
         let finish = if let Some(writer) = self.writer.take() {
             Arc::try_unwrap(writer)
-                .map_err(|_| (ErrorCode::Internal, "停止後仍有編碼器參照".into()))?
-                .finish()
-                .map_err(|e| failure(ErrorCode::EncodeFailed, e))
+                .map_err(|_| (ErrorCode::Internal, "停止後仍有編碼器參照".into()))
+                .and_then(|writer| {
+                    writer
+                        .finish()
+                        .map_err(|e| failure(ErrorCode::EncodeFailed, e))
+                })
         } else {
             Ok(())
         };
         let drain = self.drain();
-        stats.and(finish).and(drain)?;
+        let index = self.check_index();
+        stats.and(finish).and(drain).and(index)
+    }
+    fn check_index(&self) -> Result<(), BackendError> {
         if self.index.is_some() {
             let entries = index::read_index(&self.dir.join("index.jsonl"))
                 .map_err(|e| failure(ErrorCode::Internal, e))?;
@@ -605,6 +672,13 @@ fn validate(args: &StartArgs) -> Result<()> {
         !args.session_dir.is_empty() && !args.session_dir.contains('\0'),
         "錄影目錄不可為空或含 NUL"
     );
+    let path = Path::new(&args.session_dir);
+    ensure!(
+        path.is_absolute()
+            && matches!(path.components().next(), Some(Component::Prefix(prefix)) if matches!(prefix.kind(), Prefix::Disk(_)))
+            && !path.components().any(|part| part == Component::ParentDir),
+        "錄影目錄必須是不含 .. 的本機磁碟絕對路徑"
+    );
     ensure!(
         !args.session_id.is_empty()
             && args.session_id.len() <= 80
@@ -630,6 +704,9 @@ fn validate(args: &StartArgs) -> Result<()> {
                     || (2..=16_384).contains(&cfg.height) && cfg.height.is_multiple_of(2)),
             "FPS、輸出高度或位元率超出範圍"
         );
+    }
+    if let Some(cfg) = &args.audio {
+        cfg.validate()?;
     }
     Ok(())
 }
@@ -689,6 +766,186 @@ fn timestamp() -> Result<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::{json, Value};
+    use std::{io, sync::Mutex};
+
+    #[derive(Clone, Default)]
+    struct Output(Arc<Mutex<Vec<u8>>>);
+
+    impl io::Write for Output {
+        fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+            self.0.lock().unwrap().extend_from_slice(bytes);
+            Ok(bytes.len())
+        }
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+    impl Output {
+        fn events(&self) -> Vec<Value> {
+            String::from_utf8(self.0.lock().unwrap().clone())
+                .unwrap()
+                .lines()
+                .map(|line| serde_json::from_str(line).unwrap())
+                .collect()
+        }
+        fn sink(&self) -> EventSink {
+            EventSink::new(Box::new(self.clone()))
+        }
+    }
+
+    fn start_args() -> StartArgs {
+        serde_json::from_value(json!({
+            "pid": 42, "session_dir": "D:\\錄影\\.sessions\\test", "session_id": "test",
+            "encode": null, "audio": null,
+            "frames": {"banner": [1, 2, 3, 4], "spec": [5, 6, 7, 8], "base": [1920, 1080]}
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn session_paths_require_local_absolute_paths_without_parent_components() {
+        let mut args = start_args();
+        for path in [
+            r"D:\錄影\.sessions\test",
+            "C:/recordings/.sessions/test",
+            r"E:\",
+        ] {
+            args.session_dir = path.into();
+            assert!(validate(&args).is_ok(), "{path}");
+        }
+        for path in [
+            "",
+            "relative/path",
+            r"\rooted",
+            r"C:relative",
+            r"\\server\share\rec",
+            "//server/share/rec",
+            r"\\?\C:\rec",
+            r"\\.\C:\rec",
+            "//?/C:/rec",
+            r"\\?\UNC\server\share\rec",
+            r"C:\rec\..\other",
+            "C:/rec/../other",
+            "C:\\rec\0other",
+        ] {
+            args.session_dir = path.into();
+            let error = Recorder
+                .start(args.clone(), Output::default().sink())
+                .unwrap_err();
+            assert_eq!(error.0, ErrorCode::BadRequest, "{path:?}");
+        }
+    }
+
+    #[test]
+    fn audio_gains_are_validated_before_opening_capture_including_disabled_audio() {
+        let mut args = start_args();
+        args.audio = Some(crate::types::AudioConfig::default());
+        for gain in [0.0, 1.0, 2.0] {
+            let audio = args.audio.as_mut().unwrap();
+            audio.mic_gain = gain;
+            audio.render_gain = gain;
+            assert!(validate(&args).is_ok());
+        }
+        for mic in [true, false] {
+            for gain in [
+                -0.1,
+                2.01,
+                f32::MAX,
+                f32::NAN,
+                f32::INFINITY,
+                f32::NEG_INFINITY,
+            ] {
+                let audio = args.audio.as_mut().unwrap();
+                audio.mic_enabled = false;
+                audio.render_enabled = false;
+                audio.mic_gain = if mic { gain } else { 1.0 };
+                audio.render_gain = if mic { 1.0 } else { gain };
+                let error = Recorder
+                    .start(args.clone(), Output::default().sink())
+                    .unwrap_err();
+                assert_eq!(error.0, ErrorCode::BadRequest, "{mic}: {gain}");
+            }
+        }
+    }
+
+    #[test]
+    fn worker_guard_clears_active_and_emits_one_terminal_pair_on_panic() {
+        let active = Arc::new(AtomicBool::new(true));
+        let output = Output::default();
+        let guard = WorkerGuard {
+            active: active.clone(),
+            events: output.sink(),
+            announced: true,
+        };
+        assert!(thread::spawn(move || {
+            let _guard = guard;
+            panic!("測試 session panic");
+        })
+        .join()
+        .is_err());
+        assert!(!active.load(Ordering::Acquire));
+        let events = output.events();
+        assert_eq!(events.len(), 2);
+        assert_eq!(events[0]["ev"], "error");
+        assert_eq!(events[0]["code"], "internal");
+        assert_eq!(events[1], json!({"ev": "stopped", "reason": "internal"}));
+    }
+
+    #[test]
+    fn stop_after_async_failure_is_idempotent_and_preserves_terminal_reason() {
+        for code in [
+            ErrorCode::CaptureFailed,
+            ErrorCode::EncodeFailed,
+            ErrorCode::DiskFull,
+        ] {
+            let active = Arc::new(AtomicBool::new(true));
+            let output = Output::default();
+            let mut guard = WorkerGuard {
+                active: active.clone(),
+                events: output.sink(),
+                announced: true,
+            };
+            let (stop, _stopped) = mpsc::channel();
+            let (done, finished) = mpsc::channel();
+            let worker = thread::spawn(move || {
+                let result = Err((code, "測試非同步失敗".into()));
+                guard.complete(&result);
+                done.send(()).unwrap();
+                result
+            });
+            finished.recv().unwrap();
+            RUNNING.with_borrow_mut(|running| {
+                *running = Some(Running {
+                    active,
+                    stop,
+                    worker,
+                })
+            });
+            let mut recorder = Recorder;
+            assert!(!recorder.is_running());
+            assert!(recorder.stop().is_ok());
+            assert!(recorder.stop().is_ok());
+            let events = output.events();
+            assert_eq!(events.len(), 2);
+            assert_eq!(events[0]["code"], code.as_str());
+            assert_eq!(events[1], json!({"ev": "stopped", "reason": code.as_str()}));
+        }
+    }
+
+    #[test]
+    fn worker_guard_does_not_announce_stop_when_initialization_failed() {
+        let active = Arc::new(AtomicBool::new(true));
+        let output = Output::default();
+        drop(WorkerGuard {
+            active: active.clone(),
+            events: output.sink(),
+            announced: false,
+        });
+        assert!(!active.load(Ordering::Acquire));
+        assert!(output.events().is_empty());
+    }
+
     #[test]
     fn app_metadata_is_allowed_but_recorder_output_is_not() {
         let dir = std::env::temp_dir().join(format!("apexrec-out-{}", std::process::id()));

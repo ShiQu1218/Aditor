@@ -81,6 +81,7 @@ pub trait Backend {
     fn start(&mut self, args: StartArgs, events: EventSink) -> Result<(), BackendError>;
     /// 沒有錄影工作時也要回 Ok（冪等）。
     fn stop(&mut self) -> Result<(), BackendError>;
+    fn is_running(&self) -> bool;
 }
 
 /// 跑指令迴圈直到 stdin EOF。
@@ -148,10 +149,13 @@ pub fn run(mut input: impl BufRead, events: EventSink, backend: &mut dyn Backend
                 recording = true;
                 ReplyBody::Empty {}
             }),
-            Command::Stop => backend.stop().map(|()| {
-                recording = false;
-                ReplyBody::Empty {}
-            }),
+            Command::Stop => {
+                let result = backend.stop();
+                if result.is_ok() || !backend.is_running() {
+                    recording = false;
+                }
+                result.map(|()| ReplyBody::Empty {})
+            }
         };
         match result {
             Ok(body) => events.reply(&Reply {
@@ -262,6 +266,8 @@ mod tests {
         fail_starts: usize,
         fail_stops: usize,
         auto_stop: bool,
+        running: bool,
+        finish_on_stop_error: bool,
     }
 
     impl Backend for FakeBackend {
@@ -280,6 +286,7 @@ mod tests {
                 self.fail_starts -= 1;
                 return Err((ErrorCode::CaptureFailed, "測試啟動失敗".into()));
             }
+            self.running = !self.auto_stop;
             events.emit(&Event::Started {
                 encoder: None,
                 width: 1920,
@@ -299,10 +306,18 @@ mod tests {
             self.stops += 1;
             if self.fail_stops > 0 {
                 self.fail_stops -= 1;
+                if self.finish_on_stop_error {
+                    self.running = false;
+                }
                 Err((ErrorCode::EncodeFailed, "測試停止失敗".into()))
             } else {
+                self.running = false;
                 Ok(())
             }
+        }
+
+        fn is_running(&self) -> bool {
+            self.running
         }
     }
 
@@ -393,6 +408,23 @@ mod tests {
         assert_eq!(lines[4]["code"], "busy");
         assert_eq!(backend.starts.len(), 2);
         assert_eq!(backend.stops, 2); // stop 失敗後 EOF 仍會收尾。
+    }
+
+    #[test]
+    fn failed_stop_allows_restart_when_backend_has_no_running_work() {
+        let mut backend = FakeBackend {
+            fail_stops: 1,
+            finish_on_stop_error: true,
+            ..Default::default()
+        };
+        let lines = run_commands(
+            &[start(1), json!({"id":2,"cmd":"stop"}), start(3)],
+            &mut backend,
+        );
+        assert_eq!(backend.starts.len(), 2);
+        assert_eq!(lines[2]["code"], "encode_failed");
+        assert!(!lines.iter().any(|line| line["code"] == "busy"));
+        assert_eq!(lines.last().unwrap(), &json!({"id":3,"ok":true}));
     }
 
     #[test]

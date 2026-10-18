@@ -58,6 +58,9 @@ pub trait FrameConsumer: Send {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CaptureNotice {
+    Failed {
+        message: String,
+    },
     WindowLost,
     GameHidden {
         pts: i64,
@@ -117,14 +120,15 @@ impl Capture {
             .name("apexrec-capture".into())
             .spawn(move || {
                 let result = match method {
-                    CaptureMethod::Wgc => run(gpu, opts, consumer, notices, stopped, &ready),
-                    CaptureMethod::Dda => dda::run(gpu, opts, consumer, notices, stopped, &ready),
+                    CaptureMethod::Wgc => {
+                        run(gpu, opts, consumer, notices.clone(), stopped, &ready)
+                    }
+                    CaptureMethod::Dda => {
+                        dda::run(gpu, opts, consumer, notices.clone(), stopped, &ready)
+                    }
                 };
                 if let Err(error) = result {
-                    // 初始化錯誤交回 start；執行中錯誤則寫入 stderr，不污染 IPC stdout。
-                    let message = format!("{error:#}");
-                    let _ = ready.send(Err(error));
-                    eprintln!("擷取執行緒結束：{message}");
+                    report_failure(error, &ready, &notices);
                 }
             })
             .context("capture_failed: 無法建立擷取執行緒")?;
@@ -157,6 +161,20 @@ impl Capture {
             }
         }
     }
+}
+
+fn report_failure(
+    error: anyhow::Error,
+    ready: &mpsc::SyncSender<Result<()>>,
+    notices: &Sender<CaptureNotice>,
+) {
+    let message = format!("{error:#}");
+    // 初始化後 ready 的接收端可能已釋放或尚未取走成功通知；終止原因一律另走 notices。
+    let _ = notices.send(CaptureNotice::Failed {
+        message: message.clone(),
+    });
+    let _ = ready.try_send(Err(error));
+    eprintln!("擷取執行緒結束：{message}");
 }
 
 impl Drop for Capture {
@@ -623,6 +641,33 @@ fn run(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn terminal_errors_reach_notices_before_and_after_initialization() {
+        for initialized in [false, true] {
+            let (ready, receiver) = mpsc::sync_channel(1);
+            let (notices, received) = mpsc::channel();
+            if initialized {
+                ready.send(Ok(())).unwrap();
+            }
+            report_failure(anyhow::anyhow!("測試擷取失敗"), &ready, &notices);
+            assert_eq!(
+                received.recv().unwrap(),
+                CaptureNotice::Failed {
+                    message: "測試擷取失敗".into()
+                }
+            );
+            assert_eq!(receiver.recv().unwrap().is_ok(), initialized);
+        }
+        let (ready, receiver) = mpsc::sync_channel(1);
+        drop(receiver);
+        let (notices, received) = mpsc::channel();
+        report_failure(anyhow::anyhow!("初始化後擷取失敗"), &ready, &notices);
+        assert!(matches!(
+            received.recv().unwrap(),
+            CaptureNotice::Failed { .. }
+        ));
+    }
 
     #[test]
     fn throttles_by_qpc_and_rejects_backwards_timestamps() {

@@ -75,12 +75,7 @@ impl AudioCapture {
         origin_ticks: i64,
         sink: Box<dyn AudioSink>,
     ) -> Result<Self> {
-        if !cfg.mic_gain.is_finite() || cfg.mic_gain < 0.0 {
-            bail!("audio_failed: 麥克風增益必須是有限的非負數");
-        }
-        if !cfg.render_gain.is_finite() || !(0.0..=2.0).contains(&cfg.render_gain) {
-            bail!("audio_failed: 系統聲音增益必須介於 0 與 2");
-        }
+        cfg.validate().context("audio_failed: 音訊參數無效")?;
         let mut capture = Self {
             stop: Arc::new(AtomicBool::new(false)),
             workers: Vec::new(),
