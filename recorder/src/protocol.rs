@@ -139,6 +139,22 @@ pub enum ErrorCode {
     Internal,
 }
 
+impl ErrorCode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::NoHwEncoder => "no_hw_encoder",
+            Self::WindowNotFound => "window_not_found",
+            Self::CaptureFailed => "capture_failed",
+            Self::EncodeFailed => "encode_failed",
+            Self::AudioFailed => "audio_failed",
+            Self::DiskFull => "disk_full",
+            Self::BadRequest => "bad_request",
+            Self::Busy => "busy",
+            Self::Internal => "internal",
+        }
+    }
+}
+
 /// 解析一行指令；失敗時回傳可以直接放進錯誤回覆的訊息（以及能讀到的 id）。
 pub fn parse_request(line: &str) -> Result<Request, (Option<u64>, String)> {
     if line.len() > MAX_LINE_BYTES {
@@ -156,6 +172,23 @@ pub fn parse_request(line: &str) -> Result<Request, (Option<u64>, String)> {
 mod tests {
     use super::*;
     use crate::types::Codec;
+
+    #[test]
+    fn error_code_names_match_wire_format() {
+        for code in [
+            ErrorCode::NoHwEncoder,
+            ErrorCode::WindowNotFound,
+            ErrorCode::CaptureFailed,
+            ErrorCode::EncodeFailed,
+            ErrorCode::AudioFailed,
+            ErrorCode::DiskFull,
+            ErrorCode::BadRequest,
+            ErrorCode::Busy,
+            ErrorCode::Internal,
+        ] {
+            assert_eq!(serde_json::to_value(code).unwrap(), code.as_str());
+        }
+    }
 
     #[test]
     fn parses_start_with_encode_and_obs_mode() {

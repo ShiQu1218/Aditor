@@ -122,7 +122,6 @@ impl SmallFrameExtractor {
         }
 
         let previous = 1 - self.next_slot;
-        let result = self.slots[previous].read(&self.gpu)?;
         let normalized = if (width, height) == (1920, 1080) {
             texture
         } else {
@@ -133,15 +132,19 @@ impl SmallFrameExtractor {
             scaler.scale(&self.gpu, texture)?;
             &scaler.output
         };
+        let with_thumb = self.samples.is_multiple_of(THUMB_EVERY as u64);
+        if with_thumb {
+            self.thumb_scaler.scale(&self.gpu, normalized)?;
+        }
+        // 所有縮放成功後才取走上一組結果，避免後續錯誤遺失已完成的讀回。
+        let result = self.slots[previous].read(&self.gpu)?;
         let slot = &mut self.slots[self.next_slot];
         if slot.pending.is_some() {
             self.dropped += 1;
         }
         copy_roi(&self.gpu, normalized, &slot.banner, self.frames.banner);
         copy_roi(&self.gpu, normalized, &slot.spec, self.frames.spec);
-        let with_thumb = self.samples.is_multiple_of(THUMB_EVERY as u64);
         if with_thumb {
-            self.thumb_scaler.scale(&self.gpu, normalized)?;
             // SAFETY: 來源與目的都是同尺寸、同格式且未映射的 texture。
             unsafe {
                 self.gpu

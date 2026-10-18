@@ -158,6 +158,20 @@ impl Default for AudioConfig {
     }
 }
 
+impl AudioConfig {
+    pub fn validate(&self) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            self.mic_gain.is_finite() && (0.0..=2.0).contains(&self.mic_gain),
+            "麥克風增益必須介於 0 與 2"
+        );
+        anyhow::ensure!(
+            self.render_gain.is_finite() && (0.0..=2.0).contains(&self.render_gain),
+            "系統聲音增益必須介於 0 與 2"
+        );
+        Ok(())
+    }
+}
+
 /// 音訊混音後的固定格式。
 pub const AUDIO_RATE: u32 = 48_000;
 pub const AUDIO_CHANNELS: u32 = 2;

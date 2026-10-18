@@ -14,8 +14,8 @@ use std::{
     path::Path,
     sync::{
         atomic::{AtomicU64, Ordering},
-        mpsc::{self, Receiver, Sender, SyncSender, TryRecvError},
-        Arc, Mutex,
+        mpsc::{self, Receiver, Sender, SyncSender, TryRecvError, TrySendError},
+        Arc, Mutex, OnceLock, TryLockError,
     },
     thread::{self, JoinHandle},
     time::Duration,
@@ -97,6 +97,19 @@ struct Counts {
     dropped: AtomicU64,
     queue: AtomicU64,
     audio_dropped: AtomicU64,
+    error: OnceLock<String>,
+}
+impl Counts {
+    fn fail(&self, error: impl std::fmt::Display) {
+        let _ = self.error.set(format!("{error:#}"));
+    }
+
+    fn check_error(&self) -> Result<()> {
+        if let Some(error) = self.error.get() {
+            bail!("encode_failed: {error}");
+        }
+        Ok(())
+    }
 }
 struct Surface {
     frame: Frame,
@@ -108,7 +121,6 @@ struct Producer {
     pool: Vec<Arc<Surface>>,
     last_slot: Option<i64>,
     fps: u32,
-    error: Option<String>,
 }
 struct VideoJob {
     surface: Arc<Surface>,
@@ -264,15 +276,17 @@ impl SegmentWriter {
         let worker = thread::Builder::new()
             .name("apexrec-encode".into())
             .spawn(move || {
-                run_worker(
-                    encoder,
-                    audio,
-                    muxer,
-                    video_rx,
-                    audio_rx,
-                    worker_counts,
-                    fps,
-                )
+                monitor_worker(&worker_counts, || {
+                    run_worker(
+                        encoder,
+                        audio,
+                        muxer,
+                        video_rx,
+                        audio_rx,
+                        worker_counts.clone(),
+                        fps,
+                    )
+                })
             })
             .context("建立編碼執行緒失敗")?;
         Ok(Self {
@@ -282,7 +296,6 @@ impl SegmentWriter {
                 pool,
                 last_slot: None,
                 fps,
-                error: None,
             }),
             video_tx: Some(video_tx),
             audio_tx: Some(audio_tx),
@@ -306,9 +319,16 @@ impl SegmentWriter {
     ) -> PushResult {
         self.counts.input.fetch_add(1, Ordering::Relaxed);
         let result = || -> Option<()> {
-            let mut producer = self.producer.try_lock().ok()?;
+            let mut producer = match self.producer.try_lock() {
+                Ok(producer) => producer,
+                Err(TryLockError::WouldBlock) => return None,
+                Err(TryLockError::Poisoned(_)) => {
+                    self.counts.fail("GPU 表面池鎖已損毀");
+                    return None;
+                }
+            };
             if pts < 0
-                || producer.error.is_some()
+                || self.counts.error.get().is_some()
                 || self.counts.queue.load(Ordering::Relaxed) >= QUEUE_SIZE as u64
             {
                 return None;
@@ -332,18 +352,19 @@ impl SegmentWriter {
                 .copier
                 .copy(texture, (src_w, src_h), &surface.frame)
             {
-                producer.error = Some(format!("GPU 影格複製失敗：{error:#}"));
+                self.counts.fail(format!("GPU 影格複製失敗：{error:#}"));
                 return None;
             }
             self.counts.queue.fetch_add(1, Ordering::Relaxed);
-            if self
-                .video_tx
-                .as_ref()?
-                .try_send(VideoJob { surface, slot })
-                .is_err()
-            {
-                self.counts.queue.fetch_sub(1, Ordering::Relaxed);
-                return None;
+            match self.video_tx.as_ref()?.try_send(VideoJob { surface, slot }) {
+                Ok(()) => {}
+                Err(error) => {
+                    self.counts.queue.fetch_sub(1, Ordering::Relaxed);
+                    if matches!(error, TrySendError::Disconnected(_)) {
+                        self.counts.fail("編碼執行緒已結束");
+                    }
+                    return None;
+                }
             }
             producer.last_slot = Some(slot);
             Some(())
@@ -358,6 +379,9 @@ impl SegmentWriter {
 
     /// 音訊執行緒呼叫：48 kHz 立體聲交錯 f32；`pts` 為第一個樣本的 tick。
     pub fn push_audio(&self, interleaved: &[f32], pts: i64) {
+        if self.counts.error.get().is_some() {
+            return;
+        }
         // 每塊最多一秒，限制異常呼叫的複製量；音訊缺口由下一個 QPC 時戳補靜音。
         if interleaved.is_empty()
             || !interleaved.len().is_multiple_of(2)
@@ -392,17 +416,15 @@ impl SegmentWriter {
         }
     }
 
+    /// 致命錯誤保留第一個原因，管理執行緒可隨時檢查，不必等下一格或統計週期。
+    pub fn check_error(&self) -> Result<()> {
+        self.counts.check_error()
+    }
+
     /// flush 編碼器、寫出最後一段並關閉。
     pub fn finish(mut self) -> Result<()> {
         self.close()?;
-        let producer = self
-            .producer
-            .lock()
-            .map_err(|_| anyhow::anyhow!("GPU 表面池鎖已損毀"))?;
-        if let Some(error) = &producer.error {
-            bail!("encode_failed: {error}");
-        }
-        Ok(())
+        self.check_error()
     }
 
     fn close(&mut self) -> Result<()> {
@@ -439,6 +461,7 @@ fn encode_frame(
     fps: u32,
     counts: &Counts,
 ) -> Result<()> {
+    counts.check_error()?;
     let frame = source.duplicate()?;
     let pts = frame_tick(slot, fps);
     let duration = frame_tick(slot + 1, fps) - pts;
@@ -466,6 +489,15 @@ fn encode_frame(
     Ok(())
 }
 
+fn monitor_worker(counts: &Counts, run: impl FnOnce() -> Result<()>) -> Result<()> {
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(run))
+        .unwrap_or_else(|_| Err(anyhow::anyhow!("編碼執行緒異常結束")));
+    if let Err(error) = &result {
+        counts.fail(error);
+    }
+    result
+}
+
 fn run_worker(
     encoder: Encoder,
     mut audio: Option<aac::Audio>,
@@ -482,6 +514,7 @@ fn run_worker(
     let mut anchor = None;
     let mut last_arrival = std::time::Instant::now();
     loop {
+        counts.check_error()?;
         for _ in 0..8 {
             match audio_rx.try_recv() {
                 Ok(job) => {
@@ -512,6 +545,7 @@ fn run_worker(
             Err(mpsc::RecvTimeoutError::Timeout) => None,
         };
         let closing = video_closed && audio_closed;
+        counts.check_error()?;
         // WGC 在靜止畫面可能完全停送；等待 200 ms 後才用最後一格補 CFR，避免一般擷取抖動造成搶先補格。
         if job.is_none() && last_arrival.elapsed() > Duration::from_millis(200) {
             if let (Some((started, slot)), Some(surface)) = (anchor, &previous) {

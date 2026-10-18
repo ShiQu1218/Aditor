@@ -28,7 +28,8 @@ use windows::Win32::Graphics::Dxgi::Common::{
 use windows::Win32::Graphics::Dxgi::{
     CreateDXGIFactory1, IDXGIAdapter, IDXGIDevice, IDXGIFactory1, IDXGIOutput, IDXGIOutput1,
     IDXGIOutput5, IDXGIOutputDuplication, IDXGIResource, DXGI_ERROR_ACCESS_LOST,
-    DXGI_ERROR_NOT_FOUND, DXGI_ERROR_WAIT_TIMEOUT, DXGI_OUTDUPL_FRAME_INFO,
+    DXGI_ERROR_DEVICE_REMOVED, DXGI_ERROR_DEVICE_RESET, DXGI_ERROR_NOT_FOUND,
+    DXGI_ERROR_WAIT_TIMEOUT, DXGI_OUTDUPL_FRAME_INFO,
 };
 use windows::Win32::Graphics::Gdi::{MonitorFromWindow, HMONITOR, MONITOR_DEFAULTTONEAREST};
 use windows::Win32::System::Performance::QueryPerformanceFrequency;
@@ -340,6 +341,8 @@ fn rotation_unhandled(rotation: DXGI_MODE_ROTATION) -> bool {
 enum AcquireError {
     /// duplication 已失效，需要重建。
     Lost,
+    /// 裝置已失效，必須終止整個錄影工作。
+    DeviceLost(HRESULT),
     /// 其他錯誤；同樣重建，但記錄原因。
     Failed(HRESULT),
 }
@@ -347,11 +350,18 @@ enum AcquireError {
 fn classify(code: HRESULT) -> Option<AcquireError> {
     if code == DXGI_ERROR_WAIT_TIMEOUT {
         None
+    } else if code == DXGI_ERROR_DEVICE_REMOVED || code == DXGI_ERROR_DEVICE_RESET {
+        Some(AcquireError::DeviceLost(code))
     } else if code == DXGI_ERROR_ACCESS_LOST {
         Some(AcquireError::Lost)
     } else {
         Some(AcquireError::Failed(code))
     }
+}
+
+fn check_device(gpu: &Gpu) -> Result<()> {
+    // SAFETY: 只查詢共用裝置是否失效，不改動裝置或 context。
+    unsafe { gpu.device.GetDeviceRemovedReason() }.context("capture_failed: D3D11 裝置已失效")
 }
 
 struct Duplication {
@@ -510,10 +520,11 @@ impl Tracker {
     }
 
     /// duplication 失效時依間隔重建。
-    fn reopen(&mut self, gpu: &Gpu) {
+    fn reopen(&mut self, gpu: &Gpu) -> Result<()> {
         if self.hwnd.is_none() || Instant::now() < self.retry_at {
-            return;
+            return Ok(());
         }
+        check_device(gpu)?;
         match Duplication::open(gpu, self.monitor) {
             Ok(dup) => {
                 let size = dup.size;
@@ -523,6 +534,7 @@ impl Tracker {
                 self.announce(size);
             }
             Err(error) => {
+                check_device(gpu)?;
                 let since = *self.failing_since.get_or_insert_with(|| {
                     eprintln!("DDA 重建失敗，持續重試：{error:#}");
                     Instant::now()
@@ -535,6 +547,7 @@ impl Tracker {
                 self.retry_at = Instant::now() + RETRY_INTERVAL;
             }
         }
+        Ok(())
     }
 }
 
@@ -631,7 +644,7 @@ pub(super) fn run(
             tracker.check_window();
         }
         if tracker.dup.is_none() {
-            tracker.reopen(&gpu);
+            tracker.reopen(&gpu)?;
         }
         if let Some(dup) = &tracker.dup {
             if output.black.size != dup.size {
@@ -676,13 +689,19 @@ pub(super) fn run(
                 thread::sleep(poll);
             }
             Err(AcquireError::Lost) => {
+                check_device(&gpu)?;
                 tracker.dup = None;
                 tracker.retry_at = Instant::now();
             }
             Err(AcquireError::Failed(code)) => {
+                check_device(&gpu)?;
                 eprintln!("DDA 取得影格失敗（{code}），重建擷取");
                 tracker.dup = None;
                 tracker.retry_at = Instant::now() + RETRY_INTERVAL;
+            }
+            Err(AcquireError::DeviceLost(code)) => {
+                check_device(&gpu)?;
+                bail!("capture_failed: DDA 裝置已失效（{code}）");
             }
         }
     }
@@ -964,6 +983,9 @@ mod tests {
     fn classifies_acquire_results() {
         assert_eq!(classify(DXGI_ERROR_WAIT_TIMEOUT), None);
         assert_eq!(classify(DXGI_ERROR_ACCESS_LOST), Some(AcquireError::Lost));
+        for code in [DXGI_ERROR_DEVICE_REMOVED, DXGI_ERROR_DEVICE_RESET] {
+            assert_eq!(classify(code), Some(AcquireError::DeviceLost(code)));
+        }
         assert_eq!(
             classify(DXGI_ERROR_INVALID_CALL),
             Some(AcquireError::Failed(DXGI_ERROR_INVALID_CALL))

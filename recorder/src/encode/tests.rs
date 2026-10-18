@@ -13,6 +13,32 @@ use super::*;
 static GPU_TEST: Mutex<()> = Mutex::new(());
 static NEXT_DIR: AtomicUsize = AtomicUsize::new(0);
 
+#[test]
+fn worker_failures_are_latched_without_further_frames() {
+    let counts = Counts::default();
+    monitor_worker(&counts, || Ok(())).unwrap();
+    assert!(counts.check_error().is_ok());
+    assert!(monitor_worker(&counts, || bail!("測試封裝失敗")).is_err());
+    counts.fail("後續錯誤");
+    assert_eq!(counts.error.get().unwrap(), "測試封裝失敗");
+    assert!(counts
+        .check_error()
+        .unwrap_err()
+        .to_string()
+        .contains("測試封裝失敗"));
+}
+
+#[test]
+fn worker_panics_are_latched_as_encode_errors() {
+    let counts = Counts::default();
+    assert!(monitor_worker(&counts, || panic!("測試編碼 panic")).is_err());
+    assert!(counts
+        .check_error()
+        .unwrap_err()
+        .to_string()
+        .starts_with("encode_failed:"));
+}
+
 fn params(codec: Codec) -> VideoParams {
     VideoParams {
         width: 1280,
@@ -471,7 +497,6 @@ fn gpu_nv12_conversion_and_error_propagation() {
             pool,
             last_slot: None,
             fps: 60,
-            error: None,
         }),
         video_tx: Some(tx),
         audio_tx: None,
@@ -490,6 +515,7 @@ fn gpu_nv12_conversion_and_error_propagation() {
         PushResult::Dropped
     );
     assert!(start.elapsed() < Duration::from_millis(100));
+    assert!(stalled.check_error().is_ok());
     assert_eq!(
         stalled.stats(),
         EncodeStats {
@@ -511,7 +537,32 @@ fn gpu_nv12_conversion_and_error_propagation() {
         PushResult::Dropped
     );
     drop(lock);
-    assert_eq!(writer.push_video(&source, 100, 100, 0), PushResult::Dropped);
+    assert_eq!(
+        writer.push_video(&source, 1920, 1080, 0),
+        PushResult::Queued
+    );
+    let deadline = Instant::now() + Duration::from_secs(2);
+    while writer.stats().frames_encoded == 0 && Instant::now() < deadline {
+        thread::sleep(Duration::from_millis(5));
+    }
+    assert!(writer.stats().frames_encoded > 0);
+    assert_eq!(
+        writer.push_video(&source, 100, 100, frame_tick(1, 60)),
+        PushResult::Dropped
+    );
+    assert!(writer
+        .check_error()
+        .unwrap_err()
+        .to_string()
+        .contains("GPU"));
+    let deadline = Instant::now() + Duration::from_secs(2);
+    while !writer.worker.as_ref().unwrap().is_finished() && Instant::now() < deadline {
+        thread::sleep(Duration::from_millis(5));
+    }
+    assert!(
+        writer.worker.as_ref().unwrap().is_finished(),
+        "複製失敗後必須停止 CFR 補格"
+    );
     assert!(writer.finish().unwrap_err().to_string().contains("GPU"));
     fs::remove_dir_all(dir).unwrap();
 
