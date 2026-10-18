@@ -38,11 +38,19 @@ export function createRecordingTray(opts: RecordingTrayOptions, deps: TrayDepend
   const run = (action: () => Promise<unknown> | void): void => {
     void Promise.resolve().then(action).catch((error) => opts.notifyError(`錄影操作失敗：${String(error)}`))
   }
+  let shownImage = ''
+  let shownMenu = ''
   const update = (status: RecordingStatus): void => {
     if (disposed) return
-    tray.setImage(icon(status))
+    const image = icon(status)
+    if (image !== shownImage) tray.setImage(image)
+    shownImage = image
     tray.setToolTip(`Apex Highlighter — ${phaseLabels[status.phase]}`)
     const active = status.phase === 'starting' || status.phase === 'recording'
+    // 錄影中狀態每幾秒推播一次；選單開著時被換掉，點選就不會觸發，所以內容沒變就不重建。
+    const menuKey = `${active}|${status.phase === 'finalizing'}|${status.paused}`
+    if (menuKey === shownMenu) return
+    shownMenu = menuKey
     tray.setContextMenu(deps.buildMenu([
       { label: '打開 Apex Highlighter', click: opts.openWindow },
       { type: 'separator' },

@@ -52,6 +52,19 @@ describe('recording tray', () => {
     s.tray.destroy()
   })
 
+  it('keeps the open context menu when only stats change (a replaced menu swallows clicks)', () => {
+    const s = setup('recording')
+    const menus = s.handle.setContextMenu.mock.calls.length
+    const images = s.handle.setImage.mock.calls.length
+    s.update({ kills: 3, droppedFrames: 2, durationSec: 120, diskFreeBytes: 1e12 })
+    s.update({ matchIndex: 2 })
+    expect(s.handle.setContextMenu.mock.calls.length).toBe(menus)
+    expect(s.handle.setImage.mock.calls.length).toBe(images)
+    s.update({ paused: true })
+    expect(s.handle.setContextMenu.mock.calls.length).toBe(menus + 1)
+    s.tray.destroy()
+  })
+
   it('starts, stops and pauses through the service and reflects pushed state', async () => {
     const s = setup()
     await s.click('開始錄影')
