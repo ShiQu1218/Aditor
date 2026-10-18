@@ -221,6 +221,7 @@ impl AudioSink for Sound {
 }
 struct Session {
     announced: bool,
+    capture_origin: i64,
     dir: std::path::PathBuf,
     published: usize,
     capture: Option<Capture>,
@@ -309,6 +310,7 @@ impl Session {
         .map_err(|e| failure(ErrorCode::CaptureFailed, e))?;
         let mut session = Self {
             announced: false,
+            capture_origin: 0,
             dir: dir.to_owned(),
             published: 0,
             capture: Some(capture),
@@ -364,6 +366,7 @@ impl Session {
                 anyhow::anyhow!("等待第一格逾時：{e}"),
             )
         })?;
+        session.capture_origin = origin;
         if let (Some(cfg), Some(writer)) = (&args.audio, &session.writer) {
             session
                 .counts
@@ -471,6 +474,12 @@ impl Session {
             match self.notices.try_recv() {
                 Ok(_) if !self.announced => {}
                 Ok(CaptureNotice::WindowLost) => self.events.emit(&Event::WindowLost),
+                Ok(CaptureNotice::GameHidden { pts }) => self.events.emit(&Event::GameHidden {
+                    pts: clock::ticks_to_secs((pts - self.capture_origin).max(0)),
+                }),
+                Ok(CaptureNotice::GameVisible { pts }) => self.events.emit(&Event::GameVisible {
+                    pts: clock::ticks_to_secs((pts - self.capture_origin).max(0)),
+                }),
                 Ok(CaptureNotice::WindowFound {
                     width,
                     height,

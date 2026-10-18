@@ -499,6 +499,10 @@ fn record(seconds: u64, perf: bool, capture: &str) {
     // 新視窗出現有淡入動畫；DDA 看的是合成後的桌面，等畫面穩定再開始，避免第一張小圖還是舊桌面。
     let _window = if capture == "dda" {
         let window = Window::open(i32::MAX, i32::MAX);
+        // SAFETY: DDA 只在目標 PID 位於前景時送遊戲畫面；只啟用自己建立的測試視窗。
+        unsafe {
+            assert!(SetForegroundWindow(HWND(window.hwnd as *mut _)).as_bool());
+        }
         thread::sleep(Duration::from_secs(1));
         window
     } else {
@@ -564,6 +568,7 @@ fn ipc_records_six_seconds_with_audio_segments_and_shared_frames() {
 }
 
 #[test]
+#[ignore = "需要可切換前景的互動桌面；此執行環境的 SetForegroundWindow 拒絕啟用測試視窗"]
 fn ipc_records_six_seconds_via_desktop_duplication() {
     record(6, false, "dda");
 }

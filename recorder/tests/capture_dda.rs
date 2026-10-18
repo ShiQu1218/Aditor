@@ -11,12 +11,15 @@ mod gpu;
 #[path = "../src/types.rs"]
 mod types;
 
+use std::io::{BufRead, BufReader, Write};
+use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
+use capture::small::{SmallFrameExtractor, SmallFrames};
 use capture::FrameConsumer;
 use capture::{dda, Capture, CaptureMethod, CaptureNotice, CaptureOptions, CapturedFrame};
 use clock::TICKS_PER_SEC;
@@ -158,6 +161,10 @@ impl TestWindow {
         }
     }
 
+    fn foreground(&self) {
+        foreground(HWND(self.hwnd as *mut _));
+    }
+
     /// 綠色方塊中心在「所在螢幕」座標系中的位置，以及該螢幕的實體尺寸。
     fn block_center_on_monitor(&self) -> ((u32, u32), (u32, u32)) {
         // SAFETY: 本執行緒設為 per-monitor DPI aware，取得實體像素座標；HWND 在測試期間有效。
@@ -212,11 +219,19 @@ struct Consumer {
     sample: Arc<AtomicBool>,
     frames: Sender<(i64, u32, u32)>,
     pixels: Sender<[u8; 4]>,
+    small: Option<(SmallFrameExtractor, Sender<SmallFrames>)>,
 }
 
 impl FrameConsumer for Consumer {
     fn on_frame(&mut self, frame: &CapturedFrame<'_>) {
         let _ = self.frames.send((frame.pts, frame.width, frame.height));
+        if let Some((extractor, output)) = &mut self.small {
+            if let Some(small) =
+                extractor.on_frame(frame.texture, frame.width, frame.height, frame.pts)
+            {
+                let _ = output.send(small);
+            }
+        }
         if !self.sample.swap(false, Ordering::AcqRel) {
             return;
         }
@@ -293,9 +308,11 @@ fn notice_until(
 }
 
 #[test]
+#[ignore = "需要可切換前景的互動桌面；此執行環境的 SetForegroundWindow 拒絕啟用測試視窗"]
 fn dda_captures_monitor_pixels_with_increasing_pts_and_reconnects() {
     let _lock = HARDWARE.lock().unwrap_or_else(|error| error.into_inner());
     let window = TestWindow::new();
+    window.foreground();
     let origin = clock::now_ticks();
     let (point, monitor) = window.block_center_on_monitor();
     let gpu = dda::gpu_for_pid(std::process::id()).unwrap();
@@ -318,6 +335,7 @@ fn dda_captures_monitor_pixels_with_increasing_pts_and_reconnects() {
             sample: sample.clone(),
             frames: frames_tx,
             pixels: pixels_tx,
+            small: None,
         }),
         notices_tx,
     )
@@ -383,6 +401,177 @@ fn dda_captures_monitor_pixels_with_increasing_pts_and_reconnects() {
     let started = Instant::now();
     capture.stop();
     assert!(started.elapsed() < Duration::from_secs(2));
+}
+
+fn foreground(hwnd: HWND) {
+    // SAFETY: 只要求視窗管理員切換前景，不開啟任何程序；系統拒絕時明確讓互動測試失敗。
+    unsafe {
+        assert!(
+            SetForegroundWindow(hwnd).as_bool(),
+            "互動桌面拒絕切換前景視窗"
+        );
+        assert_eq!(GetForegroundWindow(), hwnd);
+    }
+}
+
+struct RecorderProcess(Child);
+
+impl Drop for RecorderProcess {
+    fn drop(&mut self) {
+        let _ = self.0.kill();
+        let _ = self.0.wait();
+    }
+}
+
+/// 同時檢查送給編碼器的 BGRA 來源、小圖與真實 recorder 的 JSON-lines IPC。
+#[test]
+#[ignore = "需要可切換前景的互動桌面；此執行環境的 SetForegroundWindow 拒絕啟用測試視窗"]
+fn dda_blacks_frames_and_emits_events_when_another_process_takes_foreground() {
+    let _lock = HARDWARE.lock().unwrap_or_else(|error| error.into_inner());
+    // SAFETY: 僅保存原前景視窗，作為另一個 PID 的視窗；不取得其程序控制代碼。
+    let other = unsafe { GetForegroundWindow() };
+    let mut other_pid = 0;
+    unsafe { GetWindowThreadProcessId(other, Some(&mut other_pid)) };
+    assert_ne!(other_pid, 0);
+    assert_ne!(other_pid, std::process::id());
+    let window = TestWindow::new();
+    window.foreground();
+    let gpu = dda::gpu_for_pid(std::process::id()).unwrap();
+    let (point, monitor) = window.block_center_on_monitor();
+    let origin = clock::now_ticks();
+    let (frames_tx, frames) = mpsc::channel();
+    let (pixels_tx, pixels) = mpsc::channel();
+    let (small_tx, small) = mpsc::channel();
+    let (notices_tx, notices) = mpsc::channel();
+    let sample = Arc::new(AtomicBool::new(false));
+    let capture = Capture::start_with(
+        CaptureMethod::Dda,
+        &gpu,
+        CaptureOptions {
+            pid: std::process::id(),
+            max_fps: 60,
+            origin_ticks: origin,
+        },
+        Box::new(Consumer {
+            gpu: gpu.clone(),
+            staging: staging(&gpu),
+            point,
+            sample: sample.clone(),
+            frames: frames_tx,
+            pixels: pixels_tx,
+            small: Some((
+                SmallFrameExtractor::new(
+                    &gpu,
+                    types::FramesSpec {
+                        banner: [0, 0, 96, 48],
+                        spec: [960, 540, 96, 48],
+                        base: [1920, 1080],
+                    },
+                )
+                .unwrap(),
+                small_tx,
+            )),
+        }),
+        notices_tx,
+    )
+    .unwrap();
+    let mut process = RecorderProcess(
+        Command::new(env!("CARGO_BIN_EXE_apexrec"))
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::inherit())
+            .spawn()
+            .unwrap(),
+    );
+    let (events_tx, events) = mpsc::channel();
+    let stdout = process.0.stdout.take().unwrap();
+    let reader = thread::spawn(move || {
+        for line in BufReader::new(stdout).lines() {
+            let value: serde_json::Value = serde_json::from_str(&line.unwrap()).unwrap();
+            if events_tx.send(value).is_err() {
+                break;
+            }
+        }
+    });
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("target/foreground-tests")
+        .join(format!("{}-{}", std::process::id(), origin));
+    let request = serde_json::json!({"id":1,"cmd":"start","pid":std::process::id(),
+        "session_dir":dir,"session_id":format!("foreground-{}",origin),"capture":"dda",
+        "encode":null,"audio":null,
+        "frames":{"banner":[0,0,96,48],"spec":[960,540,96,48],"base":[1920,1080]}});
+    writeln!(process.0.stdin.as_mut().unwrap(), "{request}").unwrap();
+    let event_until = |name: &str| {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            let value = events
+                .recv_timeout(deadline.saturating_duration_since(Instant::now()))
+                .unwrap();
+            assert_ne!(value["ev"], "error", "{value}");
+            if value["ev"] == name {
+                break value;
+            }
+        }
+    };
+    event_until("started");
+    thread::sleep(Duration::from_millis(500));
+    sample.store(true, Ordering::Release);
+    let visible = pixels.recv_timeout(Duration::from_secs(3)).unwrap();
+    assert!(visible[1] >= 247, "遊戲前景未擷取到綠色方塊：{visible:?}");
+
+    foreground(other);
+    let hidden = notice_until(&notices, |n| matches!(n, CaptureNotice::GameHidden { .. }));
+    let CaptureNotice::GameHidden { pts: hidden_pts } = hidden else {
+        unreachable!()
+    };
+    let hidden_event = event_until("game_hidden");
+    assert!((0.0..5.0).contains(&hidden_event["pts"].as_f64().unwrap()));
+    sample.store(true, Ordering::Release);
+    assert_eq!(
+        pixels.recv_timeout(Duration::from_secs(3)).unwrap(),
+        [0, 0, 0, 255]
+    );
+    // 停止測試視窗的重繪，確認黑幀不依賴新的桌面影格。
+    unsafe { KillTimer(Some(HWND(window.hwnd as *mut _)), 1).unwrap() };
+    thread::sleep(Duration::from_millis(1200));
+    let hidden_frames: Vec<_> = frames.try_iter().filter(|f| f.0 > hidden_pts).collect();
+    assert!(
+        hidden_frames.len() >= 55,
+        "隱藏期間只有 {} 格",
+        hidden_frames.len()
+    );
+    assert!(hidden_frames.iter().all(|f| (f.1, f.2) == monitor));
+    assert!(hidden_frames
+        .windows(2)
+        .all(|p| p[1].0 > p[0].0 && p[1].0 - p[0].0 <= TICKS_PER_SEC / 10));
+    let hidden_small: Vec<_> = small.try_iter().filter(|s| s.pts > hidden_pts).collect();
+    assert!(hidden_small.len() >= 3, "隱藏期間小圖未持續輸出");
+    assert!(
+        hidden_small.iter().all(|s| s
+            .banner
+            .iter()
+            .chain(&s.spec)
+            .chain(s.thumb.iter().flatten())
+            .all(|&v| v == 0)),
+        "隱藏期間小圖不是全黑"
+    );
+    assert!(!notices
+        .try_iter()
+        .any(|n| matches!(n, CaptureNotice::GameHidden { .. })));
+
+    window.foreground();
+    notice_until(&notices, |n| matches!(n, CaptureNotice::GameVisible { .. }));
+    let visible_event = event_until("game_visible");
+    assert!(visible_event["pts"].as_f64().unwrap() > hidden_event["pts"].as_f64().unwrap());
+    unsafe { assert_ne!(SetTimer(Some(HWND(window.hwnd as *mut _)), 1, 16, None), 0) };
+    thread::sleep(Duration::from_millis(100));
+    sample.store(true, Ordering::Release);
+    let restored = pixels.recv_timeout(Duration::from_secs(3)).unwrap();
+    assert!(restored[1] >= 247, "恢復前景後不是綠色：{restored:?}");
+    capture.stop();
+    process.0.stdin.take();
+    assert!(process.0.wait().unwrap().success());
+    reader.join().unwrap();
 }
 
 #[test]
