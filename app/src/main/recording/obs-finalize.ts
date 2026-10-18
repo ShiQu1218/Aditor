@@ -36,6 +36,28 @@ async function copyMatch(ffmpeg: string, source: string, part: string, start: nu
   })
 }
 
+/** OBS 停止後仍在寫檔尾（mkv 的總長度最後才寫入標頭），最多等這麼久。 */
+const OBS_FILE_SETTLE_TOTAL_MS = 60_000
+const OBS_FILE_SETTLE_STEP_MS = 1000
+
+/** 等長度可讀且檔案大小連續兩次不變，才視為 OBS 已寫完。 */
+async function settledProbe<T extends { duration?: number | null }>(file: string, probe: () => Promise<T>, stepMs: number): Promise<T> {
+  let lastSize = -1
+  let last: T | null = null
+  for (let waited = 0; ; waited += stepMs) {
+    const size = (await fs.promises.stat(file)).size
+    try { last = await probe() } catch { last = null }
+    const ready = typeof last?.duration === 'number' && Number.isFinite(last.duration) && last.duration > 0
+    if (ready && size === lastSize) return last!
+    if (waited >= OBS_FILE_SETTLE_TOTAL_MS) {
+      if (ready) return last!
+      throw new Error('無法取得 OBS 影片長度（OBS 可能仍在寫入），已保留工作供下次補收尾')
+    }
+    lastSize = size
+    await new Promise((resolve) => setTimeout(resolve, stepMs))
+  }
+}
+
 /** obs.json 是復原依據；零段落不代表沒有 OBS 影片。 */
 export async function finalizeObsSession(dir: string, deps: RecordingDeps, config: SessionSnapshot): Promise<string[]> {
   const meta = await readOptional<ObsMetadata>(path.join(dir, 'obs.json'))
@@ -49,9 +71,10 @@ export async function finalizeObsSession(dir: string, deps: RecordingDeps, confi
   const relative = path.relative(await fs.promises.realpath(dir), source)
   if (!relative.startsWith('..') && !path.isAbsolute(relative)) throw new Error('OBS 原檔位於錄影工作目錄內，已保留原檔與工作目錄')
   const probe = createMediaEndProbe(path.join(path.dirname(deps.ffmpegPath), `ffprobe${process.platform === 'win32' ? '.exe' : ''}`))
-  const info = deps.probeVideo ? await deps.probeVideo(meta.outputPath) : { duration: await probe(meta.outputPath) }
+  const info = await settledProbe(meta.outputPath, async () => deps.probeVideo
+    ? await deps.probeVideo(meta.outputPath!) : { duration: await probe(meta.outputPath!) }, deps.obsFileSettleMs ?? OBS_FILE_SETTLE_STEP_MS)
   const { duration, ...video } = info
-  if (!duration || !Number.isFinite(duration) || duration <= 0) throw new Error('無法取得 OBS 影片長度，已保留工作供下次補收尾')
+  if (!duration) throw new Error('無法取得 OBS 影片長度，已保留工作供下次補收尾')
   const offset = (meta.recordStartedAt - meta.captureStartedAt) / 1000
   const live = await readOptional<LiveFile>(path.join(dir, 'live.json'))
   const matches = liveMatches(live)

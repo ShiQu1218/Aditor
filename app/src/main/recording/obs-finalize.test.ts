@@ -36,6 +36,22 @@ describe.skipIf(!ffmpeg)('OBS 收尾與復原（真實 ffmpeg）', () => {
     expect(r.deps.enqueueAnalysis).toHaveBeenCalledTimes(trusted ? 0 : 1)
     expect(fs.readFileSync(r.outputPath)).toEqual(r.original)
   })
+  it('OBS 剛停止、mkv 長度尚未寫入時等候檔案完成再剪', async () => {
+    const r = await rig('match')
+    const real = await import('../export/keyframe')
+    const ffprobe = path.join(path.dirname(ffmpeg!), `ffprobe${process.platform === 'win32' ? '.exe' : ''}`)
+    const measure = real.createMediaEndProbe(ffprobe)
+    let calls = 0
+    r.deps.obsFileSettleMs = 1
+    r.deps.probeVideo = vi.fn(async (file: string) => {
+      calls++
+      return calls < 3 ? { duration: 0 } : { duration: await measure(file) }
+    }) as never
+    const [cut] = await finalizeSession(r.dir, r.deps)
+    expect(calls).toBeGreaterThanOrEqual(3)
+    expect(path.basename(cut)).toMatch(/^Apex_.*\.mp4$/)
+    expect(fs.existsSync(r.dir)).toBe(false)
+  })
   it('逐局串流複製保留原檔、不把原檔加入媒體庫', async () => {
     const r = await rig('match')
     const [cut] = await finalizeSession(r.dir, r.deps)

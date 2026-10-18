@@ -17,6 +17,8 @@ export interface RecordingDeps {
   /** 密碼只在主程序由 safeStorage 解密，不經狀態或設定 IPC 回傳。 */
   getObsPassword?: () => string | undefined
   obsReconnectBaseMs?: number
+  /** 測試注入：等 OBS 寫完檔案時的輪詢間隔毫秒（預設 1000） */
+  obsFileSettleMs?: number
   probeVideo?: (file: string) => Promise<{ duration: number; width?: number; height?: number; codec?: string }>
   /** 每次需要時才讀，設定變更免重啟 */
   getSettings: () => RecordingSettings
