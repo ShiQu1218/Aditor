@@ -10,3 +10,5 @@ node_modules/
 dist/
 out/
 build/
+recorder/target/
+.worktrees/
