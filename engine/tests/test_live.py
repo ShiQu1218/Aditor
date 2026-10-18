@@ -418,6 +418,25 @@ def _run_live(layout, profile, scene, frames):
     return out, eng
 
 
+def test_live_emits_hud_resume_from_sustained_hud(profile, layout, scene):
+    from test_scene import load_screen
+
+    lobby = load_screen({"file": "clip1_0000.png"})
+    hud = load_screen({"file": "clip1_0120.png"})
+    banner, spec, black = _blank(layout)
+
+    def frames():
+        for t in range(9):
+            thumb = lobby if t == 0 else black if t < 4 else hud
+            for j in range(4):
+                yield t + j * TICK, banner, spec, thumb if j == 0 else None
+
+    out, eng = _run_live(layout, profile, scene, frames())
+    assert [o for o in out if o["ev"] in ("match_start", "match_end")] == [
+        {"ev": "match_start", "t": 4.0, "reason": "hud_resume"},
+        {"ev": "match_end", "t": 8.75, "reason": "eof"}]
+
+
 def _counted(events):
     return [(e["type"], e["t"]) for e in events if e["counted"]]
 
