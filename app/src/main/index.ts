@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, safeStorage } from 'electron'
 import { createQuitGuard } from './quit-guard'
 import { delimiter, join, resolve } from 'path'
 import { EngineClient } from './engine'
@@ -21,6 +21,7 @@ import { registerRecordingIpc } from './recording-ipc'
 import { createRecordingTray } from './tray'
 import { createRecordingNotifier } from './notify'
 import type { RecordingService } from '../shared/recording'
+import { obsPassword } from './settings-ipc'
 
 // E2E 掛鉤（僅 APEXHL_E2E=1）：暫存 appData／userData，測試不碰使用者資料；正式執行時為 null
 const e2e = currentE2EConfig()
@@ -177,6 +178,8 @@ async function initEngineAndServices(): Promise<void> {
   }
   recordingService = createRecordingService({
     getSettings: () => settingsStore!.get().recording,
+    getObsPassword: () => obsPassword(settingsStore!.get().recording, safeStorage),
+    probeVideo: async (file) => engineClient!.request('probe', sanitizeProbeArgs(file)).promise as Promise<import('../shared/types').VideoInfo>,
     getWatchFolders: () => settingsStore!.get().watchFolders,
     defaultOutputDir: join(app.getPath('videos'), 'Apex Highlighter'),
     recorderCommand: apexrecCommand(app.isPackaged),

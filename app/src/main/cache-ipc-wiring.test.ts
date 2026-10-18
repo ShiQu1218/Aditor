@@ -10,7 +10,8 @@ vi.mock('electron', () => ({
   dialog: {},
   BrowserWindow: { fromWebContents: () => null, getAllWindows: () => [] },
   app: { getPath: () => os.tmpdir(), isPackaged: false, getVersion: () => '0' },
-  shell: {}
+  shell: {},
+  safeStorage: { isEncryptionAvailable: () => false }
 }))
 
 import { registerIpcHandlers } from './ipc-handlers'

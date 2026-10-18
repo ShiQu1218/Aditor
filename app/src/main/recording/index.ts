@@ -14,6 +14,10 @@ export interface RecorderCommand {
 export type RecordingNoticeKind = 'matchStart' | 'matchEnd' | 'finalized' | 'diskWarn' | 'warning' | 'error'
 
 export interface RecordingDeps {
+  /** 密碼只在主程序由 safeStorage 解密，不經狀態或設定 IPC 回傳。 */
+  getObsPassword?: () => string | undefined
+  obsReconnectBaseMs?: number
+  probeVideo?: (file: string) => Promise<{ duration: number; width?: number; height?: number; codec?: string }>
   /** 每次需要時才讀，設定變更免重啟 */
   getSettings: () => RecordingSettings
   getWatchFolders: () => string[]

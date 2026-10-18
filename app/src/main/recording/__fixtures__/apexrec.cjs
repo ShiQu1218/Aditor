@@ -29,9 +29,11 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
         fs.copyFileSync(path.join(process.env.FAKE_SEGMENT_DIR, file), path.join(sessionDir, file))
       }
     }
-    send({ ev: 'started', encoder: 'hevc_nvenc', width: 1920, height: 1080, fps: 60, shm: 'Local\\fake' })
+    fs.writeFileSync(path.join(sessionDir, 'session.json'), JSON.stringify({ started_at: new Date().toISOString() }))
+    send({ ev: 'started', encoder: req.encode === null ? null : 'hevc_nvenc', width: 1920, height: 1080, fps: 60, shm: 'Local\\fake' })
     if (mode === 'warning') send({ ev: 'warning', code: 'game_audio_unavailable', message: '無法只錄遊戲聲音，已改錄系統聲音。' })
     send({ id: req.id, ok: true })
+    if (req.encode === null) return
     if (mode === 'match') {
       const segment = (seq) => {
         const entry = { seq, pts: (seq - 1) * 2, dur: 2 }

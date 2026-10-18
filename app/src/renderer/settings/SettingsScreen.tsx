@@ -7,7 +7,7 @@ import { SettingRow } from './SettingRow'
 import { SettingsNav } from './SettingsNav'
 import { SettingsSearch } from './SettingsSearch'
 import { filterRows } from './filterRows'
-import { CATEGORIES, SETTING_ROWS, type CategoryId, type SettingRow as Row } from './rows'
+import { CATEGORIES, SETTING_ROWS, recordingRowVisible, type CategoryId, type SettingRow as Row } from './rows'
 import { SettingsController, type SettingsApi } from './settingsController'
 
 const t = settingsI18n
@@ -71,7 +71,8 @@ export function SettingsScreen({ controller, initialQuery = '', initialCategory 
   )
 
   const searching = query.trim().length > 0
-  const result = useMemo(() => filterRows(SETTING_ROWS, query), [query])
+  const backend = state.settings?.recording.backend ?? 'builtin'
+  const result = useMemo(() => filterRows(SETTING_ROWS.filter((row) => recordingRowVisible(row, backend)), query), [query, backend])
   const visible = searching ? CATEGORIES.flatMap((c) => result.byCategory[c.id]) : result.byCategory[active]
   const cards = useMemo(() => groupCards(visible), [visible])
 

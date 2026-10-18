@@ -50,7 +50,7 @@
 1. **Rust**：`windows` crate 呼叫 WGC（`Windows.Graphics.Capture`）、D3D11、WASAPI。編碼與封裝透過 FFI 連結專案已內建的 LGPL ffmpeg DLL（`build/ffmpeg`，avcodec-63 等）。綁定以 bindgen 預先產生並提交進 repo，建置時不需要 libclang。
 2. **影像全程留在 GPU**：WGC 影格（BGRA `ID3D11Texture2D`）複製進 ffmpeg 的 D3D11 hwframe pool，直接交給 `hevc_nvenc`／`h264_nvenc`／`av1_nvenc`／`*_amf`／`*_qsv`。CPU 只碰小圖。
 3. **偵測沿用 Python**：`apexrec` 只輸出小圖（見 §3），Python live 模式用既有偵測器。日後若量測顯示 Python 是瓶頸，再移植到 Rust 並以比對測試確保結果一致。
-4. **OBS 模式**：`apexrec` 仍執行，但只做擷取＋小圖讀回（`--no-encode`），錄影由 OBS 負責。偵測路徑兩種模式相同。
+4. **OBS 模式**：`apexrec` 仍執行，但只做擷取＋小圖讀回（start 指令 `encode: null, audio: null`），錄影由 OBS 負責。偵測路徑兩種模式相同。
 5. **Electron 不碰影像資料**。
 6. **不注入**：WGC 是 Windows 官方擷取 API（OBS「視窗擷取」同一套）。
 
@@ -110,8 +110,13 @@
 
 ### 2.6 OBS 模式（第 5 期）
 
-- WebSocket v5：`StartRecord`／`StopRecord`；一局一個檔用 `SplitRecordFile`（OBS ≥ 30）。
-- v1 限制：錄影進行中無法播放 OBS 正在寫的檔，只顯示擊殺列表與當下小圖；切檔後可播。追讀 hybrid MP4 留到 v2。
+- OBS ≥ 28 的內建 WebSocket v5 伺服器（工具 → WebSocket 伺服器設定）；App 使用固定版 `obs-websocket-js@5.0.6`，連線與指令各約 3 秒逾時。所有控制只走網路，不接觸遊戲程序。
+- 偵測 Apex（自動或手動）時，先查 `GetRecordStatus`：尚未錄影才送 `StartRecord`；已在錄影則沿用（adopted），絕不對該錄影送開始或停止指令。Apex 結束／手動停止時停止擷取；自行開始的錄影送 `StopRecord`，沿用的錄影則繼續等候 OBS 停止事件（App 結束時解除監聽）。
+- `apexrec` 照常以相同 `capture` 與小圖範本啟動，但指定 `encode: null, audio: null`，live 擊殺與對局偵測路徑不變。OBS 無法連線時通知；預設本次回退內建錄影，關閉回退時只保留即時偵測。中途斷線不停止擷取，依 1、2、4…最多 30 秒退避重連，不重新送 `StartRecord`。重連後若已停止而錯過停止事件，v5 沒有歷史路徑查詢，通知使用者手動匯入並在結束偵測時無檔收尾。
+- `.sessions/<id>/recording.json` 記錄本次實際 `backend`、模式與分析設定；`obs.json` 以 `writeJson` 原子寫入 `{ outputPath?, recordStartedAt, captureStartedAt, adopted }`（epoch ms），路徑由 `StopRecord` 回覆或 `RecordStateChanged/OBS_WEBSOCKET_OUTPUT_STOPPED` 補入。OBS 起點取 `OUTPUT_STARTED` 的接收時間，沿用時取目前時間減 `outputDuration`（ms）；擷取起點優先讀 `session.json.started_at`，缺少時取 `started` 事件時間。快取事件時間＝live 秒數＋`(captureStartedAt-recordStartedAt)/1000`；復原用同一份資料，不以「零段落」判定沒有錄影。
+- 從頭錄到尾：原路徑加入媒體庫，不搬移、改名或刪除 OBS 原檔；用引擎 probe／ffprobe 取得時長，寫入平移且裁到影片範圍的 live 快取。可信結果略過完整分析，其餘依本次 `postAnalysis` 設定排入分析。
+- 一局一個檔：等 OBS 停止後才剪出每局，前後各留 `MATCH_PRE_PAD_SEC`／`MATCH_POST_PAD_SEC`（各 5 秒），ffmpeg 輸入端 `-ss/-to`、`-c copy`、`+faststart`，輸出到 App 錄影資料夾的 `Apex_<日期>_<時-分>.mp4`。切點會落在附近關鍵影格。沿用既有預留檔、`.part.mp4` 與 marker 補收尾機制，剪檔加入媒體庫並寫 live 快取；原檔保留且不加入媒體庫。沒有可剪的對局時改保留整段。
+- OBS 輸出不是可讀取的本機影片時通知並無檔收尾。即時畫面保留擊殺清單與對局資訊，顯示「OBS 錄影中，錄影結束後即可播放」，不建立段落播放器；僅偵測時明確標示未錄影。狀態包含實際 `backend`，系統匣與狀態顯示「錄影中（OBS）」。
 
 ---
 
@@ -194,6 +199,8 @@ ROI 由 Python 端在 live 握手時傳給 apexrec（Python 讀 profile），ape
 
 錄影後端（內建／OBS：位址、連接埠、密碼、測試連線）；模式（一局一個檔／從頭錄到尾）；開機啟動並常駐系統匣（預設開）；自動錄影開關；錄影資料夾（預設＝監看資料夾，輸出檔由錄影流程直接加入媒體庫，監看端忽略 `.sessions/` 並以路徑去重）；畫質（編碼器、解析度、FPS、位元率）；聲音（系統裝置、麥克風裝置、麥克風音量、關閉麥克風）；錄後分析（不分析／關遊戲後／每局後低優先序）；磁碟門檻（提醒、停止）。
 
+`recording.backend` 預設仍為 `builtin`；OBS 設定為 `obsHost: '127.0.0.1'`、`obsPort: 4455`（整數 1–65535）、`obsPasswordEnc: null`、`obsFallbackBuiltin: true`，由 `pickRecording` 正規化。密碼只能從設定頁唯寫欄位送入，由 Electron `safeStorage` 加密成 base64 後持久化；加密服務不可用時拒絕儲存並顯示錯誤，不能改存明文。`settings:get/set/changed` 一律移除密文及輸入密碼，renderer 只取得 `hasPassword` 與「已設定」狀態。空字串代表移除密碼；密碼不進入錄影快照、狀態或日誌。測試連線只查 OBS／obs-websocket 版本，不開始錄影。OBS 模式隱藏影像、編碼與音訊設定，提示在 OBS 設定品質與音訊；擷取方式仍適用於 live 偵測。
+
 內建錄影設定分成「一般／影像／音訊」；影像與音訊各有預設收合、搜尋時展開的「進階選項」。影像進階含強制 16:9（預設關）、裁切方式（適配，未強制時停用）、編碼格式、編碼器、編碼預設、擷取方式。音訊提供系統聲音與麥克風各自的開關、裝置及 0–200% 音量；進階含系統聲音只錄遊戲（預設關，啟用時忽略裝置）、麥克風強制單聲道（預設關）。兩個音源皆停用或沒有預設裝置時仍輸出靜音音軌。
 
 ### 4.2 系統匣與 App
@@ -209,7 +216,10 @@ ROI 由 Python 端在 live 握手時傳給 apexrec（Python 讀 profile），ape
 | apexrec 當掉 | 主程序自動重啟（指數退避，最多 5 次/10 分鐘），新段落序列續錄；`events.jsonl` 寫 `gap` |
 | live 引擎當掉 | 自動重啟；錄影不受影響；漏掉的區間由完整分析補 |
 | 無硬體編碼器 | 不錄並通知 |
-| OBS 連不上 | 通知；偵測照常；提供「改用內建錄影」 |
+| OBS 連不上／驗證失敗 | 通知；預設本次回退內建錄影，關閉回退時只做即時偵測 |
+| OBS 中途斷線 | 即時偵測照常，退避重連；停止事件遺失且無路徑時通知手動匯入，不猜測或掃描 OBS 資料夾 |
+| OBS 輸出非可讀本機檔案 | 通知，無檔收尾，不變更媒體庫或 OBS 原檔 |
+| 密碼加密服務無法使用 | 拒絕儲存並顯示錯誤，原密碼設定保留 |
 | 磁碟不足 | §2.5 |
 | App 意外關閉 | 下次啟動補收尾 |
 

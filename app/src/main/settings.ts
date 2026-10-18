@@ -77,8 +77,13 @@ function pickRecording(v: unknown, base: RecordingSettings): RecordingSettings {
     autoRecord: pickBool(s.autoRecord, base.autoRecord),
     launchAtLogin: pickBool(s.launchAtLogin, base.launchAtLogin),
     closeToTray: pickBool(s.closeToTray, base.closeToTray),
-    // OBS 尚未開放，舊設定也統一正規化。
-    backend: 'builtin',
+    backend: pickEnum(s.backend, ['builtin', 'obs'] as const, base.backend),
+    obsHost: typeof s.obsHost === 'string' && /^[a-zA-Z0-9.:[\]-]+$/.test(s.obsHost.trim()) && s.obsHost.trim().length <= 253
+      ? s.obsHost.trim() : base.obsHost,
+    obsPort: Number.isInteger(s.obsPort) && Number(s.obsPort) >= 1 && Number(s.obsPort) <= 65535 ? Number(s.obsPort) : base.obsPort,
+    obsPasswordEnc: s.obsPasswordEnc === null || (typeof s.obsPasswordEnc === 'string' && s.obsPasswordEnc.length <= 32768 &&
+      /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(s.obsPasswordEnc)) ? s.obsPasswordEnc : base.obsPasswordEnc,
+    obsFallbackBuiltin: pickBool(s.obsFallbackBuiltin, base.obsFallbackBuiltin),
     mode: pickEnum(s.mode, ['session', 'match'] as const, base.mode),
     outputDir: pickStringOrNull(s.outputDir, base.outputDir),
     codec,

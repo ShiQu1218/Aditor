@@ -56,6 +56,13 @@ const VIDEO_FIELDS = new Set(['height', 'bitrateKbps', 'fps', 'forceAspect', 'as
 const AUDIO_FIELDS = new Set(['systemAudioEnabled', 'renderDevice', 'systemGain', 'micEnabled', 'captureDevice', 'micGain', 'gameAudioOnly', 'micMono'])
 const ADVANCED_FIELDS = new Set(['forceAspect', 'aspectMode', 'codec', 'encoder', 'preset', 'captureMethod', 'gameAudioOnly', 'micMono'])
 
+export function recordingRowVisible(row: SettingRow, backend: RecordingSettings['backend']): boolean {
+  if (row.control.kind !== 'recording') return true
+  const field = row.control.field
+  if (field.startsWith('obs')) return backend === 'obs'
+  return backend !== 'obs' || field === 'captureMethod' || (!VIDEO_FIELDS.has(field) && !AUDIO_FIELDS.has(field))
+}
+
 export const SETTING_ROWS: SettingRow[] = [
   // ── 影片與分析 ──
   {

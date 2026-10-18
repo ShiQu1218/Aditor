@@ -49,7 +49,7 @@ export function RecordingPanel({ onClose, onWatchLive }: { onClose: () => void; 
     }
   }
   const rows: Array<[string, string | number]> = [
-    [t.statusTitle, t.phases[status.phase]],
+    [t.statusTitle, status.phase === 'recording' ? status.detectionOnly ? t.detectionOnly : status.backend === 'obs' ? t.obsRecording : t.phases[status.phase] : t.phases[status.phase]],
     [t.elapsed, elapsedTime(seconds)],
     [t.segments, status.segments],
     [t.actualEncoder, status.encoder ?? t.unknown],

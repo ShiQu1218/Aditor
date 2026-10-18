@@ -4,7 +4,7 @@ import os from 'os'
 import path from 'path'
 import { DEFAULT_SETTINGS } from '../shared/settings'
 import { SettingsStore } from './settings'
-import { registerSettingsHandlers, validateOutDir } from './settings-ipc'
+import { publicSettings, registerSettingsHandlers, validateOutDir } from './settings-ipc'
 
 type Fn = (...a: any[]) => any
 
@@ -37,7 +37,7 @@ describe('settings IPC（settings:get / settings:set / settings:changed）', () 
 
   test('settings:get returns the current settings', async () => {
     const { ipc } = setup()
-    expect(await ipc.handlers.get('settings:get')!({})).toEqual(DEFAULT_SETTINGS)
+    expect(await ipc.handlers.get('settings:get')!({})).toEqual(publicSettings(DEFAULT_SETTINGS))
   })
 
   test('settings:set returns { settings, persisted } to the renderer', async () => {
@@ -86,7 +86,7 @@ describe('settings IPC（settings:get / settings:set / settings:changed）', () 
   test('non-object payload is treated as an empty partial', async () => {
     const { ipc } = setup()
     const res = await ipc.handlers.get('settings:set')!({}, 'oops')
-    expect(res.settings).toEqual(DEFAULT_SETTINGS)
+    expect(res.settings).toEqual(publicSettings(DEFAULT_SETTINGS))
   })
 
   test('defaultOutDir must be an absolute existing directory; error is reported and the field is not applied', async () => {
