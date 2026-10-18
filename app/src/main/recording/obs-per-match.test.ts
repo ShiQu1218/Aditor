@@ -186,3 +186,19 @@ it('逐局模式沿用使用者錄影仍不送開始或停止指令', async () =
   expect(server.calls).not.toContain('StopRecord')
   expect(fs.existsSync(path.join(root, 'obs-matches.json'))).toBe(false)
 })
+
+it('剛停止上一局時 OBS 仍回報錄影中，等它停下再開始下一局', async () => {
+  const root = tempRoot()
+  const server = await fakeObs()
+  const obs = new ObsRecording(root, { ...makeDeps(root).getSettings(), mode: 'match', obsPort: server.port }, undefined, vi.fn())
+  try {
+    await obs.start()
+    await obs.startMatch(1)
+    await obs.stop()
+    // 模擬 OBS 停止中：StopRecord 已回覆，但狀態還要一下子才變成未錄影。
+    server.setRecording(true)
+    setTimeout(() => server.setRecording(false), 150)
+    await obs.startMatch(2)
+    expect(server.calls.filter((c) => c === 'StartRecord')).toHaveLength(2)
+  } finally { await obs.close(); await server.close(); fs.rmSync(root, { recursive: true, force: true }) }
+})

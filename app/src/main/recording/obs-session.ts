@@ -6,6 +6,8 @@ import { writeJson } from './finalize'
 import { ObsClient } from './obs-client'
 
 const OBS_STOP_POLL_MS = 100
+/** 逐局開始錄影前，最多等上一局的 OBS 錄影停止這麼久 */
+const OBS_MATCH_RESTART_WAIT_MS = 10_000
 
 export interface ObsMatch {
   index: number
@@ -95,7 +97,14 @@ export class ObsRecording extends EventEmitter {
     if (!this.perMatch) return
     if (this.matches.at(-1)?.stopped === false) throw new Error('上一局 OBS 錄影尚未完成，已保留工作')
     if (!this.client.connected) await this.connect()
-    if ((await this.client.status()).outputActive) throw new Error('OBS 已有其他錄影，無法開始逐局錄影')
+    // 連續排隊時上一局剛 StopRecord，OBS 還在寫檔尾、仍回報錄影中；等它真正停下。
+    const waitUntil = Date.now() + OBS_MATCH_RESTART_WAIT_MS
+    let status = await this.client.status()
+    while (status.outputActive && Date.now() < waitUntil) {
+      await new Promise((resolve) => setTimeout(resolve, OBS_STOP_POLL_MS))
+      status = await this.client.status()
+    }
+    if (status.outputActive) throw new Error('OBS 已有其他錄影，無法開始逐局錄影')
     this.stopping = false
     this.stopped = false
     delete this.meta.outputPath
