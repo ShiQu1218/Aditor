@@ -1,4 +1,4 @@
-# scripts/build.ps1
+﻿# scripts/build.ps1
 # 建置引擎、LGPL FFmpeg、Rust 錄影器與 Electron 安裝檔。
 param(
     [switch]$SkipEngine,

@@ -1,4 +1,4 @@
-# scripts/fetch-ffmpeg.ps1
+﻿# scripts/fetch-ffmpeg.ps1
 param(
     [string]$TargetDir = "$PSScriptRoot\..\build\ffmpeg"
 )
