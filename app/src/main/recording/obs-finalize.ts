@@ -7,7 +7,9 @@ import { ALLOWED_VIDEO_EXTS, isSafeLocalDirPath } from '../safe-path'
 import { MATCH_POST_PAD_SEC, MATCH_PRE_PAD_SEC, liveMatches, outputBase, readOptional, reserveOutput,
   resumeMatchPart, writeJson, type SessionSnapshot } from './finalize'
 import { writeLiveCache, type LiveCacheRange, type LiveFile } from './live-cache'
-import { createMediaEndProbe } from '../export/keyframe'
+import { createCutLookup, createMediaEndProbe } from '../export/keyframe'
+import { copyCutArgs } from '../export/plan'
+import type { ProjectItem } from '../../renderer/editor/project'
 
 interface ObsOutput extends LiveCacheRange {
   outputPath: string
@@ -23,17 +25,31 @@ async function localFile(file: unknown): Promise<boolean> {
   catch { return false }
 }
 
-/** 只讀 OBS 來源；剪出的暫存檔由 reserveOutput 獨占預留。 */
-async function copyMatch(ffmpeg: string, source: string, part: string, start: number, end: number): Promise<void> {
+/**
+ * 只讀 OBS 來源；剪出的暫存檔由 reserveOutput 獨占預留。回傳實際起點（來源秒數）。
+ * stream copy 只能從關鍵影格開始：直接用剪點 `-ss` 時，影像會從前一個關鍵影格開始、聲音從剪點開始，
+ * 靠 MP4 edit list 隱藏差距，Chromium 播放時影音會差到一個關鍵影格間隔。所以先找到關鍵影格，從它開剪（同匯出的作法）。
+ */
+async function copyMatch(ffmpeg: string, source: string, part: string, start: number, end: number): Promise<number> {
+  const cut = await createCutLookup(ffprobePath(ffmpeg))({ source, start, end })
+  const aligned = cut && Number.isFinite(cut.keyframe) && cut.keyframe <= start && cut.keyframe >= 0 ? cut.keyframe : null
+  const args = copyCutArgs({ source, start, end } as ProjectItem, cut, part)
+    // OBS 可能有多條音軌，全部保留；MP4 索引放檔頭，邊下載邊播放／工作室開啟較快。
+    .map((arg) => (arg === '0:a:0?' ? '0:a?' : arg))
+  args.splice(args.lastIndexOf('-y'), 0, '-movflags', '+faststart')
   await new Promise<void>((resolve, reject) => {
-    const proc = spawn(ffmpeg, ['-hide_banner', '-loglevel', 'error', '-y', '-ss', String(start), '-to', String(end),
-      '-i', source, '-map', '0:v:0', '-map', '0:a?', '-c', 'copy', '-movflags', '+faststart', part],
+    const proc = spawn(ffmpeg, ['-hide_banner', '-loglevel', 'error', ...args],
     { windowsHide: true, stdio: ['ignore', 'ignore', 'pipe'] })
     let stderr = Buffer.alloc(0)
     proc.stderr.on('data', (chunk: Buffer) => { stderr = Buffer.concat([stderr, chunk]).subarray(-65536) })
     proc.once('error', reject)
     proc.once('close', (code) => code === 0 ? resolve() : reject(new Error(`OBS 逐局剪檔失敗（${code}）：${stderr.toString('utf8')}`)))
   })
+  return aligned ?? start
+}
+
+function ffprobePath(ffmpeg: string): string {
+  return path.join(path.dirname(ffmpeg), `ffprobe${process.platform === 'win32' ? '.exe' : ''}`)
 }
 
 /** OBS 停止後仍在寫檔尾（mkv 的總長度最後才寫入標頭），最多等這麼久。 */
@@ -97,12 +113,12 @@ export async function finalizeObsSession(dir: string, deps: RecordingDeps, confi
       let recorded = false
       try {
         await writeJson(path.join(dir, 'match-part.json'), { output, part })
-        await copyMatch(deps.ffmpegPath, meta.outputPath, part, start, end)
+        const actualStart = await copyMatch(deps.ffmpegPath, meta.outputPath, part, start, end)
         if (fs.existsSync(output)) throw new Error('逐局輸出路徑已存在')
         // 以實際長度限制快取；stream copy 切點會落在附近關鍵影格。
         const cutDuration = await probe(part)
         if (!cutDuration) throw new Error('無法取得逐局影片長度')
-        marker.cuts.push({ index, outputPath: output, offset: offset + start, duration: cutDuration, ...video,
+        marker.cuts.push({ index, outputPath: output, offset: offset + actualStart, duration: cutDuration, ...video,
           analysisQueued: false, liveCached: false, liveTrusted: false })
         await writeJson(markerFile, marker)
         recorded = true

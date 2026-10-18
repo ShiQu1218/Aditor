@@ -71,10 +71,11 @@ describe.skipIf(!ffmpeg)('OBS 收尾與復原（真實 ffmpeg）', () => {
     expect(done).toHaveBeenCalledWith([r.outputPath])
     expect(fs.readFileSync(r.outputPath)).toEqual(r.original)
   })
-  it('逐局前後各留五秒、平移事件；副作用失敗後復原不重剪', async () => {
+  it('逐局從剪點前的關鍵影格開始（影音同起點）、前後各留五秒、平移事件；副作用失敗後復原不重剪', async () => {
     const r = await rig('match')
     const generated = spawnSync(ffmpeg!, ['-v', 'error', '-y', '-f', 'lavfi', '-i', 'testsrc2=size=160x90:rate=10:duration=26',
-      '-c:v', 'mpeg4', '-g', '20', '-bf', '0', r.outputPath], { windowsHide: true, encoding: 'utf8' })
+      '-f', 'lavfi', '-i', 'sine=frequency=440:sample_rate=48000:duration=26',
+      '-c:v', 'mpeg4', '-g', '20', '-bf', '0', '-c:a', 'aac', r.outputPath], { windowsHide: true, encoding: 'utf8' })
     expect(generated.status, generated.stderr).toBe(0)
     const original = fs.readFileSync(r.outputPath)
     await writeJson(path.join(r.dir, 'live.json'), { engine_version: '0.3.0', events: [5, 10, 20].map(event),
@@ -82,11 +83,18 @@ describe.skipIf(!ffmpeg)('OBS 收尾與復原（真實 ffmpeg）', () => {
     r.deps.addToLibrary = vi.fn().mockImplementationOnce(() => { throw new Error('媒體庫寫入失敗') })
     await expect(finalizeSession(r.dir, r.deps)).rejects.toThrow('媒體庫')
     const marker = JSON.parse(fs.readFileSync(path.join(r.dir, 'matches.json'), 'utf8'))
-    expect(marker.cuts.map((cut: any) => cut.offset)).toEqual([3, 12])
+    // 來源剪點 4、13 秒對齊到每 2 秒一個的關鍵影格（4、12），再加上 -1 秒的擷取時間差
+    expect(marker.cuts.map((cut: any) => cut.offset)).toEqual([3, 11])
     const outputs = await finalizeSession(r.dir, r.deps)
     expect(outputs).toEqual(marker.cuts.map((cut: any) => cut.outputPath))
     const cache = JSON.parse(fs.readFileSync(outputs[0] + '.apexhl.json', 'utf8'))
     expect(cache.events.map((e: any) => e.t)).toEqual([2, 7])
+    const firstPts = (stream: string): number => Number(spawnSync(path.join(path.dirname(ffmpeg!), `ffprobe${process.platform === 'win32' ? '.exe' : ''}`),
+      ['-v', 'error', '-select_streams', stream, '-show_entries', 'packet=pts_time', '-of', 'csv=p=0', '-read_intervals', '%+#1', outputs[1]],
+      { windowsHide: true, encoding: 'utf8' }).stdout.trim().split(/\r?\n/)[0])
+    // 影像與聲音都從 0 開始，不靠 MP4 edit list 隱藏多出的畫面（Chromium 播放時會不同步）
+    expect(firstPts('v:0')).toBeCloseTo(0, 2)
+    expect(Math.abs(firstPts('a:0'))).toBeLessThan(0.05)
     expect(fs.readdirSync(path.join(r.root, 'videos')).filter((f) => f.endsWith('.mp4'))).toHaveLength(2)
     expect(fs.readFileSync(r.outputPath)).toEqual(original)
   })
