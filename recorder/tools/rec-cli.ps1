@@ -1,7 +1,10 @@
 # 手動錄影與量測：先 cargo build --release，再設定 APEXREC_FFMPEG_DIR 與 FFmpeg bin 的 PATH。
 # 範例：./tools/rec-cli.ps1 -TargetPid 1234 -Seconds 60 -NoMicrophone
+# 擷取方式 A/B：-Capture wgc|dda；-GpuCounters 另外取樣 apexrec 與 dwm 的 GPU 引擎使用率（每秒一次）。
 [CmdletBinding()]
 param(
+    [ValidateSet('wgc', 'dda')][string]$Capture = 'wgc',
+    [switch]$GpuCounters,
     [Parameter(Mandatory)][ValidateRange(1, 2147483647)][int]$TargetPid,
     [ValidateRange(1, 86400)][int]$Seconds = 10,
     [string]$ExePath = (Join-Path $PSScriptRoot '../target/release/apexrec.exe'),
@@ -32,7 +35,7 @@ $video = $null
 if (-not $NoEncode) { $video = @{ codec = $Codec; encoder = $Encoder; fps = $Fps; height = $Height; bitrate_kbps = $BitrateKbps } }
 $audio = $null
 if (-not $NoAudio -and -not $NoEncode) { $audio = @{ render = $RenderDevice; capture = $CaptureDevice; mic_gain = $MicGain; mic_enabled = -not $NoMicrophone } }
-$request = @{ id = 1; cmd = 'start'; pid = $TargetPid; session_dir = $directory; session_id = $sessionId; encode = $video; audio = $audio; frames = @{ banner = $Banner; spec = $Spectator; base = @(1920, 1080) } }
+$request = @{ id = 1; cmd = 'start'; pid = $TargetPid; session_dir = $directory; session_id = $sessionId; encode = $video; audio = $audio; frames = @{ banner = $Banner; spec = $Spectator; base = @(1920, 1080) }; capture = $Capture }
 $info = [Diagnostics.ProcessStartInfo]::new()
 $info.FileName = $executable
 $info.UseShellExecute = $false
@@ -76,6 +79,30 @@ try {
         if ($value.ev -eq 'started') { $started = $value }
         if ($value.id -eq 1) { $ack = $true }
     }
+    $gpuJob = $null
+    if ($GpuCounters) {
+        # 另開背景工作取樣，避免 Get-Counter 的一秒間隔卡住 stdout 讀取。
+        $dwm = @(Get-Process dwm -ErrorAction SilentlyContinue | ForEach-Object { $_.Id })
+        $gpuJob = Start-Job -ArgumentList $process.Id, $dwm, ([math]::Max(1, $Seconds - 3)) -ScriptBlock {
+            param($recorder, $dwm, $count)
+            $watch = @{ apexrec = @($recorder); dwm = @($dwm) }
+            $sums = @{}
+            $samples = @(Get-Counter -Counter '\GPU Engine(*)\Utilization Percentage' -SampleInterval 1 -MaxSamples $count -ErrorAction SilentlyContinue)
+            foreach ($sample in $samples) {
+                foreach ($counter in $sample.CounterSamples) {
+                    if ($counter.InstanceName -notmatch '^pid_(\d+)_.*_engtype_(.+)$') { continue }
+                    $owner = [int]$Matches[1]
+                    $engine = $Matches[2]
+                    foreach ($name in $watch.Keys) {
+                        if ($watch[$name] -contains $owner) { $sums["$name/$engine"] = [double]$sums["$name/$engine"] + $counter.CookedValue }
+                    }
+                }
+            }
+            $result = [ordered]@{ samples = $samples.Count }
+            foreach ($key in ($sums.Keys | Sort-Object)) { $result[$key] = [math]::Round($sums[$key] / [math]::Max(1, $samples.Count), 2) }
+            [pscustomobject]$result
+        }
+    }
     $process.Refresh()
     $cpuStart = $process.TotalProcessorTime.TotalSeconds
     $timer = [Diagnostics.Stopwatch]::StartNew()
@@ -87,6 +114,8 @@ try {
     $elapsed = $timer.Elapsed.TotalSeconds
     $process.Refresh()
     $cpu = ($process.TotalProcessorTime.TotalSeconds - $cpuStart) / $elapsed / $processors * 100
+    $gpu = $null
+    if ($gpuJob) { $gpu = Receive-Job $gpuJob -Wait -AutoRemoveJob | Select-Object -Property * -ExcludeProperty PSComputerName, RunspaceId, PSShowComputerName }
     $process.StandardInput.WriteLine('{"id":2,"cmd":"stop"}')
     $deadline = [datetime]::UtcNow.AddSeconds(30)
     do { $value = Read-RecorderLine $deadline } while ($value.id -ne 2)
@@ -101,11 +130,12 @@ try {
     if (-not $NoEncode) { $index = @(Get-Content -LiteralPath (Join-Path $directory 'index.jsonl') -Encoding UTF8 | ForEach-Object { $_ | ConvertFrom-Json }) }
     $stats = @($events | Where-Object { $_.ev -eq 'stats' }) | Select-Object -Last 1
     $result = [ordered]@{
-        directory = $directory; seconds = $elapsed; encoder = $started.encoder
+        directory = $directory; seconds = $elapsed; capture = $Capture; encoder = $started.encoder
         width = $started.width; height = $started.height; fps = $started.fps
         cpu_percent_machine = $cpu; logical_processors = $processors; peak_working_set_bytes = $peak
         dropped = $stats.dropped; small_dropped = $stats.small_dropped
         segment_bytes = @($index | ForEach-Object { $_.bytes })
+        gpu_percent = $gpu
     }
     $utf8 = [Text.UTF8Encoding]::new($false)
     [IO.File]::WriteAllLines((Join-Path $directory 'recorder-ipc.jsonl'), $lines, $utf8)
@@ -114,6 +144,7 @@ try {
     $json
 }
 finally {
+    if ($gpuJob) { Remove-Job $gpuJob -Force -ErrorAction SilentlyContinue }
     if ($launched -and -not $process.HasExited) {
         # EOF 讓原生程序先正常收尾；只有逾時才終止自己啟動的子程序。
         $process.StandardInput.Close()

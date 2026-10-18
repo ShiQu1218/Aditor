@@ -1,8 +1,10 @@
 //! WGC 擷取（任務 B2）。依 PID 找 Apex 的頂層視窗建立 `GraphicsCaptureItem`；
 //! 視窗重建時自動重接；連續 3 秒全黑改用 `CreateForMonitor`（規格 §3.1）。
+//! 另一種擷取方式 DDA（整個螢幕、延遲較低）見 `dda`，由 `Capture::start_with` 選擇。
 //!
 //! 介面由骨架固定，實作者不得改動簽章；需要新增的型別放在本模組內。
 
+pub mod dda;
 pub mod small;
 
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -36,9 +38,10 @@ use windows::Win32::UI::WindowsAndMessaging::{
 
 use crate::clock::TICKS_PER_SEC;
 use crate::gpu::Gpu;
+pub use crate::types::CaptureMethod;
 use small::LumaProbe;
 
-/// 一格擷取畫面。`texture` 只在 `on_frame` 呼叫期間有效（屬於 WGC frame pool），
+/// 一格擷取畫面。`texture` 只在 `on_frame` 呼叫期間有效（屬於 WGC frame pool 或 DDA 桌面影像），
 /// 消費者若要保留必須在呼叫內以 GPU 複製（`CopyResource`／`CopySubresourceRegion`）。
 pub struct CapturedFrame<'a> {
     pub texture: &'a ID3D11Texture2D,
@@ -78,8 +81,21 @@ pub struct Capture {
 }
 
 impl Capture {
-    /// 開始擷取。找不到視窗時回傳錯誤（訊息含 `window_not_found`）。
+    /// 開始 WGC 擷取。找不到視窗時回傳錯誤（訊息含 `window_not_found`）。
+    #[allow(dead_code)] // 整合測試以 #[path] 引入本檔；正式程式一律經 start_with。
     pub fn start(
+        gpu: &Gpu,
+        opts: CaptureOptions,
+        consumer: Box<dyn FrameConsumer>,
+        notices: Sender<CaptureNotice>,
+    ) -> Result<Self> {
+        Self::start_with(CaptureMethod::Wgc, gpu, opts, consumer, notices)
+    }
+
+    /// 以指定方式開始擷取。DDA 的 `gpu` 必須建立在擁有遊戲所在螢幕的轉接器上
+    /// （見 `dda::gpu_for_pid`），否則回傳 `capture_failed`。
+    pub fn start_with(
+        method: CaptureMethod,
         gpu: &Gpu,
         opts: CaptureOptions,
         consumer: Box<dyn FrameConsumer>,
@@ -94,7 +110,10 @@ impl Capture {
         let worker = thread::Builder::new()
             .name("apexrec-capture".into())
             .spawn(move || {
-                let result = run(gpu, opts, consumer, notices, stopped, &ready);
+                let result = match method {
+                    CaptureMethod::Wgc => run(gpu, opts, consumer, notices, stopped, &ready),
+                    CaptureMethod::Dda => dda::run(gpu, opts, consumer, notices, stopped, &ready),
+                };
                 if let Err(error) = result {
                     // 初始化錯誤交回 start；執行中錯誤則寫入 stderr，不污染 IPC stdout。
                     let message = format!("{error:#}");

@@ -93,7 +93,8 @@ function pickRecording(v: unknown, base: RecordingSettings): RecordingSettings {
     postAnalysis: pickEnum(s.postAnalysis, ['none', 'afterExit', 'perMatch'] as const, base.postAnalysis),
     diskWarnGb,
     diskStopGb: Math.min(diskWarnGb, clampRecordingNumber(s.diskStopGb, RECORDING_RANGES.diskStopGb, base.diskStopGb)),
-    notifyMatch: pickBool(s.notifyMatch, base.notifyMatch)
+    notifyMatch: pickBool(s.notifyMatch, base.notifyMatch),
+    captureMethod: pickEnum(s.captureMethod, ['wgc', 'dda'] as const, base.captureMethod)
   }
 }
 

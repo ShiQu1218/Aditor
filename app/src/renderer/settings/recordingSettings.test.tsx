@@ -68,6 +68,7 @@ describe('錄影設定畫面與 controller', () => {
     expect(options('captureDevice')).toEqual(['default', 'mic'])
     expect(options('height')).toEqual(['0', '1440', '1080', '720'])
     expect(options('fps')).toEqual(['30', '60', '120', '144'])
+    expect(options('captureMethod')).toEqual(['wgc', 'dda'])
   })
 
   test('開關、格式、裝置及數值單位會送出並同步回傳結果，重新掛載保留值', async () => {
@@ -84,12 +85,13 @@ describe('錄影設定畫面與 controller', () => {
     select('height', '1080')
     select('fps', '120')
     select('postAnalysis', 'none')
+    select('captureMethod', 'dda')
     await flush()
     await number('bitrateKbps', '25')
     await number('micGain', '75')
     expect(r.controller.getState().settings?.recording).toMatchObject({
       autoRecord: false, codec: 'h264', encoder: 'h264_nvenc', renderDevice: 'speakers', captureDevice: 'mic',
-      height: 1080, fps: 120, postAnalysis: 'none', bitrateKbps: 25000, micGain: 0.75
+      height: 1080, fps: 120, postAnalysis: 'none', bitrateKbps: 25000, micGain: 0.75, captureMethod: 'dda'
     })
     cleanupMounted()
     mount(<SettingsScreen controller={new SettingsController(r.api)} initialCategory="recording" />)

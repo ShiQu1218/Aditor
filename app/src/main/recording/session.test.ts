@@ -47,7 +47,7 @@ describe('錄影服務狀態機', () => {
   it('自動開始／結束、ROI 與影音設定、段落／丟格統計及不可變快照', async () => {
     const value = rig()
     value.settings.height = 1080; value.settings.micEnabled = false; value.settings.micGain = 0.4
-    value.settings.renderDevice = 'speaker'; value.settings.captureDevice = 'mic'
+    value.settings.renderDevice = 'speaker'; value.settings.captureDevice = 'mic'; value.settings.captureMethod = 'dda'
     value.service.start()
     await waitFor(() => value.service.status().segments === 2)
     const snapshot = value.service.status()
@@ -58,6 +58,7 @@ describe('錄影服務狀態機', () => {
     expect(start.frames).toEqual({ banner: [560, 700, 800, 180], spec: [60, 1028, 480, 40], base: [1920, 1080] })
     expect(start.encode).toMatchObject({ height: 1080, codec: 'hevc', bitrate_kbps: 40000 })
     expect(start.audio).toEqual({ render: 'speaker', capture: 'mic', mic_enabled: false, mic_gain: 0.4 })
+    expect(start.capture).toBe('dda')
     await waitFor(() => fs.existsSync(path.join(start.session_dir, 'events.jsonl')))
     expect(fs.readFileSync(path.join(start.session_dir, 'events.jsonl'), 'utf8')).toContain('window_lost')
     value.pid = null

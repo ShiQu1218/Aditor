@@ -3,8 +3,9 @@
 use crate::{
     audio::{self, AudioCapture, AudioSink},
     capture::{
+        dda,
         small::{SmallFrameExtractor, SmallFrames},
-        Capture, CaptureNotice, CaptureOptions, CapturedFrame, FrameConsumer,
+        Capture, CaptureMethod, CaptureNotice, CaptureOptions, CapturedFrame, FrameConsumer,
     },
     clock::{self, TICKS_PER_SEC},
     encode::{EncodeStats, SegmentInfo, SegmentWriter, VideoParams},
@@ -262,7 +263,11 @@ impl Session {
             check_disk(dir)
         };
         prepare().map_err(|e| failure(ErrorCode::Internal, e))?;
-        let gpu = Gpu::create().map_err(|e| failure(ErrorCode::CaptureFailed, e))?;
+        let gpu = match args.capture {
+            CaptureMethod::Wgc => Gpu::create(),
+            CaptureMethod::Dda => dda::gpu_for_pid(args.pid),
+        }
+        .map_err(|e| failure(ErrorCode::CaptureFailed, e))?;
         let extractor = SmallFrameExtractor::new(&gpu, args.frames)
             .map_err(|e| failure(ErrorCode::BadRequest, e))?;
         let name = shm::shm_name(&args.session_id);
@@ -282,7 +287,8 @@ impl Session {
         let pipeline = Arc::new(OnceLock::new());
         let counts = Arc::new(Counts::default());
         let fps = args.encode.as_ref().map_or(60, |cfg| cfg.fps);
-        let capture = Capture::start(
+        let capture = Capture::start_with(
+            args.capture,
             &gpu,
             CaptureOptions {
                 pid: args.pid,
