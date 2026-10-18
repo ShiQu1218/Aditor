@@ -5,6 +5,7 @@
 //! stdin EOF = 主程序已離開 → 等同 `stop` 後結束。同一時間只能有一個錄影工作（第二次 start 回 `busy`）。
 
 use std::io::{self, BufRead, Write};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use crate::protocol::{
@@ -16,16 +17,22 @@ use crate::protocol::{
 #[derive(Clone)]
 pub struct EventSink {
     out: Arc<Mutex<Box<dyn Write + Send>>>,
+    stopped: Arc<AtomicU64>,
 }
 
 impl EventSink {
     pub fn new(out: Box<dyn Write + Send>) -> Self {
         Self {
             out: Arc::new(Mutex::new(out)),
+            stopped: Arc::new(AtomicU64::new(0)),
         }
     }
 
     pub fn emit(&self, ev: &Event) {
+        if matches!(ev, Event::Stopped { .. }) {
+            // 先更新狀態，讀端收到 stopped 後立刻 start 也不會看到過期的 busy。
+            self.stopped.fetch_add(1, Ordering::Release);
+        }
         self.write_line(ev, None);
     }
 
@@ -79,6 +86,7 @@ pub trait Backend {
 /// 跑指令迴圈直到 stdin EOF。
 pub fn run(mut input: impl BufRead, events: EventSink, backend: &mut dyn Backend) {
     let mut recording = false;
+    let mut stopped_generation = events.stopped.load(Ordering::Acquire);
     loop {
         let bytes = match read_bounded_line(&mut input) {
             Ok(InputLine::Eof) => break,
@@ -127,6 +135,11 @@ pub fn run(mut input: impl BufRead, events: EventSink, backend: &mut dyn Backend
                 continue;
             }
         };
+        let generation = events.stopped.load(Ordering::Acquire);
+        if generation != stopped_generation {
+            recording = false;
+            stopped_generation = generation;
+        }
         let result = match request.cmd {
             Command::Hello => Ok(ReplyBody::Hello(backend.hello())),
             Command::Ping => Ok(ReplyBody::Empty {}),
@@ -248,6 +261,7 @@ mod tests {
         stops: usize,
         fail_starts: usize,
         fail_stops: usize,
+        auto_stop: bool,
     }
 
     impl Backend for FakeBackend {
@@ -273,6 +287,11 @@ mod tests {
                 fps: 60,
                 shm: "測試".into(),
             });
+            if self.auto_stop {
+                events.emit(&Event::Stopped {
+                    reason: "disk_full".into(),
+                });
+            }
             Ok(())
         }
 
@@ -305,6 +324,17 @@ mod tests {
             backend,
         );
         output.lines()
+    }
+
+    #[test]
+    fn asynchronous_stop_clears_busy_without_an_explicit_stop_command() {
+        let mut backend = FakeBackend {
+            auto_stop: true,
+            ..Default::default()
+        };
+        let lines = run_commands(&[start(1), start(2)], &mut backend);
+        assert_eq!(backend.starts.len(), 2);
+        assert!(!lines.iter().any(|line| line["code"] == "busy"));
     }
 
     #[test]
