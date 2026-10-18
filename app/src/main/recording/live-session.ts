@@ -1,7 +1,7 @@
 /**
  * 一個錄影工作的即時狀態（第 3 期）：段落清單、live 引擎事件、對局起訖。
  * - `live.json`：最新快照（原子寫入，寫入期間的新快照合併成一次）。
- * - `events.jsonl`：match_start／match_end 各一行（由 session 的寫入鏈負責，收尾前會等完）。
+ * - `events.jsonl`：match_pending／match_cancel／match_start／match_end 各一行（由 session 的寫入鏈負責，收尾前會等完）。
  * - 讀 init.mp4／段落只允許此工作目錄內、索引中的檔案。
  */
 import fs from 'fs'
@@ -25,6 +25,7 @@ export function segmentFile(seq: number): string {
 
 /** 依 match 事件更新對局清單（不改動原陣列）。 */
 export function applyMatchEvent(matches: LiveMatch[], event: LiveMatchEvent): LiveMatch[] {
+  if (event.ev === 'match_pending' || event.ev === 'match_cancel') return matches
   const last = matches.at(-1)
   if (event.ev === 'match_start') {
     // 直接排下一場：上一局在新開局序列開始時結束。
@@ -157,6 +158,10 @@ export class LiveSession extends EventEmitter {
 
   private onMatch(event: LiveMatchEvent): void {
     this.options.recordEvent({ ev: event.ev, t: event.t, reason: event.reason })
+    if (event.ev === 'match_pending' || event.ev === 'match_cancel') {
+      this.emit('match', event.ev, this.matches.length + 1, event.t)
+      return
+    }
     const next = applyMatchEvent(this.matches, event)
     if (next === this.matches) return
     this.matches = next

@@ -189,7 +189,7 @@ export async function finalizeObsMatches(dir: string, deps: RecordingDeps, confi
         }
         match.outputPath = await client.stop()
       }
-      if (!match.outputPath) throw new Error('OBS 停止路徑遺失，請手動匯入並確認錄影')
+      if (!match.outputPath && !match.cancelled && match.confirmed !== false) throw new Error('OBS 停止路徑遺失，請手動匯入並確認錄影')
       match.stopped = true
       await persist()
     } catch (error) {
@@ -201,6 +201,11 @@ export async function finalizeObsMatches(dir: string, deps: RecordingDeps, confi
   const trusted = finishing && !!live && isTrusted(live)
   const outputs: string[] = []
   for (const match of matches) {
+    if (match.confirmed === false && match.stopped && !match.cancelled) {
+      match.cancelled = true
+      await persist()
+    }
+    if (match.cancelled) continue
     if (!match.stopped && !finishing) continue
     if (!match.stopped || !match.outputPath) throw new Error('OBS 逐局影片尚未完成')
     const file = match.outputPath

@@ -115,7 +115,7 @@
 - `apexrec` 照常以相同 `capture` 與小圖範本啟動，但指定 `encode: null, audio: null`，live 擊殺與對局偵測路徑不變。OBS 無法連線時通知；預設本次回退內建錄影，關閉回退時只保留即時偵測。中途斷線不停止擷取，依 1、2、4…最多 30 秒退避重連，不重新送 `StartRecord`。重連後若已停止而錯過停止事件，v5 沒有歷史路徑查詢，通知使用者手動匯入並在結束偵測時無檔收尾。
 - `.sessions/<id>/recording.json` 記錄本次實際 `backend`、模式與分析設定；`obs.json` 以 `writeJson` 原子寫入 `{ outputPath?, recordStartedAt, captureStartedAt, adopted }`（epoch ms），路徑由 `StopRecord` 回覆或 `RecordStateChanged/OBS_WEBSOCKET_OUTPUT_STOPPED` 補入。OBS 起點取 `OUTPUT_STARTED` 的接收時間，沿用時取目前時間減 `outputDuration`（ms）；擷取起點優先讀 `session.json.started_at`，缺少時取 `started` 事件時間。快取事件時間＝live 秒數＋`(captureStartedAt-recordStartedAt)/1000`；復原用同一份資料，不以「零段落」判定沒有錄影。
 - 從頭錄到尾：原路徑加入媒體庫，不搬移、改名或刪除 OBS 原檔；用引擎 probe／ffprobe 取得時長，寫入平移且裁到影片範圍的 live 快取。可信結果略過完整分析，其餘依本次 `postAnalysis` 設定排入分析。
-- 一局一個檔：自行控制的 OBS 在大廳只擷取偵測；match_start 才開始錄影（無法補錄前置時間），match_end 等到 max(現在, 結束時間＋5 秒) 停止；下一局開始會立即停止上一檔並重開。原檔直接入庫，不剪輯、不搬移。obs-matches.json 原子保存每局起點、停止路徑、快取及分析進度；每局後排 perMatch，結束時補 afterExit 並更新可信快取。復原會核對 OBS 錄影起點再停止，無法連線或確認歸屬時保留工作。沿用使用者錄影與沒有逐局狀態的舊版工作仍走原本整段錄影及剪檔流程。狀態 phase 保持 recording，obsRecording 區分待命與錄影。
+- 一局一個檔：自行控制的 OBS 在大廳只擷取偵測；match_pending（倒數／載入）立即開始錄影，match_start 確認後沿用同一檔；錯過序列時由 match_start 開始錄影（無法補錄前置時間），match_end 等到 max(現在, 結束時間＋5 秒) 停止；下一局開始會立即停止上一檔並重開。原檔直接入庫，不剪輯、不搬移。match_cancel 立即停止，標記 cancelled: true，保留 OBS 原檔但不入庫、不寫快取或排分析，僅送出一次低優先且靜音的 matchCancel 通知。obs-matches.json 原子保存每局起點、confirmed、cancelled、停止路徑、快取及分析進度；起點仍取各檔 OUTPUT_STARTED 接收時間。復原略過 cancelled，confirmed: false 的未確認錄影停止後視同取消；舊紀錄缺少 confirmed 時維持原行為；每局後排 perMatch，結束時補 afterExit 並更新可信快取。復原會核對 OBS 錄影起點再停止，無法連線或確認歸屬時保留工作。沿用使用者錄影與沒有逐局狀態的舊版工作仍走原本整段錄影及剪檔流程。狀態 phase 保持 recording，obsRecording 區分待命與錄影。
 - OBS 輸出不是可讀取的本機影片時，舊版整段路徑通知並無檔收尾；逐局路徑保留工作供重試。即時畫面保留擊殺清單與對局資訊，顯示「OBS 錄影中，錄影結束後即可播放」，不建立段落播放器；僅偵測時明確標示未錄影。狀態包含實際 `backend`，系統匣與狀態依 obsRecording 顯示「錄影中（OBS）」或「待命（OBS，等待對局）」。
 
 ---
@@ -163,6 +163,7 @@ ROI 由 Python 端在 live 握手時傳給 apexrec（Python 讀 profile），ape
 
 結束側：死亡後畫面上方出現「即時／總結」分頁（觀戰）；最終有「比賽總結」畫面；右上出現排隊中的綠框時代表已在排下一場。外卡等可重生模式中，死亡與觀戰**不是**結束。
 
+- **倒數（`match_pending`）與取消（`match_cancel`）**：新的開局序列第一次設為等待確認時送出 `match_pending`，時間取當次取樣、原因 `pre_match`；同一序列不重送。等待中遇到大廳、超過 180 秒仍無 HUD、或串流結束時送出 `match_cancel`，原因分別為 `lobby`／`timeout`／`eof`，時間取取消樣本或結束時間。直接排下一場時先送上一局 `match_end(next_match)` 再送 `match_pending`。兩者僅屬串流事件，不加入確認對局清單，不改變離線結果與準確度。內建錄影器忽略這兩種事件。
 - **開始（`match_start`）**：偵測到**開局序列**（倒數面板，或載入畫面的模式卡片）→ 時間取序列第一次出現。對局 HUD（左上小地圖外框、左下血條／護甲欄）出現後確認（`opening_confirmed`）；若開局序列後 180 秒內沒有出現 HUD（例如取消配對），撤銷這次開始。
 - **錯過開局序列時恢復開始（`hud_resume`）**：目前沒有進行中的對局、也沒有等待 HUD 確認的開始時，對局 HUD 連續取樣跨越至少 `HUD_RESUME_CONFIRM_SECONDS = 3.0` 秒，送出 `match_start`，時間回溯到這一段的第一個 HUD 樣本。相鄰樣本間隔不得超過 `_max_gap`（取樣週期 × 2.5），任何非 HUD 場景（包含未知／黑畫面的 `other`）都會重算。適用於切回遊戲時已在跳傘／對局中，以及上一局的大廳結束已確定後又漏看下一局序列。錄影開頭的 `initial_match`／`initial_summary` 維持立即恢復，不等待 3 秒；大廳結束仍在暫定期間時，HUD 仍只取消結束、延續同一局。
 - **結束（`match_end`）**取下列最早者：

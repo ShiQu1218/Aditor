@@ -2,7 +2,7 @@
 
 輸入：apexrec 的具名 file mapping（版面見 recorder/src/shm.rs 檔頭）：4 fps 的 banner／spec（BGR24，與 decode.py
 相同的 1920×1080 基準裁切），每 4 格帶一張 640×360 GRAY8 thumb（1 fps）。
-輸出：stdout 每行一個 JSON（ready／snapshot／match_start／match_end／stats／error；見計畫 7 合約 1）。
+輸出：stdout 每行一個 JSON（ready／snapshot／match_pending／match_cancel／match_start／match_end／stats／error；見計畫 7 合約 1）。
 stdin 收到 EOF 或 {"cmd":"stop"} → 收尾、送出最終 snapshot、exit 0。
 
 擊殺偵測與離線分析一致：沿用 Detector／EventTracker／derive。離線版先掃一遍校準圖示尺度（calibrate）、

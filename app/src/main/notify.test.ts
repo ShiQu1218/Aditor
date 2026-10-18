@@ -53,3 +53,10 @@ describe('recording notifications', () => {
     expect(log).toHaveBeenCalled()
   })
 })
+
+it('倒數取消使用低優先靜音通知', () => {
+  const s = setup()
+  s.notify('matchCancel', '倒數後未開局')
+  expect(s.create).toHaveBeenCalledWith({ title: 'Apex Highlighter', body: '倒數後未開局', silent: true, urgency: 'low' })
+  expect(s.notice.show).toHaveBeenCalledOnce()
+})

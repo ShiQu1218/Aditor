@@ -243,20 +243,26 @@ export class RecordingSessionService implements RecordingService {
     live.on('stats', () => {
       if (this.active?.live === live) this.update({ kills: live.kills(), matchIndex: live.matchIndex() })
     })
-    live.on('match', (ev: 'match_start' | 'match_end', index: number, time: number) => {
+    live.on('match', (ev: 'match_start' | 'match_end' | 'match_pending' | 'match_cancel', index: number, time: number) => {
       if (this.active?.live !== live) return
       if (ev === 'match_start') this.notice('matchStart', `第 ${index} 局開始`)
-      else this.notice('matchEnd', `第 ${index} 局結束（計入擊殺 ${live.kills()}）`)
+      else if (ev === 'match_end') this.notice('matchEnd', `第 ${index} 局結束（計入擊殺 ${live.kills()}）`)
       const session = this.active
       if (session.obs?.perMatch && !session.ending && !session.obsFailed) {
         if (session.obsTimer) clearTimeout(session.obsTimer)
         session.obsTimer = undefined
-        if (ev === 'match_start') {
+        if (ev === 'match_start' || ev === 'match_pending') {
           session.obsEndAt = undefined
           this.queueObs(session, async () => {
             if (session.obsFailed) return
+            const current = session.obs!.matches.at(-1)
+            if (ev === 'match_start' && current?.confirmed === false && !current.cancelled && session.obs!.recording) {
+              current.confirmed = true
+              await session.obs!.save()
+              return
+            }
             await this.stopObsMatch(session)
-            try { await session.obs!.startMatch(index); this.update({ obsRecording: true }) }
+            try { await session.obs!.startMatch(index, ev === 'match_start'); this.update({ obsRecording: true }) }
             catch (error) {
               session.obsFailed = true
               this.notice('warning', `OBS 無法開始逐局錄影：${String(error)}`)
@@ -276,6 +282,17 @@ export class RecordingSessionService implements RecordingService {
               }
             }
           })
+        } else if (ev === 'match_cancel') {
+          session.obsEndAt = undefined
+          this.queueObs(session, async () => {
+            if (session.obsFailed || !session.obs) return
+            const current = session.obs.matches.at(-1)
+            if (!current || current.confirmed !== false || current.cancelled) return
+            current.cancelled = true
+            await session.obs!.save()
+            await this.stopObsMatch(session)
+            this.notice('matchCancel', '倒數後未開局，已停止 OBS 錄影（檔案保留於 OBS 資料夾）')
+          })
         } else {
           const delay = Math.max(0, session.obs.meta.captureStartedAt + time * 1000 + (this.deps.obsMatchPostPadMs ?? MATCH_POST_PAD_SEC * 1000) - Date.now())
           session.obsEndAt = Date.now() + delay
@@ -285,7 +302,7 @@ export class RecordingSessionService implements RecordingService {
           }, delay)
         }
       }
-      this.scheduleCuts(session)
+      if (ev === 'match_start' || ev === 'match_end') this.scheduleCuts(session)
     })
     return live
   }
@@ -503,6 +520,8 @@ export class RecordingSessionService implements RecordingService {
   private async stopObsMatch(session: ActiveSession): Promise<void> {
     const obs = session.obs
     if (!obs?.perMatch || !obs.recording) return
+    const current = obs.matches.at(-1)
+    if (current?.confirmed === false) { current.cancelled = true; await obs.save() }
     if (!await obs.stop()) throw new Error('OBS 尚未停止錄影')
     this.update({ obsRecording: false })
     await this.completeObsMatches(session)
@@ -600,7 +619,8 @@ export class RecordingSessionService implements RecordingService {
         return true
       }
       if (session.obs?.perMatch && session.obs.recording) {
-        const deadline = session.obsEndAt ?? Date.now() + (this.deps.obsMatchPostPadMs ?? MATCH_POST_PAD_SEC * 1000)
+        const deadline = session.obs.matches.at(-1)?.confirmed === false ? Date.now()
+          : session.obsEndAt ?? Date.now() + (this.deps.obsMatchPostPadMs ?? MATCH_POST_PAD_SEC * 1000)
         const delay = Math.max(0, deadline - Date.now())
         if (delay) await new Promise((resolve) => setTimeout(resolve, delay))
         await this.stopObsMatch(session)

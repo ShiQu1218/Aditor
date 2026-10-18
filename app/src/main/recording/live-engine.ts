@@ -1,6 +1,6 @@
 /**
  * live 引擎（第 3 期，計畫 7 合約 1）：`apexhl live --shm … --profile-dir … [--scene-dir …]`。
- * 讀 apexrec 的共享記憶體小圖，stdout 每行一個 JSON（ready／snapshot／match_start／match_end／stats／error）。
+ * 讀 apexrec 的共享記憶體小圖，stdout 每行一個 JSON（ready／snapshot／match_pending／match_cancel／match_start／match_end／stats／error）。
  *
  * - 以低於一般的優先序執行；當掉時以指數退避重啟（10 分鐘內最多 5 次），錄影本身不受影響。
  * - 重啟後的新程序只看得到重啟之後的影格：先前的事件保留（封存），新程序的事件只採用封存時間之後的部分。
@@ -25,7 +25,7 @@ export interface LiveSpec { start: number; end: number }
 /** live 引擎在最終 snapshot 附上的判定：complete＝結果等同離線分析，可直接當分析結果。 */
 export interface LiveQuality { complete: boolean; reasons: string[]; hScale: number | null }
 export interface LiveSnapshot { t: number; events: LiveEvent[]; spectating: LiveSpec[]; quality?: LiveQuality }
-export interface LiveMatchEvent { ev: 'match_start' | 'match_end'; t: number; reason: string }
+export interface LiveMatchEvent { ev: 'match_start' | 'match_end' | 'match_pending' | 'match_cancel'; t: number; reason: string }
 
 export interface LiveEngineOptions {
   command: RecorderCommand
@@ -223,6 +223,8 @@ export class LiveEngine extends EventEmitter {
         this.emit('snapshot', this.current)
         break
       }
+      case 'match_pending':
+      case 'match_cancel':
       case 'match_start':
       case 'match_end':
         if (!finite(msg.t) || msg.t < 0) return

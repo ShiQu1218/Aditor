@@ -140,3 +140,23 @@ describe('錄影服務整合 live 引擎', () => {
     expect(await r.service.live!()).toBeNull()
   })
 })
+
+it('倒數與取消僅記錄並轉送，不改變確認對局清單或擊殺', async () => {
+  const dir = root()
+  const recordEvent = vi.fn()
+  const live = new LiveSession({ sessionId: 'pending', dir, profileDir: dir, recordEvent, notice: vi.fn() })
+  const listener = vi.fn()
+  live.on('match', listener)
+  ;(live as any).onMatch({ ev: 'match_start', t: 0, reason: 'initial_match' })
+  const matches = (await live.state()).matches
+  for (const ev of ['match_pending', 'match_cancel'] as const) {
+    const event = { ev, t: 5, reason: '測試' }
+    expect(applyMatchEvent(matches, event)).toBe(matches)
+    ;(live as any).onMatch(event)
+    expect(recordEvent).toHaveBeenLastCalledWith(event)
+    expect(listener).toHaveBeenLastCalledWith(ev, 2, 5)
+  }
+  await live.flush()
+  expect((await live.state()).matches).toEqual(matches)
+  expect(JSON.parse(fs.readFileSync(path.join(dir, 'live.json'), 'utf8')).matches).toEqual(matches)
+})
