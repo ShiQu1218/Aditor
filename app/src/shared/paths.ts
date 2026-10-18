@@ -1,5 +1,6 @@
 import path from 'path'
 import os from 'os'
+import fs from 'fs'
 
 export function appDataDir(): string {
   const base = process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming')
@@ -49,6 +50,25 @@ export function engineCommand(isPackaged: boolean): {
     env: {
       PYTHONPATH: path.join(root, 'engine')
     }
+  }
+}
+
+/** apexrec 與 FFmpeg DLL 同層；開發時優先使用 release，尚未建置時改找 debug。 */
+export function apexrecCommand(isPackaged: boolean): {
+  command: string
+  args: string[]
+  env?: Record<string, string>
+} {
+  if (isPackaged) {
+    const root = (process as unknown as { resourcesPath?: string }).resourcesPath || path.join(__dirname, '..', '..')
+    return { command: path.join(root, 'ffmpeg', 'bin', 'apexrec.exe'), args: [] }
+  }
+  const root = path.resolve(__dirname, '../../..')
+  const release = path.join(root, 'recorder', 'target', 'release', 'apexrec.exe')
+  return {
+    command: fs.existsSync(release) ? release : path.join(root, 'recorder', 'target', 'debug', 'apexrec.exe'),
+    args: [],
+    env: { PATH: `${path.join(root, 'build', 'ffmpeg', 'bin')}${path.delimiter}${process.env.PATH || ''}` }
   }
 }
 

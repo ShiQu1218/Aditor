@@ -11,6 +11,10 @@ extraResources:
     to: engine/apexhl
   - from: ../build/ffmpeg
     to: ffmpeg
+  - from: resources
+    to: resources
+    filter:
+      - tray-*.png
   - from: ../templates
     to: templates
   - from: ../LICENSE
