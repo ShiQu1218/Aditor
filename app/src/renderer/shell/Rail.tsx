@@ -2,6 +2,9 @@ import React from 'react'
 import { LayoutGrid, Film, Keyboard, SlidersHorizontal, LogoMark } from '../components/icons'
 import { QueueRing } from './QueueRing'
 import { shellI18n } from '../i18n/zh-TW'
+import { recordingI18n } from '../i18n/zh-TW'
+import type { RecordingPhase } from '../../shared/recording'
+import './recording.css'
 
 export type RailView = 'library' | 'studio' | 'settings'
 
@@ -16,9 +19,11 @@ interface RailProps {
   queueOpen?: boolean
   /** 供佇列浮層判斷「點擊外部」時排除觸發按鈕 */
   queueButtonRef?: React.Ref<HTMLButtonElement>
+  recordingPhase?: RecordingPhase
+  onRecording?: () => void
 }
 
-export function Rail({ active, projectCount, onNavigate, onShortcuts, onQueue, queueOpen = false, queueButtonRef }: RailProps): JSX.Element {
+export function Rail({ active, projectCount, onNavigate, onShortcuts, onQueue, queueOpen = false, queueButtonRef, recordingPhase = 'idle', onRecording }: RailProps): JSX.Element {
   const t = shellI18n.rail
   const btn = (view: RailView, tip: string, label: string, icon: JSX.Element, badge?: number) => (
     <button
@@ -37,6 +42,12 @@ export function Rail({ active, projectCount, onNavigate, onShortcuts, onQueue, q
       <LogoMark className="logo" />
       {btn('library', t.library, t.library, <LayoutGrid className="ic lg" />)}
       {btn('studio', t.studio, t.studioLabel, <Film className="ic lg" />, projectCount)}
+      <button type="button" className="rail-btn" data-tip={recordingI18n.title}
+        aria-label={recordingPhase === 'recording' || recordingPhase === 'error' ? recordingI18n.phases[recordingPhase] : recordingI18n.title}
+        aria-haspopup="dialog" onClick={onRecording}>
+        <Film className="ic lg" />
+        {(recordingPhase === 'recording' || recordingPhase === 'error') && <span className={`rec-dot${recordingPhase === 'error' ? ' error' : ''}`} aria-hidden="true" />}
+      </button>
       <div className="rail-spacer" />
       <button
         className="rail-btn"

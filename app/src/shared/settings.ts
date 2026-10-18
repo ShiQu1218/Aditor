@@ -1,4 +1,5 @@
 import { AutoClipParams } from './types'
+import { DEFAULT_RECORDING_SETTINGS, type RecordingSettings } from './recording'
 
 /** 設定檔格式版本；格式變更時遞增並在 `migrateSettings` 處理舊版。 */
 export const SETTINGS_VERSION = 1
@@ -39,6 +40,8 @@ export interface Settings {
   lastProjectId: string | null
   /** 已詢問過「是否開啟低效能模式」（首次啟動偵測無硬體解碼時只問一次） */
   lowPerfAsked: boolean
+  /** 遊戲錄影設定；由 main 驗證與持久化。 */
+  recording: RecordingSettings
 }
 
 /** 數值範圍（含端點） */
@@ -66,7 +69,7 @@ export interface SettingsSetResult {
   /** false＝記憶體已更新但寫檔失敗（重啟後不會保留） */
   persisted: boolean
   /** main 對路徑類欄位的驗證錯誤（該欄位未被套用） */
-  errors?: Partial<Record<'defaultOutDir', string>>
+  errors?: Partial<Record<'defaultOutDir' | 'recordingOutputDir', string>>
 }
 
 /** 預設設定；首次使用者（無設定檔）即採用此值，行為與舊版相同。 */
@@ -86,5 +89,6 @@ export const DEFAULT_SETTINGS: Settings = {
   defaultOutDir: null,
   projectTrackCollapsed: 'auto',
   lastProjectId: null,
-  lowPerfAsked: false
+  lowPerfAsked: false,
+  recording: { ...DEFAULT_RECORDING_SETTINGS }
 }

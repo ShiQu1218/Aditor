@@ -509,7 +509,8 @@ export const settingsI18n = {
   cat: {
     a: '影片與分析',
     b: '預覽與剪輯',
-    c: '匯出與關於'
+    c: '匯出與關於',
+    recording: '錄影'
   },
   card: {
     source: '影片來源',
@@ -651,3 +652,60 @@ export const settingsI18n = {
     }
   }
 } as const
+
+/** 遊戲錄影設定與狀態面板。 */
+export const recordingI18n = {
+  title: '錄影',
+  card: '遊戲錄影',
+  rows: {
+    autoRecord: { title: '自動錄影', desc: '偵測到 Apex 啟動後自動開始錄影。' },
+    launchAtLogin: { title: '開機啟動並常駐系統匣', desc: '開機時在背景啟動 Apex Highlighter。' },
+    closeToTray: { title: '關閉視窗時縮到系統匣', desc: '關閉視窗後繼續偵測 Apex 與錄影。' },
+    mode: { title: '錄影模式', desc: '一局一個檔將在對局偵測完成後開放。' },
+    outputDir: { title: '錄影資料夾', desc: '預設使用第一個監看資料夾；未設定時使用影片資料夾下的 Apex Highlighter。' },
+    codec: { title: '編碼格式', desc: '僅使用硬體編碼；沒有可用編碼器時不錄影。' },
+    encoder: { title: '錄影編碼器', desc: '依目前編碼格式列出錄影器可用的硬體編碼器。' },
+    height: { title: '錄影解析度', desc: '原生解析度保留遊戲畫面大小。' },
+    fps: { title: '錄影 FPS', desc: '每秒錄製的影格數。' },
+    bitrateKbps: { title: '錄影位元率', desc: '以 Mbps 設定影像位元率。' },
+    renderDevice: { title: '系統聲音裝置', desc: '擷取此輸出裝置播放的系統聲音。' },
+    micEnabled: { title: '麥克風', desc: '將麥克風與系統聲音混成一軌。' },
+    captureDevice: { title: '麥克風裝置', desc: '選擇錄影使用的麥克風。' },
+    micGain: { title: '麥克風音量', desc: '100% 為原始音量，最高 200%。' },
+    postAnalysis: { title: '錄後分析', desc: '目前「每局結束後」同樣在整段錄影收尾後分析。' },
+    diskWarnGb: { title: '磁碟提醒門檻', desc: '剩餘空間低於此值時通知。' },
+    diskStopGb: { title: '磁碟停止門檻', desc: '剩餘空間低於此值時停止錄影並收尾；不可高於提醒門檻。' },
+    notifyMatch: { title: '對局通知', desc: '對局偵測完成後，通知對局開始與結束；錯誤一律通知。' }
+  },
+  auto: '自動',
+  defaultDevice: '預設',
+  defaultDir: '預設（監看資料夾／影片資料夾）',
+  choose: '選擇',
+  clear: '清除（使用預設）',
+  session: '從頭錄到尾',
+  matchUnavailable: '一局一個檔（對局偵測完成後開放）',
+  native: '原生',
+  analysisNone: '不分析',
+  analysisAfterExit: '關閉 Apex 後',
+  analysisPerMatch: '每局結束後',
+  capabilitiesUnavailable: '無法取得錄影器能力，請確認 apexrec 已安裝；目前僅提供自動編碼器與預設裝置。',
+  capabilitiesLoading: '正在取得錄影器能力…',
+  currentUnavailable: '目前設定：{value}（未偵測到）',
+  chooseFailed: '無法選擇錄影資料夾，請再試一次。',
+  statusTitle: '錄影狀態',
+  close: '關閉',
+  phases: { idle: '待命', starting: '啟動中', recording: '錄影中', finalizing: '收尾中', error: '錄影錯誤' },
+  elapsed: '錄影時間',
+  segments: '段落數',
+  actualEncoder: '編碼器',
+  resolution: '解析度',
+  dropped: '丟格數',
+  diskFree: '磁碟剩餘',
+  unknown: '未知',
+  start: '開始錄影',
+  stop: '停止錄影',
+  pauseAuto: '暫停自動錄影',
+  apexNotRunning: '無法開始錄影，請確認 Apex 正在執行。',
+  serviceUnavailable: '無法取得錄影狀態，請確認錄影服務已啟動。',
+  actionFailed: '錄影操作失敗，請再試一次。'
+}

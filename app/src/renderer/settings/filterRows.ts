@@ -14,7 +14,7 @@ function matches(row: SettingRow, terms: string[]): boolean {
 
 export function filterRows(rows: readonly SettingRow[], query: string): FilterResult {
   const terms = query.toLowerCase().split(/\s+/).filter(Boolean)
-  const byCategory: Record<CategoryId, SettingRow[]> = { a: [], b: [], c: [] }
+  const byCategory: Record<CategoryId, SettingRow[]> = { a: [], b: [], c: [], recording: [] }
   const counts: Partial<Record<CategoryId, number>> = {}
   for (const row of rows) {
     if (terms.length > 0 && !matches(row, terms)) continue

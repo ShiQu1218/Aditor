@@ -110,11 +110,11 @@ describe('SettingsScreen markup（renderToString + fake window.api 資料）', (
     expect(html).toMatch(/<option value="software" selected/)
   })
 
-  test('tablist: role, label, three tabs, roving tabindex and aria-selected on the active one', async () => {
+  test('tablist: role, label, four tabs, roving tabindex and aria-selected on the active one', async () => {
     const html = await render({ initialCategory: 'b' })
     expect(html).toMatch(/role="tablist"[^>]*aria-label="設定分類"[^>]*aria-orientation="vertical"|aria-orientation="vertical"[^>]*role="tablist"/)
     const tabs = [...html.matchAll(/<button[^>]*role="tab"[^>]*>/g)].map((m) => m[0])
-    expect(tabs).toHaveLength(3)
+    expect(tabs).toHaveLength(4)
     expect(tabs[0]).toContain('aria-selected="false"')
     expect(tabs[0]).toContain('tabindex="-1"')
     expect(tabs[1]).toContain('aria-selected="true"')
@@ -135,7 +135,7 @@ describe('SettingsScreen markup（renderToString + fake window.api 資料）', (
   test('search results: rows from ALL categories, grouped by card, with per-category hit counts', async () => {
     const html = await render({ initialQuery: '資料夾' })
     // 監看資料夾（a）與預設輸出資料夾（c）；b 沒有命中
-    expect(rowIds(html)).toEqual(['watchFolders', 'defaultOutDir'])
+    expect(rowIds(html)).toEqual(['watchFolders', 'defaultOutDir', 'recording-outputDir'])
     expect(html).toContain('role="region"')
     expect(html).toContain('aria-label="搜尋結果"')
     expect(html).not.toContain('role="tabpanel"')

@@ -1,6 +1,19 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
+import { RECORDING_CHANNELS, type RecordingStatus, type RecorderCapabilities } from '../shared/recording'
 
 const api = {
+  recording: {
+    getStatus: (): Promise<RecordingStatus> => ipcRenderer.invoke(RECORDING_CHANNELS.getStatus),
+    getCapabilities: (): Promise<RecorderCapabilities | null> => ipcRenderer.invoke(RECORDING_CHANNELS.getCapabilities),
+    startManual: (): Promise<boolean> => ipcRenderer.invoke(RECORDING_CHANNELS.startManual),
+    stopManual: (): Promise<void> => ipcRenderer.invoke(RECORDING_CHANNELS.stopManual),
+    setPaused: (paused: boolean): Promise<void> => ipcRenderer.invoke(RECORDING_CHANNELS.setPaused, paused),
+    onStatus: (callback: (status: RecordingStatus) => void): (() => void) => {
+      const handler = (_: unknown, status: RecordingStatus) => callback(status)
+      ipcRenderer.on(RECORDING_CHANNELS.status, handler)
+      return () => ipcRenderer.removeListener(RECORDING_CHANNELS.status, handler)
+    }
+  },
   engine: {
     probe: (path: string) => ipcRenderer.invoke('engine:probe', path),
     analyze: (args: unknown) => ipcRenderer.invoke('engine:analyze', args),

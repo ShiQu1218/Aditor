@@ -1,0 +1,18 @@
+.rail-btn .rec-dot {
+  position: absolute;
+  top: 6px;
+  right: 5px;
+  width: 8px;
+  height: 8px;
+  border-radius: var(--r-pill);
+  background: var(--accent);
+}
+.rail-btn .rec-dot.error { background: var(--warning); }
+.rec-panel { max-width: 520px; }
+.rec-details { display: grid; gap: 12px; }
+.rec-details > div { display: flex; justify-content: space-between; gap: 16px; }
+.rec-details dt { color: var(--text-2); }
+.rec-details dd { margin: 0; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.rec-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 20px; }
+.rec-pause { display: flex; align-items: center; gap: 8px; }
+.rec-error { color: var(--danger); margin-top: 16px; overflow-wrap: anywhere; }
