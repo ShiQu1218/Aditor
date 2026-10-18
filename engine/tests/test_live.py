@@ -370,7 +370,7 @@ def test_cli_eof_before_any_frame(layout):
         assert proc.returncode == 0, err.decode("utf-8", errors="replace")
         evs = [json.loads(x) for x in out.decode("utf-8").splitlines()]
         assert [e["ev"] for e in evs] == ["ready", "stats", "snapshot"]
-        assert evs[-1] == {"ev": "snapshot", "t": 0.0, "events": [], "spectating": []}
+        assert {k: evs[-1][k] for k in ("ev", "t", "events", "spectating", "final")} ==             {"ev": "snapshot", "t": 0.0, "events": [], "spectating": [], "final": True}
     finally:
         w.close()
 
