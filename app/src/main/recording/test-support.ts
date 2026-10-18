@@ -16,6 +16,12 @@ export function fakeCommand(mode = 'normal', env: Record<string, string> = {}): 
   return { command: process.execPath, args: [fakeRecorder], env: { FAKE_RECORDER_MODE: mode, ...env } }
 }
 
+export const fakeLiveEngine = path.join(__dirname, '__fixtures__', 'live-engine.cjs')
+
+export function fakeLiveCommand(mode = 'normal', env: Record<string, string> = {}): RecorderCommand {
+  return { command: process.execPath, args: [fakeLiveEngine], env: { FAKE_LIVE_MODE: mode, ...env } }
+}
+
 export function makeDeps(root: string): RecordingDeps {
   fs.writeFileSync(path.join(root, 'profile.json'), JSON.stringify({ banner_roi: [560, 700, 800, 180], spec_roi: [60, 1028, 480, 40] }))
   return {

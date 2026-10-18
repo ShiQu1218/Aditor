@@ -35,6 +35,22 @@ export interface RecordingDeps {
   findApexPid?: () => Promise<number | null>
   /** 測試注入：輪詢間隔毫秒 */
   pollMs?: number
+  /** 第 3 期：live 引擎（`apexhl live`）的啟動方式；未提供＝不做即時偵測，只提供段落播放 */
+  liveEngineCommand?: RecorderCommand
+  /** `templates/scene`（live 引擎 `--scene-dir`，對局判斷用） */
+  sceneDir?: string
+  /** 測試注入：live 引擎重啟退避基準毫秒（預設 1000） */
+  liveRestartBaseMs?: number
+  /** 收尾時把 `live.json` 寫成輸出影片的分析快取：回傳快取檔路徑（與 `cacheFilePath` 及目前快取位置設定一致）；未提供＝不轉換 */
+  liveCachePath?: (videoPath: string) => string
+  /** live 快取寫好後（在排完整分析之前）通知：例如把媒體庫條目標成可開啟並填入擊殺數 */
+  onLiveAnalysis?: (videoPath: string, summary: LiveAnalysisSummary) => void
+}
+
+export interface LiveAnalysisSummary {
+  counts: { knock: number; assist: number }
+  durationSec: number
+  codec: string
 }
 
 export function createRecordingService(_deps: RecordingDeps): RecordingService {

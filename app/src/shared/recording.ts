@@ -3,6 +3,8 @@
  * main（錄影服務）、preload 與 renderer（設定頁、側欄、狀態列）都只依賴本檔，彼此不直接 import。
  */
 
+import type { EngineEvent } from './types'
+
 /** 錄影後端；第 5 期才實作 'obs'，在那之前設定頁不提供選項。 */
 export type RecordingBackend = 'builtin' | 'obs'
 
@@ -109,6 +111,10 @@ export interface RecordingStatus {
   /** 自動錄影是否暫停（系統匣「暫停自動錄影」） */
   paused: boolean
   error: { code: string; message: string } | null
+  /** 本局（尚無對局資訊時＝整段錄影）計入的擊倒＋消滅數（live 引擎；第 3 期） */
+  kills: number
+  /** 第幾局（從 1 開始）；尚無對局資訊時 null */
+  matchIndex: number | null
 }
 
 export const IDLE_RECORDING_STATUS: RecordingStatus = {
@@ -123,7 +129,9 @@ export const IDLE_RECORDING_STATUS: RecordingStatus = {
   diskFreeBytes: null,
   droppedFrames: 0,
   paused: false,
-  error: null
+  error: null,
+  kills: 0,
+  matchIndex: null
 }
 
 /** apexrec `hello` 的能力資訊（設定頁選單用）。 */
@@ -150,6 +158,46 @@ export interface RecordingService {
   onStatus(listener: (s: RecordingStatus) => void): () => void
   /** 收尾產生的檔案（已加入媒體庫） */
   onFinalized(listener: (videoPaths: string[]) => void): () => void
+  /** 錄影中觀看（第 3 期）：目前錄影工作的段落、事件與對局；沒有錄影時 null */
+  live?(): Promise<LiveState | null>
+  /** 讀目前（或收尾中）錄影工作的 init.mp4 */
+  readInit?(sessionId: string): Promise<Uint8Array>
+  /** 讀目前（或收尾中）錄影工作的段落；seq 必須已寫入索引 */
+  readSegment?(sessionId: string, seq: number): Promise<Uint8Array>
+  /** 段落與事件增量（main 推播 `recording:live`） */
+  onLive?(listener: (update: LiveUpdate) => void): () => void
+}
+
+/** 已寫入索引的 fMP4 段落（秒；0＝錄影開始）。 */
+export interface LiveSegment { seq: number; pts: number; dur: number }
+
+/** 對局起訖（秒）；進行中 end＝null。 */
+export interface LiveMatch { start: number; end: number | null }
+
+/** live 引擎事件（欄位與分析快取 `events` 相同，見 `shared/types.ts` 的 `EngineEvent`）。 */
+export type LiveEvent = EngineEvent
+
+export interface LiveState {
+  sessionId: string
+  /** `video/mp4; codecs="…"`（由 init.mp4 解析）；init.mp4 尚未寫出時 null */
+  mime: string | null
+  segments: LiveSegment[]
+  events: LiveEvent[]
+  spectating: { start: number; end: number }[]
+  matches: LiveMatch[]
+}
+
+/**
+ * `recording:live` 推播。`segment`／`match` 是增量；`events`／`spectating` 是 live 引擎最新快照的完整清單
+ * （快照本身就是整份清單，最多每秒一次）。`finalized`：錄影收尾後的輸出檔。
+ */
+export interface LiveUpdate {
+  sessionId: string
+  segment?: LiveSegment
+  events?: LiveEvent[]
+  spectating?: { start: number; end: number }[]
+  match?: LiveMatch & { index: number }
+  finalized?: string[]
 }
 
 /** IPC 頻道名稱（invoke 與推播）。 */
@@ -159,5 +207,10 @@ export const RECORDING_CHANNELS = {
   startManual: 'recording:startManual',
   stopManual: 'recording:stopManual',
   setPaused: 'recording:setPaused',
-  status: 'recording:status'
+  status: 'recording:status',
+  getLive: 'recording:getLive',
+  readInit: 'recording:readInit',
+  readSegment: 'recording:readSegment',
+  /** 推播：段落與事件增量（`LiveUpdate`） */
+  live: 'recording:live'
 } as const

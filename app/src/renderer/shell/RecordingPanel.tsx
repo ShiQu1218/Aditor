@@ -11,7 +11,7 @@ function elapsedTime(seconds: number): string {
   return [Math.floor(total / 3600), Math.floor(total / 60) % 60, total % 60].map((n) => String(n).padStart(2, '0')).join(':')
 }
 
-export function RecordingPanel({ onClose }: { onClose: () => void }): JSX.Element {
+export function RecordingPanel({ onClose, onWatchLive }: { onClose: () => void; onWatchLive?: () => void }): JSX.Element {
   const { status, error, refresh } = useRecordingStatus()
   const [now, setNow] = useState(Date.now)
   const [busy, setBusy] = useState(false)
@@ -51,6 +51,8 @@ export function RecordingPanel({ onClose }: { onClose: () => void }): JSX.Elemen
     [t.actualEncoder, status.encoder ?? t.unknown],
     [t.resolution, status.width !== null && status.height !== null ? `${status.width} × ${status.height}` : t.unknown],
     [t.dropped, status.droppedFrames],
+    [t.matchIndex, status.matchIndex ?? '—'],
+    [t.kills, status.kills],
     [t.diskFree, status.diskFreeBytes === null ? t.unknown : formatBytes(status.diskFreeBytes)]
   ]
   return (
@@ -65,6 +67,10 @@ export function RecordingPanel({ onClose }: { onClose: () => void }): JSX.Elemen
         <div className="rec-actions">
           <button type="button" className="lib-btn" disabled={busy || !!error || !['idle', 'error'].includes(status.phase)} onClick={() => void run('start')}>{t.start}</button>
           <button type="button" className="lib-btn" disabled={busy || !!error || !['starting', 'recording'].includes(status.phase)} onClick={() => void run('stop')}>{t.stop}</button>
+          {onWatchLive && (
+            <button type="button" className="lib-btn primary" disabled={status.phase !== 'recording'}
+              title={status.phase === 'recording' ? undefined : t.watchLiveHint} onClick={onWatchLive}>{t.watchLive}</button>
+          )}
           <label className="rec-pause"><input type="checkbox" checked={status.paused} disabled={busy || !!error} onChange={(e) => void run('pause', e.target.checked)} />{t.pauseAuto}</label>
         </div>
       </div>

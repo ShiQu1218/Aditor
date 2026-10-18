@@ -53,6 +53,24 @@ export function engineCommand(isPackaged: boolean): {
   }
 }
 
+/** 對局場景範本（`templates/scene`，live 引擎 `--scene-dir`）；位置規則同 `profileDir`。 */
+export function sceneDir(isPackaged: boolean): string {
+  return path.join(path.dirname(profileDir(isPackaged)), 'scene')
+}
+
+/**
+ * live 引擎（第 3 期，`apexhl live …`）的啟動方式：與 `engineCommand` 相同的執行檔，子指令改為 `live`。
+ * 呼叫端再附加 `--shm`／`--profile-dir`／`--scene-dir`。
+ */
+export function liveEngineCommand(isPackaged: boolean): {
+  command: string
+  args: string[]
+  env?: Record<string, string>
+} {
+  const base = engineCommand(isPackaged)
+  return { ...base, args: [...base.args.slice(0, -1), 'live'] }
+}
+
 /** apexrec 與 FFmpeg DLL 同層；開發時優先使用 release，尚未建置時改找 debug。 */
 export function apexrecCommand(isPackaged: boolean): {
   command: string

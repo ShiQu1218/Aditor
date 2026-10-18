@@ -28,10 +28,12 @@ interface AppShellProps {
   active: RailView | null
   projectCount: number
   onNavigate: (v: RailView) => void
+  /** 錄影面板「觀看當局」：切到錄影中觀看畫面 */
+  onOpenLive?: () => void
   children: React.ReactNode
 }
 
-export function AppShell({ active, projectCount, onNavigate, children }: AppShellProps): JSX.Element {
+export function AppShell({ active, projectCount, onNavigate, onOpenLive, children }: AppShellProps): JSX.Element {
   const [queueOpen, setQueueOpen] = useState(false)
   const queueButtonRef = useRef<HTMLButtonElement>(null)
 
@@ -43,6 +45,7 @@ export function AppShell({ active, projectCount, onNavigate, children }: AppShel
             active={active}
             projectCount={projectCount}
             onNavigate={onNavigate}
+            onOpenLive={onOpenLive}
             queueOpen={queueOpen}
             onToggleQueue={() => setQueueOpen((v) => !v)}
             onCloseQueue={() => setQueueOpen(false)}
@@ -61,6 +64,7 @@ function ShellFrame({
   active,
   projectCount,
   onNavigate,
+  onOpenLive,
   queueOpen,
   onToggleQueue,
   onCloseQueue,
@@ -88,7 +92,8 @@ function ShellFrame({
         recordingPhase={recording.status.phase}
         onRecording={() => {
           onCloseQueue()
-          overlay.open(<RecordingPanel onClose={overlay.close} />)
+          const watchLive = onOpenLive ? (): void => { overlay.close(); onOpenLive() } : undefined
+          overlay.open(<RecordingPanel onClose={overlay.close} onWatchLive={watchLive} />)
         }}
       />
       <main className="app-main">{children}</main>

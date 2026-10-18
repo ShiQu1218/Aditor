@@ -4,7 +4,7 @@ import { randomBytes } from 'crypto'
 import { EventEmitter } from 'events'
 import {
   IDLE_RECORDING_STATUS,
-  type RecordingService, type RecordingStatus, type RecorderCapabilities
+  type LiveState, type LiveUpdate, type RecordingService, type RecordingStatus, type RecorderCapabilities
 } from '../../shared/recording'
 import { isSafeLocalDirPath } from '../safe-path'
 import { ApexWatcher, findApexPid } from './apex-watcher'
@@ -12,6 +12,7 @@ import { ApexrecClient, RecorderError, type RecorderEvent } from './apexrec-clie
 import { diskFreeBytes, diskLevel } from './disk'
 import { finalizeSession, validateSessionDir, writeJson } from './finalize'
 import { recoverSessions } from './recovery'
+import { LiveSession } from './live-session'
 import type { RecordingDeps, RecordingNoticeKind } from './index'
 
 interface ActiveSession {
@@ -24,6 +25,7 @@ interface ActiveSession {
   warned: boolean
   writes: Promise<void>
   sequences: Set<number>
+  live: LiveSession
 }
 
 function sessionId(): string {
@@ -159,6 +161,48 @@ export class RecordingSessionService implements RecordingService {
     return () => { this.events.off('finalized', listener) }
   }
 
+  async live(): Promise<LiveState | null> {
+    return this.active ? this.active.live.state() : null
+  }
+
+  async readInit(sessionId: string): Promise<Uint8Array> {
+    return this.liveFor(sessionId).readInit()
+  }
+
+  async readSegment(sessionId: string, seq: number): Promise<Uint8Array> {
+    return this.liveFor(sessionId).readSegment(seq)
+  }
+
+  onLive(listener: (update: LiveUpdate) => void): () => void {
+    this.events.on('live', listener)
+    return () => { this.events.off('live', listener) }
+  }
+
+  /** 只允許目前（含收尾中、工作目錄尚未刪除）的錄影工作。 */
+  private liveFor(sessionId: string): LiveSession {
+    if (!this.active || this.active.id !== sessionId) throw new Error('錄影工作不存在或已收尾')
+    return this.active.live
+  }
+
+  private createLive(id: string, dir: string): LiveSession {
+    const live = new LiveSession({
+      sessionId: id, dir, command: this.deps.liveEngineCommand, profileDir: this.deps.profileDir,
+      sceneDir: this.deps.sceneDir, restartBaseMs: this.deps.liveRestartBaseMs,
+      recordEvent: (event) => { if (this.active?.live === live) this.recordEvent(this.active, event) },
+      notice: (message) => this.notice('error', message)
+    })
+    live.on('update', (update: LiveUpdate) => { if (this.active?.live === live) this.events.emit('live', update) })
+    live.on('stats', () => {
+      if (this.active?.live === live) this.update({ kills: live.kills(), matchIndex: live.matchIndex() })
+    })
+    live.on('match', (ev: 'match_start' | 'match_end', index: number) => {
+      if (this.active?.live !== live) return
+      if (ev === 'match_start') this.notice('matchStart', `第 ${index} 局開始`)
+      else this.notice('matchEnd', `第 ${index} 局結束（計入擊殺 ${live.kills()}）`)
+    })
+    return live
+  }
+
   private serialize<T>(action: () => Promise<T>): Promise<T> {
     const result = this.operations.then(action)
     this.operations = result.then(() => {}, (error) => this.fail('internal', String(error)))
@@ -192,7 +236,8 @@ export class RecordingSessionService implements RecordingService {
       const startedAt = Date.now()
       await writeJson(path.join(dir, 'recording.json'), { startedAt, postAnalysis: settings.postAnalysis })
       const client = new ApexrecClient(this.deps.recorderCommand)
-      session = { pid, id, dir, outputDir, client, ending: false, warned: false, writes: Promise.resolve(), sequences: new Set() }
+      const live = this.createLive(id, dir)
+      session = { pid, id, dir, outputDir, client, ending: false, warned: false, writes: Promise.resolve(), sequences: new Set(), live }
       this.active = session
       this.update({ sessionId: id, startedAt })
       const current = session
@@ -218,6 +263,7 @@ export class RecordingSessionService implements RecordingService {
       if (session && this.active === session) {
         session.ending = true
         await session.client.close()
+        await session.live.stop()
         if (!await this.finish()) return false
       }
       const code = error instanceof RecorderError ? error.code : 'recording_start_failed'
@@ -237,12 +283,16 @@ export class RecordingSessionService implements RecordingService {
         if (typeof event.encoder !== 'string' || !Number.isSafeInteger(event.width) || Number(event.width) <= 0 ||
             !Number.isSafeInteger(event.height) || Number(event.height) <= 0) return
         this.update({ phase: 'recording', encoder: event.encoder, width: Number(event.width), height: Number(event.height), error: null })
+        if (typeof event.shm === 'string' && event.shm.length > 0 && event.shm.length <= 256) {
+          session.live.startEngine(event.shm, Number(event.width), Number(event.height))
+        }
         break
       case 'segment':
         if (typeof event.seq === 'number' && Number.isSafeInteger(event.seq) && event.seq > 0 &&
             typeof event.pts === 'number' && Number.isFinite(event.pts) && event.pts >= 0 &&
             typeof event.dur === 'number' && Number.isFinite(event.dur) && event.dur > 0) {
           session.sequences.add(event.seq)
+          session.live.addSegment({ seq: event.seq, pts: event.pts, dur: event.dur })
           // 段落只更新快照，隨每五秒 stats 或階段變化推播，避免每段都送 IPC。
           this.update({ segments: session.sequences.size, durationSec: Math.max(this.state.durationSec, event.pts + event.dur) }, false)
         }
@@ -326,11 +376,14 @@ export class RecordingSessionService implements RecordingService {
     try { await session.client.stop() }
     catch (error) { this.notice('error', `錄影程序停止失敗，將收尾已完成段落：${String(error)}`) }
     this.update({ phase: 'finalizing' })
+    // 等 live 引擎送出最終 snapshot 並寫入 live.json，收尾才能轉成分析快取。
+    await session.live.stop()
     try {
       await session.writes
       const paths = await finalizeSession(session.dir, this.deps)
       this.active = null
       this.idle()
+      this.events.emit('live', { sessionId: session.id, finalized: [...paths] } satisfies LiveUpdate)
       if (paths.length) this.finalized(paths)
       return true
     } catch (error) {
