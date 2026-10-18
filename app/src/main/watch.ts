@@ -349,7 +349,10 @@ export class WatchManager extends EventEmitter {
 
   /** 新檔（穩定後）：支援的副檔名才匯入；autoAnalyze 開啟時排入佇列。 */
   private handleNewFiles(paths: string[]): void {
-    const files = paths.filter((p) => SUPPORTED_EXTS.has(path.extname(p).toLowerCase()))
+    const files = paths.filter((p) =>
+      !p.split(/[\\/]/).some((part) => part.toLowerCase() === '.sessions') &&
+      !p.toLowerCase().endsWith('.part.mp4') &&
+      SUPPORTED_EXTS.has(path.extname(p).toLowerCase()))
     if (files.length === 0) {
       return
     }
