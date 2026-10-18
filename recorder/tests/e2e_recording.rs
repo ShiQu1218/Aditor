@@ -357,9 +357,12 @@ impl Drop for Mapping {
 }
 
 fn ffmpeg(name: &str) -> PathBuf {
-    PathBuf::from(std::env::var_os("APEXREC_FFMPEG_DIR").unwrap())
-        .join("bin")
-        .join(format!("{name}.exe"))
+    PathBuf::from(
+        std::env::var_os("APEXREC_FFMPEG_DIR")
+            .expect("端對端錄影測試需要設定 APEXREC_FFMPEG_DIR 為含有 bin 的 FFmpeg 根目錄"),
+    )
+    .join("bin")
+    .join(format!("{name}.exe"))
 }
 fn verify_recording(dir: &Path, process: &Process, seconds: f64) -> Vec<Value> {
     let index: Vec<Value> = fs::read_to_string(dir.join("index.jsonl"))
@@ -494,7 +497,7 @@ fn resources(child: &Child) -> (f64, usize) {
 }
 
 fn record(seconds: u64, perf: bool, capture: &str) {
-    let _guard = HARDWARE.lock().unwrap();
+    let _guard = HARDWARE.lock().unwrap_or_else(|e| e.into_inner());
     // DDA 擷取整個螢幕，小圖 ROI 以螢幕座標換算；測試視窗鋪滿主螢幕才與 WGC 的檢查一致。
     // 新視窗出現有淡入動畫；DDA 看的是合成後的桌面，等畫面穩定再開始，避免第一張小圖還是舊桌面。
     let _window = if capture == "dda" {
@@ -569,7 +572,7 @@ fn ipc_records_six_seconds_with_audio_segments_and_shared_frames() {
 
 #[test]
 fn fit_encodes_non_widescreen_window_at_16_by_9_with_silent_track() {
-    let _guard = HARDWARE.lock().unwrap();
+    let _guard = HARDWARE.lock().unwrap_or_else(|e| e.into_inner());
     let _window = Window::open(800, 600);
     let dir = directory();
     let mut process = Process::open();
@@ -637,7 +640,7 @@ fn ipc_records_six_seconds_via_desktop_duplication() {
 
 #[test]
 fn obs_mode_eof_and_failed_start_allow_restart_without_overwriting_files() {
-    let _guard = HARDWARE.lock().unwrap();
+    let _guard = HARDWARE.lock().unwrap_or_else(|e| e.into_inner());
     let _window = Window::open(1280, 720);
     let mut process = Process::open();
     let dir = directory();
@@ -676,7 +679,7 @@ fn obs_mode_eof_and_failed_start_allow_restart_without_overwriting_files() {
 
 #[test]
 fn cli_records_the_requested_window_and_reports_resources() {
-    let _guard = HARDWARE.lock().unwrap();
+    let _guard = HARDWARE.lock().unwrap_or_else(|e| e.into_inner());
     let _window = Window::open(1280, 720);
     let dir = directory();
     let output = Command::new("pwsh.exe")
@@ -711,7 +714,7 @@ fn cli_records_the_requested_window_and_reports_resources() {
 
 #[test]
 fn audio_start_failure_releases_resources_and_eof_flushes_encoded_tail() {
-    let _guard = HARDWARE.lock().unwrap();
+    let _guard = HARDWARE.lock().unwrap_or_else(|e| e.into_inner());
     let _window = Window::open(1280, 720);
     let mut process = Process::open();
     let mut bad = start(&directory(), 1, true);

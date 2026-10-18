@@ -21,6 +21,11 @@ pub const LIBAVCODEC_VERSION_MAJOR: u32 = 63;
 pub const AV_PKT_FLAG_KEY: u32 = 1;
 pub const AV_CODEC_FLAG_GLOBAL_HEADER: u32 = 4194304;
 pub const LIBAVFORMAT_VERSION_MAJOR: u32 = 63;
+unsafe extern "C" {
+    pub fn avutil_version() -> ::std::os::raw::c_uint;
+    pub fn avcodec_version() -> ::std::os::raw::c_uint;
+    pub fn avformat_version() -> ::std::os::raw::c_uint;
+}
 pub const AVFMT_FLAG_CUSTOM_IO: u32 = 128;
 pub const AV_SAMPLE_FMT_NONE: AVSampleFormat = -1;
 pub const AV_SAMPLE_FMT_U8: AVSampleFormat = 0;

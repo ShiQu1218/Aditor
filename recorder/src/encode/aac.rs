@@ -8,6 +8,9 @@ use super::{
     ffmpeg::{check, Encoder, Frame, Packet, AUDIO_BASE},
 };
 
+// 單次最多補五秒靜音；拒絕錯誤時間基準，避免累積無上限的編碼封包。
+const MAX_SILENCE_SAMPLES: i64 = 5 * 48_000;
+
 pub(super) struct Audio {
     pub encoder: Encoder,
     fifo: *mut AVAudioFifo,
@@ -50,6 +53,10 @@ impl Audio {
         Ok(packets)
     }
     pub fn advance(&mut self, target: i64) -> Result<Vec<Packet>> {
+        ensure!(
+            target.saturating_sub(self.written) <= MAX_SILENCE_SAMPLES,
+            "音訊時間戳缺口超過五秒，停止編碼以限制記憶體用量"
+        );
         let silence = [0f32; 2048];
         let mut packets = Vec::new();
         while self.written < target {
@@ -123,5 +130,34 @@ impl Drop for Audio {
             av_audio_fifo_free(self.fifo);
         }
         self.fifo = ptr::null_mut();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn excessive_silence_is_rejected_without_advancing() {
+        let mut audio = Audio::new().unwrap();
+        assert!(audio.push(&[0.; 2048], i64::MAX).is_err());
+        assert!(audio.advance(MAX_SILENCE_SAMPLES + 1).is_err());
+        assert!(audio.finish(i64::MAX).is_err());
+        assert_eq!(audio.written, 0);
+        assert_eq!(audio.encoded, 0);
+    }
+
+    #[test]
+    fn silence_limit_is_inclusive_and_relative_to_written_samples() {
+        let mut audio = Audio::new().unwrap();
+        for target in [MAX_SILENCE_SAMPLES, 2 * MAX_SILENCE_SAMPLES] {
+            let packets = audio.advance(target).unwrap();
+            assert!(!packets.is_empty());
+            assert_eq!(audio.written, target);
+        }
+        assert!(audio
+            .advance(audio.written + MAX_SILENCE_SAMPLES + 1)
+            .is_err());
+        audio.finish(100_000_000).unwrap();
     }
 }

@@ -18,6 +18,10 @@ unsafe extern "C" {
 }
 
 fn main() {
+    if let Err(error) = encode::check_version() {
+        eprintln!("internal: {error:#}");
+        std::process::exit(1);
+    }
     // SAFETY: 僅調整目前程序的排程優先序，不開啟遊戲或其他程序。
     unsafe {
         use windows::Win32::System::Threading::{
