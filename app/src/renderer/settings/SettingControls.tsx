@@ -6,6 +6,7 @@ import { settingsI18n } from '../i18n/zh-TW'
 import { clampToRange, fillTemplate, formatBytes } from './settingsModel'
 import type { SettingsController, SettingsState } from './settingsController'
 import type { SettingRow } from './rows'
+import { RecordingControl } from './RecordingControl'
 
 const t = settingsI18n.row
 
@@ -45,7 +46,7 @@ export function SwitchControl(props: {
 export function SelectControl(props: {
   ids: ControlIds
   value: string
-  options: ReadonlyArray<{ value: string; label: string }>
+  options: ReadonlyArray<{ value: string; label: string; disabled?: boolean }>
   onChange: (v: string) => void
 }): JSX.Element {
   return (
@@ -57,7 +58,7 @@ export function SelectControl(props: {
       onChange={(e) => props.onChange(e.target.value)}
     >
       {props.options.map((o) => (
-        <option key={o.value} value={o.value}>
+        <option key={o.value} value={o.value} disabled={o.disabled}>
           {o.label}
         </option>
       ))}
@@ -207,6 +208,8 @@ export function SettingControl(props: ControlProps): JSX.Element | null {
   const { row, ids, state, settings, controller } = props
   const c = row.control
   switch (c.kind) {
+    case 'recording':
+      return <RecordingControl field={c.field} ids={ids} state={state} settings={settings.recording} controller={controller} />
     case 'switch':
       return (
         <SwitchControl

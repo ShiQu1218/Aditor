@@ -10,6 +10,8 @@ import {
 import type { AutoClipParams } from '../../shared/types'
 import { clampToRange } from './settingsModel'
 import type { BoolField } from './rows'
+import type { RecordingSettings, RecorderCapabilities } from '../../shared/recording'
+import { recordingI18n } from '../i18n/zh-TW'
 
 interface WatchStatus {
   ok?: boolean
@@ -21,6 +23,7 @@ interface WatchStatus {
 
 /** 設定畫面用到的 window.api 子集（全部以此型別存取，缺少的部分優雅降級）。 */
 export interface SettingsApi {
+  recording?: { getCapabilities(): Promise<RecorderCapabilities | null> }
   settings: {
     get(): Promise<Settings>
     set(partial: Partial<Settings>): Promise<SettingsSetResult | unknown>
@@ -63,6 +66,7 @@ export interface SettingsState {
   watch: { dirs: string[]; missing: string[] }
   proxy: { status: 'idle' | 'loading' | 'ready' | 'error'; count: number; bytes: number }
   encoders: { status: 'idle' | 'loading' | 'ready'; list: string[] }
+  recordingCapabilities: { loading: boolean; value: RecorderCapabilities | null }
   /** null＝未知 */
   openh264: boolean | null
   openh264Download: OpenH264DownloadState
@@ -76,6 +80,7 @@ export const INITIAL_SETTINGS_STATE: SettingsState = {
   watch: { dirs: [], missing: [] },
   proxy: { status: 'idle', count: 0, bytes: 0 },
   encoders: { status: 'idle', list: [] },
+  recordingCapabilities: { loading: true, value: null },
   openh264: null,
   openh264Download: { step: 'idle', ratio: 0, error: null }
 }
@@ -88,6 +93,7 @@ export class SettingsController {
   private state: SettingsState
   private listeners = new Set<() => void>()
   private unsubscribe: (() => void) | null = null
+  private recordingWrites: Promise<void> = Promise.resolve()
 
   constructor(
     private api: SettingsApi,
@@ -121,7 +127,7 @@ export class SettingsController {
     this.unsubscribe = this.api.settings.onChanged((s) => {
       this.patch({ settings: s })
     })
-    await Promise.all([this.loadSettings(), this.refreshWatch(), this.refreshProxy(), this.refreshEncoders()])
+    await Promise.all([this.loadSettings(), this.refreshWatch(), this.refreshProxy(), this.refreshEncoders(), this.refreshRecordingCapabilities()])
   }
 
   stop(): void {
@@ -143,9 +149,9 @@ export class SettingsController {
     try {
       const res = await this.api.settings.set(partial)
       if (!isSetResult(res)) throw new Error('unexpected settings:set result')
-      const err = res.errors?.defaultOutDir
+      const err = rowId === 'recording-outputDir' ? res.errors?.recordingOutputDir : res.errors?.defaultOutDir
       const next = { ...this.state.rowErrors }
-      if (rowId === 'defaultOutDir') {
+      if (rowId === 'defaultOutDir' || rowId === 'recording-outputDir') {
         if (err) next[rowId] = err
         else delete next[rowId]
       }
@@ -159,6 +165,33 @@ export class SettingsController {
 
   setBool(field: BoolField, value: boolean): Promise<void> {
     return this.commit(field, { [field]: value } as Partial<Settings>)
+  }
+
+  /** 同時操作多個錄影控制項時依序送出，避免整份快照覆蓋較新的設定。 */
+  setRecording<K extends keyof RecordingSettings>(field: K, value: RecordingSettings[K]): Promise<void> {
+    this.recordingWrites = this.recordingWrites.then(async () => {
+      const base = this.state.settings?.recording ?? DEFAULT_SETTINGS.recording
+      await this.commit(`recording-${field}`, { recording: { ...base, [field]: value } })
+    })
+    return this.recordingWrites
+  }
+
+  async pickRecordingDir(): Promise<void> {
+    try {
+      const dir = await this.api.export?.selectOutDir()
+      if (dir) await this.setRecording('outputDir', dir)
+    } catch {
+      this.setRowError('recording-outputDir', recordingI18n.chooseFailed)
+    }
+  }
+
+  async refreshRecordingCapabilities(): Promise<void> {
+    try {
+      const value = await this.api.recording?.getCapabilities() ?? null
+      this.patch({ recordingCapabilities: { loading: false, value } })
+    } catch {
+      this.patch({ recordingCapabilities: { loading: false, value: null } })
+    }
   }
 
   setEnum(field: 'decode' | 'cacheLocation', value: string): Promise<void> {

@@ -7,6 +7,8 @@ import { QueueProvider } from '../queue/QueueProvider'
 import { useProject } from '../editor/ProjectProvider'
 import { useToast } from './ToastHost'
 import { i18n } from '../i18n/zh-TW'
+import { RecordingPanel } from './RecordingPanel'
+import { useRecordingStatus } from './useRecordingStatus'
 
 /** 啟動還原遇到損毀／過新版本專案時顯示一次 Toast（I12）。 */
 function RestoreNotice(): null {
@@ -71,6 +73,7 @@ function ShellFrame({
   queueButtonRef: React.RefObject<HTMLButtonElement>
 }): JSX.Element {
   const overlay = useOverlay()
+  const recording = useRecordingStatus()
   return (
     <div className="app">
       <RestoreNotice />
@@ -82,6 +85,11 @@ function ShellFrame({
         queueOpen={queueOpen}
         onShortcuts={overlay.openShortcuts}
         queueButtonRef={queueButtonRef}
+        recordingPhase={recording.status.phase}
+        onRecording={() => {
+          onCloseQueue()
+          overlay.open(<RecordingPanel onClose={overlay.close} />)
+        }}
       />
       <main className="app-main">{children}</main>
       <QueuePopover open={queueOpen} onClose={onCloseQueue} anchorRef={queueButtonRef} />

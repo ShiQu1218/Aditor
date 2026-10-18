@@ -8,6 +8,8 @@ import {
   SettingsSetResult
 } from '../shared/settings'
 import { AutoClipParams } from '../shared/types'
+import { RECORDING_RANGES, type RecordingSettings } from '../shared/recording'
+import { validateOutDir } from './settings-ipc'
 
 const RANGES = SETTINGS_RANGES
 
@@ -55,9 +57,49 @@ function pickAutoClip(v: unknown, fallback: AutoClipParams): AutoClipParams {
   }
 }
 
+/** 錄影數值夾限；型別錯誤與非有限數值保留原值。 */
+function clampRecordingNumber(v: unknown, range: { min: number; max: number }, fallback: number): number {
+  return typeof v === 'number' && Number.isFinite(v) ? Math.min(range.max, Math.max(range.min, v)) : fallback
+}
+
+function pickDevice(v: unknown, fallback: string): string {
+  return typeof v === 'string' && v.trim().length > 0 && v.length <= 4096 && !v.includes('\0') ? v : fallback
+}
+
+function pickRecording(v: unknown, base: RecordingSettings): RecordingSettings {
+  const s = isPlainObject(v) ? v : {}
+  const codec = pickEnum(s.codec, ['hevc', 'h264', 'av1'] as const, base.codec)
+  const candidate = pickDevice(s.encoder, base.encoder)
+  const encoder = candidate === 'auto' || ['nvenc', 'amf', 'qsv'].some((vendor) => candidate === `${codec}_${vendor}`)
+    ? candidate : 'auto'
+  const diskWarnGb = clampRecordingNumber(s.diskWarnGb, RECORDING_RANGES.diskWarnGb, base.diskWarnGb)
+  return {
+    autoRecord: pickBool(s.autoRecord, base.autoRecord),
+    launchAtLogin: pickBool(s.launchAtLogin, base.launchAtLogin),
+    closeToTray: pickBool(s.closeToTray, base.closeToTray),
+    // 對局偵測與 OBS 尚未開放，舊設定也統一正規化。
+    backend: 'builtin',
+    mode: 'session',
+    outputDir: pickStringOrNull(s.outputDir, base.outputDir),
+    codec,
+    encoder,
+    fps: [30, 60, 120, 144].includes(s.fps as number) ? s.fps as RecordingSettings['fps'] : base.fps,
+    height: [0, 720, 1080, 1440].includes(s.height as number) ? s.height as RecordingSettings['height'] : base.height,
+    bitrateKbps: clampRecordingNumber(s.bitrateKbps, RECORDING_RANGES.bitrateKbps, base.bitrateKbps),
+    renderDevice: pickDevice(s.renderDevice, base.renderDevice),
+    captureDevice: pickDevice(s.captureDevice, base.captureDevice),
+    micEnabled: pickBool(s.micEnabled, base.micEnabled),
+    micGain: clampRecordingNumber(s.micGain, RECORDING_RANGES.micGain, base.micGain),
+    postAnalysis: pickEnum(s.postAnalysis, ['none', 'afterExit', 'perMatch'] as const, base.postAnalysis),
+    diskWarnGb,
+    diskStopGb: Math.min(diskWarnGb, clampRecordingNumber(s.diskStopGb, RECORDING_RANGES.diskStopGb, base.diskStopGb)),
+    notifyMatch: pickBool(s.notifyMatch, base.notifyMatch)
+  }
+}
+
 /** 深拷貝（避免呼叫端改到內部狀態或 DEFAULT_SETTINGS）。 */
 function cloneSettings(s: Settings): Settings {
-  return { ...s, watchFolders: [...s.watchFolders], autoclip: { ...s.autoclip } }
+  return { ...s, watchFolders: [...s.watchFolders], autoclip: { ...s.autoclip }, recording: { ...s.recording } }
 }
 
 /**
@@ -82,7 +124,8 @@ function applySettings(base: Settings, src: unknown): Settings {
     defaultOutDir: pickStringOrNull(s.defaultOutDir, base.defaultOutDir),
     projectTrackCollapsed: pickProjectTrackCollapsed(s.projectTrackCollapsed, base.projectTrackCollapsed),
     lastProjectId: pickStringOrNull(s.lastProjectId, base.lastProjectId),
-    lowPerfAsked: pickBool(s.lowPerfAsked, base.lowPerfAsked)
+    lowPerfAsked: pickBool(s.lowPerfAsked, base.lowPerfAsked),
+    recording: pickRecording(s.recording, base.recording)
   }
 }
 
@@ -92,6 +135,13 @@ function applySettings(base: Settings, src: unknown): Settings {
  */
 export function migrateSettings(raw: unknown): Settings {
   const migrated = applySettings(cloneSettings(DEFAULT_SETTINGS), raw)
+  if (migrated.recording.outputDir !== null) {
+    try {
+      migrated.recording.outputDir = validateOutDir(migrated.recording.outputDir)
+    } catch {
+      migrated.recording.outputDir = null
+    }
+  }
   // 舊設定檔的 gameLang（已移除：偵測與語言無關）等未知欄位由 applySettings 安全丟棄
   return migrated
 }
@@ -178,6 +228,16 @@ export class SettingsStore {
 
   set(partial: Partial<Settings>): SettingsSetResult {
     const next = applySettings(this.settings, partial)
+    const errors: NonNullable<SettingsSetResult['errors']> = {}
+    const recordingInput = isPlainObject(partial.recording) ? partial.recording : {}
+    if ('outputDir' in recordingInput && recordingInput.outputDir !== null) {
+      try {
+        next.recording.outputDir = validateOutDir(recordingInput.outputDir)
+      } catch (err) {
+        errors.recordingOutputDir = (err as Error).message
+        next.recording.outputDir = this.settings.recording.outputDir
+      }
+    }
     const changed = JSON.stringify(next) !== JSON.stringify(this.settings)
     this.settings = next
     let persisted = true
@@ -193,7 +253,7 @@ export class SettingsStore {
         console.error('Settings listener failed:', err)
       }
     }
-    return { settings: snapshot, persisted }
+    return Object.keys(errors).length > 0 ? { settings: snapshot, persisted, errors } : { settings: snapshot, persisted }
   }
 
   /** 訂閱變更；回傳解除訂閱函式。 */

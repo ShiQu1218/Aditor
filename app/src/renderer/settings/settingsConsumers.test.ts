@@ -5,6 +5,7 @@ import { existsSync, readFileSync } from 'fs'
 import { resolve } from 'path'
 import { DEFAULT_SETTINGS } from '../../shared/settings'
 import { SETTING_ROWS } from './rows'
+import { recordingI18n } from '../i18n/zh-TW'
 
 const src = (rel: string): string => resolve(__dirname, '../../', rel)
 
@@ -29,7 +30,9 @@ const FIELD_CONSUMERS: Record<string, Array<[string, RegExp]>> = {
   projectAutosave: [['renderer/editor/ProjectProvider.tsx', /projectAutosave/]],
   defaultOutDir: [['renderer/studio/StudioScreen.tsx', /defaultOutDir/]],
   projectTrackCollapsed: [['renderer/studio/StudioScreen.tsx', /cfg\.projectTrackCollapsed/]],
-  lastProjectId: [['renderer/editor/projectIo.ts', /lastProjectId/], ['main/project-ipc.ts', /lastProjectId/]]
+  lastProjectId: [['renderer/editor/projectIo.ts', /lastProjectId/], ['main/project-ipc.ts', /lastProjectId/]],
+  // 錄影服務與系統匣由 A1／A3 接線；本任務驗證實際的設定讀寫與驗證入口。
+  recording: [['main/settings.ts', /recording: pickRecording/], ['renderer/settings/RecordingControl.tsx', /controller\.setRecording/]]
 }
 
 /** 設定畫面的列 → 它控制的欄位，或（非設定欄位的列）真實後端／IPC 消費端 */
@@ -49,7 +52,10 @@ const ROW_TARGETS: Record<string, { fields?: string[]; consumers?: Array<[string
   encoders: { consumers: [['main/ipc-handlers.ts', /detectEncoders/]] },
   openh264: { consumers: [['main/ipc-handlers.ts', /hasOpenH264/]] },
   about: { consumers: [['renderer/settings/SettingControls.tsx', /__APP_VERSION__/]] },
-  trademark: { consumers: [['renderer/i18n/zh-TW.ts', /trademark/]] }
+  trademark: { consumers: [['renderer/i18n/zh-TW.ts', /trademark/]] },
+  ...Object.fromEntries(Object.keys(recordingI18n.rows).map((field) => [
+    `recording-${field}`, { fields: ['recording'] }
+  ]))
 }
 
 const check = (list: Array<[string, RegExp]>): void => {
