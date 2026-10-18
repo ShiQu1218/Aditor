@@ -121,6 +121,10 @@ impl Muxer {
                     avcodec_parameters_from_context((*stream).codecpar, encoder.0),
                     "複製軌道參數",
                 )?;
+                // 參數集在 hvcC（全域標頭）裡，用 hvc1 標籤；Chromium MSE 與多數播放器對 hvc1 相容性最好。
+                if (*(*stream).codecpar).codec_id == AV_CODEC_ID_HEVC {
+                    (*(*stream).codecpar).codec_tag = u32::from_le_bytes(*b"hvc1");
+                }
                 (*stream).time_base = base;
             }
             // 自行按視訊關鍵影格切段，避免 AAC 排序或自動 flush 把邊界移動。
