@@ -120,3 +120,13 @@ describe('LiveEngine 程序管理', () => {
     expect(performance.now() - started).toBeLessThan(3000)
   })
 })
+
+it.each(['match_pending', 'match_cancel'])('解析與驗證新對局事件：%s', (ev) => {
+  const live = engine('normal')
+  const listener = vi.fn()
+  live.on('match', listener)
+  for (const t of [-1, null, '1']) (live as any).onLine(JSON.stringify({ ev, t, reason: '測試' }))
+  expect(listener).not.toHaveBeenCalled()
+  ;(live as any).onLine(JSON.stringify({ ev, t: 1, reason: '測試' }))
+  expect(listener).toHaveBeenCalledWith({ ev, t: 1, reason: '測試' })
+})

@@ -99,7 +99,8 @@ class MatchTracker:
         if gap or scene.kind != "in_match_hud":
             self._hud_first = None
         if self._pending is not None and t - self._pending > HUD_CONFIRM_SECONDS:
-            self._pending = None  # 開始事件尚未送出，取消時不用撤回已發事件。
+            self._events.append(MatchEvent("match_cancel", t, "timeout"))
+            self._pending = None
         if self._end_pending is not None and t - self._end_pending >= LOBBY_SETTLE_SECONDS:
             self._settle_lobby()
 
@@ -113,8 +114,11 @@ class MatchTracker:
                 else:
                     self._end(t, "next_match")
                 self._pending = t
+                self._events.append(MatchEvent("match_pending", t, "pre_match"))
         elif scene.kind == "lobby":
             self._recover_initial = False
+            if self._pending is not None:
+                self._events.append(MatchEvent("match_cancel", t, "lobby"))
             self._pending = None
             self._pre_last = None
             if self._lobby_first is None:
@@ -147,6 +151,8 @@ class MatchTracker:
         if self._end_pending is not None:
             self._settle_lobby()
         self._end(end, "eof")
+        if self._pending is not None:
+            self._events.append(MatchEvent("match_cancel", end, "eof"))
         self._pending = None
         self._finished = True
         return self._events[n:]

@@ -11,7 +11,7 @@ export interface RecorderCommand {
   env?: Record<string, string>
 }
 
-export type RecordingNoticeKind = 'matchStart' | 'matchEnd' | 'finalized' | 'diskWarn' | 'warning' | 'error'
+export type RecordingNoticeKind = 'matchStart' | 'matchEnd' | 'matchCancel' | 'finalized' | 'diskWarn' | 'warning' | 'error'
 
 export interface RecordingDeps {
   /** 密碼只在主程序由 safeStorage 解密，不經狀態或設定 IPC 回傳。 */

@@ -9,7 +9,7 @@ interface Notice {
 
 interface NotificationDependencies {
   isSupported: () => boolean
-  create: (options: { title: string; body: string }) => Notice
+  create: (options: { title: string; body: string; silent?: boolean; urgency?: 'low' }) => Notice
 }
 
 /** 通知失敗不能中斷錄影或讓已完成的收尾被當成失敗。 */
@@ -25,7 +25,7 @@ export function createRecordingNotifier(
     if ((kind === 'matchStart' || kind === 'matchEnd') && !getSettings().notifyMatch) return
     try {
       if (!deps.isSupported()) return
-      const notice = deps.create({ title: 'Apex Highlighter', body: message })
+      const notice = deps.create({ title: 'Apex Highlighter', body: message, ...(kind === 'matchCancel' ? { silent: true, urgency: 'low' as const } : {}) })
       active.add(notice)
       notice.once('close', () => active.delete(notice))
       notice.once('failed', () => {

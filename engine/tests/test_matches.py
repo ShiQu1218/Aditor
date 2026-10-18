@@ -25,8 +25,8 @@ def run(parts, end=None, **kw):
 
 def test_start_is_deferred_until_hud_and_backdated():
     tr = MatchTracker()
-    assert tr.feed(0, SceneFrame("pre_match")) == []
-    assert tr.events == []
+    assert [(e.type, e.t, e.reason) for e in tr.feed(0, SceneFrame("pre_match"))] == [("match_pending", 0, "pre_match")]
+    assert tr.feed(1, SceneFrame("pre_match")) == []
     events = tr.feed(60, SceneFrame("in_match_hud"))
     assert [(e.type, e.t, e.reason) for e in events] == [("match_start", 0, "opening_confirmed")]
     assert tr.finish(100)[0].t == 100
@@ -38,7 +38,8 @@ def test_direct_next_match_closes_previous_at_first_opening():
               (76, 90, "pre_match"), (91, 120, "in_match_hud")])
     assert tr.matches == [Match(0, 76), Match(76, 121)]
     assert [(e.type, e.t) for e in tr.events] == [
-        ("match_start", 0), ("match_end", 76), ("match_start", 76), ("match_end", 121)]
+        ("match_pending", 0), ("match_start", 0), ("match_end", 76),
+        ("match_pending", 76), ("match_start", 76), ("match_end", 121)]
 
 
 def test_opening_flicker_does_not_split_one_sequence():
@@ -113,7 +114,8 @@ def test_cancelled_pairing_and_retry():
 
 def test_unconfirmed_opening_at_eof_is_discarded():
     tr = run([(0, 10, "pre_match"), (11, 30, "other")])
-    assert tr.matches == [] and tr.events == []
+    assert tr.matches == []
+    assert [(e.type, e.t, e.reason) for e in tr.events] == [("match_pending", 0, "pre_match"), ("match_cancel", 31, "eof")]
 
 
 def test_next_opening_can_cancel_without_reviving_previous():
@@ -212,7 +214,8 @@ def test_hud_resume_uses_elapsed_seconds_and_allows_maximum_sample_gap():
 def test_expired_opening_can_resume_from_hud():
     tr = MatchTracker()
     tr.feed(0, SceneFrame("pre_match"))
-    for t in range(181, 184):
+    assert [(e.type, e.t, e.reason) for e in tr.feed(181, SceneFrame("in_match_hud"))] == [("match_cancel", 181, "timeout")]
+    for t in range(182, 184):
         assert tr.feed(t, SceneFrame("in_match_hud")) == []
     events = tr.feed(184, SceneFrame("in_match_hud"))
     assert [(e.type, e.t, e.reason) for e in events] == [("match_start", 181, "hud_resume")]
@@ -371,3 +374,12 @@ def test_recording_acceptance(name):
     for actual, wanted in zip(got["matches"], expected):
         assert abs(actual["start"] - wanted["start"]) <= 5
         assert abs(actual["end"] - wanted["end"]) <= 5
+
+
+@pytest.mark.parametrize("kind,t,reason", [("lobby", 2, "lobby"), ("other", 181, "timeout")])
+def test_pending_cancellation_is_stream_only(kind, t, reason):
+    tr = MatchTracker()
+    tr.feed(0, SceneFrame("pre_match"))
+    assert [(e.type, e.t, e.reason) for e in tr.feed(t, SceneFrame(kind))] == [("match_cancel", t, reason)]
+    assert tr.finish(t + 1) == []
+    assert tr.matches == []

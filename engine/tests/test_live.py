@@ -553,3 +553,16 @@ def test_recording_matches_live_vs_offline(profile, layout, scene, name):
     for s, e, m in zip(starts, ends, offline):
         assert abs(s["t"] - m["start"]) <= 2
         assert abs(e["t"] - m["end"]) <= 2
+
+
+@pytest.mark.parametrize("kind,t,reason", [("lobby", 1, "lobby"), ("other", 181, "timeout"), ("pre_match", 1, "eof")])
+def test_live_forwards_pending_and_cancel(profile, layout, scene, monkeypatch, kind, t, reason):
+    from apexhl.scene import SceneFrame
+
+    scenes = iter([SceneFrame("pre_match"), SceneFrame(kind)])
+    monkeypatch.setattr(scene, "classify", lambda _: next(scenes))
+    banner, spec, thumb = _blank(layout)
+    out, _ = _run_live(layout, profile, scene, [(0, banner, spec, thumb), (t, banner, spec, thumb)])
+    assert [o for o in out if o["ev"].startswith("match_")] == [
+        {"ev": "match_pending", "t": 0, "reason": "pre_match"},
+        {"ev": "match_cancel", "t": t, "reason": reason}]

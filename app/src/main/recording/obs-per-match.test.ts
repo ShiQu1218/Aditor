@@ -84,9 +84,9 @@ it.each([false, true])('直接排下一局或後置等待中開局會停止再�
   expect(r.deps.addToLibrary).toHaveBeenCalledWith([r.files[0]])
   expect(r.deps.addToLibrary).toHaveBeenCalledWith([r.files[1]])
 })
-it('大廳確認的回溯結束立即停止', async () => {
+it('沒有倒數的 hud_resume 仍開始錄影，大廳回溯結束立即停止', async () => {
   const r = await rig()
-  r.event('match_start'); await waitFor(() => r.service.status().obsRecording === true)
+  r.active.live.onMatch({ ev: 'match_start', t: 0, reason: 'hud_resume' }); await waitFor(() => r.service.status().obsRecording === true)
   r.active.obs.meta.captureStartedAt = Date.now() - 60000
   r.event('match_end', 30)
   await waitFor(() => r.server.calls.includes('StopRecord'))
@@ -201,4 +201,72 @@ it('剛停止上一局時 OBS 仍回報錄影中，等它停下再開始下一�
     await obs.startMatch(2)
     expect(server.calls.filter((c) => c === 'StartRecord')).toHaveLength(2)
   } finally { await obs.close(); await server.close(); fs.rmSync(root, { recursive: true, force: true }) }
+})
+
+it('倒數立即錄影，HUD 確認沿用同一檔', async () => {
+  const r = await rig()
+  r.event('match_pending')
+  await waitFor(() => r.service.status().obsRecording === true)
+  const startedAt = r.active.obs.matches[0].recordStartedAt
+  const offset = (startedAt - r.active.obs.meta.captureStartedAt) / 1000
+  r.active.live.onSnapshot({ t: offset + 2, events: [{ id: 'pending', type: 'knock', t: offset + 1 }], spectating: [] })
+  r.event('match_start')
+  await r.active.obsWork
+  expect(r.active.obs.matches[0]).toMatchObject({ confirmed: true, recordStartedAt: startedAt })
+  await r.service.stopManual()
+  expect(JSON.parse(fs.readFileSync(r.files[0] + '.apexhl.json', 'utf8')).events[0].t).toBeCloseTo(1)
+  expect(r.server.calls.filter((c) => c === 'StartRecord')).toHaveLength(1)
+  expect(r.deps.addToLibrary).toHaveBeenCalledWith([r.files[0]])
+})
+it('倒數取消立即停止，保留原檔且不入庫或分析', async () => {
+  const r = await rig()
+  r.event('match_pending')
+  await waitFor(() => r.service.status().obsRecording === true)
+  r.event('match_cancel', 1)
+  r.event('match_cancel', 2)
+  await waitFor(() => r.server.calls.includes('StopRecord'))
+  await r.active.obsWork
+  const marker = JSON.parse(fs.readFileSync(path.join(r.active.dir, 'obs-matches.json'), 'utf8'))
+  expect(marker[0]).toMatchObject({ confirmed: false, cancelled: true, stopped: true })
+  expect((r.deps.notify as any).mock.calls.filter(([kind]: [string]) => kind === 'matchCancel')).toHaveLength(1)
+  expect(r.deps.notify).toHaveBeenCalledWith('matchCancel', '倒數後未開局，已停止 OBS 錄影（檔案保留於 OBS 資料夾）')
+  await r.service.stopManual()
+  expect(r.deps.addToLibrary).not.toHaveBeenCalled()
+  expect(r.deps.enqueueAnalysis).not.toHaveBeenCalled()
+  expect(fs.existsSync(r.files[0] + '.apexhl.json')).toBe(false)
+  expect(fs.existsSync(r.files[0])).toBe(true)
+})
+it('下一局倒數先停止上一檔再開始，確認不重開', async () => {
+  const r = await rig()
+  r.event('match_start')
+  await waitFor(() => r.service.status().obsRecording === true)
+  r.event('match_end', 1)
+  r.event('match_pending', 1)
+  await waitFor(() => r.server.calls.filter((c) => c === 'StartRecord').length === 2)
+  r.event('match_start', 1)
+  await r.service.stopManual()
+  expect(r.server.calls.filter((c) => c === 'StartRecord' || c === 'StopRecord')).toEqual(['StartRecord', 'StopRecord', 'StartRecord', 'StopRecord'])
+})
+it.each([{ cancelled: true }, { confirmed: false }])('復原略過取消或未確認的已停止錄影：%j', async (state) => {
+  const r = await rig()
+  await r.service.stopManual()
+  const dir = path.join(r.root, 'videos', '.sessions', 'recover-pending')
+  fs.mkdirSync(dir, { recursive: true })
+  await writeJson(path.join(dir, 'recording.json'), { backend: 'obs', mode: 'match', startedAt: 1000, postAnalysis: 'perMatch' })
+  await writeJson(path.join(dir, 'obs.json'), { captureStartedAt: 1000, recordStartedAt: 2000, adopted: false })
+  await writeJson(path.join(dir, 'obs-matches.json'), [{ index: 1, recordStartedAt: 2000, outputPath: r.files[0], stopped: true, ...state }])
+  await recoverSessions(r.deps, vi.fn(), vi.fn())
+  expect(r.deps.addToLibrary).not.toHaveBeenCalled()
+  expect(r.deps.enqueueAnalysis).not.toHaveBeenCalled()
+  expect(fs.existsSync(r.files[0])).toBe(true)
+})
+
+it('未確認倒數在手動停止時立即取消，不等待後置時間', async () => {
+  const r = await rig()
+  r.deps.obsMatchPostPadMs = 60000
+  r.event('match_pending')
+  await waitFor(() => r.service.status().obsRecording === true)
+  await r.service.stopManual()
+  expect(r.deps.addToLibrary).not.toHaveBeenCalled()
+  expect(r.deps.enqueueAnalysis).not.toHaveBeenCalled()
 })

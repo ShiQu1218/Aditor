@@ -17,6 +17,8 @@ export interface ObsMatch {
   liveCached: boolean
   analysisQueued: boolean
   liveTrusted: boolean
+  confirmed?: boolean
+  cancelled?: boolean
   added?: boolean
 }
 
@@ -93,7 +95,7 @@ export class ObsRecording extends EventEmitter {
     await this.flush()
   }
 
-  async startMatch(index: number): Promise<void> {
+  async startMatch(index: number, confirmed = true): Promise<void> {
     if (!this.perMatch) return
     if (this.matches.at(-1)?.stopped === false) throw new Error('上一局 OBS 錄影尚未完成，已保留工作')
     if (!this.client.connected) await this.connect()
@@ -108,7 +110,7 @@ export class ObsRecording extends EventEmitter {
     this.stopping = false
     this.stopped = false
     delete this.meta.outputPath
-    this.matches.push({ index, recordStartedAt: Date.now(), stopped: false, liveCached: false, analysisQueued: false, liveTrusted: false })
+    this.matches.push({ index, confirmed, recordStartedAt: Date.now(), stopped: false, liveCached: false, analysisQueued: false, liveTrusted: false })
     this.persist()
     await this.flush()
     try { await this.client.start() }
