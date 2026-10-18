@@ -3,6 +3,7 @@
  * 介面由骨架固定（`RecordingDeps`、`createRecordingService` 簽章），實作放在本資料夾其他檔案。
  */
 import type { RecordingService, RecordingSettings } from '../../shared/recording'
+import { RecordingSessionService } from './session'
 
 export interface RecorderCommand {
   command: string
@@ -37,5 +38,5 @@ export interface RecordingDeps {
 }
 
 export function createRecordingService(_deps: RecordingDeps): RecordingService {
-  throw new Error('錄影服務尚未實作（任務 A1）')
+  return new RecordingSessionService(_deps)
 }
