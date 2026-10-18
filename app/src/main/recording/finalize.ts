@@ -6,6 +6,7 @@ import { pipeline } from 'stream/promises'
 import type { LiveMatch, PostRecordAnalysis, RecordingMode } from '../../shared/recording'
 import type { RecordingDeps } from './index'
 import { isTrusted, writeLiveCache, type LiveFile } from './live-cache'
+import { finalizeObsSession } from './obs-finalize'
 
 export interface SessionSnapshot {
   startedAt: number
@@ -124,7 +125,7 @@ function cutError(index: number, error: unknown, options: MatchCutOptions): void
   options.onError(error)
 }
 
-async function readOptional<T>(file: string): Promise<T | null> {
+export async function readOptional<T>(file: string): Promise<T | null> {
   try { return JSON.parse(await fs.promises.readFile(file, 'utf8')) }
   catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null
@@ -144,7 +145,7 @@ async function validateCut(cut: MatchCut, outputDir: string): Promise<void> {
 }
 
 /** 預留檔記在工作目錄，補收尾只清除此工作的暫存檔，不碰其他錄影。 */
-async function resumeMatchPart(dir: string, marker: MatchMarker): Promise<void> {
+export async function resumeMatchPart(dir: string, marker: { cuts: { outputPath: string }[] }): Promise<void> {
   const file = path.join(dir, 'match-part.json')
   const pending = await readOptional<{ output: string; part: string }>(file)
   if (!pending) return
@@ -220,7 +221,7 @@ async function completeCut(dir: string, deps: RecordingDeps, config: SessionSnap
   }
 }
 
-function liveMatches(live: LiveFile | null): LiveMatch[] {
+export function liveMatches(live: LiveFile | null): LiveMatch[] {
   if (!Array.isArray(live?.matches)) return []
   return live.matches.filter((match): match is LiveMatch => !!match && Number.isFinite(match.start) && match.start >= 0 &&
     (match.end === null || (Number.isFinite(match.end) && match.end >= match.start)))
@@ -272,13 +273,13 @@ export async function cutMatches(dir: string, deps: RecordingDeps, options: Matc
   return outputs
 }
 
-function outputBase(startedAt: number): string {
+export function outputBase(startedAt: number): string {
   const date = new Date(startedAt)
   const pad = (n: number): string => String(n).padStart(2, '0')
   return `Apex_${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}_${pad(date.getHours())}-${pad(date.getMinutes())}`
 }
 
-async function reserveOutput(outputDir: string, base: string): Promise<{ output: string; part: string }> {
+export async function reserveOutput(outputDir: string, base: string): Promise<{ output: string; part: string }> {
   for (let n = 1; ; n++) {
     const output = path.join(outputDir, `${base}${n === 1 ? '' : `_${n}`}.mp4`)
     try { await fs.promises.access(output); continue } catch (error) {
@@ -324,6 +325,8 @@ async function remux(ffmpeg: string, files: string[], output: string): Promise<v
 /** finalized.json 先於媒體庫／分析副作用落盤，補收尾不會重複產生影片。 */
 export async function finalizeSession(dir: string, deps: RecordingDeps): Promise<string[]> {
   dir = await validateSessionDir(dir)
+  const recording = await readOptional<{ backend?: unknown }>(path.join(dir, 'recording.json'))
+  if (recording?.backend === 'obs') return finalizeObsSession(dir, deps, await snapshot(dir, deps.getSettings().postAnalysis))
   const outputDir = path.dirname(path.dirname(dir))
   const markerPath = path.join(dir, 'finalized.json')
   let marker: Finalized | null = null

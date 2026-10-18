@@ -5,7 +5,7 @@
 
 import type { EngineEvent } from './types'
 
-/** 錄影後端；第 5 期才實作 'obs'，在那之前設定頁不提供選項。 */
+/** 內建錄影器或 OBS Studio（WebSocket v5）。 */
 export type RecordingBackend = 'builtin' | 'obs'
 
 /** 'match'＝持續錄影並逐局剪檔；'session'＝從頭錄到尾。 */
@@ -25,6 +25,15 @@ export interface RecordingSettings {
   /** 關閉主視窗時縮到系統匣而不是結束 */
   closeToTray: boolean
   backend: RecordingBackend
+  obsHost: string
+  obsPort: number
+  /** 僅主程序持有的 safeStorage 密文（base64）；IPC 回傳前移除。 */
+  obsPasswordEnc?: string | null
+  /** renderer 只取得是否已設定密碼。 */
+  hasPassword?: boolean
+  /** 僅供設定 IPC 寫入；不納入設定快照或持久化。 */
+  obsPassword?: string
+  obsFallbackBuiltin: boolean
   mode: RecordingMode
   /** 錄影資料夾；null＝第一個監看資料夾，沒有監看資料夾時用「影片」資料夾下的 `Apex Highlighter` */
   outputDir: string | null
@@ -75,6 +84,10 @@ export const DEFAULT_RECORDING_SETTINGS: RecordingSettings = {
   launchAtLogin: true,
   closeToTray: true,
   backend: 'builtin',
+  obsHost: '127.0.0.1',
+  obsPort: 4455,
+  obsPasswordEnc: null,
+  obsFallbackBuiltin: true,
   mode: 'session',
   outputDir: null,
   codec: 'hevc',
@@ -114,6 +127,9 @@ export type RecordingPhase =
 
 export interface RecordingStatus {
   phase: RecordingPhase
+  backend: RecordingBackend
+  /** OBS 無法連線且未回退時，僅執行即時偵測。 */
+  detectionOnly?: boolean
   /** 目前錄影工作；idle 時為 null */
   sessionId: string | null
   /** 錄影開始的 epoch ms */
@@ -140,6 +156,8 @@ export interface RecordingStatus {
 
 export const IDLE_RECORDING_STATUS: RecordingStatus = {
   phase: 'idle',
+  backend: 'builtin',
+  detectionOnly: false,
   sessionId: null,
   startedAt: null,
   encoder: null,
@@ -167,6 +185,7 @@ export interface RecorderCapabilities {
 
 /** main 端錄影服務對外介面（`main/recording/` 實作；`recording-ipc.ts`、系統匣只依賴這個介面）。 */
 export interface RecordingService {
+  testObs?(): Promise<ObsTestResult>
   start(): void
   stop(): Promise<void>
   /** 手動開始（不論 autoRecord；Apex 未執行時回傳 false） */
@@ -188,6 +207,8 @@ export interface RecordingService {
   /** 段落與事件增量（main 推播 `recording:live`） */
   onLive?(listener: (update: LiveUpdate) => void): () => void
 }
+
+export type ObsTestResult = { ok: true; obsVersion: string; obsWebSocketVersion: string } | { ok: false; error: string }
 
 /** 已寫入索引的 fMP4 段落（秒；0＝錄影開始）。 */
 export interface LiveSegment { seq: number; pts: number; dur: number }
@@ -223,6 +244,7 @@ export interface LiveUpdate {
 
 /** IPC 頻道名稱（invoke 與推播）。 */
 export const RECORDING_CHANNELS = {
+  testObs: 'recording:testObs',
   getStatus: 'recording:getStatus',
   getCapabilities: 'recording:getCapabilities',
   startManual: 'recording:startManual',

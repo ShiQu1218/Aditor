@@ -10,7 +10,7 @@ import {
 import type { AutoClipParams } from '../../shared/types'
 import { clampToRange } from './settingsModel'
 import type { BoolField } from './rows'
-import type { RecordingSettings, RecorderCapabilities } from '../../shared/recording'
+import type { RecordingSettings, RecorderCapabilities, ObsTestResult } from '../../shared/recording'
 import { recordingI18n } from '../i18n/zh-TW'
 
 interface WatchStatus {
@@ -23,7 +23,7 @@ interface WatchStatus {
 
 /** 設定畫面用到的 window.api 子集（全部以此型別存取，缺少的部分優雅降級）。 */
 export interface SettingsApi {
-  recording?: { getCapabilities(): Promise<RecorderCapabilities | null> }
+  recording?: { getCapabilities(): Promise<RecorderCapabilities | null>; testObs?(): Promise<ObsTestResult> }
   settings: {
     get(): Promise<Settings>
     set(partial: Partial<Settings>): Promise<SettingsSetResult | unknown>
@@ -67,6 +67,7 @@ export interface SettingsState {
   proxy: { status: 'idle' | 'loading' | 'ready' | 'error'; count: number; bytes: number }
   encoders: { status: 'idle' | 'loading' | 'ready'; list: string[] }
   recordingCapabilities: { loading: boolean; value: RecorderCapabilities | null }
+  obsConnection: { testing: boolean; result: ObsTestResult | null }
   /** null＝未知 */
   openh264: boolean | null
   openh264Download: OpenH264DownloadState
@@ -81,6 +82,7 @@ export const INITIAL_SETTINGS_STATE: SettingsState = {
   proxy: { status: 'idle', count: 0, bytes: 0 },
   encoders: { status: 'idle', list: [] },
   recordingCapabilities: { loading: true, value: null },
+  obsConnection: { testing: false, result: null },
   openh264: null,
   openh264Download: { step: 'idle', ratio: 0, error: null }
 }
@@ -149,9 +151,9 @@ export class SettingsController {
     try {
       const res = await this.api.settings.set(partial)
       if (!isSetResult(res)) throw new Error('unexpected settings:set result')
-      const err = rowId === 'recording-outputDir' ? res.errors?.recordingOutputDir : res.errors?.defaultOutDir
+      const err = rowId === 'recording-outputDir' ? res.errors?.recordingOutputDir : rowId === 'recording-obsPassword' ? res.errors?.obsPassword : res.errors?.defaultOutDir
       const next = { ...this.state.rowErrors }
-      if (rowId === 'defaultOutDir' || rowId === 'recording-outputDir') {
+      if (rowId === 'defaultOutDir' || rowId === 'recording-outputDir' || rowId === 'recording-obsPassword') {
         if (err) next[rowId] = err
         else delete next[rowId]
       }
@@ -174,6 +176,17 @@ export class SettingsController {
       await this.commit(`recording-${field}`, { recording: { ...base, [field]: value } })
     })
     return this.recordingWrites
+  }
+
+  async testObs(): Promise<void> {
+    if (this.state.obsConnection.testing) return
+    this.patch({ obsConnection: { testing: true, result: null } })
+    // 先等主機、連接埠與密碼寫入主程序，再測試目前持久化的設定。
+    await this.recordingWrites
+    let result: ObsTestResult
+    try { result = await this.api.recording?.testObs?.() ?? { ok: false, error: 'OBS 連線測試無法使用' } }
+    catch { result = { ok: false, error: 'OBS 連線測試失敗，請檢查設定' } }
+    this.patch({ obsConnection: { testing: false, result } })
   }
 
   async pickRecordingDir(): Promise<void> {

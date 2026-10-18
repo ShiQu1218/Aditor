@@ -1,4 +1,4 @@
-import { ipcMain, dialog, BrowserWindow, app, shell } from 'electron'
+import { ipcMain, dialog, BrowserWindow, app, shell, safeStorage } from 'electron'
 import fs from 'fs'
 import path from 'path'
 import { Library, normalizePath } from './library'
@@ -363,7 +363,7 @@ export function registerIpcHandlers(
   registerExportHandlers(ipcMain, exportService)
 
   if (settings) {
-    registerSettingsHandlers(ipcMain, settings, getWindows)
+    registerSettingsHandlers(ipcMain, settings, getWindows, safeStorage)
   }
 
   return { cancelExport: () => exportService.cancelAndWait() }

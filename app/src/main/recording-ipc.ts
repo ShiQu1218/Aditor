@@ -20,6 +20,7 @@ export function requireSegmentSeq(value: unknown): number {
 }
 
 export function registerRecordingIpc(service: RecordingService, windows: () => BrowserWindow[]): () => void {
+  ipcMain.handle(RECORDING_CHANNELS.testObs, () => service.testObs?.() ?? { ok: false, error: 'OBS 連線測試無法使用' })
   ipcMain.handle(RECORDING_CHANNELS.getStatus, () => service.status())
   ipcMain.handle(RECORDING_CHANNELS.getCapabilities, () => service.capabilities())
   ipcMain.handle(RECORDING_CHANNELS.startManual, () => service.startManual())
@@ -56,7 +57,7 @@ export function registerRecordingIpc(service: RecordingService, windows: () => B
   return () => {
     unsubscribe()
     unsubscribeLive?.()
-    for (const channel of [RECORDING_CHANNELS.getStatus, RECORDING_CHANNELS.getCapabilities,
+    for (const channel of [RECORDING_CHANNELS.testObs, RECORDING_CHANNELS.getStatus, RECORDING_CHANNELS.getCapabilities,
       RECORDING_CHANNELS.startManual, RECORDING_CHANNELS.stopManual, RECORDING_CHANNELS.setPaused,
       RECORDING_CHANNELS.getLive, RECORDING_CHANNELS.readInit, RECORDING_CHANNELS.readSegment]) {
       ipcMain.removeHandler(channel)

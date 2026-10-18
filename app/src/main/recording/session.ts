@@ -4,7 +4,7 @@ import { randomBytes } from 'crypto'
 import { EventEmitter } from 'events'
 import {
   IDLE_RECORDING_STATUS,
-  type LiveState, type LiveUpdate, type RecordingMode, type RecordingService, type RecordingStatus, type RecorderCapabilities
+  type LiveState, type LiveUpdate, type RecordingBackend, type RecordingMode, type RecordingService, type RecordingStatus, type RecorderCapabilities, type ObsTestResult
 } from '../../shared/recording'
 import { isSafeLocalDirPath } from '../safe-path'
 import { ApexWatcher, findApexPid } from './apex-watcher'
@@ -13,6 +13,8 @@ import { diskFreeBytes, diskLevel } from './disk'
 import { cutMatches, finalizeSession, validateSessionDir, writeJson } from './finalize'
 import { recoverSessions } from './recovery'
 import { LiveSession } from './live-session'
+import { ObsClient } from './obs-client'
+import { ObsRecording } from './obs-session'
 import type { RecordingDeps, RecordingNoticeKind } from './index'
 
 interface ActiveSession {
@@ -31,6 +33,8 @@ interface ActiveSession {
   cutPending: boolean
   cutting: boolean
   failedCuts: Set<number>
+  backend: RecordingBackend
+  obs: ObsRecording | null
 }
 
 function sessionId(): string {
@@ -65,6 +69,7 @@ export class RecordingSessionService implements RecordingService {
   private diskTimer: ReturnType<typeof setInterval> | null = null
   private statusTimer: ReturnType<typeof setTimeout> | null = null
   private capabilityRequests = new Set<ApexrecClient>()
+  private pendingObs = new Map<string, ActiveSession>()
 
   constructor(private deps: RecordingDeps) {
     this.watcher = new ApexWatcher(deps.findApexPid ?? findApexPid, deps.pollMs ?? 3000,
@@ -107,6 +112,8 @@ export class RecordingSessionService implements RecordingService {
     if (this.state.phase === 'starting') await this.active?.client.close()
     await Promise.all([...this.capabilityRequests].map((client) => client.close()))
     await this.serialize(() => this.finish())
+    for (const session of this.pendingObs.values()) await session.obs?.close()
+    this.pendingObs.clear()
     if (this.statusTimer) clearTimeout(this.statusTimer)
     this.statusTimer = null
   }
@@ -154,6 +161,16 @@ export class RecordingSessionService implements RecordingService {
       await client.close()
       this.capabilityRequests.delete(client)
     }
+  }
+
+  async testObs(): Promise<ObsTestResult> {
+    const client = new ObsClient()
+    const settings = this.deps.getSettings()
+    try {
+      await client.connect(settings.obsHost, settings.obsPort, this.deps.getObsPassword?.())
+      return { ok: true, ...await client.version() }
+    } catch (error) { return { ok: false, error: (error as Error).message } }
+    finally { await client.close() }
   }
 
   onStatus(listener: (s: RecordingStatus) => void): () => void {
@@ -240,27 +257,55 @@ export class RecordingSessionService implements RecordingService {
       await fs.promises.mkdir(dir)
       await validateSessionDir(dir)
       const startedAt = Date.now()
-      await writeJson(path.join(dir, 'recording.json'), { startedAt, postAnalysis: settings.postAnalysis, mode: settings.mode })
+      const writeSnapshot = (): Promise<void> => writeJson(path.join(dir, 'recording.json'), {
+        startedAt, postAnalysis: settings.postAnalysis, mode: settings.mode, backend: session?.backend ?? settings.backend
+      })
+      await writeSnapshot()
       const client = new ApexrecClient(this.deps.recorderCommand)
       const live = this.createLive(id, dir)
       session = { pid, id, dir, outputDir, client, ending: false, warned: false, writes: Promise.resolve(), sequences: new Set(), live,
-        mode: settings.mode, cuts: Promise.resolve(), cutPending: false, cutting: false, failedCuts: new Set() }
+        mode: settings.mode, cuts: Promise.resolve(), cutPending: false, cutting: false, failedCuts: new Set(), backend: settings.backend, obs: null }
       this.active = session
-      this.update({ sessionId: id, startedAt })
+      this.update({ sessionId: id, startedAt, backend: settings.backend })
       const current = session
       client.on('event', (event: RecorderEvent) => this.onEvent(current, event))
       client.on('crash', (error: Error) => {
         if (this.active === current && !current.ending) void this.serialize(() => this.crashed(current, error))
       })
+      if (settings.backend === 'obs') {
+        try {
+          // 解密錯誤與連線錯誤採相同回退規則，密碼不放入設定快照。
+          const password = this.deps.getObsPassword?.()
+          current.obs = new ObsRecording(dir, settings, password, (message) => this.notice('warning', message), this.deps.obsReconnectBaseMs)
+          await current.obs.start()
+          current.obs.on('stopped', () => {
+            if (this.active === current && !current.ending) this.update({ detectionOnly: true })
+            if (this.pendingObs.has(current.id)) void this.serialize(() => this.finishPendingObs(current))
+            else if (this.active === current && !current.ending && current.obs?.meta.adopted && current.obs.meta.outputPath) {
+              this.manualStopped = true
+              void this.serialize(() => this.finish())
+            }
+          })
+        } catch (error) {
+          await current.obs?.close()
+          current.obs = null
+          this.notice('warning', `${(error as Error).message}；${settings.obsFallbackBuiltin ? '本次改用內建錄影器' : '本次僅執行即時偵測'}`)
+          if (settings.obsFallbackBuiltin) current.backend = 'builtin'
+          else await writeJson(path.join(dir, 'obs.json'), { recordStartedAt: startedAt, captureStartedAt: startedAt, adopted: false })
+          this.update({ backend: current.backend, detectionOnly: !settings.obsFallbackBuiltin })
+          await writeSnapshot()
+        }
+      }
       await client.hello()
       if (!this.running || this.manualStopped || this.gamePid !== pid) throw new RecorderError('cancelled', '錄影啟動已取消')
       await client.startRecording({ pid, session_dir: dir, session_id: id,
-        encode: { codec: settings.codec, encoder: settings.encoder, fps: settings.fps, height: settings.height, bitrate_kbps: settings.bitrateKbps,
+        encode: current.backend === 'obs' ? null : { codec: settings.codec, encoder: settings.encoder, fps: settings.fps, height: settings.height, bitrate_kbps: settings.bitrateKbps,
           preset: settings.preset, aspect: settings.forceAspect ? settings.aspectMode : 'native' },
-        audio: { render: settings.renderDevice, capture: settings.captureDevice, mic_gain: settings.micGain, mic_enabled: settings.micEnabled,
+        audio: current.backend === 'obs' ? null : { render: settings.renderDevice, capture: settings.captureDevice, mic_gain: settings.micGain, mic_enabled: settings.micEnabled,
           render_enabled: settings.systemAudioEnabled, render_gain: settings.systemGain, render_source: settings.gameAudioOnly ? 'game' : 'device',
           mic_mono: settings.micMono }, frames,
         capture: settings.captureMethod })
+      await current.writes
       if (this.active !== current || current.ending) return false
       await this.checkDisk(current)
       if (!current.ending) {
@@ -291,9 +336,14 @@ export class RecordingSessionService implements RecordingService {
     switch (event.ev) {
       case 'started':
         if (session.ending) return
-        if (typeof event.encoder !== 'string' || !Number.isSafeInteger(event.width) || Number(event.width) <= 0 ||
+        if ((session.backend !== 'obs' && typeof event.encoder !== 'string') || !Number.isSafeInteger(event.width) || Number(event.width) <= 0 ||
             !Number.isSafeInteger(event.height) || Number(event.height) <= 0) return
-        this.update({ phase: 'recording', encoder: event.encoder, width: Number(event.width), height: Number(event.height), error: null })
+        this.update({ phase: 'recording', encoder: typeof event.encoder === 'string' ? event.encoder : null, width: Number(event.width), height: Number(event.height), error: null })
+        if (session.obs) {
+          const now = Date.now()
+          session.writes = session.writes.then(() => session.obs!.captureStarted(now))
+          void session.writes.catch(() => {})
+        }
         if (typeof event.shm === 'string' && event.shm.length > 0 && event.shm.length <= 256) {
           session.live.startEngine(event.shm, Number(event.width), Number(event.height))
         }
@@ -310,6 +360,7 @@ export class RecordingSessionService implements RecordingService {
         }
         break
       case 'stats':
+        if (session.backend === 'obs' && this.state.startedAt) this.update({ durationSec: (Date.now() - this.state.startedAt) / 1000 }, false)
         if (typeof event.dropped === 'number' && Number.isSafeInteger(event.dropped) && event.dropped >= 0) this.update({ droppedFrames: event.dropped })
         break
       case 'window_lost':
@@ -334,7 +385,7 @@ export class RecordingSessionService implements RecordingService {
 
   /** 獨立於錄影控制鏈，合併剪檔期間的通知；停止時等目前剪檔完成才收尾。 */
   private scheduleCuts(session: ActiveSession): void {
-    if (session.mode !== 'match' || session.ending) return
+    if (session.backend === 'obs' || session.mode !== 'match' || session.ending) return
     session.cutPending = true
     if (session.cutting) return
     session.cutting = true
@@ -416,6 +467,16 @@ export class RecordingSessionService implements RecordingService {
     try {
       await session.writes
       await session.cuts
+      if (session.obs) {
+        const ready = await session.obs.stop()
+        if (!ready) {
+          this.pendingObs.set(session.id, session)
+          this.active = null
+          this.idle()
+          return true
+        }
+        await session.obs.close()
+      }
       const paths = await finalizeSession(session.dir, this.deps)
       this.active = null
       this.idle()
@@ -423,11 +484,24 @@ export class RecordingSessionService implements RecordingService {
       if (paths.length) this.finalized(paths)
       return true
     } catch (error) {
+      // 即使事件寫入或剪檔失敗，也解除 OBS 連線並停止本次自行開始的錄影。
+      try { await session.obs?.stop(); await session.obs?.close() }
+      catch { this.notice('warning', 'OBS 收尾連線未完成，請在 OBS 確認錄影狀態') }
       this.active = null
       this.blocked = true
       this.fail('finalize_failed', `錄影收尾失敗，已保留段落供下次重試：${String(error)}`)
       return false
     }
+  }
+
+  private async finishPendingObs(session: ActiveSession): Promise<void> {
+    if (!this.pendingObs.delete(session.id)) return
+    try {
+      await session.obs?.close()
+      const paths = await finalizeSession(session.dir, this.deps)
+      this.events.emit('live', { sessionId: session.id, finalized: [...paths] } satisfies LiveUpdate)
+      if (paths.length) this.finalized(paths)
+    } catch (error) { this.notice('error', `OBS 錄影收尾失敗，已保留工作供下次重試：${String(error)}`) }
   }
 
   private recordEvent(session: ActiveSession, event: RecorderEvent): void {

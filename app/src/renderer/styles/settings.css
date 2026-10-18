@@ -110,7 +110,7 @@
 .set-switch:checked::after { transform: translateX(16px); }
 .set-switch:disabled { opacity: 0.4; cursor: default; }
 
-.set-select { height: 32px; width: 200px; max-width: 100%; background: var(--bg-input); border: 1px solid var(--line-strong); border-radius: var(--r-sm); padding: 0 8px; color: var(--text-1); }
+.set-select, .set-input { height: 32px; width: 200px; max-width: 100%; background: var(--bg-input); border: 1px solid var(--line-strong); border-radius: var(--r-sm); padding: 0 8px; color: var(--text-1); }
 .set-select:disabled { opacity: 0.4; }
 .set-recording-select { width: 200px; max-width: 100%; }
 .set-recording-select .set-desc { flex-basis: 100%; }

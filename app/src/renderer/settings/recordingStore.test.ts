@@ -61,8 +61,8 @@ describe('錄影設定驗證與遷移', () => {
     for (const value of ['invalid', null, false, {}, [], -1, 999]) expect(migrate({ [field]: value })[field]).toBe(defaults[field])
   })
 
-  test.each(['builtin', 'obs', 'invalid', null, 1])('後端 %j 固定為 builtin', (backend) => {
-    expect(migrate({ backend }).backend).toBe('builtin')
+  test.each(['builtin', 'obs', 'invalid', null, 1])('後端 %j 保留有效值', (backend) => {
+    expect(migrate({ backend }).backend).toBe(backend === 'obs' ? 'obs' : 'builtin')
   })
 
   test('編碼器限硬體編碼且必須符合格式；換格式回到自動', () => {

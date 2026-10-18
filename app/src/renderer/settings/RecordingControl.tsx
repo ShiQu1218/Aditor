@@ -1,12 +1,41 @@
-import React from 'react'
+import React, { useEffect, useState } from 'react'
 import { RECORDING_RANGES, type RecordingSettings } from '../../shared/recording'
 import { recordingI18n as t } from '../i18n/zh-TW'
 import { GainControl, NumberField, SegmentedControl, SelectControl, SwitchControl, describedBy, type ControlIds } from './SettingControls'
 import type { SettingsController, SettingsState } from './settingsController'
 import { fillTemplate } from './settingsModel'
 
-const BOOL_FIELDS = ['autoRecord', 'launchAtLogin', 'closeToTray', 'micEnabled', 'notifyMatch', 'forceAspect', 'systemAudioEnabled', 'gameAudioOnly', 'micMono'] as const
+const BOOL_FIELDS = ['autoRecord', 'launchAtLogin', 'closeToTray', 'micEnabled', 'notifyMatch', 'forceAspect', 'systemAudioEnabled', 'gameAudioOnly', 'micMono', 'obsFallbackBuiltin'] as const
 const BITRATES = [5000, 8000, 10000, 15000, 20000, 30000, 40000, 50000, 60000, 80000, 100000, 150000]
+
+function ObsTextControl({ field, ids, state, settings, controller }: {
+  field: 'obsHost' | 'obsPassword'; ids: ControlIds; state: SettingsState; settings: RecordingSettings; controller: SettingsController
+}): JSX.Element {
+  const password = field === 'obsPassword'
+  const [value, setValue] = useState(password ? '' : settings.obsHost)
+  useEffect(() => { if (!password) setValue(settings.obsHost) }, [password, settings])
+  const save = (): void => {
+    if (password) {
+      if (value) void controller.setRecording('obsPassword', value).then(() => setValue(''))
+    } else if (value !== settings.obsHost) void controller.setRecording('obsHost', value)
+  }
+  const { testing, result } = state.obsConnection
+  return <div className="set-inline">
+    <input id={ids.ctl} className="set-input" type={password ? 'password' : 'text'} value={value} maxLength={password ? 4096 : 253}
+      aria-describedby={describedBy(ids)} autoComplete={password ? 'new-password' : 'off'}
+      placeholder={password ? settings.hasPassword ? t.obsPasswordSet : t.obsPasswordEmpty : undefined}
+      onChange={(e) => setValue(e.target.value)} onBlur={() => { if (!password) save() }}
+      onKeyDown={(e) => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) { e.preventDefault(); save() } }} />
+    {password ? <>
+      <button type="button" className="set-btn sm" disabled={!value} onClick={save}>{t.obsPasswordSave}</button>
+      {settings.hasPassword && <button type="button" className="set-btn ghost sm" onClick={() => void controller.setRecording('obsPassword', '')}>{t.obsPasswordClear}</button>}
+    </> : <>
+      <button type="button" className="set-btn sm" disabled={testing} onClick={() => void controller.testObs()}>{testing ? t.obsTesting : t.obsTest}</button>
+      {result && <small className="set-desc" role={result.ok ? 'status' : 'alert'}>{result.ok
+        ? `OBS ${result.obsVersion} · obs-websocket ${result.obsWebSocketVersion}` : result.error}</small>}
+    </>}
+  </div>
+}
 
 export function RecordingControl({ field, ids, state, settings, controller }: {
   field: keyof RecordingSettings
@@ -18,6 +47,9 @@ export function RecordingControl({ field, ids, state, settings, controller }: {
   const set = <K extends keyof RecordingSettings>(key: K, value: RecordingSettings[K]): void => {
     void controller.setRecording(key, value)
   }
+  if (field === 'obsHost' || field === 'obsPassword') return <ObsTextControl field={field} ids={ids} state={state} settings={settings} controller={controller} />
+  if (field === 'obsPort') return <NumberField id={ids.ctl} value={settings.obsPort} range={{ min: 1, max: 65535 }} syncKey={state.settings}
+    describedBy={describedBy(ids)} onCommit={(v) => controller.setRecording('obsPort', Math.round(v))} />
   if ((BOOL_FIELDS as readonly string[]).includes(field)) {
     const key = field as typeof BOOL_FIELDS[number]
     return <SwitchControl ids={ids} checked={settings[key]} onChange={(v) => set(key, v)} />
@@ -50,6 +82,9 @@ export function RecordingControl({ field, ids, state, settings, controller }: {
   const caps = state.recordingCapabilities
   let options: Array<{ value: string; label: string; disabled?: boolean }>
   switch (field) {
+    case 'backend':
+      options = [{ value: 'builtin', label: t.builtin }, { value: 'obs', label: t.obs }]
+      break
     case 'mode':
       options = [{ value: 'session', label: t.session }, { value: 'match', label: t.match }]
       break
@@ -102,6 +137,7 @@ export function RecordingControl({ field, ids, state, settings, controller }: {
           } else set(field, v as RecordingSettings[typeof field])
         }} />
       {hint && <small id={`${ids.ctl}-capabilities`} className="set-desc" role="status">{hint}</small>}
+      {field === 'backend' && settings.backend === 'obs' && <small className="set-desc">{t.obsHint}</small>}
     </div>
   )
 }

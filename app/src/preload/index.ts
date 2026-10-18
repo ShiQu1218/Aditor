@@ -3,6 +3,7 @@ import { RECORDING_CHANNELS, type LiveState, type LiveUpdate, type RecordingStat
 
 const api = {
   recording: {
+    testObs: () => ipcRenderer.invoke(RECORDING_CHANNELS.testObs),
     getStatus: (): Promise<RecordingStatus> => ipcRenderer.invoke(RECORDING_CHANNELS.getStatus),
     getCapabilities: (): Promise<RecorderCapabilities | null> => ipcRenderer.invoke(RECORDING_CHANNELS.getCapabilities),
     startManual: (): Promise<boolean> => ipcRenderer.invoke(RECORDING_CHANNELS.startManual),

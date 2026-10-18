@@ -24,6 +24,9 @@ export interface LiveFile {
   quality?: unknown
 }
 
+/** offset 與段落 pts 同方向：快取時間＝live 時間－offset。 */
+export interface LiveCacheRange { offset: number; duration: number; width?: number; height?: number; codec?: string }
+
 /** live 引擎判定結果等同離線分析，且有引擎版本可寫入快取。 */
 export function isTrusted(live: LiveFile): boolean {
   const q = live.quality as { complete?: unknown } | null | undefined
@@ -103,7 +106,7 @@ async function canWriteLiveCache(cachePath: string, overwriteLive: boolean): Pro
  * 回傳寫好的摘要（供媒體庫），略過時 null。
  */
 export async function writeLiveCache(dir: string, outputPath: string, deps: RecordingDeps,
-  range?: readonly IndexEntry[], options: { forceUntrusted?: boolean; overwriteLive?: boolean } = {}
+  range?: readonly IndexEntry[] | LiveCacheRange, options: { forceUntrusted?: boolean; overwriteLive?: boolean } = {}
 ): Promise<LiveAnalysisSummary | null> {
   if (!deps.liveCachePath) return null
   let live: LiveFile
@@ -115,19 +118,22 @@ export async function writeLiveCache(dir: string, outputPath: string, deps: Reco
   if (options.forceUntrusted) live = { ...live, quality: null }
   const cachePath = deps.liveCachePath(outputPath)
   if (!await canWriteLiveCache(cachePath, !!options.overwriteLive)) return null
-  const entries = range ?? await readIndex(dir)
-  if (entries.length === 0) return null
-  const offset = entries[0].pts
-  const last = entries[entries.length - 1]
-  const duration = last.pts + last.dur - offset
-  let codec = ''
-  try { codec = codecName(initCodecs(new Uint8Array(await fs.promises.readFile(path.join(dir, 'init.mp4'))))) }
-  catch { /* 編碼未知：完整分析時引擎會補上 */ }
+  const explicit = range && 'offset' in range ? range : null
+  const entries = explicit ? [] : (range as readonly IndexEntry[] | undefined) ?? await readIndex(dir)
+  if (!explicit && entries.length === 0) return null
+  const offset = explicit ? explicit.offset : entries[0].pts
+  const last = entries.at(-1)
+  const duration = explicit ? explicit.duration : last!.pts + last!.dur - offset
+  let codec = explicit?.codec ?? ''
+  if (!explicit) {
+    try { codec = codecName(initCodecs(new Uint8Array(await fs.promises.readFile(path.join(dir, 'init.mp4'))))) }
+    catch { /* 編碼未知：完整分析時引擎會補上 */ }
+  }
   const stat = await fs.promises.stat(outputPath)
   const size = (v: unknown): number => (Number.isSafeInteger(v) && Number(v) > 0 ? Number(v) : 0)
   const doc = buildLiveCacheDoc(live, {
     path: outputPath, size: stat.size, mtime: stat.mtimeMs / 1000, duration,
-    width: size(live.width), height: size(live.height), codec
+    width: size(explicit?.width ?? live.width), height: size(explicit?.height ?? live.height), codec
   }, offset, await templatesVersion(deps.profileDir), cachePath)
   await fs.promises.mkdir(path.dirname(cachePath), { recursive: true })
   // 完整分析使用 .tmp；即時快取用獨立暫存檔，避免同時寫入互相覆蓋。
