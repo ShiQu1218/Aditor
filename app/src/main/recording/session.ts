@@ -41,6 +41,11 @@ interface ActiveSession {
 
 /** 停止自己的 OBS 錄影後，這段時間內 OBS 回報「錄影中」視為仍在停止 */
 const OBS_STOP_GRACE_MS = 30_000
+/**
+ * 偵測到 Apex 程序後等這麼久才開始擷取：啟動期間遊戲正在建立視窗、切換全螢幕、載入反作弊驅動，
+ * 此時對顯示卡做擷取／建立裝置最容易碰上驅動問題，而片頭本來就不需要錄。
+ */
+const GAME_START_DELAY_MS = 20_000
 
 function sessionId(): string {
   const date = new Date()
@@ -77,6 +82,9 @@ export class RecordingSessionService implements RecordingService {
   private pendingObs = new Map<string, ActiveSession>()
   /** 上次由本 App 停止 OBS 錄影的時間（epoch ms） */
   private obsStoppedAt = 0
+  /** 目前 PID 第一次被確認的時間 */
+  private pidSeenAt = 0
+  private startDelayTimer: ReturnType<typeof setTimeout> | null = null
 
   constructor(private deps: RecordingDeps) {
     this.watcher = new ApexWatcher(deps.findApexPid ?? findApexPid, deps.pollMs ?? 3000,
@@ -86,13 +94,16 @@ export class RecordingSessionService implements RecordingService {
           this.manualStopped = false
           this.blocked = false
           this.cancelRetry()
+          this.pidSeenAt = Date.now()
+          this.log(`apex pid ${pid ?? 'none'}`)
+          this.clearStartDelay()
         }
         this.gamePid = pid
         void this.serialize(async () => {
           if (!this.running) return
           // 等候啟動或收尾期間可能已累積多次輪詢，只採用最新確認的 PID。
           if (this.active && this.active.pid !== this.gamePid) await this.finish()
-          if (this.canAutoStart()) await this.begin(this.gamePid!)
+          if (this.canAutoStart() && this.gameSettled()) await this.begin(this.gamePid!)
         })
       }, (error) => {
         if (!this.pollWarning) this.notice('error', `無法偵測 Apex 程序：${String(error)}`)
@@ -114,6 +125,7 @@ export class RecordingSessionService implements RecordingService {
     this.running = false
     this.watcher.stop()
     this.cancelRetry()
+    this.clearStartDelay()
     this.clearDiskTimer()
     // 啟動中也能取消握手，不讓結束 App 等候完整的啟動逾時。
     if (this.state.phase === 'starting') await this.active?.client.close()
@@ -151,7 +163,7 @@ export class RecordingSessionService implements RecordingService {
     this.update({ paused })
     if (paused) this.cancelRetry()
     else void this.serialize(async () => {
-      if (this.canAutoStart()) await this.begin(this.gamePid!)
+      if (this.canAutoStart() && this.gameSettled()) await this.begin(this.gamePid!)
     })
   }
 
@@ -239,12 +251,34 @@ export class RecordingSessionService implements RecordingService {
     return result
   }
 
+  /** 遊戲啟動未滿等待時間時排定一次重新檢查，回傳 false。 */
+  private gameSettled(): boolean {
+    const remaining = this.pidSeenAt + (this.deps.gameStartDelayMs ?? GAME_START_DELAY_MS) - Date.now()
+    if (remaining <= 0) return true
+    if (!this.startDelayTimer) {
+      this.startDelayTimer = setTimeout(() => {
+        this.startDelayTimer = null
+        void this.serialize(async () => {
+          if (this.canAutoStart() && this.gameSettled()) await this.begin(this.gamePid!)
+        })
+      }, remaining)
+      this.startDelayTimer.unref()
+    }
+    return false
+  }
+
+  private clearStartDelay(): void {
+    if (this.startDelayTimer) clearTimeout(this.startDelayTimer)
+    this.startDelayTimer = null
+  }
+
   private canAutoStart(): boolean {
     return this.running && this.gamePid !== null && !this.active && !this.state.paused &&
       !this.manualStopped && !this.blocked && !this.retryTimer && this.deps.getSettings().autoRecord
   }
 
   private async begin(pid: number): Promise<boolean> {
+    this.log(`begin pid=${pid} backend=${this.deps.getSettings().backend} capture=${this.deps.getSettings().captureMethod}`)
     const settings = { ...this.deps.getSettings() }
     const outputDir = settings.outputDir ?? this.deps.getWatchFolders()[0] ?? this.deps.defaultOutputDir
     this.update({ ...IDLE_RECORDING_STATUS, paused: this.state.paused, phase: 'starting' })
@@ -345,6 +379,7 @@ export class RecordingSessionService implements RecordingService {
         if (session.ending) return
         if ((session.backend !== 'obs' && typeof event.encoder !== 'string') || !Number.isSafeInteger(event.width) || Number(event.width) <= 0 ||
             !Number.isSafeInteger(event.height) || Number(event.height) <= 0) return
+        this.log(`capture started ${String(event.width)}x${String(event.height)} encoder=${String(event.encoder ?? 'none')}`)
         this.update({ phase: 'recording', encoder: typeof event.encoder === 'string' ? event.encoder : null, width: Number(event.width), height: Number(event.height), error: null })
         session.captured = true
         if (session.obs) {
@@ -463,6 +498,7 @@ export class RecordingSessionService implements RecordingService {
   }
 
   private async finish(): Promise<boolean> {
+    if (this.active) this.log(`finish session=${this.active.id}`)
     const session = this.active
     if (!session) return true
     session.ending = true
@@ -555,7 +591,13 @@ export class RecordingSessionService implements RecordingService {
     this.update({ phase: 'error', error: { code, message } })
     this.notice('error', message)
   }
-  private notice(kind: RecordingNoticeKind, message: string): void { this.deps.notify(kind, message) }
+  private notice(kind: RecordingNoticeKind, message: string): void {
+    this.log(`notice ${kind}: ${message}`)
+    this.deps.notify(kind, message)
+  }
+  private log(message: string): void {
+    try { this.deps.log?.(message) } catch { /* 診斷紀錄失敗不影響錄影 */ }
+  }
   private cancelRetry(): void {
     if (this.retryTimer) clearTimeout(this.retryTimer)
     this.retryTimer = null

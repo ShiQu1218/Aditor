@@ -21,6 +21,10 @@ export interface RecordingDeps {
   obsFileSettleMs?: number
   /** 測試注入：停止自己的 OBS 錄影後，多久內不把「錄影中」當成使用者的錄影沿用（預設 30000） */
   obsStopGraceMs?: number
+  /** 偵測到 Apex 後延後開始擷取的毫秒數（預設 20000；測試注入 0） */
+  gameStartDelayMs?: number
+  /** 診斷紀錄：每行立即落盤，系統當機後仍能看到錄影器當時在做什麼 */
+  log?: (message: string) => void
   probeVideo?: (file: string) => Promise<{ duration: number; width?: number; height?: number; codec?: string }>
   /** 每次需要時才讀，設定變更免重啟 */
   getSettings: () => RecordingSettings

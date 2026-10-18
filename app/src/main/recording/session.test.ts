@@ -90,6 +90,28 @@ describe('錄影服務狀態機', () => {
     expect(commands(value, 'stop')).toHaveLength(0)
   })
 
+  it('偵測到 Apex 後先等遊戲啟動穩定才開始擷取，避開啟動與反作弊載入階段', async () => {
+    const value = rig()
+    value.deps.gameStartDelayMs = 400
+    value.service = createRecordingService(value.deps)
+    const startedAt = Date.now()
+    value.service.start()
+    await waitFor(() => commands(value, 'start').length > 0, 5000)
+    expect(Date.now() - startedAt).toBeGreaterThanOrEqual(400)
+  })
+  it('遊戲重開（新 PID）重新計算等待時間', async () => {
+    const value = rig()
+    value.deps.gameStartDelayMs = 300
+    value.service = createRecordingService(value.deps)
+    value.service.start()
+    await waitFor(() => commands(value, 'start').length === 1, 5000)
+    value.pid = null
+    await waitFor(() => value.service.status().phase === 'idle', 5000)
+    value.pid = 5678
+    const restartedAt = Date.now()
+    await waitFor(() => commands(value, 'start').length === 2, 5000)
+    expect(Date.now() - restartedAt).toBeGreaterThanOrEqual(300)
+  })
   it('暫停阻止自動錄影，恢復後開始；手動停止不會在下一次輪詢立即重開', async () => {
     const value = rig()
     value.service.setPaused(true)
