@@ -28,7 +28,7 @@ def test_start_is_deferred_until_hud_and_backdated():
     assert tr.feed(0, SceneFrame("pre_match")) == []
     assert tr.events == []
     events = tr.feed(60, SceneFrame("in_match_hud"))
-    assert [(e.type, e.t) for e in events] == [("match_start", 0)]
+    assert [(e.type, e.t, e.reason) for e in events] == [("match_start", 0, "opening_confirmed")]
     assert tr.finish(100)[0].t == 100
     assert tr.matches == [Match(0, 100)]
 
@@ -69,6 +69,8 @@ def test_hud_after_brief_lobby_cancels_tentative_end():
     tr = run([(0, 9, "in_match_hud"), (10, 12, "lobby"), (13, 20, "in_match_hud"),
               (21, 80, "other")])
     assert tr.matches == [Match(0, 81)]
+    assert [(e.type, e.t, e.reason) for e in tr.events] == [
+        ("match_start", 0, "initial_match"), ("match_end", 81, "eof")]
 
 
 def test_lobby_then_next_opening_ends_at_lobby():
@@ -145,9 +147,75 @@ def test_other_alone_is_not_positive_match_evidence():
     assert tr.matches == []
 
 
-def test_lobby_then_unrelated_hud_does_not_invent_opening():
-    tr = run([(0, 20, "lobby"), (21, 30, "in_match_hud")])
-    assert tr.matches == []
+@pytest.mark.parametrize("unknown", [False, True])
+def test_lobby_then_sustained_hud_resumes_at_first_hud(unknown):
+    tr = MatchTracker()
+    tr.feed(0, SceneFrame("lobby"))
+    if unknown:
+        for t in range(1, 10):
+            tr.feed(t, SceneFrame("other"))
+    for t in range(10, 13):
+        assert tr.feed(t, SceneFrame("in_match_hud")) == []
+    events = tr.feed(13, SceneFrame("in_match_hud"))
+    assert [(e.type, e.t, e.reason) for e in events] == [("match_start", 10, "hud_resume")]
+    assert tr.feed(14, SceneFrame("in_match_hud")) == []
+    tr.finish(15)
+    assert tr.matches == [Match(10, 15)]
+
+
+def test_brief_hud_then_unknown_does_not_start_match():
+    tr = run([(0, 20, "lobby"), (21, 23, "in_match_hud"), (24, 30, "other")])
+    assert tr.matches == [] and tr.events == []
+
+
+def test_unknown_sample_resets_hud_resume_run():
+    tr = MatchTracker()
+    tr.feed(0, SceneFrame("lobby"))
+    for t, kind in [(1, "in_match_hud"), (2, "in_match_hud"), (3, "in_match_hud"),
+                    (4, "other"), (5, "in_match_hud"), (6, "in_match_hud"), (7, "in_match_hud")]:
+        assert tr.feed(t, SceneFrame(kind)) == []
+    events = tr.feed(8, SceneFrame("in_match_hud"))
+    assert [(e.type, e.t, e.reason) for e in events] == [("match_start", 5, "hud_resume")]
+
+
+def test_sustained_hud_after_settled_lobby_starts_second_match():
+    tr = run([(0, 9, "in_match_hud"), (10, 11, "lobby"), (12, 40, "other"),
+              (41, 50, "in_match_hud")])
+    assert tr.matches == [Match(0, 10), Match(41, 51)]
+    assert [(e.type, e.t, e.reason) for e in tr.events] == [
+        ("match_start", 0, "initial_match"), ("match_end", 10, "lobby"),
+        ("match_start", 41, "hud_resume"), ("match_end", 51, "eof")]
+
+
+@pytest.mark.parametrize("sample_period", [0.5, 1.0, 2.0])
+def test_sample_gap_breaks_hud_resume_run(sample_period):
+    tr = MatchTracker(sample_period=sample_period)
+    tr.feed(0, SceneFrame("lobby"))
+    tr.feed(sample_period, SceneFrame("in_match_hud"))
+    tr.feed(2 * sample_period, SceneFrame("in_match_hud"))
+    first = 2 * sample_period + 2.5 * sample_period + 0.25
+    for offset in range(3):
+        assert tr.feed(first + offset, SceneFrame("in_match_hud")) == []
+    events = tr.feed(first + 3, SceneFrame("in_match_hud"))
+    assert [(e.type, e.t, e.reason) for e in events] == [("match_start", first, "hud_resume")]
+
+
+def test_hud_resume_uses_elapsed_seconds_and_allows_maximum_sample_gap():
+    tr = MatchTracker(sample_period=0.5)
+    tr.feed(0, SceneFrame("lobby"))
+    for t in [0.5, 1.75, 2.0, 2.5, 3.0]:
+        assert tr.feed(t, SceneFrame("in_match_hud")) == []
+    events = tr.feed(3.5, SceneFrame("in_match_hud"))
+    assert [(e.type, e.t, e.reason) for e in events] == [("match_start", 0.5, "hud_resume")]
+
+
+def test_expired_opening_can_resume_from_hud():
+    tr = MatchTracker()
+    tr.feed(0, SceneFrame("pre_match"))
+    for t in range(181, 184):
+        assert tr.feed(t, SceneFrame("in_match_hud")) == []
+    events = tr.feed(184, SceneFrame("in_match_hud"))
+    assert [(e.type, e.t, e.reason) for e in events] == [("match_start", 181, "hud_resume")]
 
 
 def test_lobby_reset_allows_following_match():

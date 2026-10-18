@@ -16,6 +16,8 @@ from .probe import probe
 from .scene import SCENE_SIZE, SceneDetector, SceneFrame
 
 HUD_CONFIRM_SECONDS = 180.0
+# 錯過開局序列時，連續對局 HUD 至少持續這麼久才恢復開局。
+HUD_RESUME_CONFIRM_SECONDS = 3.0
 # 大廳連續出現這麼久就暫定結束（時間取大廳首次出現）；回大廳後常馬上開獎勵／組合包／商店，不能要求長時間停在大廳。
 LOBBY_CONFIRM_SECONDS = 1.0  # 1 fps 下＝連續兩次取樣都是大廳
 # 暫定結束後這段時間內沒有回到對局 HUD 才確定（大廳誤判時不會把一局切成兩段）。
@@ -49,6 +51,7 @@ class MatchTracker:
         self._active: float | None = None
         self._pending: float | None = None
         self._pre_last: float | None = None
+        self._hud_first: float | None = None
         self._lobby_first: float | None = None
         self._end_pending: float | None = None
         self._recover_initial = True
@@ -66,6 +69,7 @@ class MatchTracker:
 
     def _start(self, t: float, reason: str) -> None:
         self._active = t
+        self._hud_first = None
         self._events.append(MatchEvent("match_start", t, reason))
 
     def _end(self, t: float, reason: str) -> None:
@@ -92,6 +96,8 @@ class MatchTracker:
         self._last = t
         if gap or scene.kind != "lobby":
             self._lobby_first = None
+        if gap or scene.kind != "in_match_hud":
+            self._hud_first = None
         if self._pending is not None and t - self._pending > HUD_CONFIRM_SECONDS:
             self._pending = None  # 開始事件尚未送出，取消時不用撤回已發事件。
         if self._end_pending is not None and t - self._end_pending >= LOBBY_SETTLE_SECONDS:
@@ -123,6 +129,11 @@ class MatchTracker:
                 self._pending = None
             elif self._active is None and self._recover_initial:
                 self._start(self._first, "initial_match")
+            elif self._active is None:
+                if self._hud_first is None:
+                    self._hud_first = t
+                if t - self._hud_first >= HUD_RESUME_CONFIRM_SECONDS:
+                    self._start(self._hud_first, "hud_resume")
         elif scene.match_context and self._active is None and self._recover_initial:
             self._start(self._first, "initial_summary")
         return self._events[n:]
