@@ -29,6 +29,14 @@ def _cmd_analyze(a) -> int:
     return 0
 
 
+def _cmd_matches(a) -> int:
+    from apexhl.matches import analyze_matches
+
+    doc = analyze_matches(a.video, fps=a.fps, timeline=a.timeline, hwaccel=not a.no_hwaccel)
+    print(json.dumps(doc, ensure_ascii=False))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="apexhl")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -40,6 +48,11 @@ def main(argv: list[str] | None = None) -> int:
     an.add_argument("--no-hwaccel", action="store_true")
     an.add_argument("--jobs", type=int, default=None, help="切段平行解碼的段數（預設自動）")
     an.add_argument("--out")
+    ma = sub.add_parser("matches", help="偵測影片中的對局起訖")
+    ma.add_argument("video")
+    ma.add_argument("--fps", type=float, default=1.0)
+    ma.add_argument("--timeline", action="store_true", help="包含逐格場景時間軸")
+    ma.add_argument("--no-hwaccel", action="store_true")
     sub.add_parser("ipc", help="JSON Lines IPC 伺服器")
     for s in (sys.stdout, sys.stderr):
         s.reconfigure(encoding="utf-8")
@@ -48,6 +61,8 @@ def main(argv: list[str] | None = None) -> int:
         from apexhl.ipc import run
         return run()
     try:
+        if a.cmd == "matches":
+            return _cmd_matches(a)
         return _cmd_analyze(a)
     except Exception as e:  # noqa: BLE001
         print(f"錯誤：{e}", file=sys.stderr)
