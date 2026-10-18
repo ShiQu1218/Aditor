@@ -12,3 +12,4 @@ out/
 build/
 recorder/target/
 .worktrees/
+.claude/worktrees/
