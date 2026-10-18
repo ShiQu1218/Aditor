@@ -48,7 +48,7 @@ export interface RecordingSettings {
   diskStopGb: number
   /** 對局開始／結束是否發 Windows 通知（錯誤一律通知） */
   notifyMatch: boolean
-  /** 擷取方式：'wgc'＝視窗擷取（預設）；'dda'＝擷取遊戲所在的整個螢幕（DXGI Desktop Duplication，延遲較低） */
+  /** 擷取方式：'dda'＝擷取遊戲所在的整個螢幕（DXGI Desktop Duplication，預設，遊戲延遲較低）；'wgc'＝視窗擷取 */
   captureMethod: RecordingCaptureMethod
 }
 
@@ -81,7 +81,7 @@ export const DEFAULT_RECORDING_SETTINGS: RecordingSettings = {
   diskWarnGb: 10,
   diskStopGb: 2,
   notifyMatch: false,
-  captureMethod: 'wgc'
+  captureMethod: 'dda'
 }
 
 /** 錄影服務狀態（main → renderer 推播 `recording:status`，也可用 `recording:getStatus` 取）。 */
