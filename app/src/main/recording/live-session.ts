@@ -174,7 +174,7 @@ export class LiveSession extends EventEmitter {
       await writeJson(path.join(this.options.dir, LIVE_FILE), {
         version: 1, engine_version: this.engine?.engineVersion() ?? null,
         t: this.snapshot.t, events: this.snapshot.events, spectating: this.snapshot.spectating as LiveSpec[],
-        matches: this.matches, width: this.width, height: this.height
+        matches: this.matches, width: this.width, height: this.height, quality: this.engine?.quality() ?? null
       })
     }).catch((error) => { console.warn('[live] 無法寫入 live.json：', error) })
   }

@@ -61,6 +61,8 @@ STATS_INTERVAL = 5.0        # stats 每 5 秒（實際時間）
 CALIB_MAX_SCAN_SECONDS = 600.0          # 同 calibrate() 的 max_scan_seconds：掃滿仍不足 WANTED_HITS 就用現有命中決定
 CALIB_BUFFER_MAX_BYTES = 64 * 1024 * 1024   # 校準期緩衝的 PNG 位元組上限（約 400 格橫幅）；超過就提早決定尺度
 PENDING_BUFFER_MAX_BYTES = 64 * 1024 * 1024  # 學關鍵字期待驗證格（Pending 筆畫圖）的位元組上限；超過就提早學完
+# 跳過／撕裂的槽占全部影格的比例超過這個值，就不能保證結果等同離線分析
+MAX_LOSS_RATIO = 0.01
 PNG_LEVEL = 1               # 校準期緩衝的 PNG 壓縮等級（快；無損）
 
 _EPS = 1e-6
@@ -323,6 +325,8 @@ class LiveKills:
         self._buf_bytes = 0
         self._provisional: EventTracker | None = None  # 學關鍵字期的暫定追蹤器（不驗證關鍵字）
         self.keywords = None
+        # 與離線分析可能不同的原因（緩衝上限觸發的提早決定）；空＝與離線單段分析等價
+        self.degraded: list[str] = []
         self.revision = 0  # 每餵一格 +1：snapshot 只在有變化時才需要重算
 
     @property
@@ -342,6 +346,8 @@ class LiveKills:
     def _calibrated(self) -> None:
         cal, self._calib = self._calib, None
         self.h_scale = pick_scale(cal.hits)
+        if cal.bytes > cal.max_bytes:
+            self.degraded.append("calib_buffer_cap")
         self._log(f"圖示尺度 {self.h_scale}（命中 {len(cal.hits)} 格，掃描 {cal.scanned:.1f} 秒，"
                   f"緩衝 {len(cal.frames)} 格／{cal.bytes // 1024} KB）")
         self.detector = Detector(self.profile, self.h_scale)
@@ -375,6 +381,7 @@ class LiveKills:
             self._buf_bytes += r.ink.nbytes
             if self._buf_bytes > self._pending_max:
                 self._log("待驗證緩衝已達上限，提早學關鍵字")
+                self.degraded.append("pending_buffer_cap")
                 self._learned()
 
     def _learned(self) -> None:
@@ -494,7 +501,7 @@ class LiveEngine:
             self._last_stats = now
             self._stats()
 
-    def _snapshot(self, force: bool, final: tuple | None = None) -> None:
+    def _snapshot(self, force: bool, final: tuple | None = None, quality: dict | None = None) -> None:
         if not force and self.kills.revision == self._snap_rev:
             return
         self._snap_rev = self.kills.revision
@@ -503,6 +510,8 @@ class LiveEngine:
         if not force and doc == self._snap_doc:
             return
         self._snap_doc = doc
+        if quality is not None:
+            body = {**body, "final": True, "quality": quality}
         self.emit({"ev": "snapshot", "t": self.last_t or 0.0, **body})
 
     @staticmethod
@@ -530,7 +539,16 @@ class LiveEngine:
         for ev in self.matches.finish(self.last_t or 0.0):
             self.emit({"ev": ev.type, "t": ev.t, "reason": ev.reason})
         self._stats()
-        self._snapshot(force=True, final=final)
+        self._snapshot(force=True, final=final, quality=self.quality())
+
+    def quality(self) -> dict:
+        """最終結果是否可直接當作分析結果（等同離線）：沒有緩衝上限觸發、跳過與撕裂的槽夠少。"""
+        reasons = list(self.kills.degraded)
+        lost = self.skipped + self.torn
+        if self.frames and lost / (self.frames + lost) > MAX_LOSS_RATIO:
+            reasons.append("frames_lost")
+        return {"complete": not reasons, "reasons": reasons, "h_scale": self.kills.h_scale,
+                "frames": self.frames, "skipped": self.skipped, "torn": self.torn}
 
 
 def _check_layout(layout: ShmLayout, profile: Profile) -> None:

@@ -51,6 +51,8 @@ export interface LiveAnalysisSummary {
   counts: { knock: number; assist: number }
   durationSec: number
   codec: string
+  /** live 結果等同離線分析（快取已標成正式版本），不必再排完整分析 */
+  trusted: boolean
 }
 
 export function createRecordingService(_deps: RecordingDeps): RecordingService {

@@ -46,6 +46,37 @@ describe('live.json → 分析快取', () => {
     expect(shifted.events.map((e) => [e.id, e.t])).toEqual([['a2000', 0], ['a3000', 1]])
   })
 
+  it('即時結果判定完整時寫正式引擎版本與尺度，收尾不再排完整分析', async () => {
+    const base = root()
+    const deps = makeDeps(base)
+    deps.enqueueAnalysis = vi.fn()
+    deps.onLiveAnalysis = vi.fn()
+    const cacheDir = path.join(base, 'cache')
+    deps.liveCachePath = (video) => cacheFilePath(video, cacheDir)
+    const trusted = { ...LIVE, quality: { complete: true, reasons: [], hScale: 1.05 } }
+    const { dir, output } = finishedSession(base, 'afterExit', trusted)
+    expect(await finalizeSession(dir, deps)).toEqual([output])
+    expect(deps.enqueueAnalysis).not.toHaveBeenCalled()
+    expect(deps.onLiveAnalysis).toHaveBeenCalledWith(output, expect.objectContaining({ trusted: true }))
+    const doc = JSON.parse(fs.readFileSync(cacheFilePath(output, cacheDir), 'utf8'))
+    expect(doc.analysis).toMatchObject({ engine_version: '0.3.0', h_scale: 1.05 })
+  })
+
+  it.each([
+    ['不完整', { complete: false, reasons: ['frames_lost'], hScale: 1 }],
+    ['沒有判定（被強制結束）', null]
+  ])('即時結果%s時照常排完整分析', async (_label, quality) => {
+    const base = root()
+    const deps = makeDeps(base)
+    deps.enqueueAnalysis = vi.fn()
+    const cacheDir = path.join(base, 'cache')
+    deps.liveCachePath = (video) => cacheFilePath(video, cacheDir)
+    const { dir, output } = finishedSession(base, 'afterExit', { ...LIVE, quality })
+    await finalizeSession(dir, deps)
+    expect(deps.enqueueAnalysis).toHaveBeenCalledWith(output)
+    expect(JSON.parse(fs.readFileSync(cacheFilePath(output, cacheDir), 'utf8')).analysis.engine_version).toBe('live-0.3.0')
+  })
+
   it.each(['none', 'afterExit'] as const)('收尾寫入快取並在排分析前通知媒體庫（%s）', async (postAnalysis) => {
     const base = root()
     const deps = makeDeps(base)
@@ -59,7 +90,7 @@ describe('live.json → 分析快取', () => {
     const { dir, output } = finishedSession(base, postAnalysis, LIVE)
     expect(await finalizeSession(dir, deps)).toEqual([output])
     expect(order).toEqual(postAnalysis === 'none' ? ['library', 'live'] : ['library', 'live', 'analysis'])
-    expect(deps.onLiveAnalysis).toHaveBeenCalledWith(output, { counts: { knock: 1, assist: 1 }, durationSec: 6, codec: 'h264' })
+    expect(deps.onLiveAnalysis).toHaveBeenCalledWith(output, { counts: { knock: 1, assist: 1 }, durationSec: 6, codec: 'h264', trusted: false })
     const doc = JSON.parse(fs.readFileSync(cacheFilePath(output, cacheDir), 'utf8'))
     expect(doc.video).toMatchObject({ path: output, size: 11, duration: 6, width: 2560, height: 1440, codec: 'h264' })
     expect(doc.video.mtime).toBeCloseTo(fs.statSync(output).mtimeMs / 1000, 3)

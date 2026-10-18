@@ -32,6 +32,14 @@ describe('live 引擎輸出解析', () => {
     expect(parseSnapshot({ t: 1, events: 'x', spectating: [] })).toBeNull()
   })
 
+  it('最終 snapshot 帶判定；重啟過的合併結果一律不完整', () => {
+    const final = parseSnapshot({ t: 1, events: [], spectating: [], final: true, quality: { complete: true, reasons: [], h_scale: 1.05 } })
+    expect(final?.quality).toEqual({ complete: true, reasons: [], hScale: 1.05 })
+    expect(parseSnapshot({ t: 1, events: [], spectating: [], quality: { complete: true } })?.quality).toBeUndefined()
+    const merged = mergeIncarnations({ t: 1, events: [], spectating: [] }, final!, 1)
+    expect(merged.quality).toEqual({ complete: false, reasons: ['restarted'], hScale: 1.05 })
+  })
+
   it('重啟後合併：封存全部保留，新程序只取封存時間之後且不重複的事件', () => {
     const archived: LiveSnapshot = { t: 10, events: [ev('a1000', 1), ev('a9000', 9)], spectating: [{ start: 2, end: 3 }] }
     const fresh: LiveSnapshot = { t: 20, events: [ev('a5000', 5), ev('a9000', 9), ev('a15000', 15)], spectating: [{ start: 4, end: 5 }, { start: 12, end: 13 }] }

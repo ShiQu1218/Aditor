@@ -21,6 +21,13 @@ interface LiveFile {
   matches?: unknown
   width?: unknown
   height?: unknown
+  quality?: unknown
+}
+
+/** live 引擎判定結果等同離線分析，且有引擎版本可寫入快取。 */
+export function isTrusted(live: LiveFile): boolean {
+  const q = live.quality as { complete?: unknown } | null | undefined
+  return !!q && q.complete === true && typeof live.engine_version === 'string' && live.engine_version.length > 0
 }
 
 const finite = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v)
@@ -54,12 +61,16 @@ export function buildLiveCacheDoc(live: LiveFile, video: {
     .filter((m): m is { start: number; end: number | null } => !!m && finite(m.start) && (m.end === null || finite(m.end)))
     .map((m) => ({ start: Math.max(0, m.start - offset), end: m.end === null ? null : Math.min(video.duration, m.end - offset) }))
   const version = typeof live.engine_version === 'string' ? live.engine_version : 'unknown'
+  const trusted = isTrusted(live)
+  const hScale = (live.quality as { hScale?: unknown } | null | undefined)?.hScale
   return {
     version: 1,
     video: { ...video, start_time: 0 },
     analysis: {
       status: 'done', source: 'live', progress_t: video.duration,
-      engine_version: `live-${version}`, templates_version: templatesVersion, h_scale: 1
+      // 可信時寫正式引擎版本：needs_reanalysis 視為已完成，不再重跑；否則 `live-` 前綴讓完整分析照常覆蓋。
+      engine_version: trusted ? version : `live-${version}`, templates_version: templatesVersion,
+      h_scale: trusted && finite(hScale) ? hScale : 1
     },
     events,
     spectating,
@@ -109,5 +120,5 @@ export async function writeLiveCache(dir: string, outputPath: string, deps: Reco
   const temp = `${cachePath}.tmp`
   await fs.promises.writeFile(temp, JSON.stringify(doc), 'utf8')
   await fs.promises.rename(temp, cachePath)
-  return { counts: liveCounts(doc.events), durationSec: duration, codec }
+  return { counts: liveCounts(doc.events), durationSec: duration, codec, trusted: isTrusted(live) }
 }

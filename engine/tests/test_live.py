@@ -283,6 +283,8 @@ def test_engine_emits_stats_and_final_snapshot(profile, layout, scene):
         assert stats and set(stats[0]) == {"ev", "t", "frames", "skipped", "torn", "lag_s", "cpu_ms_per_frame"}
         assert stats[-1]["frames"] == 30 and stats[-1]["cpu_ms_per_frame"] > 0
         assert out[-1]["ev"] == "snapshot" and out[-1]["events"] == [] and out[-1]["t"] == 29 * TICK
+        assert out[-1]["final"] is True
+        assert out[-1]["quality"]["complete"] is True and out[-1]["quality"]["reasons"] == []
     finally:
         r.close()
         w.close()
@@ -445,6 +447,7 @@ def test_live_matches_offline_on_synthetic_video(tmp_path, profile, layout, scen
         [(e["type"], e["t"], e["counted"]) for e in doc["events"]]
     assert final["spectating"] == doc["spectating"]
     assert len(doc["events"]) >= 3
+    assert final["quality"]["complete"] is True and final["quality"]["h_scale"] == doc["analysis"]["h_scale"]
 
 
 def test_live_kills_small_buffers_degrade_gracefully(tmp_path, profile, knock_banner_png):
@@ -459,6 +462,21 @@ def test_live_kills_small_buffers_degrade_gracefully(tmp_path, profile, knock_ba
     assert kills.phase == "detecting" and kills.h_scale is not None
     assert any("提早" in m for m in logs)
     assert len(events) >= 2
+    assert {"calib_buffer_cap", "pending_buffer_cap"} & set(kills.degraded)
+
+
+def test_quality_flags_lost_frames(profile, layout, scene):
+    clock = FakeClock()
+    w, r, eng, out = _engine(_name(), layout, profile, scene, clock)
+    try:
+        eng.frames, eng.skipped = 100, 5
+        q = eng.quality()
+        assert q["complete"] is False and "frames_lost" in q["reasons"]
+        eng.skipped = 0
+        assert eng.quality()["complete"] is True
+    finally:
+        r.close()
+        w.close()
 
 
 @pytest.mark.timeout(900)

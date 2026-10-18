@@ -19,6 +19,8 @@ interface Finalized {
   analysisQueued: boolean
   /** live.json 已嘗試轉成分析快取（第 3 期；舊 marker 缺省＝未轉） */
   liveCached?: boolean
+  /** 即時結果等同離線分析，不排完整分析 */
+  liveTrusted?: boolean
 }
 
 export async function writeJson(file: string, value: unknown): Promise<void> {
@@ -177,13 +179,15 @@ export async function finalizeSession(dir: string, deps: RecordingDeps): Promise
     try {
       const summary = await writeLiveCache(dir, marker.outputPath, deps)
       if (summary) deps.onLiveAnalysis?.(marker.outputPath, summary)
+      // 即時結果等同離線分析：不再排完整分析（使用者仍可手動重新分析）。
+      if (summary?.trusted) marker.liveTrusted = true
     } catch (error) {
       console.error('[recording] 無法把即時事件轉成分析快取：', error)
     }
     marker.liveCached = true
     await writeJson(markerPath, marker)
   }
-  if (!marker.analysisQueued && marker.postAnalysis !== 'none') {
+  if (!marker.analysisQueued && marker.postAnalysis !== 'none' && !marker.liveTrusted) {
     deps.enqueueAnalysis(marker.outputPath)
     marker.analysisQueued = true
     await writeJson(markerPath, marker)

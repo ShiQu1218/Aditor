@@ -22,7 +22,9 @@ const MAX_RESTARTS = 5
 export const LIVE_STOP_TIMEOUT_MS = 5000
 
 export interface LiveSpec { start: number; end: number }
-export interface LiveSnapshot { t: number; events: LiveEvent[]; spectating: LiveSpec[] }
+/** live 引擎在最終 snapshot 附上的判定：complete＝結果等同離線分析，可直接當分析結果。 */
+export interface LiveQuality { complete: boolean; reasons: string[]; hScale: number | null }
+export interface LiveSnapshot { t: number; events: LiveEvent[]; spectating: LiveSpec[]; quality?: LiveQuality }
 export interface LiveMatchEvent { ev: 'match_start' | 'match_end'; t: number; reason: string }
 
 export interface LiveEngineOptions {
@@ -56,7 +58,13 @@ export function parseSnapshot(msg: Record<string, unknown>): LiveSnapshot | null
   if (!finite(msg.t) || !Array.isArray(msg.events) || !Array.isArray(msg.spectating)) return null
   if (msg.events.length > MAX_EVENTS || msg.spectating.length > MAX_EVENTS) return null
   if (!msg.events.every(validEvent) || !msg.spectating.every(validSpec)) return null
-  return { t: msg.t, events: msg.events as LiveEvent[], spectating: msg.spectating as LiveSpec[] }
+  const snap: LiveSnapshot = { t: msg.t, events: msg.events as LiveEvent[], spectating: msg.spectating as LiveSpec[] }
+  const q = msg.quality as Record<string, unknown> | undefined
+  if (msg.final === true && q && typeof q === 'object' && typeof q.complete === 'boolean') {
+    const reasons = Array.isArray(q.reasons) ? q.reasons.filter((r): r is string => typeof r === 'string').map((r) => r.slice(0, 64)) : []
+    snap.quality = { complete: q.complete, reasons, hScale: finite(q.h_scale) ? q.h_scale : null }
+  }
+  return snap
 }
 
 /**
@@ -70,10 +78,13 @@ export function mergeIncarnations(archived: LiveSnapshot | null, fresh: LiveSnap
     .sort((a, b) => a.t - b.t)
   const spectating = [...archived.spectating, ...fresh.spectating.filter((s) => s.start > resumeT)]
     .sort((a, b) => a.start - b.start)
-  return { t: Math.max(archived.t, fresh.t), events, spectating }
+  // 重啟過的程序只看到後半段：最終判定一律不完整。
+  const quality = fresh.quality && { ...fresh.quality, complete: false, reasons: [...fresh.quality.reasons, 'restarted'] }
+  return { t: Math.max(archived.t, fresh.t), events, spectating, ...(quality ? { quality } : {}) }
 }
 
 export class LiveEngine extends EventEmitter {
+  private gaveUp = false
   private proc: ChildProcessWithoutNullStreams | null = null
   private buffer = ''
   private decoder = new StringDecoder('utf8')
@@ -155,6 +166,7 @@ export class LiveEngine extends EventEmitter {
     const now = Date.now()
     this.restarts = this.restarts.filter((time) => now - time < RESTART_WINDOW_MS)
     if (this.restarts.length >= MAX_RESTARTS) {
+      this.gaveUp = true
       this.emit('failed', new Error(`即時偵測在 10 分鐘內已重啟 ${MAX_RESTARTS} 次，本次錄影停止即時偵測（錄影不受影響）：${message}`))
       return
     }
@@ -166,6 +178,13 @@ export class LiveEngine extends EventEmitter {
       if (!this.stopping) this.launch()
     }, delay)
     this.restartTimer.unref()
+  }
+
+  /** 最終判定；沒有收到最終 snapshot（被 kill、放棄重啟）時為 null＝不可直接採用。 */
+  quality(): LiveQuality | null {
+    const q = this.current?.quality
+    if (!q) return null
+    return this.gaveUp ? { ...q, complete: false, reasons: [...q.reasons, 'gave_up'] } : q
   }
 
   private onData(chunk: Buffer): void {
