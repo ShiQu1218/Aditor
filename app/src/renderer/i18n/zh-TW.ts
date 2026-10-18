@@ -707,5 +707,46 @@ export const recordingI18n = {
   pauseAuto: '暫停自動錄影',
   apexNotRunning: '無法開始錄影，請確認 Apex 正在執行。',
   serviceUnavailable: '無法取得錄影狀態，請確認錄影服務已啟動。',
-  actionFailed: '錄影操作失敗，請再試一次。'
+  actionFailed: '錄影操作失敗，請再試一次。',
+  watchLive: '觀看當局',
+  watchLiveHint: '錄影中才能觀看當局',
+  kills: '本局擊殺',
+  matchIndex: '對局'
 }
+
+/** 錄影中觀看（第 3 期）。 */
+export const liveI18n = {
+  title: '觀看當局',
+  back: '返回',
+  video: '當局錄影',
+  recording: '錄影中',
+  match: '第 {n} 局',
+  noMatch: '尚未偵測到對局',
+  kills: '本局擊殺 {n}',
+  play: '播放',
+  pause: '暫停',
+  back5: '倒退 5 秒',
+  forward5: '前進 5 秒',
+  jumpLive: '跳到最新',
+  atLive: '已是最新',
+  time: '{cur} / {end}',
+  timeline: '錄影時間軸',
+  timelineValue: '{cur}，錄影長度 {end}',
+  matchRange: '第 {n} 局：{start}–{end}',
+  matchOngoing: '進行中',
+  released: '超過 30 分鐘的內容已釋放，收尾後可在工作室觀看',
+  events: '即時事件',
+  noEvents: '尚無事件；偵測到擊倒或消滅會即時出現。',
+  eventItem: '{type} · {time}',
+  uncounted: '（不計入）',
+  newKill: '新事件：{type} · {time}',
+  loading: '正在載入錄影…',
+  notRecording: '目前沒有進行中的錄影。',
+  unsupported: '此電腦無法播放錄影的編碼（{mime}），事件仍會即時更新。',
+  loadFailed: '無法載入錄影段落：{message}',
+  waitingInit: '等待錄影開始寫入…',
+  ended: '錄影已結束，已加入媒體庫。',
+  openStudio: '在工作室開啟',
+  openLibrary: '前往媒體庫',
+  keys: '空白鍵播放／暫停 · ←／→ 前後 5 秒 · End 跳到最新'
+} as const

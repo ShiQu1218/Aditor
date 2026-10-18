@@ -1,7 +1,31 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import fs from 'fs'
 import path from 'path'
-import { apexrecCommand } from './paths'
+import { apexrecCommand, liveEngineCommand, sceneDir } from './paths'
+
+describe('liveEngineCommand', () => {
+  const root = path.resolve(__dirname, '../../..')
+  const resources = process as unknown as { resourcesPath?: string }
+  const originalResources = resources.resourcesPath
+  afterEach(() => {
+    if (originalResources === undefined) delete resources.resourcesPath
+    else resources.resourcesPath = originalResources
+  })
+
+  it('開發：同一個 venv Python，子指令改為 live；場景範本在 templates/scene', () => {
+    expect(liveEngineCommand(false)).toEqual({
+      command: path.join(root, 'engine/.venv/Scripts/python.exe'), args: ['-m', 'apexhl', 'live'],
+      env: { PYTHONPATH: path.join(root, 'engine') }
+    })
+    expect(sceneDir(false)).toBe(path.join(root, 'templates/scene'))
+  })
+
+  it('打包：resources 下的 apexhl.exe live', () => {
+    resources.resourcesPath = path.resolve('installed/resources')
+    expect(liveEngineCommand(true)).toEqual({ command: path.join(resources.resourcesPath, 'engine/apexhl/apexhl.exe'), args: ['live'] })
+    expect(sceneDir(true)).toBe(path.join(resources.resourcesPath, 'templates/scene'))
+  })
+})
 
 describe('apexrecCommand', () => {
   const root = path.resolve(__dirname, '../../..')

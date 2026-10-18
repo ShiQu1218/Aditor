@@ -13,7 +13,9 @@ import { buildAnalyzeArgs } from './settings-derived'
 import { currentE2EConfig } from './e2e'
 import { applyWindowSecurity } from './window-security'
 import { sanitizeAnalyzeArgs, sanitizeAutoclipArgs, sanitizeDeriveArgs, sanitizeProbeArgs } from './ipc-guards'
-import { apexrecCommand, appDataDir, cacheDir, engineCommand, ffmpegExecutable, profileDir } from '../shared/paths'
+import { apexrecCommand, appDataDir, cacheDir, engineCommand, ffmpegExecutable, liveEngineCommand, profileDir, sceneDir } from '../shared/paths'
+import { cacheFilePath } from './cache-io'
+import { generateThumbnail } from './thumbnail'
 import { createRecordingService } from './recording'
 import { registerRecordingIpc } from './recording-ipc'
 import { createRecordingTray } from './tray'
@@ -163,6 +165,16 @@ async function initEngineAndServices(): Promise<void> {
   cancelExport = handlers.cancelExport
 
   const notify = createRecordingNotifier(() => settingsStore!.get().recording)
+  const pushLibrary = (): void => {
+    const payload = queue!.payload()
+    for (const win of BrowserWindow.getAllWindows()) {
+      try {
+        if (!win.isDestroyed() && !win.webContents.isDestroyed()) win.webContents.send('library:updated', payload)
+      } catch (error) {
+        console.error('無法推送錄影媒體庫更新：', error)
+      }
+    }
+  }
   recordingService = createRecordingService({
     getSettings: () => settingsStore!.get().recording,
     getWatchFolders: () => settingsStore!.get().watchFolders,
@@ -172,17 +184,23 @@ async function initEngineAndServices(): Promise<void> {
     profileDir: templateProfileDir,
     addToLibrary: (paths) => {
       library!.add(paths)
-      const payload = queue!.payload()
-      for (const win of BrowserWindow.getAllWindows()) {
-        try {
-          if (!win.isDestroyed() && !win.webContents.isDestroyed()) win.webContents.send('library:updated', payload)
-        } catch (error) {
-          console.error('無法推送錄影媒體庫更新：', error)
-        }
-      }
+      pushLibrary()
     },
     enqueueAnalysis: (videoPath) => queue!.enqueue(videoPath),
-    notify
+    notify,
+    liveEngineCommand: liveEngineCommand(app.isPackaged),
+    sceneDir: sceneDir(app.isPackaged),
+    liveCachePath: (videoPath) => cacheFilePath(videoPath, cacheDir(), settingsStore!.get().cacheLocation === 'besideVideo'),
+    // live 快取已是 done：媒體庫條目可直接開啟；若接著排完整分析，佇列會再改回等待中並在完成後覆蓋。
+    onLiveAnalysis: (videoPath, summary) => {
+      library!.update(videoPath, { status: 'done', progress: 1, counts: summary.counts, durationSec: summary.durationSec, codec: summary.codec || undefined, hl: undefined })
+      pushLibrary()
+      void generateThumbnail(videoPath, summary.durationSec).then((thumb) => {
+        if (!thumb || library!.get(videoPath)?.status !== 'done') return
+        library!.update(videoPath, { thumb })
+        pushLibrary()
+      }, (error) => console.error('無法產生錄影縮圖：', error))
+    }
   })
   unregisterRecordingIpc = registerRecordingIpc(recordingService, () => BrowserWindow.getAllWindows())
   tray = createRecordingTray({

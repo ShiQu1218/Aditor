@@ -5,6 +5,7 @@ import { Readable } from 'stream'
 import { pipeline } from 'stream/promises'
 import type { PostRecordAnalysis } from '../../shared/recording'
 import type { RecordingDeps } from './index'
+import { writeLiveCache } from './live-cache'
 
 export interface SessionSnapshot {
   startedAt: number
@@ -12,7 +13,13 @@ export interface SessionSnapshot {
 }
 
 interface IndexEntry { seq: number; pts: number; dur: number }
-interface Finalized { outputPath: string; postAnalysis: PostRecordAnalysis; analysisQueued: boolean }
+interface Finalized {
+  outputPath: string
+  postAnalysis: PostRecordAnalysis
+  analysisQueued: boolean
+  /** live.json 已嘗試轉成分析快取（第 3 期；舊 marker 缺省＝未轉） */
+  liveCached?: boolean
+}
 
 export async function writeJson(file: string, value: unknown): Promise<void> {
   const temp = file + '.tmp'
@@ -165,6 +172,17 @@ export async function finalizeSession(dir: string, deps: RecordingDeps): Promise
   if (marker.postAnalysis === undefined) marker.postAnalysis = 'none'
   if (!['none', 'afterExit', 'perMatch'].includes(marker.postAnalysis)) throw new Error('已收尾的分析設定無效')
   deps.addToLibrary([marker.outputPath])
+  if (!marker.liveCached) {
+    // 即時事件只是加分項：轉換失敗不阻擋收尾（完整分析或之後手動分析會補上）。
+    try {
+      const summary = await writeLiveCache(dir, marker.outputPath, deps)
+      if (summary) deps.onLiveAnalysis?.(marker.outputPath, summary)
+    } catch (error) {
+      console.error('[recording] 無法把即時事件轉成分析快取：', error)
+    }
+    marker.liveCached = true
+    await writeJson(markerPath, marker)
+  }
   if (!marker.analysisQueued && marker.postAnalysis !== 'none') {
     deps.enqueueAnalysis(marker.outputPath)
     marker.analysisQueued = true
