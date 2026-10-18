@@ -3,16 +3,17 @@ import path from 'path'
 import { spawn } from 'child_process'
 import { Readable } from 'stream'
 import { pipeline } from 'stream/promises'
-import type { PostRecordAnalysis } from '../../shared/recording'
+import type { LiveMatch, PostRecordAnalysis, RecordingMode } from '../../shared/recording'
 import type { RecordingDeps } from './index'
-import { writeLiveCache } from './live-cache'
+import { isTrusted, writeLiveCache, type LiveFile } from './live-cache'
 
 export interface SessionSnapshot {
   startedAt: number
   postAnalysis: PostRecordAnalysis
+  mode: RecordingMode
 }
 
-interface IndexEntry { seq: number; pts: number; dur: number }
+export interface IndexEntry { seq: number; pts: number; dur: number }
 interface Finalized {
   outputPath: string
   postAnalysis: PostRecordAnalysis
@@ -78,14 +79,197 @@ async function snapshot(dir: string, fallback: PostRecordAnalysis): Promise<Sess
     if (!Number.isFinite(value.startedAt) || !['none', 'afterExit', 'perMatch'].includes(value.postAnalysis)) {
       throw new Error('錄影設定快照無效')
     }
-    return value
+    return { ...value, mode: value.mode === 'match' ? 'match' : 'session' }
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
   }
   const meta = JSON.parse(await fs.promises.readFile(path.join(dir, 'session.json'), 'utf8'))
   const startedAt = Date.parse(meta.started_at)
   if (!Number.isFinite(startedAt)) throw new Error('錄影開始時間無效')
-  return { startedAt, postAnalysis: fallback }
+  return { startedAt, postAnalysis: fallback, mode: 'session' }
+}
+
+export const MATCH_PRE_PAD_SEC = 5
+export const MATCH_POST_PAD_SEC = 5
+
+/** 以完整段落保留對局前後五秒，只選取與範圍相交的已錄段落。 */
+export function selectMatchEntries(entries: readonly IndexEntry[], start: number, end: number): IndexEntry[] {
+  return entries.filter((entry) => entry.pts + entry.dur > start - MATCH_PRE_PAD_SEC && entry.pts < end + MATCH_POST_PAD_SEC)
+}
+
+interface MatchCut {
+  index: number
+  start: number
+  end: number
+  firstSeq: number
+  lastSeq: number
+  outputPath: string
+  analysisQueued: boolean
+  liveCached: boolean
+  liveTrusted: boolean
+}
+
+interface MatchMarker { cuts: MatchCut[] }
+
+interface MatchCutOptions {
+  finishing?: boolean
+  failed?: Set<number>
+  onCut?: (outputPath: string) => void
+  onError?: (error: unknown) => void
+}
+
+function cutError(index: number, error: unknown, options: MatchCutOptions): void {
+  if (!options.onError) throw error
+  options.failed?.add(index)
+  options.onError(error)
+}
+
+async function readOptional<T>(file: string): Promise<T | null> {
+  try { return JSON.parse(await fs.promises.readFile(file, 'utf8')) }
+  catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null
+    throw error
+  }
+}
+
+function outputInDir(outputPath: string, outputDir: string): boolean {
+  return typeof outputPath === 'string' && path.dirname(path.resolve(outputPath)) === outputDir &&
+    path.extname(outputPath).toLowerCase() === '.mp4' && !outputPath.endsWith('.part.mp4')
+}
+
+async function validateCut(cut: MatchCut, outputDir: string): Promise<void> {
+  if (!outputInDir(cut.outputPath, outputDir) || !(await fs.promises.lstat(cut.outputPath)).isFile()) {
+    throw new Error('逐局影片路徑無效或檔案遺失')
+  }
+}
+
+/** 預留檔記在工作目錄，補收尾只清除此工作的暫存檔，不碰其他錄影。 */
+async function resumeMatchPart(dir: string, marker: MatchMarker): Promise<void> {
+  const file = path.join(dir, 'match-part.json')
+  const pending = await readOptional<{ output: string; part: string }>(file)
+  if (!pending) return
+  if (!outputInDir(pending.output, path.dirname(path.dirname(dir))) || pending.part !== pending.output.slice(0, -4) + '.part.mp4') {
+    throw new Error('逐局暫存影片路徑無效')
+  }
+  if (marker.cuts.some((cut) => cut.outputPath === pending.output) && !fs.existsSync(pending.output)) {
+    const stat = await fs.promises.lstat(pending.part)
+    if (!stat.isFile() || stat.isSymbolicLink()) throw new Error('逐局暫存影片不是一般檔案')
+    await fs.promises.rename(pending.part, pending.output)
+  } else {
+    await fs.promises.unlink(pending.part).catch((error: NodeJS.ErrnoException) => { if (error.code !== 'ENOENT') throw error })
+  }
+  await fs.promises.unlink(file)
+}
+
+async function remuxMatch(dir: string, deps: RecordingDeps, config: SessionSnapshot, marker: MatchMarker,
+  index: number, match: { start: number; end: number }, entries: IndexEntry[]
+): Promise<MatchCut> {
+  const outputDir = path.dirname(path.dirname(dir))
+  const { output, part } = await reserveOutput(outputDir, outputBase(config.startedAt + entries[0].pts * 1000))
+  const pending = path.join(dir, 'match-part.json')
+  let recorded = false
+  try {
+    await writeJson(pending, { output, part })
+    await remux(deps.ffmpegPath, segmentPaths(dir, entries), part)
+    if (fs.existsSync(output)) throw new Error(`輸出影片已存在：${output}`)
+    const cut: MatchCut = { index, ...match, firstSeq: entries[0].seq, lastSeq: entries.at(-1)!.seq,
+      outputPath: output, analysisQueued: false, liveCached: false, liveTrusted: false }
+    // marker 先落盤才改名；中斷後可續用暫存檔，不會留下沒有登記的正式影片。
+    await writeJson(path.join(dir, 'matches.json'), { cuts: [...marker.cuts, cut] })
+    marker.cuts.push(cut)
+    recorded = true
+    await fs.promises.rename(part, output)
+    await fs.promises.unlink(pending)
+    return cut
+  } catch (error) {
+    if (!recorded) {
+      await fs.promises.unlink(part).catch(() => {})
+      await fs.promises.unlink(pending).catch(() => {})
+    }
+    throw error
+  }
+}
+
+function segmentPaths(dir: string, entries: readonly IndexEntry[]): string[] {
+  return [path.join(dir, 'init.mp4'), ...entries.map((entry) => path.join(dir, `seg_${String(entry.seq).padStart(6, '0')}.m4s`))]
+}
+
+async function completeCut(dir: string, deps: RecordingDeps, config: SessionSnapshot, marker: MatchMarker,
+  cut: MatchCut, entries: IndexEntry[], finishing: boolean, trusted: boolean
+): Promise<void> {
+  await validateCut(cut, path.dirname(path.dirname(dir)))
+  deps.addToLibrary([cut.outputPath])
+  if (!cut.liveCached || (finishing && trusted && !cut.liveTrusted)) {
+    try {
+      const summary = await writeLiveCache(dir, cut.outputPath, deps, entries, {
+        forceUntrusted: !finishing, overwriteLive: finishing && trusted
+      })
+      if (summary) deps.onLiveAnalysis?.(cut.outputPath, summary)
+    } catch (error) {
+      console.error('[recording] 無法把逐局即時事件轉成分析快取：', error)
+    }
+    cut.liveCached = true
+  }
+  if (finishing && trusted) cut.liveTrusted = true
+  await writeJson(path.join(dir, 'matches.json'), marker)
+  if (!cut.analysisQueued && (config.postAnalysis === 'perMatch' ||
+      (finishing && config.postAnalysis === 'afterExit' && !cut.liveTrusted))) {
+    deps.enqueueAnalysis(cut.outputPath)
+    cut.analysisQueued = true
+    await writeJson(path.join(dir, 'matches.json'), marker)
+  }
+}
+
+function liveMatches(live: LiveFile | null): LiveMatch[] {
+  if (!Array.isArray(live?.matches)) return []
+  return live.matches.filter((match): match is LiveMatch => !!match && Number.isFinite(match.start) && match.start >= 0 &&
+    (match.end === null || (Number.isFinite(match.end) && match.end >= match.start)))
+}
+
+/** 呼叫端須序列化；錄影中的失敗留待收尾重試，不影響擷取或即時播放。 */
+export async function cutMatches(dir: string, deps: RecordingDeps, options: MatchCutOptions = {}): Promise<string[]> {
+  const finishing = options.finishing === true
+  dir = await validateSessionDir(dir)
+  const config = await snapshot(dir, deps.getSettings().postAnalysis)
+  if (config.mode !== 'match') return []
+  const entries = await readIndex(dir)
+  const live = await readOptional<LiveFile>(path.join(dir, 'live.json'))
+  const matches = liveMatches(live)
+  const last = entries.at(-1)
+  if (finishing && last && matches.at(-1)?.end === null) {
+    matches[matches.length - 1] = { start: matches.at(-1)!.start, end: last.pts + last.dur }
+    await writeJson(path.join(dir, 'live.json'), { ...live, matches })
+  }
+  const marker = await readOptional<MatchMarker>(path.join(dir, 'matches.json')) ?? { cuts: [] }
+  if (!Array.isArray(marker.cuts)) throw new Error('逐局剪檔紀錄無效')
+  await resumeMatchPart(dir, marker)
+  const trusted = finishing && !!live && isTrusted(live)
+  for (const cut of marker.cuts) {
+    if (!finishing && (options.failed?.has(cut.index) ||
+        (cut.liveCached && (config.postAnalysis !== 'perMatch' || cut.analysisQueued)))) continue
+    const range = entries.filter((entry) => entry.seq >= cut.firstSeq && entry.seq <= cut.lastSeq)
+    try { await completeCut(dir, deps, config, marker, cut, range, finishing, trusted) }
+    catch (error) { cutError(cut.index, error, options) }
+  }
+  const outputs: string[] = []
+  for (const [index, match] of matches.entries()) {
+    if (marker.cuts.some((cut) => cut.index === index) || (!finishing && options.failed?.has(index))) continue
+    const end = match.end
+    if (end === null || (!finishing && !entries.some((entry) => entry.pts >= end + MATCH_POST_PAD_SEC))) continue
+    const range = selectMatchEntries(entries, match.start, end)
+    if (!range.length) continue
+    try {
+      const cut = await remuxMatch(dir, deps, config, marker, index, { start: match.start, end }, range)
+      await completeCut(dir, deps, config, marker, cut, range, finishing, trusted)
+      outputs.push(cut.outputPath)
+      options.onCut?.(cut.outputPath)
+    } catch (error) {
+      cutError(index, error, options)
+      // 已登記但改名失敗時須先恢復暫存檔，避免下一局覆蓋本工作的預留紀錄。
+      await resumeMatchPart(dir, marker)
+    }
+  }
+  return outputs
 }
 
 function outputBase(startedAt: number): string {
@@ -152,6 +336,15 @@ export async function finalizeSession(dir: string, deps: RecordingDeps): Promise
       return []
     }
     const config = await snapshot(dir, deps.getSettings().postAnalysis)
+    if (config.mode === 'match') {
+      const live = await readOptional<LiveFile>(path.join(dir, 'live.json'))
+      const outputs = await cutMatches(dir, deps, { finishing: true })
+      const matches = await readOptional<MatchMarker>(path.join(dir, 'matches.json'))
+      if (liveMatches(live).length && matches?.cuts.length) {
+        await fs.promises.rm(dir, { recursive: true })
+        return outputs
+      }
+    }
     const { output, part } = await reserveOutput(outputDir, outputBase(config.startedAt))
     try {
       await remux(deps.ffmpegPath, [path.join(dir, 'init.mp4'), ...entries.map(

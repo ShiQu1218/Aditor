@@ -77,9 +77,9 @@ function pickRecording(v: unknown, base: RecordingSettings): RecordingSettings {
     autoRecord: pickBool(s.autoRecord, base.autoRecord),
     launchAtLogin: pickBool(s.launchAtLogin, base.launchAtLogin),
     closeToTray: pickBool(s.closeToTray, base.closeToTray),
-    // 對局偵測與 OBS 尚未開放，舊設定也統一正規化。
+    // OBS 尚未開放，舊設定也統一正規化。
     backend: 'builtin',
-    mode: 'session',
+    mode: pickEnum(s.mode, ['session', 'match'] as const, base.mode),
     outputDir: pickStringOrNull(s.outputDir, base.outputDir),
     codec,
     encoder,

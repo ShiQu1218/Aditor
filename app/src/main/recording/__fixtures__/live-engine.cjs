@@ -27,6 +27,11 @@ setTimeout(() => {
   }
   if (mode === 'garbage') process.stdout.write('{not json}\n')
   send({ ev: 'match_start', t: 0.5, reason: 'countdown' })
+  if (mode === 'closed-match' || mode === 'two-matches') send({ ev: 'match_end', t: 3, reason: 'lobby' })
+  if (mode === 'two-matches') {
+    send({ ev: 'match_start', t: 5, reason: 'countdown' })
+    send({ ev: 'match_end', t: 7, reason: 'lobby' })
+  }
   send({ ev: 'snapshot', t: 2, events, spectating: [] })
 }, 20)
 

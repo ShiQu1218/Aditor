@@ -9,12 +9,12 @@
 import fs from 'fs'
 import path from 'path'
 import { isCounted, type EngineEvent } from '../../shared/types'
-import { readIndex } from './finalize'
+import { readIndex, type IndexEntry } from './finalize'
 import { LIVE_FILE } from './live-session'
 import { codecName, initCodecs } from './mp4-codec'
 import type { LiveAnalysisSummary, RecordingDeps } from './index'
 
-interface LiveFile {
+export interface LiveFile {
   engine_version?: unknown
   events?: unknown
   spectating?: unknown
@@ -58,7 +58,9 @@ export function buildLiveCacheDoc(live: LiveFile, video: {
     .map((s) => ({ start: Math.max(0, s.start - offset), end: Math.min(video.duration, s.end - offset) }))
     .filter((s) => s.end > s.start)
   const matches = (Array.isArray(live.matches) ? live.matches : [])
-    .filter((m): m is { start: number; end: number | null } => !!m && finite(m.start) && (m.end === null || finite(m.end)))
+    .filter((m): m is { start: number; end: number | null } => !!m && finite(m.start) &&
+      (m.end === null || (finite(m.end) && m.end >= m.start)))
+    .filter((m) => m.start <= offset + video.duration && (m.end === null || m.end >= offset))
     .map((m) => ({ start: Math.max(0, m.start - offset), end: m.end === null ? null : Math.min(video.duration, m.end - offset) }))
   const version = typeof live.engine_version === 'string' ? live.engine_version : 'unknown'
   const trusted = isTrusted(live)
@@ -88,11 +90,21 @@ async function templatesVersion(profileDir: string): Promise<string> {
   } catch { return '' }
 }
 
+async function canWriteLiveCache(cachePath: string, overwriteLive: boolean): Promise<boolean> {
+  if (!fs.existsSync(cachePath)) return true
+  if (!overwriteLive) return false
+  const existing = JSON.parse(await fs.promises.readFile(cachePath, 'utf8'))
+  return existing?.analysis?.source === 'live'
+}
+
 /**
- * 寫入 live 快取；沒有 live.json、沒有快取位置或該位置已有快取（不覆蓋完整分析）時略過。
+ * 寫入指定段落範圍的 live 快取（未指定時使用整段）；可信收尾只允許覆蓋自己的 live 快取。
+ * 沒有 live.json 或快取位置時略過；錄影中可強制標成不可信。
  * 回傳寫好的摘要（供媒體庫），略過時 null。
  */
-export async function writeLiveCache(dir: string, outputPath: string, deps: RecordingDeps): Promise<LiveAnalysisSummary | null> {
+export async function writeLiveCache(dir: string, outputPath: string, deps: RecordingDeps,
+  range?: readonly IndexEntry[], options: { forceUntrusted?: boolean; overwriteLive?: boolean } = {}
+): Promise<LiveAnalysisSummary | null> {
   if (!deps.liveCachePath) return null
   let live: LiveFile
   try { live = JSON.parse(await fs.promises.readFile(path.join(dir, LIVE_FILE), 'utf8')) }
@@ -100,9 +112,10 @@ export async function writeLiveCache(dir: string, outputPath: string, deps: Reco
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null
     throw error
   }
+  if (options.forceUntrusted) live = { ...live, quality: null }
   const cachePath = deps.liveCachePath(outputPath)
-  if (fs.existsSync(cachePath)) return null
-  const entries = await readIndex(dir)
+  if (!await canWriteLiveCache(cachePath, !!options.overwriteLive)) return null
+  const entries = range ?? await readIndex(dir)
   if (entries.length === 0) return null
   const offset = entries[0].pts
   const last = entries[entries.length - 1]
@@ -117,8 +130,12 @@ export async function writeLiveCache(dir: string, outputPath: string, deps: Reco
     width: size(live.width), height: size(live.height), codec
   }, offset, await templatesVersion(deps.profileDir), cachePath)
   await fs.promises.mkdir(path.dirname(cachePath), { recursive: true })
-  const temp = `${cachePath}.tmp`
-  await fs.promises.writeFile(temp, JSON.stringify(doc), 'utf8')
-  await fs.promises.rename(temp, cachePath)
+  // 完整分析使用 .tmp；即時快取用獨立暫存檔，避免同時寫入互相覆蓋。
+  const temp = `${cachePath}.live.tmp`
+  try {
+    await fs.promises.writeFile(temp, JSON.stringify(doc), 'utf8')
+    if (!await canWriteLiveCache(cachePath, !!options.overwriteLive)) return null
+    await fs.promises.rename(temp, cachePath)
+  } finally { await fs.promises.unlink(temp).catch(() => {}) }
   return { counts: liveCounts(doc.events), durationSec: duration, codec, trusted: isTrusted(live) }
 }

@@ -53,7 +53,7 @@ async function number(field: string, value: string): Promise<void> {
 }
 
 describe('錄影設定畫面與 controller', () => {
-  test('完整列順序、label、停用的一局一檔及符合格式的編碼器／裝置選項', async () => {
+  test('完整列順序、label、啟用的一局一個檔及符合格式的編碼器／裝置選項', async () => {
     await show()
     expect(Array.from(document.querySelectorAll<HTMLElement>('[data-row]')).map((el) => el.dataset.row))
       .toEqual(Object.keys(t.rows).map((field) => `recording-${field}`))
@@ -62,7 +62,9 @@ describe('錄影設定畫面與 controller', () => {
       expect(label?.textContent).toBe(t.rows[field as keyof typeof t.rows].title)
       expect(control(field)?.getAttribute('aria-describedby')).toContain(`set-recording-${field}-desc`)
     }
-    expect(control<HTMLSelectElement>('mode').querySelector<HTMLOptionElement>('option[value="match"]')!.disabled).toBe(true)
+    const match = control<HTMLSelectElement>('mode').querySelector<HTMLOptionElement>('option[value="match"]')!
+    expect(match.disabled).toBe(false)
+    expect(match.textContent).toBe('一局一個檔')
     expect(options('encoder')).toEqual(['auto', 'hevc_nvenc'])
     expect(options('renderDevice')).toEqual(['default', 'speakers'])
     expect(options('captureDevice')).toEqual(['default', 'mic'])
@@ -84,6 +86,7 @@ describe('錄影設定畫面與 controller', () => {
     select('captureDevice', 'mic')
     select('height', '1080')
     select('fps', '120')
+    select('mode', 'match')
     select('postAnalysis', 'none')
     select('captureMethod', 'dda')
     await flush()
@@ -91,7 +94,7 @@ describe('錄影設定畫面與 controller', () => {
     await number('micGain', '75')
     expect(r.controller.getState().settings?.recording).toMatchObject({
       autoRecord: false, codec: 'h264', encoder: 'h264_nvenc', renderDevice: 'speakers', captureDevice: 'mic',
-      height: 1080, fps: 120, postAnalysis: 'none', bitrateKbps: 25000, micGain: 0.75, captureMethod: 'dda'
+      height: 1080, fps: 120, mode: 'match', postAnalysis: 'none', bitrateKbps: 25000, micGain: 0.75, captureMethod: 'dda'
     })
     cleanupMounted()
     mount(<SettingsScreen controller={new SettingsController(r.api)} initialCategory="recording" />)
@@ -99,6 +102,7 @@ describe('錄影設定畫面與 controller', () => {
     expect(control<HTMLInputElement>('autoRecord').checked).toBe(false)
     expect(control<HTMLInputElement>('bitrateKbps').value).toBe('25')
     expect(control<HTMLSelectElement>('encoder').value).toBe('h264_nvenc')
+    expect(control<HTMLSelectElement>('mode').value).toBe('match')
   })
 
   test('資料夾選擇與清除、取消不送出；路徑與儲存失敗正確顯示', async () => {
@@ -153,8 +157,9 @@ describe('錄影設定畫面與 controller', () => {
     await Promise.all([r.controller.setRecording('fps', 144), r.controller.setRecording('micEnabled', false)])
     expect(r.controller.getState().settings?.recording).toMatchObject({ fps: 144, micEnabled: false })
     r.api.settings.set = async () => { throw new Error('ipc') }
-    await r.controller.setRecording('fps', 30)
+    await r.controller.setRecording('mode', 'match')
     expect(r.controller.getState().settings?.recording.fps).toBe(144)
+    expect(r.controller.getState().settings?.recording.mode).toBe('session')
     expect(r.controller.getState().saveFailed).toBe(true)
     r.controller.stop()
     expect(r.listeners.size).toBe(0)
