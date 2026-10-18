@@ -1,0 +1,84 @@
+{
+  "外卡模式.mp4": {
+    "duration": 965.8,
+    "matches": [
+      {"start": 21.5, "end": 965.8, "notes": "21.25 秒仍為轉場黑畫面，21.5 秒首次出現左上模式卡片；結算後仍未離開，結束取影片 EOF。"}
+    ],
+    "lobby": [[0, 21.25]],
+    "milestones": [
+      {"t": 25, "scene": "pre_match", "evidence": "模式卡片、載入底板；非大廳。"},
+      {"t": 39, "scene": "pre_match", "evidence": "等候區中央倒數面板、左上模式卡片。"},
+      {"t": 52, "scene": "other", "evidence": "選角，底部角色格。"},
+      {"t": 90, "scene": "in_match_hud", "evidence": "跳傘前 HUD，左上小地圖、左下隊伍框。"},
+      {"t": 120, "scene": "in_match_hud", "evidence": "對局小地圖及血條外框。"},
+      {"t": 180, "scene": "in_match_hud", "evidence": "上方觀戰分頁；仍有小地圖與隊伍框，不結束。"},
+      {"t": 360, "scene": "in_match_hud", "evidence": "倒地，左下隊伍框仍在，不結束。"},
+      {"t": 690, "scene": "in_match_hud", "evidence": "死亡後重生倒數，仍為同一局。"},
+      {"t": 810, "scene": "in_match_hud", "evidence": "重生回到戰場。"},
+      {"t": 950, "scene": "other", "evidence": "比賽總結三張玩家卡片；尚未離開這一局。"}
+    ]
+  },
+  "大廳~勝利不退出直接下一場.mp4": {
+    "duration": 1089.569333,
+    "matches": [
+      {"start": 3.5, "end": 1089.569333, "notes": "3.25 秒轉場黑畫面，3.5 秒首次出現模式／地圖卡片；勝利後於總結畫面排隊，影片結束前未進入下一局序列。"}
+    ],
+    "lobby": [[0, 3.25]],
+    "milestones": [
+      {"t": 0, "scene": "lobby", "evidence": "頂部大廳導覽、左下模式選擇、中央下方準備按鈕。"},
+      {"t": 4, "scene": "pre_match", "evidence": "左上模式卡片、底部載入面板。"},
+      {"t": 16, "scene": "pre_match", "evidence": "等候區倒數。"},
+      {"t": 36, "scene": "other", "evidence": "角色選擇格。"},
+      {"t": 60, "scene": "in_match_hud", "evidence": "跳傘階段的小地圖及隊伍框。"},
+      {"t": 120, "scene": "in_match_hud", "evidence": "戰鬥 HUD。"},
+      {"t": 330, "scene": "other", "evidence": "物資箱選單遮住小地圖外框，不結束。"},
+      {"t": 480, "scene": "other", "evidence": "開地圖遮住小地圖與部分 HUD，不結束。"},
+      {"t": 1055, "scene": "other", "evidence": "冠軍橫幅，不作結束依據。"},
+      {"t": 1070, "scene": "other", "evidence": "勝利小隊展示。"},
+      {"t": 1088, "scene": "other", "evidence": "總結及右上排隊框，未回大廳。"}
+    ]
+  },
+  "從上場不退出直接下一場~中途死掉，觀戰敵人同時排隊.mp4": {
+    "duration": 193.990667,
+    "matches": [
+      {"start": 0, "end": 0.75, "notes": "影片開頭是上一局積分總結／排隊，保留上一局局尾；0.75 秒出現下一局模式卡片。區間採半開 [start,end)。"},
+      {"start": 0.75, "end": 193.990667, "notes": "0.5 秒仍是上一局總結；0.75 秒載入模式卡片。死亡後觀戰敵人並排隊，直到 EOF 仍未出現下一局序列。"}
+    ],
+    "lobby": [],
+    "milestones": [
+      {"t": 0, "scene": "other", "evidence": "上一局積分總結，頂部梯形分頁；錄影從局尾開始。"},
+      {"t": 2, "scene": "pre_match", "evidence": "新局載入卡片及底部面板。"},
+      {"t": 12, "scene": "pre_match", "evidence": "等候區倒數。"},
+      {"t": 30, "scene": "other", "evidence": "角色選擇格。"},
+      {"t": 60, "scene": "other", "evidence": "跳傘時開地圖，不結束。"},
+      {"t": 90, "scene": "other", "evidence": "背包遮住 HUD，不結束。"},
+      {"t": 120, "scene": "in_match_hud", "evidence": "戰鬥 HUD。"},
+      {"t": 168, "scene": "other", "evidence": "死亡切到觀戰／總結分頁，不結束。"},
+      {"t": 180, "scene": "in_match_hud", "evidence": "觀戰敵人、排隊框，仍可見小地圖及血條框。"},
+      {"t": 193, "scene": "in_match_hud", "evidence": "觀戰中持續排隊，未進入下一局。"}
+    ]
+  },
+  "從上場不退出直接下一場~勝利退回大廳.mp4": {
+    "duration": 1107.321334,
+    "matches": [
+      {"start": 0, "end": 10.25, "notes": "影片開頭為上一局勝利展示，6 秒後總結，保留局尾；10.25 秒下一局模式卡片首次出現。"},
+      {"start": 10.25, "end": 1090.25, "notes": "10 秒仍為上一局總結，10.25 秒新局模式卡片；1090 秒仍是活動獎勵視窗，1090.25 秒首次回到大廳。大廳約 2.5 秒後開組合包，未連續 15 秒，嚴格規則不能在此確認結束。"}
+    ],
+    "lobby": [[1090.25, 1092.75]],
+    "milestones": [
+      {"t": 0, "scene": "other", "evidence": "上一局勝利小隊展示。"},
+      {"t": 6, "scene": "other", "evidence": "上一局積分總結，頂部梯形分頁。"},
+      {"t": 12, "scene": "pre_match", "evidence": "下一局模式卡片及載入底板。"},
+      {"t": 20, "scene": "pre_match", "evidence": "等候區倒數。"},
+      {"t": 30, "scene": "other", "evidence": "角色選擇格。"},
+      {"t": 90, "scene": "in_match_hud", "evidence": "跳傘，小地圖及隊伍框。"},
+      {"t": 120, "scene": "in_match_hud", "evidence": "戰鬥 HUD。"},
+      {"t": 210, "scene": "other", "evidence": "背包畫面，不結束。"},
+      {"t": 630, "scene": "other", "evidence": "背包畫面，不結束。"},
+      {"t": 1068, "scene": "other", "evidence": "本局勝利展示，不結束。"},
+      {"t": 1080, "scene": "other", "evidence": "本局總結三張卡片。"},
+      {"t": 1091, "scene": "lobby", "evidence": "完整大廳導覽、模式選擇與準備按鈕。"},
+      {"t": 1096, "scene": "other", "evidence": "開組合包動畫，沒有大廳外框。"}
+    ]
+  }
+}
