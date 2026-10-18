@@ -8,7 +8,9 @@ use windows::Win32::Graphics::Dxgi::DXGI_ERROR_WAS_STILL_DRAWING;
 
 use super::{FrameGate, Scaler};
 use crate::gpu::Gpu;
-use crate::types::{THUMB_H, THUMB_W};
+/// 黑畫面判斷用的縮圖尺寸（與 luma.hlsl 寫死的 320×180 一致；與共享記憶體的 thumb 無關）。
+const LUMA_W: u32 = 320;
+const LUMA_H: u32 = 180;
 
 pub(in crate::capture) struct LumaProbe {
     gpu: Gpu,
@@ -99,7 +101,7 @@ impl LumaProbe {
         let result = self.slots[previous].read(&self.gpu)?;
         if self.gate.accept(pts) {
             if self.source.as_ref().map(|(scaler, _)| scaler.input_size) != Some(size) {
-                let scaler = Scaler::new(&self.gpu, size, (THUMB_W, THUMB_H))?;
+                let scaler = Scaler::new(&self.gpu, size, (LUMA_W, LUMA_H))?;
                 let commands = self.commands(&scaler.output)?;
                 self.source = Some((scaler, commands));
             }
@@ -215,7 +217,7 @@ impl Slot {
             let sum = data.pData.cast::<u32>().read_unaligned();
             gpu.context.Unmap(&self.staging, 0);
             self.pts = None;
-            Ok(Some((pts, sum < THUMB_W * THUMB_H * 2)))
+            Ok(Some((pts, sum < LUMA_W * LUMA_H * 2)))
         }
     }
 }

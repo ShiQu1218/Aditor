@@ -334,7 +334,7 @@ impl Mapping {
                             .all(|p| p[0] < 8 && p[1] < 8 && p[2] > 247),
                         "banner 未擷取到紅色色塊"
                     );
-                    assert_eq!((self.u32(36), self.u32(40)), (320, 180));
+                    assert_eq!((self.u32(36), self.u32(40)), (640, 360));
                     return seq;
                 }
             }

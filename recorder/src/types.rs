@@ -45,8 +45,8 @@ pub struct FramesSpec {
 
 /// 小圖的固定輸出尺寸。banner／spec 輸出為「換算回基準解析度後」的大小，
 /// 讓 Python 端拿到的圖與離線分析（縮放到 1920×1080 後再裁）一致。
-pub const THUMB_W: u32 = 320;
-pub const THUMB_H: u32 = 180;
+pub const THUMB_W: u32 = 640;
+pub const THUMB_H: u32 = 360;
 /// 小圖取樣率（與離線分析 `decode.FPS` 相同）。
 pub const SMALL_FPS: u32 = 4;
 /// 每幾張 banner 帶一張 thumb（4 fps / 4 = 1 fps）。

@@ -127,7 +127,7 @@ Idle →(Apex 啟動)→ Lobby ⇄ InMatch →(Apex 關閉)→ Finalizing → Id
 |---|---|---|---|
 | banner | `profile.banner_roi`（1920×1080 基準座標，依實際解析度等比換算） | 4 fps | BGR24 |
 | spec | `profile.spec_roi` | 4 fps | BGR24 |
-| thumb | 全畫面縮到 320×180 | 1 fps（每 4 格帶一次） | GRAY8 |
+| thumb | 全畫面縮到 640×360（對局場景判斷的最低需求，見 §3.4） | 1 fps（每 4 格帶一次） | GRAY8 |
 
 ROI 由 Python 端在 live 握手時傳給 apexrec（Python 讀 profile），apexrec 不解析 profile。
 
