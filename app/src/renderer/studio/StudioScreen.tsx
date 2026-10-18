@@ -929,17 +929,16 @@ export function StudioScreen({ videoPath, onBack, onOpenVideo, playbackRequest, 
 
   /** 刀片模式（播放列按鈕／B）：專案預覽中先回到來源（停在目前影格）再開啟，切出的片段加到專案尾端。 */
   const toggleBlade = useCallback(() => {
-    if (modeRef.current.mode === 'project') {
-      backToSource()
-      setBladeMode(true)
-    } else setBladeMode((enabled) => !enabled)
+    const wasProject = modeRef.current.mode === 'project'
+    backToSource()
+    setBladeMode((enabled) => wasProject || !enabled)
   }, [backToSource])
 
   /** Ctrl+Q：來源模式切換刀片；專案預覽中在播放頭分割。 */
   const handleQuickOrSplit = useCallback(() => {
-    if (mode.mode === 'project') splitProjectAtPlayhead()
+    if (modeRef.current.mode === 'project') splitProjectAtPlayhead()
     else toggleBlade()
-  }, [mode.mode, splitProjectAtPlayhead, toggleBlade])
+  }, [splitProjectAtPlayhead, toggleBlade])
 
   const createBladeClip = useCallback((start: number, end: number): void => {
     const clip: Clip = { id: `c_${crypto.randomUUID()}`, start, end, origin: 'manual', event_ids: [], status: 'accepted' }
@@ -962,6 +961,8 @@ export function StudioScreen({ videoPath, onBack, onOpenVideo, playbackRequest, 
   useEffect(() => {
     if (mode.mode !== 'source') setBladeMode(false)
   }, [mode.mode])
+  /** 刀片只在來源模式有效；effect 清掉狀態前的那一次 render 也以此為準。 */
+  const bladeActive = bladeMode && mode.mode === 'source'
 
   /** 處理完目前建議後，把作用中卡片移到下一個建議（以處理前的清單計算）。 */
   const advanceActive = useCallback(
@@ -1504,7 +1505,7 @@ export function StudioScreen({ videoPath, onBack, onOpenVideo, playbackRequest, 
             onNextEvent={() => seekEvent(1)}
             onAddEvent={gAddEvent}
             onQuick={toggleBlade}
-            bladeMode={bladeMode}
+            bladeMode={bladeActive}
             onAutoClip={() => setAutoClipOpen((v) => !v)}
             autoClipOpen={autoClipOpen}
             onToggleFilter={(t) => dispatch({ type: 'setFilter', filter: toggleFilter(state.filter, t) })}
@@ -1523,7 +1524,7 @@ export function StudioScreen({ videoPath, onBack, onOpenVideo, playbackRequest, 
               onScrubStart={startScrub}
               onScrubEnd={endScrub}
               onHoverSeek={hoverSeek}
-              bladeMode={bladeMode && mode.mode === 'source'}
+              bladeMode={bladeActive}
               onBladeModeChange={setBladeMode}
               onBladeRange={createBladeClip}
               onBladeTooShort={() => toast({ message: i18n.timeline.bladeTooShort })}

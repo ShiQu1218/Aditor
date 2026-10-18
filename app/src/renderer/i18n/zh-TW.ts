@@ -105,7 +105,7 @@ export const i18n = {
     },
     customZoom: '自訂縮放倍率',
     scrollbar: '來源時間軸水平捲動',
-    bladeHint: '刀片模式（Ctrl+Q／B）：點兩下決定片段起訖並加入專案；Esc 取消標記，再按一次離開',
+    bladeHint: '刀片模式（B）：點兩下決定片段起訖並加入專案；Esc 取消標記，再按一次離開',
     bladeTooShort: '片段至少需要 0.5 秒，請重新選擇終點',
     densityHint: '密度檢視 · {n} 個事件 · 放大（滾輪／Ctrl +）顯示個別圖示',
     spectating: '觀戰（不計入）',
