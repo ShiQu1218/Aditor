@@ -19,6 +19,7 @@ pub(super) struct Format {
     pub rate: u32,
     pub channels: usize,
     pub block_align: usize,
+    pub mono: bool,
     sample: Sample,
     positions: [Option<usize>; 3],
 }
@@ -54,6 +55,7 @@ impl Format {
             rate,
             channels: usize::from(channels),
             block_align: usize::from(block_align),
+            mono: false,
             sample,
             positions,
         })
@@ -99,6 +101,13 @@ impl Format {
                         })
                     })
                 };
+                if self.mono {
+                    let sample = (0..self.channels)
+                        .map(|index| channel(Some(index)))
+                        .sum::<f32>()
+                        / self.channels as f32;
+                    return [sample; 2];
+                }
                 let center = channel(self.positions[2]) * std::f32::consts::FRAC_1_SQRT_2;
                 [
                     channel(self.positions[0]) + center,
@@ -213,13 +222,25 @@ impl Timeline {
     }
 }
 
-pub(super) fn mix(system: &[[f32; 2]], mic: &[[f32; 2]], gain: f32) -> Vec<f32> {
+pub(super) fn mix(
+    system: &[[f32; 2]],
+    mic: &[[f32; 2]],
+    render_gain: f32,
+    gain: f32,
+    mic_mono: bool,
+) -> Vec<f32> {
     system
         .iter()
         .zip(mic)
         .flat_map(|(system, mic)| {
+            let mic = if mic_mono {
+                [(finite(mic[0]) + finite(mic[1])) * 0.5; 2]
+            } else {
+                *mic
+            };
             std::array::from_fn::<_, 2, _>(|channel| {
-                (finite(system[channel]) + finite(mic[channel]) * gain).clamp(-1.0, 1.0)
+                (finite(system[channel]) * render_gain + finite(mic[channel]) * gain)
+                    .clamp(-1.0, 1.0)
             })
         })
         .collect()
@@ -305,10 +326,16 @@ mod tests {
 
     #[test]
     fn mixing_applies_gain_clips_and_removes_nonfinite_samples() {
-        assert_eq!(mix(&[[0.8, -0.8]], &[[0.4, -0.4]], 2.0), [1.0, -1.0]);
-        assert_eq!(mix(&[[0.1, 0.2]], &[[0.4, 0.6]], 0.5), [0.3, 0.5]);
         assert_eq!(
-            mix(&[[f32::NAN, 0.2]], &[[0.3, f32::INFINITY]], 0.0),
+            mix(&[[0.8, -0.8]], &[[0.4, -0.4]], 1.0, 2.0, false),
+            [1.0, -1.0]
+        );
+        assert_eq!(
+            mix(&[[0.1, 0.2]], &[[0.4, 0.6]], 1.0, 0.5, false),
+            [0.3, 0.5]
+        );
+        assert_eq!(
+            mix(&[[f32::NAN, 0.2]], &[[0.3, f32::INFINITY]], 1.0, 0.0, false),
             [0.0, 0.2]
         );
     }
@@ -329,6 +356,31 @@ mod tests {
         assert_eq!(timeline.take(BLOCK_FRAMES), vec![[0.0; 2]; BLOCK_FRAMES]);
         timeline.write(timeline.cursor + AUDIO_RATE as i64 + 100, &[[1.0; 2]; 10]);
         assert_eq!(timeline.take(BLOCK_FRAMES), vec![[0.0; 2]; BLOCK_FRAMES]);
+    }
+
+    #[test]
+    fn render_gain_and_mic_mono_are_independent() {
+        let mut format = Format::new(48_000, 4, 16, Sample::Float(32), 0).unwrap();
+        format.mono = true;
+        assert_eq!(
+            format
+                .decode(&float_bytes(&[0.0, 0.2, 0.4, 0.6]), 1, false)
+                .unwrap(),
+            [[0.3; 2]]
+        );
+        assert_eq!(
+            mix(&[[0.4, 0.8]], &[[0.8, 0.0]], 0.5, 1.0, true),
+            [0.6, 0.8]
+        );
+        assert_eq!(
+            mix(&[[0.4, 0.8]], &[[0.8, 0.0]], 0.0, 1.0, false),
+            [0.8, 0.0]
+        );
+        assert_eq!(
+            mix(&[[0.8, -0.8]], &[[0.0; 2]], 2.0, 0.0, true),
+            [1.0, -1.0]
+        );
+        assert_eq!(mix(&[[0.0; 2]], &[[0.0; 2]], 1.0, 1.0, true), [0.0, 0.0]);
     }
 
     #[test]

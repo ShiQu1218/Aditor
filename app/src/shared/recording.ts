@@ -31,14 +31,22 @@ export interface RecordingSettings {
   codec: RecordingCodec
   /** 'auto' 或 apexrec `hello` 回報的編碼器名稱 */
   encoder: string
-  fps: 30 | 60 | 120 | 144
+  fps: 10 | 20 | 30 | 60 | 90 | 120
+  preset: 'speed' | 'balanced' | 'quality'
+  forceAspect: boolean
+  aspectMode: 'fit' | 'stretch'
   /** 0＝原生解析度；否則輸出高度（720／1080／1440） */
   height: 0 | 720 | 1080 | 1440
   bitrateKbps: number
   /** 'default' 或 WASAPI 裝置 ID */
   renderDevice: string
   captureDevice: string
+  systemAudioEnabled: boolean
+  /** 0..2 */
+  systemGain: number
+  gameAudioOnly: boolean
   micEnabled: boolean
+  micMono: boolean
   /** 0..2 */
   micGain: number
   postAnalysis: PostRecordAnalysis
@@ -57,6 +65,7 @@ export type RecordingCaptureMethod = 'wgc' | 'dda'
 export const RECORDING_RANGES = {
   bitrateKbps: { min: 2_000, max: 150_000 },
   micGain: { min: 0, max: 2 },
+  systemGain: { min: 0, max: 2 },
   diskWarnGb: { min: 1, max: 500 },
   diskStopGb: { min: 1, max: 100 }
 } as const
@@ -71,11 +80,18 @@ export const DEFAULT_RECORDING_SETTINGS: RecordingSettings = {
   codec: 'hevc',
   encoder: 'auto',
   fps: 60,
+  preset: 'speed',
+  forceAspect: false,
+  aspectMode: 'fit',
   height: 0,
   bitrateKbps: 40_000,
   renderDevice: 'default',
   captureDevice: 'default',
+  systemAudioEnabled: true,
+  systemGain: 1,
+  gameAudioOnly: false,
   micEnabled: true,
+  micMono: false,
   micGain: 1,
   postAnalysis: 'afterExit',
   diskWarnGb: 10,

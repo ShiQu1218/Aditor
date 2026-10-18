@@ -56,16 +56,38 @@ describe('錄影服務狀態機', () => {
     expect(snapshot.sessionId).toMatch(/^\d{8}-\d{6}-[0-9a-f]{4}$/)
     const [start] = commands(value, 'start')
     expect(start.frames).toEqual({ banner: [560, 700, 800, 180], spec: [60, 1028, 480, 40], base: [1920, 1080] })
-    expect(start.encode).toMatchObject({ height: 1080, codec: 'hevc', bitrate_kbps: 40000 })
-    expect(start.audio).toEqual({ render: 'speaker', capture: 'mic', mic_enabled: false, mic_gain: 0.4 })
+    expect(start.encode).toMatchObject({ height: 1080, codec: 'hevc', bitrate_kbps: 40000, preset: 'speed', aspect: 'native' })
+    expect(start.audio).toEqual({ render: 'speaker', capture: 'mic', mic_enabled: false, mic_gain: 0.4,
+      render_enabled: true, render_gain: 1, render_source: 'device', mic_mono: false })
     expect(start.capture).toBe('dda')
-    await waitFor(() => fs.existsSync(path.join(start.session_dir, 'events.jsonl')))
+    await waitFor(() => fs.existsSync(path.join(start.session_dir, 'events.jsonl')) &&
+      fs.readFileSync(path.join(start.session_dir, 'events.jsonl'), 'utf8').includes('window_lost'))
     expect(fs.readFileSync(path.join(start.session_dir, 'events.jsonl'), 'utf8')).toContain('window_lost')
     value.pid = null
     await waitFor(() => value.service.status().phase === 'idle')
     expect(commands(value, 'stop')).toHaveLength(1)
     expect(snapshot.phase).toBe('recording')
     expect(fs.existsSync(start.session_dir)).toBe(false)
+  })
+
+  it.each(['fit', 'stretch'] as const)('新影音設定完整傳入 start：%s', async (aspectMode) => {
+    const value = rig()
+    Object.assign(value.settings, { fps: 20, preset: 'quality', forceAspect: true, aspectMode,
+      systemAudioEnabled: false, systemGain: 0.35, gameAudioOnly: true, micMono: true })
+    value.service.start()
+    await waitFor(() => value.service.status().phase === 'recording')
+    const [start] = commands(value, 'start')
+    expect(start.encode).toMatchObject({ fps: 20, preset: 'quality', aspect: aspectMode })
+    expect(start.audio).toMatchObject({ render_enabled: false, render_gain: 0.35, render_source: 'game', mic_mono: true })
+  })
+
+  it('錄影器警告顯示非致命通知，持續錄影且不重啟', async () => {
+    const value = rig('warning')
+    value.service.start()
+    await waitFor(() => vi.mocked(value.deps.notify).mock.calls.some(([kind]) => kind === 'warning'))
+    expect(value.service.status()).toMatchObject({ phase: 'recording', error: null })
+    expect(commands(value, 'start')).toHaveLength(1)
+    expect(commands(value, 'stop')).toHaveLength(0)
   })
 
   it('暫停阻止自動錄影，恢復後開始；手動停止不會在下一次輪詢立即重開', async () => {

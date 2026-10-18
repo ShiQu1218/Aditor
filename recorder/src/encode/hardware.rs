@@ -1,5 +1,8 @@
 //! D3D11 表面池與 GPU 格式轉換，不做完整影像的 CPU 讀回。
-use std::{ffi::CString, mem::ManuallyDrop};
+use std::{
+    ffi::{CStr, CString},
+    mem::ManuallyDrop,
+};
 
 use anyhow::{ensure, Context, Result};
 use windows::Win32::Graphics::Direct3D11::{
@@ -19,6 +22,47 @@ use super::{
     VideoParams,
 };
 use crate::gpu::Gpu;
+use crate::types::{EncodeAspect, EncodePreset};
+
+fn preset_option(name: &str, preset: EncodePreset) -> Option<(&'static CStr, &'static CStr)> {
+    let index = match preset {
+        EncodePreset::Speed => 0,
+        EncodePreset::Balanced => 1,
+        EncodePreset::Quality => 2,
+    };
+    if name.ends_with("_nvenc") {
+        Some((c"preset", [c"p1", c"p4", c"p7"][index]))
+    } else if name.ends_with("_amf") {
+        Some((c"quality", [c"speed", c"balanced", c"quality"][index]))
+    } else if name.ends_with("_qsv") {
+        Some((c"preset", [c"veryfast", c"medium", c"veryslow"][index]))
+    } else {
+        None
+    }
+}
+
+fn aspect_rect(source: (u32, u32), target: (u32, u32), aspect: EncodeAspect) -> RECT {
+    let (mut width, mut height) = target;
+    if aspect == EncodeAspect::Fit && u64::from(source.0) * 9 != u64::from(source.1) * 16 {
+        if u64::from(source.0) * u64::from(target.1) > u64::from(target.0) * u64::from(source.1) {
+            height = ((u64::from(target.0) * u64::from(source.1) / u64::from(source.0)) as u32
+                & !1)
+                .max(2);
+        } else {
+            width = ((u64::from(target.1) * u64::from(source.0) / u64::from(source.1)) as u32 & !1)
+                .max(2);
+        }
+    }
+    // NV12 的位置與大小均對齊色度取樣；奇數邊距的差額留在右側／下側。
+    let left = ((target.0 - width) / 2) & !1;
+    let top = ((target.1 - height) / 2) & !1;
+    RECT {
+        left: left as i32,
+        top: top as i32,
+        right: (left + width) as i32,
+        bottom: (top + height) as i32,
+    }
+}
 
 pub(super) struct Hardware {
     pub frames: Buffer,
@@ -112,8 +156,10 @@ impl Hardware {
             context.flags |= AV_CODEC_FLAG_GLOBAL_HEADER as i32;
             context.hw_frames_ctx = qsv_frames.as_ref().unwrap_or(&self.frames).reference()?;
         }
+        if let Some((option, value)) = preset_option(name, video.preset) {
+            encoder.option(option, value)?;
+        }
         if name.ends_with("_nvenc") {
-            encoder.option(c"preset", c"p1")?;
             encoder.option(c"tune", c"ull")?;
             encoder.option(c"zerolatency", c"1")?;
             encoder.option(c"forced-idr", c"1")?;
@@ -136,6 +182,7 @@ pub(super) struct Copier {
     height: u32,
     format: AVPixelFormat,
     processor: Option<Processor>,
+    aspect: EncodeAspect,
 }
 struct Processor {
     source: (u32, u32),
@@ -152,6 +199,7 @@ impl Copier {
             height: video.height,
             format,
             processor: None,
+            aspect: video.aspect,
         }
     }
     pub fn copy(
@@ -199,6 +247,7 @@ impl Copier {
                 size,
                 (self.width, self.height),
                 self.format,
+                self.aspect,
             )?);
         }
         let processor = self.processor.as_ref().context("GPU 縮放器未建立")?;
@@ -211,6 +260,7 @@ impl Processor {
         source: (u32, u32),
         target: (u32, u32),
         format: AVPixelFormat,
+        aspect: EncodeAspect,
     ) -> Result<Self> {
         let device: ID3D11VideoDevice = gpu.device.cast()?;
         let context: ID3D11VideoContext = gpu.context.cast()?;
@@ -255,8 +305,23 @@ impl Processor {
                 bottom: target.1 as i32,
             };
             context.VideoProcessorSetStreamSourceRect(&processor, 0, true, Some(&src));
-            context.VideoProcessorSetStreamDestRect(&processor, 0, true, Some(&dst));
+            let content = aspect_rect(source, target, aspect);
+            context.VideoProcessorSetStreamDestRect(&processor, 0, true, Some(&content));
             context.VideoProcessorSetOutputTargetRect(&processor, true, Some(&dst));
+            context.VideoProcessorSetOutputBackgroundColor(
+                &processor,
+                false,
+                &D3D11_VIDEO_COLOR {
+                    Anonymous: D3D11_VIDEO_COLOR_0 {
+                        RGBA: D3D11_VIDEO_COLOR_RGBA {
+                            R: 0.0,
+                            G: 0.0,
+                            B: 0.0,
+                            A: 1.0,
+                        },
+                    },
+                },
+            );
             // RGB 輸入全範圍，NV12 輸出採 BT.709／有限範圍。
             color_context.VideoProcessorSetStreamColorSpace1(
                 &processor,
@@ -325,5 +390,53 @@ impl Processor {
             result
         };
         result.context("GPU 縮放／NV12 轉換失敗")
+    }
+}
+
+#[cfg(test)]
+mod settings_tests {
+    use super::*;
+    use crate::types::{EncodeAspect, EncodePreset};
+
+    #[test]
+    fn presets_match_each_hardware_family() {
+        for (preset, nvenc, amf, qsv) in [
+            (EncodePreset::Speed, c"p1", c"speed", c"veryfast"),
+            (EncodePreset::Balanced, c"p4", c"balanced", c"medium"),
+            (EncodePreset::Quality, c"p7", c"quality", c"veryslow"),
+        ] {
+            assert_eq!(
+                preset_option("hevc_nvenc", preset),
+                Some((c"preset", nvenc))
+            );
+            assert_eq!(preset_option("h264_amf", preset), Some((c"quality", amf)));
+            assert_eq!(preset_option("av1_qsv", preset), Some((c"preset", qsv)));
+        }
+    }
+
+    #[test]
+    fn fit_centers_wide_and_tall_sources_while_stretch_fills_output() {
+        for (source, expected) in [
+            ((2520, 1080), (0, 128, 1920, 950)),
+            ((3840, 1080), (0, 270, 1920, 810)),
+            ((1920, 1200), (96, 0, 1824, 1080)),
+            ((1440, 1080), (240, 0, 1680, 1080)),
+            ((1920, 1080), (0, 0, 1920, 1080)),
+        ] {
+            let rect = aspect_rect(source, (1920, 1080), EncodeAspect::Fit);
+            assert_eq!((rect.left, rect.top, rect.right, rect.bottom), expected);
+            for mode in [EncodeAspect::Native, EncodeAspect::Stretch] {
+                let rect = aspect_rect(source, (1920, 1080), mode);
+                assert_eq!(
+                    (rect.left, rect.top, rect.right, rect.bottom),
+                    (0, 0, 1920, 1080)
+                );
+            }
+        }
+        let rect = aspect_rect((1920, 1080), (1066, 600), EncodeAspect::Fit);
+        assert_eq!(
+            (rect.left, rect.top, rect.right, rect.bottom),
+            (0, 0, 1066, 600)
+        );
     }
 }

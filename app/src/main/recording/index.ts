@@ -11,7 +11,7 @@ export interface RecorderCommand {
   env?: Record<string, string>
 }
 
-export type RecordingNoticeKind = 'matchStart' | 'matchEnd' | 'finalized' | 'diskWarn' | 'error'
+export type RecordingNoticeKind = 'matchStart' | 'matchEnd' | 'finalized' | 'diskWarn' | 'warning' | 'error'
 
 export interface RecordingDeps {
   /** 每次需要時才讀，設定變更免重啟 */

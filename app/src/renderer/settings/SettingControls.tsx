@@ -46,6 +46,7 @@ export function SwitchControl(props: {
 export function SelectControl(props: {
   ids: ControlIds
   value: string
+  disabled?: boolean
   options: ReadonlyArray<{ value: string; label: string; disabled?: boolean }>
   onChange: (v: string) => void
 }): JSX.Element {
@@ -54,6 +55,7 @@ export function SelectControl(props: {
       id={props.ids.ctl}
       className="set-select"
       value={props.value}
+      disabled={props.disabled}
       aria-describedby={describedBy(props.ids)}
       onChange={(e) => props.onChange(e.target.value)}
     >
@@ -63,6 +65,52 @@ export function SelectControl(props: {
         </option>
       ))}
     </select>
+  )
+}
+
+export function SegmentedControl(props: {
+  ids: ControlIds
+  value: string
+  disabled?: boolean
+  options: ReadonlyArray<{ value: string; label: string }>
+  onChange: (v: string) => void
+}): JSX.Element {
+  return (
+    <fieldset id={props.ids.ctl} className="set-segmented" disabled={props.disabled} role="radiogroup"
+      aria-labelledby={props.ids.title} aria-describedby={describedBy(props.ids)}>
+      {props.options.map((option) => (
+        <label key={option.value}>
+          <input type="radio" name={props.ids.ctl} value={option.value} checked={props.value === option.value} disabled={props.disabled}
+            onChange={() => props.onChange(option.value)} />
+          <span>{option.label}</span>
+        </label>
+      ))}
+    </fieldset>
+  )
+}
+
+export function GainControl(props: {
+  ids: ControlIds
+  value: number
+  syncKey: unknown
+  disabled: boolean
+  onCommit: (v: number) => void
+}): JSX.Element {
+  const [draft, setDraft] = useState(Math.round(props.value * 100))
+  useEffect(() => setDraft(Math.round(props.value * 100)), [props.value, props.syncKey])
+  const commit = (value: string): void => {
+    const gain = Number(value) / 100
+    if (gain !== props.value) props.onCommit(gain)
+  }
+  return (
+    <span className="set-gain">
+      <input id={props.ids.ctl} type="range" min={0} max={200} step={1} value={draft} disabled={props.disabled}
+        aria-describedby={describedBy(props.ids)} aria-valuetext={`${draft}%`}
+        onChange={(e) => setDraft(Number(e.target.value))}
+        onPointerUp={(e) => commit(e.currentTarget.value)}
+        onKeyUp={(e) => commit(e.currentTarget.value)} onBlur={(e) => commit(e.currentTarget.value)} />
+      <output htmlFor={props.ids.ctl}>{draft}%</output>
+    </span>
   )
 }
 

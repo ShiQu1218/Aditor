@@ -14,7 +14,7 @@ use crate::{
     ipc::{Backend, BackendError, EventSink},
     protocol::{ErrorCode, Event, HelloInfo, StartArgs},
     shm::{self, ShmLayout, ShmWriter},
-    types::{Codec, Rect, AUDIO_CHANNELS, SEGMENT_SECS, THUMB_H, THUMB_W},
+    types::{Codec, EncodeAspect, Rect, AUDIO_CHANNELS, SEGMENT_SECS, THUMB_H, THUMB_W},
 };
 use anyhow::{bail, ensure, Context, Result};
 use std::{
@@ -331,7 +331,7 @@ impl Session {
             _ => return Err((ErrorCode::CaptureFailed, "未取得擷取視窗尺寸".into())),
         };
         let (width, height) = if let Some(cfg) = &args.encode {
-            output_size(source_w, source_h, cfg.height)
+            output_size(source_w, source_h, cfg.height, cfg.aspect)
                 .map_err(|e| failure(ErrorCode::BadRequest, e))?
         } else {
             (source_w, source_h)
@@ -350,6 +350,8 @@ impl Session {
                         codec: cfg.codec,
                         encoder: cfg.encoder.clone(),
                         bitrate_kbps: cfg.bitrate_kbps,
+                        preset: cfg.preset,
+                        aspect: cfg.aspect,
                     },
                     args.audio.is_some(),
                     segment_tx,
@@ -373,8 +375,9 @@ impl Session {
                 .last_audio
                 .store(clock::now_ticks(), Ordering::Relaxed);
             session.audio = Some(
-                AudioCapture::start(
+                AudioCapture::start_for_pid(
                     cfg,
+                    args.pid,
                     origin,
                     Box::new(Sound {
                         writer: writer.clone(),
@@ -383,6 +386,12 @@ impl Session {
                 )
                 .map_err(|e| failure(ErrorCode::AudioFailed, e))?,
             );
+            if let Some(message) = session.audio.as_mut().and_then(AudioCapture::take_warning) {
+                session.events.emit(&Event::Warning {
+                    code: "game_audio_unavailable".into(),
+                    message,
+                });
+            }
         }
         let codec = encoder.as_ref().map_or(Codec::Hevc, |name| {
             if name.starts_with("h264_") {
@@ -624,14 +633,24 @@ fn validate(args: &StartArgs) -> Result<()> {
     }
     Ok(())
 }
-fn output_size(width: u32, height: u32, requested: u32) -> Result<(u32, u32)> {
+fn output_size(
+    width: u32,
+    height: u32,
+    requested: u32,
+    aspect: EncodeAspect,
+) -> Result<(u32, u32)> {
     ensure!(width >= 2 && height >= 2, "擷取尺寸太小");
     let h = if requested == 0 {
         height & !1
     } else {
         requested
     };
-    let w = ((u64::from(width) * u64::from(h) / u64::from(height)) & !1) as u32;
+    let w = if aspect == EncodeAspect::Native {
+        ((u64::from(width) * u64::from(h) / u64::from(height)) & !1) as u32
+    } else {
+        // 四捨五入到最接近的偶數。
+        ((u64::from(h) * 16 + 9) / 18 * 2) as u32
+    };
     ensure!(
         (2..=16_384).contains(&w) && (2..=16_384).contains(&h),
         "輸出尺寸超出硬體編碼範圍"
@@ -687,9 +706,19 @@ mod tests {
     }
     #[test]
     fn output_dimensions_are_even_and_preserve_aspect_ratio() {
-        assert_eq!(output_size(2560, 1440, 1080).unwrap(), (1920, 1080));
-        assert_eq!(output_size(1919, 1079, 0).unwrap(), (1916, 1078));
-        assert!(output_size(0, 1080, 0).is_err());
+        assert_eq!(
+            output_size(2560, 1440, 1080, EncodeAspect::Native).unwrap(),
+            (1920, 1080)
+        );
+        assert_eq!(
+            output_size(1919, 1079, 0, EncodeAspect::Native).unwrap(),
+            (1916, 1078)
+        );
+        assert!(output_size(0, 1080, 0, EncodeAspect::Native).is_err());
+        for aspect in [EncodeAspect::Fit, EncodeAspect::Stretch] {
+            assert_eq!(output_size(2560, 1080, 1080, aspect).unwrap(), (1920, 1080));
+            assert_eq!(output_size(1440, 1080, 0, aspect).unwrap(), (1920, 1080));
+        }
     }
     #[test]
     fn error_codes_preserve_module_failures() {

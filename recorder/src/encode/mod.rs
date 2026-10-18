@@ -25,7 +25,7 @@ use anyhow::{bail, ensure, Context, Result};
 use windows::Win32::Graphics::Direct3D11::ID3D11Texture2D;
 
 use crate::gpu::Gpu;
-use crate::types::Codec;
+use crate::types::{Codec, EncodeAspect, EncodePreset};
 use ffmpeg::{Encoder, Frame};
 use hardware::{Copier, Hardware};
 
@@ -53,6 +53,8 @@ pub struct VideoParams {
     /// `"auto"` 或明確編碼器名稱。
     pub encoder: String,
     pub bitrate_kbps: u32,
+    pub preset: EncodePreset,
+    pub aspect: EncodeAspect,
 }
 
 /// 一個段落寫完（已 flush＋fsync）後送出。
@@ -157,6 +159,8 @@ fn probe(gpu: &Gpu, name: &str) -> Result<ffi::AVPixelFormat> {
         codec: codec_of(name),
         encoder: name.into(),
         bitrate_kbps: 1000,
+        preset: EncodePreset::Speed,
+        aspect: EncodeAspect::Native,
     };
     let mut failure = String::new();
     for format in [ffi::AV_PIX_FMT_BGRA, ffi::AV_PIX_FMT_NV12] {

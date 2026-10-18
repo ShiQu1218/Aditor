@@ -1,11 +1,12 @@
 import React from 'react'
 import { RECORDING_RANGES, type RecordingSettings } from '../../shared/recording'
 import { recordingI18n as t } from '../i18n/zh-TW'
-import { NumberField, SelectControl, SwitchControl, describedBy, type ControlIds } from './SettingControls'
+import { GainControl, NumberField, SegmentedControl, SelectControl, SwitchControl, describedBy, type ControlIds } from './SettingControls'
 import type { SettingsController, SettingsState } from './settingsController'
 import { fillTemplate } from './settingsModel'
 
-const BOOL_FIELDS = ['autoRecord', 'launchAtLogin', 'closeToTray', 'micEnabled', 'notifyMatch'] as const
+const BOOL_FIELDS = ['autoRecord', 'launchAtLogin', 'closeToTray', 'micEnabled', 'notifyMatch', 'forceAspect', 'systemAudioEnabled', 'gameAudioOnly', 'micMono'] as const
+const BITRATES = [5000, 8000, 10000, 15000, 20000, 30000, 40000, 50000, 60000, 80000, 100000, 150000]
 
 export function RecordingControl({ field, ids, state, settings, controller }: {
   field: keyof RecordingSettings
@@ -30,13 +31,21 @@ export function RecordingControl({ field, ids, state, settings, controller }: {
       </div>
     )
   }
-  if (field === 'bitrateKbps' || field === 'micGain' || field === 'diskWarnGb' || field === 'diskStopGb') {
-    const factor = field === 'bitrateKbps' ? 0.001 : field === 'micGain' ? 100 : 1
+  if (field === 'fps' || field === 'aspectMode') {
+    const options = field === 'fps' ? [10, 20, 30, 60, 90, 120].map((v) => ({ value: String(v), label: String(v) }))
+      : [{ value: 'fit', label: t.fit }, { value: 'stretch', label: t.stretch }]
+    return <SegmentedControl ids={ids} value={String(settings[field])} options={options}
+      disabled={field === 'aspectMode' && !settings.forceAspect}
+      onChange={(v) => field === 'fps' ? set('fps', Number(v) as RecordingSettings['fps']) : set('aspectMode', v as RecordingSettings['aspectMode'])} />
+  }
+  if (field === 'systemGain' || field === 'micGain') {
+    return <GainControl ids={ids} value={settings[field]} syncKey={state.settings}
+      disabled={field === 'systemGain' ? !settings.systemAudioEnabled : !settings.micEnabled} onCommit={(v) => set(field, v)} />
+  }
+  if (field === 'diskWarnGb' || field === 'diskStopGb') {
     const range = RECORDING_RANGES[field]
-    return <NumberField id={ids.ctl} value={settings[field] * factor}
-      range={{ min: range.min * factor, max: range.max * factor }} syncKey={state.settings}
-      describedBy={describedBy(ids)} unit={field === 'bitrateKbps' ? 'Mbps' : field === 'micGain' ? '%' : 'GB'}
-      onCommit={(v) => controller.setRecording(field, v / factor)} />
+    return <NumberField id={ids.ctl} value={settings[field]} range={range} syncKey={state.settings}
+      describedBy={describedBy(ids)} unit="GB" onCommit={(v) => controller.setRecording(field, v)} />
   }
   const caps = state.recordingCapabilities
   let options: Array<{ value: string; label: string; disabled?: boolean }>
@@ -57,10 +66,15 @@ export function RecordingControl({ field, ids, state, settings, controller }: {
         .filter((device) => device.id !== 'default').map((device) => ({ value: device.id, label: device.name }))]
       break
     case 'height':
-      options = [0, 1440, 1080, 720].map((value) => ({ value: String(value), label: value === 0 ? t.native : `${value}p` }))
+      options = [{ value: '0', label: t.native }, { value: '720', label: '720p (HD)' },
+        { value: '1080', label: '1080p (Full HD)' }, { value: '1440', label: '1440p (2K)' }]
       break
-    case 'fps':
-      options = [30, 60, 120, 144].map((value) => ({ value: String(value), label: String(value) }))
+    case 'bitrateKbps':
+      options = BITRATES.map((v) => ({ value: String(v), label: String(v) }))
+      if (!BITRATES.includes(settings.bitrateKbps)) options.push({ value: String(settings.bitrateKbps), label: fillTemplate(t.current, { value: settings.bitrateKbps }) })
+      break
+    case 'preset':
+      options = [{ value: 'speed', label: t.speed }, { value: 'balanced', label: t.balanced }, { value: 'quality', label: t.quality }]
       break
     case 'captureMethod':
       options = [{ value: 'wgc', label: t.captureWgc }, { value: 'dda', label: t.captureDda }]
@@ -77,10 +91,11 @@ export function RecordingControl({ field, ids, state, settings, controller }: {
   if (missing) options.push({ value: current, label: fillTemplate(t.currentUnavailable, { value: current }), disabled: true })
   const hint = field === 'encoder' && !caps.value ? caps.loading ? t.capabilitiesLoading : t.capabilitiesUnavailable : undefined
   return (
-    <div className="set-inline">
+    <div className="set-inline set-recording-select">
       <SelectControl ids={{ ...ids, reason: hint ? `${ids.ctl}-capabilities` : ids.reason }} value={current} options={options}
+        disabled={field === 'renderDevice' ? !settings.systemAudioEnabled || settings.gameAudioOnly : field === 'captureDevice' && !settings.micEnabled}
         onChange={(v) => {
-          if (field === 'height' || field === 'fps') set(field, Number(v) as RecordingSettings[typeof field])
+          if (field === 'height' || field === 'bitrateKbps') set(field, Number(v) as RecordingSettings[typeof field])
           else if (field === 'codec') {
             set('codec', v as RecordingSettings['codec'])
             set('encoder', 'auto')

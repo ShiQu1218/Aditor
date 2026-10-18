@@ -255,8 +255,11 @@ export class RecordingSessionService implements RecordingService {
       await client.hello()
       if (!this.running || this.manualStopped || this.gamePid !== pid) throw new RecorderError('cancelled', '錄影啟動已取消')
       await client.startRecording({ pid, session_dir: dir, session_id: id,
-        encode: { codec: settings.codec, encoder: settings.encoder, fps: settings.fps, height: settings.height, bitrate_kbps: settings.bitrateKbps },
-        audio: { render: settings.renderDevice, capture: settings.captureDevice, mic_gain: settings.micGain, mic_enabled: settings.micEnabled }, frames,
+        encode: { codec: settings.codec, encoder: settings.encoder, fps: settings.fps, height: settings.height, bitrate_kbps: settings.bitrateKbps,
+          preset: settings.preset, aspect: settings.forceAspect ? settings.aspectMode : 'native' },
+        audio: { render: settings.renderDevice, capture: settings.captureDevice, mic_gain: settings.micGain, mic_enabled: settings.micEnabled,
+          render_enabled: settings.systemAudioEnabled, render_gain: settings.systemGain, render_source: settings.gameAudioOnly ? 'game' : 'device',
+          mic_mono: settings.micMono }, frames,
         capture: settings.captureMethod })
       if (this.active !== current || current.ending) return false
       await this.checkDisk(current)
@@ -318,6 +321,9 @@ export class RecordingSessionService implements RecordingService {
           const error = new RecorderError(String(event.code), String(event.message))
           void this.serialize(() => this.crashed(session, error))
         }
+        break
+      case 'warning':
+        if (!session.ending && typeof event.message === 'string') this.notice('warning', event.message)
         break
       case 'stopped':
         if (!session.ending) void this.serialize(() => this.crashed(session,

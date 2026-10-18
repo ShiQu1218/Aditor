@@ -219,6 +219,7 @@ fn actual_default_loopback_and_microphone_capture_for_two_seconds() {
         capture: "停用麥克風時忽略此 ID".into(),
         mic_gain: 1.0,
         mic_enabled: false,
+        ..Default::default()
     };
     let loopback = record(&cfg);
     verify(&loopback);
@@ -254,6 +255,7 @@ fn invalid_configuration_and_endpoint_return_audio_failed() {
         capture: "default".into(),
         mic_gain: 1.0,
         mic_enabled: false,
+        ..Default::default()
     };
     let start = |cfg: &types::AudioConfig| {
         audio::AudioCapture::start(
@@ -270,4 +272,65 @@ fn invalid_configuration_and_endpoint_return_audio_failed() {
     assert!(start(&cfg).starts_with("audio_failed:"));
     cfg.mic_gain = -1.0;
     assert!(start(&cfg).starts_with("audio_failed:"));
+}
+
+#[test]
+fn disabled_sources_produce_continuous_silent_audio() {
+    let cfg = types::AudioConfig {
+        render: "停用時不開啟裝置".into(),
+        capture: "停用時不開啟裝置".into(),
+        render_enabled: false,
+        mic_enabled: false,
+        ..Default::default()
+    };
+    let recording = record(&cfg);
+    verify(&recording);
+    assert!(recording.samples.iter().all(|sample| *sample == 0.0));
+}
+
+#[test]
+fn unavailable_process_loopback_warns_and_falls_back_to_device() {
+    let recording = Arc::new(Mutex::new(Recording::default()));
+    let cfg = types::AudioConfig {
+        mic_enabled: false,
+        render_source: types::RenderSource::Game,
+        ..Default::default()
+    };
+    // 舊介面未傳 PID，必定觸發回退，與作業系統是否支援此 API 無關。
+    let mut capture =
+        audio::AudioCapture::start(&cfg, clock::now_ticks(), Box::new(Sink(recording.clone())))
+            .unwrap();
+    assert!(capture.take_warning().unwrap().contains("已改錄系統聲音"));
+    thread::sleep(Duration::from_secs(2));
+    capture.stop();
+    verify(&recording.lock().unwrap());
+}
+
+#[test]
+#[ignore = "需要支援程序 loopback 的 Windows 與實際播放裝置；只擷取測試程序自己的聲音"]
+fn process_loopback_captures_own_audio_and_ignores_render_device() {
+    let _tone = Tone::start();
+    let cfg = types::AudioConfig {
+        render: "程序模式忽略此裝置".into(),
+        mic_enabled: false,
+        render_source: types::RenderSource::Game,
+        ..Default::default()
+    };
+    let recording = Arc::new(Mutex::new(Recording::default()));
+    let mut capture = audio::AudioCapture::start_for_pid(
+        &cfg,
+        std::process::id(),
+        clock::now_ticks(),
+        Box::new(Sink(recording.clone())),
+    )
+    .unwrap();
+    assert!(
+        capture.take_warning().is_none(),
+        "此測試必須實際啟用程序音訊"
+    );
+    thread::sleep(Duration::from_secs(2));
+    capture.stop();
+    let recording = recording.lock().unwrap();
+    verify(&recording);
+    assert!(recording.samples.iter().any(|sample| sample.abs() > 0.005));
 }
