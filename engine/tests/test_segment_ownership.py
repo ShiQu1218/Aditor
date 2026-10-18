@@ -10,6 +10,7 @@ import pytest
 
 from apexhl import analyze as az
 from apexhl.cache import cache_path, load_cache
+from apexhl.icon_detect import IconFrame
 from apexhl.models import FrameResult, NameSig
 from conftest import make_video
 
@@ -84,6 +85,15 @@ class _FakeDetector:
         i = int(round(banner / STEP))
         return self.script.get(i, FrameResult(None, 0.0, 0, False, None, False))
 
+    def prepare(self, banner, spec):
+        return self.detect(banner, spec), IconFrame()
+
+    def resolve(self, r):
+        return r
+
+    def set_keywords(self, keywords):
+        pass
+
 
 @pytest.fixture
 def fake_env(tmp_path, profile, monkeypatch):
@@ -93,6 +103,7 @@ def fake_env(tmp_path, profile, monkeypatch):
     monkeypatch.setattr(az, "FrameStream", _FakeStream(script, DURATION))
     monkeypatch.setattr(az, "Detector", _FakeDetector)
     monkeypatch.setattr(az, "calibrate", lambda *a, **k: 1.0)
+    monkeypatch.setattr(az, "LEARN_SCAN_SECONDS", 0.0)  # 假畫面沒有錨點可學：不學關鍵字
     return v, profile, tmp_path
 
 
@@ -126,6 +137,7 @@ def test_spectating_intervals_identical_across_jobs(tmp_path, profile, monkeypat
     monkeypatch.setattr(az, "FrameStream", _FakeStream(script, DURATION))
     monkeypatch.setattr(az, "Detector", _FakeDetector)
     monkeypatch.setattr(az, "calibrate", lambda *a, **k: 1.0)
+    monkeypatch.setattr(az, "LEARN_SCAN_SECONDS", 0.0)
     one = az.analyze(str(v), profile, cache_dir=tmp_path / "a", jobs=1)["spectating"]
     four = az.analyze(str(v), profile, cache_dir=tmp_path / "b", jobs=4)["spectating"]
     assert one == four and len(one) == 1

@@ -12,7 +12,7 @@ from .decode import FPS, FrameStream
 from .detect import (Detector, KW_THRESHOLD, Keywords, _consensus, _match_max, hand_strip, knock_strip,
                      row_ink)
 from .errors import Cancelled
-from .icon_detect import DEFAULT_SCALES, IconDetector
+from .icon_detect import DEFAULT_SCALES, IconDetector, IconFrame
 from .models import VideoInfo
 from .profile import Profile
 
@@ -74,6 +74,8 @@ def calibrate(path: str, info: VideoInfo, profile: Profile, *,
 # ---- 擊殺關鍵字樣板的學習（每支影片一次，見 detect.Keywords） ----
 # 掃描影片開頭 LEARN_SCAN_SECONDS 秒（稀疏的影片中段可能一個錨點也沒有），依 jobs 切段平行；每段完整掃描
 # （只有該段已蒐集滿上限時提早結束），結果依時間排序合併，因此學到的樣板與 jobs 無關（jobs=1／4 一致）。
+# analyze 不呼叫 learn_keywords：主分析邊解碼邊用同樣的 AnchorCollector／build_keywords 學（analyze._Learner），
+# 省下這一趟解碼；learn_keywords 留作獨立掃描與「兩者結果相同」的對照測試。
 LEARN_SCAN_SECONDS = 900.0
 ANCHOR_BANNERS = (4, 4)    # 助攻、擊倒錨點各取前這麼多個「橫幅」（時間相隔 > 2 秒算不同橫幅）
 ANCHORS_PER_BANNER = 2
@@ -149,7 +151,10 @@ class AnchorCollector:
         det = self.det
         if not det.icons.maybe_banner(banner):
             return
-        f = det.icons.features(banner)
+        self.feed_features(t, banner, det.icons.features(banner))
+
+    def feed_features(self, t: float, banner, f: IconFrame) -> None:
+        """f＝這格已算好的圖示特徵（主分析邊解碼邊學時直接沿用，不重算）。"""
         if f.kind == "assist_elim" and f.hand >= HAND_ANCHOR_MIN and self.hand.accepts(t):
             s = hand_strip(banner, f, self._hand_hw, self.profile)
             if s is not None:

@@ -11,6 +11,12 @@ SPANS = [(2.0, 4.5), (10.0, 12.5)]
 
 
 @pytest.fixture
+def short_learn(monkeypatch):
+    """關鍵字只從開頭 1 秒學（邊解碼邊學，學完才存段進度）：讓短合成片中途取消也能測到段進度的保存與接續。"""
+    monkeypatch.setattr(az, "LEARN_SCAN_SECONDS", 1.0)
+
+
+@pytest.fixture
 def fixture_video(tmp_path, knock_banner_png):
     return make_video(tmp_path, "含 空白.mp4", 15, overlay=(knock_banner_png, SPANS))
 
@@ -59,7 +65,7 @@ class _CancelAt:
         return W()
 
 
-def test_cancel_writes_partial(tmp_path, profile, monkeypatch):
+def test_cancel_writes_partial(tmp_path, profile, monkeypatch, short_learn):
     v = make_video(tmp_path, "plain.mp4", 8)
     cancel = threading.Event()
     monkeypatch.setattr(az, "FrameStream", _CancelAt(3.0, cancel))
@@ -70,7 +76,7 @@ def test_cancel_writes_partial(tmp_path, profile, monkeypatch):
     assert 2.0 <= doc["analysis"]["progress_t"] < 3.0
 
 
-def test_resume_no_duplicates(tmp_path, profile, fixture_video, monkeypatch):
+def test_resume_no_duplicates(tmp_path, profile, fixture_video, monkeypatch, short_learn):
     cache = tmp_path / "cache"
     full = az.analyze(str(fixture_video), profile, cache_dir=cache / "full")
     knocks = [e for e in full["events"] if e["type"] == "knock"]
@@ -147,7 +153,7 @@ def test_resume_after_calibration_cancel_recalibrates(tmp_path, profile, monkeyp
     assert doc["analysis"]["h_scale"] == 0.9 and doc["analysis"]["status"] == "done"
 
 
-def test_normal_partial_resume_does_not_recalibrate(tmp_path, profile, monkeypatch):
+def test_normal_partial_resume_does_not_recalibrate(tmp_path, profile, monkeypatch, short_learn):
     v = make_video(tmp_path, "plain.mp4", 8)
     cancel = threading.Event()
     with monkeypatch.context() as m:
@@ -160,7 +166,7 @@ def test_normal_partial_resume_does_not_recalibrate(tmp_path, profile, monkeypat
     assert doc["analysis"]["h_scale"] == 0.95
 
 
-def test_partial_with_corrupt_keywords_relearns_instead_of_crashing(tmp_path, profile, monkeypatch):
+def test_partial_with_corrupt_keywords_relearns_instead_of_crashing(tmp_path, profile, monkeypatch, short_learn):
     v = make_video(tmp_path, "plain.mp4", 8)
     cache = tmp_path / "cache"
     cancel = threading.Event()
@@ -173,10 +179,44 @@ def test_partial_with_corrupt_keywords_relearns_instead_of_crashing(tmp_path, pr
     part["analysis"]["keywords"] = {"assist": {"shape": [27, 64], "q8": "AAAA"}}  # 損毀
     save_cache(cp, part)
     learned = []
-    real = az.learn_keywords
-    monkeypatch.setattr(az, "learn_keywords", lambda *a, **k: learned.append(1) or real(*a, **k))
+    real = az._Learner
+    monkeypatch.setattr(az, "_Learner", lambda *a, **k: learned.append(1) or real(*a, **k))
     doc = az.analyze(str(v), profile, cache_dir=cache)
     assert learned == [1] and doc["analysis"]["status"] == "done"
+    assert doc["analysis"]["keywords"] == {"assist": None, "knock": None, "assist_by_knock": False}
+
+
+def test_cancel_before_keywords_learned_keeps_only_calibration(tmp_path, profile, fixture_video, monkeypatch):
+    """學習範圍（預設 900 秒）涵蓋整支短片：學完前取消 → partial 只存校準尺度；接續不重新校準，
+    從頭邊解碼邊學，結果與不中斷相同。"""
+    cache = tmp_path / "cache"
+    full = az.analyze(str(fixture_video), profile, cache_dir=cache / "full")
+    cancel = threading.Event()
+    with monkeypatch.context() as m:
+        m.setattr(az, "FrameStream", _CancelAt(11.0, cancel))
+        m.setattr(az, "calibrate", lambda *a, **k: full["analysis"]["h_scale"])
+        with pytest.raises(az.Cancelled):
+            az.analyze(str(fixture_video), profile, cache_dir=cache, cancel=cancel)
+    a = load_cache(cache_path(str(fixture_video), cache))["analysis"]
+    assert a["status"] == "partial" and a["progress_t"] == 0.0
+    assert a["h_scale"] == full["analysis"]["h_scale"] and "keywords" not in a
+    monkeypatch.setattr(az, "calibrate", lambda *a, **k: pytest.fail("不應重新校準"))
+    doc = az.analyze(str(fixture_video), profile, cache_dir=cache)
+    assert doc["analysis"]["status"] == "done"
+    assert [(e["type"], e["t"]) for e in doc["events"]] == [(e["type"], e["t"]) for e in full["events"]]
+
+
+@pytest.mark.parametrize("jobs", [1, 3])
+def test_in_pass_keywords_equal_separate_learning_pass(tmp_path, profile, multi_video, monkeypatch, jobs):
+    """邊解碼邊學出的關鍵字樣板與獨立掃描（calibrate.learn_keywords）相同，與 jobs 無關。"""
+    from apexhl.calibrate import learn_keywords
+    from apexhl.probe import probe
+    monkeypatch.setattr(az, "LEARN_SCAN_SECONDS", 45.0)  # 學習範圍跨過 jobs=3 的段界 20、40
+    doc = az.analyze(str(multi_video), profile, cache_dir=tmp_path / "c", jobs=jobs)
+    sep = learn_keywords(str(multi_video), probe(str(multi_video)), profile, doc["analysis"]["h_scale"],
+                         max_scan_seconds=45.0)
+    assert sep.knock is not None  # 合成片的擊倒橫幅足以學出擊倒樣板，比較才有意義
+    assert doc["analysis"]["keywords"] == sep.to_dict()
 
 
 # ---- 切段平行解碼（jobs） ----
@@ -288,7 +328,7 @@ class _Seg3Harness:
 
 @pytest.mark.timeout(240)
 def test_parallel_cancel_leaves_segments_and_resume_reruns_only_unfinished(
-        tmp_path, profile, multi_video, monkeypatch):
+        tmp_path, profile, multi_video, monkeypatch, short_learn):
     full = az.analyze(str(multi_video), profile, cache_dir=tmp_path / "full", jobs=3)
     cache = tmp_path / "cache"
     cancel = threading.Event()

@@ -4,13 +4,14 @@
 from __future__ import annotations
 
 import base64
+from dataclasses import dataclass
 
 import cv2
 import numpy as np
 
 from pathlib import Path
 
-from .icon_detect import IconDetector, IconParams
+from .icon_detect import IconDetector, IconFrame, IconParams
 from .models import FrameResult, NameSig
 from .profile import Profile
 
@@ -302,10 +303,18 @@ class Keywords:
 
     def scores(self, banner_bgr: np.ndarray, f, profile: Profile) -> tuple[float, float]:
         """(助攻前綴分數, 擊倒關鍵字分數)；沒有該樣板時為 -1。"""
-        m = row_ink(banner_bgr, f, profile, pad=5)
+        return self.scores_ink(keyword_ink(banner_bgr, f, profile), f)
+
+    def scores_ink(self, m: np.ndarray, f) -> tuple[float, float]:
+        """同 scores，但輸入已是 keyword_ink 算好的第一行筆畫圖（延後驗證時只保存這一小塊）。"""
         a = _match_max(m[:, :f.plus_x], self.assist) if self.assist is not None else -1.0
         k = _match_max(m[:, max(0, f.line_l - 4):f.plus_x], self.knock) if self.knock is not None else -1.0
         return a, k
+
+
+def keyword_ink(banner_bgr: np.ndarray, f, profile: Profile) -> np.ndarray:
+    """關鍵字比對只看第一行「+」號左側：Keywords.scores_ink 需要的筆畫圖範圍。"""
+    return row_ink(banner_bgr, f, profile, pad=5)[:, :max(0, f.plus_x)]
 
 
 def row_ink(banner_bgr: np.ndarray, f, profile: Profile, pad: int = 2) -> np.ndarray:
@@ -346,6 +355,17 @@ _OTHER_KINDS = frozenset({"elim", "squad_wipe", "score_other"})
 PRODUCT_KINDS = frozenset({"knock", "assist_knock", "assist_elim"})
 
 
+@dataclass(frozen=True)
+class Pending:
+    """待關鍵字驗證的單人加分格（Detector.prepare 產出、Detector.resolve 定案）：只保留驗證需要的小塊資料，
+    不保留整張橫幅，讓「邊解碼邊學關鍵字」時可以先緩衝、學完再定案。"""
+    kind: str                 # 圖示線索的類型：knock／assist_knock
+    f: IconFrame
+    ink: np.ndarray           # keyword_ink：第一行「+」號左側的筆畫圖
+    sig: NameSig | None       # 擊倒的敵人名字指紋（圖示判為擊倒時才讀；驗證後仍是擊倒才用）
+    spectating: bool
+
+
 class Detector:
     """單格偵測器：icon_scale 由 calibrate 每支影片決定一次，之後單尺度比對（速度）。"""
 
@@ -353,7 +373,7 @@ class Detector:
                  keywords: Keywords | None = None):
         self.profile = profile
         self.icon_scale = icon_scale
-        self.keywords = keywords if keywords is not None and not keywords.empty else None
+        self.set_keywords(keywords)
         self.icons = IconDetector(Path(profile.dir), scales=(icon_scale,), params=params)
         # 觀戰樣板依白字門檻分組：同一組只算一次遮罩
         groups: dict[tuple, list[tuple[np.ndarray, float]]] = {}
@@ -378,7 +398,7 @@ class Detector:
         row = banner_bgr[y0:y1, f.line_l:max(f.line_l, x1)]
         return read_name_sig(row, self.profile)
 
-    def _verify(self, banner_bgr: np.ndarray, f, kind: str) -> str | None:
+    def _verify(self, ink: np.ndarray, f, kind: str) -> str | None:
         """用這支影片學到的關鍵字樣板驗證單人加分橫幅；沒有樣板時不驗證。
 
         - 助攻前綴命中（行首是「助攻，」之類）→ 助攻擊倒（沒有敵人色名字時，修正圖示線索判錯的擊倒）。
@@ -389,7 +409,7 @@ class Detector:
         kw = self.keywords
         if kw is None:
             return kind
-        a, k = kw.scores(banner_bgr, f, self.profile)
+        a, k = kw.scores_ink(ink, f)
         if a >= KW_THRESHOLD:
             return "assist_knock" if f.name_color - f.name_color_bg < self.icons.p.name_color_min else kind
         if k >= KW_THRESHOLD:
@@ -401,26 +421,42 @@ class Detector:
             verifiable = kw.assist is not None or (kw.assist_by_knock and kw.knock is not None)
         return None if verifiable else kind
 
+    def set_keywords(self, keywords: Keywords | None) -> None:
+        self.keywords = keywords if keywords is not None and not keywords.empty else None
+
     def detect(self, banner_bgr: np.ndarray, spec_bgr: np.ndarray) -> FrameResult:
+        return self.resolve(self.prepare(banner_bgr, spec_bgr)[0])
+
+    def prepare(self, banner_bgr: np.ndarray, spec_bgr: np.ndarray) -> tuple[FrameResult | Pending, IconFrame]:
+        """不需要關鍵字樣板的部分：回傳 (FrameResult 或待驗證的 Pending, 圖示特徵)。"""
         spectating = self._spectating(spec_bgr)
         f = self.icons.features(banner_bgr)
         p = self.icons.p
         kind = f.kind
         if kind in ("knock", "assist_knock"):
-            kind = self._verify(banner_bgr, f, kind)
-            if kind is None:
-                # 單人加分圖示但文字不是擊倒／助攻（弱者獎勵、旗幟取回、敵方小隊已消滅…）：視同沒有橫幅
-                return FrameResult(None, 0.0, 0, False, None, spectating)
             sig = self._knock_sig(banner_bgr, f) if kind == "knock" else None
-            dmg = f.line2_ink - f.line2_ink_bg >= p.line2_ink_min
-            return FrameResult(kind, f.chev, f.chev_x, dmg, sig, spectating)
+            ink = keyword_ink(banner_bgr, f, self.profile)  # 一律保存：關鍵字可能之後才給（set_keywords）
+            return Pending(kind, f, ink, sig, spectating), f
         if kind == "assist_elim":
-            return FrameResult(kind, f.hand, f.hand_x, False, None, spectating)
+            return FrameResult(kind, f.hand, f.hand_x, False, None, spectating), f
         if kind in _OTHER_KINDS:
             # 別種橫幅（獨立消滅、小隊抹殺、REVIVE 等）：視同沒有橫幅。橫幅至少停留約 2 秒（8 格），
             # 單格的圖示判斷不確定只是雜訊；連續 ≥ 2 格的非擊殺格依 GAP 規則自然結束進行中的事件。
-            return FrameResult(None, 0.0, 0, False, None, spectating)
+            return FrameResult(None, 0.0, 0, False, None, spectating), f
         if f.chev >= p.chev_min and f.plus >= p.plus_min:
             # 有加分箭頭與「+」，但人形不確定（淡入淡出）：不算命中，但不中斷進行中的事件
-            return FrameResult(None, 0.0, 0, False, None, spectating, hint="cont")
-        return FrameResult(None, 0.0, 0, False, None, spectating)
+            return FrameResult(None, 0.0, 0, False, None, spectating, hint="cont"), f
+        return FrameResult(None, 0.0, 0, False, None, spectating), f
+
+    def resolve(self, r: FrameResult | Pending) -> FrameResult:
+        """用目前的關鍵字樣板（set_keywords）定案 prepare 的結果。"""
+        if isinstance(r, FrameResult):
+            return r
+        f = r.f
+        kind = self._verify(r.ink, f, r.kind)
+        if kind is None:
+            # 單人加分圖示但文字不是擊倒／助攻（弱者獎勵、旗幟取回、敵方小隊已消滅…）：視同沒有橫幅
+            return FrameResult(None, 0.0, 0, False, None, r.spectating)
+        sig = r.sig if kind == "knock" else None
+        dmg = f.line2_ink - f.line2_ink_bg >= self.icons.p.line2_ink_min
+        return FrameResult(kind, f.chev, f.chev_x, dmg, sig, r.spectating)

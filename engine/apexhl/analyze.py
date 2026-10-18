@@ -1,4 +1,4 @@
-"""分析流程：probe → 快取判斷 → 校準 → 解碼／偵測／事件追蹤 → keyframes → 推導 → 存檔（spec §4.2、§5.5）。"""
+"""分析流程：probe → 快取判斷 → 校準 → 解碼／偵測／事件追蹤（同一趟邊解碼邊學關鍵字）→ keyframes → 推導 → 存檔（spec §4.2、§5.5）。"""
 from __future__ import annotations
 
 import os
@@ -12,13 +12,13 @@ from typing import Callable
 from . import ENGINE_VERSION
 from .cache import (cache_path, load_cache, merge_clips, merge_reanalysis,
                     needs_reanalysis, save_cache)
-from .calibrate import calibrate, learn_keywords
+from .calibrate import LEARN_SCAN_SECONDS, AnchorCollector, build_keywords, calibrate
 from .decode import FrameStream, is_gpu_path
 from .errors import Cancelled
 from .derive import derive
-from .detect import Detector, Keywords
+from .detect import Detector, Keywords, Pending
 from .events import EventTracker
-from .models import Clip, Event, SpecInterval
+from .models import Clip, Event, FrameResult, SpecInterval
 from .probe import keyframes, probe
 from .profile import Profile
 
@@ -198,8 +198,40 @@ def _resumable(old: dict | None, info, profile: Profile) -> bool:
             and a.get("templates_version") == profile.templates_version)
 
 
-def _learn_jobs(info, jobs: int | None, hwaccel: bool) -> int:
-    return auto_jobs(is_gpu_path(info.codec, hwaccel)) if jobs is None else max(1, int(jobs))
+class _Learner:
+    """邊解碼邊學關鍵字樣板（取代先前另外解碼影片開頭一次的 calibrate.learn_keywords，省下一整趟解碼）。
+
+    學習範圍與 learn_keywords 相同：影片開頭 [0, LEARN_SCAN_SECONDS)。每段只在自己擁有的範圍 [start, end)
+    與學習範圍的交集內蒐集錨點（不含前置／後延解碼的上下文），各段收集器依時間順序合併（build_keywords），
+    因此樣板與 learn_keywords 相同。全部段蒐集完成前，各段把需要關鍵字驗證的格子先緩衝（Pending），學完再定案。"""
+
+    def __init__(self, segs: list[_Seg], limit: float):
+        self.spans = [(sg.start, limit if sg.last else min(sg.end, limit)) for sg in segs]
+        self.cols: list[AnchorCollector | None] = [None] * len(segs)
+        self._waiting = {i for i, (a, b) in enumerate(self.spans) if b > a}
+        self._lock = threading.Lock()
+        self.ready = threading.Event()
+        self.keywords: Keywords | None = None
+        if not self._waiting:
+            self._build()
+
+    def collector(self, i: int, profile: Profile, det: Detector) -> AnchorCollector | None:
+        if i not in self._waiting:
+            return None
+        self.cols[i] = AnchorCollector(profile, det)
+        return self.cols[i]
+
+    def finish(self, i: int) -> None:
+        with self._lock:
+            if i not in self._waiting:
+                return
+            self._waiting.discard(i)
+            if not self._waiting:
+                self._build()
+
+    def _build(self) -> None:
+        self.keywords = build_keywords([c for c in self.cols if c is not None])
+        self.ready.set()
 
 
 def analyze(path: str, profile: Profile, *, cache_dir: Path, beside: bool = False,
@@ -245,12 +277,11 @@ def analyze(path: str, profile: Profile, *, cache_dir: Path, beside: bool = Fals
             base_raw = old.get("base_events") if partial else old.get("events")
     base_events = [Event.from_dict(e) for e in base_raw] if base_raw else []
     manual_clips = merge_clips(old_clips, [])
+    learner: _Learner | None = None
     if h_scale is None or keywords is None:
         try:
             if h_scale is None:
                 h_scale = calibrate(path, info, profile, cancel=cancel, hwaccel=hwaccel)
-            keywords = learn_keywords(path, info, profile, h_scale, cancel=cancel, hwaccel=hwaccel,
-                                      jobs=_learn_jobs(info, jobs, hwaccel))
         except Cancelled:
             doc = _make_doc(info, profile, "partial", 0.0, None, [], [], manual_clips)  # h_scale=None：尚未校準
             if base_events:
@@ -263,6 +294,7 @@ def analyze(path: str, profile: Profile, *, cache_dir: Path, beside: bool = Fals
             n_jobs, min_len = max(1, int(jobs)), EXPLICIT_MIN_SEGMENT
         plan = plan_segments(info.duration, n_jobs, min_len=min_len)
         segs = [_Seg(a, b, i == len(plan) - 1, info.duration, a, a) for i, (a, b) in enumerate(plan)]
+        learner = _Learner(segs, min(info.duration, LEARN_SCAN_SECONDS))
 
     # 擁有權：每段只輸出 own_from（新段＝start；接續＝游標回退 RESUME_BACK）之後、段尾之前開始的事件。
     # 已存入 partial 的舊事件只保留「已完成段」與「各未完成段 own_from 之前」的部分，其餘由重新播放產生。
@@ -297,11 +329,21 @@ def analyze(path: str, profile: Profile, *, cache_dir: Path, beside: bool = Fals
             spec += sg.snap_spec
         return sorted(evs, key=lambda e: e.t), _merge_intervals(spec)
 
+    def learned() -> Keywords | None:
+        if learner is None:
+            return keywords
+        return learner.keywords if learner.ready.is_set() else None
+
     def partial_doc() -> dict:
-        evs, spec = combined()
-        doc = _make_doc(info, profile, "partial", sum(sg.contribution(sg.snap_progress) for sg in segs),
-                        h_scale, evs, spec, manual_clips,
-                        [sg.to_dict() for sg in segs] if len(segs) > 1 else None, keywords)
+        kw = learned()
+        if kw is None:
+            # 關鍵字還沒學完：緩衝中的格子無法定案，只存校準結果（接續時重新規劃各段、從頭邊解碼邊學）
+            doc = _make_doc(info, profile, "partial", 0.0, h_scale, [], [], manual_clips)
+        else:
+            evs, spec = combined()
+            doc = _make_doc(info, profile, "partial", sum(sg.contribution(sg.snap_progress) for sg in segs),
+                            h_scale, evs, spec, manual_clips,
+                            [sg.to_dict() for sg in segs] if len(segs) > 1 else None, kw)
         if base_events:
             doc["base_events"] = [e.to_dict() for e in base_events]
         return doc
@@ -315,10 +357,29 @@ def analyze(path: str, profile: Profile, *, cache_dir: Path, beside: bool = Fals
             t = sum(sg.contribution(sg.progress_t) for sg in segs)
         on_progress(t, info.duration)
 
-    def work(sg: _Seg) -> None:
+    def work(i: int, sg: _Seg) -> None:
         own_from, frm = sg.resume_plan()
         detector = Detector(profile, h_scale, keywords=keywords)
         tracker = EventTracker(profile)
+        col = learn_lo = learn_hi = None
+        buf: list[tuple[float, FrameResult | Pending]] | None = None  # 關鍵字學完前的緩衝（None＝已可直接定案）
+        if learner is not None:
+            col = learner.collector(i, profile, detector)
+            learn_lo, learn_hi = learner.spans[i]
+            buf = []
+
+        def flush() -> bool:
+            """關鍵字已學完 → 定案緩衝並改為直接定案；回傳是否已可直接定案。"""
+            nonlocal buf
+            if buf is None:
+                return True
+            if not learner.ready.is_set():
+                return False
+            detector.set_keywords(learner.keywords)
+            for bt, br in buf:
+                tracker.feed(bt, detector.resolve(br))
+            buf = None
+            return True
         kw = {"end": sg.dec_end} if sg.dec_end is not None else {}
         stream = FrameStream(path, profile, start=frm, hwaccel=hwaccel, codec=info.codec, **kw)
         last_save = frm
@@ -334,19 +395,35 @@ def analyze(path: str, profile: Profile, *, cache_dir: Path, beside: bool = Fals
         try:
             for t, banner, spec in stream:
                 if stopped():
-                    with lock:
-                        snap(cursor)
+                    if flush():  # 關鍵字未學完時不存段進度（partial 只存校準結果）
+                        with lock:
+                            snap(cursor)
                     return
-                tracker.feed(t, detector.detect(banner, spec))
+                r, f = detector.prepare(banner, spec)
+                if col is not None:
+                    if learn_lo - 1e-6 <= t < learn_hi - 1e-6:
+                        col.feed_features(t, banner, f)
+                    if t >= learn_hi - 1e-6 or col.full(t):
+                        col = None
+                        learner.finish(i)
+                if flush():
+                    tracker.feed(t, detector.resolve(r))
+                else:
+                    buf.append((t, r))
                 cursor = t
                 if t > sg.progress_t:
                     sg.progress_t = t
                 emit_progress()
-                if t - last_save >= PARTIAL_EVERY:
+                if buf is None and t - last_save >= PARTIAL_EVERY:
                     last_save = t
                     with lock:
                         snap(t)
                         _save(cp, partial_doc(), cache_dir)
+            if learner is not None:
+                learner.finish(i)  # 串流在學習範圍結束前就到底（片尾）
+                while not flush():  # 等其他段把學習範圍掃完
+                    if not learner.ready.wait(0.1) and stopped():
+                        return
             events, intervals = tracker.finish()
             with lock:
                 sg.snap_events = [e for e in events if sg.owns(e.t)]
@@ -363,12 +440,12 @@ def analyze(path: str, profile: Profile, *, cache_dir: Path, beside: bool = Fals
     if len(todo) <= 1:
         for sg in todo:
             try:
-                work(sg)
+                work(segs.index(sg), sg)
             except BaseException as e:  # noqa: BLE001
                 errors.append(e)
     else:
         with ThreadPoolExecutor(max_workers=len(todo)) as ex:
-            futs = [ex.submit(work, sg) for sg in todo]
+            futs = [ex.submit(work, segs.index(sg), sg) for sg in todo]
             for f in futs:
                 try:
                     f.result()
@@ -400,7 +477,7 @@ def analyze(path: str, profile: Profile, *, cache_dir: Path, beside: bool = Fals
         raw, unmatched = merge_reanalysis(base_events, raw)
     final = derive(raw, spectating, profile)
     doc = _make_doc(info, profile, "done", info.duration, h_scale, final, spectating, manual_clips,
-                    keywords=keywords)
+                    keywords=learned())
     doc["keyframes"] = kf
     doc["unmatched"] = [e.to_dict() for e in unmatched]
     _save(cp, doc, cache_dir)
