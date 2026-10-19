@@ -1,0 +1,70 @@
+/* 首次啟動引導（見 onboarding/Onboarding.tsx）：疊在整個 app 上的 modal 對話框；顏色一律取自 tokens.css */
+.ob-scrim { position: fixed; inset: 0; z-index: 110; background: var(--bg-scrim); display: grid; place-items: center; padding: var(--sp-6); }
+.ob-dialog {
+  width: min(640px, 100%);
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-popover);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-pop);
+}
+.ob-head { flex: none; padding: var(--sp-5) var(--sp-6) var(--sp-3); border-bottom: 1px solid var(--line); }
+.ob-head h2 { margin: 0; font-family: var(--font-display); font-size: var(--fs-h2); line-height: var(--lh-tight); }
+.ob-head h2:focus-visible { outline: none; box-shadow: var(--focus-ring); border-radius: var(--r-xs); }
+.ob-progress { margin: var(--sp-1) 0 0; color: var(--text-3); font-size: var(--fs-small); }
+.ob-body { flex: 1; min-height: 0; overflow-y: auto; padding: var(--sp-4) var(--sp-6); display: flex; flex-direction: column; gap: var(--sp-4); }
+.ob-text { margin: 0; color: var(--text-2); line-height: var(--lh-body); }
+.ob-field { display: flex; flex-direction: column; gap: var(--sp-1); min-width: 0; }
+.ob-label { color: var(--text-1); font-weight: var(--fw-bold); font-size: var(--fs-body); }
+.ob-field .set-select { width: 100%; }
+.ob-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--sp-3); }
+.ob-path-row { display: flex; align-items: center; gap: var(--sp-2); }
+.ob-path { flex: 1; max-width: none; padding: 6px 8px; background: var(--bg-input); border: 1px solid var(--line); border-radius: var(--r-sm); }
+.ob-err { margin: 0; color: var(--danger); font-size: var(--fs-body); }
+
+/* 錄影模式：單選卡片（原生 radio，視覺隱藏、由卡片外框顯示選取與焦點） */
+.ob-modes { margin: 0; padding: 0; border: 0; min-width: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-3); }
+.ob-modes legend { grid-column: 1 / -1; padding: 0; margin-bottom: var(--sp-1); }
+.ob-mode {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  padding: var(--sp-3) var(--sp-4);
+  background: var(--bg-surface);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  cursor: pointer;
+  transition: background var(--dur-fast), border-color var(--dur-fast);
+}
+.ob-mode:hover { background: var(--bg-hover); }
+.ob-mode input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.ob-mode.is-selected { border-color: var(--accent-bright); background: var(--accent-soft); }
+.ob-mode:has(input:focus-visible) { box-shadow: var(--focus-ring); }
+.ob-mode-title { font-weight: var(--fw-bold); }
+.ob-mode-desc { color: var(--text-2); font-size: var(--fs-small); line-height: var(--lh-body); }
+
+/* 儲存位置預覽（設定頁與引導共用） */
+.storage-preview { margin: 0; display: flex; flex-direction: column; gap: var(--sp-1); padding: var(--sp-3); background: var(--bg-input); border: 1px solid var(--line); border-radius: var(--r-sm); text-align: left; }
+.storage-preview-row { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--sp-1) var(--sp-3); }
+.storage-preview dt { color: var(--text-1); font-size: var(--fs-small); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.storage-preview dd { margin: 0; color: var(--text-3); font-size: var(--fs-small); }
+.storage-ctl { display: flex; flex-direction: column; gap: var(--sp-2); min-width: 0; width: 100%; }
+
+.ob-summary, .ob-next { margin: 0; padding-left: var(--sp-5); display: flex; flex-direction: column; gap: var(--sp-1); color: var(--text-1); line-height: var(--lh-body); }
+.ob-summary { list-style: none; padding: var(--sp-3) var(--sp-4); background: var(--bg-surface); border: 1px solid var(--line); border-radius: var(--r-sm); }
+.ob-subhead { margin: 0; font-size: var(--fs-body-lg); font-weight: var(--fw-bold); }
+.ob-next { color: var(--text-2); }
+
+.ob-foot { flex: none; display: flex; align-items: center; gap: var(--sp-2); padding: var(--sp-3) var(--sp-6) var(--sp-4); border-top: 1px solid var(--line); }
+.ob-dots { flex: 1; display: flex; justify-content: center; gap: var(--sp-2); }
+.ob-dots i { width: 8px; height: 8px; border-radius: 50%; background: var(--line-strong); }
+.ob-dots i.is-past { background: var(--text-3); }
+.ob-dots i.is-current { background: var(--accent-bright); }
+.ob-primary { height: 32px; padding: 0 var(--sp-4); font-size: var(--fs-body); }
+
+@media (max-width: 640px) {
+  .ob-grid, .ob-modes { grid-template-columns: minmax(0, 1fr); }
+}

@@ -120,14 +120,20 @@ export const settingsI18n: Messages['settingsI18n'] = {
       desc: '每次修改后自动存到 %APPDATA%\\ApexHighlighter\\projects\\，“另存文件”只用于分享。关闭后会恢复“未保存更改”提示。',
       keywords: ['项目', '自动保存', 'autosave', '保存']
     },
-    defaultOutDir: {
-      title: '默认输出文件夹',
-      desc: '导出抽屉的起始文件夹；未设置时每次询问。',
-      keywords: ['导出', '输出', '文件夹', 'export'],
-      choose: '选择文件夹',
-      clear: '清除',
-      unset: '每次询问',
-      current: '当前：{dir}'
+    storageRoot: {
+      title: '儲存位置',
+      desc: '錄影與剪輯輸出都存在這個資料夾底下，方便整批備份或搬移。',
+      keywords: ['儲存', '位置', '資料夾', '錄影', '輸出', '匯出', 'storage', 'folder', 'recordings', 'exports'],
+      unset: '尚未設定（建議：{dir}）',
+      change: '變更…',
+      open: '在檔案總管開啟',
+      preview: {
+        heading: '資料夾結構',
+        dayFolder: '日期',
+        recordings: '錄影依日期分資料夾',
+        merged: '剪輯輸出：合併',
+        clips: '剪輯輸出：一段一段'
+      }
     },
     encoders: {
       title: '可用编码器',

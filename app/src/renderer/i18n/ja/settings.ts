@@ -120,14 +120,20 @@ export const settingsI18n: Messages['settingsI18n'] = {
       desc: '変更するたびに %APPDATA%\\ApexHighlighter\\projects\\ へ自動保存されます。「名前を付けて保存」は共有用にのみ使われます。オフにすると、「未保存の変更」の確認が再び表示されます。',
       keywords: ['プロジェクト', '自動保存', 'autosave', '保存']
     },
-    defaultOutDir: {
-      title: '既定の出力フォルダー',
-      desc: '書き出しドロワーの初期フォルダーです。未設定の場合は毎回確認します。',
-      keywords: ['書き出し', '出力', 'フォルダー', 'エクスポート', 'export'],
-      choose: 'フォルダーを選択',
-      clear: 'クリア',
-      unset: '毎回確認',
-      current: '現在：{dir}'
+    storageRoot: {
+      title: '儲存位置',
+      desc: '錄影與剪輯輸出都存在這個資料夾底下，方便整批備份或搬移。',
+      keywords: ['儲存', '位置', '資料夾', '錄影', '輸出', '匯出', 'storage', 'folder', 'recordings', 'exports'],
+      unset: '尚未設定（建議：{dir}）',
+      change: '變更…',
+      open: '在檔案總管開啟',
+      preview: {
+        heading: '資料夾結構',
+        dayFolder: '日期',
+        recordings: '錄影依日期分資料夾',
+        merged: '剪輯輸出：合併',
+        clips: '剪輯輸出：一段一段'
+      }
     },
     encoders: {
       title: '利用可能なエンコーダー',

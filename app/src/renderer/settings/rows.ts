@@ -31,7 +31,7 @@ export type ControlSpec =
   | { kind: 'autoclip' }
   | { kind: 'watchFolders' }
   | { kind: 'proxyUsage' }
-  | { kind: 'outDir' }
+  | { kind: 'storageRoot' }
   | { kind: 'encoders' }
   | { kind: 'openh264' }
   | { kind: 'about' }
@@ -84,6 +84,16 @@ export const SETTING_ROWS: SettingRow[] = [
         ...LOCALES.map((code) => ({ value: code, label: LOCALE_NAMES[code] }))
       ]
     }
+  },
+  {
+    id: 'storageRoot',
+    category: 'a',
+    card: t.card.general,
+    title: t.row.storageRoot.title,
+    desc: t.row.storageRoot.desc,
+    keywords: [...t.row.storageRoot.keywords],
+    isNew: true,
+    control: { kind: 'storageRoot' }
   },
   {
     id: 'watchFolders',
@@ -203,15 +213,6 @@ export const SETTING_ROWS: SettingRow[] = [
     control: { kind: 'switch', field: 'projectAutosave' }
   },
   // ── 匯出與關於 ──
-  {
-    id: 'defaultOutDir',
-    category: 'c',
-    card: t.card.export,
-    title: t.row.defaultOutDir.title,
-    desc: t.row.defaultOutDir.desc,
-    keywords: [...t.row.defaultOutDir.keywords],
-    control: { kind: 'outDir' }
-  },
   {
     id: 'encoders',
     category: 'c',

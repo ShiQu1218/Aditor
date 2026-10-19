@@ -120,14 +120,20 @@ export const settingsI18n: Messages['settingsI18n'] = {
       desc: '변경할 때마다 %APPDATA%\\ApexHighlighter\\projects\\에 자동으로 저장됩니다. ‘다른 이름으로 저장’은 공유 용도로만 사용됩니다. 끄면 ‘저장하지 않은 변경 사항’ 안내가 다시 표시됩니다.',
       keywords: ['프로젝트', '자동 저장', 'autosave', '저장']
     },
-    defaultOutDir: {
-      title: '기본 출력 폴더',
-      desc: '내보내기 패널의 시작 폴더입니다. 설정하지 않으면 매번 묻습니다.',
-      keywords: ['내보내기', '출력', '폴더', 'export'],
-      choose: '폴더 선택',
-      clear: '지우기',
-      unset: '매번 묻기',
-      current: '현재: {dir}'
+    storageRoot: {
+      title: '儲存位置',
+      desc: '錄影與剪輯輸出都存在這個資料夾底下，方便整批備份或搬移。',
+      keywords: ['儲存', '位置', '資料夾', '錄影', '輸出', '匯出', 'storage', 'folder', 'recordings', 'exports'],
+      unset: '尚未設定（建議：{dir}）',
+      change: '變更…',
+      open: '在檔案總管開啟',
+      preview: {
+        heading: '資料夾結構',
+        dayFolder: '日期',
+        recordings: '錄影依日期分資料夾',
+        merged: '剪輯輸出：合併',
+        clips: '剪輯輸出：一段一段'
+      }
     },
     encoders: {
       title: '사용 가능한 인코더',

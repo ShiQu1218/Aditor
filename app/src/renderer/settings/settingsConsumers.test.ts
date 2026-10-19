@@ -53,7 +53,7 @@ const ROW_TARGETS: Record<string, { fields?: string[]; consumers?: Array<[string
   autoclip: { fields: ['autoclip'] },
   autoSuggestOnOpen: { fields: ['autoSuggestOnOpen'] },
   projectAutosave: { fields: ['projectAutosave'] },
-  defaultOutDir: { fields: ['defaultOutDir'] },
+  storageRoot: { fields: ['storageRoot', 'defaultOutDir'] },
   encoders: { consumers: [['main/ipc-handlers.ts', /detectEncoders/]] },
   openh264: { consumers: [['main/ipc-handlers.ts', /hasOpenH264/]] },
   about: { consumers: [['renderer/settings/SettingControls.tsx', /__APP_VERSION__/]] },

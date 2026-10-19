@@ -82,7 +82,7 @@ export interface SettingsSetResult {
   /** false＝記憶體已更新但寫檔失敗（重啟後不會保留） */
   persisted: boolean
   /** main 對路徑類欄位的驗證錯誤（該欄位未被套用） */
-  errors?: Partial<Record<'defaultOutDir' | 'recordingOutputDir' | 'obsPassword', string>>
+  errors?: Partial<Record<'defaultOutDir' | 'recordingOutputDir' | 'obsPassword' | 'storageRoot', string>>
 }
 
 /** 預設設定；首次使用者（無設定檔）即採用此值，行為與舊版相同。 */

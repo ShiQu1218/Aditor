@@ -9,6 +9,8 @@ import { useToast } from './ToastHost'
 import { i18n } from '../i18n'
 import { RecordingPanel } from './RecordingPanel'
 import { useRecordingStatus } from './useRecordingStatus'
+import { useAppSettings } from './useAppSettings'
+import { OnboardingHost } from '../onboarding/Onboarding'
 
 /** 啟動還原遇到損毀／過新版本專案時顯示一次 Toast（I12）。 */
 function RestoreNotice(): null {
@@ -78,6 +80,8 @@ function ShellFrame({
 }): JSX.Element {
   const overlay = useOverlay()
   const recording = useRecordingStatus()
+  // 首次啟動引導：設定載入完成且 onboardingDone 為 false 時疊在整個 app 上
+  const settings = useAppSettings()
   return (
     <div className="app">
       <RestoreNotice />
@@ -98,6 +102,7 @@ function ShellFrame({
       />
       <main className="app-main">{children}</main>
       <QueuePopover open={queueOpen} onClose={onCloseQueue} anchorRef={queueButtonRef} />
+      <OnboardingHost settings={settings} />
     </div>
   )
 }

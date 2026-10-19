@@ -49,6 +49,26 @@ describe('錄影索引與安全邊界', () => {
     expect(fs.existsSync(missing)).toBe(true)
   })
 
+  it('舊版標記（輸出直接在 outputDir）仍可補收尾；日期資料夾內的標記也通過，其他子資料夾與非日期資料夾被拒絕', async () => {
+    const base = root(); const deps = makeDeps(base)
+    deps.addToLibrary = vi.fn()
+    const mark = (id: string, outputPath: string) => {
+      fs.mkdirSync(path.dirname(outputPath), { recursive: true }); fs.writeFileSync(outputPath, 'x')
+      const dir = sessionDir(base, id)
+      fs.writeFileSync(path.join(dir, 'finalized.json'), JSON.stringify({ outputPath }))
+      return dir
+    }
+    const legacy = path.join(base, 'videos', 'legacy.mp4')
+    expect(await finalizeSession(mark('legacy', legacy), deps)).toEqual([legacy])
+    const dated = path.join(base, 'videos', '2026-10-18', 'dated.mp4')
+    expect(await finalizeSession(mark('dated', dated), deps)).toEqual([dated])
+    for (const [id, bad] of [['named', path.join(base, 'videos', 'other', 'a.mp4')],
+      ['nested', path.join(base, 'videos', '2026-10-18', 'sub', 'a.mp4')],
+      ['sessions', path.join(base, 'videos', '.sessions', 'a.mp4')]] as const) {
+      await expect(finalizeSession(mark(id, bad), deps)).rejects.toThrow('無效')
+    }
+  })
+
   it('恢復會掃描設定、監看與預設路徑，失敗的工作不影響其他工作', async () => {
     const base = root(); const deps = makeDeps(base)
     const extra = path.join(base, 'extra')
@@ -80,7 +100,8 @@ describe.skipIf(!ffmpeg)('真實 ffmpeg 串流收尾', () => {
     const dir = sessionDir(base); copySegments(segments, dir)
     fs.writeFileSync(path.join(dir, 'recording.json'), JSON.stringify({ startedAt: new Date(2026, 9, 18, 12, 34).getTime(), postAnalysis }))
     fs.appendFileSync(path.join(dir, 'index.jsonl'), '{"seq":')
-    const existing = path.join(base, 'videos', 'Apex_2026-10-18_12-34.mp4')
+    const existing = path.join(base, 'videos', '2026-10-18', 'Apex_2026-10-18_12-34.mp4')
+    fs.mkdirSync(path.dirname(existing), { recursive: true })
     fs.writeFileSync(existing, 'keep')
     const [output] = await finalizeSession(dir, deps)
     expect(output).toBe(existing.replace('.mp4', '_2.mp4'))
@@ -98,6 +119,17 @@ describe.skipIf(!ffmpeg)('真實 ffmpeg 串流收尾', () => {
     expect(probe.status, probe.stderr).toBe(0)
     expect(Number(probe.stdout)).toBeGreaterThanOrEqual(4)
     expect(fs.readdirSync(path.dirname(output)).some((name) => name.endsWith('.part.mp4'))).toBe(false)
+  })
+
+  it('整段輸出放進起點本機日期資料夾，不留在 outputDir 根；.sessions 維持原位', async () => {
+    const base = root(); const deps = makeDeps(base); deps.ffmpegPath = ffmpeg!
+    deps.addToLibrary = vi.fn()
+    const dir = sessionDir(base); copySegments(segments, dir)
+    fs.writeFileSync(path.join(dir, 'recording.json'), JSON.stringify({ startedAt: new Date(2026, 9, 18, 23, 59).getTime(), postAnalysis: 'none' }))
+    const [output] = await finalizeSession(dir, deps)
+    expect(path.dirname(output)).toBe(path.join(base, 'videos', '2026-10-18'))
+    expect(fs.readdirSync(path.join(base, 'videos')).filter((n) => n.endsWith('.mp4'))).toEqual([])
+    expect(fs.existsSync(path.join(base, 'videos', '.sessions'))).toBe(true)
   })
 
   it('串接失敗保留段落，修復後可由啟動補收尾', async () => {

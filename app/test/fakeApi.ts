@@ -24,7 +24,8 @@ export function createFakeApi(opts: FakeApiOptions = {}) {
         set.delete(cb)
       }
     })
-  let settings: Settings = { ...DEFAULT_SETTINGS, ...opts.settings }
+  // 預設視為已完成首次啟動引導，避免引導對話框蓋住受測畫面
+  let settings: Settings = { ...DEFAULT_SETTINGS, onboardingDone: true, ...opts.settings }
   let entries = opts.entries ?? []
 
   const ns = {

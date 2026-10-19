@@ -11,6 +11,7 @@ function makeApi(over: { set?: SetFn; initial?: Settings } = {}) {
   const api: SettingsApi = {
     settings: {
       get: async () => current,
+      suggestStorageRoot: async () => 'D:/Videos/Apex Highlighter',
       set:
         over.set ??
         (async (partial) => {
@@ -145,35 +146,57 @@ describe('SettingsController', () => {
     expect(c.getState().settings?.autoclip[key]).toBe(expected)
   })
 
-  test('defaultOutDir validation error from main is shown on the row and not stored', async () => {
+  test('storageRoot validation error from main is shown on the row and not stored', async () => {
     const { c } = await started({
       set: async () => ({
         settings: { ...DEFAULT_SETTINGS },
         persisted: true,
-        errors: { defaultOutDir: '資料夾不存在：Z:\\x' }
+        errors: { storageRoot: '無法建立或寫入儲存位置' }
       })
     })
-    await c.pickOutDir()
-    expect(c.getState().rowErrors.defaultOutDir).toBe('資料夾不存在：Z:\\x')
-    expect(c.getState().settings?.defaultOutDir).toBeNull()
+    await c.pickStorageRoot()
+    expect(c.getState().rowErrors.storageRoot).toBe('無法建立或寫入儲存位置')
+    expect(c.getState().settings?.storageRoot).toBeNull()
   })
 
-  test('pickOutDir success clears a previous error; cancel changes nothing', async () => {
+  test('pickStorageRoot sends only storageRoot, success clears a previous error; cancel changes nothing', async () => {
     const { c, calls, api } = await started()
-    await c.pickOutDir()
-    expect(calls).toEqual([{ defaultOutDir: 'D:/Videos' }])
-    expect(c.getState().rowErrors.defaultOutDir).toBeUndefined()
+    await c.pickStorageRoot()
+    expect(calls).toEqual([{ storageRoot: 'D:/Videos' }])
+    expect(c.getState().rowErrors.storageRoot).toBeUndefined()
     api.export!.selectOutDir = async () => null
-    await c.pickOutDir()
+    await c.pickStorageRoot()
     expect(calls).toHaveLength(1)
   })
 
-  test('clearOutDir sends null', async () => {
-    const { c, calls } = await started()
-    await c.pickOutDir()
-    await c.clearOutDir()
-    expect(calls[1]).toEqual({ defaultOutDir: null })
-    expect(c.getState().settings?.defaultOutDir).toBeNull()
+  test('start loads the suggested storage root; it is refreshed after a successful change', async () => {
+    const { c, api } = await started()
+    expect(c.getState().suggestedStorageRoot).toBe('D:/Videos/Apex Highlighter')
+    api.settings.suggestStorageRoot = async () => 'D:/Videos'
+    await c.pickStorageRoot()
+    expect(c.getState().suggestedStorageRoot).toBe('D:/Videos')
+  })
+
+  test('a failing suggestion lookup leaves the suggestion empty without throwing', async () => {
+    const rig = makeApi()
+    rig.api.settings.suggestStorageRoot = async () => { throw new Error('x') }
+    const c = new SettingsController(rig.api)
+    await c.start()
+    expect(c.getState().suggestedStorageRoot).toBeNull()
+  })
+
+  test('openStorageRoot opens the configured root; nothing happens when unset', async () => {
+    const opened: string[] = []
+    const rig = makeApi({ initial: { ...DEFAULT_SETTINGS, storageRoot: 'D:/Root' } })
+    rig.api.export!.openFolder = async (dir) => { opened.push(dir); return true }
+    const c = new SettingsController(rig.api)
+    await c.start()
+    await c.openStorageRoot()
+    expect(opened).toEqual(['D:/Root'])
+    const unset = await started()
+    unset.api.export!.openFolder = async (dir) => { opened.push(dir); return true }
+    await unset.c.openStorageRoot()
+    expect(opened).toEqual(['D:/Root'])
   })
 
   test('addWatchFolder uses the library IPC; errors are shown on the row, cancel is silent', async () => {

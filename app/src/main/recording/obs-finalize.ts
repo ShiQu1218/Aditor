@@ -4,7 +4,7 @@ import { spawn } from 'child_process'
 import type { RecordingDeps } from './index'
 import type { ObsMatch, ObsMetadata } from './obs-session'
 import { ALLOWED_VIDEO_EXTS, isSafeLocalDirPath } from '../safe-path'
-import { MATCH_POST_PAD_SEC, MATCH_PRE_PAD_SEC, liveMatches, outputBase, readOptional, reserveOutput,
+import { MATCH_POST_PAD_SEC, MATCH_PRE_PAD_SEC, inOutputDir, liveMatches, outputBase, readOptional, reserveOutput,
   resumeMatchPart, writeJson, type SessionSnapshot } from './finalize'
 import { isTrusted, writeLiveCache, type LiveCacheRange, type LiveFile } from './live-cache'
 import { createCutLookup, createMediaEndProbe } from '../export/keyframe'
@@ -113,7 +113,7 @@ export async function finalizeObsSession(dir: string, deps: RecordingDeps, confi
       const start = Math.max(0, match.start - offset - MATCH_PRE_PAD_SEC)
       const end = Math.min(duration, (match.end === null ? duration : match.end - offset) + MATCH_POST_PAD_SEC)
       if (end <= start) continue
-      const { output, part } = await reserveOutput(outputDir, outputBase(meta.recordStartedAt + start * 1000))
+      const { output, part } = await reserveOutput(outputDir, outputBase(meta.recordStartedAt + start * 1000), meta.recordStartedAt + start * 1000)
       let recorded = false
       try {
         await writeJson(path.join(dir, 'match-part.json'), { output, part })
@@ -145,7 +145,7 @@ export async function finalizeObsSession(dir: string, deps: RecordingDeps, confi
   }
   for (const cut of marker.cuts) {
     const original = cut.outputPath === meta.outputPath
-    if ((!original && path.dirname(path.resolve(cut.outputPath)) !== outputDir) || !await localFile(cut.outputPath)) throw new Error(tr('OBS 收尾影片路徑無效'))
+    if ((!original && !inOutputDir(cut.outputPath, outputDir)) || !await localFile(cut.outputPath)) throw new Error(tr('OBS 收尾影片路徑無效'))
     deps.addToLibrary([cut.outputPath])
     if (!cut.liveCached) {
       try {

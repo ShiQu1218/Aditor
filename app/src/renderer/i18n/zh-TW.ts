@@ -450,6 +450,47 @@ const shellI18n = {
     keysLabel: '按鍵'
   },
   toastHost: { label: '通知' },
+  onboarding: {
+    progress: '第 {n} 步，共 {total} 步',
+    skip: '稍後再說',
+    back: '上一步',
+    next: '下一步',
+    finish: '開始使用',
+    saving: '儲存中…',
+    welcome: {
+      title: '歡迎使用 Apex Highlighter',
+      body: '只要幾個簡單的設定就能開始：選擇介面語言、決定檔案存放的位置、挑選錄影方式。之後都可以在「設定」修改。',
+      languageLabel: '介面語言',
+      languageAuto: '跟隨系統'
+    },
+    storage: {
+      title: '檔案要存在哪裡？',
+      body: '錄影與剪輯輸出會放在同一個資料夾底下，方便整批備份或搬移。',
+      current: '儲存位置',
+      choose: '選擇資料夾…',
+      loading: '正在取得建議位置…'
+    },
+    recording: {
+      title: '錄影設定',
+      body: '這些設定之後都能在「設定」的「錄影」分頁調整。',
+      modeLabel: '錄影模式',
+      modeSessionDesc: 'Apex 開著到關閉，存成一支完整的影片。',
+      modeMatchDesc: '每一局存成一支影片；大廳只暫存最近約 15 秒，不佔硬碟。',
+      resolution: '解析度',
+      fps: '影格率',
+      bitrate: '位元率（kbps）'
+    },
+    done: {
+      title: '都設定好了',
+      summaryStorage: '儲存位置：{dir}',
+      summaryMode: '錄影模式：{mode}',
+      summaryQuality: '畫質：{height}、{fps} fps、{bitrate} kbps',
+      nextHeading: '接下來會發生的事',
+      next1: '開啟 Apex Legends 後會自動開始錄影。',
+      next2: '錄影結束後會自動分析，找出精彩片段。',
+      next3: '到「工作室」挑選片段並輸出。'
+    }
+  },
   keymap: {
     scope: {
       global: '全域',
@@ -621,14 +662,20 @@ const settingsI18n = {
       desc: '每次修改後自動存到 %APPDATA%\\ApexHighlighter\\projects\\，「另存檔案」只用於分享。關閉後會恢復「未儲存變更」提示。',
       keywords: ['專案', '自動儲存', 'autosave', '儲存']
     },
-    defaultOutDir: {
-      title: '預設輸出資料夾',
-      desc: '匯出抽屜的起始資料夾；未設定時每次詢問。',
-      keywords: ['匯出', '輸出', '資料夾', 'export'],
-      choose: '選擇資料夾',
-      clear: '清除',
-      unset: '每次詢問',
-      current: '目前：{dir}'
+    storageRoot: {
+      title: '儲存位置',
+      desc: '錄影與剪輯輸出都存在這個資料夾底下，方便整批備份或搬移。',
+      keywords: ['儲存', '位置', '資料夾', '錄影', '輸出', '匯出', 'storage', 'folder', 'recordings', 'exports'],
+      unset: '尚未設定（建議：{dir}）',
+      change: '變更…',
+      open: '在檔案總管開啟',
+      preview: {
+        heading: '資料夾結構',
+        dayFolder: '日期',
+        recordings: '錄影依日期分資料夾',
+        merged: '剪輯輸出：合併',
+        clips: '剪輯輸出：一段一段'
+      }
     },
     encoders: {
       title: '可用編碼器',
@@ -704,7 +751,6 @@ const recordingI18n = {
     obsPassword: { title: 'OBS 密碼', desc: '密碼由系統加密儲存，無法查看已儲存的密碼。' },
     obsFallbackBuiltin: { title: 'OBS 連不上時改用內建錄影', desc: '關閉後仍繼續即時偵測，但不錄製影片。' },
     mode: { title: '錄影模式', desc: '一局一個檔模式下，OBS 僅在對局期間錄影；內建錄影器整場持續錄影，每局結束後自動剪出該局（前後各留 5 秒），只保留對局，大廳只暫存最近 15 秒，久待大廳不會持續占用磁碟；即時偵測無法運作時保留整段錄影' },
-    outputDir: { title: '錄影資料夾', desc: '預設使用第一個監看資料夾；未設定時使用影片資料夾下的 Apex Highlighter。' },
     postAnalysis: { title: '錄後分析', desc: '「每局結束後」只在一局一個檔模式下於每局影片完成後立即分析；從頭錄到尾模式在收尾後分析' },
     diskWarnGb: { title: '磁碟提醒門檻', desc: '剩餘空間低於此值時通知。' },
     diskStopGb: { title: '磁碟停止門檻', desc: '剩餘空間低於此值時停止錄影並收尾；不可高於提醒門檻。' },
@@ -729,9 +775,6 @@ const recordingI18n = {
   },
   auto: '自動',
   defaultDevice: '預設',
-  defaultDir: '預設（監看資料夾／影片資料夾）',
-  choose: '選擇',
-  clear: '清除（使用預設）',
   session: '從頭錄到尾',
   match: '一局一個檔',
   native: '原生',
@@ -743,7 +786,6 @@ const recordingI18n = {
   capabilitiesUnavailable: '無法取得錄影器能力，請確認 apexrec 已安裝；目前僅提供自動編碼器與預設裝置。',
   capabilitiesLoading: '正在取得錄影器能力…',
   currentUnavailable: '目前設定：{value}（未偵測到）',
-  chooseFailed: '無法選擇錄影資料夾，請再試一次。',
   statusTitle: '錄影狀態',
   close: '關閉',
   phases: { idle: '待命', starting: '啟動中', recording: '錄影中', finalizing: '收尾中', error: '錄影錯誤' },

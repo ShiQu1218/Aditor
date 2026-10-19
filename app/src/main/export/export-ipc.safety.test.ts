@@ -29,12 +29,12 @@ describe('export:start never overwrites existing exports (I6)', () => {
   it('a second export with the same name gets " (2)" and a notice; the first result is untouched', async () => {
     const req = { items: [{ id: '1', source: srcA, start: 0, end: 5 }], mode: 'separate', quality: 'copy', outDir, baseName: 'clip' }
     const r1 = await svc().start(sender(), req)
-    expect(r1).toMatchObject({ ok: true, outputs: [path.join(outDir, 'clip_1.mp4')] })
-    fs.writeFileSync(path.join(outDir, 'clip_1.mp4'), 'first-result')
+    expect(r1).toMatchObject({ ok: true, outputs: [path.join(outDir, 'Clips', 'clip_1.mp4')] })
+    fs.writeFileSync(path.join(outDir, 'Clips', 'clip_1.mp4'), 'first-result')
     const r2 = await svc().start(sender(), req)
-    expect(r2).toMatchObject({ ok: true, outputs: [path.join(outDir, 'clip (2)_1.mp4')] })
+    expect(r2).toMatchObject({ ok: true, outputs: [path.join(outDir, 'Clips', 'clip (2)_1.mp4')] })
     expect((r2 as { notices: string[] }).notices.some((n) => n.includes('clip (2)'))).toBe(true)
-    expect(fs.readFileSync(path.join(outDir, 'clip_1.mp4'), 'utf-8')).toBe('first-result')
+    expect(fs.readFileSync(path.join(outDir, 'Clips', 'clip_1.mp4'), 'utf-8')).toBe('first-result')
   })
 })
 
@@ -52,8 +52,8 @@ describe('export:start with mixed sources (I9)', () => {
       outDir,
       baseName: 'joined'
     })
-    expect(r).toMatchObject({ ok: true, outputs: [path.join(outDir, 'joined.mp4')] })
+    expect(r).toMatchObject({ ok: true, outputs: [path.join(outDir, 'Merged', 'joined.mp4')] })
     expect((r as { notices: string[] }).notices.length).toBeGreaterThan(0)
-    expect(fs.readdirSync(outDir)).toEqual(['joined.mp4'])
+    expect(fs.readdirSync(path.join(outDir, 'Merged'))).toEqual(['joined.mp4'])
   })
 })

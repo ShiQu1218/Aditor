@@ -7,6 +7,7 @@ import { DEFAULT_SETTINGS, type Settings, type SettingsSetResult } from '../../s
 import { SettingsScreen } from './SettingsScreen'
 import { SettingsController, type SettingsApi } from './settingsController'
 import { settingsI18n } from '../i18n'
+import { SETTING_ROWS } from './rows'
 
 function fakeApi(opts: { persisted?: boolean; settings?: Partial<Settings> } = {}): SettingsApi {
   let current: Settings = { ...DEFAULT_SETTINGS, ...opts.settings }
@@ -29,6 +30,7 @@ function fakeApi(opts: { persisted?: boolean; settings?: Partial<Settings> } = {
     export: {
       detectEncoders: async () => ['h264_nvenc'],
       selectOutDir: async () => 'D:/Videos/Apex',
+      openFolder: async () => true,
       openh264Status: async () => ({ installed: true })
     }
   }
@@ -55,9 +57,9 @@ describe('SettingsScreen markup（renderToString + fake window.api 資料）', (
     expect(html).toContain(settingsI18n.loading)
   })
 
-  test('category a: language, watch folders, auto analyze, decode, cache, low-perf (6 rows) with the exact tablist', async () => {
+  test('category a: language, storage root, watch folders, auto analyze, decode, cache, low-perf (7 rows) with the exact tablist', async () => {
     const html = await render({ initialCategory: 'a' })
-    expect(rowIds(html)).toEqual(['language', 'watchFolders', 'autoAnalyze', 'decode', 'cacheLocation', 'lowPerfMode'])
+    expect(rowIds(html)).toEqual(['language', 'storageRoot', 'watchFolders', 'autoAnalyze', 'decode', 'cacheLocation', 'lowPerfMode'])
     expect(html).toContain('影片來源')
     expect(html).toContain('分析與效能')
     // 監看資料夾來自 getWatchFolders，缺失者有標記，每個都有可命名的移除按鈕
@@ -80,14 +82,44 @@ describe('SettingsScreen markup（renderToString + fake window.api 資料）', (
     expect(html).toContain('aria-label="減少事件前秒數"')
   })
 
-  test('category c: export + about (5 rows), encoders and OpenH264 state, trademark text', async () => {
+  test('category c: export + about (4 rows), encoders and OpenH264 state, trademark text', async () => {
     const html = await render({ initialCategory: 'c' })
-    expect(rowIds(html)).toEqual(['defaultOutDir', 'encoders', 'openh264', 'about', 'trademark'])
+    expect(rowIds(html)).toEqual(['encoders', 'openh264', 'about', 'trademark'])
     expect(html).toContain('NVENC ✓')
     expect(html).toContain('QSV ✗')
     expect(html).toContain('已安裝')
     expect(html).toContain('Apex Legends 為 Electronic Arts／Respawn 之商標')
-    expect(html).toContain('每次詢問')
+    expect(html).not.toContain('data-row="defaultOutDir"')
+  })
+
+  const storageRowHtml = (html: string): string => html.slice(html.indexOf('data-row="storageRoot"'), html.indexOf('data-row="watchFolders"'))
+
+  test('storage root row: unset shows the suggestion with a note and the three-folder preview, no open button', async () => {
+    const api = fakeApi()
+    api.settings.suggestStorageRoot = async () => 'D:\\Videos\\Apex Highlighter'
+    const row = storageRowHtml(await render({ initialCategory: 'a' }, api))
+    expect(row).toContain('尚未設定（建議：D:\\Videos\\Apex Highlighter）')
+    expect(row).toContain('變更…')
+    expect(row).not.toContain('在檔案總管開啟')
+    expect(row).toContain('D:\\Videos\\Apex Highlighter\\Recordings\\日期')
+    expect(row).toContain('D:\\Videos\\Apex Highlighter\\Exports\\Merged')
+    expect(row).toContain('D:\\Videos\\Apex Highlighter\\Exports\\Clips')
+    expect(row).toContain('錄影依日期分資料夾')
+    expect(row).toContain('剪輯輸出：合併')
+    expect(row).toContain('剪輯輸出：一段一段')
+  })
+
+  test('storage root row: configured root is shown with the open-in-explorer button', async () => {
+    const row = storageRowHtml(await render({ initialCategory: 'a' }, fakeApi({ settings: { storageRoot: 'E:\\Apex' } })))
+    expect(row).not.toContain('尚未設定')
+    expect(row).toContain('在檔案總管開啟')
+    expect(row).toContain('E:\\Apex\\Exports\\Merged')
+  })
+
+  test('the separate defaultOutDir and recording-outputDir rows are gone', () => {
+    const ids = SETTING_ROWS.map((r) => r.id)
+    expect(ids).not.toContain('defaultOutDir')
+    expect(ids).not.toContain('recording-outputDir')
   })
 
   test('controls are real labelled form controls (label for, aria-describedby, role=switch checkbox)', async () => {
@@ -134,20 +166,20 @@ describe('SettingsScreen markup（renderToString + fake window.api 資料）', (
 
   test('search results: rows from ALL categories, grouped by card, with per-category hit counts', async () => {
     const html = await render({ initialQuery: '資料夾' })
-    // 監看資料夾（a）與預設輸出資料夾（c）；b 沒有命中
-    expect(rowIds(html)).toEqual(['watchFolders', 'defaultOutDir', 'recording-outputDir'])
+    // 儲存位置與監看資料夾（皆在 a）；b、c 沒有命中
+    expect(rowIds(html)).toEqual(['storageRoot', 'watchFolders'])
     expect(html).toContain('role="region"')
     expect(html).toContain('aria-label="搜尋結果"')
     expect(html).not.toContain('role="tabpanel"')
     // 只顯示命中的列（同卡片的其他列被濾掉）
     expect(html).not.toContain('data-row="autoAnalyze"')
     expect(html).toContain('影片來源') // 卡片標題保留
-    // 各分類命中數（a、c 有；b 沒有）
+    // 各分類命中數（只有 a 有）
     const tabs = [...html.matchAll(/<button[^>]*role="tab"[^>]*>.*?<\/button>/g)].map((m) => m[0])
     expect(tabs[0]).toContain('class="set-hit"')
     expect(tabs[1]).not.toContain('set-hit')
-    expect(tabs[2]).toContain('class="set-hit"')
-    expect(tabs[0]).toMatch(/aria-label="1 項符合">1</)
+    expect(tabs[2]).not.toContain('set-hit')
+    expect(tabs[0]).toMatch(/aria-label="2 項符合">2</)
   })
 
   test('search matches keywords case-insensitively (NVENC → encoders row)', async () => {
@@ -227,13 +259,13 @@ describe('save-failed notice and state sync', () => {
     api.settings.set = async () => ({
       settings: { ...DEFAULT_SETTINGS },
       persisted: true,
-      errors: { defaultOutDir: '資料夾不存在：Z:\\nope' }
+      errors: { storageRoot: '無法建立或寫入儲存位置：Z:\\nope' }
     })
-    const html = await render({ initialCategory: 'c' }, api, async (c) => {
-      await c.pickOutDir()
+    const html = await render({ initialCategory: 'a' }, api, async (c) => {
+      await c.pickStorageRoot()
     })
-    expect(html).toMatch(/<p[^>]*class="set-err"[^>]*role="alert"[^>]*>資料夾不存在：Z:\\nope<\/p>/)
-    expect(html).toMatch(/id="set-defaultOutDir"[^>]*aria-describedby="[^"]*set-defaultOutDir-err/)
+    expect(html).toMatch(/<p[^>]*class="set-err"[^>]*role="alert"[^>]*>無法建立或寫入儲存位置：Z:\\nope<\/p>/)
+    expect(html).toMatch(/id="set-storageRoot"[^>]*aria-describedby="[^"]*set-storageRoot-err/)
   })
 
   test('load failure shows defaults plus a notice', async () => {
@@ -255,6 +287,7 @@ describe('wiring: preload channel names match the main-process handlers', () => 
   test.each([
     ['settings:get'],
     ['settings:set'],
+    ['settings:suggestStorageRoot'],
     ['proxy:usage'],
     ['proxy:delete'],
     ['library:getWatchFolders'],
@@ -263,6 +296,7 @@ describe('wiring: preload channel names match the main-process handlers', () => 
     ['library:getEntries'],
     ['export:detectEncoders'],
     ['export:selectOutDir'],
+    ['export:openFolder'],
     ['export:openh264Status']
   ])('invoke channel %s is handled in main', (channel) => {
     expect(preload).toContain(`ipcRenderer.invoke('${channel}'`)

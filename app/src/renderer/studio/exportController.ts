@@ -1,5 +1,6 @@
 import { i18n } from '../i18n'
 import { tr } from '../../shared/locale'
+import { exportSubDirName, joinForDisplay } from '../../shared/storage'
 
 /**
  * 匯出抽屜的狀態機（純 TS，不依賴 React／DOM；window.api 以參數注入，便於用假 api 測試）。
@@ -291,8 +292,14 @@ export function createExportController(api: ExportApi, initialName = 'highlight'
     return start(lastItems)
   }
 
+  /** 實際輸出目錄：使用者選的 outDir 底下依模式分的子資料夾（Merged／Clips）；outDir 為空時 null。 */
+  function getOutputDir(): string | null {
+    const { outDir, mode } = state.settings
+    return outDir ? joinForDisplay(outDir, exportSubDirName(mode)) : null
+  }
+
   async function openFolder(): Promise<void> {
-    const dir = state.settings.outDir
+    const dir = getOutputDir()
     if (!dir) return
     try {
       await api.openFolder(dir)
@@ -318,6 +325,7 @@ export function createExportController(api: ExportApi, initialName = 'highlight'
 
   return {
     getState: (): ExportState => state,
+    getOutputDir,
     subscribe: (fn: () => void): (() => void) => {
       listeners.add(fn)
       return () => {

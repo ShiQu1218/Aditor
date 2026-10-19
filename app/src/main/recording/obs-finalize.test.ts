@@ -4,10 +4,15 @@ import path from 'path'
 import { spawnSync } from 'child_process'
 import { finalizeSession, writeJson } from './finalize'
 import { recoverSessions } from './recovery'
+import { DAY_FOLDER_PATTERN } from '../../shared/storage'
 import { createSegments, ffmpeg, makeDeps, sessionDir, tempRoot } from './test-support'
 
 const roots: string[] = []
 afterEach(() => { vi.restoreAllMocks(); for (const root of roots.splice(0)) fs.rmSync(root, { recursive: true, force: true }) })
+/** videos 底下各日期資料夾內的 mp4（不含 outputDir 根）。 */
+const datedMp4 = (root: string): string[] => fs.readdirSync(path.join(root, 'videos'), { withFileTypes: true })
+  .filter((d) => d.isDirectory() && DAY_FOLDER_PATTERN.test(d.name))
+  .flatMap((d) => fs.readdirSync(path.join(root, 'videos', d.name)).filter((f) => f.endsWith('.mp4')))
 const event = (t: number) => ({ id: `a${t}`, t, type: 'knock', counted: true })
 async function rig(mode = 'session', trusted = false) {
   const root = tempRoot(); roots.push(root)
@@ -56,6 +61,10 @@ describe.skipIf(!ffmpeg)('OBS 收尾與復原（真實 ffmpeg）', () => {
     const r = await rig('match')
     const [cut] = await finalizeSession(r.dir, r.deps)
     expect(path.basename(cut)).toMatch(/^Apex_.*\.mp4$/)
+    // 逐局輸出放進起點日期資料夾（資料夾名等於檔名的日期），outputDir 根不留 mp4
+    expect(path.dirname(cut)).toBe(path.join(r.root, 'videos', path.basename(cut).slice(5, 15)))
+    expect(DAY_FOLDER_PATTERN.test(path.basename(path.dirname(cut)))).toBe(true)
+    expect(fs.readdirSync(path.join(r.root, 'videos')).filter((f) => f.endsWith('.mp4'))).toEqual([])
     expect(r.deps.addToLibrary).toHaveBeenCalledWith([cut])
     expect(cut).not.toBe(r.outputPath)
     expect(fs.existsSync(cut + '.apexhl.json')).toBe(true)
@@ -95,7 +104,7 @@ describe.skipIf(!ffmpeg)('OBS 收尾與復原（真實 ffmpeg）', () => {
     // 影像與聲音都從 0 開始，不靠 MP4 edit list 隱藏多出的畫面（Chromium 播放時會不同步）
     expect(firstPts('v:0')).toBeCloseTo(0, 2)
     expect(Math.abs(firstPts('a:0'))).toBeLessThan(0.05)
-    expect(fs.readdirSync(path.join(r.root, 'videos')).filter((f) => f.endsWith('.mp4'))).toHaveLength(2)
+    expect(datedMp4(r.root)).toHaveLength(2)
     expect(fs.readFileSync(r.outputPath)).toEqual(original)
   })
   it('遠端路徑通知後結束，不修改媒體庫', async () => {
@@ -119,7 +128,7 @@ describe.skipIf(!ffmpeg)('OBS 收尾與復原（真實 ffmpeg）', () => {
     const marker = JSON.parse(fs.readFileSync(path.join(r.dir, 'matches.json'), 'utf8'))
     const outputs = await finalizeSession(r.dir, r.deps)
     expect(outputs).toEqual(marker.cuts.map((cut: any) => cut.outputPath))
-    expect(fs.readdirSync(path.join(r.root, 'videos')).filter((f) => f.endsWith('.mp4'))).toHaveLength(1)
+    expect(datedMp4(r.root)).toHaveLength(1)
     expect(fs.readFileSync(r.outputPath)).toEqual(r.original)
   })
   it('原檔在工作目錄內時保留整個目錄，不執行刪除', async () => {
