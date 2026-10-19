@@ -6,7 +6,7 @@ import { describe, expect, test } from 'vitest'
 import { DEFAULT_SETTINGS, type Settings, type SettingsSetResult } from '../../shared/settings'
 import { SettingsScreen } from './SettingsScreen'
 import { SettingsController, type SettingsApi } from './settingsController'
-import { settingsI18n } from '../i18n/zh-TW'
+import { settingsI18n } from '../i18n'
 
 function fakeApi(opts: { persisted?: boolean; settings?: Partial<Settings> } = {}): SettingsApi {
   let current: Settings = { ...DEFAULT_SETTINGS, ...opts.settings }

@@ -3,7 +3,7 @@ import React, { act, createRef } from 'react'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { cleanupMounted, click, focusEl, installDomShims, mount, press } from '../../../test/dom'
 import { mountStudio, type StudioMount } from '../../../test/studioHarness'
-import { i18n } from '../i18n/zh-TW'
+import { i18n } from '../i18n'
 import { TimelineCanvas, TimelineHandle } from './TimelineCanvas'
 import { resetThemeCache } from './draw'
 

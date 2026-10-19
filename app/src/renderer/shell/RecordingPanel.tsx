@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { useFocusTrap } from '../a11y/useFocusTrap'
 import { X } from '../components/icons'
-import { recordingI18n as t } from '../i18n/zh-TW'
+import { recordingI18n as t } from '../i18n'
 import { formatBytes } from '../settings/settingsModel'
 import { useRecordingStatus } from './useRecordingStatus'
 import './recording.css'

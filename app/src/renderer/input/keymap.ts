@@ -1,5 +1,5 @@
 // 鍵盤分派：spec §3.2.7「鍵 × 聚焦區」矩陣的純函式實作。
-import { shellI18n } from '../i18n/zh-TW'
+import { shellI18n } from '../i18n'
 import type { TargetKind, Zone } from './focusZone'
 
 export type { TargetKind, Zone }

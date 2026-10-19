@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useSyncExternalStore } from 'react'
 import '../styles/exportDrawer.css'
-import { i18n } from '../i18n/zh-TW'
+import { i18n } from '../i18n'
 import { formatTime } from '../../shared/time'
 import { estimateOutputBytes } from '../../shared/exportEstimate'
 import { totalDuration, Project } from '../editor/project'

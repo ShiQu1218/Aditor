@@ -1,5 +1,5 @@
 import type { PlayabilityResult } from '../media/playability'
-import { i18n } from '../i18n/zh-TW'
+import { i18n } from '../i18n'
 
 export type NoticeAction = 'resume' | 'copyError' | 'generateProxy' | 'later' | 'relink' | 'back'
 

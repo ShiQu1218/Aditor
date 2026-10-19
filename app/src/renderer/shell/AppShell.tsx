@@ -6,7 +6,7 @@ import { QueuePopover } from './QueuePopover'
 import { QueueProvider } from '../queue/QueueProvider'
 import { useProject } from '../editor/ProjectProvider'
 import { useToast } from './ToastHost'
-import { i18n } from '../i18n/zh-TW'
+import { i18n } from '../i18n'
 import { RecordingPanel } from './RecordingPanel'
 import { useRecordingStatus } from './useRecordingStatus'
 

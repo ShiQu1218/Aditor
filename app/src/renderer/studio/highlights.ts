@@ -3,7 +3,7 @@ import { isCounted } from '../../shared/types'
 import { mergeOnReanalyze, normalizeClips } from '../../shared/clips'
 import type { AutoClipParams } from '../../shared/types'
 import { addItems, type Project, type ProjectItem } from '../editor/project'
-import { i18n } from '../i18n/zh-TW'
+import { i18n } from '../i18n'
 
 /**
  * 精華分頁的純函式（spec §3.2.3、§3.2.4、§3.6）：

@@ -6,7 +6,7 @@ import { cardStatusText, thumbnailUrl } from '../library/cardLogic'
 import { recordedTime, studioVideoTitle } from '../library/recordedTime'
 import { useQueueItemState } from '../queue/QueueProvider'
 import { useToast } from '../shell/ToastHost'
-import { i18n } from '../i18n/zh-TW'
+import { i18n } from '../i18n'
 import { subscribeStudioSettings } from './studioSettings'
 import { useStudioLibrary } from './useStudioLibrary'
 

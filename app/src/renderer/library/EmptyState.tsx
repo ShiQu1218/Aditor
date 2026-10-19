@@ -1,6 +1,6 @@
 import React from 'react'
 import { Film, FolderInput, Plus } from '../components/icons'
-import { i18n } from '../i18n/zh-TW'
+import { i18n } from '../i18n'
 
 const t = i18n.library.empty
 

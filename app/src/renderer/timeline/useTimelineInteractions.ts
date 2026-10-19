@@ -3,7 +3,7 @@ import type { MouseEvent as ReactMouseEvent, MutableRefObject, RefObject } from 
 import type { Clip, EngineEvent } from '../../shared/types'
 import { isCounted } from '../../shared/types'
 import { formatTime } from '../../shared/time'
-import { i18n } from '../i18n/zh-TW'
+import { i18n } from '../i18n'
 import { resizeClip } from './clips'
 import { EVENT_TOP } from './draw'
 import { TimelineLayout, zoomToCluster } from './layout'

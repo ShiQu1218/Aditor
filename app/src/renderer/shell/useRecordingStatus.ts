@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { IDLE_RECORDING_STATUS, type RecordingStatus } from '../../shared/recording'
-import { recordingI18n } from '../i18n/zh-TW'
+import { recordingI18n } from '../i18n'
 
 /** 先訂閱再讀快照，避免較慢的初始回覆蓋過新推播。 */
 export function useRecordingStatus(): { status: RecordingStatus; error: string | null; refresh: () => Promise<void> } {

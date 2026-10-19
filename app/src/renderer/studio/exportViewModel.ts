@@ -1,6 +1,6 @@
 import { Project } from '../editor/project'
 import { concatCompatible, extraSecondsForCopy, StreamProbe } from '../../shared/exportCompat'
-import { i18n } from '../i18n/zh-TW'
+import { i18n } from '../i18n'
 
 /** 來源影片規格（engine:probe 的回傳）；其餘串流參數 main 端沿用預設值，因此這裡只比對這三項。 */
 export interface SourceInfo {

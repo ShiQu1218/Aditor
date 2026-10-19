@@ -5,7 +5,7 @@ import { existsSync, readFileSync } from 'fs'
 import { resolve } from 'path'
 import { DEFAULT_SETTINGS } from '../../shared/settings'
 import { SETTING_ROWS } from './rows'
-import { recordingI18n } from '../i18n/zh-TW'
+import { recordingI18n } from '../i18n'
 
 const src = (rel: string): string => resolve(__dirname, '../../', rel)
 

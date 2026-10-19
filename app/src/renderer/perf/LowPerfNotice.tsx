@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { AlertTriangle } from '../components/icons'
-import { i18n } from '../i18n/zh-TW'
+import { i18n } from '../i18n'
 import { createLowPerfPrompt } from './lowPerfPrompt'
 
 /** 首次啟動的低效能詢問（非模態、頁內）：偵測到無硬體解碼時顯示一次。 */

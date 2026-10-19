@@ -11,7 +11,7 @@ import type { AutoClipParams } from '../../shared/types'
 import { clampToRange } from './settingsModel'
 import type { BoolField } from './rows'
 import type { RecordingSettings, RecorderCapabilities, ObsTestResult } from '../../shared/recording'
-import { recordingI18n } from '../i18n/zh-TW'
+import { recordingI18n } from '../i18n'
 
 interface WatchStatus {
   ok?: boolean

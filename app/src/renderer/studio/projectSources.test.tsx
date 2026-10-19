@@ -7,7 +7,7 @@ import type { LibraryEntry } from '../../main/library'
 import type { ProjectItem } from '../editor/project'
 import { createFakeApi, installFakeApi, type FakeApi, type FakeApiOptions } from '../../../test/fakeApi'
 import { buttonByText, cleanupMounted, click, flush, installDomShims, mount, press } from '../../../test/dom'
-import { i18n } from '../i18n/zh-TW'
+import { i18n } from '../i18n'
 
 const A = 'D:/a.mp4'
 const B = 'D:/b.mp4'

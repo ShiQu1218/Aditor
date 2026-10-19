@@ -5,7 +5,7 @@ import { SettingsScreen } from './SettingsScreen'
 import { SettingsController, type SettingsApi } from './settingsController'
 import { DEFAULT_SETTINGS, type Settings } from '../../shared/settings'
 import type { RecorderCapabilities } from '../../shared/recording'
-import { recordingI18n as t } from '../i18n/zh-TW'
+import { recordingI18n as t } from '../i18n'
 import { cleanupMounted, click, flush, installDomShims, mount } from '../../../test/dom'
 
 const capabilities: RecorderCapabilities = {

@@ -23,7 +23,7 @@ import { createThrottle } from '../shared/throttle'
 import type { CacheDoc, Clip } from '../shared/types'
 import { handleProxyGenerate, handleProxyUsage } from './proxy-ipc'
 import { ProjectItem } from '../renderer/editor/project'
-import { i18n } from '../renderer/i18n/zh-TW'
+import { i18n } from '../renderer/i18n'
 
 /** `library:updated` 廣播的最小間隔 */
 export const LIBRARY_UPDATE_INTERVAL_MS = 500

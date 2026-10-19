@@ -1,6 +1,6 @@
 // 設定畫面的列定義（資料表）：分類、卡片、標題／說明／搜尋關鍵字與控制項種類。
 // 文字一律來自 i18n/zh-TW.ts；控制項如何讀寫 Settings／IPC 由 SettingRow 與 settingsController 實作。
-import { settingsI18n, recordingI18n } from '../i18n/zh-TW'
+import { settingsI18n, recordingI18n } from '../i18n'
 import type { RecordingSettings } from '../../shared/recording'
 
 const t = settingsI18n

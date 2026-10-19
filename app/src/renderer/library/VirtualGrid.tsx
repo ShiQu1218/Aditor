@@ -4,7 +4,7 @@ import type { DateGroup } from '../lib/groupByDate'
 import { CARD, cardGeomStyle, cardRowHeight, computeGrid, gridColumns, type GridRow } from '../lib/gridLayout'
 import { revealScrollTarget } from '../lib/listCursor'
 import { gridStep, type GridPos } from '../a11y/roving'
-import { i18n } from '../i18n/zh-TW'
+import { i18n } from '../i18n'
 
 interface VirtualGridProps {
   groups: DateGroup[]

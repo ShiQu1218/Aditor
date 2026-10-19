@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest'
 import { recordedTime, studioVideoTitle } from './recordedTime'
 import { thumbnailUrl, cardStatusText } from './cardLogic'
-import { i18n } from '../i18n/zh-TW'
+import { i18n } from '../i18n'
 
 const addedAt = new Date(2026, 9, 20, 12).getTime()
 const entry = (path: string) => ({ path, addedAt })

@@ -1,4 +1,4 @@
-import { i18n } from '../i18n/zh-TW'
+import { i18n } from '../i18n'
 
 /**
  * 匯出抽屜的狀態機（純 TS，不依賴 React／DOM；window.api 以參數注入，便於用假 api 測試）。

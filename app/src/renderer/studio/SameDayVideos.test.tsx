@@ -7,7 +7,7 @@ import { Providers } from '../../../test/harness'
 import { createFakeApi, installFakeApi, type FakeApi } from '../../../test/fakeApi'
 import { cleanupMounted, click, flush, focusEl, installDomShims, mount } from '../../../test/dom'
 import { runAxe } from '../../../test/axe'
-import { i18n } from '../i18n/zh-TW'
+import { i18n } from '../i18n'
 
 const A = 'D:/Apex_2026-10-18_00-01.mp4'
 const B = 'D:/Apex_2026-10-18_23-59_2.mp4'

@@ -2,7 +2,7 @@ import React, { useRef } from 'react'
 import { KEY_TABLE, type KeyRow } from '../input/keymap'
 import { useFocusTrap } from '../a11y/useFocusTrap'
 import { X } from '../components/icons'
-import { shellI18n } from '../i18n/zh-TW'
+import { shellI18n } from '../i18n'
 
 /** 說明中分組的顯示順序（其餘 scope 依 KEY_TABLE 出現順序接在後面）。 */
 const SCOPE_ORDER = [

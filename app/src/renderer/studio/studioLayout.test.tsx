@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { buttonByText, cleanupMounted, click, flush, press } from '../../../test/dom'
 import { mountStudio, type StudioMount } from '../../../test/studioHarness'
-import { i18n } from '../i18n/zh-TW'
+import { i18n } from '../i18n'
 
 let s: StudioMount | null = null
 afterEach(() => {

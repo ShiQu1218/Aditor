@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest'
 import { exportViewModel, ExportPlan } from './exportViewModel'
 import { Project } from '../editor/project'
-import { i18n } from '../i18n/zh-TW'
+import { i18n } from '../i18n'
 
 const A = 'D:/v/a.mp4'
 const B = 'D:/v/b.mp4'

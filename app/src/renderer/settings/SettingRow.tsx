@@ -1,5 +1,5 @@
 import React from 'react'
-import { settingsI18n } from '../i18n/zh-TW'
+import { settingsI18n } from '../i18n'
 import { SettingControl, type ControlIds } from './SettingControls'
 import type { SettingsController, SettingsState } from './settingsController'
 import type { SettingRow as Row } from './rows'

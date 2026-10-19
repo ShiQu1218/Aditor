@@ -1,7 +1,7 @@
 import type { EngineEvent } from '../../shared/types'
 import { isCounted } from '../../shared/types'
 import { formatTime } from '../../shared/time'
-import { i18n } from '../i18n/zh-TW'
+import { i18n } from '../i18n'
 
 /**
  * 事件原因小字（spec §3.2.3）：軟刪除 → 強制（override）→ counted_reason；

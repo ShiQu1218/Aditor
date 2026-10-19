@@ -1,6 +1,6 @@
 import React from 'react'
 import { EventType } from '../../shared/types'
-import { i18n } from '../i18n/zh-TW'
+import { i18n } from '../i18n'
 import { CHIP_TYPES } from './chips'
 
 interface EventFilterChipsProps {

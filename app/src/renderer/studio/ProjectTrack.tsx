@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { formatTime } from '../../shared/time'
-import { i18n } from '../i18n/zh-TW'
+import { i18n } from '../i18n'
 import { ChevronDown, Copy, Download, Redo2, Scissors, Trash2, Undo2 } from '../components/icons'
 import type { Project, ProjectItem } from '../editor/project'
 import type { SaveState } from '../editor/ProjectProvider'

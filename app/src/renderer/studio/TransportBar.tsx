@@ -1,7 +1,7 @@
 import React from 'react'
 import { EventType } from '../../shared/types'
 import { formatTime } from '../../shared/time'
-import { i18n } from '../i18n/zh-TW'
+import { i18n } from '../i18n'
 import { Pause, Play, Scissors, SkipBack, SkipForward, Sparkles } from '../components/icons'
 import { EventFilterChips } from './EventFilterChips'
 

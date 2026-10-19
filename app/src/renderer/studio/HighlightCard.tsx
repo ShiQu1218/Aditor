@@ -2,7 +2,7 @@ import React, { forwardRef } from 'react'
 import type { Clip, EngineEvent } from '../../shared/types'
 import { formatTime } from '../../shared/time'
 import { Check, Play, Plus, Undo2 } from '../components/icons'
-import { i18n } from '../i18n/zh-TW'
+import { i18n } from '../i18n'
 import { clipEventGlyphs, clipTitle } from './highlights'
 
 export interface HighlightCardProps {

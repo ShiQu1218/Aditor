@@ -1,7 +1,7 @@
 import type { Clip, EngineEvent, EventType, SpecInterval } from '../../shared/types'
 import { isCounted } from '../../shared/types'
 import { formatTime } from '../../shared/time'
-import { i18n } from '../i18n/zh-TW'
+import { i18n } from '../i18n'
 import type { TimelineLayout } from './layout'
 import { View, timeToX } from './model'
 import { heatBinCount } from '../perf/lowPerf'

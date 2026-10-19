@@ -4,7 +4,7 @@ import { formatTime } from '../../shared/time'
 import { suggestionCount } from '../../shared/clips'
 import { totalDuration, type Project } from '../editor/project'
 import { rovingStep } from '../a11y/roving'
-import { i18n } from '../i18n/zh-TW'
+import { i18n } from '../i18n'
 import { HighlightCard } from './HighlightCard'
 
 export interface HighlightsTabProps {

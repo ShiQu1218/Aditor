@@ -14,7 +14,7 @@ import { useKeymap } from '../hooks/useShortcuts'
 import { useToast } from '../shell/ToastHost'
 import { useOverlay } from '../shell/OverlayHost'
 import { useQueueStore } from '../queue/QueueProvider'
-import { i18n } from '../i18n/zh-TW'
+import { i18n } from '../i18n'
 import { subscribeStudioSettings } from '../studio/studioSettings'
 import { library500Requested } from '../dev/libraryFixtureFlag'
 

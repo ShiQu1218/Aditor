@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { RECORDING_RANGES, type RecordingSettings } from '../../shared/recording'
-import { recordingI18n as t } from '../i18n/zh-TW'
+import { recordingI18n as t } from '../i18n'
 import { GainControl, NumberField, SegmentedControl, SelectControl, SwitchControl, describedBy, type ControlIds } from './SettingControls'
 import type { SettingsController, SettingsState } from './settingsController'
 import { fillTemplate } from './settingsModel'

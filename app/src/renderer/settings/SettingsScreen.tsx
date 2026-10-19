@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState, useSyncExtern
 import { useKeymap } from '../hooks/useShortcuts'
 import { useMediaQuery } from '../hooks/useMediaQuery'
 import { useOptionalOverlay } from '../shell/OverlayHost'
-import { settingsI18n, recordingI18n } from '../i18n/zh-TW'
+import { settingsI18n, recordingI18n } from '../i18n'
 import { SettingRow } from './SettingRow'
 import { SettingsNav } from './SettingsNav'
 import { SettingsSearch } from './SettingsSearch'

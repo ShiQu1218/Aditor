@@ -2,7 +2,7 @@ import React, { useEffect, useId, useRef, useState } from 'react'
 import { useFocusTrap } from '../a11y/useFocusTrap'
 import { EventType } from '../../shared/types'
 import { formatTime } from '../../shared/time'
-import { i18n } from '../i18n/zh-TW'
+import { i18n } from '../i18n'
 import { CHIP_TYPES } from './chips'
 
 interface AddEventDialogProps {
