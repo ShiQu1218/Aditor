@@ -121,18 +121,18 @@ export const settingsI18n: Messages['settingsI18n'] = {
       keywords: ['项目', '自动保存', 'autosave', '保存']
     },
     storageRoot: {
-      title: '儲存位置',
-      desc: '錄影與剪輯輸出都存在這個資料夾底下，方便整批備份或搬移。',
-      keywords: ['儲存', '位置', '資料夾', '錄影', '輸出', '匯出', 'storage', 'folder', 'recordings', 'exports'],
-      unset: '尚未設定（建議：{dir}）',
-      change: '變更…',
-      open: '在檔案總管開啟',
+      title: '储存位置',
+      desc: '录制与剪辑输出都保存在这个文件夹下，方便整批备份或搬迁。',
+      keywords: ['储存', '保存', '位置', '文件夹', '录制', '输出', '导出', 'storage', 'folder', 'recordings', 'exports'],
+      unset: '尚未设置（建议：{dir}）',
+      change: '更改…',
+      open: '在资源管理器中打开',
       preview: {
-        heading: '資料夾結構',
+        heading: '文件夹结构',
         dayFolder: '日期',
-        recordings: '錄影依日期分資料夾',
-        merged: '剪輯輸出：合併',
-        clips: '剪輯輸出：一段一段'
+        recordings: '录制按日期分文件夹',
+        merged: '剪辑输出：合并',
+        clips: '剪辑输出：逐段'
       }
     },
     encoders: {

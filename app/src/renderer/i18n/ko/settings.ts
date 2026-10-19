@@ -121,18 +121,18 @@ export const settingsI18n: Messages['settingsI18n'] = {
       keywords: ['프로젝트', '자동 저장', 'autosave', '저장']
     },
     storageRoot: {
-      title: '儲存位置',
-      desc: '錄影與剪輯輸出都存在這個資料夾底下，方便整批備份或搬移。',
-      keywords: ['儲存', '位置', '資料夾', '錄影', '輸出', '匯出', 'storage', 'folder', 'recordings', 'exports'],
-      unset: '尚未設定（建議：{dir}）',
-      change: '變更…',
-      open: '在檔案總管開啟',
+      title: '저장 위치',
+      desc: '녹화와 편집 결과물은 모두 이 폴더 아래에 저장되어, 한꺼번에 백업하거나 옮기기 쉽습니다.',
+      keywords: ['저장', '위치', '폴더', '녹화', '출력', '내보내기', 'storage', 'folder', 'recordings', 'exports'],
+      unset: '아직 설정되지 않음(권장: {dir})',
+      change: '변경…',
+      open: '파일 탐색기에서 열기',
       preview: {
-        heading: '資料夾結構',
-        dayFolder: '日期',
-        recordings: '錄影依日期分資料夾',
-        merged: '剪輯輸出：合併',
-        clips: '剪輯輸出：一段一段'
+        heading: '폴더 구조',
+        dayFolder: '날짜',
+        recordings: '녹화는 날짜별 폴더에 저장',
+        merged: '편집 결과: 병합',
+        clips: '편집 결과: 클립별 저장'
       }
     },
     encoders: {

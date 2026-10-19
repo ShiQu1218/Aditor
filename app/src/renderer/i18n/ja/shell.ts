@@ -20,44 +20,44 @@ export const shellI18n: Messages['shellI18n'] = {
   },
   toastHost: { label: '通知' },
   onboarding: {
-    progress: '第 {n} 步，共 {total} 步',
-    skip: '稍後再說',
-    back: '上一步',
-    next: '下一步',
-    finish: '開始使用',
-    saving: '儲存中…',
+    progress: 'ステップ {n} / {total}',
+    skip: 'あとで',
+    back: '戻る',
+    next: '次へ',
+    finish: '使い始める',
+    saving: '保存中…',
     welcome: {
-      title: '歡迎使用 Apex Highlighter',
-      body: '只要幾個簡單的設定就能開始：選擇介面語言、決定檔案存放的位置、挑選錄影方式。之後都可以在「設定」修改。',
-      languageLabel: '介面語言',
-      languageAuto: '跟隨系統'
+      title: 'Apex Highlighter へようこそ',
+      body: 'いくつかの簡単な設定で使い始められます。表示言語、ファイルの保存場所、録画方法を選んでください。あとから「設定」でいつでも変更できます。',
+      languageLabel: '表示言語',
+      languageAuto: 'システムに合わせる'
     },
     storage: {
-      title: '檔案要存在哪裡？',
-      body: '錄影與剪輯輸出會放在同一個資料夾底下，方便整批備份或搬移。',
-      current: '儲存位置',
-      choose: '選擇資料夾…',
-      loading: '正在取得建議位置…'
+      title: 'ファイルはどこに保存しますか？',
+      body: '録画と編集の出力は同じフォルダにまとめて保存されるため、一括バックアップや移動に便利です。',
+      current: '保存場所',
+      choose: 'フォルダーを選択…',
+      loading: 'おすすめの場所を取得しています…'
     },
     recording: {
-      title: '錄影設定',
-      body: '這些設定之後都能在「設定」的「錄影」分頁調整。',
-      modeLabel: '錄影模式',
-      modeSessionDesc: 'Apex 開著到關閉，存成一支完整的影片。',
-      modeMatchDesc: '每一局存成一支影片；大廳只暫存最近約 15 秒，不佔硬碟。',
-      resolution: '解析度',
-      fps: '影格率',
-      bitrate: '位元率（kbps）'
+      title: '録画設定',
+      body: 'これらの設定は、あとから「設定」の「録画」タブで変更できます。',
+      modeLabel: '録画モード',
+      modeSessionDesc: 'Apex を起動してから終了するまでを、1 本の動画として保存します。',
+      modeMatchDesc: '1 試合ごとに 1 本の動画として保存します。ロビーでは直近約 15 秒だけを一時保存するため、ディスクを圧迫しません。',
+      resolution: '解像度',
+      fps: 'フレームレート',
+      bitrate: 'ビットレート（kbps）'
     },
     done: {
-      title: '都設定好了',
-      summaryStorage: '儲存位置：{dir}',
-      summaryMode: '錄影模式：{mode}',
-      summaryQuality: '畫質：{height}、{fps} fps、{bitrate} kbps',
-      nextHeading: '接下來會發生的事',
-      next1: '開啟 Apex Legends 後會自動開始錄影。',
-      next2: '錄影結束後會自動分析，找出精彩片段。',
-      next3: '到「工作室」挑選片段並輸出。'
+      title: '設定が完了しました',
+      summaryStorage: '保存場所：{dir}',
+      summaryMode: '録画モード：{mode}',
+      summaryQuality: '画質：{height}、{fps} fps、{bitrate} kbps',
+      nextHeading: 'この後の流れ',
+      next1: 'Apex Legends を起動すると、自動で録画が始まります。',
+      next2: '録画が終わると自動で解析され、ハイライトを探します。',
+      next3: '「Studio」でクリップを選んで書き出します。'
     }
   },
   keymap: {

@@ -21,43 +21,43 @@ export const shellI18n: Messages['shellI18n'] = {
   toastHost: { label: '通知' },
   onboarding: {
     progress: '第 {n} 步，共 {total} 步',
-    skip: '稍後再說',
+    skip: '稍后再说',
     back: '上一步',
     next: '下一步',
-    finish: '開始使用',
-    saving: '儲存中…',
+    finish: '开始使用',
+    saving: '保存中…',
     welcome: {
-      title: '歡迎使用 Apex Highlighter',
-      body: '只要幾個簡單的設定就能開始：選擇介面語言、決定檔案存放的位置、挑選錄影方式。之後都可以在「設定」修改。',
-      languageLabel: '介面語言',
-      languageAuto: '跟隨系統'
+      title: '欢迎使用 Apex Highlighter',
+      body: '只需几个简单设置即可开始：选择界面语言、决定文件保存的位置、挑选录制方式。之后都可以在“设置”中修改。',
+      languageLabel: '界面语言',
+      languageAuto: '跟随系统'
     },
     storage: {
-      title: '檔案要存在哪裡？',
-      body: '錄影與剪輯輸出會放在同一個資料夾底下，方便整批備份或搬移。',
-      current: '儲存位置',
-      choose: '選擇資料夾…',
-      loading: '正在取得建議位置…'
+      title: '文件要保存在哪里？',
+      body: '录制与剪辑输出会放在同一个文件夹下，方便整批备份或搬迁。',
+      current: '储存位置',
+      choose: '选择文件夹…',
+      loading: '正在获取建议位置…'
     },
     recording: {
-      title: '錄影設定',
-      body: '這些設定之後都能在「設定」的「錄影」分頁調整。',
-      modeLabel: '錄影模式',
-      modeSessionDesc: 'Apex 開著到關閉，存成一支完整的影片。',
-      modeMatchDesc: '每一局存成一支影片；大廳只暫存最近約 15 秒，不佔硬碟。',
-      resolution: '解析度',
-      fps: '影格率',
-      bitrate: '位元率（kbps）'
+      title: '录制设置',
+      body: '这些设置之后都可以在“设置”的“录制”标签页中调整。',
+      modeLabel: '录制模式',
+      modeSessionDesc: 'Apex 开着到关闭，保存为一个完整的视频。',
+      modeMatchDesc: '每一局保存为一个视频；大厅只暂存最近约 15 秒，不占硬盘。',
+      resolution: '分辨率',
+      fps: '帧率',
+      bitrate: '码率（kbps）'
     },
     done: {
-      title: '都設定好了',
-      summaryStorage: '儲存位置：{dir}',
-      summaryMode: '錄影模式：{mode}',
-      summaryQuality: '畫質：{height}、{fps} fps、{bitrate} kbps',
-      nextHeading: '接下來會發生的事',
-      next1: '開啟 Apex Legends 後會自動開始錄影。',
-      next2: '錄影結束後會自動分析，找出精彩片段。',
-      next3: '到「工作室」挑選片段並輸出。'
+      title: '都设置好了',
+      summaryStorage: '储存位置：{dir}',
+      summaryMode: '录制模式：{mode}',
+      summaryQuality: '画质：{height}、{fps} fps、{bitrate} kbps',
+      nextHeading: '接下来会发生的事',
+      next1: '打开 Apex Legends 后会自动开始录制。',
+      next2: '录制结束后会自动分析，找出精彩片段。',
+      next3: '到“工作室”挑选片段并导出。'
     }
   },
   keymap: {

@@ -121,18 +121,18 @@ export const settingsI18n: Messages['settingsI18n'] = {
       keywords: ['プロジェクト', '自動保存', 'autosave', '保存']
     },
     storageRoot: {
-      title: '儲存位置',
-      desc: '錄影與剪輯輸出都存在這個資料夾底下，方便整批備份或搬移。',
-      keywords: ['儲存', '位置', '資料夾', '錄影', '輸出', '匯出', 'storage', 'folder', 'recordings', 'exports'],
-      unset: '尚未設定（建議：{dir}）',
-      change: '變更…',
-      open: '在檔案總管開啟',
+      title: '保存場所',
+      desc: '録画と編集の出力は、すべてこのフォルダーの下に保存されます。一括バックアップや移動に便利です。',
+      keywords: ['保存', '場所', 'フォルダー', '録画', '出力', '書き出し', 'storage', 'folder', 'recordings', 'exports'],
+      unset: '未設定（推奨：{dir}）',
+      change: '変更…',
+      open: 'エクスプローラーで開く',
       preview: {
-        heading: '資料夾結構',
-        dayFolder: '日期',
-        recordings: '錄影依日期分資料夾',
-        merged: '剪輯輸出：合併',
-        clips: '剪輯輸出：一段一段'
+        heading: 'フォルダー構成',
+        dayFolder: '日付',
+        recordings: '録画は日付ごとにフォルダーを分ける',
+        merged: '編集出力：結合',
+        clips: '編集出力：クリップごと'
       }
     },
     encoders: {
