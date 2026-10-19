@@ -46,6 +46,8 @@ export interface SettingRow {
   keywords?: string[]
   /** 相對舊版新增的設定（顯示「新」標籤） */
   isNew?: boolean
+  /** 標題前的小圖示（幫助使用者在看不懂的語言下也找得到這一列） */
+  icon?: 'Globe'
   control: ControlSpec
   /** 後端尚未提供：該列的控制項停用，並以灰色文字顯示此說明 */
   disabledReason?: string
@@ -73,6 +75,7 @@ export const SETTING_ROWS: SettingRow[] = [
     desc: t.row.language.desc,
     keywords: [...t.row.language.keywords],
     isNew: true,
+    icon: 'Globe',
     control: {
       kind: 'select',
       field: 'language',
