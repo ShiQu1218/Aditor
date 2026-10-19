@@ -13,6 +13,9 @@ stdin 收到 EOF 或 {"cmd":"stop"} → 收尾、送出最終 snapshot、exit 0�
    決定尺度後把緩衝補跑一次。
 2. 學關鍵字期：與 analyze.work 的單段流程相同（AnchorCollector 蒐集 [0, LEARN_SCAN_SECONDS) 的錨點，需要關鍵字的
    格子先緩衝為 Pending，學完再定案）；期間另用「不驗證關鍵字」的暫定追蹤器提供暫定 snapshot。
+3. 延伸學習：學習範圍內樣板學不齊時（與離線相同），保留逐格紀錄並繼續蒐集錨點；每多一個錨點橫幅就試著補上缺的
+   樣板，補到就用紀錄重新定案（snapshot 立刻反映）；收尾時以全部錨點決定最終樣板，結果與離線一致。
+   紀錄超過 LATE_REPLAY_MAX_BYTES 就停止延伸學習（degraded）。
 """
 from __future__ import annotations
 
@@ -30,7 +33,7 @@ import numpy as np
 
 from . import ENGINE_VERSION
 from .calibrate import (LEARN_SCAN_SECONDS, PROBE_MIN, WANTED_HITS, AnchorCollector, build_keywords,
-                        pick_scale)
+                        extend_keywords, keywords_complete, pick_scale, same_keywords)
 from .decode import FPS
 from .derive import derive
 from .detect import Detector, Pending
@@ -61,6 +64,8 @@ STATS_INTERVAL = 5.0        # stats 每 5 秒（實際時間）
 CALIB_MAX_SCAN_SECONDS = 600.0          # 同 calibrate() 的 max_scan_seconds：掃滿仍不足 WANTED_HITS 就用現有命中決定
 CALIB_BUFFER_MAX_BYTES = 64 * 1024 * 1024   # 校準期緩衝的 PNG 位元組上限（約 400 格橫幅）；超過就提早決定尺度
 PENDING_BUFFER_MAX_BYTES = 64 * 1024 * 1024  # 學關鍵字期待驗證格（Pending 筆畫圖）的位元組上限；超過就提早學完
+LATE_REPLAY_MAX_BYTES = 128 * 1024 * 1024    # 延伸學習的逐格紀錄上限（約數小時的錄影）；超過就停止延伸學習
+FRAME_RECORD_BYTES = 400                     # 估算：逐格紀錄每格的固定開銷（FrameResult／Pending 物件），另加筆畫圖
 # 跳過／撕裂的槽占全部影格的比例超過這個值，就不能保證結果等同離線分析
 MAX_LOSS_RATIO = 0.01
 PNG_LEVEL = 1               # 校準期緩衝的 PNG 壓縮等級（快；無損）
@@ -310,11 +315,20 @@ class LiveKills:
 
     def __init__(self, profile: Profile, *, calib_max_scan: float = CALIB_MAX_SCAN_SECONDS,
                  calib_max_bytes: int = CALIB_BUFFER_MAX_BYTES, learn_seconds: float = LEARN_SCAN_SECONDS,
-                 pending_max_bytes: int = PENDING_BUFFER_MAX_BYTES,
+                 pending_max_bytes: int = PENDING_BUFFER_MAX_BYTES, late_max_bytes: int = LATE_REPLAY_MAX_BYTES,
                  log: Callable[[str], None] | None = None):
         self.profile = profile
         self._learn_hi = learn_seconds
         self._pending_max = pending_max_bytes
+        self._late_max = late_max_bytes
+        # 延伸學習（學習範圍內樣板學不齊時）：學習範圍的收集器、延伸範圍的收集器、逐格紀錄
+        self._head_col: AnchorCollector | None = None
+        self._head_kw = None
+        self._late_col: AnchorCollector | None = None
+        self._late_from = 0.0
+        self._late_groups = 0
+        self._replay: list[tuple[float, FrameResult | Pending]] | None = None
+        self._replay_bytes = 0
         self._log = log or (lambda msg: None)
         self._calib: _Calibration | None = _Calibration(profile, calib_max_scan, calib_max_bytes)
         self.h_scale: float | None = None
@@ -371,9 +385,11 @@ class LiveKills:
             if t < self._learn_hi - _EPS and f is not None:
                 self._col.feed_features(t, banner, f)
             if t >= self._learn_hi - _EPS or self._col.full(t):
-                self._learned()
+                self._learned(t)
         if self._buf is None:
             self.tracker.feed(t, self.detector.resolve(r))
+            if self._replay is not None:
+                self._late(t, banner, r, f)
             return
         self._buf.append((t, r))
         self._provisional.feed(t, self.detector.resolve(r))  # 尚無關鍵字：resolve 不驗證
@@ -382,9 +398,11 @@ class LiveKills:
             if self._buf_bytes > self._pending_max:
                 self._log("待驗證緩衝已達上限，提早學關鍵字")
                 self.degraded.append("pending_buffer_cap")
-                self._learned()
+                self._learned(t)
 
-    def _learned(self) -> None:
+    def _learned(self, t: float | None = None) -> None:
+        """學習範圍結束（t＝觸發的格；None＝串流結束）：學出樣板並定案緩衝。樣板不齊且串流還在進行時開始延伸學習，
+        從學習範圍結尾（提早結束時從當下）繼續蒐集錨點，與離線的延伸範圍相同。"""
         col, self._col = self._col, None
         if col is None:
             return
@@ -394,6 +412,52 @@ class LiveKills:
         self._log(f"關鍵字學習完成（緩衝 {len(buf or [])} 格）")
         for bt, br in buf or []:
             self.tracker.feed(bt, self.detector.resolve(br))
+        if t is not None and not keywords_complete(self.keywords):
+            self._head_col, self._head_kw = col, self.keywords
+            self._late_col = AnchorCollector(self.profile, self.detector)
+            # 學習範圍提早結束（緩衝上限）時從下一格接著蒐集：這一格已餵給學習範圍的收集器
+            self._late_from = self._learn_hi if t >= self._learn_hi - _EPS else t + STEP
+            self._replay, self._replay_bytes = [], 0
+            for bt, br in buf or []:
+                self._record(bt, br)
+            self._log("開頭的擊殺不足以學齊關鍵字樣板，繼續延伸學習")
+
+    def _record(self, t: float, r: FrameResult | Pending) -> None:
+        self._replay.append((t, r))
+        self._replay_bytes += FRAME_RECORD_BYTES + (r.ink.nbytes if isinstance(r, Pending) else 0)
+
+    def _late(self, t: float, banner: np.ndarray | None, r: FrameResult | Pending, f: IconFrame | None) -> None:
+        """延伸學習期的一格：記錄、蒐集錨點；多了一個錨點橫幅就試著補上缺的樣板。"""
+        self._record(t, r)
+        if self._replay_bytes > self._late_max:
+            self._log("延伸學習的逐格紀錄已達上限，停止延伸學習")
+            self.degraded.append("late_learn_cap")
+            self._settle_late()
+            self._replay = self._late_col = None
+            return
+        if t >= self._late_from - _EPS and f is not None:
+            self._late_col.feed_features(t, banner, f)
+            groups = len(self._late_col.hand.groups) + len(self._late_col.knock.groups)
+            if groups != self._late_groups:
+                self._late_groups = groups
+                self._settle_late()
+            if self._late_col.full(t):  # 之後的錨點不會再改變樣板（只取最早的錨點）：不必再記錄
+                self._settle_late()
+                self._replay = self._late_col = None
+
+    def _settle_late(self) -> None:
+        """以目前的錨點補上缺的樣板；樣板有變化就用逐格紀錄重新定案（之後的格直接用新樣板）。"""
+        if self._late_col is None:
+            return
+        kw = extend_keywords(self._head_kw, build_keywords([self._head_col, self._late_col]))
+        if same_keywords(kw, self.keywords):
+            return
+        self.keywords = kw
+        self.detector.set_keywords(kw)
+        self.tracker = EventTracker(self.profile)
+        for bt, br in self._replay:
+            self.tracker.feed(bt, self.detector.resolve(br))
+        self._log(f"延伸學習補上關鍵字樣板，重新定案 {len(self._replay)} 格")
 
     def snapshot(self) -> tuple[list[Event], list[SpecInterval]]:
         """目前的事件（已 derive）與觀戰區間；校準期為空，學關鍵字期為暫定結果。"""
@@ -408,6 +472,7 @@ class LiveKills:
         if self._calib is not None:
             self._calibrated()
         self._learned()
+        self._settle_late()  # 以全部錨點決定最終樣板（與離線 finalize 相同）
         events, spec = self.tracker.finish()
         return derive(events, spec, self.profile), list(spec)
 

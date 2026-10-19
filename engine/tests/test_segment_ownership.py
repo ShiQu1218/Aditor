@@ -104,6 +104,7 @@ def fake_env(tmp_path, profile, monkeypatch):
     monkeypatch.setattr(az, "Detector", _FakeDetector)
     monkeypatch.setattr(az, "calibrate", lambda *a, **k: 1.0)
     monkeypatch.setattr(az, "LEARN_SCAN_SECONDS", 0.0)  # 假畫面沒有錨點可學：不學關鍵字
+    monkeypatch.setattr(az, "EXTEND_LEARNING", False)
     return v, profile, tmp_path
 
 
@@ -138,6 +139,7 @@ def test_spectating_intervals_identical_across_jobs(tmp_path, profile, monkeypat
     monkeypatch.setattr(az, "Detector", _FakeDetector)
     monkeypatch.setattr(az, "calibrate", lambda *a, **k: 1.0)
     monkeypatch.setattr(az, "LEARN_SCAN_SECONDS", 0.0)
+    monkeypatch.setattr(az, "EXTEND_LEARNING", False)
     one = az.analyze(str(v), profile, cache_dir=tmp_path / "a", jobs=1)["spectating"]
     four = az.analyze(str(v), profile, cache_dir=tmp_path / "b", jobs=4)["spectating"]
     assert one == four and len(one) == 1

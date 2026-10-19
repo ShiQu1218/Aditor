@@ -126,10 +126,11 @@ So Aditor **learns from the video itself**:
 
 So Korean, Japanese, Simplified Chinese or any other UI language **needs no text template built in beforehand**. There are two costs:
 
-- Each template needs at least **3 distinct banners** to activate. If the first 900 seconds hold almost no kills, nothing is learned and the whole video falls back to icons only, where banners like "Enemy squad eliminated" are more likely to be counted by mistake.
-- Learning happens once and is not redone after 900 seconds.
+- Each template needs at least **3 distinct banners** to activate. If the first 900 seconds do not provide enough, Aditor **keeps looking for anchors through the rest of the video**, fills in only the missing template, and then re-judges the whole video from what it already recorded (no second decode). Only when the entire video has fewer than 3 usable kills does it fall back to icons only, where banners like "Enemy squad eliminated" are more likely to be counted by mistake.
+- A template already learned in the first 900 seconds is never changed by later anchors.
+- If an analysis is cancelled while it is still learning past 900 seconds, it restarts from the beginning next time.
 
-Live detection learns while recording: frames are buffered during the learning phase and judged retroactively afterwards, giving the same result as offline analysis.
+Live detection learns while recording: frames are buffered during the learning phase and judged retroactively afterwards. If the first 900 seconds are not enough, it keeps learning while you play and re-judges what has been recorded so far as soon as a template is learned. The final result is the same as offline analysis.
 
 ### ④ Event tracking: merging consecutive hits into one event
 

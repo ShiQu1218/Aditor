@@ -72,7 +72,8 @@ def calibrate(path: str, info: VideoInfo, profile: Profile, *,
 
 
 # ---- 擊殺關鍵字樣板的學習（每支影片一次，見 detect.Keywords） ----
-# 掃描影片開頭 LEARN_SCAN_SECONDS 秒（稀疏的影片中段可能一個錨點也沒有），依 jobs 切段平行；每段完整掃描
+# 先掃描影片開頭 LEARN_SCAN_SECONDS 秒（稀疏的影片中段可能一個錨點也沒有）；開頭幾乎沒有擊殺、樣板學不齊時，
+# 延伸到影片結尾繼續蒐集錨點，只補上缺的樣板（extend_keywords）。開頭依 jobs 切段平行；每段完整掃描
 # （只有該段已蒐集滿上限時提早結束），結果依時間排序合併，因此學到的樣板與 jobs 無關（jobs=1／4 一致）。
 # analyze 不呼叫 learn_keywords：主分析邊解碼邊用同樣的 AnchorCollector／build_keywords 學（analyze._Learner），
 # 省下這一趟解碼；learn_keywords 留作獨立掃描與「兩者結果相同」的對照測試。
@@ -188,6 +189,27 @@ def build_keywords(cols: list[AnchorCollector]) -> Keywords:
     return kw
 
 
+def keywords_complete(kw: Keywords | None) -> bool:
+    """學到的樣板已能驗證所有類別（不需要延伸學習；見 Detector._verify）：擊倒要有擊倒樣板；助攻擊倒要有助攻前綴樣板，
+    或這支影片的助攻橫幅含擊倒關鍵字。助攻消滅本來就少見，不能要求一定學到助攻前綴，否則多數影片都會延伸學習到結尾。"""
+    return kw is not None and kw.knock is not None and (kw.assist is not None or kw.assist_by_knock)
+
+
+def extend_keywords(base: Keywords, wider: Keywords) -> Keywords:
+    """延伸學習：學習範圍內已學到的樣板維持不變（結果與只學前段時相同），只補上前段學不到、
+    擴大到整支影片後才學到的樣板。wider＝前段＋延伸範圍的收集器一起 build_keywords 的結果。"""
+    knock = base.knock if base.knock is not None else wider.knock
+    by_knock = base.assist_by_knock if base.knock is not None else wider.assist_by_knock
+    return Keywords(base.assist if base.assist is not None else wider.assist, knock, by_knock)
+
+
+def same_keywords(a: Keywords | None, b: Keywords | None) -> bool:
+    def eq(x, y):
+        return (x is None and y is None) or (x is not None and y is not None and np.array_equal(x, y))
+    a, b = a or Keywords(), b or Keywords()
+    return eq(a.assist, b.assist) and eq(a.knock, b.knock) and a.assist_by_knock == b.assist_by_knock
+
+
 def _scan_segment(path: str, profile: Profile, scale: float, start: float, end: float,
                   cancel: threading.Event | None, codec: str | None, hwaccel: bool,
                   abort: threading.Event | None = None) -> AnchorCollector:
@@ -210,13 +232,25 @@ def learn_keywords(path: str, info: VideoInfo, profile: Profile, scale: float, *
                    max_scan_seconds: float = LEARN_SCAN_SECONDS, cancel: threading.Event | None = None,
                    hwaccel: bool = True) -> Keywords:
     """掃描影片開頭（最多 max_scan_seconds）蒐集助攻消滅與擊倒橫幅的錨點，學出關鍵字樣板（見 build_keywords）。
-    沒有足夠錨點的樣板為 None（不啟用，行為退回只看圖示）。jobs 只影響速度，結果與 jobs 無關。"""
+    前段學不齊（開頭幾乎沒有擊殺）時延伸到影片結尾繼續蒐集，只補上缺的樣板（見 extend_keywords）。
+    仍沒有足夠錨點的樣板為 None（不啟用，行為退回只看圖示）。jobs 只影響速度，結果與 jobs 無關。"""
     total = min(info.duration, max_scan_seconds)
+    cols = _scan_head(path, info, profile, scale, total, jobs, cancel, hwaccel)
+    base = build_keywords(cols)
+    if keywords_complete(base) or total >= info.duration:
+        return base
+    late = _scan_segment(path, profile, scale, total, info.duration, cancel, info.codec, hwaccel)
+    return extend_keywords(base, build_keywords(cols + [late]))
+
+
+def _scan_head(path: str, info: VideoInfo, profile: Profile, scale: float, total: float, jobs: int,
+               cancel: threading.Event | None, hwaccel: bool) -> list[AnchorCollector]:
+    """[0, total) 依 jobs 切段平行蒐集錨點，回傳依時間排序的各段收集器。"""
     n = max(1, min(int(jobs), int(total // 30)))
     bounds = [round(total * i / n / FPS_GRID) * FPS_GRID for i in range(n)] + [total]
     spans = [(bounds[i], bounds[i + 1]) for i in range(n)]
     if n == 1:
-        return build_keywords([_scan_segment(path, profile, scale, 0.0, total, cancel, info.codec, hwaccel)])
+        return [_scan_segment(path, profile, scale, 0.0, total, cancel, info.codec, hwaccel)]
     from concurrent.futures import ThreadPoolExecutor
     abort = threading.Event()
 
@@ -240,7 +274,7 @@ def learn_keywords(path: str, info: VideoInfo, profile: Profile, scale: float, *
                     error = e
     if error is not None:
         raise error
-    return build_keywords(cols)
+    return cols
 
 
 FPS_GRID = 1.0 / FPS

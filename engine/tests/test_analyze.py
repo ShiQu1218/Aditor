@@ -12,8 +12,10 @@ SPANS = [(2.0, 4.5), (10.0, 12.5)]
 
 @pytest.fixture
 def short_learn(monkeypatch):
-    """關鍵字只從開頭 1 秒學（邊解碼邊學，學完才存段進度）：讓短合成片中途取消也能測到段進度的保存與接續。"""
+    """關鍵字只從開頭 1 秒學（邊解碼邊學，學完才存段進度）：讓短合成片中途取消也能測到段進度的保存與接續。
+    合成片沒有錨點可學：關掉延伸學習（延伸學習期間不存段進度，見 test_late_learning）。"""
     monkeypatch.setattr(az, "LEARN_SCAN_SECONDS", 1.0)
+    monkeypatch.setattr(az, "EXTEND_LEARNING", False)
 
 
 @pytest.fixture
