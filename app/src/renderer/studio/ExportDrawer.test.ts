@@ -234,3 +234,20 @@ describe('export path hygiene', () => {
     expect(m).not.toMatch(/<select[^>]*aria-label="編碼器"[^>]*disabled/)
   })
 })
+
+describe('ExportDrawer 實際輸出路徑說明', () => {
+  test('顯示「實際會存到」並隨模式切換 Merged／Clips', async () => {
+    const { c } = await ready({}, '/data/out')
+    c.setMode('concat')
+    expect(html(c)).toContain('實際會存到：/data/out/Merged')
+    c.setMode('separate')
+    const m = html(c)
+    expect(m).toContain('實際會存到：/data/out/Clips')
+    expect(m).not.toContain('/data/out/Merged')
+  })
+
+  test('outDir 為空時不顯示說明', async () => {
+    const { c } = await ready({}, null)
+    expect(html(c)).not.toContain('實際會存到')
+  })
+})

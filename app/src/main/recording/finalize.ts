@@ -8,6 +8,7 @@ import type { RecordingDeps } from './index'
 import { isTrusted, writeLiveCache, type LiveFile } from './live-cache'
 import { finalizeObsSession } from './obs-finalize'
 import { tr } from '../../shared/locale'
+import { DAY_FOLDER_PATTERN, dayFolderName } from '../../shared/storage'
 
 export interface SessionSnapshot {
   startedAt: number
@@ -134,8 +135,16 @@ export async function readOptional<T>(file: string): Promise<T | null> {
   }
 }
 
+/** 輸出檔須直接在 outputDir（舊版）或 outputDir/<YYYY-MM-DD>/ 內。 */
+export function inOutputDir(outputPath: unknown, outputDir: string): boolean {
+  if (typeof outputPath !== 'string') return false
+  const parent = path.dirname(path.resolve(outputPath))
+  const root = path.resolve(outputDir)
+  return parent === root || (path.dirname(parent) === root && DAY_FOLDER_PATTERN.test(path.basename(parent)))
+}
+
 function outputInDir(outputPath: string, outputDir: string): boolean {
-  return typeof outputPath === 'string' && path.dirname(path.resolve(outputPath)) === outputDir &&
+  return inOutputDir(outputPath, outputDir) &&
     path.extname(outputPath).toLowerCase() === '.mp4' && !outputPath.endsWith('.part.mp4')
 }
 
@@ -167,7 +176,7 @@ async function remuxMatch(dir: string, deps: RecordingDeps, config: SessionSnaps
   index: number, match: { start: number; end: number }, entries: IndexEntry[]
 ): Promise<MatchCut> {
   const outputDir = path.dirname(path.dirname(dir))
-  const { output, part } = await reserveOutput(outputDir, outputBase(config.startedAt + entries[0].pts * 1000))
+  const { output, part } = await reserveOutput(outputDir, outputBase(config.startedAt + entries[0].pts * 1000), config.startedAt + entries[0].pts * 1000)
   const pending = path.join(dir, 'match-part.json')
   let recorded = false
   try {
@@ -287,9 +296,12 @@ export function outputBase(startedAt: number): string {
   return `Apex_${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}_${pad(date.getHours())}-${pad(date.getMinutes())}`
 }
 
-export async function reserveOutput(outputDir: string, base: string): Promise<{ output: string; part: string }> {
+/** 輸出放在 `<outputDir>/<起點本機日期>/`，同名 `_2`、`_3` 只在該日期資料夾內判斷。 */
+export async function reserveOutput(outputDir: string, base: string, startedAt: number): Promise<{ output: string; part: string }> {
+  const dayDir = path.join(outputDir, dayFolderName(startedAt))
+  await fs.promises.mkdir(dayDir, { recursive: true })
   for (let n = 1; ; n++) {
-    const output = path.join(outputDir, `${base}${n === 1 ? '' : `_${n}`}.mp4`)
+    const output = path.join(dayDir, `${base}${n === 1 ? '' : `_${n}`}.mp4`)
     try { await fs.promises.access(output); continue } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
     }
@@ -367,7 +379,7 @@ export async function finalizeSession(dir: string, deps: RecordingDeps): Promise
       await fs.promises.rm(dir, { recursive: true })
       return []
     }
-    const { output, part } = await reserveOutput(outputDir, outputBase(config.startedAt))
+    const { output, part } = await reserveOutput(outputDir, outputBase(config.startedAt), config.startedAt)
     try {
       await remux(deps.ffmpegPath, [path.join(dir, 'init.mp4'), ...entries.map(
         (entry) => path.join(dir, `seg_${String(entry.seq).padStart(6, '0')}.m4s`))], part)
@@ -382,7 +394,7 @@ export async function finalizeSession(dir: string, deps: RecordingDeps): Promise
       throw error
     }
   }
-  if (typeof marker.outputPath !== 'string' || path.dirname(path.resolve(marker.outputPath)) !== outputDir ||
+  if (!inOutputDir(marker.outputPath, outputDir) ||
       path.extname(marker.outputPath).toLowerCase() !== '.mp4' ||
       !(await fs.promises.lstat(marker.outputPath)).isFile()) throw new Error(tr('已收尾的影片路徑無效或檔案遺失'))
   // 舊 marker 只存輸出路徑時，依合約只補加媒體庫，不重排分析。

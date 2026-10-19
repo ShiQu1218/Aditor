@@ -175,33 +175,9 @@ describe('錄影設定畫面與 controller', () => {
     expect(control<HTMLSelectElement>('mode').value).toBe('match')
   })
 
-  test('資料夾選擇與清除、取消不送出；路徑與儲存失敗正確顯示', async () => {
-    const r = await show()
-    click(control('outputDir'))
-    await flush()
-    expect(r.controller.getState().settings?.recording.outputDir).toBe('D:/Recordings')
-    const clear = Array.from(document.querySelectorAll('button')).find((el) => el.textContent === t.clear)!
-    click(clear)
-    await flush()
-    expect(r.controller.getState().settings?.recording.outputDir).toBeNull()
-    r.api.export!.selectOutDir = async () => null
-    r.set.mockClear()
-    click(control('outputDir'))
-    await flush()
-    expect(r.set).not.toHaveBeenCalled()
-    r.api.export!.selectOutDir = async () => 'D:/missing'
-    r.api.settings.set = async () => ({ settings: structuredClone(DEFAULT_SETTINGS), persisted: false, errors: { recordingOutputDir: '資料夾不存在' } })
-    click(control('outputDir'))
-    await flush()
-    expect(document.querySelector('[role="alert"]')?.textContent).toBe('資料夾不存在')
-    expect(control('outputDir').getAttribute('aria-describedby')).toContain('set-recording-outputDir-err')
-    expect(document.body.textContent).toContain('儲存失敗')
-    expect(r.controller.getState().settings?.recording.outputDir).toBeNull()
-    r.api.settings.set = async () => ({ settings: structuredClone(DEFAULT_SETTINGS), persisted: true })
-    click(control('outputDir'))
-    await flush()
-    expect(document.querySelector('[role="alert"]')).toBeNull()
-    expect(document.body.textContent).not.toContain('儲存失敗')
+  test('錄影分頁不再有獨立的錄影資料夾列（改由「儲存位置」統一設定）', async () => {
+    await show()
+    expect(document.querySelector('[data-row="recording-outputDir"]')).toBeNull()
   })
 
   test('capabilities=null 或查詢失敗只顯示預設選項與提示，不送出設定', async () => {

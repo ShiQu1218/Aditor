@@ -11,6 +11,7 @@ export function installSettingsFixtureApi(failWrites: boolean): void {
     ...(w.api ?? {}),
     settings: {
       get: async () => current,
+      suggestStorageRoot: async () => 'D:\\Videos\\Apex Highlighter',
       set: async (partial: Partial<Settings>) => {
         current = { ...current, ...partial }
         listeners.forEach((l) => l(current))

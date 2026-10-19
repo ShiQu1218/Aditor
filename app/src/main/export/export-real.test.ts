@@ -108,9 +108,9 @@ describeReal('real ffmpeg export: clip junctions play cleanly', () => {
     it(`concat (${quality}): first frame is a keyframe at time 0, timestamps continuous at every junction, A/V lengths match`, async () => {
       const r = await service().start(sender(), { items: items(), mode: 'concat', quality, encoder: 'mpeg4', outDir, baseName: `joined-${quality}` })
       expect(r.ok, JSON.stringify(r)).toBe(true)
-      const out = path.join(outDir, `joined-${quality}.mp4`)
+      const out = path.join(outDir, 'Merged', `joined-${quality}.mp4`)
       // 中間檔都已清掉
-      expect(fs.readdirSync(outDir).filter((f) => f.startsWith('.apexhl-seg'))).toEqual([])
+      expect(fs.readdirSync(path.join(outDir, 'Merged')).filter((f) => f.startsWith('.apexhl-seg'))).toEqual([])
 
       const info = streamInfo(out)
       const v = info.findIndex((s) => s.codec_type === 'video')
@@ -146,7 +146,7 @@ describeReal('real ffmpeg export: clip junctions play cleanly', () => {
     const r = await service().start(sender(), { items: clips, mode: 'separate', quality: 'copy', outDir, baseName: 'each' })
     expect(r.ok, JSON.stringify(r)).toBe(true)
     for (const n of [1, 2]) {
-      const out = path.join(outDir, `each_${n}.mp4`)
+      const out = path.join(outDir, 'Clips', `each_${n}.mp4`)
       const pkts = packets(out)
       const info = streamInfo(out)
       const v = info.findIndex((s) => s.codec_type === 'video')

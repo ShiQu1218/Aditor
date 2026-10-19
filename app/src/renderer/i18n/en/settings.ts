@@ -119,14 +119,20 @@ export const settingsI18n: Messages['settingsI18n'] = {
       desc: 'Saves to %APPDATA%\\ApexHighlighter\\projects\\ after every change. "Save as" is only for sharing. When this is off, the "unsaved changes" prompt returns.',
       keywords: ['project', 'autosave', 'auto save', 'save']
     },
-    defaultOutDir: {
-      title: 'Default output folder',
-      desc: 'The starting folder for the export drawer. If not set, you are asked each time.',
-      keywords: ['export', 'output', 'folder', 'destination'],
-      choose: 'Choose folder',
-      clear: 'Clear',
-      unset: 'Ask each time',
-      current: 'Current: {dir}'
+    storageRoot: {
+      title: 'Storage location',
+      desc: 'Recordings and exported clips are saved inside this folder, so you can back up or move everything at once.',
+      keywords: ['storage', 'location', 'folder', 'recordings', 'exports', 'output', 'save', 'path'],
+      unset: 'Not set yet (suggested: {dir})',
+      change: 'Change…',
+      open: 'Open in File Explorer',
+      preview: {
+        heading: 'Folder layout',
+        dayFolder: 'Date',
+        recordings: 'Recordings are sorted into date folders',
+        merged: 'Clip exports: merged',
+        clips: 'Clip exports: separate clips'
+      }
     },
     encoders: {
       title: 'Available encoders',

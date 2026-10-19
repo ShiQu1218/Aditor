@@ -2,6 +2,8 @@ import React, { useEffect, useRef, useSyncExternalStore } from 'react'
 import '../styles/exportDrawer.css'
 import { i18n } from '../i18n'
 import { formatTime } from '../../shared/time'
+import { tr } from '../../shared/locale'
+import { exportSubDirName, joinForDisplay } from '../../shared/storage'
 import { estimateOutputBytes } from '../../shared/exportEstimate'
 import { totalDuration, Project } from '../editor/project'
 import { Check, Copy, Download, FolderOpen, AlertTriangle, X } from '../components/icons'
@@ -179,6 +181,9 @@ function SettingsBody({ state, vm, project, items, sourceCount, on }: ExportDraw
             <FolderOpen className="ic sm" /> {t.browse}
           </button>
         </div>
+        {s.outDir && (
+          <div className="xd-muted xd-hint">{tr('實際會存到：{path}', { path: joinForDisplay(s.outDir, exportSubDirName(s.mode)) })}</div>
+        )}
         <input
           className="xd-input"
           value={s.baseName}

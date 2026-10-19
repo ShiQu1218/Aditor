@@ -19,6 +19,47 @@ export const shellI18n: Messages['shellI18n'] = {
     keysLabel: 'Keys'
   },
   toastHost: { label: 'Notifications' },
+  onboarding: {
+    progress: 'Step {n} of {total}',
+    skip: 'Later',
+    back: 'Back',
+    next: 'Next',
+    finish: 'Get started',
+    saving: 'Saving…',
+    welcome: {
+      title: 'Welcome to Apex Highlighter',
+      body: 'A few quick settings and you are ready to go: choose your display language, pick where files are saved, and choose how to record. You can change any of these later in Settings.',
+      languageLabel: 'Display language',
+      languageAuto: 'Follow system'
+    },
+    storage: {
+      title: 'Where should files be saved?',
+      body: 'Recordings and exported clips are kept in the same folder, so you can back up or move them all at once.',
+      current: 'Storage location',
+      choose: 'Choose folder…',
+      loading: 'Finding a suggested location…'
+    },
+    recording: {
+      title: 'Recording settings',
+      body: 'You can change these later in the Recording tab of Settings.',
+      modeLabel: 'Recording mode',
+      modeSessionDesc: 'Records from when Apex opens until you close it, saved as one complete video.',
+      modeMatchDesc: 'Saves each match as its own video. The lobby keeps only the last 15 seconds or so in a buffer, so it takes no disk space.',
+      resolution: 'Resolution',
+      fps: 'Frame rate',
+      bitrate: 'Bitrate (kbps)'
+    },
+    done: {
+      title: 'All set',
+      summaryStorage: 'Storage location: {dir}',
+      summaryMode: 'Recording mode: {mode}',
+      summaryQuality: 'Quality: {height}, {fps} fps, {bitrate} kbps',
+      nextHeading: 'What happens next',
+      next1: 'Recording starts automatically when you open Apex Legends.',
+      next2: 'After a recording ends, it is analyzed automatically to find highlights.',
+      next3: 'Go to Studio to pick clips and export them.'
+    }
+  },
   keymap: {
     scope: {
       global: 'Global',

@@ -10,6 +10,7 @@ import { runExport, RunExportOptions, RunProgress } from './run'
 import { isSafeLocalDirPath, isSafeLocalVideoPath, fileExistsSafe } from '../safe-path'
 import { estimateOutputBytes } from '../../shared/exportEstimate'
 import { tr } from '../../shared/locale'
+import { exportSubDirName } from '../../shared/storage'
 
 export interface ExportSender {
   isDestroyed(): boolean
@@ -39,7 +40,10 @@ export interface ValidatedRequest {
   mode: 'separate' | 'concat'
   quality: 'copy' | 'precise'
   encoder?: string
+  /** 使用者選的輸出資料夾（已驗證存在且可寫） */
   outDir: string
+  /** 實際寫入的資料夾：`outDir` 底下依模式分的子資料夾（合併 → Merged、分開 → Clips），已建立且可寫 */
+  outputDir: string
   baseName: string
 }
 
@@ -105,7 +109,15 @@ export async function validateExportRequest(raw: unknown): Promise<ValidatedRequ
   const outDir = path.resolve(r.outDir)
   await assertWritableDir(outDir)
   if (typeof r.baseName !== 'string') throw new RequestError(tr('檔名不正確'))
-  return { items, mode: r.mode, quality: r.quality, encoder, outDir, baseName: sanitizeBaseName(r.baseName) }
+  // 其餘欄位都通過才建立子資料夾，避免無效請求在使用者的資料夾留下空目錄
+  const outputDir = path.join(outDir, exportSubDirName(r.mode))
+  try {
+    await fs.promises.mkdir(outputDir, { recursive: true })
+  } catch {
+    throw new RequestError(tr('無法建立輸出子資料夾'))
+  }
+  await assertWritableDir(outputDir)
+  return { items, mode: r.mode, quality: r.quality, encoder, outDir, outputDir, baseName: sanitizeBaseName(r.baseName) }
 }
 
 /** 取不到資訊時的預設：編碼／解析度採常見值，幀率、像素格式、音訊規格標為未知（0／空字串），相容性判斷會保守處理。 */
@@ -174,14 +186,14 @@ export function createExportService(deps: ExportServiceDeps = {}) {
       if (ac.signal.aborted) return { ok: false, cancelled: true, outputs: [], notices: [] }
 
       // 不覆蓋既有檔案：同名就改成「<名稱> (2)」（I6）
-      const free = resolveFreeBaseName(req.outDir, req.baseName, req.mode, req.items.length, (p) => fs.existsSync(p))
+      const free = resolveFreeBaseName(req.outputDir, req.baseName, req.mode, req.items.length, (p) => fs.existsSync(p))
       // 快速無損：先查每段起點之前的關鍵影格與乾淨的終點，切點直接對齊（見 keyframe.ts）
       let copyCuts: Awaited<ReturnType<typeof lookupCopyCuts>> | undefined
       if (resolveQuality(req.items, req, probes).quality === 'copy') {
         copyCuts = await lookupCopyCuts(req.items, deps.copyCut ?? createCutLookup(), ac.signal)
         if (ac.signal.aborted) return { ok: false, cancelled: true, outputs: [], notices: [] }
       }
-      const naming = { ...req, baseName: free.baseName, copyCuts }
+      const naming = { ...req, outDir: req.outputDir, baseName: free.baseName, copyCuts }
       const { jobs, notices, concatListContent: staticList } = buildJobs(req.items, naming, probes)
       // 合輯：中間檔都完成後量每段實際播放終點，寫進清單的 duration（量不到就用原本的清單）
       const segmentFiles = jobs.filter((j) => j.intermediate).map((j) => j.output)
@@ -191,9 +203,9 @@ export function createExportService(deps: ExportServiceDeps = {}) {
           ? async (): Promise<string> => concatList(segmentFiles, await measureMediaEnds(segmentFiles, measure, ac.signal))
           : staticList
       if (free.renamed) notices.push(tr('輸出資料夾已有同名檔案，已改用「{baseName}」，不會覆蓋原有檔案', { baseName: free.baseName }))
-      // 防禦：輸出檔必須直接位於 outDir 內
+      // 防禦：輸出檔必須直接位於實際輸出目錄（outDir/<子資料夾>）內
       for (const j of jobs) {
-        if (path.dirname(path.resolve(j.output)) !== req.outDir) throw new RequestError(tr('輸出路徑不正確'))
+        if (path.dirname(path.resolve(j.output)) !== req.outputDir) throw new RequestError(tr('輸出路徑不正確'))
       }
       const totalDur = req.items.reduce((s, it) => s + Math.max(0, it.end - it.start), 0)
 
@@ -201,7 +213,7 @@ export function createExportService(deps: ExportServiceDeps = {}) {
         {
           jobs,
           totalEstimatedSeconds: totalDur,
-          outDir: req.outDir,
+          outDir: req.outputDir,
           estimatedBytes: estimateOutputBytes({ items: req.items }, req.quality),
           concatListContent,
           ffmpeg: deps.ffmpeg,

@@ -3,6 +3,10 @@ import path from 'path'
 import type { Settings, SettingsSetResult } from '../shared/settings'
 import { isSafeLocalDirPath } from './safe-path'
 import type { SettingsStore } from './settings'
+import { prepareStorageRoot, suggestStorageRoot } from './storage-root'
+
+/** 取得「建議的儲存根資料夾」的 IPC 頻道（首次啟動引導與設定畫面用）。 */
+export const STORAGE_SUGGEST_CHANNEL = 'settings:suggestStorageRoot'
 
 export interface PasswordStorage {
   isEncryptionAvailable(): boolean
@@ -56,7 +60,24 @@ export function validateOutDir(dir: unknown): string {
   return resolved
 }
 
+/** 處理 partial 內的 storageRoot（就地改寫 partial；錯誤寫入 errors）。 */
+function applyStorageRoot(partial: Partial<Settings>, errors: NonNullable<SettingsSetResult['errors']>): void {
+  if (!('storageRoot' in partial) || partial.storageRoot === null) return
+  try {
+    const { root, recordingsDir, exportsDir } = prepareStorageRoot(partial.storageRoot)
+    partial.storageRoot = root
+    partial.defaultOutDir = exportsDir
+    const recording = partial.recording && typeof partial.recording === 'object' ? partial.recording : {}
+    partial.recording = { ...recording, outputDir: recordingsDir } as Settings['recording']
+  } catch (err) {
+    errors.storageRoot = (err as Error).message
+    delete partial.storageRoot
+  }
+}
+
 /**
+ * `storageRoot`（字串）：建立 `<根>` 與子資料夾後，同步把 `recording.outputDir`、`defaultOutDir` 指到
+ * `<根>/Recordings`、`<根>/Exports`；失敗時三個欄位都不套用並回報 `errors.storageRoot`。null 只清除 `storageRoot`。
  * `settings:get`／`settings:set`／`settings:changed`。
  * - `settings:set` 回傳 `{ settings, persisted, errors? }`（寫檔失敗以 `persisted:false` 回報，不丟錯）。
  * - `defaultOutDir` 在此驗證（絕對路徑／存在／資料夾），失敗時該欄位不套用並附 `errors.defaultOutDir`。
@@ -66,7 +87,8 @@ export function registerSettingsHandlers(
   ipc: SettingsIpcLike,
   settings: SettingsStore,
   getWindows: () => WindowLike[],
-  storage?: PasswordStorage
+  storage?: PasswordStorage,
+  getVideosDir: () => string = () => ''
 ): void {
   settings.onChange((current) => {
     for (const win of getWindows()) {
@@ -79,6 +101,15 @@ export function registerSettingsHandlers(
   })
 
   ipc.handle('settings:get', () => publicSettings(settings.get()))
+
+  ipc.handle(STORAGE_SUGGEST_CHANNEL, (): string => {
+    const current = settings.get()
+    return suggestStorageRoot({
+      recordingOutputDir: current.recording.outputDir,
+      defaultOutDir: current.defaultOutDir,
+      videosDir: getVideosDir()
+    })
+  })
 
   ipc.handle('settings:set', (_event, raw: unknown): SettingsSetResult => {
     const partial: Partial<Settings> =
@@ -110,6 +141,7 @@ export function registerSettingsHandlers(
         delete partial.defaultOutDir
       }
     }
+    applyStorageRoot(partial, errors)
     const saved = settings.set(partial)
     const result = { ...saved, settings: publicSettings(saved.settings) }
     return Object.keys(errors).length > 0 ? { ...result, errors: { ...result.errors, ...errors } } : result

@@ -20,6 +20,47 @@ export const shellI18n: Messages['shellI18n'] = {
     keysLabel: '키'
   },
   toastHost: { label: '알림' },
+  onboarding: {
+    progress: '{total}단계 중 {n}단계',
+    skip: '나중에',
+    back: '이전',
+    next: '다음',
+    finish: '시작하기',
+    saving: '저장 중…',
+    welcome: {
+      title: 'Apex Highlighter에 오신 것을 환영합니다',
+      body: '몇 가지만 설정하면 바로 시작할 수 있습니다. 표시 언어를 고르고, 파일을 저장할 위치를 정하고, 녹화 방식을 선택하세요. 나중에도 설정에서 바꿀 수 있습니다.',
+      languageLabel: '표시 언어',
+      languageAuto: '시스템 언어 따르기'
+    },
+    storage: {
+      title: '파일은 어디에 저장할까요?',
+      body: '녹화와 편집 결과물은 같은 폴더 아래에 저장되어, 한꺼번에 백업하거나 옮기기 쉽습니다.',
+      current: '저장 위치',
+      choose: '폴더 선택…',
+      loading: '추천 위치를 가져오는 중…'
+    },
+    recording: {
+      title: '녹화 설정',
+      body: '이 설정은 나중에 설정의 녹화 탭에서도 바꿀 수 있습니다.',
+      modeLabel: '녹화 모드',
+      modeSessionDesc: 'Apex를 켠 순간부터 끌 때까지, 하나의 완전한 영상으로 저장합니다.',
+      modeMatchDesc: '매치마다 영상 하나로 저장합니다. 로비는 최근 약 15초만 임시로 보관하므로 디스크를 차지하지 않습니다.',
+      resolution: '해상도',
+      fps: '프레임 레이트',
+      bitrate: '비트레이트(kbps)'
+    },
+    done: {
+      title: '설정이 모두 끝났습니다',
+      summaryStorage: '저장 위치: {dir}',
+      summaryMode: '녹화 모드: {mode}',
+      summaryQuality: '화질: {height}, {fps} fps, {bitrate} kbps',
+      nextHeading: '이제 이런 일이 일어납니다',
+      next1: 'Apex Legends를 실행하면 자동으로 녹화가 시작됩니다.',
+      next2: '녹화가 끝나면 자동으로 분석해 하이라이트 장면을 찾습니다.',
+      next3: '스튜디오에서 장면을 골라 내보내세요.'
+    }
+  },
   keymap: {
     scope: {
       global: '전역',

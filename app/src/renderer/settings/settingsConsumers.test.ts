@@ -13,6 +13,8 @@ const src = (rel: string): string => resolve(__dirname, '../../', rel)
 const FIELD_CONSUMERS: Record<string, Array<[string, RegExp]>> = {
   watchFolders: [['main/watch.ts', /watchFolders/]],
   language: [['main/index.ts', /resolveLocale\(/], ['renderer/i18n/index.ts', /bootLocale/]],
+  storageRoot: [['main/settings-ipc.ts', /storageRoot/]],
+  onboardingDone: [['renderer/shell/AppShell.tsx', /onboardingDone/]],
   autoAnalyze: [['main/watch.ts', /\.autoAnalyze/]],
   decode: [['main/settings-derived.ts', /\.decode/], ['main/queue.ts', /analyzeSettingArgs/], ['main/index.ts', /buildAnalyzeArgs/]],
   cacheLocation: [
@@ -51,7 +53,7 @@ const ROW_TARGETS: Record<string, { fields?: string[]; consumers?: Array<[string
   autoclip: { fields: ['autoclip'] },
   autoSuggestOnOpen: { fields: ['autoSuggestOnOpen'] },
   projectAutosave: { fields: ['projectAutosave'] },
-  defaultOutDir: { fields: ['defaultOutDir'] },
+  storageRoot: { fields: ['storageRoot', 'defaultOutDir'] },
   encoders: { consumers: [['main/ipc-handlers.ts', /detectEncoders/]] },
   openh264: { consumers: [['main/ipc-handlers.ts', /hasOpenH264/]] },
   about: { consumers: [['renderer/settings/SettingControls.tsx', /__APP_VERSION__/]] },

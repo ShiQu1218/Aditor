@@ -7,6 +7,7 @@ import { clampToRange, fillTemplate, formatBytes } from './settingsModel'
 import type { SettingsController, SettingsState } from './settingsController'
 import type { SettingRow } from './rows'
 import { RecordingControl } from './RecordingControl'
+import { StoragePreview } from './StoragePreview'
 
 const t = settingsI18n.row
 
@@ -362,28 +363,32 @@ export function SettingControl(props: ControlProps): JSX.Element | null {
     }
     case 'proxyUsage':
       return <ProxyUsageControl {...props} />
-    case 'outDir': {
-      const dir = settings.defaultOutDir
+    case 'storageRoot': {
+      const root = settings.storageRoot
+      const shown = root ?? state.suggestedStorageRoot
       return (
-        <div className="set-inline">
-          <span className="set-value mono" title={dir ?? undefined}>
-            {dir ?? t.defaultOutDir.unset}
-          </span>
-          <button
-            id={ids.ctl}
-            type="button"
-            className="set-btn sm"
-            aria-describedby={describedBy(ids)}
-            onClick={() => void controller.pickOutDir()}
-          >
-            <FolderOpen className="ic sm" />
-            {t.defaultOutDir.choose}
-          </button>
-          {dir && (
-            <button type="button" className="set-btn ghost sm" onClick={() => void controller.clearOutDir()}>
-              {t.defaultOutDir.clear}
+        <div className="storage-ctl">
+          <div className="set-inline">
+            <span className="set-value mono" title={shown ?? undefined}>
+              {root ?? (shown ? fillTemplate(t.storageRoot.unset, { dir: shown }) : '')}
+            </span>
+            <button
+              id={ids.ctl}
+              type="button"
+              className="set-btn sm"
+              aria-describedby={describedBy(ids)}
+              onClick={() => void controller.pickStorageRoot()}
+            >
+              <FolderOpen className="ic sm" />
+              {t.storageRoot.change}
             </button>
-          )}
+            {root && (
+              <button type="button" className="set-btn ghost sm" onClick={() => void controller.openStorageRoot()}>
+                {t.storageRoot.open}
+              </button>
+            )}
+          </div>
+          {shown && <StoragePreview root={shown} />}
         </div>
       )
     }

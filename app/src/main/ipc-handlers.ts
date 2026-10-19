@@ -367,7 +367,7 @@ export function registerIpcHandlers(
   registerExportHandlers(ipcMain, exportService)
 
   if (settings) {
-    registerSettingsHandlers(ipcMain, settings, getWindows, safeStorage)
+    registerSettingsHandlers(ipcMain, settings, getWindows, safeStorage, () => app.getPath('videos'))
   }
 
   return { cancelExport: () => exportService.cancelAndWait() }

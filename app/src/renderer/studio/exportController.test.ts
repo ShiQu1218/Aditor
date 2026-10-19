@@ -400,3 +400,38 @@ describe('exportController misc', () => {
     expect(fn).not.toHaveBeenCalled()
   })
 })
+
+describe('輸出子資料夾（合併 → Merged、分開 → Clips）', () => {
+  test('outputDir 依目前模式回傳 outDir 底下的子資料夾；outDir 為空時為 null', async () => {
+    const c = createExportController(fake().api)
+    await c.init(null)
+    expect(c.getOutputDir()).toBeNull()
+    await c.init('/data/out')
+    c.setMode('concat')
+    expect(c.getOutputDir()).toBe('/data/out/Merged')
+    c.setMode('separate')
+    expect(c.getOutputDir()).toBe('/data/out/Clips')
+  })
+
+  test('openFolder 開啟實際輸出目錄（子資料夾），不是 outDir；隨模式切換', async () => {
+    const opened: string[] = []
+    const c = createExportController(fake({ openFolder: async (d: string) => (opened.push(d), true) }).api)
+    await c.init('/data/out')
+    c.setMode('concat')
+    await c.openFolder()
+    c.setMode('separate')
+    await c.openFolder()
+    expect(opened).toEqual(['/data/out/Merged', '/data/out/Clips'])
+  })
+
+  test('start 仍把使用者選的 outDir（非子資料夾）與 mode 送給 main', async () => {
+    const f = fake()
+    const c = createExportController(f.api)
+    await c.init('/data/out')
+    c.setMode('concat')
+    void c.start(ITEMS)
+    await flush()
+    const sent = f.calls.find((x) => x[0] === 'start')![1] as Record<string, unknown>
+    expect(sent).toMatchObject({ mode: 'concat', outDir: '/data/out' })
+  })
+})

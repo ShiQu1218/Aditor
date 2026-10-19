@@ -108,15 +108,52 @@ describe('IPC 接線（假 ipcMain / webContents）', () => {
     for (const ch of ['export:start', 'export:cancel', 'export:diskSpace']) expect(handlers.has(ch)).toBe(true)
   })
 
-  it('export:start 成功：進度只送給發出請求的 sender（export:progress），輸出在 outDir', async () => {
+  it('export:start 成功：進度只送給發出請求的 sender（export:progress），輸出在 outDir/Clips', async () => {
     const { invoke, sender } = setup()
     const res = await invoke('export:start', sender, req())
-    expect(res).toMatchObject({ ok: true, outputs: [path.join(outDir, 'clip_1.mp4')] })
+    expect(res).toMatchObject({ ok: true, outputs: [path.join(outDir, 'Clips', 'clip_1.mp4')] })
     const progress = sender.sent.filter((m) => m.channel === 'export:progress')
     expect(progress.length).toBeGreaterThan(0)
     expect(progress[0].data).toMatchObject({ jobIndex: 0, totalJobs: 1 })
     expect(typeof progress[0].data.percent).toBe('number')
-    expect(fs.readdirSync(outDir)).toEqual(['clip_1.mp4'])
+    expect(fs.readdirSync(outDir)).toEqual(['Clips'])
+    expect(fs.readdirSync(path.join(outDir, 'Clips'))).toEqual(['clip_1.mp4'])
+  })
+
+  it('mode=concat：實際輸出目錄是 outDir/Merged（自動建立），outputs 在其中，Clips 不會被建立', async () => {
+    const { invoke, sender } = setup()
+    expect(fs.readdirSync(outDir)).toEqual([])
+    const res = await invoke('export:start', sender, req({ mode: 'concat', baseName: 'joined' }))
+    expect(res).toMatchObject({ ok: true, outputs: [path.join(outDir, 'Merged', 'joined.mp4')] })
+    expect(fs.readdirSync(outDir)).toEqual(['Merged'])
+    expect(fs.readdirSync(path.join(outDir, 'Merged'))).toEqual(['joined.mp4'])
+  })
+
+  it('mode=separate：實際輸出目錄是 outDir/Clips；子資料夾已存在時照用', async () => {
+    const { invoke, sender } = setup()
+    fs.mkdirSync(path.join(outDir, 'Clips'))
+    const res = await invoke('export:start', sender, req())
+    expect(res).toMatchObject({ ok: true, outputs: [path.join(outDir, 'Clips', 'clip_1.mp4')] })
+    expect(fs.existsSync(path.join(outDir, 'Merged'))).toBe(false)
+  })
+
+  it('同名檔只在子資料夾內判斷：outDir 根目錄的同名檔不算衝突，Clips 內的才會改名', async () => {
+    const { invoke, sender } = setup()
+    fs.writeFileSync(path.join(outDir, 'clip_1.mp4'), 'root-file')
+    const r1 = await invoke('export:start', sender, req())
+    expect(r1).toMatchObject({ ok: true, outputs: [path.join(outDir, 'Clips', 'clip_1.mp4')] })
+    const r2 = await invoke('export:start', sender, req())
+    expect(r2).toMatchObject({ ok: true, outputs: [path.join(outDir, 'Clips', 'clip (2)_1.mp4')] })
+    expect(fs.readFileSync(path.join(outDir, 'clip_1.mp4'), 'utf-8')).toBe('root-file')
+  })
+
+  it('子資料夾名稱被檔案佔用 → 失敗並回報錯誤，不啟動 ffmpeg', async () => {
+    const { invoke, sender } = setup()
+    fs.writeFileSync(path.join(outDir, 'Clips'), 'i am a file')
+    const res = await invoke('export:start', sender, req())
+    expect(res.ok).toBe(false)
+    expect(typeof res.error).toBe('string')
+    expect(fs.readdirSync(pidDir)).toEqual([])
   })
 
   it('視窗已銷毀就不送進度，也不丟錯', async () => {
@@ -142,7 +179,7 @@ describe('IPC 接線（假 ipcMain / webContents）', () => {
     const res = await p
     expect(res).toMatchObject({ ok: false, cancelled: true, outputs: [] })
     await waitFor(() => !alive(pids.ffmpeg) && !alive(pids.grandchild), 2000)
-    expect(fs.readdirSync(outDir)).toEqual([])
+    expect(fs.readdirSync(path.join(outDir, 'Clips'))).toEqual([])
   }, 15000)
 
   it('沒有進行中的匯出時 export:cancel 是 no-op', async () => {
@@ -196,7 +233,7 @@ describe('IPC 接線（假 ipcMain / webContents）', () => {
     sender.emit('destroyed')
     expect(await p).toMatchObject({ ok: false, cancelled: true })
     await waitFor(() => !alive(pids.ffmpeg) && !alive(pids.grandchild), 2000)
-    expect(fs.readdirSync(outDir)).toEqual([])
+    expect(fs.readdirSync(path.join(outDir, 'Clips'))).toEqual([])
   }, 15000)
 
   it('export:checkOutDir：存在且可寫入 → ok；不存在／是檔案／不合法路徑 → ok:false 並附原因（不丟錯）', async () => {
@@ -294,7 +331,7 @@ describe('export:start 輸入驗證（不信任 renderer）', () => {
     for (const name of ['..\\..\\evil', '../../evil', 'a/b', 'C:\\x\\y', '..', '', '   ', 'con']) {
       const res = await invoke('export:start', sender, req({ baseName: name }))
       expect(res.ok).toBe(true)
-      for (const o of res.outputs as string[]) expect(path.dirname(o)).toBe(path.resolve(outDir))
+      for (const o of res.outputs as string[]) expect(path.dirname(o)).toBe(path.join(path.resolve(outDir), 'Clips'))
     }
     expect(fs.existsSync(path.join(root, 'evil_1.mp4'))).toBe(false)
     expect(fs.readdirSync(root).sort()).toEqual(['out', 'pids', 'src.mp4'])

@@ -24,6 +24,7 @@ export interface LaunchOpts {
 
 /** 測試預設設定：已問過低效能（不彈通知）、事件前後 1 秒、AI 剪輯 gap=5 讓合成影片產生多段建議。 */
 export const TEST_SETTINGS = {
+  onboardingDone: true,
   version: 1,
   lowPerfAsked: true,
   before: 1,

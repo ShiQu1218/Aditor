@@ -19,6 +19,47 @@ export const shellI18n: Messages['shellI18n'] = {
     keysLabel: '按键'
   },
   toastHost: { label: '通知' },
+  onboarding: {
+    progress: '第 {n} 步，共 {total} 步',
+    skip: '稍后再说',
+    back: '上一步',
+    next: '下一步',
+    finish: '开始使用',
+    saving: '保存中…',
+    welcome: {
+      title: '欢迎使用 Apex Highlighter',
+      body: '只需几个简单设置即可开始：选择界面语言、决定文件保存的位置、挑选录制方式。之后都可以在“设置”中修改。',
+      languageLabel: '界面语言',
+      languageAuto: '跟随系统'
+    },
+    storage: {
+      title: '文件要保存在哪里？',
+      body: '录制与剪辑输出会放在同一个文件夹下，方便整批备份或搬迁。',
+      current: '储存位置',
+      choose: '选择文件夹…',
+      loading: '正在获取建议位置…'
+    },
+    recording: {
+      title: '录制设置',
+      body: '这些设置之后都可以在“设置”的“录制”标签页中调整。',
+      modeLabel: '录制模式',
+      modeSessionDesc: 'Apex 开着到关闭，保存为一个完整的视频。',
+      modeMatchDesc: '每一局保存为一个视频；大厅只暂存最近约 15 秒，不占硬盘。',
+      resolution: '分辨率',
+      fps: '帧率',
+      bitrate: '码率（kbps）'
+    },
+    done: {
+      title: '都设置好了',
+      summaryStorage: '储存位置：{dir}',
+      summaryMode: '录制模式：{mode}',
+      summaryQuality: '画质：{height}、{fps} fps、{bitrate} kbps',
+      nextHeading: '接下来会发生的事',
+      next1: '打开 Apex Legends 后会自动开始录制。',
+      next2: '录制结束后会自动分析，找出精彩片段。',
+      next3: '到“工作室”挑选片段并导出。'
+    }
+  },
   keymap: {
     scope: {
       global: '全局',

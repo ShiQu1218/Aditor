@@ -19,6 +19,47 @@ export const shellI18n: Messages['shellI18n'] = {
     keysLabel: 'キー'
   },
   toastHost: { label: '通知' },
+  onboarding: {
+    progress: 'ステップ {n} / {total}',
+    skip: 'あとで',
+    back: '戻る',
+    next: '次へ',
+    finish: '使い始める',
+    saving: '保存中…',
+    welcome: {
+      title: 'Apex Highlighter へようこそ',
+      body: 'いくつかの簡単な設定で使い始められます。表示言語、ファイルの保存場所、録画方法を選んでください。あとから「設定」でいつでも変更できます。',
+      languageLabel: '表示言語',
+      languageAuto: 'システムに合わせる'
+    },
+    storage: {
+      title: 'ファイルはどこに保存しますか？',
+      body: '録画と編集の出力は同じフォルダにまとめて保存されるため、一括バックアップや移動に便利です。',
+      current: '保存場所',
+      choose: 'フォルダーを選択…',
+      loading: 'おすすめの場所を取得しています…'
+    },
+    recording: {
+      title: '録画設定',
+      body: 'これらの設定は、あとから「設定」の「録画」タブで変更できます。',
+      modeLabel: '録画モード',
+      modeSessionDesc: 'Apex を起動してから終了するまでを、1 本の動画として保存します。',
+      modeMatchDesc: '1 試合ごとに 1 本の動画として保存します。ロビーでは直近約 15 秒だけを一時保存するため、ディスクを圧迫しません。',
+      resolution: '解像度',
+      fps: 'フレームレート',
+      bitrate: 'ビットレート（kbps）'
+    },
+    done: {
+      title: '設定が完了しました',
+      summaryStorage: '保存場所：{dir}',
+      summaryMode: '録画モード：{mode}',
+      summaryQuality: '画質：{height}、{fps} fps、{bitrate} kbps',
+      nextHeading: 'この後の流れ',
+      next1: 'Apex Legends を起動すると、自動で録画が始まります。',
+      next2: '録画が終わると自動で解析され、ハイライトを探します。',
+      next3: '「Studio」でクリップを選んで書き出します。'
+    }
+  },
   keymap: {
     scope: {
       global: '全体',

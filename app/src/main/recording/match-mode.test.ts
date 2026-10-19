@@ -181,6 +181,32 @@ describe('逐局剪檔與補收尾', () => {
     expect(read(r.deps.liveCachePath!(output)).live.matches).toEqual([{ start: 5, end: 8 }])
   })
 
+  it('逐局輸出放進日期資料夾；一局跨午夜歸屬開始那天；舊式標記（輸出在 outputDir）仍可收尾', async () => {
+    const r = rig()
+    const outputs = await finalizeSession(r.dir, r.deps)
+    expect(outputs.map((p) => path.dirname(p))).toEqual([path.join(r.root, 'videos', '2026-10-18'), path.join(r.root, 'videos', '2026-10-18')])
+    expect(fs.readdirSync(path.join(r.root, 'videos')).filter((p) => p.endsWith('.mp4'))).toEqual([])
+
+    const night = rig()
+    const startedAt = new Date(2026, 9, 18, 23, 59, 30).getTime()
+    fs.writeFileSync(path.join(night.dir, 'recording.json'), JSON.stringify({ startedAt, postAnalysis: 'none', mode: 'match' }))
+    night.saveLive({ ...night.live, matches: [{ start: 10, end: 18 }] })
+    const [cut] = await finalizeSession(night.dir, night.deps)
+    // 首段 pts 為 10 秒（含前留五秒會更早），起點仍在 23:59 → 開始那天；檔名以起點時間組成
+    expect(path.dirname(cut)).toBe(path.join(night.root, 'videos', '2026-10-18'))
+    expect(path.basename(cut)).toMatch(/^Apex_2026-10-18_23-5\d\.mp4$/)
+
+    const legacy = rig()
+    const old = path.join(legacy.root, 'videos', 'Apex_old.mp4')
+    fs.mkdirSync(path.dirname(old), { recursive: true }); fs.writeFileSync(old, 'old')
+    fs.writeFileSync(path.join(legacy.dir, 'matches.json'), JSON.stringify({ cuts: [{ index: 0, start: 10, end: 18,
+      firstSeq: 3, lastSeq: 12, outputPath: old, analysisQueued: false, liveCached: false, liveTrusted: false }] }))
+    legacy.saveLive({ ...legacy.live, matches: [{ start: 10, end: 18 }] })
+    await finalizeSession(legacy.dir, legacy.deps)
+    expect(legacy.deps.addToLibrary).toHaveBeenCalledWith([old])
+    expect(fs.existsSync(legacy.dir)).toBe(false)
+  })
+
   it('同分鐘的輸出沿用碰撞序號', async () => {
     const r = rig()
     r.saveLive({ ...r.live, matches: [{ start: 10, end: 18 }, { start: 30, end: 40 }] })
@@ -234,7 +260,7 @@ describe('逐局剪檔與補收尾', () => {
       await rename(from, to)
     })
     await expect(cutMatches(r.dir, r.deps)).rejects.toThrow('marker')
-    expect(fs.readdirSync(path.dirname(path.dirname(r.dir))).filter((p) => p.endsWith('.mp4'))).toEqual([])
+    expect(fs.readdirSync(path.join(r.root, 'videos', '2026-10-18')).filter((p) => p.endsWith('.mp4'))).toEqual([])
     spy.mockRestore()
     expect((await finalizeSession(r.dir, r.deps)).map((p) => path.basename(p)))
       .toEqual(['Apex_2026-10-18_12-34.mp4', 'Apex_2026-10-18_12-35.mp4'])
@@ -242,7 +268,8 @@ describe('逐局剪檔與補收尾', () => {
 
   it('串接完成但 marker 尚未寫入就中斷，重跑會刪除暫存檔且不重複產檔', async () => {
     const r = rig()
-    const output = path.join(r.root, 'videos', 'Apex_2026-10-18_12-34.mp4')
+    const output = path.join(r.root, 'videos', '2026-10-18', 'Apex_2026-10-18_12-34.mp4')
+    fs.mkdirSync(path.dirname(output), { recursive: true })
     const part = output.replace('.mp4', '.part.mp4')
     fs.writeFileSync(part, '尚未登記的剪檔')
     fs.writeFileSync(path.join(r.dir, 'match-part.json'), JSON.stringify({ output, part }))

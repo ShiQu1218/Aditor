@@ -4,9 +4,9 @@ import { recordingI18n as t } from '../i18n'
 import { GainControl, NumberField, SegmentedControl, SelectControl, SwitchControl, describedBy, type ControlIds } from './SettingControls'
 import type { SettingsController, SettingsState } from './settingsController'
 import { fillTemplate } from './settingsModel'
+import { bitrateOptions, fpsOptions, heightOptions } from './recordingOptions'
 
 const BOOL_FIELDS = ['autoRecord', 'launchAtLogin', 'closeToTray', 'micEnabled', 'notifyMatch', 'forceAspect', 'systemAudioEnabled', 'gameAudioOnly', 'micMono', 'obsFallbackBuiltin'] as const
-const BITRATES = [5000, 8000, 10000, 15000, 20000, 30000, 40000, 50000, 60000, 80000, 100000, 150000]
 
 function ObsTextControl({ field, ids, state, settings, controller }: {
   field: 'obsHost' | 'obsPassword'; ids: ControlIds; state: SettingsState; settings: RecordingSettings; controller: SettingsController
@@ -54,17 +54,8 @@ export function RecordingControl({ field, ids, state, settings, controller }: {
     const key = field as typeof BOOL_FIELDS[number]
     return <SwitchControl ids={ids} checked={settings[key]} onChange={(v) => set(key, v)} />
   }
-  if (field === 'outputDir') {
-    return (
-      <div className="set-inline">
-        <span className="set-value mono" title={settings.outputDir ?? undefined}>{settings.outputDir ?? t.defaultDir}</span>
-        <button id={ids.ctl} type="button" className="set-btn sm" aria-describedby={describedBy(ids)} onClick={() => void controller.pickRecordingDir()}>{t.choose}</button>
-        {settings.outputDir && <button type="button" className="set-btn ghost sm" onClick={() => set('outputDir', null)}>{t.clear}</button>}
-      </div>
-    )
-  }
   if (field === 'fps' || field === 'aspectMode') {
-    const options = field === 'fps' ? [10, 20, 30, 60, 90, 120].map((v) => ({ value: String(v), label: String(v) }))
+    const options = field === 'fps' ? fpsOptions()
       : [{ value: 'fit', label: t.fit }, { value: 'stretch', label: t.stretch }]
     return <SegmentedControl ids={ids} value={String(settings[field])} options={options}
       disabled={field === 'aspectMode' && !settings.forceAspect}
@@ -101,12 +92,10 @@ export function RecordingControl({ field, ids, state, settings, controller }: {
         .filter((device) => device.id !== 'default').map((device) => ({ value: device.id, label: device.name }))]
       break
     case 'height':
-      options = [{ value: '0', label: t.native }, { value: '720', label: '720p (HD)' },
-        { value: '1080', label: '1080p (Full HD)' }, { value: '1440', label: '1440p (2K)' }]
+      options = heightOptions()
       break
     case 'bitrateKbps':
-      options = BITRATES.map((v) => ({ value: String(v), label: String(v) }))
-      if (!BITRATES.includes(settings.bitrateKbps)) options.push({ value: String(settings.bitrateKbps), label: fillTemplate(t.current, { value: settings.bitrateKbps }) })
+      options = bitrateOptions(settings.bitrateKbps)
       break
     case 'preset':
       options = [{ value: 'speed', label: t.speed }, { value: 'balanced', label: t.balanced }, { value: 'quality', label: t.quality }]

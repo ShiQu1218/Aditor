@@ -118,6 +118,8 @@ const api = {
   settings: {
     get: () => ipcRenderer.invoke('settings:get'),
     set: (partial: unknown) => ipcRenderer.invoke('settings:set', partial),
+    /** 建議的儲存根資料夾（首次啟動引導與設定畫面顯示用） */
+    suggestStorageRoot: (): Promise<string> => ipcRenderer.invoke('settings:suggestStorageRoot'),
     onChanged: (callback: (settings: unknown) => void) => {
       const handler = (_: unknown, data: unknown) => callback(data)
       ipcRenderer.on('settings:changed', handler)

@@ -200,7 +200,11 @@ const messages: MessageTable = {
   'OBS 收尾連線未完成，請在 OBS 確認錄影狀態': 'The OBS finalization connection did not complete. Check the recording status in OBS.',
   '錄影收尾失敗，已保留段落供下次重試：{error}': 'Recording finalization failed. Segments have been kept for retry next time: {error}',
   'OBS 錄影收尾失敗，已保留工作供下次重試：{error}': 'OBS recording finalization failed. The recording job has been kept for retry next time: {error}',
-  '已儲存：{paths}': 'Saved: {paths}'
+  '已儲存：{paths}': 'Saved: {paths}',
+  '無法建立輸出子資料夾': 'Could not create the export subfolder.',
+  '無法選擇資料夾，請再試一次。': 'Could not choose a folder. Please try again.',
+  '無法儲存設定，請再試一次。': 'Could not save the setting. Please try again.',
+  '實際會存到：{path}': 'Will be saved to: {path}'
 }
 
 export default messages

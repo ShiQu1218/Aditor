@@ -11,7 +11,7 @@ import type { AutoClipParams } from '../../shared/types'
 import { clampToRange } from './settingsModel'
 import type { BoolField } from './rows'
 import type { RecordingSettings, RecorderCapabilities, ObsTestResult } from '../../shared/recording'
-import { recordingI18n } from '../i18n'
+import { tr } from '../../shared/locale'
 
 interface WatchStatus {
   ok?: boolean
@@ -27,6 +27,8 @@ export interface SettingsApi {
   settings: {
     get(): Promise<Settings>
     set(partial: Partial<Settings>): Promise<SettingsSetResult | unknown>
+    /** 建議的儲存根資料夾（舊版 preload 可能沒有） */
+    suggestStorageRoot?(): Promise<string>
     onChanged(cb: (s: Settings) => void): () => void
   }
   library?: {
@@ -42,6 +44,7 @@ export interface SettingsApi {
   export?: {
     detectEncoders(): Promise<string[]>
     selectOutDir(): Promise<string | null>
+    openFolder?(dir: string): Promise<boolean>
     openh264Status(): Promise<{ installed: boolean }>
     downloadOpenH264?(): Promise<string>
     onOpenH264Progress?(cb: (ratio: number) => void): () => void
@@ -68,6 +71,8 @@ export interface SettingsState {
   encoders: { status: 'idle' | 'loading' | 'ready'; list: string[] }
   recordingCapabilities: { loading: boolean; value: RecorderCapabilities | null }
   obsConnection: { testing: boolean; result: ObsTestResult | null }
+  /** main 建議的儲存根資料夾；null＝尚未取得 */
+  suggestedStorageRoot: string | null
   /** null＝未知 */
   openh264: boolean | null
   openh264Download: OpenH264DownloadState
@@ -83,8 +88,15 @@ export const INITIAL_SETTINGS_STATE: SettingsState = {
   encoders: { status: 'idle', list: [] },
   recordingCapabilities: { loading: true, value: null },
   obsConnection: { testing: false, result: null },
+  suggestedStorageRoot: null,
   openh264: null,
   openh264Download: { step: 'idle', ratio: 0, error: null }
+}
+
+/** 會顯示 main 路徑／密碼驗證錯誤的設定列 → `SettingsSetResult.errors` 的鍵。 */
+const ROW_ERROR_KEYS: Readonly<Record<string, keyof NonNullable<SettingsSetResult['errors']>>> = {
+  storageRoot: 'storageRoot',
+  'recording-obsPassword': 'obsPassword'
 }
 
 function isSetResult(v: unknown): v is SettingsSetResult {
@@ -129,7 +141,7 @@ export class SettingsController {
     this.unsubscribe = this.api.settings.onChanged((s) => {
       this.patch({ settings: s })
     })
-    await Promise.all([this.loadSettings(), this.refreshWatch(), this.refreshProxy(), this.refreshEncoders(), this.refreshRecordingCapabilities()])
+    await Promise.all([this.loadSettings(), this.refreshWatch(), this.refreshProxy(), this.refreshEncoders(), this.refreshRecordingCapabilities(), this.refreshStorageSuggestion()])
   }
 
   stop(): void {
@@ -151,9 +163,10 @@ export class SettingsController {
     try {
       const res = await this.api.settings.set(partial)
       if (!isSetResult(res)) throw new Error('unexpected settings:set result')
-      const err = rowId === 'recording-outputDir' ? res.errors?.recordingOutputDir : rowId === 'recording-obsPassword' ? res.errors?.obsPassword : res.errors?.defaultOutDir
       const next = { ...this.state.rowErrors }
-      if (rowId === 'defaultOutDir' || rowId === 'recording-outputDir' || rowId === 'recording-obsPassword') {
+      const errorKey = ROW_ERROR_KEYS[rowId]
+      if (errorKey) {
+        const err = res.errors?.[errorKey]
         if (err) next[rowId] = err
         else delete next[rowId]
       }
@@ -189,15 +202,6 @@ export class SettingsController {
     this.patch({ obsConnection: { testing: false, result } })
   }
 
-  async pickRecordingDir(): Promise<void> {
-    try {
-      const dir = await this.api.export?.selectOutDir()
-      if (dir) await this.setRecording('outputDir', dir)
-    } catch {
-      this.setRowError('recording-outputDir', recordingI18n.chooseFailed)
-    }
-  }
-
   async refreshRecordingCapabilities(): Promise<void> {
     try {
       const value = await this.api.recording?.getCapabilities() ?? null
@@ -231,22 +235,40 @@ export class SettingsController {
     await this.commit('autoclip', { autoclip: { ...base, [key]: v } })
   }
 
-  // ── 匯出資料夾 ──
-  async pickOutDir(): Promise<void> {
+  // ── 儲存位置（錄影與剪輯輸出的根資料夾；main 會同步 recording.outputDir／defaultOutDir） ──
+  async refreshStorageSuggestion(): Promise<void> {
+    try {
+      const dir = await this.api.settings.suggestStorageRoot?.()
+      this.patch({ suggestedStorageRoot: typeof dir === 'string' && dir !== '' ? dir : null })
+    } catch {
+      this.patch({ suggestedStorageRoot: null })
+    }
+  }
+
+  async pickStorageRoot(): Promise<void> {
     const pick = this.api.export?.selectOutDir
     if (!pick) return
     let dir: string | null
     try {
       dir = await pick()
     } catch {
+      this.setRowError('storageRoot', tr('無法選擇資料夾，請再試一次。'))
       return
     }
     if (!dir) return
-    await this.commit('defaultOutDir', { defaultOutDir: dir })
+    await this.commit('storageRoot', { storageRoot: dir })
+    await this.refreshStorageSuggestion()
   }
 
-  async clearOutDir(): Promise<void> {
-    await this.commit('defaultOutDir', { defaultOutDir: null })
+  /** 在檔案總管開啟儲存位置；尚未設定時不做事。 */
+  async openStorageRoot(): Promise<void> {
+    const dir = this.state.settings?.storageRoot
+    if (!dir) return
+    try {
+      await this.api.export?.openFolder?.(dir)
+    } catch {
+      // 開啟失敗不影響設定
+    }
   }
 
   // ── 監看資料夾（WatchManager IPC；驗證在 main） ──
