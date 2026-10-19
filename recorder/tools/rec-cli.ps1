@@ -1,4 +1,4 @@
-# 手動錄影與量測：先 cargo build --release，再設定 ADITORREC_FFMPEG_DIR 與 FFmpeg bin 的 PATH。
+﻿# 手動錄影與量測：先 cargo build --release，再設定 ADITORREC_FFMPEG_DIR 與 FFmpeg bin 的 PATH。
 # 範例：./tools/rec-cli.ps1 -TargetPid 1234 -Seconds 60 -NoMicrophone
 # 擷取方式 A/B：-Capture wgc|dda；-GpuCounters 另外取樣 aditorrec 與 dwm 的 GPU 引擎使用率（每秒一次）。
 [CmdletBinding()]

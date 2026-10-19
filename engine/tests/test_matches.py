@@ -17,8 +17,9 @@ TRUTH = json.loads((FIXTURES / "truth.json").read_text(encoding="utf-8"))
 def run(parts, end=None, **kw):
     tracker = MatchTracker(**kw)
     for first, last, kind in parts:
+        scene = SceneFrame("other", blank=True) if kind == "blank" else SceneFrame(kind)
         for t in range(first, last + 1):
-            tracker.feed(t, SceneFrame(kind))
+            tracker.feed(t, scene)
     tracker.finish(end if end is not None else parts[-1][1] + 1)
     return tracker
 
@@ -219,6 +220,39 @@ def test_expired_opening_can_resume_from_hud():
         assert tr.feed(t, SceneFrame("in_match_hud")) == []
     events = tr.feed(184, SceneFrame("in_match_hud"))
     assert [(e.type, e.t, e.reason) for e in events] == [("match_start", 181, "hud_resume")]
+
+
+def test_game_hidden_between_matches_splits_at_hide():
+    # DDA：打完切出遊戲、排下一局，跳傘時才切回來；期間只有黑畫面。
+    tr = run([(0, 100, "in_match_hud"), (101, 250, "blank"), (251, 300, "in_match_hud")])
+    assert tr.matches == [Match(0, 101), Match(251, 301)]
+    assert [(e.type, e.t, e.reason) for e in tr.events] == [
+        ("match_start", 0, "initial_match"), ("match_end", 101, "hidden"),
+        ("match_start", 251, "hud_resume"), ("match_end", 301, "eof")]
+
+
+def test_brief_alt_tab_does_not_split_match():
+    tr = run([(0, 100, "in_match_hud"), (101, 159, "blank"), (160, 200, "in_match_hud")])
+    assert tr.matches == [Match(0, 201)]
+
+
+def test_hidden_end_is_emitted_once_threshold_is_reached():
+    tr = MatchTracker()
+    tr.feed(0, SceneFrame("in_match_hud"))
+    for t in range(10, 70):
+        assert tr.feed(t, SceneFrame("other", blank=True)) == []
+    events = tr.feed(70, SceneFrame("other", blank=True))
+    assert [(e.type, e.t, e.reason) for e in events] == [("match_end", 10, "hidden")]
+
+
+def test_lobby_before_hiding_keeps_lobby_end():
+    tr = run([(0, 9, "in_match_hud"), (10, 11, "lobby"), (12, 100, "blank"), (101, 110, "in_match_hud")])
+    assert tr.matches == [Match(0, 10), Match(101, 111)]
+
+
+def test_recording_starts_hidden_then_hud_resumes_at_hud():
+    tr = run([(0, 80, "blank"), (81, 90, "in_match_hud")])
+    assert tr.matches == [Match(81, 91)]
 
 
 def test_lobby_reset_allows_following_match():
