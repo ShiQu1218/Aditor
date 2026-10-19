@@ -523,6 +523,7 @@ const settingsI18n = {
     recording: '錄影'
   },
   card: {
+    general: '一般',
     source: '影片來源',
     perf: '分析與效能',
     proxy: '預覽與代理檔',
@@ -531,6 +532,12 @@ const settingsI18n = {
     about: '關於'
   },
   row: {
+    language: {
+      title: '介面語言',
+      desc: '變更後視窗會重新載入以套用；系統匣選單也會一併更新。選「跟隨系統」會依 Windows 的顯示語言決定。',
+      keywords: ['語言', '介面', '翻譯', 'language', 'locale', '中文', 'english', '日本語', '한국어'],
+      auto: '跟隨系統'
+    },
     watchFolders: {
       title: '監看資料夾',
       desc: '新影片穩定後自動匯入影片庫（是否自動分析見下一項）。',

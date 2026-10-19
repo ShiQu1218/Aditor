@@ -1,4 +1,8 @@
-import { zhTW } from './zh-TW'
+import type { Messages } from './index'
+import { i18n } from './ja/main'
+import { liveI18n } from './ja/live'
+import { recordingI18n } from './ja/recording'
+import { settingsI18n } from './ja/settings'
+import { shellI18n } from './ja/shell'
 
-/** 待翻譯：暫以繁體中文代替。 */
-export const ja = zhTW
+export const ja: Messages = { i18n, shellI18n, settingsI18n, recordingI18n, liveI18n }

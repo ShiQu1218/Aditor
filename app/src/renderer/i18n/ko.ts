@@ -1,4 +1,8 @@
-import { zhTW } from './zh-TW'
+import type { Messages } from './index'
+import { i18n } from './ko/main'
+import { liveI18n } from './ko/live'
+import { recordingI18n } from './ko/recording'
+import { settingsI18n } from './ko/settings'
+import { shellI18n } from './ko/shell'
 
-/** 待翻譯：暫以繁體中文代替。 */
-export const ko = zhTW
+export const ko: Messages = { i18n, shellI18n, settingsI18n, recordingI18n, liveI18n }
