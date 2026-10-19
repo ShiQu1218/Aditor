@@ -1,6 +1,6 @@
 import React, { useRef } from 'react'
 import { Download, Film, Scissors } from '../components/icons'
-import { settingsI18n } from '../i18n/zh-TW'
+import { settingsI18n } from '../i18n'
 import { CATEGORIES, type CategoryId } from './rows'
 import { fillTemplate, nextTabIndex } from './settingsModel'
 

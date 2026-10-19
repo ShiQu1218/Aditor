@@ -1,4 +1,5 @@
-export const i18n = {
+/** 繁體中文（來源語言）：其他語言的鍵與佔位符以此為準。 */
+const i18n = {
   lowPerf: {
     askText: '偵測到此電腦沒有硬體解碼，要開啟低效能模式嗎？',
     enable: '開啟',
@@ -430,7 +431,7 @@ export const i18n = {
   }
 }
 
-export const shellI18n = {
+const shellI18n = {
   rail: {
     library: '影片庫',
     studio: '工作室（精華＋專案）',
@@ -501,7 +502,7 @@ export const shellI18n = {
 }
 
 /** 設定畫面（Task 16）：分類、卡片、各列文字與控制項標籤。 */
-export const settingsI18n = {
+const settingsI18n = {
   title: '設定',
   searchPlaceholder: '搜尋設定',
   searchLabel: '搜尋設定',
@@ -522,6 +523,7 @@ export const settingsI18n = {
     recording: '錄影'
   },
   card: {
+    general: '一般',
     source: '影片來源',
     perf: '分析與效能',
     proxy: '預覽與代理檔',
@@ -530,6 +532,12 @@ export const settingsI18n = {
     about: '關於'
   },
   row: {
+    language: {
+      title: '介面語言',
+      desc: '變更後視窗會重新載入以套用；系統匣選單也會一併更新。選「跟隨系統」會依 Windows 的顯示語言決定。',
+      keywords: ['語言', '介面', '翻譯', 'language', 'locale', '中文', 'english', '日本語', '한국어'],
+      auto: '跟隨系統'
+    },
     watchFolders: {
       title: '監看資料夾',
       desc: '新影片穩定後自動匯入影片庫（是否自動分析見下一項）。',
@@ -663,7 +671,7 @@ export const settingsI18n = {
 } as const
 
 /** 遊戲錄影設定與狀態面板。 */
-export const recordingI18n = {
+const recordingI18n = {
   title: '錄影',
   card: '遊戲錄影',
   cards: { general: '一般', video: '影像', audio: '音訊' },
@@ -759,7 +767,7 @@ export const recordingI18n = {
 }
 
 /** 錄影中觀看（第 3 期）。 */
-export const liveI18n = {
+const liveI18n = {
   obsRecording: 'OBS 錄影中，錄影結束後即可播放',
   detectionOnly: '即時偵測中，OBS 未連線，本次未錄影',
   title: '觀看當局',
@@ -796,3 +804,5 @@ export const liveI18n = {
   openLibrary: '前往媒體庫',
   keys: '空白鍵播放／暫停 · ←／→ 前後 5 秒 · End 跳到最新'
 } as const
+
+export const zhTW = { i18n, shellI18n, settingsI18n, recordingI18n, liveI18n }

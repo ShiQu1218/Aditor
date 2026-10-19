@@ -3,7 +3,7 @@ import { useFocusTrap } from '../a11y/useFocusTrap'
 import type { AutoClipParams, Clip, EngineEvent } from '../../shared/types'
 import { formatTime } from '../../shared/time'
 import { useDebounced } from '../hooks/useDebounced'
-import { i18n } from '../i18n/zh-TW'
+import { i18n } from '../i18n'
 import { RefreshCw } from '../components/icons'
 import { canApply, estimateReducer, estimateView, initialEstimate } from './autoclipEstimate'
 

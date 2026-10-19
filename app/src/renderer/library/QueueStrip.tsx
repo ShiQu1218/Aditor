@@ -5,7 +5,7 @@ import { ChevronDown } from '../components/icons'
 import { QueuePopover } from '../shell/QueuePopover'
 import { QueueRing } from '../shell/QueueRing'
 import { useQueueSummary } from '../queue/QueueProvider'
-import { i18n } from '../i18n/zh-TW'
+import { i18n } from '../i18n'
 
 const t = i18n.queue
 

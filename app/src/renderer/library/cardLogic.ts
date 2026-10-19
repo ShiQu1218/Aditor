@@ -1,7 +1,7 @@
 // 影片庫的純決策函式：卡片開啟行為與 Esc 的分層關閉。不依賴 React／DOM，便於單獨測試。
 import type { LibraryEntry } from '../../main/library'
 import type { QueueItemState } from '../../shared/queueState'
-import { i18n } from '../i18n/zh-TW'
+import { i18n } from '../i18n'
 
 export function fileName(path: string): string {
   return path.split(/[/\\]/).pop() || path

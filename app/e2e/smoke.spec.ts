@@ -2,7 +2,7 @@ import fs from 'fs'
 import os from 'os'
 import path from 'path'
 import { test, expect, importAndAnalyze, card, openStudio, shot, waitProjectFile, readSettings } from './helpers/test'
-import { i18n, settingsI18n, shellI18n } from '../src/renderer/i18n/zh-TW'
+import { i18n, settingsI18n, shellI18n } from '../src/renderer/i18n'
 
 const T = i18n.studio
 

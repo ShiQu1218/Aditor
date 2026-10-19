@@ -1,5 +1,6 @@
 import { AutoClipParams } from './types'
 import { DEFAULT_RECORDING_SETTINGS, type RecordingSettings } from './recording'
+import type { LanguageSetting } from './locale'
 
 /** 設定檔格式版本；格式變更時遞增並在 `migrateSettings` 處理舊版。 */
 export const SETTINGS_VERSION = 1
@@ -10,6 +11,8 @@ export const SETTINGS_VERSION = 1
  */
 export interface Settings {
   version: 1
+  /** 介面語言：'auto'＝跟隨系統（Windows 顯示語言），不支援的系統語言用繁體中文 */
+  language: LanguageSetting
   /** 監看資料夾清單（新影片自動匯入） */
   watchFolders: string[]
   /** 監看資料夾的新影片自動排入分析佇列 */
@@ -77,6 +80,7 @@ export interface SettingsSetResult {
 /** 預設設定；首次使用者（無設定檔）即採用此值，行為與舊版相同。 */
 export const DEFAULT_SETTINGS: Settings = {
   version: SETTINGS_VERSION,
+  language: 'auto',
   watchFolders: [],
   autoAnalyze: true,
   decode: 'auto',

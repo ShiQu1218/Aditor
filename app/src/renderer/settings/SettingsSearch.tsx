@@ -1,6 +1,6 @@
 import React from 'react'
 import { Search } from '../components/icons'
-import { settingsI18n } from '../i18n/zh-TW'
+import { settingsI18n } from '../i18n'
 
 interface SettingsSearchProps {
   query: string

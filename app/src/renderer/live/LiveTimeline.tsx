@@ -2,7 +2,7 @@ import React from 'react'
 import type { LiveEvent, LiveMatch } from '../../shared/recording'
 import { isCounted } from '../../shared/types'
 import { formatTime } from '../../shared/time'
-import { liveI18n as t } from '../i18n/zh-TW'
+import { liveI18n as t } from '../i18n'
 import { fill, pct, SEEK_STEP_SEC } from './liveModel'
 
 interface LiveTimelineProps {

@@ -5,6 +5,7 @@
  */
 import { ipcMain, type BrowserWindow } from 'electron'
 import { RECORDING_CHANNELS, type RecordingService } from '../shared/recording'
+import { tr } from '../shared/locale'
 
 const SESSION_ID = /^\d{8}-\d{6}-[0-9a-f]{4}$/
 
@@ -20,7 +21,7 @@ export function requireSegmentSeq(value: unknown): number {
 }
 
 export function registerRecordingIpc(service: RecordingService, windows: () => BrowserWindow[]): () => void {
-  ipcMain.handle(RECORDING_CHANNELS.testObs, () => service.testObs?.() ?? { ok: false, error: 'OBS 連線測試無法使用' })
+  ipcMain.handle(RECORDING_CHANNELS.testObs, () => service.testObs?.() ?? { ok: false, error: tr('OBS 連線測試無法使用') })
   ipcMain.handle(RECORDING_CHANNELS.getStatus, () => service.status())
   ipcMain.handle(RECORDING_CHANNELS.getCapabilities, () => service.capabilities())
   ipcMain.handle(RECORDING_CHANNELS.startManual, () => service.startManual())

@@ -2,8 +2,9 @@ import React, { forwardRef } from 'react'
 import type { Clip, EngineEvent } from '../../shared/types'
 import { formatTime } from '../../shared/time'
 import { Check, Play, Plus, Undo2 } from '../components/icons'
-import { i18n } from '../i18n/zh-TW'
+import { i18n } from '../i18n'
 import { clipEventGlyphs, clipTitle } from './highlights'
+import { tr } from '../../shared/locale'
 
 export interface HighlightCardProps {
   clip: Clip
@@ -49,7 +50,7 @@ export const HighlightCard = forwardRef<HTMLDivElement, HighlightCardProps>(func
       role="listitem"
       tabIndex={active ? 0 : -1}
       className={`hl-card${big ? ' big' : ''}${status === 'skipped' ? ' skipped' : ''}${active ? ' active' : ''}`}
-      aria-label={`${title}，${timeLabel}`}
+      aria-label={tr('{title}，{timeLabel}', { title, timeLabel })}
       data-clip-id={clip.id}
       onClick={() => onSelect(clip)}
       onFocus={() => onFocusCard(clip)}

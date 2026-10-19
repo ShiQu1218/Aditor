@@ -1,5 +1,5 @@
 import React, { useRef } from 'react'
-import { i18n } from '../i18n/zh-TW'
+import { i18n } from '../i18n'
 import { formatTime } from '../../shared/time'
 import { View, scrollStartAt, timelineScroll } from './model'
 import { pointerToX } from './useTimelineInteractions'

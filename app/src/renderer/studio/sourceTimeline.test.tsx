@@ -5,7 +5,7 @@ import { buttonByText, cleanupMounted, click, focusEl, press } from '../../../te
 import { mountStudio, STUDIO_VIDEO, type StudioMount } from '../../../test/studioHarness'
 import type { Project } from '../editor/project'
 import type { CacheDoc } from '../../shared/types'
-import { i18n } from '../i18n/zh-TW'
+import { i18n } from '../i18n'
 
 let studio: StudioMount | null = null
 let frames: Map<number, FrameRequestCallback>

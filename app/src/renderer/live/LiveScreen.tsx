@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { isCounted } from '../../shared/types'
 import { formatTime } from '../../shared/time'
 import { ChevronLeft, Pause, Play, SkipBack, SkipForward } from '../components/icons'
-import { i18n, liveI18n as t, recordingI18n as rt } from '../i18n/zh-TW'
+import { i18n, liveI18n as t, recordingI18n as rt } from '../i18n'
 import { useOptionalOverlay } from '../shell/OverlayHost'
 import { useRecordingStatus } from '../shell/useRecordingStatus'
 import { LIVE_EDGE_OFFSET, RETAIN_SEC } from './liveBuffer'
@@ -11,6 +11,7 @@ import { LiveTimeline } from './LiveTimeline'
 import { useLivePlayer } from './useLivePlayer'
 import { useLiveState } from './useLiveState'
 import '../styles/live.css'
+import { tr } from '../../shared/locale'
 
 export interface LiveScreenProps {
   onBack: () => void
@@ -88,7 +89,7 @@ export function LiveScreen({ onBack, onOpenVideo, onOpenLibrary }: LiveScreenPro
   )
   else if (sameSession && status.phase === 'error' && status.error) message = (
     <div className="live-message error" role="alert">
-      <p>{`${status.error.code}：${status.error.message}`}</p>
+      <p>{tr('{code}：{message}', { code: status.error.code, message: status.error.message })}</p>
       <div className="live-message-actions"><button type="button" className="lib-btn" onClick={onOpenLibrary}>{t.openLibrary}</button></div>
     </div>
   )

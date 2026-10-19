@@ -7,7 +7,7 @@ import { buildLongDoc } from '../dev/longFixture'
 import { createFakeApi, installFakeApi, type FakeApi } from '../../../test/fakeApi'
 import { cleanupMounted, click, flush, installDomShims, mount, buttonByText } from '../../../test/dom'
 import { mountStudio, STUDIO_VIDEO, type StudioMount } from '../../../test/studioHarness'
-import { shellI18n, i18n } from '../i18n/zh-TW'
+import { shellI18n, i18n } from '../i18n'
 
 const A = 'D:/Apex_2026-10-18_01-00.mp4'
 const B = 'D:/Apex_2026-10-18_23-00_2.mp4'

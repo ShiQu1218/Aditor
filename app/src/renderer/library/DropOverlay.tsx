@@ -1,5 +1,5 @@
 import React from 'react'
-import { i18n } from '../i18n/zh-TW'
+import { i18n } from '../i18n'
 
 /** 整頁拖放覆蓋層（拖曳檔案進入影片庫時顯示） */
 export function DropOverlay({ show }: { show: boolean }): JSX.Element | null {

@@ -3,7 +3,7 @@ import type { MouseEvent as ReactMouseEvent, MutableRefObject, RefObject } from 
 import type { Clip, EngineEvent } from '../../shared/types'
 import { isCounted } from '../../shared/types'
 import { formatTime } from '../../shared/time'
-import { i18n } from '../i18n/zh-TW'
+import { i18n } from '../i18n'
 import { resizeClip } from './clips'
 import { EVENT_TOP } from './draw'
 import { TimelineLayout, zoomToCluster } from './layout'
@@ -12,6 +12,7 @@ import { hitDensity, hitItem } from './select'
 import { playheadTarget } from './Playhead'
 import { bladeReducer, initialBlade, type BladeAction, type BladeState } from './blade'
 import type { ProjectItem } from '../editor/project'
+import { tr } from '../../shared/locale'
 
 /** 拖曳超過此距離（px，水平）才視為拖曳播放頭 */
 export const DRAG_THRESHOLD_PX = 4
@@ -172,7 +173,7 @@ function eventTip(e: EngineEvent): string {
   else {
     const why =
       e.counted_override === false ? tl.forced : ((tl.reasons as Record<string, string>)[e.counted_reason] ?? e.counted_reason)
-    state = `${tl.uncounted}（${why}）`
+    state = tr('{label}（{detail}）', { label: tl.uncounted, detail: why })
   }
   return `${type} · ${formatTime(e.t)} · ${state}`
 }

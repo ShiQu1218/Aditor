@@ -6,6 +6,7 @@ import { codecsDir, proxyDir } from '../shared/paths'
 import { detectEncoders } from './export/encoders'
 import { killTree } from './export/killTree'
 import { normalizePath } from './library'
+import { tr } from '../shared/locale'
 
 export function proxyPath(videoPath: string): string {
   const hash = crypto.createHash('sha1').update(normalizePath(videoPath)).digest('hex')
@@ -175,23 +176,23 @@ export function generateProxy(
     fs.mkdirSync(path.dirname(outPath), { recursive: true })
     const candidates = orderEncoders(await (deps.detect ?? defaultDetect)())
     if (candidates.length === 0) {
-      throw new Error('找不到可用的 H.264 編碼器（未偵測到 NVENC／QSV／AMF，也尚未安裝 OpenH264）')
+      throw new Error(tr('找不到可用的 H.264 編碼器（未偵測到 NVENC／QSV／AMF，也尚未安裝 OpenH264）'))
     }
     const partial = partialProxyPath(outPath)
     const failures: string[] = []
     for (const encoder of candidates) {
-      if (cancelling) throw new Error('代理檔產生已取消')
+      if (cancelling) throw new Error(tr('代理檔產生已取消'))
       const res = await runFfmpeg(videoPath, partial, encoder, durationSec, onProgress, deps)
       if (cancelling) {
         await removePartial(partial)
-        throw new Error('代理檔產生已取消')
+        throw new Error(tr('代理檔產生已取消'))
       }
       if (res.ok) {
         try {
           fs.renameSync(partial, outPath)
         } catch (err) {
           await removePartial(partial)
-          throw new Error(`無法完成代理檔：${(err as Error).message}`)
+          throw new Error(tr('無法完成代理檔：{message}', { message: (err as Error).message }))
         }
         onProgress?.(1.0)
         return outPath
@@ -199,7 +200,7 @@ export function generateProxy(
       await removePartial(partial)
       failures.push(`${encoder}: ${res.error}`)
     }
-    throw new Error(`代理檔產生失敗，已嘗試的編碼器皆無法使用（${failures.join('；')}）`)
+    throw new Error(tr('代理檔產生失敗，已嘗試的編碼器皆無法使用（{failures}）', { failures: failures.join('；') }))
   })()
   inflight.set(outPath, job)
   const clear = (): void => {

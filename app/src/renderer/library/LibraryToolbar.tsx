@@ -1,7 +1,7 @@
 import React from 'react'
 import { Search, Star } from '../components/icons'
 import type { LibraryKind } from '../lib/libraryFilter'
-import { i18n } from '../i18n/zh-TW'
+import { i18n } from '../i18n'
 
 const t = i18n.library
 

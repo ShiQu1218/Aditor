@@ -3,7 +3,7 @@ import fs from 'fs'
 import path from 'path'
 import { SETTING_ROWS, CATEGORIES, type SettingRow } from './rows'
 import { filterRows } from './filterRows'
-import { settingsI18n } from '../i18n/zh-TW'
+import { settingsI18n } from '../i18n'
 
 const mk = (over: Partial<SettingRow> & { id: string }): SettingRow => ({
   category: 'a',

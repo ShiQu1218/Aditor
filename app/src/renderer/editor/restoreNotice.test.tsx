@@ -5,7 +5,7 @@ import { afterEach, expect, test } from 'vitest'
 import { createFakeApi, installFakeApi } from '../../../test/fakeApi'
 import { Providers } from '../../../test/harness'
 import { cleanupMounted, flush, installDomShims, mount } from '../../../test/dom'
-import { i18n } from '../i18n/zh-TW'
+import { i18n } from '../i18n'
 
 let restore: (() => void) | null = null
 afterEach(() => {

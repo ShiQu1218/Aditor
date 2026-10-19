@@ -9,6 +9,7 @@ import { createCutLookup, createMediaEndProbe, CutLookup, lookupCopyCuts, MediaE
 import { runExport, RunExportOptions, RunProgress } from './run'
 import { isSafeLocalDirPath, isSafeLocalVideoPath, fileExistsSafe } from '../safe-path'
 import { estimateOutputBytes } from '../../shared/exportEstimate'
+import { tr } from '../../shared/locale'
 
 export interface ExportSender {
   isDestroyed(): boolean
@@ -64,46 +65,46 @@ async function assertWritableDir(dir: string): Promise<void> {
   try {
     st = await fs.promises.stat(dir)
   } catch {
-    throw new RequestError('輸出資料夾不存在')
+    throw new RequestError(tr('輸出資料夾不存在'))
   }
-  if (!st.isDirectory()) throw new RequestError('輸出路徑不是資料夾')
+  if (!st.isDirectory()) throw new RequestError(tr('輸出路徑不是資料夾'))
   const probe = path.join(dir, `.apexhl-write-test-${process.pid}-${Math.random().toString(36).slice(2, 8)}.tmp`)
   try {
     await fs.promises.writeFile(probe, '', { flag: 'wx' })
   } catch {
-    throw new RequestError('輸出資料夾無法寫入')
+    throw new RequestError(tr('輸出資料夾無法寫入'))
   }
   await fs.promises.rm(probe, { force: true }).catch(() => undefined)
 }
 
 export async function validateExportRequest(raw: unknown): Promise<ValidatedRequest> {
-  if (typeof raw !== 'object' || raw === null) throw new RequestError('匯出請求格式不正確')
+  if (typeof raw !== 'object' || raw === null) throw new RequestError(tr('匯出請求格式不正確'))
   const r = raw as Record<string, unknown>
-  if (!Array.isArray(r.items) || r.items.length === 0) throw new RequestError('沒有可匯出的片段')
-  if (r.items.length > MAX_ITEMS) throw new RequestError('片段數量過多')
+  if (!Array.isArray(r.items) || r.items.length === 0) throw new RequestError(tr('沒有可匯出的片段'))
+  if (r.items.length > MAX_ITEMS) throw new RequestError(tr('片段數量過多'))
   const items: ValidatedRequest['items'] = []
   for (const it of r.items) {
-    if (typeof it !== 'object' || it === null) throw new RequestError('片段格式不正確')
+    if (typeof it !== 'object' || it === null) throw new RequestError(tr('片段格式不正確'))
     const { id, source, start, end } = it as Record<string, unknown>
     if (typeof start !== 'number' || typeof end !== 'number' || !Number.isFinite(start) || !Number.isFinite(end)) {
-      throw new RequestError('片段時間必須是有限數字')
+      throw new RequestError(tr('片段時間必須是有限數字'))
     }
-    if (start < 0 || end <= start) throw new RequestError('片段時間範圍不正確')
-    if (!isSafeLocalVideoPath(source)) throw new RequestError('來源影片路徑不正確')
-    if (!(await fileExistsSafe(source))) throw new RequestError(`找不到來源影片：${source}`)
+    if (start < 0 || end <= start) throw new RequestError(tr('片段時間範圍不正確'))
+    if (!isSafeLocalVideoPath(source)) throw new RequestError(tr('來源影片路徑不正確'))
+    if (!(await fileExistsSafe(source))) throw new RequestError(tr('找不到來源影片：{source}', { source }))
     items.push({ id: typeof id === 'string' ? id : '', source, start, end })
   }
-  if (r.mode !== 'separate' && r.mode !== 'concat') throw new RequestError('匯出模式不正確')
-  if (r.quality !== 'copy' && r.quality !== 'precise') throw new RequestError('匯出品質不正確')
+  if (r.mode !== 'separate' && r.mode !== 'concat') throw new RequestError(tr('匯出模式不正確'))
+  if (r.quality !== 'copy' && r.quality !== 'precise') throw new RequestError(tr('匯出品質不正確'))
   let encoder: string | undefined
   if (r.encoder !== undefined && r.encoder !== null) {
-    if (typeof r.encoder !== 'string' || !/^[A-Za-z0-9_]{1,40}$/.test(r.encoder)) throw new RequestError('編碼器名稱不正確')
+    if (typeof r.encoder !== 'string' || !/^[A-Za-z0-9_]{1,40}$/.test(r.encoder)) throw new RequestError(tr('編碼器名稱不正確'))
     encoder = r.encoder
   }
-  if (!isSafeLocalDirPath(r.outDir)) throw new RequestError('輸出資料夾路徑不正確')
+  if (!isSafeLocalDirPath(r.outDir)) throw new RequestError(tr('輸出資料夾路徑不正確'))
   const outDir = path.resolve(r.outDir)
   await assertWritableDir(outDir)
-  if (typeof r.baseName !== 'string') throw new RequestError('檔名不正確')
+  if (typeof r.baseName !== 'string') throw new RequestError(tr('檔名不正確'))
   return { items, mode: r.mode, quality: r.quality, encoder, outDir, baseName: sanitizeBaseName(r.baseName) }
 }
 
@@ -132,7 +133,7 @@ export function createExportService(deps: ExportServiceDeps = {}) {
   let current: { ac: AbortController; done: Promise<unknown> } | null = null
 
   async function start(sender: ExportSender, raw: unknown): Promise<ExportStartResult> {
-    if (current) return { ok: false, code: 'busy', error: '已有匯出正在進行中，請等待完成或先取消', outputs: [] }
+    if (current) return { ok: false, code: 'busy', error: tr('已有匯出正在進行中，請等待完成或先取消'), outputs: [] }
     const ac = new AbortController()
     let resolveDone!: () => void
     current = { ac, done: new Promise<void>((r) => (resolveDone = r)) }
@@ -189,10 +190,10 @@ export function createExportService(deps: ExportServiceDeps = {}) {
         staticList && segmentFiles.length > 0
           ? async (): Promise<string> => concatList(segmentFiles, await measureMediaEnds(segmentFiles, measure, ac.signal))
           : staticList
-      if (free.renamed) notices.push(`輸出資料夾已有同名檔案，已改用「${free.baseName}」，不會覆蓋原有檔案`)
+      if (free.renamed) notices.push(tr('輸出資料夾已有同名檔案，已改用「{baseName}」，不會覆蓋原有檔案', { baseName: free.baseName }))
       // 防禦：輸出檔必須直接位於 outDir 內
       for (const j of jobs) {
-        if (path.dirname(path.resolve(j.output)) !== req.outDir) throw new RequestError('輸出路徑不正確')
+        if (path.dirname(path.resolve(j.output)) !== req.outDir) throw new RequestError(tr('輸出路徑不正確'))
       }
       const totalDur = req.items.reduce((s, it) => s + Math.max(0, it.end - it.start), 0)
 
@@ -248,7 +249,7 @@ export function createExportService(deps: ExportServiceDeps = {}) {
    * 讓壞資料夾在設定頁就成為阻擋條件，而不是按下開始後才出現失敗頁。回傳結果而非丟錯（錯誤訊息才不會被 IPC 加前綴）。
    */
   async function checkOutDir(dir: unknown): Promise<{ ok: true } | { ok: false; reason: string }> {
-    if (!isSafeLocalDirPath(dir)) return { ok: false, reason: '輸出資料夾路徑不正確' }
+    if (!isSafeLocalDirPath(dir)) return { ok: false, reason: tr('輸出資料夾路徑不正確') }
     try {
       await assertWritableDir(path.resolve(dir))
       return { ok: true }
@@ -258,10 +259,10 @@ export function createExportService(deps: ExportServiceDeps = {}) {
   }
 
   async function diskSpace(dir: unknown): Promise<{ freeBytes: number; totalBytes: number }> {
-    if (!isSafeLocalDirPath(dir)) throw new Error('磁碟路徑不正確')
+    if (!isSafeLocalDirPath(dir)) throw new Error(tr('磁碟路徑不正確'))
     const resolved = path.resolve(dir)
     const st = await fs.promises.stat(resolved).catch(() => null)
-    if (!st || !st.isDirectory()) throw new Error('資料夾不存在')
+    if (!st || !st.isDirectory()) throw new Error(tr('資料夾不存在'))
     const s = await fs.promises.statfs(resolved)
     return { freeBytes: Number(s.bavail) * Number(s.bsize), totalBytes: Number(s.blocks) * Number(s.bsize) }
   }

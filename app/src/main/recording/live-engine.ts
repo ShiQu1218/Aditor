@@ -12,6 +12,7 @@ import { EventEmitter } from 'events'
 import { StringDecoder } from 'string_decoder'
 import type { LiveEvent } from '../../shared/recording'
 import type { RecorderCommand } from './index'
+import { tr } from '../../shared/locale'
 
 /** snapshot 含整份事件清單，可能遠大於 apexrec 的 64 KB 行長上限。 */
 const MAX_LINE_BYTES = 8 * 1024 * 1024
@@ -132,7 +133,7 @@ export class LiveEngine extends EventEmitter {
         env: { ...process.env, ...command.env }, windowsHide: true, stdio: 'pipe'
       })
     } catch (error) {
-      this.crashed(`無法啟動即時偵測：${String(error)}`)
+      this.crashed(tr('無法啟動即時偵測：{error}', { error: String(error) }))
       return
     }
     this.proc = proc
@@ -144,16 +145,16 @@ export class LiveEngine extends EventEmitter {
       try {
         if (this.options.setPriority) this.options.setPriority(proc.pid)
         else os.setPriority(proc.pid, os.constants.priority.PRIORITY_BELOW_NORMAL)
-      } catch (error) { this.emit('warning', `無法降低即時偵測的優先序：${String(error)}`) }
+      } catch (error) { this.emit('warning', tr('無法降低即時偵測的優先序：{error}', { error: String(error) })) }
     })
     this.closed = new Promise((resolve) => {
       proc.once('close', (code, signal) => {
         this.proc = null
-        if (!this.stopping) this.crashed(`即時偵測已結束（${code ?? signal}）${this.stderr ? `\n${this.stderr.trim()}` : ''}`)
+        if (!this.stopping) this.crashed(tr('即時偵測已結束（{code}）', { code: code ?? signal }) + (this.stderr ? `\n${this.stderr.trim()}` : ''))
         resolve()
       })
     })
-    proc.once('error', (error) => this.emit('warning', `即時偵測程序錯誤：${error.message}`))
+    proc.once('error', (error) => this.emit('warning', tr('即時偵測程序錯誤：{message}', { message: error.message })))
     proc.stdin.on('error', () => { /* 程序結束時寫入 stop 可能 EPIPE；由 close 處理 */ })
     proc.stdout.on('data', (chunk: Buffer) => this.onData(chunk))
     proc.stderr.on('data', (chunk: Buffer) => { this.stderr = (this.stderr + chunk.toString('utf8')).slice(-STDERR_TAIL) })
@@ -167,7 +168,7 @@ export class LiveEngine extends EventEmitter {
     this.restarts = this.restarts.filter((time) => now - time < RESTART_WINDOW_MS)
     if (this.restarts.length >= MAX_RESTARTS) {
       this.gaveUp = true
-      this.emit('failed', new Error(`即時偵測在 10 分鐘內已重啟 ${MAX_RESTARTS} 次，本次錄影停止即時偵測（錄影不受影響）：${message}`))
+      this.emit('failed', new Error(tr('即時偵測在 10 分鐘內已重啟 {max} 次，本次錄影停止即時偵測（錄影不受影響）：{message}', { max: MAX_RESTARTS, message })))
       return
     }
     const delay = (this.options.restartBaseMs ?? 1000) * 2 ** this.restarts.length
@@ -197,7 +198,7 @@ export class LiveEngine extends EventEmitter {
     }
     if (this.buffer.length > MAX_LINE_BYTES) {
       this.buffer = ''
-      this.emit('warning', '即時偵測輸出的單行過長，已略過')
+      this.emit('warning', tr('即時偵測輸出的單行過長，已略過'))
     }
   }
 
@@ -207,7 +208,7 @@ export class LiveEngine extends EventEmitter {
       msg = JSON.parse(line)
       if (!msg || typeof msg !== 'object' || Array.isArray(msg) || typeof msg.ev !== 'string') throw new Error()
     } catch {
-      this.emit('warning', '即時偵測輸出的 JSON 格式錯誤，已略過該行')
+      this.emit('warning', tr('即時偵測輸出的 JSON 格式錯誤，已略過該行'))
       return
     }
     if (finite(msg.t)) this.lastT = Math.max(this.lastT, msg.t)
@@ -218,7 +219,7 @@ export class LiveEngine extends EventEmitter {
         break
       case 'snapshot': {
         const snap = parseSnapshot(msg)
-        if (!snap) { this.emit('warning', '即時偵測的 snapshot 格式錯誤，已略過'); return }
+        if (!snap) { this.emit('warning', tr('即時偵測的 snapshot 格式錯誤，已略過')); return }
         this.current = mergeIncarnations(this.archived, snap, this.resumeT)
         this.emit('snapshot', this.current)
         break
@@ -235,7 +236,7 @@ export class LiveEngine extends EventEmitter {
         if (finite(msg.t) && finite(msg.frames) && msg.frames > 0) this.emit('progress', msg.t)
         break
       case 'error':
-        this.emit('warning', `即時偵測錯誤（${String(msg.code)}）：${String(msg.message)}`)
+        this.emit('warning', tr('即時偵測錯誤（{code}）：{message}', { code: String(msg.code), message: String(msg.message) }))
         break
     }
   }

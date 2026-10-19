@@ -11,7 +11,7 @@ import type { AutoClipParams } from '../../shared/types'
 import { clampToRange } from './settingsModel'
 import type { BoolField } from './rows'
 import type { RecordingSettings, RecorderCapabilities, ObsTestResult } from '../../shared/recording'
-import { recordingI18n } from '../i18n/zh-TW'
+import { recordingI18n } from '../i18n'
 
 interface WatchStatus {
   ok?: boolean
@@ -207,7 +207,7 @@ export class SettingsController {
     }
   }
 
-  setEnum(field: 'decode' | 'cacheLocation', value: string): Promise<void> {
+  setEnum(field: 'decode' | 'cacheLocation' | 'language', value: string): Promise<void> {
     return this.commit(field, { [field]: value } as Partial<Settings>)
   }
 

@@ -14,6 +14,7 @@ import { pruneSegments } from './prune'
 import { initMimeType } from './mp4-codec'
 import { LIVE_COMPLETE_FILE, writeJson } from './finalize'
 import type { RecorderCommand } from './index'
+import { tr } from '../../shared/locale'
 
 const MAX_INIT_BYTES = 4 * 1024 * 1024
 /** 2 秒段落在 150 Mbps 上限約 38 MB；留足餘裕但拒絕異常大檔。 */
@@ -46,10 +47,10 @@ export function countKills(events: LiveEvent[], matches: LiveMatch[]): number {
 
 async function readConfined(dir: string, name: string, limit: number): Promise<Uint8Array> {
   const file = path.join(dir, name)
-  if (path.dirname(file) !== dir) throw new Error('錄影檔案路徑無效')
+  if (path.dirname(file) !== dir) throw new Error(tr('錄影檔案路徑無效'))
   const stat = await fs.promises.lstat(file)
-  if (!stat.isFile() || stat.isSymbolicLink()) throw new Error('錄影檔案不是一般檔案')
-  if (stat.size > limit) throw new Error('錄影檔案過大')
+  if (!stat.isFile() || stat.isSymbolicLink()) throw new Error(tr('錄影檔案不是一般檔案'))
+  if (stat.size > limit) throw new Error(tr('錄影檔案過大'))
   return new Uint8Array(await fs.promises.readFile(file))
 }
 
@@ -94,7 +95,7 @@ export class LiveSession extends EventEmitter {
     const { command } = this.options
     if (!command || this.engine) return
     if (path.isAbsolute(command.command) && !fs.existsSync(command.command)) {
-      this.options.notice(`找不到即時偵測引擎（${command.command}），錄影照常進行，收尾後再分析`)
+      this.options.notice(tr('找不到即時偵測引擎（{command}），錄影照常進行，收尾後再分析', { command: command.command }))
       return
     }
     const args = ['--shm', shm, '--profile-dir', this.options.profileDir]
@@ -161,7 +162,7 @@ export class LiveSession extends EventEmitter {
   readInit(): Promise<Uint8Array> { return readConfined(this.options.dir, 'init.mp4', MAX_INIT_BYTES) }
 
   readSegment(seq: number): Promise<Uint8Array> {
-    if (!Number.isSafeInteger(seq) || seq <= 0 || !this.hasSegment(seq)) return Promise.reject(new Error('段落不在錄影索引中'))
+    if (!Number.isSafeInteger(seq) || seq <= 0 || !this.hasSegment(seq)) return Promise.reject(new Error(tr('段落不在錄影索引中')))
     return readConfined(this.options.dir, segmentFile(seq), MAX_SEGMENT_BYTES)
   }
 

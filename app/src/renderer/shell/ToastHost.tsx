@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { createToastQueue, defaultTtl, Toast, ToastQueue } from './toastQueue'
 import { attachKeymap } from '../hooks/useShortcuts'
-import { shellI18n } from '../i18n/zh-TW'
+import { shellI18n } from '../i18n'
 
 type ToastInput = { message: string; action?: Toast['action']; ttlMs?: number }
 const ToastContext = createContext<((t: ToastInput) => void) | null>(null)

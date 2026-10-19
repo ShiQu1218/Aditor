@@ -84,6 +84,7 @@
 .set-row.wide .set-ctl { grid-column: 1 / -1; }
 .set-text { min-width: 0; }
 .set-title { font-weight: var(--fw-regular); }
+.set-title-ico { vertical-align: -3px; margin-right: 6px; color: var(--info); }
 .set-desc { display: block; color: var(--text-3); margin-top: 1px; font-size: var(--fs-small); }
 .set-grey { color: var(--text-disabled); }
 .set-row.is-disabled .set-title { color: var(--text-2); }

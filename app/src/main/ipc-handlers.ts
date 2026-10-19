@@ -23,7 +23,11 @@ import { createThrottle } from '../shared/throttle'
 import type { CacheDoc, Clip } from '../shared/types'
 import { handleProxyGenerate, handleProxyUsage } from './proxy-ipc'
 import { ProjectItem } from '../renderer/editor/project'
-import { i18n } from '../renderer/i18n/zh-TW'
+import { catalogFor } from '../renderer/i18n'
+import { getActiveLocale, tr } from '../shared/locale'
+
+/** 原生對話框的文字（隨目前介面語言）。 */
+const dialogText = (): ReturnType<typeof catalogFor>['i18n']['dialog'] => catalogFor(getActiveLocale()).i18n.dialog
 
 /** `library:updated` 廣播的最小間隔 */
 export const LIBRARY_UPDATE_INTERVAL_MS = 500
@@ -111,9 +115,9 @@ export function registerIpcHandlers(
   ipcMain.handle('library:selectFiles', async (event) => {
     const win = BrowserWindow.fromWebContents(event.sender)
     const res = await dialog.showOpenDialog(win || undefined as unknown as BrowserWindow, {
-      title: i18n.dialog.selectFilesTitle,
+      title: dialogText().selectFilesTitle,
       properties: ['openFile', 'multiSelections'],
-      filters: [{ name: i18n.dialog.videoFilter, extensions: ['mp4', 'mkv', 'mov', 'webm'] }]
+      filters: [{ name: dialogText().videoFilter, extensions: ['mp4', 'mkv', 'mov', 'webm'] }]
     })
     if (!res.canceled && res.filePaths.length > 0) {
       const added = library.add(res.filePaths)
@@ -129,7 +133,7 @@ export function registerIpcHandlers(
   ipcMain.handle('library:selectFolder', async (event) => {
     const win = BrowserWindow.fromWebContents(event.sender)
     const res = await dialog.showOpenDialog(win || undefined as unknown as BrowserWindow, {
-      title: i18n.dialog.selectFolderTitle,
+      title: dialogText().selectFolderTitle,
       properties: ['openDirectory']
     })
     if (!res.canceled && res.filePaths.length > 0) {
@@ -196,7 +200,7 @@ export function registerIpcHandlers(
     ipcMain.handle('library:addWatchFolder', async (event) => {
       const win = BrowserWindow.fromWebContents(event.sender)
       const res = await dialog.showOpenDialog(win || (undefined as unknown as BrowserWindow), {
-        title: i18n.dialog.addWatchFolderTitle,
+        title: dialogText().addWatchFolderTitle,
         properties: ['openDirectory']
       })
       if (res.canceled || res.filePaths.length === 0) {
@@ -321,7 +325,7 @@ export function registerIpcHandlers(
   // OpenH264 下載：網址白名單與大小／雜湊驗證在 codecs.ts；進度只送給發出請求的視窗；同時只允許一個下載
   let h264Downloading: Promise<string> | null = null
   ipcMain.handle('export:downloadOpenH264', async (event) => {
-    if (h264Downloading) throw new Error('OpenH264 正在下載中')
+    if (h264Downloading) throw new Error(tr('OpenH264 正在下載中'))
     h264Downloading = downloadOpenH264({
       onProgress: (ratio) => {
         if (!event.sender.isDestroyed()) event.sender.send('export:openh264Progress', ratio)
@@ -348,7 +352,7 @@ export function registerIpcHandlers(
   ipcMain.handle('export:selectOutDir', async (event) => {
     const win = BrowserWindow.fromWebContents(event.sender)
     const res = await dialog.showOpenDialog(win || (undefined as unknown as BrowserWindow), {
-      title: i18n.dialog.selectOutDirTitle,
+      title: dialogText().selectOutDirTitle,
       properties: ['openDirectory', 'createDirectory']
     })
     return res.canceled || res.filePaths.length === 0 ? null : res.filePaths[0]

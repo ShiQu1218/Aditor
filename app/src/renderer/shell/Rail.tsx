@@ -1,8 +1,8 @@
 import React from 'react'
 import { LayoutGrid, Film, Video, Keyboard, SlidersHorizontal, LogoMark } from '../components/icons'
 import { QueueRing } from './QueueRing'
-import { shellI18n } from '../i18n/zh-TW'
-import { recordingI18n } from '../i18n/zh-TW'
+import { shellI18n } from '../i18n'
+import { recordingI18n } from '../i18n'
 import type { RecordingPhase } from '../../shared/recording'
 import './recording.css'
 

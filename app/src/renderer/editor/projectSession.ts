@@ -3,6 +3,7 @@ import { History } from './history'
 import { ProjectBoot } from './projectBoot'
 import { AutosaveController } from './useAutosave'
 import { ProjectWithId, newProjectId } from './projectIo'
+import { tr } from '../../shared/locale'
 
 export type SaveState = 'saved' | 'pending' | 'saving' | 'error'
 
@@ -39,11 +40,11 @@ export function createSessionIo(api: ProjectsApi | undefined): SessionIo {
   return {
     async save(p) {
       if (!api?.projects?.save) return
-      if ((await api.projects.save(p)) === false) throw new Error('儲存專案失敗')
+      if ((await api.projects.save(p)) === false) throw new Error(tr('儲存專案失敗'))
     },
     saveSync(p) {
       if (!api?.projects?.flushSync) return
-      if (api.projects.flushSync(p) === false) throw new Error('儲存專案失敗')
+      if (api.projects.flushSync(p) === false) throw new Error(tr('儲存專案失敗'))
     }
   }
 }
@@ -230,5 +231,5 @@ export class ProjectSession {
 }
 
 function emptyProject(): Project {
-  return { version: 1, name: '我的精華專案', items: [] }
+  return { version: 1, name: tr('我的精華專案'), items: [] }
 }

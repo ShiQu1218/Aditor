@@ -4,7 +4,7 @@ import type { QueueRow as QueueRowData } from '../../shared/queueState'
 import { formatEta } from '../../shared/eta'
 import { fileName } from '../library/VideoCard'
 import { useQueueSummary } from '../queue/QueueProvider'
-import { i18n } from '../i18n/zh-TW'
+import { i18n } from '../i18n'
 
 const t = i18n.queue
 

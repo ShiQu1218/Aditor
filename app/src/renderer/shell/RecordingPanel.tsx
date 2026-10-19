@@ -1,10 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { useFocusTrap } from '../a11y/useFocusTrap'
 import { X } from '../components/icons'
-import { recordingI18n as t } from '../i18n/zh-TW'
+import { recordingI18n as t } from '../i18n'
 import { formatBytes } from '../settings/settingsModel'
 import { useRecordingStatus } from './useRecordingStatus'
 import './recording.css'
+import { tr } from '../../shared/locale'
 
 function elapsedTime(seconds: number): string {
   const total = Math.max(0, Math.floor(seconds))
@@ -67,7 +68,7 @@ export function RecordingPanel({ onClose, onWatchLive }: { onClose: () => void; 
       </header>
       <div className="sc-body">
         <dl className="rec-details">{rows.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>
-        {(actionError || error || status.error) && <p className="rec-error" role="alert">{actionError ?? error ?? `${status.error?.code}：${status.error?.message}`}</p>}
+        {(actionError || error || status.error) && <p className="rec-error" role="alert">{actionError ?? error ?? tr('{code}：{message}', { code: status.error?.code, message: status.error?.message })}</p>}
         <div className="rec-actions">
           <button type="button" className="lib-btn" disabled={busy || !!error || !['idle', 'error'].includes(status.phase)} onClick={() => void run('start')}>{t.start}</button>
           <button type="button" className="lib-btn" disabled={busy || !!error || !['starting', 'recording'].includes(status.phase)} onClick={() => void run('stop')}>{t.stop}</button>

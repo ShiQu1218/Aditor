@@ -7,7 +7,7 @@ import { SETTING_ROWS } from './rows'
 import { createFakeApi, installFakeApi } from '../../../test/fakeApi'
 import { Providers } from '../../../test/harness'
 import { buttonByText, cleanupMounted, click, flush, installDomShims, mount } from '../../../test/dom'
-import { settingsI18n } from '../i18n/zh-TW'
+import { settingsI18n } from '../i18n'
 
 let restore: () => void
 let openLicenses: ReturnType<typeof vi.fn>

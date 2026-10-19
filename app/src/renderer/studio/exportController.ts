@@ -1,4 +1,5 @@
-import { i18n } from '../i18n/zh-TW'
+import { i18n } from '../i18n'
+import { tr } from '../../shared/locale'
 
 /**
  * 匯出抽屜的狀態機（純 TS，不依賴 React／DOM；window.api 以參數注入，便於用假 api 測試）。
@@ -132,18 +133,18 @@ export function createExportController(api: ExportApi, initialName = 'highlight'
     try {
       const check = await api.checkOutDir(dir)
       if (!check.ok) {
-        set({ disk: null, outDirError: `${i18n.export.blockOutDirInvalid}（${check.reason}）` })
+        set({ disk: null, outDirError: tr('{label}（{detail}）', { label: i18n.export.blockOutDirInvalid, detail: check.reason }) })
         return
       }
     } catch (e) {
-      set({ disk: null, outDirError: `${i18n.export.blockOutDirInvalid}（${errMsg(e)}）` })
+      set({ disk: null, outDirError: tr('{label}（{detail}）', { label: i18n.export.blockOutDirInvalid, detail: errMsg(e) }) })
       return
     }
     try {
       const d = await api.diskSpace(dir)
       set({ disk: d, outDirError: null })
     } catch (e) {
-      set({ disk: null, outDirError: `${i18n.export.blockOutDirInvalid}（${errMsg(e)}）` })
+      set({ disk: null, outDirError: tr('{label}（{detail}）', { label: i18n.export.blockOutDirInvalid, detail: errMsg(e) }) })
     }
   }
 

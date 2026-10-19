@@ -1,5 +1,6 @@
 import React from 'react'
-import { settingsI18n } from '../i18n/zh-TW'
+import { settingsI18n } from '../i18n'
+import { Globe } from '../components/icons'
 import { SettingControl, type ControlIds } from './SettingControls'
 import type { SettingsController, SettingsState } from './settingsController'
 import type { SettingRow as Row } from './rows'
@@ -41,6 +42,7 @@ export function SettingRow({ row, state, settings, controller }: SettingRowProps
           </span>
         ) : (
           <label id={ids.title} htmlFor={ids.ctl} className="set-title">
+            {row.icon === 'Globe' && <Globe className="set-title-ico" size={16} aria-hidden="true" />}
             {row.title}
           </label>
         )}

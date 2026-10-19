@@ -10,6 +10,7 @@ import {
 import { AutoClipParams } from '../shared/types'
 import { RECORDING_RANGES, type RecordingSettings } from '../shared/recording'
 import { validateOutDir } from './settings-ipc'
+import { LANGUAGE_SETTINGS } from '../shared/locale'
 
 const RANGES = SETTINGS_RANGES
 
@@ -123,6 +124,7 @@ function applySettings(base: Settings, src: unknown): Settings {
   const s = isPlainObject(src) ? src : {}
   return {
     version: SETTINGS_VERSION,
+    language: pickEnum(s.language, LANGUAGE_SETTINGS, base.language),
     watchFolders: pickStringArray(s.watchFolders, base.watchFolders),
     autoAnalyze: pickBool(s.autoAnalyze, base.autoAnalyze),
     decode: pickEnum(s.decode, ['auto', 'software'] as const, base.decode),

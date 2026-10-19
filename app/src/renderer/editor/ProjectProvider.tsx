@@ -16,6 +16,7 @@ import {
   restoreLastProject,
   validateSources
 } from './projectIo'
+import { tr } from '../../shared/locale'
 import { ProjectSession, SaveState, createSessionIo } from './projectSession'
 import { isEditorLocked } from './editorLock'
 
@@ -57,7 +58,7 @@ export function useProject(): ProjectContextValue {
 }
 
 function createInitialProject(): ProjectWithId {
-  return { ...createProject('我的精華專案'), id: newProjectId() }
+  return { ...createProject(tr('我的精華專案')), id: newProjectId() }
 }
 
 /**

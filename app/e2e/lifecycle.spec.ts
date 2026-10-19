@@ -3,7 +3,7 @@ import os from 'os'
 import path from 'path'
 import { test, expect, importAndAnalyze, openStudio, card, waitProjectFile, readSettings } from './helpers/test'
 import { isAlive } from './helpers/launch'
-import { i18n, shellI18n } from '../src/renderer/i18n/zh-TW'
+import { i18n, shellI18n } from '../src/renderer/i18n'
 
 type AnyApi = { queue: { enqueue: (p: string) => Promise<unknown>; cancel: (p: string) => Promise<unknown> }; export: { start: (o: unknown) => Promise<{ ok: boolean; code?: string }> } }
 

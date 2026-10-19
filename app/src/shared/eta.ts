@@ -1,3 +1,4 @@
+import { tr } from './locale'
 // 分析進度 ETA（shared）：main／renderer 共用的純函式。
 // 字串為本檔既定介面（`formatEta(ms): '約剩 6 分' | '不到 1 分'`，brief 明定）。
 
@@ -26,11 +27,11 @@ export function estimateEta(progress: number, elapsedMs: number): number | null 
 /** 將剩餘毫秒格式化為繁中字串：四捨五入到分鐘，不足 1 分（含 0／無效值）為「不到 1 分」。 */
 export function formatEta(ms: number): string {
   if (!Number.isFinite(ms) || ms <= 0) {
-    return '不到 1 分'
+    return tr('不到 1 分')
   }
   const minutes = Math.round(ms / 60000)
   if (minutes < 1) {
-    return '不到 1 分'
+    return tr('不到 1 分')
   }
-  return `約剩 ${minutes} 分`
+  return tr('約剩 {minutes} 分', { minutes })
 }

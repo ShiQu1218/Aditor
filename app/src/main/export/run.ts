@@ -4,6 +4,7 @@ import { spawn } from 'child_process'
 import { FfmpegJob } from './plan'
 import { killTree } from './killTree'
 import { appDataDir, codecsDir } from '../../shared/paths'
+import { tr } from '../../shared/locale'
 
 export interface RunProgress {
   jobIndex: number
@@ -37,18 +38,20 @@ export type RunExportResult =
 
 const STDERR_TAIL_BYTES = 4096
 
+class InsufficientDiskSpaceError extends Error {}
+
 export async function checkDiskSpace(outDir: string, estimatedBytes: number): Promise<void> {
   try {
     const stats = await fs.promises.statfs(outDir)
     const available = Number(stats.bavail) * Number(stats.bsize)
     const required = estimatedBytes * 1.1
     if (available < required) {
-      throw new Error(
-        `磁碟剩餘空間不足（可用: ${(available / 1024 / 1024).toFixed(1)} MB，需要約: ${(required / 1024 / 1024).toFixed(1)} MB）`
+      throw new InsufficientDiskSpaceError(
+        tr('磁碟剩餘空間不足（可用: {available} MB，需要約: {required} MB）', { available: (available / 1024 / 1024).toFixed(1), required: (required / 1024 / 1024).toFixed(1) })
       )
     }
   } catch (err) {
-    if ((err as Error).message.includes('磁碟剩餘空間不足')) {
+    if (err instanceof InsufficientDiskSpaceError) {
       throw err
     }
     // 檔案系統不支援 statfs 時略過檢查
@@ -195,7 +198,7 @@ export async function runExport(opts: RunExportOptions, control: RunExportContro
           // 根本沒啟動（ENOENT 等）不保證會有 close 事件，直接結束這個 job（Promise 重複 settle 無害）
           if (proc.pid === undefined) {
             cleanup()
-            reject(new JobFailure(`無法啟動 ffmpeg：${err.message}`))
+            reject(new JobFailure(tr('無法啟動 ffmpeg：{message}', { message: err.message })))
           }
         })
 
@@ -204,11 +207,11 @@ export async function runExport(opts: RunExportOptions, control: RunExportContro
           if (signal?.aborted) {
             resolve('cancelled')
           } else if (spawnError) {
-            reject(new JobFailure(`無法啟動 ffmpeg：${spawnError.message}`))
+            reject(new JobFailure(tr('無法啟動 ffmpeg：{message}', { message: spawnError.message })))
           } else if (code === 0) {
             resolve('ok')
           } else {
-            reject(new JobFailure(`匯出失敗 (exit code ${code}):\n${stderrBuffer.slice(-STDERR_TAIL_BYTES)}`))
+            reject(new JobFailure(tr('匯出失敗 (exit code {code}):\n{stderr}', { code, stderr: stderrBuffer.slice(-STDERR_TAIL_BYTES) })))
           }
         })
       }).catch(async (err: Error) => {
@@ -227,7 +230,7 @@ export async function runExport(opts: RunExportOptions, control: RunExportContro
         await fs.promises.rename(partial, finalPath)
       } catch (err) {
         await removeFile(partial)
-        throw new JobFailure(`無法完成輸出檔：${(err as Error).message}`)
+        throw new JobFailure(tr('無法完成輸出檔：{message}', { message: (err as Error).message }))
       }
       if (!job.intermediate) completed.push(finalPath)
     }

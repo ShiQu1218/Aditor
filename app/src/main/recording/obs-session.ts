@@ -4,6 +4,7 @@ import { EventEmitter } from 'events'
 import type { RecordingSettings } from '../../shared/recording'
 import { writeJson } from './finalize'
 import { ObsClient } from './obs-client'
+import { tr } from '../../shared/locale'
 
 const OBS_STOP_POLL_MS = 100
 /** 逐局開始錄影前，最多等上一局的 OBS 錄影停止這麼久 */
@@ -69,7 +70,7 @@ export class ObsRecording extends EventEmitter {
     })
     this.client.on('disconnected', () => {
       if (!this.ready || this.closed || this.stopping || this.stopped) return
-      this.notice('OBS 連線中斷，即時偵測繼續，正在嘗試重新連線')
+      this.notice(tr('OBS 連線中斷，即時偵測繼續，正在嘗試重新連線'))
       this.scheduleReconnect()
     })
   }
@@ -86,7 +87,7 @@ export class ObsRecording extends EventEmitter {
     }
     this.meta.adopted = status.outputActive
     if (status.outputActive) {
-      if (!Number.isFinite(status.outputDuration) || status.outputDuration < 0) throw new Error('OBS 錄影時間回覆無效')
+      if (!Number.isFinite(status.outputDuration) || status.outputDuration < 0) throw new Error(tr('OBS 錄影時間回覆無效'))
       this.meta.recordStartedAt = Date.now() - status.outputDuration
     } else if (this.settings.mode !== 'match') { this.meta.recordStartedAt = Date.now(); await this.client.start() }
     else this.stopped = true
@@ -97,7 +98,7 @@ export class ObsRecording extends EventEmitter {
 
   async startMatch(index: number, confirmed = true): Promise<void> {
     if (!this.perMatch) return
-    if (this.matches.at(-1)?.stopped === false) throw new Error('上一局 OBS 錄影尚未完成，已保留工作')
+    if (this.matches.at(-1)?.stopped === false) throw new Error(tr('上一局 OBS 錄影尚未完成，已保留工作'))
     if (!this.client.connected) await this.connect()
     // 連續排隊時上一局剛 StopRecord，OBS 還在寫檔尾、仍回報錄影中；等它真正停下。
     const waitUntil = Date.now() + OBS_MATCH_RESTART_WAIT_MS
@@ -106,7 +107,7 @@ export class ObsRecording extends EventEmitter {
       await new Promise((resolve) => setTimeout(resolve, OBS_STOP_POLL_MS))
       status = await this.client.status()
     }
-    if (status.outputActive) throw new Error('OBS 已有其他錄影，無法開始逐局錄影')
+    if (status.outputActive) throw new Error(tr('OBS 已有其他錄影，無法開始逐局錄影'))
     this.stopping = false
     this.stopped = false
     delete this.meta.outputPath
@@ -170,7 +171,7 @@ export class ObsRecording extends EventEmitter {
     if (!status.outputActive && !this.stopped) {
       // v5 不提供已錯過停止事件的路徑，不猜測或掃描使用者的 OBS 資料夾。
       this.stopped = true
-      this.notice('OBS 已停止錄影；若停止事件在斷線期間遺失，請手動匯入 OBS 影片')
+      this.notice(tr('OBS 已停止錄影；若停止事件在斷線期間遺失，請手動匯入 OBS 影片'))
       this.emit('stopped')
     }
   }
@@ -194,7 +195,7 @@ export class ObsRecording extends EventEmitter {
           this.persist()
         }
       } catch {
-        this.notice('無法停止 OBS 錄影，請在 OBS 確認並手動停止；即時偵測已結束')
+        this.notice(tr('無法停止 OBS 錄影，請在 OBS 確認並手動停止；即時偵測已結束'))
       }
     }
     await this.flush()

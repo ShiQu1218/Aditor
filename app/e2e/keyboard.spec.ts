@@ -1,7 +1,7 @@
 import fs from 'fs'
 import path from 'path'
 import { test, expect, importAndAnalyze, openStudio, videoTime, readSettings } from './helpers/test'
-import { i18n } from '../src/renderer/i18n/zh-TW'
+import { i18n } from '../src/renderer/i18n'
 
 type Api = { settings: { set: (p: unknown) => Promise<unknown> } }
 

@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react'
 import { recordedTime } from '../library/recordedTime'
-import { i18n } from '../i18n/zh-TW'
+import { i18n } from '../i18n'
 import { StudioLoadingView } from './StudioStates'
 import { useStudioLibrary } from './useStudioLibrary'
 import '../styles/studio.css'

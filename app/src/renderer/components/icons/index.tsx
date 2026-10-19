@@ -36,7 +36,8 @@ import {
   FilePlus2,
   Save,
   Check,
-  Copy
+  Copy,
+  Globe
 } from 'lucide-react'
 
 export {
@@ -75,7 +76,8 @@ export {
   FilePlus2,
   Save,
   Check,
-  Copy
+  Copy,
+  Globe
 }
 
 /** 品牌 logo（六角形＋十字），顏色跟隨 currentColor */

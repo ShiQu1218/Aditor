@@ -2,7 +2,7 @@ import { describe, expect, test, vi } from 'vitest'
 import { readFileSync } from 'fs'
 import { resolve } from 'path'
 import { DEFAULT_SETTINGS } from '../../shared/settings'
-import { i18n } from '../i18n/zh-TW'
+import { i18n } from '../i18n'
 import { PROBE_CONFIG, createLowPerfPrompt, lacksHardwareDecode } from './lowPerfPrompt'
 
 const mc = (info: { supported: boolean; smooth: boolean; powerEfficient: boolean } | Error) => ({

@@ -1,6 +1,6 @@
 // 影片庫日期分組：依 addedAt 的「本地日期」分組，新到舊；組內亦新到舊。
 import type { LibraryEntry } from '../../main/library'
-import { i18n } from '../i18n/zh-TW'
+import { i18n } from '../i18n'
 
 export interface DateGroup {
   /** 本地日期 key，例如 2026-10-16 */

@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useSyncExternalStore } from 'react'
 import '../styles/exportDrawer.css'
-import { i18n } from '../i18n/zh-TW'
+import { i18n } from '../i18n'
 import { formatTime } from '../../shared/time'
 import { estimateOutputBytes } from '../../shared/exportEstimate'
 import { totalDuration, Project } from '../editor/project'
@@ -42,11 +42,16 @@ export interface ExportDrawerViewProps {
 const fmt = (tpl: string, vars: Record<string, string | number>): string =>
   Object.entries(vars).reduce((s, [k, v]) => s.replace(`{${k}}`, String(v)), tpl)
 
+/** 編碼器的顯示名稱（不含「偵測到」之類的後綴）。 */
+function encoderName(name: string): string {
+  const nice: Record<string, string> = { h264_nvenc: 'NVIDIA NVENC', h264_qsv: 'Intel Quick Sync', h264_amf: 'AMD AMF' }
+  return nice[name] ?? name
+}
+
 function encoderLabel(name: string): string {
   const t = i18n.export
   if (name === 'libopenh264') return t.encoderOpenh264
-  const nice: Record<string, string> = { h264_nvenc: 'NVIDIA NVENC', h264_qsv: 'Intel Quick Sync', h264_amf: 'AMD AMF' }
-  return fmt(t.encoderDetected, { name: nice[name] ?? name })
+  return fmt(t.encoderDetected, { name: encoderName(name) })
 }
 
 function SettingsBody({ state, vm, project, items, sourceCount, on }: ExportDrawerViewProps): JSX.Element {
@@ -199,7 +204,7 @@ function SettingsBody({ state, vm, project, items, sourceCount, on }: ExportDraw
 function RunningBody({ state, vm }: Pick<ExportDrawerViewProps, 'state' | 'vm'>): JSX.Element {
   const t = i18n.export
   const p = state.progress ?? { percent: 0, jobIndex: 0, totalJobs: 1, outTimeSeconds: 0 }
-  const enc = vm.effectiveQuality === 'copy' ? t.qualityCopy : encoderLabel(state.settings.encoder).replace(/（偵測到）/, '')
+  const enc = vm.effectiveQuality === 'copy' ? t.qualityCopy : (state.settings.encoder === 'libopenh264' ? t.encoderOpenh264 : encoderName(state.settings.encoder))
   return (
     <>
       <div className="xd-sec">

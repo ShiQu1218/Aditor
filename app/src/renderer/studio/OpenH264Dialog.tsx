@@ -1,5 +1,5 @@
 import React from 'react'
-import { i18n } from '../i18n/zh-TW'
+import { i18n } from '../i18n'
 import { OpenH264State } from './exportController'
 
 export interface OpenH264DialogProps {

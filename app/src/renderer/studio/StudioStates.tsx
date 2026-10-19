@@ -1,5 +1,5 @@
 import React from 'react'
-import { i18n } from '../i18n/zh-TW'
+import { i18n } from '../i18n'
 
 /** 工作室載入前／被擋下／載入失敗的整頁狀態（不顯示任何假資料）。 */
 export function StudioLoadingView(): JSX.Element {
