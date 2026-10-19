@@ -1,3 +1,5 @@
+<p align="center"><img src="app/resources/icon.png" alt="Aditor 應用程式圖示" width="128" height="128"></p>
+
 # Aditor
 
 [English](README.md) ｜ **繁體中文**
