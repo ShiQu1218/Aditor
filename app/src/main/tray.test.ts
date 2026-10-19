@@ -113,4 +113,15 @@ describe('recording tray', () => {
     expect(s.handle.destroy).toHaveBeenCalledOnce()
     expect(s.handle.setImage).toHaveBeenCalledOnce()
   })
+
+  it('圖示檔載入失敗時不拋出例外，提示與選單照常更新，只記錄一次', () => {
+    const t = setup()
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    t.handle.setImage.mockImplementation(() => { throw new Error('Failed to load image from path') })
+    expect(() => t.update({ phase: 'error' })).not.toThrow()
+    expect(t.handle.setToolTip).toHaveBeenLastCalledWith('Apex Highlighter — 錄影錯誤')
+    expect(() => t.update({ phase: 'error', paused: true })).not.toThrow()
+    expect(error).toHaveBeenCalledTimes(1)
+    error.mockRestore()
+  })
 })

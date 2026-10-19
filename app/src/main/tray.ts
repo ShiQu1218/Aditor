@@ -39,11 +39,16 @@ export function createRecordingTray(opts: RecordingTrayOptions, deps: TrayDepend
     void Promise.resolve().then(action).catch((error) => opts.notifyError(`錄影操作失敗：${String(error)}`))
   }
   let shownImage = ''
+  let imageFailed = false
   let shownMenu = ''
   const update = (status: RecordingStatus): void => {
     if (disposed) return
     const image = icon(status)
-    if (image !== shownImage) tray.setImage(image)
+    if (image !== shownImage) {
+      // 圖示檔遺失（例如免安裝版的暫存目錄被清掉）不能讓狀態推播變成未捕捉例外；提示與選單照常更新。
+      try { tray.setImage(image) }
+      catch (error) { if (!imageFailed) console.error('[tray] 無法載入圖示：', error); imageFailed = true }
+    }
     shownImage = image
     const label = status.phase === 'recording' ? status.detectionOnly ? '即時偵測中（未錄影）' : status.backend === 'obs' ? status.obsRecording === false ? '待命（OBS，等待對局）' : '錄影中（OBS）' : phaseLabels[status.phase] : phaseLabels[status.phase]
     tray.setToolTip(`Apex Highlighter — ${label}`)
