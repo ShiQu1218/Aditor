@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import path from 'path'
 import {
   cleanCutEnd,
+  createAudioProbe,
   presentationEnd,
   createCutLookup,
   cutProbeArgs,
@@ -21,6 +22,14 @@ const doc = (packets: Pkt[], timeBase = '1/1000', startTime = '0.000000') => ({
 /** 60 fps、沒有 B-frame：dts＝pts，tb 1/60 */
 const ipp = (from: number, to: number, gop: number): Pkt[] =>
   Array.from({ length: to - from }, (_, i) => ({ pts: from + i, dts: from + i, flags: (from + i) % gop === 0 ? 'K__' : '___' }))
+
+it('無法查詢或已中止的音軌探測回傳未知，不誤判為無音軌', async () => {
+  const probe = createAudioProbe(path.join(__dirname, '__missing_ffprobe__'))
+  await expect(probe('source.mp4')).resolves.toBeNull()
+  const ac = new AbortController()
+  ac.abort()
+  await expect(probe('source.mp4', ac.signal)).resolves.toBeNull()
+})
 
 describe('pickCopyCut: keyframe', () => {
   it('starts on the last keyframe at or before the clip start, ignoring non-key packets and later keyframes', () => {

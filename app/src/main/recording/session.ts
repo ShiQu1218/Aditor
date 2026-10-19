@@ -352,7 +352,7 @@ export class RecordingSessionService implements RecordingService {
     const settings = { ...this.deps.getSettings() }
     if (builtin || this.builtinFallbackPid === pid) settings.backend = 'builtin'
     const capture = settings.backend === 'obs' ? 'dda'
-      : this.hookFallbackPid === pid ? 'dda'
+      : settings.captureMethod === 'hook' && this.hookFallbackPid === pid ? 'dda'
       : settings.captureMethod === 'hook' && !this.deps.obsHookDir ? 'dda'
       : settings.captureMethod
     const fallbackReason = capture !== settings.captureMethod

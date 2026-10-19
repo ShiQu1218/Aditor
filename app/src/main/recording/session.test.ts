@@ -139,6 +139,25 @@ describe('錄影服務狀態機', () => {
     expect(afterNewPid[4]).toMatchObject({ pid: 5678, capture: 'dda' })
   })
 
+  it('hook 退回後改選 WGC，同一 PID 重新錄影會採用目前設定', async () => {
+    const value = rig('hook-unavailable')
+    value.settings.captureMethod = 'hook'
+    value.service.start()
+    await waitFor(() => value.service.status().phase === 'recording')
+    await value.service.stopManual()
+
+    value.settings.captureMethod = 'wgc'
+    expect(await value.service.startManual()).toBe(true)
+    expect(commands(value, 'start').map((start) => start.capture)).toEqual(['hook', 'dda', 'wgc'])
+    expect(value.settings.captureMethod).toBe('wgc')
+    expect(commands(value, 'start').at(-1)!.hook_dir).toBeUndefined()
+
+    await value.service.stopManual()
+    value.settings.captureMethod = 'hook'
+    expect(await value.service.startManual()).toBe(true)
+    expect(commands(value, 'start').at(-1)!.capture).toBe('dda')
+  })
+
   it('錄影中收到 hook_unavailable 錯誤事件時通知一次並立即以 dda 重新開始', async () => {
     const value = rig('async-hook-unavailable')
     value.settings.captureMethod = 'hook'

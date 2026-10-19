@@ -11,7 +11,7 @@ if (trace) fs.appendFileSync(trace, JSON.stringify({ argv: process.argv.slice(2)
 
 let events = [ev('a1000', 1, 'knock')]
 let first = true
-if (mode === 'crash-once') {
+if (mode === 'crash-once' || mode === 'crash-match-once') {
   first = !fs.existsSync(state)
   if (first) fs.writeFileSync(state, '1')
   else events = [ev('a500', 0.5, 'knock'), ev('a3000', 3, 'elim')]
@@ -19,20 +19,23 @@ if (mode === 'crash-once') {
 
 send({ ev: 'ready', engine_version: '0.3.0', banner: [800, 180], spec: [480, 40], thumb: [640, 360] })
 setTimeout(() => {
-  if (mode === 'crash-once' && first) {
+  if ((mode === 'crash-once' || mode === 'crash-match-once') && first) {
+    if (mode === 'crash-match-once') send({ ev: 'match_start', t: 0.5, reason: 'countdown' })
     send({ ev: 'snapshot', t: 1.5, events, spectating: [{ start: 0.2, end: 0.4 }] })
     send({ ev: 'stats', t: 2, frames: 8, skipped: 0, torn: 0, lag_s: 0.1, cpu_ms_per_frame: 1 })
     setTimeout(() => process.exit(3), 20)
     return
   }
   if (mode === 'garbage') process.stdout.write('{not json}\n')
-  send({ ev: 'match_start', t: 0.5, reason: 'countdown' })
+  send(mode === 'crash-match-once'
+    ? { ev: 'match_start', t: 2.5, reason: 'initial_match' }
+    : { ev: 'match_start', t: 0.5, reason: 'countdown' })
   if (mode === 'closed-match' || mode === 'two-matches') send({ ev: 'match_end', t: 3, reason: 'lobby' })
   if (mode === 'two-matches') {
     send({ ev: 'match_start', t: 5, reason: 'countdown' })
     send({ ev: 'match_end', t: 7, reason: 'lobby' })
   }
-  send({ ev: 'snapshot', t: 2, events, spectating: [] })
+  send({ ev: 'snapshot', t: mode === 'crash-match-once' ? 3 : 2, events, spectating: [] })
 }, 20)
 
 let stopped = false

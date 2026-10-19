@@ -38,6 +38,34 @@ describe('對局與擊殺', () => {
     expect(countKills(events, [{ start: 10, end: 300 }])).toBe(1)
     expect(countKills(events, [{ start: 10, end: 300 }, { start: 350, end: null }])).toBe(1)
   })
+
+  it.each(['initial_match', 'initial_summary'])('恢復事件 %s 延續未結束對局，但仍可恢復新的對局', (reason) => {
+    const matches = [{ start: 10, end: null }]
+    expect(applyMatchEvent(matches, { ev: 'match_start', t: 100, reason })).toBe(matches)
+    expect(applyMatchEvent([], { ev: 'match_start', t: 100, reason })).toEqual([{ start: 100, end: null }])
+    expect(applyMatchEvent([{ start: 10, end: 90 }], { ev: 'match_start', t: 100, reason }))
+      .toEqual([{ start: 10, end: 90 }, { start: 100, end: null }])
+  })
+})
+
+it('對局中引擎崩潰重啟後不重複開局，對局狀態與磁碟紀錄保持一致', async () => {
+  const dir = root()
+  const recordEvent = vi.fn()
+  const live = new LiveSession({ sessionId: 'restart', dir, profileDir: dir, recordEvent, notice: vi.fn(),
+    command: fakeLiveCommand('crash-match-once', { FAKE_LIVE_STATE: path.join(dir, 'state') }), restartBaseMs: 10 })
+  const listener = vi.fn()
+  live.on('match', listener)
+  live.startEngine('Local\\fake', 1920, 1080)
+  try {
+    await waitFor(() => live.kills() === 2)
+    expect((await live.state()).matches).toEqual([{ start: 0.5, end: null }])
+    expect(listener.mock.calls.filter(([ev]) => ev === 'match_start')).toHaveLength(1)
+    expect(recordEvent.mock.calls.filter(([event]) => event.ev === 'match_start')).toHaveLength(1)
+  } finally {
+    await live.stop()
+  }
+  expect((await live.state()).matches).toEqual([{ start: 0.5, end: 3.5 }])
+  expect(JSON.parse(fs.readFileSync(path.join(dir, 'live.json'), 'utf8')).matches).toEqual([{ start: 0.5, end: 3.5 }])
 })
 
 describe('LiveSession 檔案讀取', () => {

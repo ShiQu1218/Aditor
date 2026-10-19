@@ -50,6 +50,8 @@ export interface BuildJobsOptions {
    * 有值就從該關鍵影格精確切；null／缺少時退回保守切法（見 copyCutArgs）。
    */
   copyCuts?: ReadonlyArray<CopyCut | null | undefined>
+  /** 精準合輯：確定沒有音軌的來源，各段先補等長靜音以保持串流一致。 */
+  silentSources?: ReadonlySet<string>
 }
 
 /**
@@ -260,16 +262,19 @@ function buildPreciseConcat(
   const tag = segmentTag()
   const segments: FfmpegJob[] = items.map((item, idx) => {
     const output = segmentPath(opts.outDir, tag, idx, '.mov')
+    const silent = opts.silentSources?.has(item.source) === true
+    const audioInput = silent ? ['-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=stereo'] : []
+    const streams = silent ? ['-map', '0:v:0', '-map', '1:a:0'] : STREAM_SELECT
     return {
       intermediate: true,
       output,
-      args: ['-ss', secs(item.start), '-i', item.source, '-t', durationOf(item), ...STREAM_SELECT, ...vf, '-c:v', opts.encoder!, '-c:a', 'pcm_s16le', '-ar', '48000', '-ac', '2', ...STRIP_METADATA, '-y', output]
+      args: ['-ss', secs(item.start), '-i', item.source, ...audioInput, '-t', durationOf(item), ...streams, ...vf, '-c:v', opts.encoder!, '-c:a', 'pcm_s16le', '-ar', '48000', '-ac', '2', ...(silent ? ['-shortest'] : []), ...STRIP_METADATA, '-y', output]
     }
   })
   const output = path.join(opts.outDir, `${opts.baseName}.mp4`)
   const final: FfmpegJob = {
     output,
-    // aresample async：某段沒有音訊時以靜音補上空檔，後面的聲音不會往前擠
+    // 補齊音訊時間戳的小幅空隙；無音軌來源已在中間檔補上靜音。
     args: [...CONCAT_INPUT, ...STREAM_SELECT, '-c:v', 'copy', '-af', 'aresample=async=1:first_pts=0', ...AUDIO_AAC, '-y', output]
   }
   const allNotices = normalize ? [...notices, tr('來源規格不同，已先將每段轉成相同規格再合併')] : notices

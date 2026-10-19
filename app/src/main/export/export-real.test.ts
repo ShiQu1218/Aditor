@@ -12,7 +12,7 @@ import fs from 'fs'
 import os from 'os'
 import path from 'path'
 import { createExportService } from './export-ipc'
-import { createCutLookup, createMediaEndProbe } from './keyframe'
+import { createAudioProbe, createCutLookup, createMediaEndProbe } from './keyframe'
 
 const exe = process.platform === 'win32' ? '.exe' : ''
 
@@ -69,6 +69,7 @@ describeReal('real ffmpeg export: clip junctions play cleanly', () => {
   let outDir: string
   let source: string
   let openGop: string
+  let silent: string
   const FPS = 30
   const items = () => [
     { id: '1', source, start: 5.3, end: 9.2 },
@@ -81,6 +82,7 @@ describeReal('real ffmpeg export: clip junctions play cleanly', () => {
       ffmpeg: { bin: FFMPEG! },
       tempDir: path.join(root, 'tmp'),
       probe: async () => ({ codec: 'mpeg4', width: 320, height: 240 }),
+      hasAudio: createAudioProbe(FFPROBE!),
       copyCut: createCutLookup(FFPROBE!),
       mediaEnd: createMediaEndProbe(FFPROBE!)
     })
@@ -91,6 +93,7 @@ describeReal('real ffmpeg export: clip junctions play cleanly', () => {
     fs.mkdirSync(outDir)
     source = path.join(root, 'src.mp4')
     openGop = path.join(root, 'open.mp4')
+    silent = path.join(root, 'silent.mp4')
     for (const [file, gopFlags] of [[source, ['-flags', '+cgop', '-sc_threshold', '1000000000']], [openGop, []]] as const) {
       const r = run(FFMPEG!, [
         '-v', 'error', '-y',
@@ -101,6 +104,8 @@ describeReal('real ffmpeg export: clip junctions play cleanly', () => {
       ])
       expect(r.status, r.stderr).toBe(0)
     }
+    const noAudio = run(FFMPEG!, ['-v', 'error', '-y', '-i', source, '-map', '0:v:0', '-c:v', 'copy', '-an', silent])
+    expect(noAudio.status, noAudio.stderr).toBe(0)
   })
   afterAll(() => fs.rmSync(root, { recursive: true, force: true }))
 
@@ -140,6 +145,35 @@ describeReal('real ffmpeg export: clip junctions play cleanly', () => {
       expect(dec.stderr.trim()).toBe('')
     }, 60_000)
   }
+
+  it.each(['first', 'middle', 'last', 'all'])('precise concat fills missing audio with silence (%s)', async (position) => {
+    const sources = position === 'first' ? [silent, source] : position === 'middle' ? [source, silent, source]
+      : position === 'last' ? [source, silent] : [silent, silent]
+    const clips = sources.map((file, i) => ({ id: String(i), source: file, start: 0.4, end: 1.4 }))
+    const result = await service().start(sender(), { items: clips, mode: 'concat', quality: 'precise', encoder: 'mpeg4', outDir, baseName: `audio-${position}` })
+    expect(result.ok, JSON.stringify(result)).toBe(true)
+    if (!result.ok) return
+    const info = streamInfo(result.outputs[0])
+    expect(info.map((s) => s.codec_type)).toEqual(['video', 'audio'])
+    const pkts = packets(result.outputs[0])
+    const end = (stream: number) => Math.max(...pkts.filter((p) => p.stream === stream).map((p) => p.pts + p.dur))
+    expect(end(0)).toBeCloseTo(sources.length, 1)
+    expect(Math.abs(end(1) - end(0))).toBeLessThan(0.05)
+    expectCleanTimeline(pkts, 1, 1024 / 48000)
+
+    const decoded = spawnSync(FFMPEG!, ['-v', 'error', '-i', result.outputs[0], '-vn', '-ar', '48000', '-ac', '1', '-c:a', 'pcm_s16le', '-f', 's16le', 'pipe:1'], { windowsHide: true })
+    expect(decoded.status, decoded.stderr.toString()).toBe(0)
+    sources.forEach((file, i) => {
+      let power = 0
+      const from = Math.round((i + 0.25) * 48000)
+      const to = Math.round((i + 0.75) * 48000)
+      expect(decoded.stdout.length).toBeGreaterThanOrEqual(to * 2)
+      for (let sample = from; sample < to; sample++) power += decoded.stdout.readInt16LE(sample * 2) ** 2
+      const rms = Math.sqrt(power / (to - from))
+      if (file === silent) expect(rms).toBeLessThan(100)
+      else expect(rms).toBeGreaterThan(200)
+    })
+  }, 60_000)
 
   it('separate (copy, open GOP source): each file starts on a keyframe at time 0 without a pre-roll edit list', async () => {
     const clips = items().slice(0, 2).map((it) => ({ ...it, source: openGop }))

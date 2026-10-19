@@ -2,6 +2,7 @@
  * 匯出用、以 ffprobe 只讀封包（不解碼）的查詢：
  * 1. 快速無損切點（pickCopyCut）：片段起點（含）之前最近的視訊關鍵影格，以及不會在尾端留下空洞的終點。
  * 2. 合輯：量中間檔實際播放到的終點，作為 concat 清單的 duration（parseMediaEnd）。
+ * 3. 精準合輯：確認來源有無音軌，無音軌時先補靜音再串接。
  *
  * stream copy 只能從關鍵影格開始。若直接用片段起點 `-ss`，ffmpeg 會從前一個關鍵影格開始複製，
  * 再靠 MP4 edit list 把多出的畫面「藏起來」；剪輯軟體（DaVinci 等）常不理會或處理錯 edit list，
@@ -197,6 +198,18 @@ export function parseMediaEnd(csv: string): number | null {
 }
 
 export type MediaEndProbe = (file: string, signal?: AbortSignal) => Promise<number | null>
+
+/** true＝有音軌，false＝確定沒有；無法查詢時為 null，不可把既有聲音換成靜音。 */
+export type AudioProbe = (file: string, signal?: AbortSignal) => Promise<boolean | null>
+
+export function createAudioProbe(ffprobeBin: string = defaultFfprobePath(), timeoutMs = PROBE_TIMEOUT_MS): AudioProbe {
+  return async (file, signal) => {
+    const out = await runFfprobe(ffprobeBin, ['-v', 'error', '-select_streams', 'a:0', '-show_entries', 'stream=index', '-of', 'csv=p=0', file], timeoutMs, signal)
+    if (out === null) return null
+    const index = out.trim()
+    return index === '' ? false : /^\d+$/.test(index) ? true : null
+  }
+}
 
 export function createMediaEndProbe(ffprobeBin: string = defaultFfprobePath(), timeoutMs = PROBE_TIMEOUT_MS): MediaEndProbe {
   return (file, signal) =>
