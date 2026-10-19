@@ -4,7 +4,7 @@ import type { Messages } from '../index'
 export const recordingI18n: Messages['recordingI18n'] = {
   title: '录制',
   card: '游戏录制',
-  cards: { general: '通用', video: '画面', audio: '音频' },
+  cards: { basics: '基本', recorder: '录制器', video: '画面', audio: '音频', disk: '磁盘空间与通知' },
   advanced: '高级选项',
   current: '当前：{value}',
   fit: '适配',

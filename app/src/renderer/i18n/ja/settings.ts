@@ -16,19 +16,31 @@ export const settingsI18n: Messages['settingsI18n'] = {
   newTag: 'NEW',
   comingSoon: 'この機能は今後のアップデートで提供予定です。',
   cat: {
-    a: '動画と分析',
-    b: 'プレビューとクリップ編集',
-    c: '書き出しと情報',
-    recording: '録画'
-  },
-  card: {
     general: '一般',
-    source: '動画ソース',
-    perf: '分析とパフォーマンス',
-    proxy: 'プレビューとプロキシファイル',
-    clip: 'クリップ編集の既定値',
+    recording: '録画',
+    analysis: '取り込みと分析',
+    editing: '編集',
     export: '書き出し',
     about: '情報'
+  },
+  catDesc: {
+    general: '表示言語、起動とシステムトレイの動作、録画と書き出し動画の保存先。',
+    recording: '録画のタイミング、使うレコーダー、映像と音声の品質、ディスク容量が不足したときの動作。',
+    analysis: '動画をライブラリに取り込む方法と、ハイライトの分析方法。',
+    editing: 'スタジオでのプレビュー再生とクリップ編集の既定値。',
+    export: '動画の書き出しに使うエンコーダー。',
+    about: 'バージョン、ライセンス、商標について。'
+  },
+  card: {
+    ui: '表示',
+    startup: '起動とウィンドウ',
+    storage: '保存先',
+    source: '動画ソース',
+    perf: '分析のパフォーマンス',
+    proxy: 'プレビューとプロキシファイル',
+    clip: 'クリップ編集の既定値',
+    export: 'エンコーダー',
+    about: 'バージョン情報'
   },
   row: {
     language: {

@@ -16,19 +16,31 @@ export const settingsI18n: Messages['settingsI18n'] = {
   newTag: '신규',
   comingSoon: '이 기능은 이후 업데이트에서 제공될 예정입니다.',
   cat: {
-    a: '영상과 분석',
-    b: '미리보기와 편집',
-    c: '내보내기와 정보',
-    recording: '녹화'
-  },
-  card: {
     general: '일반',
-    source: '영상 소스',
-    perf: '분석과 성능',
-    proxy: '미리보기와 프록시 파일',
-    clip: '편집 기본값',
+    recording: '녹화',
+    analysis: '가져오기와 분석',
+    editing: '편집',
     export: '내보내기',
     about: '정보'
+  },
+  catDesc: {
+    general: '인터페이스 언어, 시작 및 시스템 트레이 동작, 녹화와 편집 결과물의 저장 위치.',
+    recording: '녹화 시점, 사용할 녹화기, 영상과 오디오 품질, 디스크 공간이 부족할 때의 동작.',
+    analysis: '영상을 라이브러리로 가져오는 방법과 하이라이트를 분석하는 방식.',
+    editing: '스튜디오의 미리보기 재생과 편집 기본값.',
+    export: '영상을 내보낼 때 사용하는 인코더.',
+    about: '버전, 라이선스, 상표 고지.'
+  },
+  card: {
+    ui: '인터페이스',
+    startup: '시작과 창',
+    storage: '저장',
+    source: '영상 소스',
+    perf: '분석 성능',
+    proxy: '미리보기와 프록시 파일',
+    clip: '편집 기본값',
+    export: '인코더',
+    about: '버전 정보'
   },
   row: {
     language: {

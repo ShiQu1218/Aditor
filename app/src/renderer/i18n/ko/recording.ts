@@ -4,7 +4,7 @@ import type { Messages } from '../index'
 export const recordingI18n: Messages['recordingI18n'] = {
   title: '녹화',
   card: '게임 녹화',
-  cards: { general: '일반', video: '영상', audio: '오디오' },
+  cards: { basics: '기본', recorder: '녹화기', video: '영상', audio: '오디오', disk: '디스크 공간과 알림' },
   advanced: '고급 옵션',
   current: '현재: {value}',
   fit: '맞춤',

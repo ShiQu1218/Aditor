@@ -1,10 +1,10 @@
 import React, { useRef } from 'react'
-import { Download, Film, Scissors } from '../components/icons'
+import { AnalysisQueue, Download, Info, Scissors, SlidersHorizontal, Video } from '../components/icons'
 import { settingsI18n } from '../i18n'
 import { CATEGORIES, type CategoryId } from './rows'
 import { fillTemplate, nextTabIndex } from './settingsModel'
 
-const ICONS = { Film, Scissors, Download } as const
+const ICONS = { SlidersHorizontal, Video, AnalysisQueue, Scissors, Download, Info } as const
 
 interface SettingsNavProps {
   active: CategoryId

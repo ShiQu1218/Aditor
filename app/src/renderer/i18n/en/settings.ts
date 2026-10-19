@@ -15,19 +15,31 @@ export const settingsI18n: Messages['settingsI18n'] = {
   newTag: 'New',
   comingSoon: 'This feature will be available in a future update.',
   cat: {
-    a: 'Videos and analysis',
-    b: 'Preview and editing',
-    c: 'Export and about',
-    recording: 'Recording'
-  },
-  card: {
     general: 'General',
-    source: 'Video source',
-    perf: 'Analysis and performance',
-    proxy: 'Preview and proxy files',
-    clip: 'Editing defaults',
+    recording: 'Recording',
+    analysis: 'Import and analysis',
+    editing: 'Editing',
     export: 'Export',
     about: 'About'
+  },
+  catDesc: {
+    general: 'Interface language, startup and tray behavior, and where recordings and edited videos are saved.',
+    recording: 'When to record, which recorder to use, video and audio quality, and what happens when disk space runs low.',
+    analysis: 'How videos get into the library and how highlights are analyzed.',
+    editing: 'Preview playback and editing defaults in the studio.',
+    export: 'Encoders used when exporting videos.',
+    about: 'Version, licenses, and trademark notice.'
+  },
+  card: {
+    ui: 'Interface',
+    startup: 'Startup and window',
+    storage: 'Storage',
+    source: 'Video source',
+    perf: 'Analysis performance',
+    proxy: 'Preview and proxy files',
+    clip: 'Editing defaults',
+    export: 'Encoders',
+    about: 'Version info'
   },
   row: {
     language: {

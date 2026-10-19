@@ -558,19 +558,31 @@ const settingsI18n = {
   newTag: '新',
   comingSoon: '此功能將在後續更新提供。',
   cat: {
-    a: '影片與分析',
-    b: '預覽與剪輯',
-    c: '匯出與關於',
-    recording: '錄影'
-  },
-  card: {
     general: '一般',
-    source: '影片來源',
-    perf: '分析與效能',
-    proxy: '預覽與代理檔',
-    clip: '剪輯預設值',
+    recording: '錄影',
+    analysis: '匯入與分析',
+    editing: '剪輯',
     export: '匯出',
     about: '關於'
+  },
+  catDesc: {
+    general: '介面語言、開機啟動與系統匣，以及錄影和剪輯輸出存放的位置。',
+    recording: '何時錄、用哪個錄影器、畫質與聲音，以及磁碟空間不足時怎麼處理。',
+    analysis: '影片怎麼進到影片庫，以及分析精彩片段的方式。',
+    editing: '剪輯工作室的預覽播放與剪輯預設值。',
+    export: '輸出影片時使用的編碼器。',
+    about: '版本、授權與商標聲明。'
+  },
+  card: {
+    ui: '介面',
+    startup: '啟動與視窗',
+    storage: '儲存',
+    source: '影片來源',
+    perf: '分析效能',
+    proxy: '預覽與代理檔',
+    clip: '剪輯預設值',
+    export: '編碼器',
+    about: '版本資訊'
   },
   row: {
     language: {
@@ -721,7 +733,7 @@ const settingsI18n = {
 const recordingI18n = {
   title: '錄影',
   card: '遊戲錄影',
-  cards: { general: '一般', video: '影像', audio: '音訊' },
+  cards: { basics: '基本', recorder: '錄影器', video: '影像', audio: '音訊', disk: '磁碟空間與通知' },
   advanced: '進階選項',
   current: '目前：{value}',
   fit: '適配',

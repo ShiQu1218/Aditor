@@ -16,19 +16,31 @@ export const settingsI18n: Messages['settingsI18n'] = {
   newTag: '新',
   comingSoon: '此功能将在后续更新提供。',
   cat: {
-    a: '视频与分析',
-    b: '预览与剪辑',
-    c: '导出与关于',
-    recording: '录制'
-  },
-  card: {
     general: '通用',
-    source: '视频来源',
-    perf: '分析与性能',
-    proxy: '预览与代理文件',
-    clip: '剪辑默认值',
+    recording: '录制',
+    analysis: '导入与分析',
+    editing: '剪辑',
     export: '导出',
     about: '关于'
+  },
+  catDesc: {
+    general: '界面语言、开机启动与系统托盘，以及录像和剪辑输出的保存位置。',
+    recording: '何时录制、使用哪个录制器、画质与声音，以及磁盘空间不足时如何处理。',
+    analysis: '视频如何进入视频库，以及分析精彩片段的方式。',
+    editing: '剪辑工作室的预览播放与剪辑默认值。',
+    export: '导出视频时使用的编码器。',
+    about: '版本、许可与商标声明。'
+  },
+  card: {
+    ui: '界面',
+    startup: '启动与窗口',
+    storage: '存储',
+    source: '视频来源',
+    perf: '分析性能',
+    proxy: '预览与代理文件',
+    clip: '剪辑默认值',
+    export: '编码器',
+    about: '版本信息'
   },
   row: {
     language: {

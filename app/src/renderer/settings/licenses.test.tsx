@@ -33,7 +33,7 @@ test('the about row is not disabled', () => {
 })
 
 test('clicking 〔第三方授權〕 asks main to open the bundled notices', async () => {
-  click(document.querySelectorAll<HTMLElement>('[role="tab"]')[2])
+  click(document.getElementById('set-tab-about')!)
   await flush(10)
   const btn = buttonByText(document, settingsI18n.row.about.licenses)!
   expect(btn.disabled).toBe(false)

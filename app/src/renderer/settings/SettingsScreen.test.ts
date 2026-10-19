@@ -7,7 +7,7 @@ import { DEFAULT_SETTINGS, type Settings, type SettingsSetResult } from '../../s
 import { SettingsScreen } from './SettingsScreen'
 import { SettingsController, type SettingsApi } from './settingsController'
 import { settingsI18n } from '../i18n'
-import { SETTING_ROWS } from './rows'
+import { SETTING_ROWS, type CategoryId } from './rows'
 
 function fakeApi(opts: { persisted?: boolean; settings?: Partial<Settings> } = {}): SettingsApi {
   let current: Settings = { ...DEFAULT_SETTINGS, ...opts.settings }
@@ -37,7 +37,7 @@ function fakeApi(opts: { persisted?: boolean; settings?: Partial<Settings> } = {
 }
 
 async function render(
-  props: { initialQuery?: string; initialCategory?: 'a' | 'b' | 'c' } = {},
+  props: { initialQuery?: string; initialCategory?: CategoryId } = {},
   api: SettingsApi = fakeApi(),
   after?: (c: SettingsController) => Promise<void>
 ): Promise<string> {
@@ -57,11 +57,18 @@ describe('SettingsScreen markup（renderToString + fake window.api 資料）', (
     expect(html).toContain(settingsI18n.loading)
   })
 
-  test('category a: language, storage root, watch folders, auto analyze, decode, cache, low-perf (7 rows) with the exact tablist', async () => {
-    const html = await render({ initialCategory: 'a' })
-    expect(rowIds(html)).toEqual(['language', 'storageRoot', 'watchFolders', 'autoAnalyze', 'decode', 'cacheLocation', 'lowPerfMode'])
+  test('category general: language, low-perf, startup/tray, storage root (5 rows) in three cards', async () => {
+    const html = await render({ initialCategory: 'general' })
+    expect(rowIds(html)).toEqual(['language', 'lowPerfMode', 'recording-launchAtLogin', 'recording-closeToTray', 'storageRoot'])
+    for (const card of ['介面', '啟動與視窗', '儲存']) expect(html).toContain(`>${card}</h2>`)
+    expect(html).toContain('class="set-cat-desc"')
+  })
+
+  test('category analysis: watch folders, auto analyze, decode, cache (4 rows)', async () => {
+    const html = await render({ initialCategory: 'analysis' })
+    expect(rowIds(html)).toEqual(['watchFolders', 'autoAnalyze', 'decode', 'cacheLocation'])
     expect(html).toContain('影片來源')
-    expect(html).toContain('分析與效能')
+    expect(html).toContain('分析效能')
     // 監看資料夾來自 getWatchFolders，缺失者有標記，每個都有可命名的移除按鈕
     expect(html).toContain('D:\\Outplayed\\Apex Legends')
     expect(html).toContain('找不到此資料夾')
@@ -69,8 +76,8 @@ describe('SettingsScreen markup（renderToString + fake window.api 資料）', (
     expect(html).toContain('新增資料夾')
   })
 
-  test('category b: proxy + clip defaults (6 rows) with usage text and steppers', async () => {
-    const html = await render({ initialCategory: 'b' })
+  test('category editing: proxy + clip defaults (6 rows) with usage text and steppers', async () => {
+    const html = await render({ initialCategory: 'editing' })
     expect(rowIds(html)).toEqual(['proxySuggest', 'proxyUsage', 'beforeAfter', 'autoclip', 'autoSuggestOnOpen', 'projectAutosave'])
     expect(html).toContain('2.4 GB（3 個檔案）')
     expect(html).toContain('刪除全部代理檔')
@@ -82,22 +89,27 @@ describe('SettingsScreen markup（renderToString + fake window.api 資料）', (
     expect(html).toContain('aria-label="減少事件前秒數"')
   })
 
-  test('category c: export + about (4 rows), encoders and OpenH264 state, trademark text', async () => {
-    const html = await render({ initialCategory: 'c' })
-    expect(rowIds(html)).toEqual(['encoders', 'openh264', 'about', 'trademark'])
+  test('category export: encoders and OpenH264 state (2 rows)', async () => {
+    const html = await render({ initialCategory: 'export' })
+    expect(rowIds(html)).toEqual(['encoders', 'openh264'])
     expect(html).toContain('NVENC ✓')
     expect(html).toContain('QSV ✗')
     expect(html).toContain('已安裝')
-    expect(html).toContain('Apex Legends 為 Electronic Arts／Respawn 之商標')
     expect(html).not.toContain('data-row="defaultOutDir"')
   })
 
-  const storageRowHtml = (html: string): string => html.slice(html.indexOf('data-row="storageRoot"'), html.indexOf('data-row="watchFolders"'))
+  test('category about: version/licenses and trademark text (2 rows)', async () => {
+    const html = await render({ initialCategory: 'about' })
+    expect(rowIds(html)).toEqual(['about', 'trademark'])
+    expect(html).toContain('Apex Legends 為 Electronic Arts／Respawn 之商標')
+  })
+
+  const storageRowHtml = (html: string): string => html.slice(html.indexOf('data-row="storageRoot"'))
 
   test('storage root row: unset shows the suggestion with a note and the three-folder preview, no open button', async () => {
     const api = fakeApi()
     api.settings.suggestStorageRoot = async () => 'D:\\Videos\\Aditor'
-    const row = storageRowHtml(await render({ initialCategory: 'a' }, api))
+    const row = storageRowHtml(await render({ initialCategory: 'general' }, api))
     expect(row).toContain('尚未設定（建議：D:\\Videos\\Aditor）')
     expect(row).toContain('變更…')
     expect(row).not.toContain('在檔案總管開啟')
@@ -110,7 +122,7 @@ describe('SettingsScreen markup（renderToString + fake window.api 資料）', (
   })
 
   test('storage root row: configured root is shown with the open-in-explorer button', async () => {
-    const row = storageRowHtml(await render({ initialCategory: 'a' }, fakeApi({ settings: { storageRoot: 'E:\\Apex' } })))
+    const row = storageRowHtml(await render({ initialCategory: 'general' }, fakeApi({ settings: { storageRoot: 'E:\\Apex' } })))
     expect(row).not.toContain('尚未設定')
     expect(row).toContain('在檔案總管開啟')
     expect(row).toContain('E:\\Apex\\Exports\\Merged')
@@ -123,7 +135,7 @@ describe('SettingsScreen markup（renderToString + fake window.api 資料）', (
   })
 
   test('controls are real labelled form controls (label for, aria-describedby, role=switch checkbox)', async () => {
-    const html = await render({ initialCategory: 'a' })
+    const html = await render({ initialCategory: 'analysis' })
     expect(html).toMatch(/<label[^>]*for="set-autoAnalyze"[^>]*>新影片自動分析<\/label>/)
     expect(html).toMatch(/<input[^>]*id="set-autoAnalyze"[^>]*type="checkbox"[^>]*role="switch"/)
     expect(html).toMatch(/id="set-autoAnalyze"[^>]*aria-describedby="set-autoAnalyze-desc"/)
@@ -133,20 +145,18 @@ describe('SettingsScreen markup（renderToString + fake window.api 資料）', (
   })
 
   test('switch and select reflect the settings (checked / selected)', async () => {
-    const html = await render(
-      { initialCategory: 'a' },
-      fakeApi({ settings: { autoAnalyze: false, lowPerfMode: true, decode: 'software' } })
-    )
-    expect(html).toMatch(/id="set-autoAnalyze"(?![^>]*checked)/)
-    expect(html).toMatch(/id="set-lowPerfMode"[^>]*checked/)
-    expect(html).toMatch(/<option value="software" selected/)
+    const api = (): SettingsApi => fakeApi({ settings: { autoAnalyze: false, lowPerfMode: true, decode: 'software' } })
+    const analysis = await render({ initialCategory: 'analysis' }, api())
+    expect(analysis).toMatch(/id="set-autoAnalyze"(?![^>]*checked)/)
+    expect(analysis).toMatch(/<option value="software" selected/)
+    expect(await render({ initialCategory: 'general' }, api())).toMatch(/id="set-lowPerfMode"[^>]*checked/)
   })
 
-  test('tablist: role, label, four tabs, roving tabindex and aria-selected on the active one', async () => {
-    const html = await render({ initialCategory: 'b' })
+  test('tablist: role, label, six tabs, roving tabindex and aria-selected on the active one', async () => {
+    const html = await render({ initialCategory: 'recording' })
     expect(html).toMatch(/role="tablist"[^>]*aria-label="設定分類"[^>]*aria-orientation="vertical"|aria-orientation="vertical"[^>]*role="tablist"/)
     const tabs = [...html.matchAll(/<button[^>]*role="tab"[^>]*>/g)].map((m) => m[0])
-    expect(tabs).toHaveLength(4)
+    expect(tabs).toHaveLength(6)
     expect(tabs[0]).toContain('aria-selected="false"')
     expect(tabs[0]).toContain('tabindex="-1"')
     expect(tabs[1]).toContain('aria-selected="true"')
@@ -154,32 +164,33 @@ describe('SettingsScreen markup（renderToString + fake window.api 資料）', (
     expect(tabs[1]).toContain('class="set-cat active"') // 紅色指示條由 .active::before 繪製
     expect(tabs[2]).toContain('tabindex="-1"')
     expect(html).toContain('role="tabpanel"')
-    expect(html).toContain('aria-labelledby="set-tab-b"')
-    for (const label of ['影片與分析', '預覽與剪輯', '匯出與關於']) expect(html).toContain(label)
+    expect(html).toContain('aria-labelledby="set-tab-recording"')
+    for (const label of ['一般', '錄影', '匯入與分析', '剪輯', '匯出', '關於']) expect(html).toContain(`>${label}</span>`)
   })
 
   test('only the active category rows are rendered without a search', async () => {
-    const html = await render({ initialCategory: 'a' })
+    const html = await render({ initialCategory: 'general' })
     expect(html).not.toContain('data-row="proxySuggest"')
     expect(html).not.toContain('data-row="encoders"')
   })
 
   test('search results: rows from ALL categories, grouped by card, with per-category hit counts', async () => {
     const html = await render({ initialQuery: '資料夾' })
-    // 儲存位置與監看資料夾（皆在 a）；b、c 沒有命中
+    // 儲存位置（一般）與監看資料夾（匯入與分析）
     expect(rowIds(html)).toEqual(['storageRoot', 'watchFolders'])
     expect(html).toContain('role="region"')
     expect(html).toContain('aria-label="搜尋結果"')
     expect(html).not.toContain('role="tabpanel"')
+    expect(html).not.toContain('class="set-cat-desc"')
     // 只顯示命中的列（同卡片的其他列被濾掉）
     expect(html).not.toContain('data-row="autoAnalyze"')
     expect(html).toContain('影片來源') // 卡片標題保留
-    // 各分類命中數（只有 a 有）
+    // 各分類命中數（一般與匯入與分析各 1）
     const tabs = [...html.matchAll(/<button[^>]*role="tab"[^>]*>.*?<\/button>/g)].map((m) => m[0])
-    expect(tabs[0]).toContain('class="set-hit"')
+    expect(tabs[0]).toMatch(/aria-label="1 項符合">1</)
     expect(tabs[1]).not.toContain('set-hit')
-    expect(tabs[2]).not.toContain('set-hit')
-    expect(tabs[0]).toMatch(/aria-label="2 項符合">2</)
+    expect(tabs[2]).toMatch(/aria-label="1 項符合">1</)
+    expect(tabs[3]).not.toContain('set-hit')
   })
 
   test('search matches keywords case-insensitively (NVENC → encoders row)', async () => {
@@ -195,7 +206,7 @@ describe('SettingsScreen markup（renderToString + fake window.api 資料）', (
   })
 
   test('no setting row is left hard-disabled; OpenH264 download is actionable', async () => {
-    const html = await render({ initialCategory: 'c' })
+    const html = (await render({ initialCategory: 'about' })) + (await render({ initialCategory: 'export' }))
     // 第三方授權（I11）：已可使用，不再是停用列
     expect(html).not.toMatch(/<button[^>]*id="set-about"[^>]*disabled/)
     expect(html).not.toContain('授權清單頁面將在後續更新提供。')
@@ -205,21 +216,21 @@ describe('SettingsScreen markup（renderToString + fake window.api 資料）', (
   })
 
   test('the developer note 需新增 IPC never appears in any category or search markup', async () => {
-    for (const cat of ['a', 'b', 'c'] as const) {
+    for (const cat of ['general', 'recording', 'analysis', 'editing', 'export', 'about'] as const) {
       expect(await render({ initialCategory: cat })).not.toContain('需新增 IPC')
     }
     expect(await render({ initialQuery: '設定' })).not.toContain('需新增 IPC')
   })
 
   test('new settings carry the 新 tag (low-perf, auto suggest, autosave)', async () => {
-    const b = await render({ initialCategory: 'b' })
+    const b = await render({ initialCategory: 'editing' })
     expect((b.match(/class="set-newtag"/g) ?? []).length).toBe(2)
   })
 })
 
 describe('save-failed notice and state sync', () => {
   test('persisted:false → 儲存失敗 notice in an aria-live region; control shows the RETURNED value', async () => {
-    const html = await render({ initialCategory: 'a' }, fakeApi({ persisted: false }), async (c) => {
+    const html = await render({ initialCategory: 'general' }, fakeApi({ persisted: false }), async (c) => {
       await c.setBool('lowPerfMode', true)
     })
     expect(html).toContain('儲存失敗')
@@ -228,7 +239,7 @@ describe('save-failed notice and state sync', () => {
   })
 
   test('persisted:true → no notice', async () => {
-    const html = await render({ initialCategory: 'a' }, fakeApi(), async (c) => {
+    const html = await render({ initialCategory: 'general' }, fakeApi(), async (c) => {
       await c.setBool('lowPerfMode', true)
     })
     expect(html).not.toContain('儲存失敗')
@@ -239,14 +250,14 @@ describe('save-failed notice and state sync', () => {
   test('a backend that rejects the change leaves the control at the returned (old) value', async () => {
     const api = fakeApi()
     api.settings.set = async () => ({ settings: { ...DEFAULT_SETTINGS, lowPerfMode: false }, persisted: true })
-    const html = await render({ initialCategory: 'a' }, api, async (c) => {
+    const html = await render({ initialCategory: 'general' }, api, async (c) => {
       await c.setBool('lowPerfMode', true)
     })
     expect(html).toMatch(/id="set-lowPerfMode"(?![^>]*checked)/)
   })
 
   test('numeric inputs show the clamped value returned by main, never the typed 99', async () => {
-    const html = await render({ initialCategory: 'b' }, fakeApi(), async (c) => {
+    const html = await render({ initialCategory: 'editing' }, fakeApi(), async (c) => {
       await c.setNumber('before', 99)
       await c.setAutoclip('max_len', 9999)
     })
@@ -261,7 +272,7 @@ describe('save-failed notice and state sync', () => {
       persisted: true,
       errors: { storageRoot: '無法建立或寫入儲存位置：Z:\\nope' }
     })
-    const html = await render({ initialCategory: 'a' }, api, async (c) => {
+    const html = await render({ initialCategory: 'general' }, api, async (c) => {
       await c.pickStorageRoot()
     })
     expect(html).toMatch(/<p[^>]*class="set-err"[^>]*role="alert"[^>]*>無法建立或寫入儲存位置：Z:\\nope<\/p>/)
@@ -273,7 +284,7 @@ describe('save-failed notice and state sync', () => {
     api.settings.get = async () => {
       throw new Error('x')
     }
-    const html = await render({ initialCategory: 'a' }, api)
+    const html = await render({ initialCategory: 'analysis' }, api)
     expect(html).toContain('無法讀取設定')
     expect(html).toContain('data-row="autoAnalyze"')
   })

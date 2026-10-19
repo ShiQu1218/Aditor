@@ -1,24 +1,30 @@
 // 設定畫面的列定義（資料表）：分類、卡片、標題／說明／搜尋關鍵字與控制項種類。
 // 文字一律來自 i18n/zh-TW.ts；控制項如何讀寫 Settings／IPC 由 SettingRow 與 settingsController 實作。
+// 陣列順序就是畫面順序；同分類、同卡片的連續列會併成一張卡片。
 import { settingsI18n, recordingI18n, LOCALES, LOCALE_NAMES } from '../i18n'
 import type { RecordingSettings } from '../../shared/recording'
 
 const t = settingsI18n
 
-export type CategoryId = 'a' | 'b' | 'c' | 'recording'
+// 分類依「使用者想做的事」排列：整個 App 的偏好 → 錄影 → 匯入與分析 → 剪輯 → 匯出 → 關於
+export type CategoryId = 'general' | 'recording' | 'analysis' | 'editing' | 'export' | 'about'
 
 export interface CategoryDef {
   id: CategoryId
   label: string
+  /** 分類頂端的一句說明（不搜尋時顯示） */
+  desc: string
   /** 分類欄圖示（components/icons 的元件名稱） */
-  icon: 'Film' | 'Scissors' | 'Download'
+  icon: 'SlidersHorizontal' | 'Video' | 'AnalysisQueue' | 'Scissors' | 'Download' | 'Info'
 }
 
 export const CATEGORIES: readonly CategoryDef[] = [
-  { id: 'a', label: t.cat.a, icon: 'Film' },
-  { id: 'b', label: t.cat.b, icon: 'Scissors' },
-  { id: 'c', label: t.cat.c, icon: 'Download' },
-  { id: 'recording', label: t.cat.recording, icon: 'Film' }
+  { id: 'general', label: t.cat.general, desc: t.catDesc.general, icon: 'SlidersHorizontal' },
+  { id: 'recording', label: t.cat.recording, desc: t.catDesc.recording, icon: 'Video' },
+  { id: 'analysis', label: t.cat.analysis, desc: t.catDesc.analysis, icon: 'AnalysisQueue' },
+  { id: 'editing', label: t.cat.editing, desc: t.catDesc.editing, icon: 'Scissors' },
+  { id: 'export', label: t.cat.export, desc: t.catDesc.export, icon: 'Download' },
+  { id: 'about', label: t.cat.about, desc: t.catDesc.about, icon: 'Info' }
 ]
 
 export type BoolField = 'autoAnalyze' | 'lowPerfMode' | 'proxySuggest' | 'autoSuggestOnOpen' | 'projectAutosave'
@@ -54,9 +60,11 @@ export interface SettingRow {
   advanced?: boolean
 }
 
-const VIDEO_FIELDS = new Set(['height', 'bitrateKbps', 'fps', 'forceAspect', 'aspectMode', 'codec', 'encoder', 'preset', 'captureMethod'])
-const AUDIO_FIELDS = new Set(['systemAudioEnabled', 'renderDevice', 'systemGain', 'micEnabled', 'captureDevice', 'micGain', 'gameAudioOnly', 'micMono'])
-const ADVANCED_FIELDS = new Set(['forceAspect', 'aspectMode', 'codec', 'encoder', 'preset', 'captureMethod', 'gameAudioOnly', 'micMono'])
+type RecordingField = keyof typeof recordingI18n.rows
+
+const VIDEO_FIELDS = new Set<string>(['height', 'bitrateKbps', 'fps', 'forceAspect', 'aspectMode', 'codec', 'encoder', 'preset', 'captureMethod'])
+const AUDIO_FIELDS = new Set<string>(['systemAudioEnabled', 'renderDevice', 'systemGain', 'micEnabled', 'captureDevice', 'micGain', 'gameAudioOnly', 'micMono'])
+const ADVANCED_FIELDS = new Set<string>(['forceAspect', 'aspectMode', 'codec', 'encoder', 'preset', 'captureMethod', 'gameAudioOnly', 'micMono'])
 
 export function recordingRowVisible(row: SettingRow, backend: RecordingSettings['backend']): boolean {
   if (row.control.kind !== 'recording') return true
@@ -65,12 +73,33 @@ export function recordingRowVisible(row: SettingRow, backend: RecordingSettings[
   return backend !== 'obs' || field === 'captureMethod' || (!VIDEO_FIELDS.has(field) && !AUDIO_FIELDS.has(field))
 }
 
+/** 錄影設定（RecordingSettings 欄位）的列；文字來自 recordingI18n.rows。 */
+function recordingRow(field: RecordingField, category: CategoryId, card: string): SettingRow {
+  const advanced = ADVANCED_FIELDS.has(field)
+  const text = recordingI18n.rows[field]
+  return {
+    id: `recording-${field}`,
+    category,
+    card,
+    advanced,
+    title: text.title,
+    desc: text.desc,
+    keywords: ['錄影', field, ...(advanced ? [recordingI18n.advanced] : [])],
+    control: { kind: 'recording', field: field as keyof RecordingSettings }
+  }
+}
+
+const recordingRows = (card: string, fields: readonly RecordingField[]): SettingRow[] =>
+  fields.map((field) => recordingRow(field, 'recording', card))
+
+const rc = recordingI18n.cards
+
 export const SETTING_ROWS: SettingRow[] = [
-  // ── 影片與分析 ──
+  // ── 一般：整個 App 的偏好 ──
   {
     id: 'language',
-    category: 'a',
-    card: t.card.general,
+    category: 'general',
+    card: t.card.ui,
     title: t.row.language.title,
     desc: t.row.language.desc,
     keywords: [...t.row.language.keywords],
@@ -86,18 +115,37 @@ export const SETTING_ROWS: SettingRow[] = [
     }
   },
   {
+    id: 'lowPerfMode',
+    category: 'general',
+    card: t.card.ui,
+    title: t.row.lowPerfMode.title,
+    desc: t.row.lowPerfMode.desc,
+    keywords: [...t.row.lowPerfMode.keywords],
+    isNew: true,
+    control: { kind: 'switch', field: 'lowPerfMode' }
+  },
+  recordingRow('launchAtLogin', 'general', t.card.startup),
+  recordingRow('closeToTray', 'general', t.card.startup),
+  {
     id: 'storageRoot',
-    category: 'a',
-    card: t.card.general,
+    category: 'general',
+    card: t.card.storage,
     title: t.row.storageRoot.title,
     desc: t.row.storageRoot.desc,
     keywords: [...t.row.storageRoot.keywords],
     isNew: true,
     control: { kind: 'storageRoot' }
   },
+  // ── 錄影 ──
+  ...recordingRows(rc.basics, ['autoRecord', 'mode', 'postAnalysis']),
+  ...recordingRows(rc.recorder, ['backend', 'obsHost', 'obsPort', 'obsPassword', 'obsFallbackBuiltin']),
+  ...recordingRows(rc.video, ['height', 'bitrateKbps', 'fps', 'forceAspect', 'aspectMode', 'codec', 'encoder', 'preset', 'captureMethod']),
+  ...recordingRows(rc.audio, ['systemAudioEnabled', 'renderDevice', 'systemGain', 'micEnabled', 'captureDevice', 'micGain', 'gameAudioOnly', 'micMono']),
+  ...recordingRows(rc.disk, ['diskWarnGb', 'diskStopGb', 'notifyMatch']),
+  // ── 匯入與分析 ──
   {
     id: 'watchFolders',
-    category: 'a',
+    category: 'analysis',
     card: t.card.source,
     title: t.row.watchFolders.title,
     desc: t.row.watchFolders.desc,
@@ -106,7 +154,7 @@ export const SETTING_ROWS: SettingRow[] = [
   },
   {
     id: 'autoAnalyze',
-    category: 'a',
+    category: 'analysis',
     card: t.card.source,
     title: t.row.autoAnalyze.title,
     desc: t.row.autoAnalyze.desc,
@@ -115,7 +163,7 @@ export const SETTING_ROWS: SettingRow[] = [
   },
   {
     id: 'decode',
-    category: 'a',
+    category: 'analysis',
     card: t.card.perf,
     title: t.row.decode.title,
     desc: t.row.decode.desc,
@@ -131,7 +179,7 @@ export const SETTING_ROWS: SettingRow[] = [
   },
   {
     id: 'cacheLocation',
-    category: 'a',
+    category: 'analysis',
     card: t.card.perf,
     title: t.row.cacheLocation.title,
     desc: t.row.cacheLocation.desc,
@@ -145,20 +193,10 @@ export const SETTING_ROWS: SettingRow[] = [
       ]
     }
   },
-  {
-    id: 'lowPerfMode',
-    category: 'a',
-    card: t.card.perf,
-    title: t.row.lowPerfMode.title,
-    desc: t.row.lowPerfMode.desc,
-    keywords: [...t.row.lowPerfMode.keywords],
-    isNew: true,
-    control: { kind: 'switch', field: 'lowPerfMode' }
-  },
-  // ── 預覽與剪輯 ──
+  // ── 剪輯 ──
   {
     id: 'proxySuggest',
-    category: 'b',
+    category: 'editing',
     card: t.card.proxy,
     title: t.row.proxySuggest.title,
     desc: t.row.proxySuggest.desc,
@@ -167,7 +205,7 @@ export const SETTING_ROWS: SettingRow[] = [
   },
   {
     id: 'proxyUsage',
-    category: 'b',
+    category: 'editing',
     card: t.card.proxy,
     title: t.row.proxyUsage.title,
     desc: t.row.proxyUsage.desc,
@@ -176,7 +214,7 @@ export const SETTING_ROWS: SettingRow[] = [
   },
   {
     id: 'beforeAfter',
-    category: 'b',
+    category: 'editing',
     card: t.card.clip,
     title: t.row.beforeAfter.title,
     desc: t.row.beforeAfter.desc,
@@ -185,7 +223,7 @@ export const SETTING_ROWS: SettingRow[] = [
   },
   {
     id: 'autoclip',
-    category: 'b',
+    category: 'editing',
     card: t.card.clip,
     title: t.row.autoclip.title,
     desc: t.row.autoclip.desc,
@@ -194,7 +232,7 @@ export const SETTING_ROWS: SettingRow[] = [
   },
   {
     id: 'autoSuggestOnOpen',
-    category: 'b',
+    category: 'editing',
     card: t.card.clip,
     title: t.row.autoSuggestOnOpen.title,
     desc: t.row.autoSuggestOnOpen.desc,
@@ -204,7 +242,7 @@ export const SETTING_ROWS: SettingRow[] = [
   },
   {
     id: 'projectAutosave',
-    category: 'b',
+    category: 'editing',
     card: t.card.clip,
     title: t.row.projectAutosave.title,
     desc: t.row.projectAutosave.desc,
@@ -212,10 +250,10 @@ export const SETTING_ROWS: SettingRow[] = [
     isNew: true,
     control: { kind: 'switch', field: 'projectAutosave' }
   },
-  // ── 匯出與關於 ──
+  // ── 匯出 ──
   {
     id: 'encoders',
-    category: 'c',
+    category: 'export',
     card: t.card.export,
     title: t.row.encoders.title,
     desc: t.row.encoders.desc,
@@ -224,7 +262,7 @@ export const SETTING_ROWS: SettingRow[] = [
   },
   {
     id: 'openh264',
-    category: 'c',
+    category: 'export',
     card: t.card.export,
     title: t.row.openh264.title,
     desc: t.row.openh264.desc,
@@ -232,9 +270,10 @@ export const SETTING_ROWS: SettingRow[] = [
     isNew: true,
     control: { kind: 'openh264' }
   },
+  // ── 關於 ──
   {
     id: 'about',
-    category: 'c',
+    category: 'about',
     card: t.card.about,
     title: t.row.about.title,
     desc: t.row.about.desc,
@@ -243,22 +282,12 @@ export const SETTING_ROWS: SettingRow[] = [
   },
   {
     id: 'trademark',
-    category: 'c',
+    category: 'about',
     card: t.card.about,
     title: t.row.trademark.title,
     desc: t.row.trademark.desc,
     keywords: [...t.row.trademark.keywords],
     isNew: true,
     control: { kind: 'none' }
-  },
-  ...Object.entries(recordingI18n.rows).map(([field, text]): SettingRow => ({
-    id: `recording-${field}`,
-    category: 'recording',
-    card: VIDEO_FIELDS.has(field) ? recordingI18n.cards.video : AUDIO_FIELDS.has(field) ? recordingI18n.cards.audio : recordingI18n.cards.general,
-    advanced: ADVANCED_FIELDS.has(field),
-    title: text.title,
-    desc: text.desc,
-    keywords: ['錄影', field, ...(ADVANCED_FIELDS.has(field) ? [recordingI18n.advanced] : [])],
-    control: { kind: 'recording', field: field as keyof RecordingSettings }
-  }))
+  }
 ]

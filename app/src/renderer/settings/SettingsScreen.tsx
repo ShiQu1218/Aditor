@@ -42,7 +42,7 @@ function groupCards(rows: Row[]): Array<{ key: string; category: CategoryId; tit
   return cards
 }
 
-export function SettingsScreen({ controller, initialQuery = '', initialCategory = 'a' }: SettingsScreenProps): JSX.Element {
+export function SettingsScreen({ controller, initialQuery = '', initialCategory = 'general' }: SettingsScreenProps): JSX.Element {
   const ctrl = useMemo(() => controller ?? defaultController(), [controller])
   const state = useSyncExternalStore(ctrl.subscribe, ctrl.getState, ctrl.getState)
   const [query, setQuery] = useState(initialQuery)
@@ -90,6 +90,7 @@ export function SettingsScreen({ controller, initialQuery = '', initialCategory 
   )
 
   const settings = state.settings
+  const activeDesc = CATEGORIES.find((c) => c.id === active)?.desc
 
   return (
     <div className="set-screen">
@@ -117,6 +118,7 @@ export function SettingsScreen({ controller, initialQuery = '', initialCategory 
               ? { role: 'region', 'aria-label': t.resultsLabel }
               : { role: 'tabpanel', 'aria-labelledby': `set-tab-${active}` })}
           >
+            {!searching && activeDesc && <p className="set-cat-desc">{activeDesc}</p>}
             {!settings ? (
               <p className="set-empty-state">{t.loading}</p>
             ) : cards.length === 0 ? (

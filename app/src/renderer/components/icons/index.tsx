@@ -31,7 +31,8 @@ import {
   Save,
   Check,
   Copy,
-  Globe
+  Globe,
+  Info
 } from 'lucide-react'
 
 export {
@@ -64,7 +65,8 @@ export {
   Save,
   Check,
   Copy,
-  Globe
+  Globe,
+  Info
 }
 
 export { LayoutGrid, Film, Video, AnalysisQueue, Keyboard, SlidersHorizontal, Sparkles, Download } from './primary'

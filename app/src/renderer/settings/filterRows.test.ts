@@ -3,10 +3,10 @@ import fs from 'fs'
 import path from 'path'
 import { SETTING_ROWS, CATEGORIES, type SettingRow } from './rows'
 import { filterRows } from './filterRows'
-import { settingsI18n } from '../i18n'
+import { settingsI18n, recordingI18n } from '../i18n'
 
 const mk = (over: Partial<SettingRow> & { id: string }): SettingRow => ({
-  category: 'a',
+  category: 'general',
   card: '卡片',
   title: '標題',
   control: { kind: 'none' },
@@ -14,14 +14,34 @@ const mk = (over: Partial<SettingRow> & { id: string }): SettingRow => ({
 })
 
 describe('SETTING_ROWS（資料表）', () => {
-  test('every category has at least 4 rows', () => {
+  test('every category has rows and a one-line description', () => {
     for (const c of CATEGORIES) {
-      expect(SETTING_ROWS.filter((r) => r.category === c.id).length, c.id).toBeGreaterThanOrEqual(4)
+      expect(SETTING_ROWS.filter((r) => r.category === c.id).length, c.id).toBeGreaterThanOrEqual(2)
+      expect(c.desc.length, c.id).toBeGreaterThan(0)
     }
   })
 
-  test('categories include recording alongside the existing categories', () => {
-    expect(CATEGORIES.map((c) => c.label)).toEqual(['影片與分析', '預覽與剪輯', '匯出與關於', '錄影'])
+  test('categories are ordered by what the user wants to do', () => {
+    expect(CATEGORIES.map((c) => c.label)).toEqual(['一般', '錄影', '匯入與分析', '剪輯', '匯出', '關於'])
+  })
+
+  test('every recording setting appears exactly once; app-wide ones live under 一般', () => {
+    const ids = SETTING_ROWS.filter((r) => r.control.kind === 'recording').map((r) => r.id)
+    expect([...ids].sort()).toEqual(Object.keys(recordingI18n.rows).map((f) => `recording-${f}`).sort())
+    for (const id of ['recording-launchAtLogin', 'recording-closeToTray']) {
+      expect(SETTING_ROWS.find((r) => r.id === id)!.category).toBe('general')
+    }
+  })
+
+  test('rows of the same card are contiguous (a card never splits)', () => {
+    const seen = new Set<string>()
+    let prev = ''
+    for (const r of SETTING_ROWS) {
+      const key = `${r.category}:${r.card}`
+      if (key !== prev) expect(seen.has(key), key).toBe(false)
+      seen.add(key)
+      prev = key
+    }
   })
 
   test('row ids are unique and every row has a title', () => {
@@ -50,51 +70,51 @@ describe('SETTING_ROWS（資料表）', () => {
 
 describe('filterRows', () => {
   const rows = [
-    mk({ id: 'r1', category: 'a', card: '影片來源', title: '監看資料夾', desc: '新影片自動匯入', keywords: ['Watch'] }),
-    mk({ id: 'r2', category: 'a', card: '分析', title: '解碼方式' }),
-    mk({ id: 'r3', category: 'b', card: '代理檔', title: '建議代理檔', desc: 'mediaCapabilities' }),
-    mk({ id: 'r4', category: 'c', card: '匯出', title: '編碼器', keywords: ['NVENC'] })
+    mk({ id: 'r1', category: 'analysis', card: '影片來源', title: '監看資料夾', desc: '新影片自動匯入', keywords: ['Watch'] }),
+    mk({ id: 'r2', category: 'analysis', card: '分析', title: '解碼方式' }),
+    mk({ id: 'r3', category: 'editing', card: '代理檔', title: '建議代理檔', desc: 'mediaCapabilities' }),
+    mk({ id: 'r4', category: 'export', card: '匯出', title: '編碼器', keywords: ['NVENC'] })
   ]
 
   test('empty query returns all rows grouped by category', () => {
     for (const q of ['', '   ']) {
       const res = filterRows(rows, q)
-      expect(res.byCategory.a.map((r) => r.id)).toEqual(['r1', 'r2'])
-      expect(res.byCategory.b.map((r) => r.id)).toEqual(['r3'])
-      expect(res.byCategory.c.map((r) => r.id)).toEqual(['r4'])
-      expect(res.counts).toEqual({ a: 2, b: 1, c: 1 })
+      expect(res.byCategory.analysis.map((r) => r.id)).toEqual(['r1', 'r2'])
+      expect(res.byCategory.editing.map((r) => r.id)).toEqual(['r3'])
+      expect(res.byCategory.export.map((r) => r.id)).toEqual(['r4'])
+      expect(res.counts).toEqual({ analysis: 2, editing: 1, export: 1 })
     }
   })
 
   test('filterRows is case-insensitive and matches title, desc, keywords and card name', () => {
-    expect(filterRows(rows, 'WATCH').byCategory.a.map((r) => r.id)).toEqual(['r1']) // keyword，大小寫不同
-    expect(filterRows(rows, 'nvenc').byCategory.c.map((r) => r.id)).toEqual(['r4'])
-    expect(filterRows(rows, 'MEDIACAPABILITIES').byCategory.b.map((r) => r.id)).toEqual(['r3']) // desc
-    expect(filterRows(rows, '解碼').byCategory.a.map((r) => r.id)).toEqual(['r2']) // title
-    expect(filterRows(rows, '影片來源').byCategory.a.map((r) => r.id)).toEqual(['r1']) // card 名
+    expect(filterRows(rows, 'WATCH').byCategory.analysis.map((r) => r.id)).toEqual(['r1']) // keyword，大小寫不同
+    expect(filterRows(rows, 'nvenc').byCategory.export.map((r) => r.id)).toEqual(['r4'])
+    expect(filterRows(rows, 'MEDIACAPABILITIES').byCategory.editing.map((r) => r.id)).toEqual(['r3']) // desc
+    expect(filterRows(rows, '解碼').byCategory.analysis.map((r) => r.id)).toEqual(['r2']) // title
+    expect(filterRows(rows, '影片來源').byCategory.analysis.map((r) => r.id)).toEqual(['r1']) // card 名
   })
 
   test('counts only include categories with hits', () => {
     const res = filterRows(rows, '代理檔')
-    expect(res.counts).toEqual({ b: 1 })
-    expect('a' in res.counts).toBe(false)
-    expect(res.byCategory.a).toEqual([])
-    expect(res.byCategory.c).toEqual([])
+    expect(res.counts).toEqual({ editing: 1 })
+    expect('analysis' in res.counts).toBe(false)
+    expect(res.byCategory.analysis).toEqual([])
+    expect(res.byCategory.export).toEqual([])
   })
 
   test('multiple words must all match (any field)', () => {
-    expect(filterRows(rows, '資料夾 watch').counts).toEqual({ a: 1 })
+    expect(filterRows(rows, '資料夾 watch').counts).toEqual({ analysis: 1 })
     expect(filterRows(rows, '資料夾 nvenc').counts).toEqual({})
   })
 
   test('no match gives empty groups and empty counts', () => {
     const res = filterRows(rows, 'zzzz')
     expect(res.counts).toEqual({})
-    expect(res.byCategory).toEqual({ a: [], b: [], c: [], recording: [] })
+    expect(res.byCategory).toEqual({ general: [], recording: [], analysis: [], editing: [], export: [], about: [] })
   })
 
   test('real rows: searching finds rows across categories', () => {
-    expect(Object.keys(filterRows(SETTING_ROWS, '錄影').counts).sort()).toEqual(['a', 'recording'])
-    expect(Object.keys(filterRows(SETTING_ROWS, '資料夾').counts)).toEqual(['a'])
+    expect(Object.keys(filterRows(SETTING_ROWS, '錄影').counts).sort()).toEqual(['general', 'recording'])
+    expect(Object.keys(filterRows(SETTING_ROWS, '資料夾').counts)).toEqual(['general', 'analysis'])
   })
 })

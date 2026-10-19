@@ -3,7 +3,7 @@ import type { Messages } from '../index'
 export const recordingI18n: Messages['recordingI18n'] = {
   title: 'Recording',
   card: 'Game recording',
-  cards: { general: 'General', video: 'Video', audio: 'Audio' },
+  cards: { basics: 'Basics', recorder: 'Recorder', video: 'Video', audio: 'Audio', disk: 'Disk space and notifications' },
   advanced: 'Advanced options',
   current: 'Current: {value}',
   fit: 'Fit',

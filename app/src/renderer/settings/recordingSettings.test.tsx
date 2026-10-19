@@ -124,9 +124,19 @@ describe('錄影設定畫面與 controller', () => {
 
   test('完整列順序、label、啟用的一局一個檔及符合格式的編碼器／裝置選項', async () => {
     await show()
+    // 開機啟動／縮到系統匣屬於整個 App，移到「一般」；OBS 列只在選 OBS 時出現
+    const fields = [
+      'autoRecord', 'mode', 'postAnalysis',
+      'backend',
+      'height', 'bitrateKbps', 'fps', 'forceAspect', 'aspectMode', 'codec', 'encoder', 'preset', 'captureMethod',
+      'systemAudioEnabled', 'renderDevice', 'systemGain', 'micEnabled', 'captureDevice', 'micGain', 'gameAudioOnly', 'micMono',
+      'diskWarnGb', 'diskStopGb', 'notifyMatch'
+    ]
     expect(Array.from(document.querySelectorAll<HTMLElement>('[data-row]')).map((el) => el.dataset.row))
-      .toEqual(Object.keys(t.rows).filter((field) => !field.startsWith('obs')).map((field) => `recording-${field}`))
-    for (const field of Object.keys(t.rows).filter((field) => !field.startsWith('obs'))) {
+      .toEqual(fields.map((field) => `recording-${field}`))
+    expect(Array.from(document.querySelectorAll('.set-card h2')).map((el) => el.textContent))
+      .toEqual([t.cards.basics, t.cards.recorder, t.cards.video, t.cards.audio, t.cards.disk])
+    for (const field of fields) {
       const label = document.getElementById(`set-recording-${field}-title`)
       expect(label?.textContent).toBe(t.rows[field as keyof typeof t.rows].title)
       expect(control(field)?.getAttribute('aria-describedby')).toContain(`set-recording-${field}-desc`)

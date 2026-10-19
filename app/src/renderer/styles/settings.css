@@ -73,6 +73,7 @@
 }
 
 .set-wrap { flex: 1; min-height: 0; overflow-y: auto; padding-bottom: 40px; display: flex; flex-direction: column; gap: 16px; }
+.set-cat-desc { flex: none; margin: 0 0 -4px; color: var(--text-2); font-size: var(--fs-small); }
 .set-empty-state { padding: 40px 0; color: var(--text-3); display: flex; flex-direction: column; gap: 4px; }
 .set-empty-state strong { color: var(--text-2); font-size: var(--fs-body-lg); }
 

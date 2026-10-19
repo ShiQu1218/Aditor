@@ -26,8 +26,8 @@ const tabs = (): HTMLElement[] => Array.from(document.querySelectorAll<HTMLEleme
 
 describe('settings category tabs (Task 16, verified in jsdom)', () => {
   test('tablist with one tab stop (the selected tab); the panel is labelled by the selected tab', () => {
-    expect(tabs().length).toBe(4)
-    expect(tabs().map((t) => t.tabIndex)).toEqual([0, -1, -1, -1])
+    expect(tabs().length).toBe(6)
+    expect(tabs().map((t) => t.tabIndex)).toEqual([0, -1, -1, -1, -1, -1])
     expect(tabs()[0].getAttribute('aria-selected')).toBe('true')
     const panel = document.getElementById('set-panel')!
     expect(panel.getAttribute('role')).toBe('tabpanel')
@@ -39,14 +39,14 @@ describe('settings category tabs (Task 16, verified in jsdom)', () => {
     press(tabs()[0], 'ArrowDown')
     expect(document.activeElement).toBe(tabs()[1])
     expect(tabs()[1].getAttribute('aria-selected')).toBe('true')
-    expect(tabs().map((t) => t.tabIndex)).toEqual([-1, 0, -1, -1])
+    expect(tabs().map((t) => t.tabIndex)).toEqual([-1, 0, -1, -1, -1, -1])
     press(tabs()[1], 'End')
-    expect(document.activeElement).toBe(tabs()[3])
-    press(tabs()[3], 'ArrowRight')
+    expect(document.activeElement).toBe(tabs()[5])
+    press(tabs()[5], 'ArrowRight')
     expect(document.activeElement).toBe(tabs()[0]) // 環繞
     press(tabs()[0], 'ArrowUp')
-    expect(document.activeElement).toBe(tabs()[3])
-    press(tabs()[3], 'Home')
+    expect(document.activeElement).toBe(tabs()[5])
+    press(tabs()[5], 'Home')
     expect(document.activeElement).toBe(tabs()[0])
   })
 

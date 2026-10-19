@@ -127,7 +127,7 @@ describe('axe-core (jsdom) — no serious/critical violations', () => {
     }
   })
 
-  test.each([['a'], ['b'], ['c']] as const)('Settings category %s', async (cat) => {
+  test.each([['general'], ['recording'], ['analysis'], ['editing'], ['export'], ['about']] as const)('Settings category %s', async (cat) => {
     const restore = installFakeApi(createFakeApi())
     try {
       mount(
