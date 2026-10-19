@@ -60,6 +60,7 @@ function createWindow(): void {
     minHeight: 600,
     show: false,
     autoHideMenuBar: true,
+    icon: join(app.isPackaged ? process.resourcesPath : resolve(__dirname, '../..'), 'resources/icon.png'),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       // preload 只用 contextBridge／ipcRenderer，可以在沙箱內執行（I2）

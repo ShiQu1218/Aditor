@@ -15,6 +15,7 @@ extraResources:
     to: resources
     filter:
       - tray-*.png
+      - icon.png
   - from: ../templates
     to: templates
   - from: ../LICENSE
@@ -22,6 +23,7 @@ extraResources:
   - from: ../THIRD_PARTY_NOTICES.md
     to: THIRD_PARTY_NOTICES.md
 win:
+  icon: resources/icon.ico
   target:
     - target: nsis
       arch:

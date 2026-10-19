@@ -58,8 +58,8 @@ describe('錄影側欄與面板', () => {
     const label = phase === 'idle' ? t.title : t.phases[phase]
     const trigger = document.querySelector(`[aria-label="${label}"]`)!
     expect(trigger.getAttribute('aria-haspopup')).toBe('dialog')
-    expect(trigger.querySelector('.lucide-video')).not.toBeNull()
-    expect(trigger.querySelector('.lucide-film')).toBeNull()
+    expect(trigger.querySelector('.app-icon-video')).not.toBeNull()
+    expect(trigger.querySelector('.app-icon-film')).toBeNull()
     expect(trigger.querySelector('.rec-dot') !== null).toBe(phase !== 'idle')
     if (phase === 'error') expect(trigger.querySelector('.rec-dot.error')).not.toBeNull()
     click(trigger)

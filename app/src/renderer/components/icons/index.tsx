@@ -1,17 +1,12 @@
-// 圖示統一出口：集中自 lucide-react 匯入，避免各處散落
+// 圖示統一出口：品牌功能圖示與 lucide-react 共用既有介面
 import React from 'react'
+import logoUrl from '../../../../resources/icon.png'
 import {
-  LayoutGrid,
-  Film,
-  Video,
-  Keyboard,
-  SlidersHorizontal,
   ListVideo,
   Search,
   Star,
   Plus,
   FolderInput,
-  Sparkles,
   MoreHorizontal,
   AlertTriangle,
   RefreshCw,
@@ -27,7 +22,6 @@ import {
   SkipBack,
   SkipForward,
   Scissors,
-  Download,
   Menu,
   ZoomIn,
   ZoomOut,
@@ -41,17 +35,11 @@ import {
 } from 'lucide-react'
 
 export {
-  LayoutGrid,
-  Film,
-  Video,
-  Keyboard,
-  SlidersHorizontal,
   ListVideo,
   Search,
   Star,
   Plus,
   FolderInput,
-  Sparkles,
   MoreHorizontal,
   AlertTriangle,
   RefreshCw,
@@ -67,7 +55,6 @@ export {
   SkipBack,
   SkipForward,
   Scissors,
-  Download,
   Menu,
   ZoomIn,
   ZoomOut,
@@ -80,13 +67,9 @@ export {
   Globe
 }
 
-/** 品牌 logo（六角形＋十字），顏色跟隨 currentColor */
+export { LayoutGrid, Film, Video, AnalysisQueue, Keyboard, SlidersHorizontal, Sparkles, Download } from './primary'
+
+/** 簡化版探路者品牌頭像；側欄已有導覽標籤，圖像僅作裝飾。 */
 export function LogoMark(props: { className?: string }): JSX.Element {
-  return (
-    <svg className={props.className} viewBox="0 0 32 32" fill="none" stroke="currentColor"
-      strokeWidth="2.4" strokeLinejoin="round" strokeLinecap="round" aria-hidden="true">
-      <path d="M16 2l12 7v14l-12 7-12-7V9z" />
-      <path d="M16 9v14 M9 16h14" />
-    </svg>
-  )
+  return <img className={props.className} src={logoUrl} alt="" aria-hidden="true" draggable={false} />
 }

@@ -1,4 +1,5 @@
 import React, { useEffect, useRef } from 'react'
+import { AnalysisQueue } from '../components/icons'
 import { useQueueStore } from '../queue/QueueProvider'
 
 /**
@@ -11,12 +12,19 @@ export function QueueRing(): JSX.Element {
 
   useEffect(() => {
     const apply = (): void => {
-      const pct = Math.round(Math.min(1, Math.max(0, store.getSummary().progress)) * 100)
+      const summary = store.getSummary()
+      const pct = Math.round(Math.min(1, Math.max(0, summary.progress)) * 100)
+      if (ref.current) ref.current.dataset.active = String(summary.total > 0)
       ref.current?.style.setProperty('--p', String(pct))
     }
     apply()
     return store.subscribe(apply)
   }, [store])
 
-  return <span ref={ref} className="ring" aria-hidden="true" />
+  return (
+    <span ref={ref} className="queue-indicator" aria-hidden="true">
+      <AnalysisQueue className="ic lg" />
+      <span className="ring queue-progress" />
+    </span>
+  )
 }

@@ -9,6 +9,13 @@ const T = i18n.studio
 test('smoke: app launches, library empty state visible, rail navigable by keyboard', async ({ launch }) => {
   const { page } = await launch()
   await expect(page.locator('.lib-empty')).toBeVisible()
+  // 品牌資產需在正式建置與 CSP 下成功載入。
+  await expect(page.locator('.rail img.logo')).toBeVisible()
+  await expect.poll(() => page.locator('.rail img.logo').evaluate(
+    (img: HTMLImageElement) => img.complete && img.naturalWidth > 0
+  )).toBe(true)
+  await expect(page.locator('.rail .app-icon-analysis-queue')).toBeVisible()
+  await expect(page.locator('.rail .queue-progress')).toBeHidden()
   await shot(page, 'smoke-empty')
   const rail = shellI18n.rail
   // 純鍵盤：聚焦圖示欄按鈕 → Enter 切換頁面
