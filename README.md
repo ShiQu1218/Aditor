@@ -13,6 +13,30 @@
 
 ---
 
+## Screenshots
+
+Real recordings and saved analysis results, shown in the Traditional Chinese UI.
+
+### Video library
+
+Each recording shows its detected knockdowns, assists and highlights. For example, the 08:57 recording has **10 knockdowns and 4 assists**.
+
+<p align="center"><img src="docs/screenshots/library.jpg" alt="Video library with saved knockdown and assist counts on recording cards" width="960"></p>
+
+### Studio overview
+
+The same recording has **14 recorded events**, marked across the timeline alongside the gameplay preview and suggested highlights.
+
+<p align="center"><img src="docs/screenshots/studio-overview.jpg" alt="Studio showing a knockdown in the gameplay preview and 14 events on the timeline" width="960"></p>
+
+### Event detail and editing
+
+Zoom in to see individual knockdown and assist markers, then add a suggested highlight to the project for export.
+
+<p align="center"><img src="docs/screenshots/studio-detail.jpg" alt="Zoomed timeline with knockdown and assist markers and a 19-second highlight added to the project" width="960"></p>
+
+---
+
 ## Features
 
 | Feature | Description |
