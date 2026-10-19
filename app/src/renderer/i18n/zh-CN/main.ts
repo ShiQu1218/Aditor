@@ -17,12 +17,12 @@ export const i18n: Messages['i18n'] = {
     selectFilesTitle: '选择 Apex Legends 录像文件',
     videoFilter: '视频文件',
     selectFolderTitle: '选择包含录像的文件夹',
-    addWatchFolderTitle: '选择要监看的文件夹（新视频自动导入）',
+    addWatchFolderTitle: '选择要监控的文件夹（新视频自动导入）',
     selectOutDirTitle: '选择导出目标文件夹'
   },
   library: {
     title: '视频库',
-    corruptNotice: '视频库文件已损坏，已备份为 {path}，并建立新的视频库。',
+    corruptNotice: '视频库文件已损坏，已备份为 {path}，并创建新的视频库。',
     importFiles: '导入视频',
     importFolder: '导入文件夹',
     searchPlaceholder: '按文件名搜索',
@@ -45,16 +45,16 @@ export const i18n: Messages['i18n'] = {
       title: '把 Apex 录像拖进来',
       desc: '支持 mp4 / mkv / mov / webm。新视频会自动排入分析，一次分析一个。',
       step1Title: '导入',
-      step1Desc: '拖放文件，或指定监看文件夹',
+      step1Desc: '拖放文件，或指定监控文件夹',
       step2Title: '自动分析',
       step2Desc: '标出击倒、助攻与多杀精华',
       step3Title: '挑选导出',
       step3Desc: '确认精华、微调、导出',
-      openSettings: '设置监看文件夹'
+      openSettings: '设置监控文件夹'
     },
     noResults: {
       title: '没有符合条件的视频',
-      desc: '请尝试调整搜索关键字或筛选条件。'
+      desc: '请尝试调整搜索关键词或筛选条件。'
     },
     drop: {
       title: '松开鼠标以导入视频',
@@ -65,7 +65,7 @@ export const i18n: Messages['i18n'] = {
       waiting: '等待分析',
       waitingQueue: '排在队列中',
       notAnalyzed: '尚未分析',
-      notAnalyzedHint: '按“分析”后才会排入队列',
+      notAnalyzedHint: '点击“分析”后才会排入队列',
       analyze: '分析',
       notAnalyzedToast: '这个视频尚未分析，请先点击卡片上的“分析”',
       analyzing: '分析中',
@@ -107,7 +107,7 @@ export const i18n: Messages['i18n'] = {
     },
     customZoom: '自定义缩放倍率',
     scrollbar: '来源时间轴水平滚动',
-    bladeHint: '刀片模式（B）：双击决定片段起止并加入项目；Esc 取消标记，再按一次离开',
+    bladeHint: '刀片模式（B）：依次点击两次决定片段起止并加入项目；Esc 取消标记，再按一次离开',
     bladeTooShort: '片段至少需要 0.5 秒，请重新选择终点',
     densityHint: '密度视图 · {n} 个事件 · 放大（滚轮／Ctrl +）显示个别图标',
     spectating: '观战（不计入）',
@@ -117,7 +117,7 @@ export const i18n: Messages['i18n'] = {
       assist_knock: '助攻击倒',
       assist_elim: '助攻击杀',
       elim: '已击杀',
-      squad_wipe: '小队抹杀'
+      squad_wipe: '小队全灭'
     },
     counted: '计入',
     uncounted: '不计入',
@@ -125,7 +125,7 @@ export const i18n: Messages['i18n'] = {
       first: '首次',
       duplicate: '重复敌人',
       spectating: '观战中',
-      not_counting_type: '小队抹杀不计',
+      not_counting_type: '小队全灭不计',
       manual: '手动'
     },
     forced: '强制',
@@ -139,7 +139,7 @@ export const i18n: Messages['i18n'] = {
     noClips: '未创建片段',
     autoClip: 'AI 自动剪辑',
     sendToProject: '发送至项目 (Ctrl+E)',
-    addEvent: '新增事件 (M)',
+    addEvent: '添加事件 (M)',
     quickClip: '快速剪辑 (Ctrl+Q)',
     speed: '速度',
     zoomIn: '放大 (Ctrl +)',
@@ -158,7 +158,7 @@ export const i18n: Messages['i18n'] = {
       count: '{n} 个视频',
       collapse: '收起同日视频',
       expand: '展开同日视频',
-      saveFailed: '收起偏好保存失败，请稍后再试。'
+      saveFailed: '展开／收起状态保存失败，请稍后再试。'
     },
     openBlocked: '分析完成后才能打开',
     statusDone: '分析完成',
@@ -193,14 +193,14 @@ export const i18n: Messages['i18n'] = {
       relink: '重新链接文件',
       back: '返回视频库',
       noEventsTitle: '这个视频没有检测到击倒／助攻',
-      noEventsText: '可按 M 手动新增；若录像是旧版游戏或 HUD 缩放很小，检测可能找不到横幅。'
+      noEventsText: '可按 M 手动添加；若录像是旧版游戏或 HUD 缩放很小，检测可能找不到横幅。'
     },
     toast: {
       added: '已加入项目',
       alreadyInProject: '项目已有此片段',
       relinkHint: '已返回视频库：请移除失效的项目后，重新导入文件所在的位置。',
-      projectRestoreCorrupt: '上次的项目文件已损坏，已保留备份并建立新项目。备份保留在项目自动保存目录。',
-      projectRestoreUnsupported: '上次的项目文件来自较新的版本，无法打开；已建立新项目，原文件未被更改。',
+      projectRestoreCorrupt: '上次的项目文件已损坏，已保留备份并新建项目。备份保留在项目自动保存目录。',
+      projectRestoreUnsupported: '上次的项目文件来自较新的版本，无法打开；已新建项目，原文件未被更改。',
       addedProject: '已加入项目（{sec} 秒）',
       skipped: '已跳过这段建议',
       removedFromProject: '已移出项目片段',
@@ -208,12 +208,12 @@ export const i18n: Messages['i18n'] = {
       copied: '已复制错误信息',
       deletedItem: '已删除项目片段',
       addExternalFailed: '加入外部视频失败，请稍后重试',
-      externalVideoIncomplete: '视频已保留在视频库，但无法排入分析或取得时长：{names}',
+      externalVideoIncomplete: '视频已保留在视频库，但无法排入分析或获取时长：{names}',
       analysisRefreshFailed: '无法更新分析结果，请重新打开视频',
       sourceSaveFailed: '来源编辑保存失败，请稍后再切换视频',
-      newProject: '已建立新项目；旧项目已保留在自动保存目录',
+      newProject: '已新建项目；旧项目已保留在自动保存目录',
       noSuggestions: '没有待加入的片段',
-      splitHint: '请先在项目轨选取片段，并把播放头移到片段内部',
+      splitHint: '请先在项目轨选中片段，并把播放头移到片段内部',
       sourceOnlyEdit: '返回来源后才能编辑事件'
     },
     meta: {
@@ -226,9 +226,9 @@ export const i18n: Messages['i18n'] = {
       zoomOut: '时间轴缩小',
       zoomReset: '时间轴显示全部'
     },
-    loading: '载入分析结果…',
+    loading: '加载分析结果…',
     loadFailed: {
-      title: '无法载入分析结果',
+      title: '无法加载分析结果',
       text: '找不到可用的分析结果（代码 {code}）。可重试，或返回视频库。',
       retry: '重试'
     },
@@ -244,7 +244,7 @@ export const i18n: Messages['i18n'] = {
       badgeAccepted: 'AI 精华',
       badgeManual: '手动',
       pending: '{n} 项待确认',
-      focusHint: '焦点列表时：Enter 加入、Delete 跳过、↑↓ 移动',
+      focusHint: '焦点在列表时：Enter 加入、Delete 跳过、↑↓ 移动',
       compact: '紧凑',
       large: '大图',
       preview: '预览',
@@ -267,7 +267,7 @@ export const i18n: Messages['i18n'] = {
     autoClipPopover: {
       title: 'AI 自动剪辑',
       desc: '只会在时间轴上放“建议框”，由你确认后才加入项目。',
-      n: '最少杀敌数 n',
+      n: '最少击杀数 n',
       gap: '相邻最大间隔 gap（秒）',
       before: '首杀前 before（秒）',
       after: '末杀后 after（秒）',
@@ -322,16 +322,16 @@ export const i18n: Messages['i18n'] = {
       stepperInc: '+0.5 秒'
     },
     newProjectDlg: {
-      title: '建立新项目？',
-      confirm: '建立新项目',
-      body: '当前项目“{name}”有 {n} 段，建立新项目前会先保存在项目自动保存目录。',
+      title: '新建项目？',
+      confirm: '新建项目',
+      body: '当前项目“{name}”有 {n} 段，新建项目前会先保存在项目自动保存目录。',
       cancel: '取消'
     },
     addEvent: {
-      title: '新增事件（{time}）',
+      title: '添加事件（{time}）',
       type: '事件类型',
       cancel: '取消',
-      confirm: '新增',
+      confirm: '添加',
       hint: 'Enter 确认'
     },
     shelves: {
@@ -413,7 +413,7 @@ export const i18n: Messages['i18n'] = {
     closeBtn: '关闭',
     h264Title: '需要下载 Cisco OpenH264',
     h264Why: '这台电脑没有可用的硬件编码器（NVENC／QSV／AMF），“精准重新编码”需要 OpenH264。',
-    h264License: '为符合授权，本程序不附带 OpenH264。同意后，会从 Cisco 官方网址 ciscobinary.openh264.org 下载官方 DLL（约 0.4 MB）。画质会略低于硬件编码。',
+    h264License: '为符合许可协议，本程序不附带 OpenH264。同意后，会从 Cisco 官方网址 ciscobinary.openh264.org 下载官方 DLL（约 0.4 MB）。画质会略低于硬件编码。',
     h264Alt: '你也可以改选“快速无损”，不需要任何编码器。',
     h264Decline: '改用快速无损',
     h264Accept: '同意并下载',

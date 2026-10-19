@@ -8,7 +8,7 @@ export const settingsI18n: Messages['settingsI18n'] = {
   resultsLabel: 'Search results',
   noResults: 'No matching settings',
   noResultsHint: 'Try other keywords, such as "proxy", "seconds", or "encoder".',
-  hitCount: '{n} matches',
+  hitCount: 'Results: {n}',
   loading: 'Loading settings…',
   loadFailed: 'Unable to load settings. Showing default values.',
   saveFailed: 'Save failed. This change is active in the current window but was not written to disk, so it may revert after a restart. Check disk space and folder permissions, then try again.',
@@ -33,7 +33,7 @@ export const settingsI18n: Messages['settingsI18n'] = {
     language: {
       title: 'Interface language',
       desc: 'The window reloads to apply the change, and the tray menu updates as well. "Follow system" uses the Windows display language.',
-      keywords: ['language', 'interface', 'translation', 'locale', 'chinese', 'english', '日本語', '한국어'],
+      keywords: ['language', 'interface', 'translation', 'locale', 'chinese', 'english', 'japanese', 'korean', '日本語', '한국어'],
       auto: 'Follow system'
     },
     watchFolders: {
@@ -86,8 +86,8 @@ export const settingsI18n: Messages['settingsI18n'] = {
       delete: 'Delete all proxy files',
       confirm: 'Delete?',
       cancel: 'Cancel',
-      deleted: 'Deleted {n} proxy files',
-      failed: '{n} proxy files could not be deleted'
+      deleted: 'Proxy files deleted: {n}',
+      failed: 'Proxy files that could not be deleted: {n}'
     },
     beforeAfter: {
       title: 'Event preview seconds',
@@ -104,10 +104,10 @@ export const settingsI18n: Messages['settingsI18n'] = {
       desc: 'You can adjust these temporarily in the "AI auto-clip" overlay. This sets the starting values when the overlay opens.',
       keywords: ['ai', 'auto clip', 'parameters', 'gap', 'max_len', 'highlights'],
       n: 'Minimum kills n (1–10)',
-      gap: 'Max gap between adjacent events, gap seconds (5–60)',
-      before: 'Seconds before first kill, before (0–30)',
-      after: 'Seconds after last kill, after (0–30)',
-      max_len: 'Max clip length, max_len seconds (15–300)'
+      gap: 'Max gap between kills in seconds (5–60)',
+      before: 'Seconds before first kill (0–30)',
+      after: 'Seconds after last kill (0–30)',
+      max_len: 'Max clip length in seconds (15–300)'
     },
     autoSuggestOnOpen: {
       title: 'Auto-generate highlight suggestions when opening a video',
@@ -162,7 +162,7 @@ export const settingsI18n: Messages['settingsI18n'] = {
     },
     trademark: {
       title: 'Trademark notice',
-      desc: 'Apex Legends is a trademark of Electronic Arts / Respawn and is not affiliated with this project.',
+      desc: 'Apex Legends is a trademark of Electronic Arts / Respawn. This project is not affiliated with EA or Respawn.',
       keywords: ['trademark', 'apex legends', 'ea', 'respawn', 'notice']
     }
   }

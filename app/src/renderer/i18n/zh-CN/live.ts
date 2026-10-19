@@ -28,13 +28,13 @@ export const liveI18n: Messages['liveI18n'] = {
   eventItem: '{type} · {time}',
   uncounted: '（不计入）',
   newKill: '新事件：{type} · {time}',
-  loading: '正在载入录像…',
+  loading: '正在加载录像…',
   notRecording: '目前没有进行中的录制。',
   unsupported: '此电脑无法播放录像的编码（{mime}），事件仍会实时更新。',
-  loadFailed: '无法载入录制段落：{message}',
+  loadFailed: '无法加载录制段落：{message}',
   waitingInit: '等待录制开始写入…',
-  ended: '录制已结束，已加入媒体库。',
+  ended: '录制已结束，已加入视频库。',
   openStudio: '在工作室打开',
-  openLibrary: '前往媒体库',
+  openLibrary: '前往视频库',
   keys: '空格键播放／暂停 · ←／→ 前后 5 秒 · End 跳到最新'
 }

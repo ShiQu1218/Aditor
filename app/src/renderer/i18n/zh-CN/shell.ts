@@ -41,7 +41,7 @@ export const shellI18n: Messages['shellI18n'] = {
       zoomReset: '时间轴全览缩放',
       quickOrSplit: '切换刀片模式（项目预览中：在播放头分割）',
       blade: '切换刀片模式（快速剪辑）',
-      addEvent: '新增事件',
+      addEvent: '添加事件',
       setStart: '当前片段起点＝播放头',
       setEnd: '当前片段终点＝播放头',
       addAllToProject: '加入项目（全部建议）',

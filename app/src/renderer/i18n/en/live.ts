@@ -2,7 +2,7 @@ import type { Messages } from '../index'
 
 export const liveI18n: Messages['liveI18n'] = {
   obsRecording: 'OBS is recording. You can play it once recording ends.',
-  detectionOnly: 'Live detection is running, but OBS is not connected, so this match is not being recorded.',
+  detectionOnly: 'Live detection is running, but OBS is not connected, so this session is not being recorded.',
   title: 'Watch this match',
   back: 'Back',
   video: 'Match recording',
@@ -14,14 +14,14 @@ export const liveI18n: Messages['liveI18n'] = {
   pause: 'Pause',
   back5: 'Back 5 seconds',
   forward5: 'Forward 5 seconds',
-  jumpLive: 'Jump to latest',
-  atLive: 'Already at latest',
+  jumpLive: 'Jump to live',
+  atLive: 'Live',
   time: '{cur} / {end}',
   timeline: 'Recording timeline',
-  timelineValue: '{cur} of a recording {end} long',
+  timelineValue: '{cur} of {end}',
   matchRange: 'Match {n}: {start}–{end}',
   matchOngoing: 'In progress',
-  released: 'Content older than 30 minutes has been released. It can be watched in the Studio after wrap-up.',
+  released: 'Footage older than 30 minutes has been cleared from memory. You can watch it in Studio after finalizing.',
   events: 'Live events',
   noEvents: 'No events yet. Knockdowns and eliminations will appear here as they are detected.',
   eventItem: '{type} · {time}',
@@ -35,5 +35,5 @@ export const liveI18n: Messages['liveI18n'] = {
   ended: 'Recording has ended and was added to the library.',
   openStudio: 'Open in Studio',
   openLibrary: 'Go to library',
-  keys: 'Space: play / pause · ← / →: back or forward 5 seconds · End: jump to latest'
+  keys: 'Space: play / pause · ← / →: back or forward 5 seconds · End: jump to live'
 }

@@ -4,8 +4,8 @@ import type { Messages } from '../index'
 export const shellI18n: Messages['shellI18n'] = {
   rail: {
     library: '라이브러리',
-    studio: 'Studio（하이라이트 + 프로젝트）',
-    studioLabel: 'Studio',
+    studio: '스튜디오(하이라이트 + 프로젝트)',
+    studioLabel: '스튜디오',
     queue: '분석 대기열',
     shortcuts: '단축키 (?)',
     shortcutsLabel: '단축키',
@@ -23,7 +23,7 @@ export const shellI18n: Messages['shellI18n'] = {
   keymap: {
     scope: {
       global: '전역',
-      studio: 'Studio',
+      studio: '스튜디오',
       source: '원본 타임라인',
       hl: '하이라이트 목록',
       proj: '프로젝트 트랙',
@@ -31,7 +31,7 @@ export const shellI18n: Messages['shellI18n'] = {
       settings: '설정'
     },
     cmd: {
-      play: '재생／일시정지',
+      play: '재생/일시정지',
       speed: '재생 속도 전환',
       prevEvent: '이전 이벤트',
       nextEvent: '다음 이벤트',
@@ -56,11 +56,11 @@ export const shellI18n: Messages['shellI18n'] = {
       undo: '실행 취소',
       redo: '다시 실행',
       openExport: '내보내기 패널 열기',
-      toggleAside: '사이드바 표시／숨기기',
+      toggleAside: '사이드바 표시/숨기기',
       backToSource: '원본 모드로 돌아가기',
       closeOverlay: '오버레이 닫기',
       showShortcuts: '단축키 안내',
-      focusToast: '최신 알림으로 이동(〔실행 취소〕를 누를 수 있음)',
+      focusToast: '최신 알림으로 이동([실행 취소]를 누를 수 있음)',
       focusSearch: '검색창으로 이동',
       toggleFavoriteFilter: '즐겨찾기만 보기 전환',
       selectPrevItem: '이전 클립 선택',

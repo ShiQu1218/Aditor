@@ -22,7 +22,7 @@ export const liveI18n: Messages['liveI18n'] = {
   timelineValue: '{cur}, 녹화 길이 {end}',
   matchRange: '{n}번째 매치: {start}–{end}',
   matchOngoing: '진행 중',
-  released: '30분이 넘은 내용은 해제되었으며, 마무리한 뒤 Studio에서 볼 수 있습니다',
+  released: '30분이 지난 부분은 정리되었으며, 마무리한 뒤 스튜디오에서 볼 수 있습니다',
   events: '실시간 이벤트',
   noEvents: '아직 이벤트가 없습니다. 녹다운이나 처치가 감지되면 실시간으로 나타납니다.',
   eventItem: '{type} · {time}',
@@ -32,9 +32,9 @@ export const liveI18n: Messages['liveI18n'] = {
   notRecording: '현재 진행 중인 녹화가 없습니다.',
   unsupported: '이 컴퓨터는 녹화 인코딩({mime})을 재생할 수 없습니다. 이벤트는 계속 실시간으로 업데이트됩니다.',
   loadFailed: '녹화 구간을 불러올 수 없습니다: {message}',
-  waitingInit: '녹화 기록이 시작되기를 기다리는 중…',
+  waitingInit: '녹화 파일 쓰기가 시작되기를 기다리는 중…',
   ended: '녹화가 끝나 라이브러리에 추가되었습니다.',
-  openStudio: 'Studio에서 열기',
+  openStudio: '스튜디오에서 열기',
   openLibrary: '라이브러리로 이동',
-  keys: '스페이스바 재생／일시정지 · ←／→ 5초 앞뒤 이동 · End 최신으로 이동'
+  keys: '스페이스바 재생/일시정지 · ←/→ 5초 앞뒤 이동 · End 최신으로 이동'
 }

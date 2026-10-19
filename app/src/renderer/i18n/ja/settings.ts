@@ -13,7 +13,7 @@ export const settingsI18n: Messages['settingsI18n'] = {
   loading: '設定を読み込み中…',
   loadFailed: '設定を読み込めなかったため、既定値を表示しています。',
   saveFailed: '保存に失敗しました。この変更は現在のウィンドウには反映されていますが、ディスクには書き込まれていないため、再起動すると元に戻る可能性があります。ディスクの空き容量とフォルダーの権限を確認してから、もう一度お試しください。',
-  newTag: '新規',
+  newTag: 'NEW',
   comingSoon: 'この機能は今後のアップデートで提供予定です。',
   cat: {
     a: '動画と分析',
@@ -34,13 +34,13 @@ export const settingsI18n: Messages['settingsI18n'] = {
     language: {
       title: '表示言語',
       desc: '変更するとウィンドウが再読み込みされて適用されます。システムトレイのメニューも同時に更新されます。「システムに従う」を選ぶと、Windows の表示言語に従います。',
-      keywords: ['言語', '表示', '翻訳', 'language', 'locale', '中国語', 'english', '日本語', '한국어'],
+      keywords: ['言語', '表示', '翻訳', 'language', 'locale', '中国語', '中文', 'english', '日本語', '한국어'],
       auto: 'システムに従う'
     },
     watchFolders: {
       title: '監視フォルダー',
-      desc: '新しい動画が安定すると、自動でライブラリに取り込まれます（自動分析するかどうかは次の項目）。',
-      keywords: ['フォルダー', '監視', '取り込み', 'watch', 'folder'],
+      desc: '新しい動画の書き込みが完了すると、自動でライブラリに取り込まれます（自動分析するかどうかは次の項目）。',
+      keywords: ['フォルダー', '監視', '取り込み', 'インポート', 'watch', 'folder'],
       add: 'フォルダーを追加',
       remove: '削除',
       removeLabel: '監視フォルダー {dir} を削除',
@@ -69,7 +69,7 @@ export const settingsI18n: Messages['settingsI18n'] = {
     },
     lowPerfMode: {
       title: '低パフォーマンスモード',
-      desc: 'アニメーションを停止し、サムネイルを静止画にして、タイムラインの熱量バーを 60 マスに減らします。',
+      desc: 'アニメーションを停止し、サムネイルを静止画にして、タイムラインのヒートマップを 60 マスに減らします。',
       keywords: ['低パフォーマンス', 'パフォーマンス', 'アニメーション', 'performance']
     },
     proxySuggest: {
@@ -105,10 +105,10 @@ export const settingsI18n: Messages['settingsI18n'] = {
       desc: '「AI 自動クリップ」のオーバーレイで一時的に変更できます。ここはオーバーレイを開いたときの初期値です。',
       keywords: ['ai', '自動クリップ', 'パラメーター', 'gap', 'max_len', 'ハイライト'],
       n: '最小キル数 n（1〜10）',
-      gap: '隣接する最大間隔 gap 秒（5〜60）',
+      gap: '隣接イベントの最大間隔 gap 秒（5〜60）',
       before: '最初のキル前 before 秒（0〜30）',
       after: '最後のキル後 after 秒（0〜30）',
-      max_len: 'クリップの最長 max_len 秒（15〜300）'
+      max_len: 'クリップの最大長 max_len 秒（15〜300）'
     },
     autoSuggestOnOpen: {
       title: '動画を開いたときにハイライトの提案を自動生成',
@@ -123,7 +123,7 @@ export const settingsI18n: Messages['settingsI18n'] = {
     defaultOutDir: {
       title: '既定の出力フォルダー',
       desc: '書き出しドロワーの初期フォルダーです。未設定の場合は毎回確認します。',
-      keywords: ['書き出し', '出力', 'フォルダー', 'export'],
+      keywords: ['書き出し', '出力', 'フォルダー', 'エクスポート', 'export'],
       choose: 'フォルダーを選択',
       clear: 'クリア',
       unset: '毎回確認',

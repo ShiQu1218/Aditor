@@ -23,7 +23,7 @@ export const i18n: Messages['i18n'] = {
   },
   library: {
     title: '라이브러리',
-    corruptNotice: '라이브러리 파일이 손상되어 {path}에 백업하고 새 라이브러리를 만들었습니다.',
+    corruptNotice: '라이브러리 파일이 손상되어 {path}(으)로 백업하고 새 라이브러리를 만들었습니다.',
     importFiles: '영상 가져오기',
     importFolder: '폴더 가져오기',
     searchPlaceholder: '파일 이름으로 검색',
@@ -33,7 +33,7 @@ export const i18n: Messages['i18n'] = {
       knock: '녹다운 포함',
       assist: '어시스트 포함',
       hl: '하이라이트 있음',
-      isNew: '새 항목'
+      isNew: '신규'
     },
     date: {
       today: '오늘',
@@ -84,7 +84,7 @@ export const i18n: Messages['i18n'] = {
       assistBadge: '어시스트 {n}',
       av1: 'AV1 · 프록시 파일 권장',
       proxySuggest: '프록시 파일 권장',
-      removeConfirm: '「{name}」을(를) 라이브러리에서 제거할까요? (영상 파일은 삭제되지 않습니다)'
+      removeConfirm: '‘{name}’을(를) 라이브러리에서 제거할까요? (영상 파일은 삭제되지 않습니다)'
     }
   },
   queue: {
@@ -104,19 +104,19 @@ export const i18n: Messages['i18n'] = {
     zoomTips: {
       full: '영상 전체가 타임라인에 맞춰집니다(Ctrl+0)',
       detail: '재생 헤드를 중심으로 30초를 표시하며, 재생 중에는 따라갑니다',
-      custom: '재생 헤드를 중심으로 확대/축소합니다. 슬라이더, 휠 또는 Ctrl+＋／－로 조정하고, Shift+휠로 좌우로 이동합니다'
+      custom: '재생 헤드를 중심으로 확대/축소합니다. 슬라이더, 휠 또는 Ctrl+(+/-)로 조정하고, Shift+휠로 좌우로 이동합니다'
     },
     customZoom: '사용자 지정 배율',
     scrollbar: '원본 타임라인 가로 스크롤',
     bladeHint: '블레이드 모드(B): 두 번 클릭해 클립의 시작과 끝을 정하고 프로젝트에 추가합니다. Esc는 표시를 취소하며, 한 번 더 누르면 모드를 끝냅니다',
     bladeTooShort: '클립은 최소 0.5초 이상이어야 합니다. 끝점을 다시 선택하세요',
-    densityHint: '밀도 보기 · 이벤트 {n}개 · 확대(휠／Ctrl +)하면 개별 아이콘이 표시됩니다',
+    densityHint: '밀도 보기 · 이벤트 {n}개 · 확대(휠 / Ctrl +)하면 개별 아이콘이 표시됩니다',
     spectating: '관전(집계 제외)',
     clipAi: 'AI',
     types: {
       knock: '녹다운',
-      assist_knock: '어시스트 녹다운',
-      assist_elim: '어시스트 처치',
+      assist_knock: '녹다운 어시스트',
+      assist_elim: '처치 어시스트',
       elim: '처치',
       squad_wipe: '스쿼드 전멸'
     },
@@ -124,7 +124,7 @@ export const i18n: Messages['i18n'] = {
     uncounted: '집계 안 함',
     reasons: {
       first: '첫 번째',
-      duplicate: '중복 적',
+      duplicate: '같은 적 중복',
       spectating: '관전 중',
       not_counting_type: '스쿼드 전멸은 집계하지 않음',
       manual: '수동'
@@ -137,7 +137,7 @@ export const i18n: Messages['i18n'] = {
     back: '라이브러리로 돌아가기',
     clips: '클립 목록',
     noEvents: '감지된 이벤트 없음',
-    noClips: '만든 클립 없음',
+    noClips: '생성된 클립 없음',
     autoClip: 'AI 자동 편집',
     sendToProject: '프로젝트로 보내기 (Ctrl+E)',
     addEvent: '이벤트 추가 (M)',
@@ -193,7 +193,7 @@ export const i18n: Messages['i18n'] = {
       videoMissingText: '영상 파일을 찾을 수 없거나 재생할 수 없습니다. 파일을 다시 연결하거나 라이브러리로 돌아가세요.',
       relink: '파일 다시 연결',
       back: '라이브러리로 돌아가기',
-      noEventsTitle: '이 영상에서 녹다운／어시스트가 감지되지 않았습니다',
+      noEventsTitle: '이 영상에서 녹다운/어시스트가 감지되지 않았습니다',
       noEventsText: 'M 키를 눌러 수동으로 추가할 수 있습니다. 구버전 게임이거나 HUD 배율이 작으면 배너를 찾지 못할 수 있습니다.'
     },
     toast: {
@@ -245,7 +245,7 @@ export const i18n: Messages['i18n'] = {
       badgeAccepted: 'AI 하이라이트',
       badgeManual: '수동',
       pending: '확인 대기 {n}개',
-      focusHint: '포커스 목록: Enter 추가, Delete 건너뛰기, ↑↓ 이동',
+      focusHint: '목록 포커스 시: Enter 추가, Delete 건너뛰기, ↑↓ 이동',
       compact: '간략히',
       large: '크게',
       preview: '미리보기',
@@ -258,7 +258,7 @@ export const i18n: Messages['i18n'] = {
       empty: '조건에 맞는 하이라이트가 없습니다',
       emptyHint: 'AI 매개변수를 조정하거나 빠른 편집을 사용하세요.',
       tuneParams: 'AI 매개변수 조정',
-      projectSummary: '프로젝트에 {n}개 구간 · 총 길이 {time}'
+      projectSummary: '프로젝트에 클립 {n}개 · 총 길이 {time}'
     },
     eventReasons: {
       reasonDeleted: '삭제됨',
@@ -268,12 +268,12 @@ export const i18n: Messages['i18n'] = {
     autoClipPopover: {
       title: 'AI 자동 편집',
       desc: '타임라인에 ‘제안 상자’만 표시되며, 확인한 뒤에 프로젝트에 추가됩니다.',
-      n: '최소 처치 수 n',
+      n: '최소 킬 수 n',
       gap: '인접 킬 최대 간격 gap(초)',
       before: '첫 킬 전 before(초)',
       after: '마지막 킬 후 after(초)',
       maxLen: '클립 최대 길이 max_len(초)',
-      estimate: '예상 {n}개 구간 · 총 {time}',
+      estimate: '예상 클립 {n}개 · 총 {time}',
       estimating: '계산 중…',
       slider: '(슬라이더)',
       reset: '기본값으로 재설정',
@@ -285,12 +285,12 @@ export const i18n: Messages['i18n'] = {
       pause: '일시정지',
       prevEvent: '이전 이벤트',
       nextEvent: '다음 이벤트',
-      addEvent: '＋이벤트',
+      addEvent: '+이벤트',
       filterLabel: '이벤트 유형 필터'
     },
     track: {
       title: '프로젝트',
-      itemCount: '{n}개 구간',
+      itemCount: '클립 {n}개',
       total: '총 길이 {time}',
       empty: '클립이 없습니다. 하이라이트나 빠른 편집에서 추가하세요',
       addFromSource: '원본에서 추가',
@@ -325,7 +325,7 @@ export const i18n: Messages['i18n'] = {
     newProjectDlg: {
       title: '새 프로젝트를 만들까요?',
       confirm: '새 프로젝트 만들기',
-      body: '현재 프로젝트「{name}」에 클립이 {n}개 있습니다. 새 프로젝트를 만들기 전에 프로젝트 자동 저장 폴더에 저장됩니다.',
+      body: '현재 프로젝트 ‘{name}’에 클립이 {n}개 있습니다. 새 프로젝트를 만들기 전에 프로젝트 자동 저장 폴더에 저장됩니다.',
       cancel: '취소'
     },
     addEvent: {
@@ -400,7 +400,7 @@ export const i18n: Messages['i18n'] = {
     cancelledTitle: '내보내기를 취소했습니다',
     cancelledDesc: '완료되지 않은 파일은 삭제되었고, 완료된 파일은 아래에 남아 있습니다.',
     cancelledNone: '완료된 파일이 없습니다.',
-    doneSummary: '총 {dur}　·　소요 {took}',
+    doneSummary: '총 {dur} · 소요 {took}',
     outputFiles: '출력 파일',
     openFolder: '폴더 열기',
     finish: '완료',
@@ -413,7 +413,7 @@ export const i18n: Messages['i18n'] = {
     retry: '다시 시도',
     closeBtn: '닫기',
     h264Title: 'Cisco OpenH264 다운로드 필요',
-    h264Why: '이 컴퓨터에는 사용할 수 있는 하드웨어 인코더(NVENC／QSV／AMF)가 없어, ‘정밀 재인코딩’에는 OpenH264가 필요합니다.',
+    h264Why: '이 컴퓨터에는 사용할 수 있는 하드웨어 인코더(NVENC / QSV / AMF)가 없어, ‘정밀 재인코딩’에는 OpenH264가 필요합니다.',
     h264License: '라이선스를 준수하기 위해 이 프로그램은 OpenH264를 포함하지 않습니다. 동의하면 Cisco 공식 주소 ciscobinary.openh264.org에서 공식 DLL(약 0.4MB)을 다운로드합니다. 화질은 하드웨어 인코딩보다 다소 낮습니다.',
     h264Alt: '‘빠른 무손실’을 선택하면 인코더 없이도 내보낼 수 있습니다.',
     h264Decline: '빠른 무손실 사용',

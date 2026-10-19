@@ -2,7 +2,7 @@ import type { Messages } from '../index'
 
 export const i18n: Messages['i18n'] = {
   lowPerf: {
-    askText: 'このPCではハードウェアデコードを利用できません。低パフォーマンスモードを有効にしますか？',
+    askText: 'この PC ではハードウェアデコードを利用できません。低パフォーマンスモードを有効にしますか？',
     enable: '有効にする',
     dismiss: '今はしない'
   },
@@ -65,9 +65,9 @@ export const i18n: Messages['i18n'] = {
       waiting: '分析待ち',
       waitingQueue: 'キュー待ち',
       notAnalyzed: '未分析',
-      notAnalyzedHint: '[分析] を押すとキューに追加されます',
+      notAnalyzedHint: '「分析」 を押すとキューに追加されます',
       analyze: '分析',
-      notAnalyzedToast: 'この動画はまだ分析されていません。カードの [分析] を押してください',
+      notAnalyzedToast: 'この動画はまだ分析されていません。カードの 「分析」 を押してください',
       analyzing: '分析中',
       progressText: '分析中 {n}%',
       openBlocked: '分析が完了すると開けます',
@@ -107,7 +107,7 @@ export const i18n: Messages['i18n'] = {
     },
     customZoom: 'カスタムズーム倍率',
     scrollbar: 'ソースタイムラインの水平スクロール',
-    bladeHint: 'ブレードモード（B）：ダブルクリックでクリップの開始と終了を決めてプロジェクトに追加します。Esc でマークを解除し、もう一度押すと終了します',
+    bladeHint: 'ブレードモード（B）：2 回クリックしてクリップの開始位置と終了位置を決めてプロジェクトに追加します。Esc でマークを解除し、もう一度押すと終了します',
     bladeTooShort: 'クリップは 0.5 秒以上必要です。終了位置を選び直してください',
     densityHint: '密度表示 · {n} 件のイベント · 拡大（ホイール／Ctrl +）すると個別のアイコンを表示',
     spectating: '観戦（集計対象外）',
@@ -117,7 +117,7 @@ export const i18n: Messages['i18n'] = {
       assist_knock: 'アシストノックダウン',
       assist_elim: 'アシスト撃破',
       elim: '撃破',
-      squad_wipe: 'スクワッドワイプ'
+      squad_wipe: '部隊全滅'
     },
     counted: '集計対象',
     uncounted: '集計対象外',
@@ -125,7 +125,7 @@ export const i18n: Messages['i18n'] = {
       first: '初回',
       duplicate: '敵の重複',
       spectating: '観戦中',
-      not_counting_type: 'スクワッドワイプは集計対象外',
+      not_counting_type: '部隊全滅は集計対象外',
       manual: '手動'
     },
     forced: '強制',
@@ -208,7 +208,7 @@ export const i18n: Messages['i18n'] = {
       copied: 'エラーメッセージをコピーしました',
       deletedItem: 'プロジェクトのクリップを削除しました',
       addExternalFailed: '外部動画の追加に失敗しました。しばらくしてから再試行してください',
-      externalVideoIncomplete: '動画はライブラリに残っていますが、分析キューに入れることも長さを取得することもできませんでした：{names}',
+      externalVideoIncomplete: '動画はライブラリに保持されましたが、分析キューへの追加または長さの取得ができませんでした：{names}',
       analysisRefreshFailed: '分析結果を更新できませんでした。動画を開き直してください',
       sourceSaveFailed: 'ソースの編集を保存できませんでした。しばらくしてから動画を切り替えてください',
       newProject: '新しいプロジェクトを作成しました。古いプロジェクトは自動保存フォルダーに残っています',
@@ -237,7 +237,7 @@ export const i18n: Messages['i18n'] = {
       asideLabel: 'ハイライト'
     },
     hl: {
-      title: '{n} キル ハイライト',
+      title: '{n} キルハイライト',
       quickTitle: 'クイッククリップ',
       genericTitle: 'ハイライトクリップ',
       badgeSuggested: 'AI 提案',
@@ -257,7 +257,7 @@ export const i18n: Messages['i18n'] = {
       empty: '条件に合うハイライトが見つかりません',
       emptyHint: 'AI のパラメーターを調整するか、クイッククリップを使ってください。',
       tuneParams: 'AI パラメーターを調整',
-      projectSummary: 'プロジェクトに {n} 区間 · 合計 {time}'
+      projectSummary: 'プロジェクトに {n} クリップ · 合計 {time}'
     },
     eventReasons: {
       reasonDeleted: '削除済み',
@@ -272,7 +272,7 @@ export const i18n: Messages['i18n'] = {
       before: '最初のキル前 before（秒）',
       after: '最後のキル後 after（秒）',
       maxLen: 'クリップの最長 max_len（秒）',
-      estimate: '予定 {n} 区間 · 合計 {time}',
+      estimate: '予定 {n} クリップ · 合計 {time}',
       estimating: '計算中…',
       slider: '（スライダー）',
       reset: '既定値に戻す',
@@ -289,7 +289,7 @@ export const i18n: Messages['i18n'] = {
     },
     track: {
       title: 'プロジェクト',
-      itemCount: '{n} 区間',
+      itemCount: '{n} クリップ',
       total: '合計 {time}',
       empty: 'クリップはありません。ハイライトやクイッククリップから追加してください',
       addFromSource: 'ソースから追加',
@@ -312,8 +312,8 @@ export const i18n: Messages['i18n'] = {
       saving: '保存中…',
       saveError: '保存に失敗',
       itemAria: 'クリップ {i}、{label}、{time}',
-      missing: '元動画が見つかりません',
-      missingToast: '元動画が見つからないため、プレビューできません',
+      missing: 'ソース動画が見つかりません',
+      missingToast: 'ソース動画が見つからないため、プレビューできません',
       restMissingToast: '後続クリップの元ファイルが見つかりません',
       missingHint: 'プレビュー不可',
       stepperStart: '開始',
@@ -324,7 +324,7 @@ export const i18n: Messages['i18n'] = {
     newProjectDlg: {
       title: '新規プロジェクトを作成しますか？',
       confirm: '新規プロジェクトを作成',
-      body: '現在のプロジェクト「{name}」には {n} 区間があります。新規作成の前に自動保存フォルダーへ保存されます。',
+      body: '現在のプロジェクト「{name}」には {n} クリップがあります。新規作成の前に自動保存フォルダーへ保存されます。',
       cancel: 'キャンセル'
     },
     addEvent: {
@@ -349,14 +349,14 @@ export const i18n: Messages['i18n'] = {
     title: 'プロジェクトを書き出す',
     close: '閉じる',
     mode: '書き出しモード',
-    modeSeparate: '区間ごとに 1 ファイル',
+    modeSeparate: 'クリップごとに 1 ファイル',
     modeSeparateDesc: '{n} 個のファイルを生成し、ファイル名に連番を付けます',
     modeConcat: '1 本に連結',
     modeConcatDesc: 'プロジェクトの順に結合して 1 つのファイルにします',
     quality: '品質',
     qualityCopy: '高速（無劣化）',
     qualityCopyDesc: 'キーフレームで切り出すため最速で、画質は変わりません。',
-    qualityCopyExtra: 'クリップの開始位置は平均で約 {sec} 秒ずれることがあります。',
+    qualityCopyExtra: 'クリップの開始位置は平均で約 {sec} 秒早くなります。',
     qualityCopyUnavailable: 'ソースのパラメーターが一致しない場合は無効になります。',
     unavailable: '利用不可',
     qualityPrecise: '正確な再エンコード',
@@ -372,7 +372,7 @@ export const i18n: Messages['i18n'] = {
     fallbackReencodeNotice: 'ソース動画のパラメーターが一致しないため、自動的に正確な再エンコードに切り替えました',
     summaryClips: 'クリップ',
     summaryDuration: '合計時間',
-    summarySources: '元動画',
+    summarySources: 'ソース動画',
     output: '出力',
     outputDir: '出力フォルダー',
     outputDirPlaceholder: '未選択',
@@ -382,7 +382,7 @@ export const i18n: Messages['i18n'] = {
     diskFree: '{path} の空き容量 {size}',
     diskLow: '空き容量が不足しています。約 {need} が必要ですが、残りは {free} です。',
     blockEmpty: 'プロジェクトにクリップがないため、書き出せません',
-    blockMissingSource: '元動画が見つかりません：{path}',
+    blockMissingSource: 'ソース動画が見つかりません：{path}',
     blockNoEncoder: '利用可能な映像エンコーダーがありません（OpenH264 はインストール済みですが使用できません）。高速（無劣化）に切り替えてください',
     blockNoOutDir: '先に出力フォルダーを選択してください',
     blockOutDirInvalid: '出力フォルダーが存在しないか、パスが正しくありません',
@@ -412,7 +412,7 @@ export const i18n: Messages['i18n'] = {
     retry: '再試行',
     closeBtn: '閉じる',
     h264Title: 'Cisco OpenH264 のダウンロードが必要です',
-    h264Why: 'このPCには利用可能なハードウェアエンコーダー（NVENC／QSV／AMF）がないため、「正確な再エンコード」には OpenH264 が必要です。',
+    h264Why: 'この PC には利用可能なハードウェアエンコーダー（NVENC／QSV／AMF）がないため、「正確な再エンコード」には OpenH264 が必要です。',
     h264License: 'ライセンスに従い、本プログラムには OpenH264 を同梱していません。同意すると、Cisco の公式サイト ciscobinary.openh264.org から公式 DLL（約 0.4 MB）をダウンロードします。画質はハードウェアエンコードよりやや劣ります。',
     h264Alt: '「高速（無劣化）」に切り替えることもできます。エンコーダーは不要です。',
     h264Decline: '高速（無劣化）に切り替える',
@@ -423,7 +423,7 @@ export const i18n: Messages['i18n'] = {
     h264Retry: '再ダウンロード',
     sec: '秒',
     badge: '{pct}%',
-    badgeLabel: '書き出し進行中 {pct}%、押すと表示します',
+    badgeLabel: '書き出し中 {pct}%（クリックで表示）',
     toastDone: '書き出し完了',
     toastCancelled: '書き出しをキャンセルしました',
     toastFailed: '書き出しに失敗しました',

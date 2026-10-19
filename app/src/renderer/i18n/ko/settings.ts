@@ -8,7 +8,7 @@ export const settingsI18n: Messages['settingsI18n'] = {
   tablistLabel: '설정 분류',
   resultsLabel: '검색 결과',
   noResults: '일치하는 설정이 없습니다',
-  noResultsHint: '「프록시」「초」「인코더」처럼 다른 검색어를 시도해 보세요.',
+  noResultsHint: '‘프록시’, ‘초’, ‘인코더’처럼 다른 검색어를 시도해 보세요.',
   hitCount: '{n}개 일치',
   loading: '설정을 불러오는 중…',
   loadFailed: '설정을 읽을 수 없어 기본값을 표시합니다.',
@@ -64,7 +64,7 @@ export const settingsI18n: Messages['settingsI18n'] = {
       title: '캐시 위치',
       desc: '기본값은 %APPDATA%\\ApexHighlighter\\cache이며, Outplayed 폴더에는 기록하지 않습니다. 변경하면 이후 시작되는 분석부터 적용되며, 이미 분석한 영상은 원래 위치에서도 계속 열 수 있습니다.',
       keywords: ['캐시', '위치', 'cache', 'appdata'],
-      appdata: 'App 폴더',
+      appdata: '앱 폴더',
       besideVideo: '영상 옆(.apexhl.json)'
     },
     lowPerfMode: {
@@ -91,11 +91,11 @@ export const settingsI18n: Messages['settingsI18n'] = {
       failed: '프록시 파일 {n}개를 삭제할 수 없습니다'
     },
     beforeAfter: {
-      title: '이벤트 미리보기 초',
-      desc: '이벤트로 이동할 때 지정한 초만큼 앞당겨 보여 줍니다. 기본값은 8초이며, 범위는 0–30초입니다. 이후 초 설정은 이전 버전과의 호환을 위해서만 남아 있으며, 빠른 편집은 블레이드로 고른 시작과 끝을 따릅니다.',
-      keywords: ['초', '전후', '빠른 편집', '합본', 'before', 'after'],
-      before: '이벤트 전 초',
-      after: '이벤트 후 초(이전 버전 설정)',
+      title: '이벤트 미리보기 시간(초)',
+      desc: '이벤트로 이동할 때 지정한 시간(초)만큼 앞당겨 보여 줍니다. 기본값은 8초이며, 범위는 0–30초입니다. 이벤트 후 시간(초) 설정은 이전 버전과의 호환을 위해서만 남아 있으며, 빠른 편집은 블레이드로 선택한 시작점과 끝점을 따릅니다.',
+      keywords: ['초', '시간', '앞뒤', '전후', '빠른 편집', '합본', 'before', 'after'],
+      before: '이벤트 전 시간(초)',
+      after: '이벤트 후 시간(초)(이전 버전 설정)',
       decrease: '{name} 줄이기',
       increase: '{name} 늘리기',
       unit: '초'
@@ -103,11 +103,11 @@ export const settingsI18n: Messages['settingsI18n'] = {
     autoclip: {
       title: 'AI 자동 편집 기본 매개변수',
       desc: '‘AI 자동 편집’ 패널에서 임시로 조정할 수 있습니다. 여기서는 패널을 열 때의 시작값을 정합니다.',
-      keywords: ['ai', '자동 편집', '매개변수', 'gap', 'max_len', '하이라이트'],
-      n: '최소 처치 수 n(1–10)',
-      gap: '인접 킬 최대 간격 gap 초(5–60)',
-      before: '첫 킬 전 before 초(0–30)',
-      after: '마지막 킬 후 after 초(0–30)',
+      keywords: ['ai', '자동 편집', '매개변수', '설정', '킬', 'gap', 'max_len', '하이라이트'],
+      n: '최소 킬 수 n(1–10)',
+      gap: '인접 킬 최대 간격 gap(5–60초)',
+      before: '첫 킬 전 before(0–30초)',
+      after: '마지막 킬 후 after(0–30초)',
       max_len: '클립 최대 길이 max_len 초(15–300)'
     },
     autoSuggestOnOpen: {
@@ -117,7 +117,7 @@ export const settingsI18n: Messages['settingsI18n'] = {
     },
     projectAutosave: {
       title: '프로젝트 자동 저장',
-      desc: '변경할 때마다 %APPDATA%\\ApexHighlighter\\projects\\에 자동으로 저장됩니다. ‘다른 이름으로 저장’은 공유할 때만 사용하세요. 끄면 ‘저장하지 않은 변경 사항’ 안내가 다시 표시됩니다.',
+      desc: '변경할 때마다 %APPDATA%\\ApexHighlighter\\projects\\에 자동으로 저장됩니다. ‘다른 이름으로 저장’은 공유 용도로만 사용됩니다. 끄면 ‘저장하지 않은 변경 사항’ 안내가 다시 표시됩니다.',
       keywords: ['프로젝트', '자동 저장', 'autosave', '저장']
     },
     defaultOutDir: {
@@ -163,7 +163,7 @@ export const settingsI18n: Messages['settingsI18n'] = {
     },
     trademark: {
       title: '상표 고지',
-      desc: 'Apex Legends는 Electronic Arts／Respawn의 상표이며, 본 프로젝트와는 무관합니다.',
+      desc: 'Apex Legends는 Electronic Arts / Respawn의 상표이며, 본 프로젝트와는 무관합니다.',
       keywords: ['상표', 'apex legends', 'ea', 'respawn', '고지']
     }
   }

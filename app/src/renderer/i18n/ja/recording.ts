@@ -3,7 +3,7 @@ import type { Messages } from '../index'
 /** ゲーム録画の設定とステータスパネル。 */
 export const recordingI18n: Messages['recordingI18n'] = {
   title: '録画',
-  card: '試合録画',
+  card: 'ゲーム録画',
   cards: { general: '一般', video: '映像', audio: '音声' },
   advanced: '詳細オプション',
   current: '現在：{value}',
@@ -33,9 +33,9 @@ export const recordingI18n: Messages['recordingI18n'] = {
     obsPort: { title: 'OBS ポート', desc: '既定値は 4455 です。' },
     obsPassword: { title: 'OBS パスワード', desc: 'パスワードはシステムで暗号化して保存され、保存済みのパスワードを表示することはできません。' },
     obsFallbackBuiltin: { title: 'OBS に接続できない場合は内蔵レコーダーを使用', desc: 'オフにするとリアルタイム検出は続きますが、動画は録画されません。' },
-    mode: { title: '録画モード', desc: '「試合ごとに 1 ファイル」モードでは、OBS は試合中のみ録画します。内蔵レコーダーは連続録画し、各試合の終了後にその試合を切り出します（前後 5 秒を残す）。試合のみを保持し、ロビーは直近 15 秒だけを一時保存するため、長時間ロビーにいてもディスクを圧迫しません。リアルタイム検出が動作しないときは、全体を保持します' },
+    mode: { title: '録画モード', desc: '「試合ごとに 1 ファイル」モードでは、OBS は試合中のみ録画します。内蔵レコーダーは連続録画し、各試合の終了後にその試合を切り出します（前後 5 秒を残す）。試合のみを保持し、ロビーは直近 15 秒だけを一時保存するため、長時間ロビーにいてもディスクを圧迫しません。リアルタイム検出が動作しないときは、全体を保持します。' },
     outputDir: { title: '録画フォルダー', desc: '既定では最初の監視フォルダーを使用します。未設定の場合は、動画フォルダー内の Apex Highlighter を使用します。' },
-    postAnalysis: { title: '録画後の分析', desc: '「各試合の終了後」は「試合ごとに 1 ファイル」モードでのみ、各試合の動画が完成し次第すぐに分析します。「セッション全体を録画」モードは、収録終了後に分析します' },
+    postAnalysis: { title: '録画後の分析', desc: '「各試合の終了後」は「試合ごとに 1 ファイル」モードでのみ、各試合の動画が完成し次第すぐに分析します。「セッション全体を録画」モードは、終了処理後に分析します。' },
     diskWarnGb: { title: 'ディスク警告のしきい値', desc: '空き容量がこの値を下回ると通知します。' },
     diskStopGb: { title: 'ディスク停止のしきい値', desc: '空き容量がこの値を下回ると、録画を停止して終了処理を行います。警告のしきい値より高くすることはできません。' },
     notifyMatch: { title: '試合の通知', desc: '試合の検出が完了したら、試合の開始と終了を通知します。エラーは常に通知します。' },
@@ -58,8 +58,8 @@ export const recordingI18n: Messages['recordingI18n'] = {
     micMono: { title: 'マイクをモノラルに強制', desc: 'マイクの片側からしか音が出ない場合にオンにしてください。' }
   },
   auto: '自動',
-  defaultDevice: 'デフォルト',
-  defaultDir: 'デフォルト（監視フォルダー／動画フォルダー）',
+  defaultDevice: '既定',
+  defaultDir: '既定（監視フォルダー／動画フォルダー）',
   choose: '選択',
   clear: 'クリア（既定を使用）',
   session: 'セッション全体を録画',
@@ -92,6 +92,6 @@ export const recordingI18n: Messages['recordingI18n'] = {
   actionFailed: '録画操作に失敗しました。もう一度お試しください。',
   watchLive: '現在の試合を視聴',
   watchLiveHint: '録画中のみ、現在の試合を視聴できます',
-  kills: '今回の試合のキル',
+  kills: 'この試合のキル',
   matchIndex: '試合'
 }

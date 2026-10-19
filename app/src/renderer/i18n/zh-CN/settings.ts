@@ -8,7 +8,7 @@ export const settingsI18n: Messages['settingsI18n'] = {
   tablistLabel: '设置分类',
   resultsLabel: '搜索结果',
   noResults: '没有符合的设置',
-  noResultsHint: '试试其他关键字，例如“代理文件”“秒数”“编码器”。',
+  noResultsHint: '试试其他关键词，例如“代理文件”“秒数”“编码器”。',
   hitCount: '{n} 项符合',
   loading: '正在读取设置…',
   loadFailed: '无法读取设置，已显示默认值。',
@@ -38,15 +38,15 @@ export const settingsI18n: Messages['settingsI18n'] = {
       auto: '跟随系统'
     },
     watchFolders: {
-      title: '监看文件夹',
+      title: '监控文件夹',
       desc: '新视频稳定后自动导入视频库（是否自动分析见下一项）。',
-      keywords: ['文件夹', '监看', '导入', 'watch', 'folder'],
-      add: '新增文件夹',
+      keywords: ['文件夹', '目录', '监控', '监视', '监看', '自动导入', '导入', 'watch', 'folder'],
+      add: '添加文件夹',
       remove: '移除',
-      removeLabel: '移除监看文件夹 {dir}',
-      empty: '尚未设置监看文件夹',
+      removeLabel: '移除监控文件夹 {dir}',
+      empty: '尚未设置监控文件夹',
       missing: '找不到此文件夹',
-      list: '已设置的监看文件夹'
+      list: '已设置的监控文件夹'
     },
     autoAnalyze: {
       title: '新视频自动分析',
@@ -56,7 +56,7 @@ export const settingsI18n: Messages['settingsI18n'] = {
     decode: {
       title: '解码方式',
       desc: '强制软件解码会在之后开始的分析中生效（已在分析中的视频不受影响）；硬件解码失败时会自动改用软件解码并提示。',
-      keywords: ['解码', '硬件', '软件', 'gpu', 'decode'],
+      keywords: ['解码', '硬解', '软解', '硬件', '软件', '显卡', 'gpu', 'decode'],
       auto: '自动（硬件优先）',
       software: '强制软件解码'
     },
@@ -70,7 +70,7 @@ export const settingsI18n: Messages['settingsI18n'] = {
     lowPerfMode: {
       title: '低性能模式',
       desc: '关闭动画、缩略图改为静态、时间轴热度条降为 60 格。',
-      keywords: ['低性能', '性能', '动画', 'performance']
+      keywords: ['低性能', '性能', '卡顿', '流畅', '低配', '动画', 'performance']
     },
     proxySuggest: {
       title: '播放不流畅时建议生成代理文件',
@@ -104,7 +104,7 @@ export const settingsI18n: Messages['settingsI18n'] = {
       title: 'AI 自动剪辑默认参数',
       desc: '在“AI 自动剪辑”浮层可临时调整；这里是打开浮层时的起始值。',
       keywords: ['ai', '自动剪辑', '参数', 'gap', 'max_len', '精华'],
-      n: '最少杀敌数 n（1–10）',
+      n: '最少击杀数 n（1–10）',
       gap: '相邻最大间隔 gap 秒（5–60）',
       before: '首杀前 before 秒（0–30）',
       after: '末杀后 after 秒（0–30）',
@@ -141,29 +141,29 @@ export const settingsI18n: Messages['settingsI18n'] = {
     },
     openh264: {
       title: 'OpenH264（CPU 编码）',
-      desc: '仅在没有硬件编码器、或生成预览代理文件时使用；依授权不附带，同意后可从这里下载。',
+      desc: '仅在没有硬件编码器、或生成预览代理文件时使用；依许可协议不附带，同意后可从这里下载。',
       keywords: ['openh264', 'cisco', 'cpu', '编码'],
       installed: '已安装',
       notInstalled: '尚未安装',
       unknown: '状态未知',
       download: '下载',
       redownload: '重新下载',
-      consent: '为符合授权，本程序不附带 OpenH264。同意后，会从 Cisco 官方网址 ciscobinary.openh264.org 下载官方 DLL（约 0.4 MB）。',
+      consent: '为符合许可协议，本程序不附带 OpenH264。同意后，会从 Cisco 官方网址 ciscobinary.openh264.org 下载官方 DLL（约 0.4 MB）。',
       accept: '同意并下载',
       decline: '取消',
       downloading: '下载中 {pct}%',
       failed: '下载 OpenH264 失败：{msg}'
     },
     about: {
-      title: '版本与授权',
-      desc: 'MIT 授权。附带 LGPL 版 ffmpeg。',
-      keywords: ['版本', '授权', '关于', 'license', 'version', 'mit', 'ffmpeg'],
+      title: '版本与许可',
+      desc: 'MIT 许可证。附带 LGPL 版 ffmpeg。',
+      keywords: ['版本', '授权', '许可证', '关于', 'license', 'version', 'mit', 'ffmpeg'],
       version: 'Apex Highlighter {version}',
-      licenses: '第三方授权'
+      licenses: '第三方许可'
     },
     trademark: {
       title: '商标声明',
-      desc: 'Apex Legends 为 Electronic Arts／Respawn 之商标，与本项目无关。',
+      desc: 'Apex Legends 是 Electronic Arts／Respawn 的商标，与本软件无关。',
       keywords: ['商标', 'apex legends', 'ea', 'respawn', '声明']
     }
   }

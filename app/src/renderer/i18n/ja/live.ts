@@ -10,7 +10,7 @@ export const liveI18n: Messages['liveI18n'] = {
   recording: '録画中',
   match: '第 {n} 試合',
   noMatch: 'まだ試合が検出されていません',
-  kills: '今回の試合のキル {n}',
+  kills: 'この試合のキル {n}',
   play: '再生',
   pause: '一時停止',
   back5: '5 秒戻る',
@@ -22,7 +22,7 @@ export const liveI18n: Messages['liveI18n'] = {
   timelineValue: '{cur}、録画の長さ {end}',
   matchRange: '第 {n} 試合：{start}–{end}',
   matchOngoing: '進行中',
-  released: '30 分を超えた部分は解放されました。終了後に Studio で視聴できます',
+  released: '30 分を超えた部分はメモリから解放されました。終了処理後に Studio で視聴できます',
   events: 'リアルタイムイベント',
   noEvents: 'イベントはまだありません。ノックダウンや撃破を検出すると、すぐに表示されます。',
   eventItem: '{type} · {time}',
@@ -30,11 +30,11 @@ export const liveI18n: Messages['liveI18n'] = {
   newKill: '新しいイベント：{type} · {time}',
   loading: '録画を読み込み中…',
   notRecording: '現在進行中の録画はありません。',
-  unsupported: 'このPCでは録画のコーデック（{mime}）を再生できませんが、イベントはリアルタイムで更新されます。',
+  unsupported: 'この PC では録画のコーデック（{mime}）を再生できませんが、イベントはリアルタイムで更新されます。',
   loadFailed: '録画セグメントを読み込めません：{message}',
   waitingInit: '録画の書き込み開始を待っています…',
   ended: '録画が終了し、ライブラリに追加されました。',
   openStudio: 'Studio で開く',
   openLibrary: 'ライブラリへ',
-  keys: 'スペースキーで再生／一時停止 · ←／→ で 5 秒前後 · End でライブ位置へ'
+  keys: 'スペースキーで再生／一時停止 · ←／→ で 5 秒戻る／進む · End でライブ位置へ'
 }

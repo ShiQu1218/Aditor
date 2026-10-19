@@ -59,7 +59,7 @@ export const shellI18n: Messages['shellI18n'] = {
       backToSource: 'ソースモードに戻る',
       closeOverlay: 'オーバーレイを閉じる',
       showShortcuts: 'ショートカット一覧',
-      focusToast: '最新の通知にフォーカス（[元に戻す] を押せます）',
+      focusToast: '最新の通知にフォーカス（「元に戻す」 を押せます）',
       focusSearch: '検索にフォーカス',
       toggleFavoriteFilter: 'お気に入りのみ表示を切り替え',
       selectPrevItem: '前のクリップを選択',
