@@ -8,7 +8,10 @@ export type Locale = (typeof LOCALES)[number]
 /** 設定值：'auto' 依系統語言決定。 */
 export type LanguageSetting = 'auto' | Locale
 export const LANGUAGE_SETTINGS: readonly LanguageSetting[] = ['auto', ...LOCALES]
+/** 沒有指定語言時的語言（例如測試、renderer 沒收到 `?lang=`）。 */
 export const DEFAULT_LOCALE: Locale = 'zh-TW'
+/** 系統語言不在支援清單、或讀不到時使用的語言。 */
+export const FALLBACK_LOCALE: Locale = 'en'
 
 /** 各語言的自稱（語言選單固定用原文顯示，不隨目前介面語言翻譯）。 */
 export const LOCALE_NAMES: Readonly<Record<Locale, string>> = {
@@ -28,9 +31,9 @@ export function matchLocale(tag: string | null | undefined): Locale | null {
   return base === 'en' || base === 'ja' || base === 'ko' ? base : null
 }
 
-/** 設定值（含 'auto'）轉成實際語言；auto 依 `systemTag`（例如 `app.getLocale()`），都不支援就用預設。 */
+/** 設定值（含 'auto'）轉成實際語言；auto 依 `systemTag`（例如 `app.getLocale()`），都不支援就用英文。 */
 export function resolveLocale(setting: unknown, systemTag?: string | null): Locale {
-  return isLocale(setting) ? setting : matchLocale(systemTag) ?? DEFAULT_LOCALE
+  return isLocale(setting) ? setting : matchLocale(systemTag) ?? FALLBACK_LOCALE
 }
 
 /**

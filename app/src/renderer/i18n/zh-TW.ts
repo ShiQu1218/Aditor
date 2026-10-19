@@ -534,7 +534,7 @@ const settingsI18n = {
   row: {
     language: {
       title: '介面語言',
-      desc: '變更後視窗會重新載入以套用；系統匣選單也會一併更新。選「跟隨系統」會依 Windows 的顯示語言決定。',
+      desc: '變更後視窗會重新載入以套用；系統匣選單也會一併更新。選「跟隨系統」會依 Windows 的顯示語言決定；系統語言不在支援清單時使用英文。',
       keywords: ['語言', '介面', '翻譯', 'language', 'locale', '中文', 'english', '日本語', '한국어'],
       auto: '跟隨系統'
     },

@@ -11,7 +11,7 @@ export const SETTINGS_VERSION = 1
  */
 export interface Settings {
   version: 1
-  /** 介面語言：'auto'＝跟隨系統（Windows 顯示語言），不支援的系統語言用繁體中文 */
+  /** 介面語言：'auto'＝跟隨系統（Windows 顯示語言），不支援的系統語言用英文 */
   language: LanguageSetting
   /** 監看資料夾清單（新影片自動匯入） */
   watchFolders: string[]

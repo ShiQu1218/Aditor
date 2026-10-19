@@ -33,7 +33,7 @@ export const settingsI18n: Messages['settingsI18n'] = {
   row: {
     language: {
       title: '界面语言',
-      desc: '更改后窗口会重新加载以生效；系统托盘菜单也会一并更新。选“跟随系统”会依 Windows 的显示语言决定。',
+      desc: '更改后窗口会重新加载以生效；系统托盘菜单也会一并更新。选“跟随系统”会依 Windows 的显示语言决定；系统语言不在支持列表时使用英文。',
       keywords: ['语言', '界面', '翻译', 'language', 'locale', '中文', 'english', '日本語', '한국어'],
       auto: '跟随系统'
     },

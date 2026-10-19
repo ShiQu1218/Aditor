@@ -33,7 +33,7 @@ export const settingsI18n: Messages['settingsI18n'] = {
   row: {
     language: {
       title: '인터페이스 언어',
-      desc: '변경하면 창이 다시 로드되어 적용됩니다. 시스템 트레이 메뉴도 함께 바뀝니다. ‘시스템 따름’을 선택하면 Windows 표시 언어에 따라 정해집니다.',
+      desc: '변경하면 창이 다시 로드되어 적용됩니다. 시스템 트레이 메뉴도 함께 바뀝니다. ‘시스템 따름’을 선택하면 Windows 표시 언어에 따라 정해지며, 지원하지 않는 언어이면 영어를 사용합니다.',
       keywords: ['언어', '인터페이스', '번역', '한국어', 'language', 'locale', '중국어', 'english', '日本語'],
       auto: '시스템 따름'
     },

@@ -32,7 +32,7 @@ export const settingsI18n: Messages['settingsI18n'] = {
   row: {
     language: {
       title: 'Interface language',
-      desc: 'The window reloads to apply the change, and the tray menu updates as well. "Follow system" uses the Windows display language.',
+      desc: 'The window reloads to apply the change, and the tray menu updates as well. "Follow system" uses the Windows display language, or English if that language is not supported.',
       keywords: ['language', 'interface', 'translation', 'locale', 'chinese', 'english', 'japanese', 'korean', '日本語', '한국어'],
       auto: 'Follow system'
     },
