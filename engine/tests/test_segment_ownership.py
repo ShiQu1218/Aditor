@@ -8,10 +8,10 @@ import threading
 import numpy as np
 import pytest
 
-from apexhl import analyze as az
-from apexhl.cache import cache_path, load_cache
-from apexhl.icon_detect import IconFrame
-from apexhl.models import FrameResult, NameSig
+from aditor import analyze as az
+from aditor.cache import cache_path, load_cache
+from aditor.icon_detect import IconFrame
+from aditor.models import FrameResult, NameSig
 from conftest import make_video
 
 DURATION = 60.0

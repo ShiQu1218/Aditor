@@ -1,6 +1,6 @@
 /**
- * live 引擎（第 3 期，計畫 7 合約 1）：`apexhl live --shm … --profile-dir … [--scene-dir …]`。
- * 讀 apexrec 的共享記憶體小圖，stdout 每行一個 JSON（ready／snapshot／match_pending／match_cancel／match_start／match_end／stats／error）。
+ * live 引擎（第 3 期，計畫 7 合約 1）：`aditor live --shm … --profile-dir … [--scene-dir …]`。
+ * 讀 aditorrec 的共享記憶體小圖，stdout 每行一個 JSON（ready／snapshot／match_pending／match_cancel／match_start／match_end／stats／error）。
  *
  * - 以低於一般的優先序執行；當掉時以指數退避重啟（10 分鐘內最多 5 次），錄影本身不受影響。
  * - 重啟後的新程序只看得到重啟之後的影格：先前的事件保留（封存），新程序的事件只採用封存時間之後的部分。
@@ -14,7 +14,7 @@ import type { LiveEvent } from '../../shared/recording'
 import type { RecorderCommand } from './index'
 import { tr } from '../../shared/locale'
 
-/** snapshot 含整份事件清單，可能遠大於 apexrec 的 64 KB 行長上限。 */
+/** snapshot 含整份事件清單，可能遠大於 aditorrec 的 64 KB 行長上限。 */
 const MAX_LINE_BYTES = 8 * 1024 * 1024
 const MAX_EVENTS = 20_000
 const STDERR_TAIL = 16 * 1024

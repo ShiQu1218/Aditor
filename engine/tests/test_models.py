@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from apexhl.models import Event, NameSig
+from aditor.models import Event, NameSig
 
 
 def test_namesig_roundtrip():

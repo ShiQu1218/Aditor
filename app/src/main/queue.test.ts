@@ -10,7 +10,7 @@ describe('AnalysisQueue', () => {
   let lib: Library
 
   beforeEach(() => {
-    tmpFile = path.join(os.tmpdir(), `apexhl_queue_test_${Date.now()}_${Math.random()}.json`)
+    tmpFile = path.join(os.tmpdir(), `aditor_queue_test_${Date.now()}_${Math.random()}.json`)
     lib = new Library(tmpFile)
   })
 
@@ -159,7 +159,7 @@ describe('AnalysisQueue：設定接線（decode／cacheLocation）', () => {
       },
       cancel: () => {}
     } as unknown as EngineClient
-    const file = path.join(os.tmpdir(), `apexhl_queue_set_${Date.now()}_${Math.random()}.json`)
+    const file = path.join(os.tmpdir(), `aditor_queue_set_${Date.now()}_${Math.random()}.json`)
     const lib = new Library(file)
     lib.add(['D:/Videos/s.mp4'])
     const queue = new AnalysisQueue(engineMock, lib, {
@@ -192,7 +192,7 @@ describe('AnalysisQueue：設定接線（decode／cacheLocation）', () => {
       },
       cancel: () => {}
     } as unknown as EngineClient
-    const lib = new Library(path.join(os.tmpdir(), `apexhl_queue_set2_${Date.now()}.json`))
+    const lib = new Library(path.join(os.tmpdir(), `aditor_queue_set2_${Date.now()}.json`))
     lib.add(['D:/Videos/a.mp4', 'D:/Videos/b.mp4'])
     const q = new AnalysisQueue(engineMock, lib, { profileDir: '/p', cacheDir: '/c', getSettings: () => cur })
     q.enqueue('D:/Videos/a.mp4')

@@ -39,7 +39,7 @@ pub struct SessionMeta {
     pub fps: u32,
     pub codec: Codec,
     pub audio: bool,
-    pub apexrec_version: String,
+    pub aditorrec_version: String,
 }
 
 pub struct IndexWriter {
@@ -252,7 +252,7 @@ mod tests {
     impl TestDir {
         fn new() -> Self {
             let path = std::env::temp_dir().join(format!(
-                "apexrec-index-{}-{}",
+                "aditorrec-index-{}-{}",
                 std::process::id(),
                 DIRECTORIES.fetch_add(1, Ordering::Relaxed)
             ));
@@ -446,7 +446,7 @@ mod tests {
             fps: 60,
             codec: Codec::Hevc,
             audio: true,
-            apexrec_version: env!("CARGO_PKG_VERSION").into(),
+            aditorrec_version: env!("CARGO_PKG_VERSION").into(),
         }
     }
 

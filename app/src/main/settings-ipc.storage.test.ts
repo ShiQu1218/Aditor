@@ -15,7 +15,7 @@ describe('settings:set 的 storageRoot', () => {
   const call = (ch: string, ...args: unknown[]): any => handlers.get(ch)!({}, ...args)
 
   beforeEach(() => {
-    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'apexhl-storage-'))
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'aditor-storage-'))
     videos = path.join(dir, 'Videos')
     handlers.clear()
     store = new SettingsStore(path.join(dir, 'settings.json'))
@@ -72,8 +72,8 @@ describe('settings:set 的 storageRoot', () => {
     expect(res.settings.defaultOutDir).toBe(path.join(root, 'Exports'))
   })
 
-  test('建議值 IPC：未設定時回影片資料夾\Apex Highlighter，已設定過則沿用上一層', () => {
-    expect(call(STORAGE_SUGGEST_CHANNEL)).toBe(path.join(videos, 'Apex Highlighter'))
+  test('建議值 IPC：未設定時回影片資料夾\Aditor，已設定過則沿用上一層', () => {
+    expect(call(STORAGE_SUGGEST_CHANNEL)).toBe(path.join(videos, 'Aditor'))
     const root = path.join(dir, 'Mine')
     call('settings:set', { storageRoot: root })
     expect(call(STORAGE_SUGGEST_CHANNEL)).toBe(root)

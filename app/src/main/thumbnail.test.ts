@@ -11,7 +11,7 @@ let video: string
 const saved: Record<string, string | undefined> = {}
 beforeEach(() => {
   for (const k of ['APPDATA', 'FAKE_LOG', 'FAKE_EXIT']) saved[k] = process.env[k]
-  appData = fs.mkdtempSync(path.join(os.tmpdir(), 'apexhl-thumb-'))
+  appData = fs.mkdtempSync(path.join(os.tmpdir(), 'aditor-thumb-'))
   process.env.APPDATA = appData
   process.env.FAKE_LOG = path.join(appData, 'log')
   delete process.env.FAKE_EXIT

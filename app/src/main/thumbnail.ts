@@ -45,7 +45,7 @@ export async function generateThumbnail(videoPath: string, duration: number, dep
   if (fs.existsSync(outPath)) return outPath
   const tmp = outPath.replace(/\.jpg$/i, '.tmp.jpg')
   const t = Math.max(1, duration * 0.1)
-  const bin = deps.ffmpeg?.bin ?? (process.env.APEXHL_FFMPEG || 'ffmpeg')
+  const bin = deps.ffmpeg?.bin ?? (process.env.ADITOR_FFMPEG || 'ffmpeg')
   const ok = await new Promise<boolean>((resolve) => {
     const proc = spawn(bin, [...(deps.ffmpeg?.prefixArgs ?? []), ...buildThumbnailArgs(videoPath, tmp, t)], { windowsHide: true })
     proc.on('close', (code) => resolve(code === 0 && fs.existsSync(tmp)))

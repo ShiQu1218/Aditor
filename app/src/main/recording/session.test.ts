@@ -233,7 +233,7 @@ describe('錄影服務狀態機', () => {
     expect(listener).toHaveBeenCalledOnce()
   })
 
-  it('能力查詢與錄影分開；找不到 apexrec 時回 null', async () => {
+  it('能力查詢與錄影分開；找不到 aditorrec 時回 null', async () => {
     const value = rig()
     expect((await value.service.capabilities())?.encoders).toContain('hevc_nvenc')
     value.deps.recorderCommand.command = path.join(value.root, 'missing.exe')

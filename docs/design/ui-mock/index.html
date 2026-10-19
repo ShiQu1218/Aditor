@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Apex Highlighter UI Mock</title>
+<title>Aditor UI Mock</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lato:wght@400;700;900&family=Montserrat:wght@500;700;900&display=swap">
 <link rel="stylesheet" href="css/tokens.css">
@@ -137,8 +137,8 @@
                   <button class="btn ghost icon sm" id="p-undo" title="復原 (Ctrl+Z)" aria-label="復原"><svg class="ic sm" data-ic="undo"></svg></button>
                   <button class="btn ghost icon sm" id="p-redo" title="重做 (Ctrl+Y)" aria-label="重做"><svg class="ic sm" data-ic="redo"></svg></button>
                   <button class="btn ghost sm" id="p-new">新專案</button>
-                  <button class="btn ghost sm" id="p-open" title="開啟 .apexproj.json 專案檔">開啟檔案</button>
-                  <button class="btn ghost sm" id="p-save" title="另存為 .apexproj.json（Ctrl+S）">另存檔案</button>
+                  <button class="btn ghost sm" id="p-open" title="開啟 .aditorproj.json 專案檔">開啟檔案</button>
+                  <button class="btn ghost sm" id="p-save" title="另存為 .aditorproj.json（Ctrl+S）">另存檔案</button>
                 </div>
                 <div class="track" id="track" tabindex="0" role="list" aria-label="專案片段"></div>
               </div>
@@ -175,7 +175,7 @@
             </div>
             <div class="setcard" data-cat="a"><h3>分析與效能</h3>
               <div class="setrow"><div>解碼方式<small>硬體解碼失敗時會自動改用軟體解碼並提示</small></div><select class="select" style="width:180px"><option>自動（硬體優先）</option><option>強制軟體解碼</option></select></div>
-              <div class="setrow"><div>快取位置<small>預設存在 %APPDATA%\ApexHighlighter\cache，不寫入 Outplayed 目錄</small></div><select class="select" style="width:180px"><option>App 資料夾</option><option>影片旁（.apexhl.json）</option></select></div>
+              <div class="setrow"><div>快取位置<small>預設存在 %APPDATA%\Aditor\cache，不寫入 Outplayed 目錄</small></div><select class="select" style="width:180px"><option>App 資料夾</option><option>影片旁（.aditor.json）</option></select></div>
               <div class="setrow"><div>低效能模式<span class="newtag">新</span><small>關閉動畫、縮圖改為靜態、時間軸熱度條降為 60 格</small></div><button class="switch" aria-label="低效能模式"></button></div>
             </div>
             <div class="setcard" data-cat="b"><h3>預覽與代理檔</h3>
@@ -186,7 +186,7 @@
               <div class="setrow"><div>事件前／後秒數（快速剪輯、合輯）<small>預設 8 秒前、4 秒後</small></div><span class="insp"><span class="stepper"><button>−</button><span>8s</span><button>+</button></span><span class="stepper"><button>−</button><span>4s</span><button>+</button></span></span></div>
               <div class="setrow"><div>AI 自動剪輯預設參數<small>n=3、gap=20s、max_len=90s（在「AI 自動剪輯」浮層可臨時調整）</small></div><button class="btn sm">編輯預設值</button></div>
               <div class="setrow"><div>開啟影片時自動產生精華建議<span class="newtag">新</span><small>以預設參數執行一次，僅放上建議框，不會自動加入專案</small></div><button class="switch on" aria-label="自動產生建議"></button></div>
-              <div class="setrow"><div>專案自動儲存<span class="newtag">新</span><small>每次修改後自動存到 %APPDATA%\ApexHighlighter\projects\，「另存檔案」只用於分享</small></div><button class="switch on" aria-label="專案自動儲存"></button></div>
+              <div class="setrow"><div>專案自動儲存<span class="newtag">新</span><small>每次修改後自動存到 %APPDATA%\Aditor\projects\，「另存檔案」只用於分享</small></div><button class="switch on" aria-label="專案自動儲存"></button></div>
             </div>
             <div class="setcard" data-cat="c"><h3>匯出</h3>
               <div class="setrow"><div>預設輸出資料夾</div><button class="btn sm"><svg class="ic sm" data-ic="folder"></svg>D:\Videos\Apex</button></div>
@@ -194,7 +194,7 @@
               <div class="setrow"><div>OpenH264（CPU 編碼）<small>已安裝 Cisco 官方 DLL；僅在沒有硬體編碼器時使用</small></div><button class="btn sm">重新下載</button></div>
             </div>
             <div class="setcard" data-cat="c"><h3>關於</h3>
-              <div class="setrow"><div>Apex Highlighter 0.1.0　·　引擎 0.1.0　·　範本 zh-TW@1<small>MIT 授權。隨附 LGPL 版 ffmpeg。</small></div><button class="btn sm">第三方授權</button></div>
+              <div class="setrow"><div>Aditor 0.1.0　·　引擎 0.1.0　·　範本 zh-TW@1<small>MIT 授權。隨附 LGPL 版 ffmpeg。</small></div><button class="btn sm">第三方授權</button></div>
               <div class="setrow"><div>商標聲明<small>Apex Legends 為 Electronic Arts／Respawn 之商標，與本專案無關。</small></div><span></span></div>
             </div>
           </div>
@@ -254,7 +254,7 @@
 <div class="scrim" id="dlg-newproj">
   <div class="dialog" style="width:400px">
     <h3>建立新專案？</h3>
-    <div class="sub">目前專案「我的精華專案」有 <b id="np-n">3</b> 段，已自動儲存在 %APPDATA%\ApexHighlighter\projects\，之後可從「開啟檔案」或專案清單找回。尚未另存成 .apexproj.json 檔案。</div>
+    <div class="sub">目前專案「我的精華專案」有 <b id="np-n">3</b> 段，已自動儲存在 %APPDATA%\Aditor\projects\，之後可從「開啟檔案」或專案清單找回。尚未另存成 .aditorproj.json 檔案。</div>
     <div class="foot"><button class="btn" data-close="dlg-newproj">取消</button><button class="btn" id="np-save">另存檔案後新增</button><button class="btn primary" id="np-ok">直接新增</button></div>
   </div>
 </div>

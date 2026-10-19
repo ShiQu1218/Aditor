@@ -5,9 +5,9 @@ from collections import deque
 from dataclasses import replace
 from functools import lru_cache
 
-from apexhl.detect import same_name
-from apexhl.models import COUNTING_TYPES, Event, NameSig, SpecInterval
-from apexhl.profile import Profile
+from aditor.detect import same_name
+from aditor.models import COUNTING_TYPES, Event, NameSig, SpecInterval
+from aditor.profile import Profile
 
 
 def _decode_sig(value: str | None) -> NameSig | None:

@@ -42,12 +42,12 @@ export interface CopyCut {
 
 export type CutLookup = (item: { source: string; start: number; end: number }, signal?: AbortSignal) => Promise<CopyCut | null>
 
-/** ffprobe 路徑：`APEXHL_FFPROBE` → `APEXHL_FFMPEG` 同目錄的 ffprobe → PATH 上的 `ffprobe`。 */
+/** ffprobe 路徑：`ADITOR_FFPROBE` → `ADITOR_FFMPEG` 同目錄的 ffprobe → PATH 上的 `ffprobe`。 */
 export function defaultFfprobePath(env: NodeJS.ProcessEnv = process.env, exists: (p: string) => boolean = fs.existsSync): string {
-  if (env.APEXHL_FFPROBE) return env.APEXHL_FFPROBE
-  if (env.APEXHL_FFMPEG) {
-    const ext = path.extname(env.APEXHL_FFMPEG)
-    const sibling = path.join(path.dirname(env.APEXHL_FFMPEG), `ffprobe${ext}`)
+  if (env.ADITOR_FFPROBE) return env.ADITOR_FFPROBE
+  if (env.ADITOR_FFMPEG) {
+    const ext = path.extname(env.ADITOR_FFMPEG)
+    const sibling = path.join(path.dirname(env.ADITOR_FFMPEG), `ffprobe${ext}`)
     if (exists(sibling)) return sibling
   }
   return 'ffprobe'

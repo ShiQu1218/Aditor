@@ -6,7 +6,7 @@ import { AppHandle, LaunchOpts, launchApp } from './launch'
 import type { FixtureSet } from './makeFixtures'
 import { FIXTURE_FILE } from './globalSetup'
 
-export const SHOTS = path.join(os.tmpdir(), 'apexhl-e2e-shots')
+export const SHOTS = path.join(os.tmpdir(), 'aditor-e2e-shots')
 
 interface Fixtures {
   /** 啟動（可多次；測試結束時全部關閉並刪除暫存 appData） */

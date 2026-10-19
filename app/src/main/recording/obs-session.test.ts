@@ -33,7 +33,7 @@ describe('OBS 錄影生命週期', () => {
     const server = await fakeObs({ outputPath }); cleanup.push(server.close)
     const r = await rig(server)
     r.deps.addToLibrary = vi.fn()
-    r.deps.liveCachePath = (file) => file + '.apexhl.json'
+    r.deps.liveCachePath = (file) => file + '.aditor.json'
     r.deps.probeVideo = async () => ({ duration: 4, width: 160, height: 90, codec: 'mpeg4' })
     await r.service.startManual()
     await waitFor(() => r.service.status().kills > 0)
@@ -41,13 +41,13 @@ describe('OBS 錄影生命週期', () => {
     const meta = JSON.parse(fs.readFileSync(path.join(dir, 'obs.json'), 'utf8'))
     await r.service.stopManual()
     expect(r.deps.addToLibrary).toHaveBeenCalledWith([outputPath])
-    const cache = JSON.parse(fs.readFileSync(outputPath + '.apexhl.json', 'utf8'))
+    const cache = JSON.parse(fs.readFileSync(outputPath + '.aditor.json', 'utf8'))
     expect(cache.events[0].t).toBeCloseTo(1 + (meta.captureStartedAt - meta.recordStartedAt) / 1000)
     expect(cache.video).toMatchObject({ duration: 4, width: 160, height: 90, codec: 'mpeg4' })
     expect(fs.readFileSync(outputPath)).toEqual(bytes)
   })
 
-  it('開始與停止由 OBS 負責；apexrec 只擷取且可接收即時事件', async () => {
+  it('開始與停止由 OBS 負責；aditorrec 只擷取且可接收即時事件', async () => {
     const server = await fakeObs({ password: '測試密碼' }); cleanup.push(server.close)
     const r = await rig(server)
     r.deps.getObsPassword = () => '測試密碼'

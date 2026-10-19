@@ -41,7 +41,7 @@ async function rig() {
   deps.obsFileSettleMs = 1
   deps.obsReconnectBaseMs = 60000
   deps.probeVideo = async () => ({ duration: 2 })
-  deps.liveCachePath = (file) => file + '.apexhl.json'
+  deps.liveCachePath = (file) => file + '.aditor.json'
   deps.addToLibrary = vi.fn(); deps.enqueueAnalysis = vi.fn(); deps.notify = vi.fn()
   let pid: number | null = 1234
   deps.findApexPid = async () => pid
@@ -64,8 +64,8 @@ it('開局、後置時間停止、直接入庫並平移範圍內事件；大廳�
   await new Promise((resolve) => setTimeout(resolve, 20))
   expect(r.server.calls).not.toContain('StopRecord')
   await waitFor(() => (r.deps.addToLibrary as any).mock.calls.length === 1)
-  await waitFor(() => fs.existsSync(r.files[0] + '.apexhl.json'))
-  const cache = JSON.parse(fs.readFileSync(r.files[0] + '.apexhl.json', 'utf8'))
+  await waitFor(() => fs.existsSync(r.files[0] + '.aditor.json'))
+  const cache = JSON.parse(fs.readFileSync(r.files[0] + '.aditor.json', 'utf8'))
   expect(cache.events).toHaveLength(1)
   expect(cache.events[0].t).toBeCloseTo(1)
   await waitFor(() => (r.deps.enqueueAnalysis as any).mock.calls.length === 1)
@@ -131,13 +131,13 @@ it.each([false, true])('afterExit 在結束時依最終可信度排分析並更�
   await writeJson(configPath, { ...config, postAnalysis: 'afterExit' })
   r.event('match_start'); await waitFor(() => r.service.status().obsRecording === true)
   r.event('match_end', 0)
-  await waitFor(() => fs.existsSync(r.files[0] + '.apexhl.json'))
+  await waitFor(() => fs.existsSync(r.files[0] + '.aditor.json'))
   await r.active.cuts
   expect(r.deps.enqueueAnalysis).not.toHaveBeenCalled()
   const live = JSON.parse(fs.readFileSync(path.join(r.active.dir, 'live.json'), 'utf8'))
   await writeJson(path.join(r.active.dir, 'live.json'), { ...live, engine_version: '0.3.0', quality: { complete: trusted } })
   await r.service.stopManual()
-  const cache = JSON.parse(fs.readFileSync(r.files[0] + '.apexhl.json', 'utf8'))
+  const cache = JSON.parse(fs.readFileSync(r.files[0] + '.aditor.json', 'utf8'))
   expect(cache.analysis.engine_version).toBe(trusted ? '0.3.0' : 'live-unknown')
   expect(r.deps.enqueueAnalysis).toHaveBeenCalledTimes(trusted ? 0 : 1)
 })
@@ -214,7 +214,7 @@ it('倒數立即錄影，HUD 確認沿用同一檔', async () => {
   await r.active.obsWork
   expect(r.active.obs.matches[0]).toMatchObject({ confirmed: true, recordStartedAt: startedAt })
   await r.service.stopManual()
-  expect(JSON.parse(fs.readFileSync(r.files[0] + '.apexhl.json', 'utf8')).events[0].t).toBeCloseTo(1)
+  expect(JSON.parse(fs.readFileSync(r.files[0] + '.aditor.json', 'utf8')).events[0].t).toBeCloseTo(1)
   expect(r.server.calls.filter((c) => c === 'StartRecord')).toHaveLength(1)
   expect(r.deps.addToLibrary).toHaveBeenCalledWith([r.files[0]])
 })
@@ -233,7 +233,7 @@ it('倒數取消立即停止，保留原檔且不入庫或分析', async () => {
   await r.service.stopManual()
   expect(r.deps.addToLibrary).not.toHaveBeenCalled()
   expect(r.deps.enqueueAnalysis).not.toHaveBeenCalled()
-  expect(fs.existsSync(r.files[0] + '.apexhl.json')).toBe(false)
+  expect(fs.existsSync(r.files[0] + '.aditor.json')).toBe(false)
   expect(fs.existsSync(r.files[0])).toBe(true)
 })
 it('下一局倒數先停止上一檔再開始，確認不重開', async () => {

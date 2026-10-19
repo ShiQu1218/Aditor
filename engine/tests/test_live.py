@@ -1,9 +1,9 @@
-"""live 模式（python -m apexhl live）：共享記憶體讀端、撕裂／跳槽／寫端消失／stdin EOF，以及與離線分析一致性。
+"""live 模式（python -m aditor live）：共享記憶體讀端、撕裂／跳槽／寫端消失／stdin EOF，以及與離線分析一致性。
 
 測試用寫端 ShmTestWriter 依 recorder/src/shm.rs 的版面以 Windows 具名 file mapping 寫入（mmap tagname）。
 驗收（需要外部影片，沒有就 skip）：
-- 黃金錄影（APEXHL_GOLDEN_VIDEO）：live 的最終計入事件與離線 analyze 比對（召回差 ≤ 5%、不得有離線沒有的計入事件）。
-- 使用者錄影（APEXHL_MATCH_DIR）：thumb 餵進 live，對局起訖與 analyze_matches 一致（±2 秒）。"""
+- 黃金錄影（ADITOR_GOLDEN_VIDEO）：live 的最終計入事件與離線 analyze 比對（召回差 ≤ 5%、不得有離線沒有的計入事件）。
+- 使用者錄影（ADITOR_MATCH_DIR）：thumb 餵進 live，對局起訖與 analyze_matches 一致（±2 秒）。"""
 from __future__ import annotations
 
 import json
@@ -24,19 +24,19 @@ from conftest import ICON_DIR, REPO, make_video
 
 pytestmark = pytest.mark.skipif(sys.platform != "win32", reason="共享記憶體讀端只支援 Windows")
 
-from apexhl.live import (LATEST_SEQ_OFFSET, MAX_LAG_SLOTS, PTS_PER_SECOND, SHM_HEADER_BYTES, SHM_MAGIC,  # noqa: E402
+from aditor.live import (LATEST_SEQ_OFFSET, MAX_LAG_SLOTS, PTS_PER_SECOND, SHM_HEADER_BYTES, SHM_MAGIC,  # noqa: E402
                          SHM_SLOTS, SHM_VERSION, LayoutError, LiveEngine, LiveKills, ShmLayout, ShmReader)
 
 ENGINE_DIR = Path(__file__).resolve().parents[1]
-GOLDEN = os.environ.get("APEXHL_GOLDEN_VIDEO")
-MATCH_DIR = Path(os.environ.get("APEXHL_MATCH_DIR", "E:/Apex_highlighter_clip"))
+GOLDEN = os.environ.get("ADITOR_GOLDEN_VIDEO")
+MATCH_DIR = Path(os.environ.get("ADITOR_MATCH_DIR", "E:/Apex_highlighter_clip"))
 # 對局驗收只跑最短的一段＋一段長錄影，控制執行時間
 MATCH_VIDEOS = ["從上場不退出直接下一場~中途死掉，觀戰敵人同時排隊.mp4", "外卡模式.mp4"]
 TICK = 0.25
 
 
 def _name() -> str:
-    return f"Local\\apexhl-test-{uuid.uuid4().hex}"
+    return f"Local\\aditor-test-{uuid.uuid4().hex}"
 
 
 class ShmTestWriter:
@@ -87,7 +87,7 @@ def layout(profile):
 
 @pytest.fixture(scope="module")
 def scene():
-    from apexhl.scene import SceneDetector
+    from aditor.scene import SceneDetector
     return SceneDetector()
 
 
@@ -190,7 +190,7 @@ def test_open_missing_mapping_fails_without_creating_it():
     name = _name()
     with pytest.raises(OSError):
         ShmReader.open(name)
-    with pytest.raises(OSError):  # 讀端不得建立 mapping（否則 apexrec 之後會拒絕建立）
+    with pytest.raises(OSError):  # 讀端不得建立 mapping（否則 aditorrec 之後會拒絕建立）
         ShmReader.open(name)
 
 
@@ -294,7 +294,7 @@ def test_engine_emits_stats_and_final_snapshot(profile, layout, scene):
 
 def _spawn(name: str):
     env = dict(os.environ, PYTHONPATH=str(ENGINE_DIR))
-    return subprocess.Popen([sys.executable, "-m", "apexhl", "live", "--shm", name,
+    return subprocess.Popen([sys.executable, "-m", "aditor", "live", "--shm", name,
                              "--profile-dir", str(ICON_DIR), "--scene-dir", str(REPO / "templates" / "scene")],
                             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
 
@@ -396,7 +396,7 @@ def test_cli_errors(layout):
 # ---------------- 與離線分析一致 ----------------
 
 def _with_thumbs(frames, thumbs):
-    """(t, banner, spec) 串流每 4 格附一張 thumb（1 fps，同 apexrec）；thumb 用完後不附。"""
+    """(t, banner, spec) 串流每 4 格附一張 thumb（1 fps，同 aditorrec）；thumb 用完後不附。"""
     for k, (t, banner, spec) in enumerate(frames):
         yield t, banner, spec, (next(thumbs, None) if k % 4 == 0 else None)
 
@@ -454,8 +454,8 @@ def _compare(offline, live):
 
 
 def test_live_matches_offline_on_synthetic_video(tmp_path, profile, layout, scene, knock_banner_png):
-    from apexhl.analyze import analyze
-    from apexhl.decode import FrameStream
+    from aditor.analyze import analyze
+    from aditor.decode import FrameStream
     video = make_video(tmp_path, "kills.mp4", 24, overlay=(knock_banner_png, [(2, 5), (9, 12), (17, 19)]))
     doc = analyze(str(video), profile, cache_dir=tmp_path / "cache", jobs=1)
     out, eng = _run_live(layout, profile, scene, ((t, b, s, None) for t, b, s in FrameStream(str(video), profile)))
@@ -471,7 +471,7 @@ def test_live_matches_offline_on_synthetic_video(tmp_path, profile, layout, scen
 
 def test_live_kills_small_buffers_degrade_gracefully(tmp_path, profile, knock_banner_png):
     """緩衝上限極小時提早決定尺度／學關鍵字，仍能產出事件、不當掉。"""
-    from apexhl.decode import FrameStream
+    from aditor.decode import FrameStream
     video = make_video(tmp_path, "kills.mp4", 12, overlay=(knock_banner_png, [(2, 5), (8, 10)]))
     logs: list[str] = []
     kills = LiveKills(profile, calib_max_bytes=1, pending_max_bytes=1, log=logs.append)
@@ -501,11 +501,11 @@ def test_quality_flags_lost_frames(profile, layout, scene):
 @pytest.mark.timeout(900)
 def test_golden_live_vs_offline(tmp_path, profile, layout, scene):
     if not GOLDEN or not Path(GOLDEN).exists():
-        pytest.skip("未設定 APEXHL_GOLDEN_VIDEO")
-    from apexhl.analyze import analyze
-    from apexhl.decode import FrameStream
-    from apexhl.matches import _video_frames
-    from apexhl.probe import probe
+        pytest.skip("未設定 ADITOR_GOLDEN_VIDEO")
+    from aditor.analyze import analyze
+    from aditor.decode import FrameStream
+    from aditor.matches import _video_frames
+    from aditor.probe import probe
     info = probe(GOLDEN)
     doc = analyze(GOLDEN, profile, cache_dir=tmp_path, jobs=1)
     thumbs = (f for _, f in _video_frames(GOLDEN, 1.0, True, info.codec))
@@ -532,8 +532,8 @@ def test_recording_matches_live_vs_offline(profile, layout, scene, name):
     video = MATCH_DIR / name
     if not video.is_file():
         pytest.skip(f"未提供對局驗收影片：{video}")
-    from apexhl.matches import _video_frames, analyze_matches
-    from apexhl.probe import probe
+    from aditor.matches import _video_frames, analyze_matches
+    from aditor.probe import probe
     info = probe(str(video))
     offline = analyze_matches(str(video))["matches"]
     banner, spec, _ = _blank(layout)
@@ -557,7 +557,7 @@ def test_recording_matches_live_vs_offline(profile, layout, scene, name):
 
 @pytest.mark.parametrize("kind,t,reason", [("lobby", 1, "lobby"), ("other", 181, "timeout"), ("pre_match", 1, "eof")])
 def test_live_forwards_pending_and_cancel(profile, layout, scene, monkeypatch, kind, t, reason):
-    from apexhl.scene import SceneFrame
+    from aditor.scene import SceneFrame
 
     scenes = iter([SceneFrame("pre_match"), SceneFrame(kind)])
     monkeypatch.setattr(scene, "classify", lambda _: next(scenes))

@@ -92,7 +92,7 @@ function rig(postAnalysis: 'none' | 'afterExit' | 'perMatch' = 'none') {
   deps.addToLibrary = vi.fn()
   deps.enqueueAnalysis = vi.fn()
   deps.onLiveAnalysis = vi.fn()
-  deps.liveCachePath = (output) => output + '.apexhl.json'
+  deps.liveCachePath = (output) => output + '.aditor.json'
   return { root, dir, deps, live, saveLive, marker: () => read(path.join(dir, 'matches.json')) }
 }
 

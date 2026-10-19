@@ -8,7 +8,7 @@ import {
 } from '../../shared/recording'
 import { isSafeLocalDirPath } from '../safe-path'
 import { ApexWatcher, findApexPid } from './apex-watcher'
-import { ApexrecClient, RecorderError, type RecorderEvent } from './apexrec-client'
+import { AditorrecClient, RecorderError, type RecorderEvent } from './aditorrec-client'
 import { diskFreeBytes, diskLevel } from './disk'
 import { MATCH_POST_PAD_SEC, cutMatches, finalizeSession, validateSessionDir, writeJson } from './finalize'
 import { recoverSessions } from './recovery'
@@ -24,7 +24,7 @@ interface ActiveSession {
   id: string
   dir: string
   outputDir: string
-  client: ApexrecClient
+  client: AditorrecClient
   ending: boolean
   warned: boolean
   writes: Promise<void>
@@ -41,7 +41,7 @@ interface ActiveSession {
   obsEndAt?: number
   obsTimer?: ReturnType<typeof setTimeout>
   obsWork: Promise<void>
-  /** apexrec 已回報 started（真的開始擷取） */
+  /** aditorrec 已回報 started（真的開始擷取） */
   captured: boolean
 }
 
@@ -84,7 +84,7 @@ export class RecordingSessionService implements RecordingService {
   private retryTimer: ReturnType<typeof setTimeout> | null = null
   private diskTimer: ReturnType<typeof setInterval> | null = null
   private statusTimer: ReturnType<typeof setTimeout> | null = null
-  private capabilityRequests = new Set<ApexrecClient>()
+  private capabilityRequests = new Set<AditorrecClient>()
   private pendingObs = new Map<string, ActiveSession>()
   /** 上次由本 App 停止 OBS 錄影的時間（epoch ms） */
   private obsStoppedAt = 0
@@ -180,7 +180,7 @@ export class RecordingSessionService implements RecordingService {
   }
 
   async capabilities(): Promise<RecorderCapabilities | null> {
-    const client = new ApexrecClient(this.deps.recorderCommand)
+    const client = new AditorrecClient(this.deps.recorderCommand)
     this.capabilityRequests.add(client)
     try { return await client.hello() }
     catch { return null }
@@ -366,7 +366,7 @@ export class RecordingSessionService implements RecordingService {
         startedAt, postAnalysis: settings.postAnalysis, mode: settings.mode, backend: session?.backend ?? settings.backend
       })
       await writeSnapshot()
-      const client = new ApexrecClient(this.deps.recorderCommand)
+      const client = new AditorrecClient(this.deps.recorderCommand)
       const live = this.createLive(id, dir)
       session = { pid, id, dir, outputDir, client, ending: false, warned: false, writes: Promise.resolve(), sequences: new Set(), live,
         mode: settings.mode, cuts: Promise.resolve(), cutPending: false, cutting: false, failedCuts: new Set(), backend: settings.backend, obs: null, obsWork: Promise.resolve(), captured: false }

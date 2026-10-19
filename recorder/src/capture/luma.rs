@@ -36,7 +36,7 @@ impl LumaProbe {
             D3DCompile(
                 source.as_ptr().cast(),
                 source.len(),
-                s!("apexrec-luma"),
+                s!("aditorrec-luma"),
                 None,
                 None,
                 s!("main"),

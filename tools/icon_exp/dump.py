@@ -3,9 +3,9 @@
 import sys, time
 from pathlib import Path
 sys.path.insert(0, sys.argv[1])
-from apexhl.decode import FrameStream
-from apexhl.probe import probe
-from apexhl.profile import load_profile
+from aditor.decode import FrameStream
+from aditor.probe import probe
+from aditor.profile import load_profile
 
 lab, video, out = sys.argv[2], sys.argv[3], Path(sys.argv[4])
 out.mkdir(parents=True, exist_ok=True)

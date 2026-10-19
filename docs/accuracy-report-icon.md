@@ -79,7 +79,7 @@
 5 個樣板（zh-TW 2、en 2、ja 1）全部並列比對、任一命中即算觀戰：zh-TW 86、en 113、ja 120 張 fixture（觀戰 34 張）觀戰畫格 34/34 命中、非觀戰 285 張 **0 誤判**（含跨語言）。
 黃金短片（舊版 226 秒）：觀戰中的 136.0 s 擊倒正確標為 `spectating`。限制：日文樣板與其 fixture 同源（test_JP）；真實長錄影的誤判率沒有逐片量測。
 
-### 黃金短片（`APEXHL_GOLDEN_VIDEO`，舊版）
+### 黃金短片（`ADITOR_GOLDEN_VIDEO`，舊版）
 
 expected.json 的 knock／助攻 12 筆中的 9 筆（elim、squad_wipe 不在範圍）全部找到；額外 4 筆（39.0、98.25、166.5 敵方小隊已消滅，138.5 小隊抹殺）是舊版橫幅的已知誤報，列在測試的 `KNOWN_EXTRA`。
 
@@ -169,8 +169,8 @@ ja 獨立擊殺改成「骷髏右緣到關鍵字左緣」取名字後，test_JP 
 
 ### 4. 驗收（held-out）結果
 
-指令：`python -m apexhl analyze <影片> --profile-dir templates/<lang|空=auto> --cache-dir ... --out ...`（工作樹引擎，
-GPU 路徑，jobs 自動）。輸出 JSON 在 `D:\Develop\apexhl-samples\multilang\fixml\out\`。
+指令：`python -m aditor analyze <影片> --profile-dir templates/<lang|空=auto> --cache-dir ... --out ...`（工作樹引擎，
+GPU 路徑，jobs 自動）。輸出 JSON 在 `D:\Develop\aditor-samples\multilang\fixml\out\`。
 
 | 組合 | 事件 | knock | assist_knock | assist_elim | elim | squad_wipe | 計入 | 重複 | 觀戰區間 | 牆鐘 |
 |---|---|---|---|---|---|---|---|---|---|---|
@@ -237,7 +237,7 @@ Apex 有 4 種色盲模式（關閉／紅色盲／綠色盲／藍色盲）；紅
 
 ### 4c. Fix-ML-2：事件追蹤、同敵人連結、助攻子類型（驗收錄影只量測、不調參）
 
-修改內容見 `engine/apexhl/events.py`（run 內代表指紋、同敵人連結、助攻類型多數決）與 `engine/apexhl/detect.py`（`pick_assist_sub`）。
+修改內容見 `engine/aditor/events.py`（run 內代表指紋、同敵人連結、助攻類型多數決）與 `engine/aditor/detect.py`（`pick_assist_sub`）。
 前後對照（baseline＝Fix-ML-1 完成時的 committed 引擎；after＝本批提交；全部是 `analyze --profile-dir templates/<lang>` 實跑的 JSON）：
 
 | 片／profile | 事件 前→後 | 計入 前→後 | 標為重複 前→後 | 說明 |
@@ -282,7 +282,7 @@ test-TC：assist_elim 42 → 16（其餘 26 筆改判 assist_knock／合併）�
 ```
 cd engine
 .venv/Scripts/python -m pytest -q            # 含 test_detect_multilang／test_zh_regression／test_auto_language
-.venv/Scripts/python -m apexhl analyze C:/Users/wluis/Videos/test-ENG.mp4 --profile-dir ../templates/en --cache-dir <dir> --out <json>
+.venv/Scripts/python -m aditor analyze C:/Users/wluis/Videos/test-ENG.mp4 --profile-dir ../templates/en --cache-dir <dir> --out <json>
 ```
 
 fixture 的建置腳本（解碼、標註清單、遮罩等價壓縮）與分布量測腳本在評估暫存目錄；標註清單以事件為單位列在 `engine/tests/fixtures/<lang>/labels.json`

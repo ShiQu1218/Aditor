@@ -31,9 +31,9 @@ beforeEach(() => {
     savedEnv[k] = process.env[k]
     delete process.env[k]
   }
-  outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'apexhl-out-'))
-  pidDir = fs.mkdtempSync(path.join(os.tmpdir(), 'apexhl-pid-'))
-  tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'apexhl-tmp-'))
+  outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'aditor-out-'))
+  pidDir = fs.mkdtempSync(path.join(os.tmpdir(), 'aditor-pid-'))
+  tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'aditor-tmp-'))
   process.env.FAKE_FFMPEG_PID_DIR = pidDir
 })
 

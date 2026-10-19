@@ -6,7 +6,7 @@ export const i18n: Messages['i18n'] = {
     enable: '开启',
     dismiss: '不用了'
   },
-  appTitle: 'Apex Highlighter',
+  appTitle: 'Aditor',
   nav: {
     library: '视频库',
     viewer: '查看器',

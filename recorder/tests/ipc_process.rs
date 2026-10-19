@@ -1,4 +1,4 @@
-//! 驗證實際 apexrec 子程序的 stdin／stdout JSON-lines 與 EOF 結束行為。
+//! 驗證實際 aditorrec 子程序的 stdin／stdout JSON-lines 與 EOF 結束行為。
 
 use std::io::Write;
 use std::process::{Command, Stdio};
@@ -7,7 +7,7 @@ use serde_json::{json, Value};
 
 #[test]
 fn executable_replies_with_json_only_and_exits_on_stdin_eof() {
-    let mut child = Command::new(env!("CARGO_BIN_EXE_apexrec"))
+    let mut child = Command::new(env!("CARGO_BIN_EXE_aditorrec"))
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())

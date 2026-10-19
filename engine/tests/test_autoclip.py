@@ -1,7 +1,7 @@
 import pytest
 
-from apexhl.autoclip import auto_clips
-from apexhl.models import AutoClipParams, Clip, Event
+from aditor.autoclip import auto_clips
+from aditor.models import AutoClipParams, Clip, Event
 
 
 def make_event(

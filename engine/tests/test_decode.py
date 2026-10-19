@@ -1,7 +1,7 @@
 import pytest
 
-from apexhl import decode
-from apexhl.decode import FrameStream
+from aditor import decode
+from aditor.decode import FrameStream
 from conftest import make_video
 
 
@@ -112,7 +112,7 @@ def test_build_input_args_av1_hwaccel_before_ss_when_start_positive():
 def _av1_clip(tmp_path, seconds=1.0):
     """以 libsvtav1 編一段 AV1 測試影片；沒有 AV1 編碼器時跳過測試。"""
     import subprocess
-    from apexhl import ffbin
+    from aditor import ffbin
     ff = ffbin.ffmpeg()
     enc = subprocess.run([ff, "-hide_banner", "-encoders"], capture_output=True).stdout.decode(errors="replace")
     if "libsvtav1" not in enc:
@@ -185,7 +185,7 @@ def test_hw_failure_mid_stream_continues_in_software_on_the_same_time_grid(tmp_p
 
 def _nvenc_10bit(tmp_path):
     import subprocess
-    from apexhl import ffbin
+    from aditor import ffbin
     out = tmp_path / "t10.mp4"
     r = subprocess.run([ffbin.ffmpeg(), "-v", "error", "-y", "-f", "lavfi", "-i",
                         "testsrc2=size=1920x1080:rate=60:duration=2", "-pix_fmt", "p010le",

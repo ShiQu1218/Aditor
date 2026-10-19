@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import fs from 'fs'
 import path from 'path'
-import { apexrecCommand, liveEngineCommand, sceneDir } from './paths'
+import { aditorrecCommand, liveEngineCommand, sceneDir } from './paths'
 
 describe('liveEngineCommand', () => {
   const root = path.resolve(__dirname, '../../..')
@@ -14,20 +14,20 @@ describe('liveEngineCommand', () => {
 
   it('開發：同一個 venv Python，子指令改為 live；場景範本在 templates/scene', () => {
     expect(liveEngineCommand(false)).toEqual({
-      command: path.join(root, 'engine/.venv/Scripts/python.exe'), args: ['-m', 'apexhl', 'live'],
+      command: path.join(root, 'engine/.venv/Scripts/python.exe'), args: ['-m', 'aditor', 'live'],
       env: { PYTHONPATH: path.join(root, 'engine') }
     })
     expect(sceneDir(false)).toBe(path.join(root, 'templates/scene'))
   })
 
-  it('打包：resources 下的 apexhl.exe live', () => {
+  it('打包：resources 下的 aditor.exe live', () => {
     resources.resourcesPath = path.resolve('installed/resources')
-    expect(liveEngineCommand(true)).toEqual({ command: path.join(resources.resourcesPath, 'engine/apexhl/apexhl.exe'), args: ['live'] })
+    expect(liveEngineCommand(true)).toEqual({ command: path.join(resources.resourcesPath, 'engine/aditor/aditor.exe'), args: ['live'] })
     expect(sceneDir(true)).toBe(path.join(resources.resourcesPath, 'templates/scene'))
   })
 })
 
-describe('apexrecCommand', () => {
+describe('aditorrecCommand', () => {
   const root = path.resolve(__dirname, '../../..')
   const resources = process as unknown as { resourcesPath?: string }
   const originalResources = resources.resourcesPath
@@ -42,23 +42,23 @@ describe('apexrecCommand', () => {
   it('uses the release recorder and prepends the development DLL directory', () => {
     const exists = vi.spyOn(fs, 'existsSync').mockReturnValue(true)
     vi.stubEnv('PATH', 'existing-tools')
-    expect(apexrecCommand(false)).toEqual({
-      command: path.join(root, 'recorder/target/release/apexrec.exe'), args: [],
+    expect(aditorrecCommand(false)).toEqual({
+      command: path.join(root, 'recorder/target/release/aditorrec.exe'), args: [],
       env: { PATH: `${path.join(root, 'build/ffmpeg/bin')}${path.delimiter}existing-tools` }
     })
-    expect(exists).toHaveBeenCalledWith(path.join(root, 'recorder/target/release/apexrec.exe'))
+    expect(exists).toHaveBeenCalledWith(path.join(root, 'recorder/target/release/aditorrec.exe'))
   })
 
   it('falls back to debug without requiring a recorder build in the worktree', () => {
     vi.spyOn(fs, 'existsSync').mockReturnValue(false)
-    expect(apexrecCommand(false).command).toBe(path.join(root, 'recorder/target/debug/apexrec.exe'))
+    expect(aditorrecCommand(false).command).toBe(path.join(root, 'recorder/target/debug/aditorrec.exe'))
   })
 
   it('uses the packaged FFmpeg DLL directory without probing local executables', () => {
     resources.resourcesPath = path.resolve('installed/resources')
     const exists = vi.spyOn(fs, 'existsSync')
-    expect(apexrecCommand(true)).toEqual({
-      command: path.join(resources.resourcesPath, 'ffmpeg/bin/apexrec.exe'), args: []
+    expect(aditorrecCommand(true)).toEqual({
+      command: path.join(resources.resourcesPath, 'ffmpeg/bin/aditorrec.exe'), args: []
     })
     expect(exists).not.toHaveBeenCalled()
   })

@@ -140,7 +140,7 @@ impl Backend for Recorder {
             let active = Arc::new(AtomicBool::new(true));
             let worker_active = active.clone();
             let worker = thread::Builder::new()
-                .name("apexrec-session".into())
+                .name("aditorrec-session".into())
                 .spawn(move || {
                     let mut guard = WorkerGuard {
                         active: worker_active,
@@ -290,7 +290,7 @@ struct Session {
     last_stats: Instant,
     previous: EncodeStats,
 }
-/// 目錄裡是否已有 apexrec 寫出的檔案（init、索引、session.json 或段落）。
+/// 目錄裡是否已有 aditorrec 寫出的檔案（init、索引、session.json 或段落）。
 fn has_recorder_output(dir: &Path) -> Result<bool> {
     for entry in fs::read_dir(dir).context("讀取錄影目錄失敗")? {
         let name = entry.context("讀取錄影目錄失敗")?.file_name();
@@ -466,7 +466,7 @@ impl Session {
                 fps,
                 codec,
                 audio: session.audio.is_some(),
-                apexrec_version: env!("CARGO_PKG_VERSION").into(),
+                aditorrec_version: env!("CARGO_PKG_VERSION").into(),
             },
         )
         .map_err(|e| failure(ErrorCode::Internal, e))?;
@@ -948,7 +948,7 @@ mod tests {
 
     #[test]
     fn app_metadata_is_allowed_but_recorder_output_is_not() {
-        let dir = std::env::temp_dir().join(format!("apexrec-out-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("aditorrec-out-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
         assert!(!has_recorder_output(&dir).unwrap());

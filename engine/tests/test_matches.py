@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from apexhl.matches import Match, MatchTracker, _video_frames, analyze_matches
-from apexhl.scene import SceneFrame
+from aditor.matches import Match, MatchTracker, _video_frames, analyze_matches
+from aditor.scene import SceneFrame
 
 FIXTURES = Path(__file__).parent / "fixtures" / "matches"
 TRUTH = json.loads((FIXTURES / "truth.json").read_text(encoding="utf-8"))
@@ -249,14 +249,14 @@ def test_invalid_fps_rejected_before_probe(fps):
 
 
 def test_no_video_cli_error_has_no_partial_json(tmp_path):
-    result = subprocess.run([sys.executable, "-m", "apexhl", "matches", str(tmp_path / "missing.mp4")],
+    result = subprocess.run([sys.executable, "-m", "aditor", "matches", str(tmp_path / "missing.mp4")],
                             capture_output=True)
     assert result.returncode == 1 and result.stdout == b""
     assert "錯誤" in result.stderr.decode("utf-8")
 
 
 def test_cli_passes_options_and_outputs_json(monkeypatch, capsys):
-    from apexhl import __main__, matches
+    from aditor import __main__, matches
 
     def fake(path, **kw):
         assert path == "clip.mp4"
@@ -272,7 +272,7 @@ def test_cli_passes_options_and_outputs_json(monkeypatch, capsys):
 
 
 def _fake_decoder(monkeypatch, outputs):
-    from apexhl import matches
+    from aditor import matches
 
     calls, procs = [], []
 
@@ -328,7 +328,7 @@ def test_early_generator_close_terminates_decoder(monkeypatch):
 
 @pytest.mark.parametrize("data,rc", [(b"bad", 0), (b"", 1)])
 def test_decoder_failures_are_not_successful_partial_results(monkeypatch, data, rc):
-    from apexhl.decode import DecodeError
+    from aditor.decode import DecodeError
 
     _fake_decoder(monkeypatch, [(data, rc)])
     with pytest.raises(DecodeError):
@@ -337,7 +337,7 @@ def test_decoder_failures_are_not_successful_partial_results(monkeypatch, data, 
 
 @pytest.mark.parametrize("offset,vfr", [(0, False), (5, False), (0, True)])
 def test_real_scene_decoder_time_grid(tmp_path, offset, vfr):
-    from apexhl import ffbin
+    from aditor import ffbin
 
     video = tmp_path / "場景.mkv"
     filters = "drawbox=x=0:y=0:w=iw:h=ih:color=white:t=fill:enable='gte(t,1)'"
@@ -359,12 +359,12 @@ def test_real_scene_decoder_time_grid(tmp_path, offset, vfr):
 @pytest.mark.timeout(300)
 @pytest.mark.parametrize("name", list(TRUTH))
 def test_recording_acceptance(name):
-    root = Path(os.environ.get("APEXHL_MATCH_DIR", "E:/Apex_highlighter_clip"))
+    root = Path(os.environ.get("ADITOR_MATCH_DIR", "E:/Apex_highlighter_clip"))
     video = root / name
     if not video.is_file():
         pytest.skip(f"未提供對局驗收影片：{video}")
     # 使用真實 CLI／ffbin／串流狀態機，不以預存場景取代解碼。
-    result = subprocess.run([sys.executable, "-m", "apexhl", "matches", str(video), "--timeline"],
+    result = subprocess.run([sys.executable, "-m", "aditor", "matches", str(video), "--timeline"],
                             capture_output=True, timeout=280)
     assert result.returncode == 0, result.stderr.decode("utf-8", errors="replace")
     got = json.loads(result.stdout)

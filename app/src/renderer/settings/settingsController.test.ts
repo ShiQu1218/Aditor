@@ -11,7 +11,7 @@ function makeApi(over: { set?: SetFn; initial?: Settings } = {}) {
   const api: SettingsApi = {
     settings: {
       get: async () => current,
-      suggestStorageRoot: async () => 'D:/Videos/Apex Highlighter',
+      suggestStorageRoot: async () => 'D:/Videos/Aditor',
       set:
         over.set ??
         (async (partial) => {
@@ -171,7 +171,7 @@ describe('SettingsController', () => {
 
   test('start loads the suggested storage root; it is refreshed after a successful change', async () => {
     const { c, api } = await started()
-    expect(c.getState().suggestedStorageRoot).toBe('D:/Videos/Apex Highlighter')
+    expect(c.getState().suggestedStorageRoot).toBe('D:/Videos/Aditor')
     api.settings.suggestStorageRoot = async () => 'D:/Videos'
     await c.pickStorageRoot()
     expect(c.getState().suggestedStorageRoot).toBe('D:/Videos')

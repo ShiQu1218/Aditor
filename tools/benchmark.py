@@ -18,8 +18,8 @@ DEFAULT_PROFILE = Path(__file__).resolve().parents[1] / "templates" / "icons"
 
 def run_once(video: str, profile, seconds: float, start: float, hwaccel: bool,
              codec: str | None = None) -> dict:
-    from apexhl.decode import FrameStream
-    from apexhl.detect import Detector
+    from aditor.decode import FrameStream
+    from aditor.detect import Detector
 
     detector = Detector(profile, 1.0)
     stream = FrameStream(video, profile, start=start, hwaccel=hwaccel, codec=codec)
@@ -48,8 +48,8 @@ def run_once(video: str, profile, seconds: float, start: float, hwaccel: bool,
 def run_segments(video: str, profile, seconds: float, start: float, jobs: int,
                  codec: str | None = None) -> dict:
     from concurrent.futures import ThreadPoolExecutor
-    from apexhl.decode import FrameStream
-    from apexhl.detect import Detector
+    from aditor.decode import FrameStream
+    from aditor.detect import Detector
 
     seg = seconds / jobs
 
@@ -89,9 +89,9 @@ def main(argv: list[str] | None = None) -> int:
     a = ap.parse_args(argv)
     for s in (sys.stdout, sys.stderr):
         s.reconfigure(encoding="utf-8")
-    from apexhl.profile import load_profile
+    from aditor.profile import load_profile
     profile = load_profile(Path(a.profile_dir))
-    from apexhl.probe import probe
+    from aditor.probe import probe
     codec = probe(a.video).codec
     for hw in ((True,) if a.hw_only else (True, False)):
         if hw and a.jobs > 1:

@@ -13,7 +13,7 @@ export default defineConfig({
   retries: 0,
   reporter: [['list']],
   // 截圖與追蹤只放暫存目錄，不入庫
-  outputDir: path.join(os.tmpdir(), 'apexhl-e2e-results'),
+  outputDir: path.join(os.tmpdir(), 'aditor-e2e-results'),
   globalSetup: require.resolve('./helpers/globalSetup'),
   globalTeardown: require.resolve('./helpers/globalTeardown')
 })

@@ -168,7 +168,7 @@ impl TestWindow {
                     RegisterClassW(&WNDCLASSW {
                         lpfnWndProc: Some(window_proc),
                         hInstance: instance,
-                        lpszClassName: w!("ApexrecB2Test"),
+                        lpszClassName: w!("AditorrecB2Test"),
                         ..Default::default()
                     })
                 });
@@ -176,8 +176,8 @@ impl TestWindow {
                 let mut state = WindowState { black: false };
                 let hwnd = CreateWindowExW(
                     WS_EX_TOPMOST | WS_EX_NOACTIVATE,
-                    w!("ApexrecB2Test"),
-                    w!("apexrec B2 擷取測試"),
+                    w!("AditorrecB2Test"),
+                    w!("aditorrec B2 擷取測試"),
                     WS_POPUP | WS_VISIBLE,
                     40,
                     40,

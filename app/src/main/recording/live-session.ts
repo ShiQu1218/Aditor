@@ -88,7 +88,7 @@ export class LiveSession extends EventEmitter {
 
   get sessionId(): string { return this.options.sessionId }
 
-  /** apexrec `started` 帶共享記憶體名稱；沒有 live 引擎指令時只提供段落播放。 */
+  /** aditorrec `started` 帶共享記憶體名稱；沒有 live 引擎指令時只提供段落播放。 */
   startEngine(shm: string, width: number, height: number): void {
     this.width = width
     this.height = height

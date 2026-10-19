@@ -34,7 +34,7 @@ const messages: MessageTable = {
   '待命（OBS，等待對局）': 'Standby (OBS, waiting for a match)',
   '錄影中（OBS）': 'Recording (OBS)',
   '錄影操作失敗：{error}': 'Recording action failed: {error}',
-  '打開 Apex Highlighter': 'Open Apex Highlighter',
+  '打開 Aditor': 'Open Aditor',
   '停止錄影': 'Stop recording',
   '開始錄影': 'Start recording',
   '無法開始錄影，請確認 Apex 正在執行。': 'Could not start recording. Make sure Apex is running.',

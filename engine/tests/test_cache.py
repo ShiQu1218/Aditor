@@ -1,8 +1,8 @@
 import json
 from pathlib import Path
 
-from apexhl import ENGINE_VERSION, cache
-from apexhl.models import Clip, Event, VideoInfo
+from aditor import ENGINE_VERSION, cache
+from aditor.models import Clip, Event, VideoInfo
 
 
 def ev(id, t, type="knock", source="auto", deleted=False, override=None):
@@ -36,7 +36,7 @@ def test_cache_key_path_only(tmp_path):
 def test_cache_beside_chinese_space(tmp_path):
     v = tmp_path / "Apex 影片" / "a b.mp4"
     p = cache.cache_path(str(v), tmp_path / "c", beside=True)
-    assert p == v.parent / "a b.apexhl.json"
+    assert p == v.parent / "a b.aditor.json"
 
 
 def test_atomic_save_and_load(tmp_path):
@@ -115,7 +115,7 @@ def test_merge_clips_keeps_manual():
 
 def test_caches_from_text_keyword_engine_are_stale():
     """改為圖示偵測（引擎 0.3.0／icons@1）後，舊文字關鍵字法（0.2.0／zh-TW@3 等）的快取一律失效。"""
-    from apexhl import ENGINE_VERSION
+    from aditor import ENGINE_VERSION
     assert ENGINE_VERSION == "0.3.0"
     old_engine = good_doc()
     old_engine["analysis"]["engine_version"] = "0.2.0"

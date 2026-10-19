@@ -1,9 +1,9 @@
-param([string]$FFmpegDir = $env:APEXREC_FFMPEG_DIR)
+param([string]$FFmpegDir = $env:ADITORREC_FFMPEG_DIR)
 # 重建需求：cargo install bindgen-cli --version 0.73.2 --locked，及 LLVM libclang。
 $ErrorActionPreference = 'Stop'
 if (-not $FFmpegDir) { $FFmpegDir = Join-Path $PSScriptRoot '../../build/ffmpeg' }
 $env:LIBCLANG_PATH = 'C:/Program Files/LLVM/bin'
-$header = Join-Path ([IO.Path]::GetTempPath()) ('apexrec-' + [guid]::NewGuid() + '.h')
+$header = Join-Path ([IO.Path]::GetTempPath()) ('aditorrec-' + [guid]::NewGuid() + '.h')
 try {
     @'
 #include <libavcodec/avcodec.h>

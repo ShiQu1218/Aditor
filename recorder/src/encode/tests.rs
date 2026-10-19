@@ -53,7 +53,7 @@ fn params(codec: Codec) -> VideoParams {
 }
 fn temp_dir() -> std::path::PathBuf {
     std::env::temp_dir().join(format!(
-        "apexrec-encode-{}-{}-{}",
+        "aditorrec-encode-{}-{}-{}",
         std::process::id(),
         SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -63,7 +63,7 @@ fn temp_dir() -> std::path::PathBuf {
     ))
 }
 fn executable(name: &str) -> std::path::PathBuf {
-    std::env::var_os("APEXREC_FFMPEG_DIR")
+    std::env::var_os("ADITORREC_FFMPEG_DIR")
         .map(std::path::PathBuf::from)
         .unwrap_or_else(|| Path::new(env!("CARGO_MANIFEST_DIR")).join("../build/ffmpeg"))
         .join("bin")

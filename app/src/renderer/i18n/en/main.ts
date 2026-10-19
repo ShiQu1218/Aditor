@@ -6,7 +6,7 @@ export const i18n: Messages['i18n'] = {
     enable: 'Turn on',
     dismiss: 'No thanks'
   },
-  appTitle: 'Apex Highlighter',
+  appTitle: 'Aditor',
   nav: {
     library: 'Library',
     viewer: 'Viewer',

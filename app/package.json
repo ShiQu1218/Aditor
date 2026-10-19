@@ -1,5 +1,5 @@
 {
-  "name": "apex-highlighter",
+  "name": "aditor",
   "version": "0.1.0",
   "description": "Apex Legends highlight detector and clip editor",
   "main": "./out/main/index.js",

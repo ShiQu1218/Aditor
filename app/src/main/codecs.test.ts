@@ -28,7 +28,7 @@ describe('isAllowedOpenH264Url', () => {
 })
 
 function tmpDir(): string {
-  return fs.mkdtempSync(path.join(os.tmpdir(), 'apexhl-codecs-'))
+  return fs.mkdtempSync(path.join(os.tmpdir(), 'aditor-codecs-'))
 }
 
 describe('downloadOpenH264', () => {

@@ -12,7 +12,7 @@ import type { OnboardingApi } from './onboardingModel'
 import { buttonByText, cleanupMounted, click, flush, installDomShims, mount, press } from '../../../test/dom'
 
 const t = shellI18n.onboarding
-const SUGGESTED = 'D:/Videos/Apex Highlighter'
+const SUGGESTED = 'D:/Videos/Aditor'
 
 function makeApi(over: { set?: (p: unknown) => Promise<unknown>; picked?: string | null } = {}) {
   const set = vi.fn(over.set ?? (async () => ({ settings: DEFAULT_SETTINGS, persisted: true })))

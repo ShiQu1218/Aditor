@@ -1,9 +1,9 @@
-"""圖示偵測原型的離線 run 聚合（已被 apexhl.events.EventTracker 取代，僅供 tools/icon_exp 重現實驗報告）。"""
+"""圖示偵測原型的離線 run 聚合（已被 aditor.events.EventTracker 取代，僅供 tools/icon_exp 重現實驗報告）。"""
 from __future__ import annotations
 
 import numpy as np
 
-from apexhl.icon_detect import IconFrame, IconParams, is_knock
+from aditor.icon_detect import IconFrame, IconParams, is_knock
 
 # ---- 事件層（原型）：逐格結果 → run → 產品類別 ----
 # 逐格「圖示家族」：P＝加分箭頭＋單人（擊倒／助攻擊倒）、G＝加分箭頭＋三人（小隊抹殺、REVIVE…）、

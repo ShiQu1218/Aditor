@@ -1,13 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import fs from 'fs'
 import path from 'path'
-import { ApexrecClient, RecorderError } from './apexrec-client'
+import { AditorrecClient, RecorderError } from './aditorrec-client'
 import { fakeCommand, tempRoot } from './test-support'
 
-const clients: ApexrecClient[] = []
+const clients: AditorrecClient[] = []
 const roots: string[] = []
-function client(mode = 'normal'): ApexrecClient {
-  const value = new ApexrecClient(fakeCommand(mode))
+function client(mode = 'normal'): AditorrecClient {
+  const value = new AditorrecClient(fakeCommand(mode))
   clients.push(value)
   return value
 }
@@ -17,11 +17,11 @@ afterEach(async () => {
   for (const root of roots.splice(0)) fs.rmSync(root, { recursive: true, force: true })
 })
 
-describe('apexrec JSON-lines client', () => {
+describe('aditorrec JSON-lines client', () => {
   it('握手、遞增 id 的亂序回覆、事件及正常停止', async () => {
     const root = tempRoot(); roots.push(root)
     const trace = path.join(root, 'trace.jsonl')
-    const value = new ApexrecClient(fakeCommand('normal', { FAKE_RECORDER_TRACE: trace }))
+    const value = new AditorrecClient(fakeCommand('normal', { FAKE_RECORDER_TRACE: trace }))
     clients.push(value)
     const events: string[] = []
     value.on('event', (ev) => events.push(ev.ev))
@@ -76,7 +76,7 @@ describe('apexrec JSON-lines client', () => {
 
   it('找不到執行檔會回報錯誤', async () => {
     const root = tempRoot(); roots.push(root)
-    const value = new ApexrecClient({ command: path.join(root, 'missing.exe'), args: [] })
+    const value = new AditorrecClient({ command: path.join(root, 'missing.exe'), args: [] })
     clients.push(value)
     await expect(value.hello()).rejects.toMatchObject({ code: 'recorder_spawn' })
   })

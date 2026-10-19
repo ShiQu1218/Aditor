@@ -6,8 +6,8 @@
 import numpy as np
 import pytest
 
-from apexhl.calibrate import AnchorCollector, build_keywords
-from apexhl.detect import Detector, Keywords, PRODUCT_KINDS, _consensus
+from aditor.calibrate import AnchorCollector, build_keywords
+from aditor.detect import Detector, Keywords, PRODUCT_KINDS, _consensus
 from conftest import FIXTURES, lang_labels, load_fixture
 
 

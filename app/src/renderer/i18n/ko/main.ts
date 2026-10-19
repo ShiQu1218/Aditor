@@ -7,7 +7,7 @@ export const i18n: Messages['i18n'] = {
     enable: '켜기',
     dismiss: '괜찮습니다'
   },
-  appTitle: 'Apex Highlighter',
+  appTitle: 'Aditor',
   nav: {
     library: '라이브러리',
     viewer: '뷰어',

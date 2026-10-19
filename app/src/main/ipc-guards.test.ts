@@ -13,7 +13,7 @@ import { cacheFilePath } from './cache-io'
 
 let dir: string
 beforeEach(() => {
-  dir = fs.mkdtempSync(path.join(os.tmpdir(), 'apexhl-guard-'))
+  dir = fs.mkdtempSync(path.join(os.tmpdir(), 'aditor-guard-'))
 })
 afterEach(() => fs.rmSync(dir, { recursive: true, force: true }))
 

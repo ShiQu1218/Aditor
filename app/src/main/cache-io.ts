@@ -33,12 +33,12 @@ export function saveCacheDoc(doc: { cache_path: string }): boolean {
 
 /**
  * 與引擎 cache.py 的 `cache_path(video, cache_dir, beside)` 同一規則：
- * beside ⇒ `<影片資料夾>/<主檔名>.apexhl.json`；否則 sha1(abspath 小寫、斜線正規化) 命名於快取資料夾。
+ * beside ⇒ `<影片資料夾>/<主檔名>.aditor.json`；否則 sha1(abspath 小寫、斜線正規化) 命名於快取資料夾。
  */
 export function cacheFilePath(videoPath: string, cacheDir: string, beside = false): string {
   if (beside) {
     const v = path.parse(videoPath)
-    return path.join(v.dir, `${v.name}.apexhl.json`)
+    return path.join(v.dir, `${v.name}.aditor.json`)
   }
   const key = crypto.createHash('sha1').update(path.resolve(videoPath).toLowerCase().replace(/\\/g, '/')).digest('hex')
   return path.join(cacheDir, `${key}.json`)

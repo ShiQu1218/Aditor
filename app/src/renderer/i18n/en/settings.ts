@@ -61,10 +61,10 @@ export const settingsI18n: Messages['settingsI18n'] = {
     },
     cacheLocation: {
       title: 'Cache location',
-      desc: 'Stored in %APPDATA%\\ApexHighlighter\\cache by default, not in the Outplayed folder. Applies to analyses started afterward. Videos that were already analyzed can still be opened from their original location.',
+      desc: 'Stored in %APPDATA%\\Aditor\\cache by default, not in the Outplayed folder. Applies to analyses started afterward. Videos that were already analyzed can still be opened from their original location.',
       keywords: ['cache', 'location', 'folder', 'appdata', 'storage'],
       appdata: 'App folder',
-      besideVideo: 'Next to video (.apexhl.json)'
+      besideVideo: 'Next to video (.aditor.json)'
     },
     lowPerfMode: {
       title: 'Low performance mode',
@@ -116,7 +116,7 @@ export const settingsI18n: Messages['settingsI18n'] = {
     },
     projectAutosave: {
       title: 'Project autosave',
-      desc: 'Saves to %APPDATA%\\ApexHighlighter\\projects\\ after every change. "Save as" is only for sharing. When this is off, the "unsaved changes" prompt returns.',
+      desc: 'Saves to %APPDATA%\\Aditor\\projects\\ after every change. "Save as" is only for sharing. When this is off, the "unsaved changes" prompt returns.',
       keywords: ['project', 'autosave', 'auto save', 'save']
     },
     storageRoot: {
@@ -163,7 +163,7 @@ export const settingsI18n: Messages['settingsI18n'] = {
       title: 'Version and license',
       desc: 'Licensed under MIT. Includes LGPL-licensed ffmpeg.',
       keywords: ['version', 'license', 'about', 'mit', 'ffmpeg'],
-      version: 'Apex Highlighter {version}',
+      version: 'Aditor {version}',
       licenses: 'Third-party licenses'
     },
     trademark: {

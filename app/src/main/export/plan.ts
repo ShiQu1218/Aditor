@@ -179,7 +179,7 @@ export function buildJobs(
 }
 
 const segmentTag = (): string => Math.random().toString(36).slice(2, 8)
-const segmentPath = (outDir: string, tag: string, idx: number, ext: string): string => path.join(outDir, `.apexhl-seg-${tag}-${idx + 1}${ext}`)
+const segmentPath = (outDir: string, tag: string, idx: number, ext: string): string => path.join(outDir, `.aditor-seg-${tag}-${idx + 1}${ext}`)
 
 /**
  * concat demuxer 清單。有量到每段實際播放終點（見 keyframe.ts 的 parseMediaEnd）就加上 `duration`，

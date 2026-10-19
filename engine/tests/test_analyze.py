@@ -2,9 +2,9 @@ import threading
 
 import pytest
 
-from apexhl import analyze as az
-from apexhl.cache import cache_path, load_cache, save_cache
-from apexhl.decode import FrameStream
+from aditor import analyze as az
+from aditor.cache import cache_path, load_cache, save_cache
+from aditor.decode import FrameStream
 from conftest import make_video
 
 SPANS = [(2.0, 4.5), (10.0, 12.5)]
@@ -129,7 +129,7 @@ def test_progress_throttled_and_final(tmp_path, profile):
 
 
 def test_cancel_during_calibration_leaves_partial(tmp_path, profile):
-    from apexhl.errors import Cancelled
+    from aditor.errors import Cancelled
     assert az.Cancelled is Cancelled
     v = make_video(tmp_path, "plain.mp4", 6)
     cancel = threading.Event()
@@ -209,8 +209,8 @@ def test_cancel_before_keywords_learned_keeps_only_calibration(tmp_path, profile
 @pytest.mark.parametrize("jobs", [1, 3])
 def test_in_pass_keywords_equal_separate_learning_pass(tmp_path, profile, multi_video, monkeypatch, jobs):
     """邊解碼邊學出的關鍵字樣板與獨立掃描（calibrate.learn_keywords）相同，與 jobs 無關。"""
-    from apexhl.calibrate import learn_keywords
-    from apexhl.probe import probe
+    from aditor.calibrate import learn_keywords
+    from aditor.probe import probe
     monkeypatch.setattr(az, "LEARN_SCAN_SECONDS", 45.0)  # 學習範圍跨過 jobs=3 的段界 20、40
     doc = az.analyze(str(multi_video), profile, cache_dir=tmp_path / "c", jobs=jobs)
     sep = learn_keywords(str(multi_video), probe(str(multi_video)), profile, doc["analysis"]["h_scale"],
@@ -372,7 +372,7 @@ def test_parallel_cancel_leaves_segments_and_resume_reruns_only_unfinished(
 
 
 def test_ipc_jobs_validation():
-    from apexhl import ipc
+    from aditor import ipc
     assert ipc._jobs(None) is None and ipc._jobs(3) == 3
     for bad in (0, -1, "2", True, 1.5):
         with pytest.raises(ipc.BadRequest):

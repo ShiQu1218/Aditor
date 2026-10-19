@@ -3,9 +3,9 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "apexhl"
+name = "aditor"
 version = "0.3.0"
-description = "Apex Highlighter 分析引擎"
+description = "Aditor 分析引擎"
 requires-python = ">=3.11"
 # 下限＝目前驗證過的版本（發版建置時的環境）；上限避免大版本破壞
 dependencies = ["opencv-python>=5.0,<6", "numpy>=2.5,<3"]
@@ -15,7 +15,7 @@ dev = ["pytest", "pytest-timeout"]
 tools = ["ccl_chromium_reader"]
 
 [tool.setuptools.packages.find]
-include = ["apexhl*"]
+include = ["aditor*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

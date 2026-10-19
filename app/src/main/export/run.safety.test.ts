@@ -10,8 +10,8 @@ const ffmpeg = { bin: process.execPath, prefixArgs: [FAKE] }
 let outDir: string
 let tempDir: string
 beforeEach(() => {
-  outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'apexhl-safe-out-'))
-  tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'apexhl-safe-tmp-'))
+  outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'aditor-safe-out-'))
+  tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'aditor-safe-tmp-'))
 })
 afterEach(() => {
   for (const d of [outDir, tempDir]) fs.rmSync(d, { recursive: true, force: true })
@@ -37,8 +37,8 @@ describe('runExport never overwrites an existing file (I6)', () => {
 
 describe('runExport intermediates (I9)', () => {
   it('intermediate segments are not reported as outputs and are deleted afterwards', async () => {
-    const seg1 = job('.apexhl-seg-x-1.mp4', { intermediate: true })
-    const seg2 = job('.apexhl-seg-x-2.mp4', { intermediate: true })
+    const seg1 = job('.aditor-seg-x-1.mp4', { intermediate: true })
+    const seg2 = job('.aditor-seg-x-2.mp4', { intermediate: true })
     const final = job('final.mp4')
     const r = await runExport({ ...opts([seg1, seg2, final]), concatListContent: 'x' })
     expect(r.ok).toBe(true)

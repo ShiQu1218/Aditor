@@ -10,7 +10,7 @@ $root = [System.IO.Path]::GetFullPath("$PSScriptRoot\..")
 Set-Location $root
 
 Write-Host "========================================"
-Write-Host " Building Apex Highlighter Application"
+Write-Host " Building Aditor Application"
 Write-Host "========================================"
 
 # 1. Build Engine
@@ -24,10 +24,10 @@ if (-not $SkipEngine) {
 
     $distPath = Join-Path $root "build\engine"
     $workPath = Join-Path $root "build\pyinstaller-temp"
-    $specPath = Join-Path $root "engine\apexhl.spec"
+    $specPath = Join-Path $root "engine\aditor.spec"
 
     & $pyinstaller --distpath $distPath --workpath $workPath -y $specPath
-    $engineExe = Join-Path $distPath "apexhl\apexhl.exe"
+    $engineExe = Join-Path $distPath "aditor\aditor.exe"
     if (-not (Test-Path $engineExe)) {
         throw "Engine build failed: $engineExe not found!"
     }
@@ -55,9 +55,9 @@ if (-not $SkipFfmpeg) {
 
 # 3. 建置錄影器並與 FFmpeg DLL 放在同一層。
 Write-Host "`n[3/5] Building Rust recorder..."
-$previousFfmpegDir = $env:APEXREC_FFMPEG_DIR
+$previousFfmpegDir = $env:ADITORREC_FFMPEG_DIR
 try {
-    $env:APEXREC_FFMPEG_DIR = Join-Path $root "build\ffmpeg"
+    $env:ADITORREC_FFMPEG_DIR = Join-Path $root "build\ffmpeg"
     Push-Location (Join-Path $root "recorder")
     try {
         cargo build --release
@@ -65,9 +65,9 @@ try {
     } finally {
         Pop-Location
     }
-    Copy-Item -LiteralPath (Join-Path $root "recorder\target\release\apexrec.exe") -Destination (Join-Path $root "build\ffmpeg\bin\apexrec.exe") -Force
+    Copy-Item -LiteralPath (Join-Path $root "recorder\target\release\aditorrec.exe") -Destination (Join-Path $root "build\ffmpeg\bin\aditorrec.exe") -Force
 } finally {
-    $env:APEXREC_FFMPEG_DIR = $previousFfmpegDir
+    $env:ADITORREC_FFMPEG_DIR = $previousFfmpegDir
 }
 
 # 4. Build Web & Electron bundles

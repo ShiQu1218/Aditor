@@ -22,8 +22,8 @@ describe('shouldShowOnboarding', () => {
 
 describe('defaultDraft', () => {
   test('錄影預設值取 DEFAULT_RECORDING_SETTINGS（1080p／60 fps／10000 kbps）', () => {
-    expect(defaultDraft('D:/Videos/Apex Highlighter')).toEqual({
-      storageRoot: 'D:/Videos/Apex Highlighter',
+    expect(defaultDraft('D:/Videos/Aditor')).toEqual({
+      storageRoot: 'D:/Videos/Aditor',
       mode: DEFAULT_RECORDING_SETTINGS.mode,
       height: 1080,
       fps: 60,

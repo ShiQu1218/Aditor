@@ -11,10 +11,10 @@ from __future__ import annotations
 
 from bisect import bisect_left
 
-from apexhl.detect import fragment_of as fragment_related
-from apexhl.detect import same_name
-from apexhl.models import Event, FrameResult, NameSig, SpecInterval
-from apexhl.profile import Profile
+from aditor.detect import fragment_of as fragment_related
+from aditor.detect import same_name
+from aditor.models import Event, FrameResult, NameSig, SpecInterval
+from aditor.profile import Profile
 
 STEP = 0.25
 GAP = 0.5          # 提示消失（無命中）≥ 0.5 秒 = 連續 2 格空白才算新事件

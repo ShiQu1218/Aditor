@@ -27,7 +27,7 @@ export const shellI18n: Messages['shellI18n'] = {
     finish: '使い始める',
     saving: '保存中…',
     welcome: {
-      title: 'Apex Highlighter へようこそ',
+      title: 'Aditor へようこそ',
       body: 'いくつかの簡単な設定で使い始められます。表示言語、ファイルの保存場所、録画方法を選んでください。あとから「設定」でいつでも変更できます。',
       languageLabel: '表示言語',
       languageAuto: 'システムに合わせる'

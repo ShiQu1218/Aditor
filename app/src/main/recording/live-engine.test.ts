@@ -13,7 +13,7 @@ afterEach(async () => {
 })
 function root(): string { const value = tempRoot(); roots.push(value); return value }
 function engine(mode: string, env: Record<string, string> = {}, extra: Partial<ConstructorParameters<typeof LiveEngine>[0]> = {}): LiveEngine {
-  const value = new LiveEngine({ command: fakeLiveCommand(mode, env), args: ['--shm', 'Local\\apexrec-x', '--profile-dir', 'p'],
+  const value = new LiveEngine({ command: fakeLiveCommand(mode, env), args: ['--shm', 'Local\\aditorrec-x', '--profile-dir', 'p'],
     restartBaseMs: 10, setPriority: () => undefined, ...extra })
   engines.push(value)
   return value
@@ -69,7 +69,7 @@ describe('LiveEngine 程序管理', () => {
     expect(value.snapshot()!.events.map((e) => e.id)).toEqual(['a1000', 'a3500'])
     expect(matches).toHaveBeenLastCalledWith({ ev: 'match_end', t: 3.5, reason: 'lobby' })
     const lines = traceOf(trace)
-    expect(lines[0]).toEqual({ argv: ['--shm', 'Local\\apexrec-x', '--profile-dir', 'p'] })
+    expect(lines[0]).toEqual({ argv: ['--shm', 'Local\\aditorrec-x', '--profile-dir', 'p'] })
     expect(lines).toContainEqual({ stdin: '{"cmd":"stop"}' })
   })
 

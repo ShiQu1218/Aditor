@@ -141,7 +141,7 @@ describe('planAccept (single-card add + Toast undo)', () => {
 
 describe('planSuggestions + mergeSuggestions (real data flow)', () => {
   const settings = { autoSuggestOnOpen: true, autoclip: { n: 3, gap: 20, before: 8, after: 4, max_len: 90 } }
-  // 引擎 analyze 回傳的文件只有手動片段（engine/apexhl/analyze.py）
+  // 引擎 analyze 回傳的文件只有手動片段（engine/aditor/analyze.py）
   const engineDoc = doc({ events: [ev('e1', 100), ev('e2', 105), ev('e3', 110)], clips: [clip('m1', 500, { origin: 'manual', status: 'accepted' })] })
 
   test('load path: auto-place only when enabled and no ai clips; never marks stale', () => {

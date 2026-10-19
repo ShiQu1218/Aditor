@@ -5,7 +5,7 @@ const i18n = {
     enable: '開啟',
     dismiss: '不用了'
   },
-  appTitle: 'Apex Highlighter',
+  appTitle: 'Aditor',
   nav: {
     library: '影片庫',
     viewer: '檢視器',
@@ -458,7 +458,7 @@ const shellI18n = {
     finish: '開始使用',
     saving: '儲存中…',
     welcome: {
-      title: '歡迎使用 Apex Highlighter',
+      title: '歡迎使用 Aditor',
       body: '只要幾個簡單的設定就能開始：選擇介面語言、決定檔案存放的位置、挑選錄影方式。之後都可以在「設定」修改。',
       languageLabel: '介面語言',
       languageAuto: '跟隨系統'
@@ -604,10 +604,10 @@ const settingsI18n = {
     },
     cacheLocation: {
       title: '快取位置',
-      desc: '預設存在 %APPDATA%\\ApexHighlighter\\cache，不寫入 Outplayed 目錄。變更後對之後開始的分析生效；已分析過的影片仍可從原位置開啟。',
+      desc: '預設存在 %APPDATA%\\Aditor\\cache，不寫入 Outplayed 目錄。變更後對之後開始的分析生效；已分析過的影片仍可從原位置開啟。',
       keywords: ['快取', '位置', 'cache', 'appdata'],
       appdata: 'App 資料夾',
-      besideVideo: '影片旁（.apexhl.json）'
+      besideVideo: '影片旁（.aditor.json）'
     },
     lowPerfMode: {
       title: '低效能模式',
@@ -659,7 +659,7 @@ const settingsI18n = {
     },
     projectAutosave: {
       title: '專案自動儲存',
-      desc: '每次修改後自動存到 %APPDATA%\\ApexHighlighter\\projects\\，「另存檔案」只用於分享。關閉後會恢復「未儲存變更」提示。',
+      desc: '每次修改後自動存到 %APPDATA%\\Aditor\\projects\\，「另存檔案」只用於分享。關閉後會恢復「未儲存變更」提示。',
       keywords: ['專案', '自動儲存', 'autosave', '儲存']
     },
     storageRoot: {
@@ -706,7 +706,7 @@ const settingsI18n = {
       title: '版本與授權',
       desc: 'MIT 授權。隨附 LGPL 版 ffmpeg。',
       keywords: ['版本', '授權', '關於', 'license', 'version', 'mit', 'ffmpeg'],
-      version: 'Apex Highlighter {version}',
+      version: 'Aditor {version}',
       licenses: '第三方授權'
     },
     trademark: {
@@ -743,7 +743,7 @@ const recordingI18n = {
   detectionOnly: '即時偵測中（未錄影）',
   rows: {
     autoRecord: { title: '自動錄影', desc: '偵測到 Apex 啟動後自動開始錄影。' },
-    launchAtLogin: { title: '開機啟動並常駐系統匣', desc: '開機時在背景啟動 Apex Highlighter。' },
+    launchAtLogin: { title: '開機啟動並常駐系統匣', desc: '開機時在背景啟動 Aditor。' },
     closeToTray: { title: '關閉視窗時縮到系統匣', desc: '關閉視窗後繼續偵測 Apex 與錄影。' },
     backend: { title: '錄影後端', desc: '選擇負責錄製影片的錄影器，下次開始時生效。' },
     obsHost: { title: 'OBS 主機', desc: 'WebSocket 伺服器的主機名稱或 IP 位址。' },
@@ -783,7 +783,7 @@ const recordingI18n = {
   analysisPerMatch: '每局結束後',
   captureWgc: '視窗擷取（WGC）',
   captureDda: '螢幕擷取（DDA，延遲較低）',
-  capabilitiesUnavailable: '無法取得錄影器能力，請確認 apexrec 已安裝；目前僅提供自動編碼器與預設裝置。',
+  capabilitiesUnavailable: '無法取得錄影器能力，請確認 aditorrec 已安裝；目前僅提供自動編碼器與預設裝置。',
   capabilitiesLoading: '正在取得錄影器能力…',
   currentUnavailable: '目前設定：{value}（未偵測到）',
   statusTitle: '錄影狀態',

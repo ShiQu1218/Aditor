@@ -15,8 +15,8 @@ import cv2
 import numpy as np
 import pytest
 
-from apexhl.detect import name_sig_from_row, name_sig_similarity, read_name_sig, same_name
-from apexhl.profile import load_profile
+from aditor.detect import name_sig_from_row, name_sig_similarity, read_name_sig, same_name
+from aditor.profile import load_profile
 from conftest import FIXTURES, ICON_DIR
 
 DIR = FIXTURES / "colorblind"

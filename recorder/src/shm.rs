@@ -1,6 +1,6 @@
 //! 共享記憶體環形緩衝（任務 B4），Python live 引擎是讀端（規格 §3.3）。
 //!
-//! 具名 file mapping `Local\apexrec-<sessionId>`，所有整數為 little-endian。
+//! 具名 file mapping `Local\aditorrec-<sessionId>`，所有整數為 little-endian。
 //!
 //! ```text
 //! Header（64 bytes）
@@ -58,7 +58,7 @@ pub const SHM_SLOTS: u32 = 16;
 pub const SHM_HEADER_BYTES: usize = 64;
 
 pub fn shm_name(session_id: &str) -> String {
-    format!("Local\\apexrec-{session_id}")
+    format!("Local\\aditorrec-{session_id}")
 }
 
 pub struct ShmWriter {
@@ -476,7 +476,7 @@ mod tests {
 
     #[test]
     fn named_mapping_is_readable_from_another_process() {
-        const NAME_ENV: &str = "APEXREC_B4_TEST_MAPPING";
+        const NAME_ENV: &str = "ADITORREC_B4_TEST_MAPPING";
         let sizes = Sizes::new(layout()).unwrap();
         if let Ok(name) = std::env::var(NAME_ENV) {
             let reader = Reader::open(&name, &sizes);

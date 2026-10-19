@@ -37,7 +37,7 @@ EXPLICIT_MIN_SEGMENT = 5.0  # 明確指定 jobs 時每段至少多長（秒）
 GRID = 0.25
 
 
-Cancelled = Cancelled  # 重新匯出：apexhl.analyze.Cancelled
+Cancelled = Cancelled  # 重新匯出：aditor.analyze.Cancelled
 
 
 def _noop(t: float, duration: float) -> None:

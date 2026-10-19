@@ -16,13 +16,13 @@
 在 `recorder/` 設定以下環境後執行：
 
 ```powershell
-$env:APEXREC_FFMPEG_DIR = 'D:/Develop/Apex_highlighter/build/ffmpeg'
-$env:PATH = 'D:/Develop/Apex_highlighter/build/ffmpeg/bin;' + $env:PATH
+$env:ADITORREC_FFMPEG_DIR = 'D:/Develop/Aditor/build/ffmpeg'
+$env:PATH = 'D:/Develop/Aditor/build/ffmpeg/bin;' + $env:PATH
 cargo fmt --check
 cargo clippy --all-targets -- -D warnings
 cargo test
 cargo build --release
-$env:APEXREC_TEST_EXE = (Resolve-Path target/release/apexrec.exe).Path
+$env:ADITORREC_TEST_EXE = (Resolve-Path target/release/aditorrec.exe).Path
 cargo test --test e2e_recording measure_sixty_seconds_hevc_1440p60 -- --ignored --nocapture
 ```
 
@@ -33,7 +33,7 @@ cargo test --test e2e_recording measure_sixty_seconds_hevc_1440p60 -- --ignored 
 
 ## 六十秒量測
 
-RTX 5080、Ryzen 7 7700（16 個邏輯處理器）；使用 release `apexrec.exe` 擷取自己的 2560×1440 持續重繪 GDI 測試視窗。設定 HEVC auto → `hevc_nvenc`、60 fps、40,000 kbps、預設系統音訊＋麥克風。
+RTX 5080、Ryzen 7 7700（16 個邏輯處理器）；使用 release `aditorrec.exe` 擷取自己的 2560×1440 持續重繪 GDI 測試視窗。設定 HEVC auto → `hevc_nvenc`、60 fps、40,000 kbps、預設系統音訊＋麥克風。
 
 | 指標 | 結果 |
 | --- | ---: |

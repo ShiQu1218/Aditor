@@ -1,4 +1,4 @@
-//! 主程序 ⇄ apexrec 的 JSON-lines 協定（規格 §4.4）。stdin 指令、stdout 事件、stderr 日誌。
+//! 主程序 ⇄ aditorrec 的 JSON-lines 協定（規格 §4.4）。stdin 指令、stdout 事件、stderr 日誌。
 
 use serde::{Deserialize, Serialize};
 

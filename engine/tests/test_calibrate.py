@@ -3,7 +3,7 @@ import cv2
 import numpy as np
 import pytest
 
-from apexhl import calibrate
+from aditor import calibrate
 from conftest import FIXTURES, make_video
 
 
@@ -17,7 +17,7 @@ def test_pick_scale_median_and_snap():
 @pytest.mark.parametrize("scale", [1.0, 0.9, 1.1])
 def test_calibrate_finds_icon_scale_on_synthetic_video(tmp_path, profile, scale):
     """把真實擊倒橫幅縮放後疊到影片上（模擬 HUD 縮放），校準應找回該尺度。"""
-    from apexhl.probe import probe
+    from aditor.probe import probe
     img = cv2.imdecode(np.fromfile(str(FIXTURES / "en" / "pos" / "knock_a002500.png"), np.uint8),
                        cv2.IMREAD_COLOR)[:180]
     h, w = img.shape[:2]
@@ -38,7 +38,7 @@ def test_calibrate_finds_icon_scale_on_synthetic_video(tmp_path, profile, scale)
 
 def test_calibrate_no_hits_returns_one(tmp_path, profile):
     from conftest import make_video
-    from apexhl.models import VideoInfo
+    from aditor.models import VideoInfo
     p = make_video(tmp_path, "v.mp4", 4)
     info = VideoInfo(str(p), 4.0, 1920, 1080, "h264", 0.0, p.stat().st_size, 0.0)
     assert calibrate.calibrate(str(p), info, profile, max_scan_seconds=10) == 1.0
@@ -47,8 +47,8 @@ def test_calibrate_no_hits_returns_one(tmp_path, profile):
 def test_calibrate_cancel_raises_and_closes_stream(tmp_path, profile, monkeypatch):
     import threading
     from conftest import make_video
-    from apexhl.errors import Cancelled
-    from apexhl.models import VideoInfo
+    from aditor.errors import Cancelled
+    from aditor.models import VideoInfo
     p = make_video(tmp_path, "v.mp4", 6)
     info = VideoInfo(str(p), 6.0, 1920, 1080, "h264", 0.0, p.stat().st_size, 0.0)
     closed = []
@@ -68,8 +68,8 @@ def test_calibrate_cancel_raises_and_closes_stream(tmp_path, profile, monkeypatc
 
 def test_calibration_honours_no_hwaccel(tmp_path, profile, monkeypatch):
     """M2：--no-hwaccel 時校準也不得走 GPU。"""
-    from apexhl import calibrate as cal
-    from apexhl.models import VideoInfo
+    from aditor import calibrate as cal
+    from aditor.models import VideoInfo
     seen = []
 
     class Fake:
@@ -90,10 +90,10 @@ def test_calibration_honours_no_hwaccel(tmp_path, profile, monkeypatch):
 def test_learn_keywords_failing_segment_stops_the_others_and_reports_the_real_error(profile, monkeypatch):
     """關鍵字學習切段平行時，一段解碼失敗 → 其他段立刻停止（不必各自掃完 900 秒），且回報的是真正的錯誤。"""
     import time
-    from apexhl import calibrate as cal
-    from apexhl.decode import DecodeError
-    from apexhl.errors import Cancelled
-    from apexhl.models import VideoInfo
+    from aditor import calibrate as cal
+    from aditor.decode import DecodeError
+    from aditor.errors import Cancelled
+    from aditor.models import VideoInfo
 
     stopped = []
 

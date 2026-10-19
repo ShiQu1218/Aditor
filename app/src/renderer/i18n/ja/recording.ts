@@ -26,7 +26,7 @@ export const recordingI18n: Messages['recordingI18n'] = {
   detectionOnly: 'リアルタイム検出中（録画なし）',
   rows: {
     autoRecord: { title: '自動録画', desc: 'Apex の起動を検出すると、自動で録画を開始します。' },
-    launchAtLogin: { title: 'スタートアップで起動し、システムトレイに常駐', desc: 'PC の起動時にバックグラウンドで Apex Highlighter を起動します。' },
+    launchAtLogin: { title: 'スタートアップで起動し、システムトレイに常駐', desc: 'PC の起動時にバックグラウンドで Aditor を起動します。' },
     closeToTray: { title: '閉じるとシステムトレイに格納', desc: 'ウィンドウを閉じても、Apex の検出と録画を続けます。' },
     backend: { title: '録画バックエンド', desc: '動画を録画するレコーダーを選びます。次回の開始時に反映されます。' },
     obsHost: { title: 'OBS ホスト', desc: 'WebSocket サーバーのホスト名または IP アドレス。' },
@@ -66,7 +66,7 @@ export const recordingI18n: Messages['recordingI18n'] = {
   analysisPerMatch: '各試合の終了後',
   captureWgc: 'ウィンドウキャプチャ（WGC）',
   captureDda: '画面キャプチャ（DDA、遅延が少ない）',
-  capabilitiesUnavailable: 'レコーダーの機能を取得できません。apexrec がインストールされているか確認してください。現在は自動エンコーダーと既定デバイスのみ表示しています。',
+  capabilitiesUnavailable: 'レコーダーの機能を取得できません。aditorrec がインストールされているか確認してください。現在は自動エンコーダーと既定デバイスのみ表示しています。',
   capabilitiesLoading: 'レコーダーの機能を取得中…',
   currentUnavailable: '現在の設定：{value}（検出されません）',
   statusTitle: '録画ステータス',

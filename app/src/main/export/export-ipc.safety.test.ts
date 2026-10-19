@@ -11,7 +11,7 @@ let outDir: string
 let srcA: string
 let srcB: string
 beforeEach(() => {
-  root = fs.mkdtempSync(path.join(os.tmpdir(), 'apexhl-ipcs-'))
+  root = fs.mkdtempSync(path.join(os.tmpdir(), 'aditor-ipcs-'))
   outDir = path.join(root, 'out')
   fs.mkdirSync(outDir)
   srcA = path.join(root, 'a.mp4')

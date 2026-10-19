@@ -28,7 +28,7 @@ async function rig(mode = 'session', trusted = false) {
     events: [event(0), event(2), event(5)], matches: mode === 'match' ? [{ start: 0.5, end: 1.5 }] : [] })
   deps.ffmpegPath = ffmpeg!
   deps.addToLibrary = vi.fn(); deps.enqueueAnalysis = vi.fn()
-  deps.liveCachePath = (file) => file + '.apexhl.json'
+  deps.liveCachePath = (file) => file + '.aditor.json'
   return { root, dir, deps, outputPath, original }
 }
 describe.skipIf(!ffmpeg)('OBS 收尾與復原（真實 ffmpeg）', () => {
@@ -36,7 +36,7 @@ describe.skipIf(!ffmpeg)('OBS 收尾與復原（真實 ffmpeg）', () => {
     const r = await rig('session', trusted)
     expect(await finalizeSession(r.dir, r.deps)).toEqual([r.outputPath])
     expect(r.deps.addToLibrary).toHaveBeenCalledWith([r.outputPath])
-    const cache = JSON.parse(fs.readFileSync(r.outputPath + '.apexhl.json', 'utf8'))
+    const cache = JSON.parse(fs.readFileSync(r.outputPath + '.aditor.json', 'utf8'))
     expect(cache.events.map((e: any) => e.t)).toEqual([1, 3])
     expect(r.deps.enqueueAnalysis).toHaveBeenCalledTimes(trusted ? 0 : 1)
     expect(fs.readFileSync(r.outputPath)).toEqual(r.original)
@@ -67,7 +67,7 @@ describe.skipIf(!ffmpeg)('OBS 收尾與復原（真實 ffmpeg）', () => {
     expect(fs.readdirSync(path.join(r.root, 'videos')).filter((f) => f.endsWith('.mp4'))).toEqual([])
     expect(r.deps.addToLibrary).toHaveBeenCalledWith([cut])
     expect(cut).not.toBe(r.outputPath)
-    expect(fs.existsSync(cut + '.apexhl.json')).toBe(true)
+    expect(fs.existsSync(cut + '.aditor.json')).toBe(true)
     expect(fs.readFileSync(r.outputPath)).toEqual(r.original)
     expect(spawnSync(ffmpeg!, ['-v', 'error', '-i', cut, '-f', 'null', '-'], { windowsHide: true }).status).toBe(0)
   })
@@ -96,7 +96,7 @@ describe.skipIf(!ffmpeg)('OBS 收尾與復原（真實 ffmpeg）', () => {
     expect(marker.cuts.map((cut: any) => cut.offset)).toEqual([3, 11])
     const outputs = await finalizeSession(r.dir, r.deps)
     expect(outputs).toEqual(marker.cuts.map((cut: any) => cut.outputPath))
-    const cache = JSON.parse(fs.readFileSync(outputs[0] + '.apexhl.json', 'utf8'))
+    const cache = JSON.parse(fs.readFileSync(outputs[0] + '.aditor.json', 'utf8'))
     expect(cache.events.map((e: any) => e.t)).toEqual([2, 7])
     const firstPts = (stream: string): number => Number(spawnSync(path.join(path.dirname(ffmpeg!), `ffprobe${process.platform === 'win32' ? '.exe' : ''}`),
       ['-v', 'error', '-select_streams', stream, '-show_entries', 'packet=pts_time', '-of', 'csv=p=0', '-read_intervals', '%+#1', outputs[1]],

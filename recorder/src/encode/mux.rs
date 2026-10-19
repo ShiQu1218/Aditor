@@ -281,7 +281,7 @@ mod tests {
 
     #[test]
     fn missing_pts_is_rejected_before_updating_the_timeline() {
-        let dir = std::env::temp_dir().join(format!("apexrec-missing-pts-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("aditorrec-missing-pts-{}", std::process::id()));
         fs::create_dir(&dir).unwrap();
         let (sender, _receiver) = std::sync::mpsc::channel();
         let mut muxer = Muxer {

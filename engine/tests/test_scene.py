@@ -6,7 +6,7 @@ import cv2
 import numpy as np
 import pytest
 
-from apexhl.scene import SCENE_ROIS, SCENE_SIZE, SceneDetector
+from aditor.scene import SCENE_ROIS, SCENE_SIZE, SceneDetector
 
 FIXTURES = Path(__file__).parent / "fixtures" / "matches"
 SCREENS = json.loads((FIXTURES / "screens.json").read_text(encoding="utf-8"))

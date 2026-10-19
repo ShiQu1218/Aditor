@@ -1,4 +1,4 @@
-"""圖示偵測器（apexhl.icon_detect／apexhl.detect.Detector）：逐格行為、反例、名字指紋、觀戰。
+"""圖示偵測器（aditor.icon_detect／aditor.detect.Detector）：逐格行為、反例、名字指紋、觀戰。
 
 fixture 是既有的 en／ja（訓練來源 English.mkv／Japanese.mkv）與 zh-TW（舊版遊戲）畫格；遮罩等價壓縮只保留
 亮或紅的像素，圖示（白／灰）仍在，所以可以當回歸資料。zh-TW fixture 來自舊版本遊戲：加分圖示語意不同，
@@ -9,9 +9,9 @@ import cv2
 import numpy as np
 import pytest
 
-from apexhl.detect import Detector, PRODUCT_KINDS, same_name
-from apexhl.icon_detect import ICON_NAMES, IconDetector, enemy_color_mask
-from apexhl.models import FrameResult
+from aditor.detect import Detector, PRODUCT_KINDS, same_name
+from aditor.icon_detect import ICON_NAMES, IconDetector, enemy_color_mask
+from aditor.models import FrameResult
 from conftest import FIXTURES, ICON_DIR, LANGS, lang_labels, load_fixture
 
 

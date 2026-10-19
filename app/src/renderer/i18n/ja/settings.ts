@@ -62,10 +62,10 @@ export const settingsI18n: Messages['settingsI18n'] = {
     },
     cacheLocation: {
       title: 'キャッシュの場所',
-      desc: '既定では %APPDATA%\\ApexHighlighter\\cache に保存され、Outplayed のフォルダーには書き込みません。変更は以後開始する分析に適用されます。分析済みの動画は元の場所からそのまま開けます。',
+      desc: '既定では %APPDATA%\\Aditor\\cache に保存され、Outplayed のフォルダーには書き込みません。変更は以後開始する分析に適用されます。分析済みの動画は元の場所からそのまま開けます。',
       keywords: ['キャッシュ', '場所', 'cache', 'appdata'],
       appdata: 'アプリのフォルダー',
-      besideVideo: '動画の隣（.apexhl.json）'
+      besideVideo: '動画の隣（.aditor.json）'
     },
     lowPerfMode: {
       title: '低パフォーマンスモード',
@@ -117,7 +117,7 @@ export const settingsI18n: Messages['settingsI18n'] = {
     },
     projectAutosave: {
       title: 'プロジェクトの自動保存',
-      desc: '変更するたびに %APPDATA%\\ApexHighlighter\\projects\\ へ自動保存されます。「名前を付けて保存」は共有用にのみ使われます。オフにすると、「未保存の変更」の確認が再び表示されます。',
+      desc: '変更するたびに %APPDATA%\\Aditor\\projects\\ へ自動保存されます。「名前を付けて保存」は共有用にのみ使われます。オフにすると、「未保存の変更」の確認が再び表示されます。',
       keywords: ['プロジェクト', '自動保存', 'autosave', '保存']
     },
     storageRoot: {
@@ -164,7 +164,7 @@ export const settingsI18n: Messages['settingsI18n'] = {
       title: 'バージョンとライセンス',
       desc: 'MIT ライセンス。LGPL 版の ffmpeg を同梱しています。',
       keywords: ['バージョン', 'ライセンス', '情報', 'license', 'version', 'mit', 'ffmpeg'],
-      version: 'Apex Highlighter {version}',
+      version: 'Aditor {version}',
       licenses: 'サードパーティライセンス'
     },
     trademark: {

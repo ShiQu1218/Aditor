@@ -1,8 +1,8 @@
 """以現行文字偵測器（Detector.detect）對 dump 的每一格做逐格偵測，存 kind/score。用法：text_frames.py LAB:LANG ..."""
 import sys, time, json
 from fr import *
-from apexhl.detect import Detector
-from apexhl.profile import load_profile
+from aditor.detect import Detector
+from aditor.profile import load_profile
 
 TPL = Path(ENGINE).parent / "templates"
 for arg in sys.argv[1:]:

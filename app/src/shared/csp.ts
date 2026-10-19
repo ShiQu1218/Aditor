@@ -28,7 +28,7 @@ export function cspPlugin(): {
   transformIndexHtml: (html: string, ctx: { server?: unknown }) => string
 } {
   return {
-    name: 'apexhl-csp',
+    name: 'aditor-csp',
     transformIndexHtml(html, ctx) {
       if (ctx.server) return html
       return html.replace(/<head>/i, `<head>\n    ${cspMetaTag()}`)

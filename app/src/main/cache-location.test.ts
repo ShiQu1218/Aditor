@@ -13,11 +13,11 @@ describe('cacheFilePath：與引擎 cache_path(video, cache_dir, beside) 同一�
     expect(path.basename(p)).toMatch(/^[0-9a-f]{40}\.json$/)
   })
 
-  it('beside：<影片資料夾>/<主檔名>.apexhl.json（多重點號只去掉最後副檔名）', () => {
+  it('beside：<影片資料夾>/<主檔名>.aditor.json（多重點號只去掉最後副檔名）', () => {
     expect(cacheFilePath('D:/Videos/Apex.2026.mp4', 'C:/cache', true)).toBe(
-      path.join('D:/Videos', 'Apex.2026.apexhl.json')
+      path.join('D:/Videos', 'Apex.2026.aditor.json')
     )
-    expect(cacheFilePath('D:/Videos/a.mp4', 'C:/cache', true)).toBe(path.join('D:/Videos', 'a.apexhl.json'))
+    expect(cacheFilePath('D:/Videos/a.mp4', 'C:/cache', true)).toBe(path.join('D:/Videos', 'a.aditor.json'))
   })
 })
 
@@ -26,7 +26,7 @@ describe('resolveCacheFile：切換設定後舊快取仍可讀取', () => {
   let video: string
   let cdir: string
   beforeEach(() => {
-    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'apexhl-cl-'))
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'aditor-cl-'))
     cdir = path.join(dir, 'cache')
     fs.mkdirSync(cdir)
     video = path.join(dir, 'v.mp4')

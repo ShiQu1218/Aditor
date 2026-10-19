@@ -33,7 +33,7 @@ function isValidId(id: unknown): id is string {
 }
 
 /**
- * `%APPDATA%\ApexHighlighter\projects\<id>.json` 的讀寫者。
+ * `%APPDATA%\Aditor\projects\<id>.json` 的讀寫者。
  * 寫入走暫存檔＋fsync＋rename（原子替換，失敗保留上一版）；
  * 讀取：只有 JSON／格式錯誤才把檔案改名為 `<id>.bak.<時間戳>.json`（不覆蓋、保留最新 3 份）；
  * 暫時性讀取錯誤（EBUSY／EACCES…）不動檔案；較新版本的檔案原樣保留。

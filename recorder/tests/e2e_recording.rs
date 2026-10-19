@@ -102,15 +102,15 @@ impl Window {
                     *CLASS.get_or_init(|| RegisterClassW(&WNDCLASSW {
                         lpfnWndProc: Some(paint),
                         hInstance: instance,
-                        lpszClassName: w!("ApexrecE2E"),
+                        lpszClassName: w!("AditorrecE2E"),
                         ..Default::default()
                     })),
                     0
                 );
                 let hwnd = CreateWindowExW(
                     WS_EX_TOPMOST | WS_EX_NOACTIVATE,
-                    w!("ApexrecE2E"),
-                    w!("apexrec 錄影整合測試"),
+                    w!("AditorrecE2E"),
+                    w!("aditorrec 錄影整合測試"),
                     WS_POPUP | WS_VISIBLE,
                     0,
                     0,
@@ -165,9 +165,9 @@ struct Process {
 }
 impl Process {
     fn open() -> Self {
-        let executable = std::env::var_os("APEXREC_TEST_EXE")
+        let executable = std::env::var_os("ADITORREC_TEST_EXE")
             .map(PathBuf::from)
-            .unwrap_or_else(|| env!("CARGO_BIN_EXE_apexrec").into());
+            .unwrap_or_else(|| env!("CARGO_BIN_EXE_aditorrec").into());
         let mut child = Command::new(executable)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -358,8 +358,8 @@ impl Drop for Mapping {
 
 fn ffmpeg(name: &str) -> PathBuf {
     PathBuf::from(
-        std::env::var_os("APEXREC_FFMPEG_DIR")
-            .expect("端對端錄影測試需要設定 APEXREC_FFMPEG_DIR 為含有 bin 的 FFmpeg 根目錄"),
+        std::env::var_os("ADITORREC_FFMPEG_DIR")
+            .expect("端對端錄影測試需要設定 ADITORREC_FFMPEG_DIR 為含有 bin 的 FFmpeg 根目錄"),
     )
     .join("bin")
     .join(format!("{name}.exe"))
@@ -417,7 +417,7 @@ fn verify_recording(dir: &Path, process: &Process, seconds: f64) -> Vec<Value> {
     assert_eq!(meta["audio"], true);
     assert_eq!(meta["fps"], 60);
     assert_eq!(meta["codec"], "hevc");
-    assert_eq!(meta["apexrec_version"], env!("CARGO_PKG_VERSION"));
+    assert_eq!(meta["aditorrec_version"], env!("CARGO_PKG_VERSION"));
     let probe = Command::new(ffmpeg("ffprobe"))
         .args([
             "-v",
@@ -477,7 +477,7 @@ fn resources(child: &Child) -> (f64, usize) {
         cb: std::mem::size_of::<PROCESS_MEMORY_COUNTERS>() as u32,
         ..Default::default()
     };
-    // SAFETY: 只讀取自己建立的 apexrec 子程序；所有輸出結構均有效。
+    // SAFETY: 只讀取自己建立的 aditorrec 子程序；所有輸出結構均有效。
     unsafe {
         let handle = HANDLE(child.as_raw_handle());
         GetProcessTimes(handle, &mut created, &mut exited, &mut kernel, &mut user).unwrap();
@@ -691,7 +691,7 @@ fn cli_records_the_requested_window_and_reports_resources() {
             "-Seconds",
             "2",
             "-ExePath",
-            env!("CARGO_BIN_EXE_apexrec"),
+            env!("CARGO_BIN_EXE_aditorrec"),
             "-OutputDir",
         ])
         .arg(&dir)
@@ -735,13 +735,13 @@ fn audio_start_failure_releases_resources_and_eof_flushes_encoded_tail() {
 }
 
 #[test]
-#[ignore = "60 秒實機資源量測；以 release apexrec 執行並保留 measurement.json"]
+#[ignore = "60 秒實機資源量測；以 release aditorrec 執行並保留 measurement.json"]
 fn measure_sixty_seconds_hevc_1440p60() {
     record(60, true, "wgc");
 }
 
 #[test]
-#[ignore = "60 秒實機資源量測（DDA 擷取整個螢幕）；以 release apexrec 執行並保留 measurement.json"]
+#[ignore = "60 秒實機資源量測（DDA 擷取整個螢幕）；以 release aditorrec 執行並保留 measurement.json"]
 fn measure_sixty_seconds_hevc_1440p60_dda() {
     record(60, true, "dda");
 }

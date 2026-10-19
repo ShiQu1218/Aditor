@@ -1,7 +1,7 @@
 # 對局切分準確度報告（第 4 期離線版 D1）
 
 日期：2026-10-18
-程式：`engine/apexhl/scene.py`（場景外框比對）、`engine/apexhl/matches.py`（串流切分）、CLI `python -m apexhl matches <video>`
+程式：`engine/aditor/scene.py`（場景外框比對）、`engine/aditor/matches.py`（串流切分）、CLI `python -m aditor matches <video>`
 真值：`engine/tests/fixtures/matches/truth.json`（逐 0.25 秒人工判讀，附依據）
 範本：`templates/scene/`（來源見 `templates/scene/PROVENANCE.md`）
 
@@ -30,7 +30,7 @@
 - live 直接轉送 `MatchTracker.feed()`／`finish()` 的事件與 `reason`，沒有原因白名單；`matches` CLI 只輸出區間及選用的場景時間軸，兩者均不需修改介面。新增的 live 測試以既有大廳／HUD 拼圖還原全畫面，穿插黑畫面，經共享記憶體驗證 `hud_resume` 與 EOF 事件。
 - 決策：未知畫面沿用 `other`，不增加場景種類或依賴。現有截圖只涵蓋稀疏時點，無法證明真實錄影的連續 3 秒，因此下列 Alt-Tab 驗證使用完整解碼後的 1 fps 場景串流；原始錄影全程唯讀，沒有複製到專案。
 
-執行環境：在此工作樹的 `engine/`，使用 `D:/Develop/Apex_highlighter/engine/.venv/Scripts/python.exe`，設定 `PYTHONPATH=D:/Develop/Apex_highlighter/.worktrees/hud-start/engine`；已用 `import apexhl; print(apexhl.__file__)` 確認載入此工作樹。未設定 `APEXHL_FFMPEG`。四部影片逐一執行 `python -m apexhl matches <video> --timeline`（預設 1 fps），依 `truth.json` 比較局數及各起訖誤差。
+執行環境：在此工作樹的 `engine/`，使用 `D:/Develop/Aditor/engine/.venv/Scripts/python.exe`，設定 `PYTHONPATH=D:/Develop/Aditor/.worktrees/hud-start/engine`；已用 `import aditor; print(aditor.__file__)` 確認載入此工作樹。未設定 `ADITOR_FFMPEG`。四部影片逐一執行 `python -m aditor matches <video> --timeline`（預設 1 fps），依 `truth.json` 比較局數及各起訖誤差。
 
 重跑結果與上表的局數及起訖誤差完全相同：**6/6 局、0 漏局、0 多切，最大誤差 0.75 秒**。偵測區間依表列順序為 `[22, 965.8)`、`[4, 1089.569333)`、`[0, 1)`／`[1, 193.990667)`、`[0, 11)`／`[11, 1091)`。
 
@@ -44,12 +44,12 @@ import subprocess
 import sys
 from dataclasses import asdict
 from pathlib import Path
-from apexhl.matches import MatchTracker
-from apexhl.scene import SceneFrame
+from aditor.matches import MatchTracker
+from aditor.scene import SceneFrame
 
 video = Path("E:/Apex_highlighter_clip/大廳~勝利不退出直接下一場.mp4")
 doc = json.loads(subprocess.check_output([
-    sys.executable, "-m", "apexhl", "matches", str(video), "--timeline",
+    sys.executable, "-m", "aditor", "matches", str(video), "--timeline",
 ]))
 tracker = MatchTracker()
 for t, kind in doc["timeline"]:
@@ -64,12 +64,12 @@ assert tracker.events[0].reason == "hud_resume"
 測試先行：先確認新增的 HUD 恢復測試在實作前失敗，再實作並執行下列檢查（同樣從 `engine/` 使用上述 venv）：
 
 - `python -m pytest tests/test_matches.py tests/test_live.py -q -k 'not recording and not golden' --tb=short`：**69 passed、9 deselected**，涵蓋短暫 HUD、未知畫面重算、不同取樣週期的斷樣、恰好 `_max_gap`、過期開局、下一局恢復與 live 事件轉送。
-- `python -m pytest ../engine/tests -q --tb=short`（等同工作樹根目錄的 `python -m pytest engine/tests -q`）：**390 passed、3 skipped、1 xfailed**，耗時 427.30 秒。3 項略過皆為未設定 `APEXHL_GOLDEN_VIDEO`；預期失敗為既有的舊賽季「敵方小隊已消滅 +50」圖示限制。
+- `python -m pytest ../engine/tests -q --tb=short`（等同工作樹根目錄的 `python -m pytest engine/tests -q`）：**390 passed、3 skipped、1 xfailed**，耗時 427.30 秒。3 項略過皆為未設定 `ADITOR_GOLDEN_VIDEO`；預期失敗為既有的舊賽季「敵方小隊已消滅 +50」圖示限制。
 - `git diff --check`：通過。
 
 ## live 模式需要的輸入
 
-`classify` 需要 ≥ 640×360 的全畫面灰階，apexrec 現有的 320×180 thumb **不夠**。各判斷區域與最低尺寸列在 `scene.py` 的 `SCENE_ROIS`（基準座標、最低像素尺寸、1 fps）。第 3／4 期接 live 時，二選一：把 thumb 提高到 640×360（GRAY8，230 KB/s @1 fps），或在共享記憶體 v2 加入 `SCENE_ROIS` 各區塊。前者最簡單，讀回量仍遠低於 0.5 MB/s 預算。
+`classify` 需要 ≥ 640×360 的全畫面灰階，aditorrec 現有的 320×180 thumb **不夠**。各判斷區域與最低尺寸列在 `scene.py` 的 `SCENE_ROIS`（基準座標、最低像素尺寸、1 fps）。第 3／4 期接 live 時，二選一：把 thumb 提高到 640×360（GRAY8，230 KB/s @1 fps），或在共享記憶體 v2 加入 `SCENE_ROIS` 各區塊。前者最簡單，讀回量仍遠低於 0.5 MB/s 預算。
 
 ## 限制
 

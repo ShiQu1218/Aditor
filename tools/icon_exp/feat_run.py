@@ -2,7 +2,7 @@
 import sys, time, os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from fr import *
-from apexhl.icon_detect import IconDetector, IconParams, IconFrame
+from aditor.icon_detect import IconDetector, IconParams, IconFrame
 from dataclasses import fields
 
 lab = sys.argv[1]; tag = sys.argv[2] if len(sys.argv) > 2 else "diag"

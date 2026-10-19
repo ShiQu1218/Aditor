@@ -1,8 +1,8 @@
 import numpy as np
 import pytest
 
-from apexhl.derive import derive, is_counted, sig_similar
-from apexhl.models import Event, NameSig, SpecInterval
+from aditor.derive import derive, is_counted, sig_similar
+from aditor.models import Event, NameSig, SpecInterval
 
 
 def make_sig(seed: int, width: int = 60) -> str:

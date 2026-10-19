@@ -21,7 +21,7 @@ interface Pending {
   timer: ReturnType<typeof setTimeout>
 }
 
-export class ApexrecClient extends EventEmitter {
+export class AditorrecClient extends EventEmitter {
   private proc: ChildProcessWithoutNullStreams | null = null
   private pending = new Map<number, Pending>()
   private seq = 0

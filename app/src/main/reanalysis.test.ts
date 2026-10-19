@@ -8,14 +8,14 @@ import type { EngineClient } from './engine'
 import { cacheFilePath, saveCacheDoc } from './cache-io'
 import { capturePriorCache, clipsBackupPath, readClipsBackup } from './reanalysis'
 
-const V1 = path.join(os.tmpdir(), 'apexhl-ra', 'v1.mp4')
+const V1 = path.join(os.tmpdir(), 'aditor-ra', 'v1.mp4')
 const tick = (ms = 30): Promise<void> => new Promise((r) => setTimeout(r, ms))
 
 describe('clips backup across cancelled re-analysis (F2)', () => {
   let dir: string
   let lib: Library
   beforeEach(() => {
-    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'apexhl-ra-'))
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'aditor-ra-'))
     lib = new Library(path.join(dir, 'library.json'))
     lib.add([V1])
   })
@@ -221,7 +221,7 @@ describe('clips backup across cancelled re-analysis (F2)', () => {
 
 describe('re-analysis with cacheLocation=besideVideo', () => {
   it('capturePriorCache(beside) reads/backs up the cache beside the video, not the appdata one', () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'apexhl-rb-'))
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'aditor-rb-'))
     const video = path.join(dir, 'videos', 'x.mp4')
     const beside = cacheFilePath(video, path.join(dir, 'cache'), true)
     const mk = (p: string, id: string): void => {

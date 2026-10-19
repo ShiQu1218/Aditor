@@ -35,7 +35,7 @@ export const TEST_SETTINGS = {
 export interface AppHandle {
   electronApp: ElectronApplication
   page: Page
-  /** appData 根（相當於 %APPDATA%）；ApexHighlighter 資料夾在其下 */
+  /** appData 根（相當於 %APPDATA%）；Aditor 資料夾在其下 */
   root: string
   dataDir: string
   settingsPath: string
@@ -74,8 +74,8 @@ export function isAlive(pid: number): boolean {
 
 export async function launchApp(opts: LaunchOpts = {}): Promise<AppHandle> {
   const ownsRoot = opts.ownRoot ?? !opts.root
-  const root = opts.root ?? fs.mkdtempSync(path.join(os.tmpdir(), 'apexhl-e2e-app-'))
-  const dataDir = path.join(root, 'ApexHighlighter')
+  const root = opts.root ?? fs.mkdtempSync(path.join(os.tmpdir(), 'aditor-e2e-app-'))
+  const dataDir = path.join(root, 'Aditor')
   const settingsPath = path.join(dataDir, 'settings.json')
   if (!fs.existsSync(settingsPath)) {
     fs.mkdirSync(dataDir, { recursive: true })
@@ -85,13 +85,13 @@ export async function launchApp(opts: LaunchOpts = {}): Promise<AppHandle> {
   const env: Record<string, string> = {}
   for (const [k, v] of Object.entries(process.env)) if (v !== undefined && k !== 'ELECTRON_RUN_AS_NODE') env[k] = v
   Object.assign(env, {
-    APEXHL_E2E: '1',
-    APEXHL_APPDATA: root,
-    APEXHL_ENGINE: 'fake',
-    APEXHL_E2E_NODE: process.execPath,
+    ADITOR_E2E: '1',
+    ADITOR_APPDATA: root,
+    ADITOR_ENGINE: 'fake',
+    ADITOR_E2E_NODE: process.execPath,
     FAKE_ENGINE_STEP_MS: '25',
-    ...(ffmpeg ? { APEXHL_FFMPEG: ffmpeg } : {}),
-    ...(opts.fakeExport ? { APEXHL_E2E_FAKE_FFMPEG: '1' } : {}),
+    ...(ffmpeg ? { ADITOR_FFMPEG: ffmpeg } : {}),
+    ...(opts.fakeExport ? { ADITOR_E2E_FAKE_FFMPEG: '1' } : {}),
     ...opts.env
   })
   // eslint-disable-next-line @typescript-eslint/no-var-requires

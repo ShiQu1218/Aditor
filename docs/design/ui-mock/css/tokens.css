@@ -1,4 +1,4 @@
-/* Apex Highlighter — design tokens (可直接搬進 app/src/renderer/styles/tokens.css)
+/* Aditor — design tokens (可直接搬進 app/src/renderer/styles/tokens.css)
    來源與依據見 docs/superpowers/specs/2026-10-16-ui-redesign.md §1、§4 */
 :root {
   /* 表面（Outplayed 基底 #131313，疊白色透明度形成層級） */

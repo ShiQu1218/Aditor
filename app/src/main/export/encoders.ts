@@ -62,7 +62,7 @@ export function testEncoder(
   })
 }
 
-export async function detectEncoders(ffmpegBin = process.env.APEXHL_FFMPEG || 'ffmpeg'): Promise<string[]> {
+export async function detectEncoders(ffmpegBin = process.env.ADITOR_FFMPEG || 'ffmpeg'): Promise<string[]> {
   const candidates: string[] = await new Promise((resolve) => {
     const proc = spawn(ffmpegBin, ['-encoders'])
     let stdout = ''

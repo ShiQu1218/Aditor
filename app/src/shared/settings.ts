@@ -6,7 +6,7 @@ import type { LanguageSetting } from './locale'
 export const SETTINGS_VERSION = 1
 
 /**
- * 應用程式設定（`%APPDATA%\ApexHighlighter\settings.json`）。
+ * 應用程式設定（`%APPDATA%\Aditor\settings.json`）。
  * 欄位語意見 spec §3.3；數值範圍由 main 的 `set`／`migrateSettings` 驗證（spec §3.2）。
  */
 export interface Settings {

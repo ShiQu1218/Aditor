@@ -12,10 +12,10 @@ export interface FixtureSet {
   videos: Array<{ path: string; title: string; seconds: number }>
 }
 
-/** 依 APEXHL_FFMPEG、再依 PATH 尋找 ffmpeg；找不到回 null。 */
+/** 依 ADITOR_FFMPEG、再依 PATH 尋找 ffmpeg；找不到回 null。 */
 export function findFfmpeg(): string | null {
   const candidates: string[] = []
-  if (process.env.APEXHL_FFMPEG) candidates.push(process.env.APEXHL_FFMPEG)
+  if (process.env.ADITOR_FFMPEG) candidates.push(process.env.ADITOR_FFMPEG)
   candidates.push('ffmpeg')
   for (const c of candidates) {
     const r = spawnSync(c, ['-version'], { windowsHide: true })
@@ -37,9 +37,9 @@ const SPECS = [
 
 /** 以 testsrc2（H.264＋靜音 AAC）產生 3 支 10–20 秒的合成影片；不使用任何使用者影片。 */
 export function makeFixtures(): FixtureSet {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'apexhl-e2e-fixtures-'))
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'aditor-e2e-fixtures-'))
   const ffmpeg = findFfmpeg()
-  if (!ffmpeg) return { ok: false, reason: '找不到 ffmpeg（PATH 或 APEXHL_FFMPEG）：需要影片的 E2E 案例略過', dir, ffmpeg: null, videos: [] }
+  if (!ffmpeg) return { ok: false, reason: '找不到 ffmpeg（PATH 或 ADITOR_FFMPEG）：需要影片的 E2E 案例略過', dir, ffmpeg: null, videos: [] }
   const videos: FixtureSet['videos'] = []
   for (const s of SPECS) {
     const out = path.join(dir, `${s.title}.mp4`)

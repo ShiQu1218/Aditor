@@ -4,7 +4,7 @@ import fs from 'fs'
 
 export function appDataDir(): string {
   const base = process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming')
-  return path.join(base, 'ApexHighlighter')
+  return path.join(base, 'Aditor')
 }
 
 export function cacheDir(): string {
@@ -34,7 +34,7 @@ export function engineCommand(isPackaged: boolean): {
 } {
   if (isPackaged) {
     const resPath = (process as unknown as { resourcesPath?: string }).resourcesPath || path.join(__dirname, '..', '..')
-    const exe = path.join(resPath, 'engine', 'apexhl', 'apexhl.exe')
+    const exe = path.join(resPath, 'engine', 'aditor', 'aditor.exe')
     return {
       command: exe,
       args: ['ipc']
@@ -46,7 +46,7 @@ export function engineCommand(isPackaged: boolean): {
   const pythonExe = path.join(root, 'engine', '.venv', 'Scripts', 'python.exe')
   return {
     command: pythonExe,
-    args: ['-m', 'apexhl', 'ipc'],
+    args: ['-m', 'aditor', 'ipc'],
     env: {
       PYTHONPATH: path.join(root, 'engine')
     }
@@ -59,7 +59,7 @@ export function sceneDir(isPackaged: boolean): string {
 }
 
 /**
- * live 引擎（第 3 期，`apexhl live …`）的啟動方式：與 `engineCommand` 相同的執行檔，子指令改為 `live`。
+ * live 引擎（第 3 期，`aditor live …`）的啟動方式：與 `engineCommand` 相同的執行檔，子指令改為 `live`。
  * 呼叫端再附加 `--shm`／`--profile-dir`／`--scene-dir`。
  */
 export function liveEngineCommand(isPackaged: boolean): {
@@ -71,20 +71,20 @@ export function liveEngineCommand(isPackaged: boolean): {
   return { ...base, args: [...base.args.slice(0, -1), 'live'] }
 }
 
-/** apexrec 與 FFmpeg DLL 同層；開發時優先使用 release，尚未建置時改找 debug。 */
-export function apexrecCommand(isPackaged: boolean): {
+/** aditorrec 與 FFmpeg DLL 同層；開發時優先使用 release，尚未建置時改找 debug。 */
+export function aditorrecCommand(isPackaged: boolean): {
   command: string
   args: string[]
   env?: Record<string, string>
 } {
   if (isPackaged) {
     const root = (process as unknown as { resourcesPath?: string }).resourcesPath || path.join(__dirname, '..', '..')
-    return { command: path.join(root, 'ffmpeg', 'bin', 'apexrec.exe'), args: [] }
+    return { command: path.join(root, 'ffmpeg', 'bin', 'aditorrec.exe'), args: [] }
   }
   const root = path.resolve(__dirname, '../../..')
-  const release = path.join(root, 'recorder', 'target', 'release', 'apexrec.exe')
+  const release = path.join(root, 'recorder', 'target', 'release', 'aditorrec.exe')
   return {
-    command: fs.existsSync(release) ? release : path.join(root, 'recorder', 'target', 'debug', 'apexrec.exe'),
+    command: fs.existsSync(release) ? release : path.join(root, 'recorder', 'target', 'debug', 'aditorrec.exe'),
     args: [],
     env: { PATH: `${path.join(root, 'build', 'ffmpeg', 'bin')}${path.delimiter}${process.env.PATH || ''}` }
   }
@@ -108,8 +108,8 @@ function bundledDocFile(isPackaged: boolean, name: string): string {
 }
 
 export function ffmpegExecutable(isPackaged: boolean): string {
-  if (process.env.APEXHL_FFMPEG) {
-    return process.env.APEXHL_FFMPEG
+  if (process.env.ADITOR_FFMPEG) {
+    return process.env.ADITOR_FFMPEG
   }
   if (isPackaged) {
     const resPath = (process as unknown as { resourcesPath?: string }).resourcesPath || path.join(__dirname, '..', '..')

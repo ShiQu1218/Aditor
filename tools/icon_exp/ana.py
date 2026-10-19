@@ -2,7 +2,7 @@
 import sys, os, json
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from fr import *
-from apexhl.icon_detect import IconDetector, IconParams, IconFrame
+from aditor.icon_detect import IconDetector, IconParams, IconFrame
 
 # 現行引擎在驗收片的事件 JSON（<LAB>_j1.json）：環境變數 ICON_EXP_BASELINE
 FIX = Path(os.environ.get("ICON_EXP_BASELINE", "after3"))

@@ -34,7 +34,7 @@ impl Rect {
     }
 }
 
-/// 小圖規格：Python 端由 profile 讀出後傳入；apexrec 不解析 profile。
+/// 小圖規格：Python 端由 profile 讀出後傳入；aditorrec 不解析 profile。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FramesSpec {
     pub banner: [u32; 4],

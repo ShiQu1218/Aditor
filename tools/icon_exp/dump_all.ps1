@@ -1,7 +1,7 @@
-$env:APEXHL_FFMPEG = 'D:\Develop\Apex_highlighter\build\ffmpeg\bin\ffmpeg.exe'
-$env:APEXHL_FFPROBE = 'D:\Develop\Apex_highlighter\build\ffmpeg\bin\ffprobe.exe'
+$env:ADITOR_FFMPEG = 'D:\Develop\Aditor\build\ffmpeg\bin\ffmpeg.exe'
+$env:ADITOR_FFPROBE = 'D:\Develop\Aditor\build\ffmpeg\bin\ffprobe.exe'
 $env:PYTHONIOENCODING = 'utf-8'
-$py = 'D:\Develop\Apex_highlighter\engine\.venv\Scripts\python.exe'
+$py = 'D:\Develop\Aditor\engine\.venv\Scripts\python.exe'
 # 用法：$env:ICON_EXP_DIR = <工作資料夾（約 13 GB）>; ./dump_all.ps1。之後依序：text_frames.py、feat_run.py（diag 與 s1）、ev.py／final_eval.py。
 $sp = $env:ICON_EXP_DIR
 $tools = $PSScriptRoot

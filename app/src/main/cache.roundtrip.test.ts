@@ -6,8 +6,8 @@ import { cacheFilePath, loadCacheDoc, saveCacheDoc } from './cache-io'
 
 describe('cache save/load roundtrip', () => {
   it('preserves clip status and stale', () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'apexhl-'))
-    const cache_path = path.join(dir, 'sub', 'v.apexhl.json')
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'aditor-'))
+    const cache_path = path.join(dir, 'sub', 'v.aditor.json')
     const doc = {
       version: 1,
       cache_path,

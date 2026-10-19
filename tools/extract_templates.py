@@ -16,7 +16,7 @@ import cv2
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "engine"))
-from apexhl import ffbin  # noqa: E402
+from aditor import ffbin  # noqa: E402
 
 
 def imread(p):

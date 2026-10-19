@@ -93,7 +93,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"錯誤：找不到 IndexedDB 資料夾：{src}", file=sys.stderr)
         return EXIT_UNREADABLE
     only = {os.path.normcase(os.path.abspath(v)) for v in a.video} if a.video else None
-    with tempfile.TemporaryDirectory(prefix="apexhl_idb_") as tmp:
+    with tempfile.TemporaryDirectory(prefix="aditor_idb_") as tmp:
         copy = Path(tmp) / "idb"
         try:
             shutil.copytree(src, copy)

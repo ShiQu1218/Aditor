@@ -10,7 +10,7 @@ describe('settings store（設定儲存）', () => {
   let file: string
 
   beforeEach(() => {
-    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'apexhl-settings-'))
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'aditor-settings-'))
     file = path.join(dir, 'settings.json')
   })
 

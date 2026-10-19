@@ -1,4 +1,4 @@
-# Apex Highlighter — 設計規格
+# Aditor — 設計規格
 
 日期：2026-10-15
 狀態：第 4 版（偵測改為「圖示優先、與語言無關」；§2、§3、§5 已改寫，舊文字關鍵字法的說明保留在 git 歷史與 `docs/accuracy-report-icon.md` 的歷史段落）
@@ -115,7 +115,7 @@ Outplayed（Overwolf JS 應用，`Outplayed.exe` 僅為啟動器）的事件來�
 
 ### 4.2 快取與資料格式
 
-快取預設存在 **app data**（`%APPDATA%\ApexHighlighter\cache\<key>.json`），`key = sha1(正規化絕對路徑)`（小寫、統一分隔符號）。檔案大小與修改時間**只存在快取內容中**，用來判斷是否需要重新分析，不參與快取鍵，因此影片內容改變時仍找得到舊快取並保留手動修正。設定中可改為「寫在影片旁」（`<影片名>.apexhl.json`）。不寫入 Outplayed 管理的目錄，除非使用者選擇此選項。
+快取預設存在 **app data**（`%APPDATA%\Aditor\cache\<key>.json`），`key = sha1(正規化絕對路徑)`（小寫、統一分隔符號）。檔案大小與修改時間**只存在快取內容中**，用來判斷是否需要重新分析，不參與快取鍵，因此影片內容改變時仍找得到舊快取並保留手動修正。設定中可改為「寫在影片旁」（`<影片名>.aditor.json`）。不寫入 Outplayed 管理的目錄，除非使用者選擇此選項。
 
 ```json
 {
@@ -232,7 +232,7 @@ ROI 為約 `x=560..1360, y=700..880`（1080p 座標，`banner_roi=560,700,800,18
 
 ### 6.3 剪輯專案
 - `Ctrl+E` 把選取的片段送進專案；專案時間軸支援分割、刪除、複製、拖曳排序、微調起訖點、`Ctrl+Z / Ctrl+Y`。
-- 專案存成 `.apexproj.json`（片段來源影片路徑＋起訖時間）。
+- 專案存成 `.aditorproj.json`（片段來源影片路徑＋起訖時間）。
 
 ### 6.4 匯出
 - 模式：每段各一檔／串成一支合輯。
@@ -279,7 +279,7 @@ ROI 為約 `x=560..1360, y=700..880`（1080p 座標，`banner_roi=560,700,800,18
 ## 9. 專案結構
 
 ```
-apex-highlighter/
+aditor/
   app/          Electron + TypeScript
   engine/       Python：probe/ decode/ detect/ events/ autoclip/ ipc/
   templates/    icons/（單一、與語言無關的設定檔）

@@ -6,7 +6,7 @@ import { prepareStorageRoot, suggestStorageRoot } from './storage-root'
 
 describe('prepareStorageRoot', () => {
   let tmp: string
-  beforeEach(() => { tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'apexhl-root-')) })
+  beforeEach(() => { tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'aditor-root-')) })
   afterEach(() => { fs.rmSync(tmp, { recursive: true, force: true }) })
 
   test('建立根、Recordings、Exports、Exports/Merged、Exports/Clips', () => {
@@ -59,7 +59,7 @@ describe('suggestStorageRoot', () => {
   const sep = path.sep
   const drive = (letter: string): string => `${letter}:${sep}`
   const videos = path.join(drive('C'), 'Users', 'me', 'Videos')
-  const fallback = path.join(videos, 'Apex Highlighter')
+  const fallback = path.join(videos, 'Aditor')
 
   test('錄影資料夾名稱是 Recordings 時採用它的上一層', () => {
     const root = path.join(drive('D'), 'Games', 'Apex')
@@ -77,7 +77,7 @@ describe('suggestStorageRoot', () => {
     expect(suggestStorageRoot({ recordingOutputDir: path.join(a, 'Recordings'), defaultOutDir: path.join(b, 'Exports'), videosDir: videos })).toBe(a)
   })
 
-  test('名稱不符時使用 影片資料夾/Apex Highlighter', () => {
+  test('名稱不符時使用 影片資料夾/Aditor', () => {
     expect(suggestStorageRoot({
       recordingOutputDir: path.join(drive('D'), 'Other'),
       defaultOutDir: path.join(drive('D'), 'Out'),

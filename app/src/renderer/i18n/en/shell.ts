@@ -27,7 +27,7 @@ export const shellI18n: Messages['shellI18n'] = {
     finish: 'Get started',
     saving: 'Saving…',
     welcome: {
-      title: 'Welcome to Apex Highlighter',
+      title: 'Welcome to Aditor',
       body: 'A few quick settings and you are ready to go: choose your display language, pick where files are saved, and choose how to record. You can change any of these later in Settings.',
       languageLabel: 'Display language',
       languageAuto: 'Follow system'

@@ -117,7 +117,7 @@ impl Capture {
         let (stop, stopped) = mpsc::channel();
         let (ready, initialized) = mpsc::sync_channel(1);
         let worker = thread::Builder::new()
-            .name("apexrec-capture".into())
+            .name("aditorrec-capture".into())
             .spawn(move || {
                 let result = match method {
                     CaptureMethod::Wgc => {

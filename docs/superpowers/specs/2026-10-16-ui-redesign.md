@@ -1,8 +1,8 @@
-# Apex Highlighter — UI／UX 改版提案
+# Aditor — UI／UX 改版提案
 
 日期：2026-10-16
 狀態：設計定稿（第 2 版：已納入獨立設計評審，見 §9）；未改動任何 app 原始碼，下一步依 `docs/superpowers/plans/2026-10-16-plan3-ui.md` 實作
-範圍：取代 `2026-10-15-apex-highlighter-design.md` §6「使用介面與流程」；§1–§5、§7–§11（引擎、快取格式、匯出規則、授權）不變。
+範圍：取代 `2026-10-15-aditor-design.md` §6「使用介面與流程」；§1–§5、§7–§11（引擎、快取格式、匯出規則、授權）不變。
 可點擊示意：`docs/design/ui-mock/index.html`（雙擊即可在瀏覽器開啟，無需建置；截圖在 `docs/design/ui-mock/screens/`）。
 
 使用者已選定：視覺風格接近 Outplayed（深色遊戲風、大縮圖卡片、明亮重點色 Apex 紅、時間軸事件圖示），並同意改版流程（可合併檢視器與編輯器）。
@@ -258,7 +258,7 @@ hover tooltip 與鍵盤聚焦（`Tab` 到時間軸後以 `Ctrl+←／→` 逐一
 **專案軌（DOM）**
 
 - 每個片段是一張按時長比例（6 px/秒，最小 92 px、最大 360 px）的小縮圖卡：序號、標籤、長度；選取＝紅框；目前播放＝白內框＋進度條；兩端把手可拖（`trimItem`）。
-- 軌頭：專案名稱（可編輯）、片段數／總長／來源影片數、**選取片段檢視器**（起／終點 ±0.5 s 步進，對應舊 `+S -S -E +E` 四顆小按鈕）、分割、複製、刪除、復原、重做、開啟、儲存（`.apexproj.json`）。
+- 軌頭：專案名稱（可編輯）、片段數／總長／來源影片數、**選取片段檢視器**（起／終點 ±0.5 s 步進，對應舊 `+S -S -E +E` 四顆小按鈕）、分割、複製、刪除、復原、重做、開啟、儲存（`.aditorproj.json`）。
 - 軌尾「＋從來源加入」虛線格＝加入下一個待確認建議。
 - 可收合（高度 92 → 34 px，軌頭仍可見）；**`max-height: 800px` 的視窗（如 1366×768）預設收合**（使用者已同意），使用者展開後的偏好記在設定。窄寬（<1500 px）時軌頭隱藏「來自 N 支影片」與「已自動儲存」文字（只留綠點）。
 - 每個片段右上角有**來源影片色點＋字母**（A／B／C，tooltip 顯示檔名片段），讓跨影片專案一眼可辨。
@@ -409,10 +409,10 @@ hover tooltip 與鍵盤聚焦（`Tab` 到時間軸後以 `Ctrl+←／→` 逐一
 
 ### 3.7 專案持久化
 
-- **自動儲存**：專案（`Project`）每次變更後去抖 500 ms 寫入 `%APPDATA%\ApexHighlighter\projects\<projectId>.apexproj.json`（原子寫入：先寫暫存檔再改名）；軌頭顯示「已自動儲存」（寫入中顯示黃點＋「儲存中…」）。
+- **自動儲存**：專案（`Project`）每次變更後去抖 500 ms 寫入 `%APPDATA%\Aditor\projects\<projectId>.aditorproj.json`（原子寫入：先寫暫存檔再改名）；軌頭顯示「已自動儲存」（寫入中顯示黃點＋「儲存中…」）。
 - **啟動還原**：啟動時還原最近一個專案（`settings.lastProjectId`）；若檔案損毀則保留為 `.bak` 並建立空專案，顯示 notice。
 - **新專案**：軌頭〔新專案〕。目前專案有片段時開確認對話框：「目前專案已自動儲存，之後可從「開啟檔案」找回」〔取消〕〔另存檔案後新增〕〔直接新增〕。專案清單（開啟檔案對話框的預設位置為 `projects\` 資料夾）。
-- **另存檔案／開啟檔案**：`.apexproj.json` 只用於分享與備份，不是主要儲存途徑；開啟他人檔案時若來源影片路徑不存在，片段顯示「來源遺失」警示且不可預覽／匯出（匯出前列出缺少的來源並阻擋）。
+- **另存檔案／開啟檔案**：`.aditorproj.json` 只用於分享與備份，不是主要儲存途徑；開啟他人檔案時若來源影片路徑不存在，片段顯示「來源遺失」警示且不可預覽／匯出（匯出前列出缺少的來源並阻擋）。
 - **未儲存提示**：因為自動儲存，不會有「未儲存」關閉提示；唯一需要確認的是「新專案」與「刪除專案」。
 - 設定中可關閉自動儲存（關閉後恢復「未儲存變更」提示行為）。
 
@@ -488,7 +488,7 @@ hover tooltip 與鍵盤聚焦（`Tab` 到時間軸後以 `Ctrl+←／→` 逐一
 | 41 | 排序 ◀ ▶（`moveItem`） | 拖曳重排；`Alt+←/→` | **按鈕移除**：拖曳是更直覺的操作，鍵盤路徑由 Alt+方向鍵提供，無功能損失 |
 | 42 | 微調起訖 ±0.5 s（`trimItem` 四顆小按鈕） | 選取片段檢視器步進鈕＋片段兩端把手拖曳 | 保留步進、新增拖曳 |
 | 43 | 復原／重做（`History`，`Ctrl+Z/Y`） | 軌頭按鈕＋快捷鍵（加 `Ctrl+Shift+Z`） | 不變 |
-| 44 | 儲存／開啟專案（`project.*`，`.apexproj.json`） | 軌頭〔儲存〕〔開啟〕；`Ctrl+S` | 加快捷鍵 |
+| 44 | 儲存／開啟專案（`project.*`，`.aditorproj.json`） | 軌頭〔儲存〕〔開啟〕；`Ctrl+S` | 加快捷鍵 |
 | 45 | 專案內總長、片段數顯示 | 軌頭資訊＋圖示欄徽章＋匯出按鈕 | 不變 |
 | **匯出** | | | |
 | 46 | 模式：每段各一檔／串成合輯 | 抽屜單選卡 | 不變 |
@@ -500,7 +500,7 @@ hover tooltip 與鍵盤聚焦（`Tab` 到時間軸後以 `Ctrl+←／→` 逐一
 | 52 | 取消 | 〔取消匯出〕 | 現況「取消」只關閉視窗；真正中止需新增 IPC |
 | **新增（補現況缺口，非舊功能）** | | | |
 | 53 | 設定畫面（兩欄、3 分類、整組置中、搜尋在內容欄頂端，窄視窗收合為頂部分段列）、快捷鍵說明、分析佇列浮層、Toast | 見 §3.3–3.4 | 設定列全數保留，合併為 3 類避免一長串捲動或空白分類 |
-| 54 | 專案只在記憶體（App 層 state），手動存／開 `.apexproj.json` | 專案自動儲存到 `%APPDATA%`；〔新專案〕〔開啟檔案〕〔另存檔案〕 | 補專案持久化（§3.7）；`.apexproj.json` 檔案流程仍保留 |
+| 54 | 專案只在記憶體（App 層 state），手動存／開 `.aditorproj.json` | 專案自動儲存到 `%APPDATA%`；〔新專案〕〔開啟檔案〕〔另存檔案〕 | 補專案持久化（§3.7）；`.aditorproj.json` 檔案流程仍保留 |
 | 55 | 事件圖示只靠顏色區分、時間軸圖示疊成一團 | 密度檢視／群集／圖示三級＋框選／平移模型 | §3.2.2 |
 
 **不採用的 Outplayed 功能**：Actions history（Ctrl+H）、自訂速度 0.07–8、Ctrl+T 時間軸切換、Collections／分享／雲端（理由見 §1.5）；以上皆不在現有功能或 spec 範圍內，不構成功能遺失。
@@ -512,7 +512,7 @@ hover tooltip 與鍵盤聚焦（`Tab` 到時間軸後以 `Ctrl+←／→` 逐一
 完整檔案：`docs/design/ui-mock/css/tokens.css`（mock 與正式實作共用同一份）。下方為全文，供審閱。
 
 ```css
-/* Apex Highlighter — design tokens (可直接搬進 app/src/renderer/styles/tokens.css)
+/* Aditor — design tokens (可直接搬進 app/src/renderer/styles/tokens.css)
    來源與依據見 docs/superpowers/specs/2026-10-16-ui-redesign.md §1、§4 */
 :root {
   /* 表面（Outplayed 基底 #131313，疊白色透明度形成層級） */
@@ -778,7 +778,7 @@ App
 |---|---|
 | 監看資料夾 API | `main/library.ts` 已有 `watchFolder()`，但 `preload` 與 `ipc-handlers` 沒暴露：新增 `library:getWatchFolders`、`library:addWatchFolder`、`library:removeWatchFolder`，設定儲存 |
 | 匯出取消 | 新增 `export:cancel`（終止 ffmpeg 子程序並保留已完成檔案） |
-| 設定儲存 | 簡單 JSON（`%APPDATA%\ApexHighlighter\settings.json`）＋ `settings:get/set` |
+| 設定儲存 | 簡單 JSON（`%APPDATA%\Aditor\settings.json`）＋ `settings:get/set` |
 | 精華數 | 分析結束時以預設參數呼叫 autoclip，把 `hl` 數寫入 `LibraryEntry`（供卡片徽章與「有精華」篩選）；若不想動快取，可改為卡片首次進入視窗時惰性計算 |
 | 磁碟空間 | `export:getDiskSpace(dir)`（spec §6.4 要求匯出前檢查） |
 | 縮圖 | 確認 `entry.thumb` 尺寸 ≤320×180；缺圖時由主程序以 ffmpeg 擷取（可惰性） |

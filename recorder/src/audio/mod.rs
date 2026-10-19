@@ -102,7 +102,7 @@ impl AudioCapture {
         let stop = capture.stop.clone();
         // 混音另用工作執行緒；WASAPI 執行緒僅複製封包與 try_send，不等待消費者。
         let worker = thread::Builder::new()
-            .name("apexrec-audio-mix".into())
+            .name("aditorrec-audio-mix".into())
             .spawn(move || mix_loop(system, mic, origin_ticks, &config, &stop, sink))
             .context("audio_failed: 建立混音執行緒失敗")?;
         capture.workers.push(worker);
@@ -137,9 +137,9 @@ impl AudioCapture {
         let worker = thread::Builder::new()
             .name(
                 if mic {
-                    "apexrec-mic"
+                    "aditorrec-mic"
                 } else {
-                    "apexrec-loopback"
+                    "aditorrec-loopback"
                 }
                 .into(),
             )

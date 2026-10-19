@@ -127,7 +127,7 @@ describe('live.json → 分析快取', () => {
   it('寫入期間完成的完整分析不可被可信 live 快取覆蓋，暫存檔也不與引擎共用', async () => {
     const base = root()
     const deps = makeDeps(base)
-    deps.liveCachePath = (output) => output + '.apexhl.json'
+    deps.liveCachePath = (output) => output + '.aditor.json'
     const { dir, output } = finishedSession(base, 'none', { ...LIVE, quality: { complete: true } })
     const cachePath = deps.liveCachePath(output)
     fs.writeFileSync(cachePath, JSON.stringify({ analysis: { source: 'live' } }))

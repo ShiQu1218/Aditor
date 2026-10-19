@@ -104,7 +104,7 @@ test('Esc during a timeline drag cancels the drag and does not leave project mod
 test('low-perf first-run prompt appears when hardware decode is unavailable', async ({ launch }) => {
   const app = await launch({ settings: { lowPerfAsked: false } })
   const { page } = app
-  // 模擬無硬體解碼（等同 APEXHL_E2E_NOHWDECODE=1）：下次載入前覆寫 mediaCapabilities.decodingInfo，並重設「已詢問」
+  // 模擬無硬體解碼（等同 ADITOR_E2E_NOHWDECODE=1）：下次載入前覆寫 mediaCapabilities.decodingInfo，並重設「已詢問」
   await app.electronApp.context().addInitScript(() => {
     Object.defineProperty(navigator, 'mediaCapabilities', {
       value: { decodingInfo: async () => ({ supported: true, smooth: false, powerEfficient: false }) },

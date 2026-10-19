@@ -17,7 +17,7 @@ LANGS = ("zh-TW", "en", "ja")  # fixture 的來源語言（只是素材分類；
 
 
 def _ffmpeg() -> str:
-    from apexhl import ffbin
+    from aditor import ffbin
     return ffbin.ffmpeg()
 
 
@@ -59,13 +59,13 @@ def make_video(tmp_path, name, duration, *, start_time=0.0, vfr=False, marks=(),
 
 @pytest.fixture(scope="session")
 def profile():
-    from apexhl.profile import load_profile
+    from aditor.profile import load_profile
     return load_profile(ICON_DIR)
 
 
 @pytest.fixture(scope="session")
 def detector(profile):
-    from apexhl.detect import Detector
+    from aditor.detect import Detector
     return Detector(profile)
 
 
@@ -86,7 +86,7 @@ def load_fixture(name, lang="zh-TW"):
 
 @functools.lru_cache(maxsize=None)
 def _profile():
-    from apexhl.profile import load_profile
+    from aditor.profile import load_profile
     return load_profile(ICON_DIR)
 
 

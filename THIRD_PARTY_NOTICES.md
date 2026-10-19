@@ -1,6 +1,6 @@
 # Third-Party Software Notices and Information
 
-This project, Apex Highlighter, incorporates or interacts with several third-party open-source components and libraries. Below are the notices, attributions, and licensing details for those dependencies.
+This project, Aditor, incorporates or interacts with several third-party open-source components and libraries. Below are the notices, attributions, and licensing details for those dependencies.
 
 ---
 
@@ -12,7 +12,7 @@ This project, Apex Highlighter, incorporates or interacts with several third-par
 - **Configuration (`ffmpeg -buildconf`)**:
   - `--enable-version3`, no `--enable-gpl`, no `--enable-nonfree`.
   - `--enable-libdav1d` (AV1 decoding), `--enable-libopenh264` (see section 7), and further third-party libraries compiled into the shared DLLs (for example libaom, libvpx, libopus, libvorbis, libass, libwebp, libsvtav1, rav1e); their licenses (BSD, MIT, LGPL, MPL, ISC and similar) are compatible with LGPL v3 distribution. The complete list is the output of `ffmpeg -buildconf` of the bundled binary.
-  - FFmpeg is linked dynamically (`avcodec`, `avformat`, `avutil`, ... DLLs), as a separate executable that Apex Highlighter launches as a child process.
+  - FFmpeg is linked dynamically (`avcodec`, `avformat`, `avutil`, ... DLLs), as a separate executable that Aditor launches as a child process.
 - **User Modification Notice**:
   In compliance with the LGPL, users have the right to modify, recompile, or replace the FFmpeg shared libraries and executable binaries. You may replace the files in the `resources/ffmpeg/` directory with any binary-compatible FFmpeg build of your choice.
 
@@ -73,7 +73,7 @@ This project, Apex Highlighter, incorporates or interacts with several third-par
 - **License of the source code**: BSD 2-Clause License. Copyright (c) 2013, Cisco Systems, Inc.
 - **What is bundled**: The bundled FFmpeg build (section 1) is compiled with `--enable-libopenh264`; BtbN builds OpenH264 from source and links it into FFmpeg. This is **not** Cisco's pre-built binary, so Cisco's patent license for its own binary release (Cisco Binary Code License, [http://www.openh264.org/BINARY_LICENSE.txt](http://www.openh264.org/BINARY_LICENSE.txt)) does **not** cover the encoder inside the bundled FFmpeg.
 - **Optional download**: When the user chooses precise H.264 re-encoding on a system without a hardware encoder (NVENC / QSV / AMF), the application can download Cisco's official pre-built OpenH264 binary directly from Cisco after explicit user confirmation. That binary is covered by Cisco's Binary Code License and patent grant; it is not redistributed with the installer.
-- **Patents**: H.264 is subject to patent licensing (MPEG LA / Via LA). Apex Highlighter is a local, non-commercial desktop utility; anyone redistributing builds commercially is responsible for obtaining the necessary H.264 patent licenses or for substituting an FFmpeg build compiled with `--disable-libopenh264`.
+- **Patents**: H.264 is subject to patent licensing (MPEG LA / Via LA). Aditor is a local, non-commercial desktop utility; anyone redistributing builds commercially is responsible for obtaining the necessary H.264 patent licenses or for substituting an FFmpeg build compiled with `--disable-libopenh264`.
 
 ---
 
@@ -178,4 +178,4 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
 ## 9. Disclaimer & Trademark Notice
 
 *Apex Legends* is a registered trademark of Electronic Arts Inc.
-Apex Highlighter is an independent open-source desktop utility designed for local gameplay video analysis. It is **not** affiliated with, endorsed, sponsored, or supported by Electronic Arts Inc., Respawn Entertainment, or any of their affiliates.
+Aditor is an independent open-source desktop utility designed for local gameplay video analysis. It is **not** affiliated with, endorsed, sponsored, or supported by Electronic Arts Inc., Respawn Entertainment, or any of their affiliates.

@@ -26,7 +26,7 @@ export const recordingI18n: Messages['recordingI18n'] = {
   detectionOnly: '实时检测中（未录制）',
   rows: {
     autoRecord: { title: '自动录制', desc: '检测到 Apex 启动后自动开始录制。' },
-    launchAtLogin: { title: '开机启动并常驻系统托盘', desc: '开机时在后台启动 Apex Highlighter。' },
+    launchAtLogin: { title: '开机启动并常驻系统托盘', desc: '开机时在后台启动 Aditor。' },
     closeToTray: { title: '关闭窗口时缩到系统托盘', desc: '关闭窗口后继续检测 Apex 与录制。' },
     backend: { title: '录制后端', desc: '选择负责录制视频的录制器，下次开始时生效。' },
     obsHost: { title: 'OBS 主机', desc: 'WebSocket 服务器的主机名或 IP 地址。' },
@@ -66,7 +66,7 @@ export const recordingI18n: Messages['recordingI18n'] = {
   analysisPerMatch: '每局结束后',
   captureWgc: '窗口捕获（WGC）',
   captureDda: '屏幕捕获（DDA，延迟较低）',
-  capabilitiesUnavailable: '无法获取录制器支持信息，请确认 apexrec 已安装；目前仅提供自动编码器与默认设备。',
+  capabilitiesUnavailable: '无法获取录制器支持信息，请确认 aditorrec 已安装；目前仅提供自动编码器与默认设备。',
   capabilitiesLoading: '正在获取录制器支持信息…',
   currentUnavailable: '当前设置：{value}（未检测到）',
   statusTitle: '录制状态',

@@ -317,7 +317,7 @@ describe('export plan: clip boundaries play cleanly (no pre-roll, no overlapping
     expect(res.notices).toEqual([])
     const [s1, s2, final] = res.jobs
     expect(s1.intermediate && s2.intermediate).toBe(true)
-    expect(s1.output).toMatch(/\.apexhl-seg-\w+-1\.mp4$/)
+    expect(s1.output).toMatch(/\.aditor-seg-\w+-1\.mp4$/)
     expect(s1.args).toEqual(copyCutArgs(clipItems[0], cuts[0], s1.output))
     expect(s2.args).toEqual(copyCutArgs(clipItems[1], cuts[1], s2.output))
     expect(final.intermediate).toBeFalsy()

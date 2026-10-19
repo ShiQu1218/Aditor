@@ -122,7 +122,7 @@ function runFfmpeg(
   deps: ProxyDeps
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const args = buildProxyArgs(videoPath, partial, encoder)
-  const bin = deps.ffmpeg?.bin ?? (process.env.APEXHL_FFMPEG || 'ffmpeg')
+  const bin = deps.ffmpeg?.bin ?? (process.env.ADITOR_FFMPEG || 'ffmpeg')
   return new Promise((resolve) => {
     const ffmpeg = spawn(bin, [...(deps.ffmpeg?.prefixArgs ?? []), ...args], {
       env: envWithCodecsPath(),

@@ -1,8 +1,8 @@
-# Apex Highlighter — 計畫 4：錄影核心 apexrec（第 1 期）
+# Aditor — 計畫 4：錄影核心 aditorrec（第 1 期）
 
 > **For agentic workers:** 你負責的任務只有一個（B1／B2／B3／B4／C 之一）。先讀規格，再讀本檔「全域限制」與你的任務段落。
 
-**Goal:** `recorder/` Rust 程式 `apexrec.exe`：以 JSON-lines 接受 `start`，WGC 擷取指定 PID 的視窗，硬體編碼成 `init.mp4`＋每 2 秒一段的 `seg_NNNNNN.m4s`，同時錄系統聲音＋麥克風混成一軌 AAC，並把 4 fps 的 banner／spec／thumb 小圖寫進共享記憶體。
+**Goal:** `recorder/` Rust 程式 `aditorrec.exe`：以 JSON-lines 接受 `start`，WGC 擷取指定 PID 的視窗，硬體編碼成 `init.mp4`＋每 2 秒一段的 `seg_NNNNNN.m4s`，同時錄系統聲音＋麥克風混成一軌 AAC，並把 4 fps 的 banner／spec／thumb 小圖寫進共享記憶體。
 
 **Spec:** `docs/superpowers/specs/2026-10-18-live-recording-design.md`（§1、§2.1、§2.4、§3.3、§3.6、§4.4–§4.6）
 
@@ -16,10 +16,10 @@
 - 擷取與音訊回呼不得阻塞：只做 GPU 複製／memcpy 與丟進有界佇列，滿了就丟並計數。
 - 每個 `unsafe` 區塊上方寫 `// SAFETY:` 說明。正式程式碼不准 `unwrap()`／`expect()`（測試可以）。
 - 註解與錯誤訊息用繁體中文，與既有程式一致。
-- ffmpeg：標頭與 import lib 在 `D:/Develop/Apex_highlighter/build/ffmpeg/{include,lib}`，DLL 在 `.../build/ffmpeg/bin`。在 worktree 中建置與測試前設定：
+- ffmpeg：標頭與 import lib 在 `D:/Develop/Aditor/build/ffmpeg/{include,lib}`，DLL 在 `.../build/ffmpeg/bin`。在 worktree 中建置與測試前設定：
   ```powershell
-  $env:APEXREC_FFMPEG_DIR = 'D:/Develop/Apex_highlighter/build/ffmpeg'
-  $env:PATH = 'D:/Develop/Apex_highlighter/build/ffmpeg/bin;' + $env:PATH
+  $env:ADITORREC_FFMPEG_DIR = 'D:/Develop/Aditor/build/ffmpeg'
+  $env:PATH = 'D:/Develop/Aditor/build/ffmpeg/bin;' + $env:PATH
   ```
 - 完成條件：`cargo fmt --check`、`cargo clippy --all-targets -- -D warnings`、`cargo test` 全過（需要 GPU／音訊裝置的測試若環境缺少可 `#[ignore]` 並在報告註明，但本機有 RTX 5080 與音訊裝置，請實際跑過）。
 - 在自己的分支 commit（conventional commits，例如 `feat(recorder): …`），不要 merge、不要 push。
@@ -42,7 +42,7 @@
 ## B1 — 硬體編碼＋fMP4 段落（`src/encode/`）
 
 1. **綁定**：用 bindgen（`cargo install bindgen-cli`；libclang 在 `C:/Program Files/LLVM/bin`）對 `libavcodec/avcodec.h`、`libavformat/avformat.h`、`libavutil/{hwcontext.h,hwcontext_d3d11va.h,opt.h,channel_layout.h,audio_fifo.h,imgutils.h}`、`libswresample/swresample.h`（若需要）產生 `src/encode/ffi.rs`，以 allowlist 只留用到的符號。指令寫進 `tools/gen-ffi.ps1`。
-2. **build.rs**：`APEXREC_FFMPEG_DIR`（預設 `<manifest>/../build/ffmpeg`）的 `lib` 加入搜尋路徑，連結 `avcodec`、`avformat`、`avutil`（以及用到的 `swresample`）。
+2. **build.rs**：`ADITORREC_FFMPEG_DIR`（預設 `<manifest>/../build/ffmpeg`）的 `lib` 加入搜尋路徑，連結 `avcodec`、`avformat`、`avutil`（以及用到的 `swresample`）。
 3. **編碼器選擇**：`probe_encoders` 依序試 `hevc_nvenc, h264_nvenc, av1_nvenc, hevc_amf, h264_amf, av1_amf, hevc_qsv, h264_qsv, av1_qsv`，以 256×144 實際 `avcodec_open2`＋送一格成功才算可用。`encoder="auto"` 時依 `codec` 取第一個可用的同 codec 編碼器；HEVC 都不可用時退到 H.264。都沒有 → 錯誤訊息以 `no_hw_encoder:` 開頭。
 4. **零複製**：用 `av_hwdevice_ctx_alloc(AV_HWDEVICE_TYPE_D3D11VA)`，把 `Gpu.device`／`context` 塞進 `AVD3D11VADeviceContext` 後 `av_hwdevice_ctx_init`。hwframes pool 用 `sw_format` = BGRA（編碼器不收 BGRA 時，用 `ID3D11VideoProcessor` 轉 NV12，同時做縮放）。`push_video` 在呼叫執行緒上：從 pool 取一個 surface → 來源尺寸 = 輸出尺寸時 `CopySubresourceRegion`，否則 VideoProcessor 縮放 → 把 AVFrame 放進有界佇列（容量 8）→ 返回。編碼在獨立執行緒。
 5. **時間**：影像 pts 以 tick（100 ns）→ time_base `1/10_000_000`，再由 muxer 轉換。VFR 輸入：依 `fps` 做 CFR 正規化（間隔不足就丟、空太久就重送上一格），讓 GOP 計數可靠。GOP = `fps * 2`，`forced_idr`／`g`／關閉 scenecut，讓每 2 秒一定是關鍵影格。
@@ -71,7 +71,7 @@
 
 1. `ipc::run`：逐行讀；空行略過；`parse_request` 失敗回 `{"id":…,"ok":false,"code":"bad_request","message":…}`（沒有 id 用 0）。`hello` → `Reply{body:Hello}`；`ping` → ok；`start` → 呼叫 backend，成功回 ok、失敗回錯誤；正在錄影時再 `start` → `busy`；`stop` → backend.stop。stdin EOF → 若在錄影就 stop，然後返回。
 2. `shm.rs`：依檔頭註解的版面實作 `ShmWriter`（`CreateFileMappingW`＋`MapViewOfFile`），寫入順序與 fence 照註解。另寫一個 `#[cfg(test)]` 讀端，測試：版面欄位值、連續寫 40 槽後讀最新一槽內容正確、seq 換槽、資料長度不符回錯誤；以及一個多執行緒壓力測試（寫端狂寫、讀端狂讀，讀到的每一槽若判定有效則內容必須完整一致——內容用 seq 填滿以便檢查）。同時在 `engine/` 之外不要寫 Python；只在 `shm.rs` 註解保持為唯一規格。
-3. `index.rs`：`IndexWriter::create(dir)` → `append(&SegmentInfo, wall: SystemTime)` 寫一行並 `sync_data`；`write_session_json(dir, &SessionMeta)`（`SessionMeta` 欄位：session_id、started_at（ISO8601 含時區）、encoder、width、height、fps、codec、audio（bool）、apexrec_version）。另提供 `read_index(path) -> Vec<IndexLine>`：忽略最後一行不完整的 JSON。時間格式化自己寫（不引入 chrono）：本地時區用 `GetTimeZoneInformation`／`GetDynamicTimeZoneInformation` 取偏移。
+3. `index.rs`：`IndexWriter::create(dir)` → `append(&SegmentInfo, wall: SystemTime)` 寫一行並 `sync_data`；`write_session_json(dir, &SessionMeta)`（`SessionMeta` 欄位：session_id、started_at（ISO8601 含時區）、encoder、width、height、fps、codec、audio（bool）、aditorrec_version）。另提供 `read_index(path) -> Vec<IndexLine>`：忽略最後一行不完整的 JSON。時間格式化自己寫（不引入 chrono）：本地時區用 `GetTimeZoneInformation`／`GetDynamicTimeZoneInformation` 取偏移。
 4. **測試**：用 `Cursor` 當 stdin、`Vec<u8>` 當 stdout、假 backend，覆蓋所有指令、錯誤、busy、EOF 自動 stop；index 寫讀往返與截斷行；session.json 欄位。
 
 ## C — 整合（B1–B4 合併後才開始）
@@ -79,6 +79,6 @@
 1. `session::Recorder`：`hello` 回 `SegmentWriter::probe_encoders` 與 `audio::list_devices`（失敗回空清單）。`start`：建立 `Gpu` → 開 `SegmentWriter`（`encode` 為 None 時不開）→ 建 `SmallFrameExtractor` 與 `ShmWriter`（layout 取自 extractor）→ `Capture::start`（consumer 依序呼叫 `push_video` 與 extractor，extractor 有結果就寫 shm）→ `AudioCapture::start`（sink 呼叫 `push_audio`）→ 寫 `session.json` → 送 `started`。段落事件：收 `SegmentInfo` → `index.append` → 送 `segment`。每 5 秒送 `stats`。`CaptureNotice` 轉成 `window_lost`／`window_found`。磁碟剩餘（`GetDiskFreeSpaceExW`）< 1 GB 時自行 stop 並送 `error{disk_full}`（門檻由主程序管理的部分在第 2 期）。
 2. 程序優先序設成 `BELOW_NORMAL_PRIORITY_CLASS`；擷取執行緒維持一般優先序（它只做 GPU 複製）。
 3. 移除 `main.rs` 的 `#![allow(dead_code)]`。
-4. **e2e 測試**：啟動 `apexrec.exe` 子程序，以 IPC 錄自建測試視窗 6 秒 → stop → 檢查 `index.jsonl` 行數＝段落數、`session.json`、init＋段落串接後 ffprobe 影音兩軌、時長 6±0.5 秒；從 shm 讀到有效槽。
+4. **e2e 測試**：啟動 `aditorrec.exe` 子程序，以 IPC 錄自建測試視窗 6 秒 → stop → 檢查 `index.jsonl` 行數＝段落數、`session.json`、init＋段落串接後 ffprobe 影音兩軌、時長 6±0.5 秒；從 shm 讀到有效槽。
 5. `tools/rec-cli.ps1`：手動測試用，對指定 PID（例如 Apex）錄 N 秒並輸出結果路徑。
-6. 用工作管理員／`Get-Counter` 量一次錄 1440p60 時 apexrec 的 CPU% 與記憶體，寫進報告。
+6. 用工作管理員／`Get-Counter` 量一次錄 1440p60 時 aditorrec 的 CPU% 與記憶體，寫進報告。

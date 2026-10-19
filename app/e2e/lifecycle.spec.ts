@@ -51,9 +51,9 @@ async function waitProjectFileOffline(dir: string, items: number): Promise<{ id:
 }
 
 test('hand-corrupted project file: backup .bak.<ts>.json is created and the app still starts', async ({ launch }) => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'apexhl-e2e-corrupt-'))
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'aditor-e2e-corrupt-'))
   try {
-    const projects = path.join(root, 'ApexHighlighter', 'projects')
+    const projects = path.join(root, 'Aditor', 'projects')
     fs.mkdirSync(projects, { recursive: true })
     fs.writeFileSync(path.join(projects, 'p_corrupt.json'), '{ this is : not json', 'utf-8')
     const app = await launch({ root, ownRoot: true, settings: { lastProjectId: 'p_corrupt' } })
@@ -70,8 +70,8 @@ test('hand-corrupted project file: backup .bak.<ts>.json is created and the app 
 })
 
 test('export cancel kills the fake-ffmpeg process tree and removes .partial; a second export is refused', async ({ launch, videos }) => {
-  const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'apexhl-e2e-out-'))
-  const pidDir = fs.mkdtempSync(path.join(os.tmpdir(), 'apexhl-e2e-pid-'))
+  const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'aditor-e2e-out-'))
+  const pidDir = fs.mkdtempSync(path.join(os.tmpdir(), 'aditor-e2e-pid-'))
   try {
     const app = await launch({
       fakeExport: true,
@@ -112,7 +112,7 @@ test('export cancel kills the fake-ffmpeg process tree and removes .partial; a s
 })
 
 test('re-analysis: cancel mid-way then complete keeps the accepted AI clip as stale and recomputes suggestions once', async ({ launch, videos }) => {
-  const gate = fs.mkdtempSync(path.join(os.tmpdir(), 'apexhl-e2e-gate-'))
+  const gate = fs.mkdtempSync(path.join(os.tmpdir(), 'aditor-e2e-gate-'))
   try {
     const app = await launch({ env: { FAKE_ENGINE_GATE_DIR: gate } })
     const { page } = app
@@ -172,7 +172,7 @@ test('re-analysis: cancel mid-way then complete keeps the accepted AI clip as st
 })
 
 test('export with the real ffmpeg: quick lossless export finishes and leaves one playable file, no partial', async ({ launch, videos }) => {
-  const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'apexhl-e2e-out-'))
+  const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'aditor-e2e-out-'))
   try {
     const app = await launch({ settings: { defaultOutDir: outDir } })
     const { page } = app

@@ -26,7 +26,7 @@ export const recordingI18n: Messages['recordingI18n'] = {
   detectionOnly: '실시간 감지 중(녹화 안 함)',
   rows: {
     autoRecord: { title: '자동 녹화', desc: 'Apex 실행이 감지되면 자동으로 녹화를 시작합니다.' },
-    launchAtLogin: { title: '부팅 시 실행 및 시스템 트레이에 상주', desc: '부팅할 때 Apex Highlighter를 백그라운드에서 시작합니다.' },
+    launchAtLogin: { title: '부팅 시 실행 및 시스템 트레이에 상주', desc: '부팅할 때 Aditor를 백그라운드에서 시작합니다.' },
     closeToTray: { title: '창을 닫으면 시스템 트레이로 최소화', desc: '창을 닫은 뒤에도 Apex 감지와 녹화를 계속합니다.' },
     backend: { title: '녹화 백엔드', desc: '영상을 녹화할 녹화기를 선택합니다. 다음 녹화를 시작할 때 적용됩니다.' },
     obsHost: { title: 'OBS 호스트', desc: 'WebSocket 서버의 호스트 이름 또는 IP 주소입니다.' },
@@ -66,7 +66,7 @@ export const recordingI18n: Messages['recordingI18n'] = {
   analysisPerMatch: '매치 종료 후',
   captureWgc: '창 캡처(WGC)',
   captureDda: '화면 캡처(DDA, 지연 낮음)',
-  capabilitiesUnavailable: '녹화기 기능을 가져올 수 없습니다. apexrec이 설치되어 있는지 확인하세요. 지금은 자동 인코더와 기본 장치만 제공됩니다.',
+  capabilitiesUnavailable: '녹화기 기능을 가져올 수 없습니다. aditorrec이 설치되어 있는지 확인하세요. 지금은 자동 인코더와 기본 장치만 제공됩니다.',
   capabilitiesLoading: '녹화기 기능을 가져오는 중…',
   currentUnavailable: '현재 설정: {value}(감지되지 않음)',
   statusTitle: '녹화 상태',

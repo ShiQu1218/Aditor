@@ -239,7 +239,7 @@ export function isSuggestionsPending(doc: Pick<CacheDoc, 'app'>): boolean {
 }
 
 /**
- * 分析完成後是否／如何產生建議。引擎 analyze 的文件只含手動片段（engine/apexhl/analyze.py），
+ * 分析完成後是否／如何產生建議。引擎 analyze 的文件只含手動片段（engine/aditor/analyze.py），
  * main 在重新分析後把手動＋已加入（stale）的片段寫回並設 `app.suggestionsPending`，
  * 所以帶旗標的文件一律以目前預設參數重跑 autoclip 並 mergeOnReanalyze；
  * 單純載入（首次分析、無旗標）則維持 shouldAutoPlace 規則（不標 stale）。

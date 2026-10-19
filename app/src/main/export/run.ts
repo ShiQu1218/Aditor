@@ -20,9 +20,9 @@ export interface RunExportOptions {
   estimatedBytes: number
   /** concat 清單內容；給函式時在執行到用清單的 job 才呼叫（前面的中間檔都已完成，可量測實際長度） */
   concatListContent?: string | (() => Promise<string>)
-  /** ffmpeg 可執行檔與前置參數；預設 `APEXHL_FFMPEG` 或 PATH 上的 `ffmpeg`。測試用假 ffmpeg 時 bin=node、prefixArgs=[腳本]。 */
+  /** ffmpeg 可執行檔與前置參數；預設 `ADITOR_FFMPEG` 或 PATH 上的 `ffmpeg`。測試用假 ffmpeg 時 bin=node、prefixArgs=[腳本]。 */
   ffmpeg?: { bin: string; prefixArgs?: string[] }
-  /** concat 清單暫存目錄，預設 `%APPDATA%\ApexHighlighter\temp` */
+  /** concat 清單暫存目錄，預設 `%APPDATA%\Aditor\temp` */
   tempDir?: string
 }
 
@@ -117,7 +117,7 @@ export async function runExport(opts: RunExportOptions, control: RunExportContro
   }
   if (signal?.aborted) return { ok: false, cancelled: true, outputs: completed }
 
-  const ffmpegBin = opts.ffmpeg?.bin ?? (process.env.APEXHL_FFMPEG || 'ffmpeg')
+  const ffmpegBin = opts.ffmpeg?.bin ?? (process.env.ADITOR_FFMPEG || 'ffmpeg')
   const prefixArgs = opts.ffmpeg?.prefixArgs ?? []
   const extraEnv: Record<string, string> = {}
   const cDir = codecsDir()

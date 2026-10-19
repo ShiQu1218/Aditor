@@ -25,7 +25,7 @@
 | `summary_tabs.png` | 從上場不退出直接下一場~中途死掉，觀戰敵人同時排隊.mp4 | 0 | (201,25,240,24) |
 
 12 組 PNG 與遮罩合計 43,613 bytes。完整搜尋區域與最低解析度見
-`engine/apexhl/scene.py` 的 `SCENE_ROIS`；遲滯與時間門檻在 `engine/apexhl/matches.py`。
+`engine/aditor/scene.py` 的 `SCENE_ROIS`；遲滯與時間門檻在 `engine/aditor/matches.py`。
 
 ## 真值與訓練重疊
 

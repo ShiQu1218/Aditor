@@ -1,4 +1,4 @@
-# Apex Highlighter
+# Aditor
 
 > **Apex 英雄自動精彩時刻錄製、分析與剪輯工具**
 >
@@ -47,15 +47,15 @@
 ```mermaid
 flowchart TB
     APP["<b>Electron App</b>（TypeScript／React）<br/>介面、媒體庫、剪輯專案、匯出<br/>遊戲偵測、錄影狀態機、系統匣、OBS 控制"]
-    REC["<b>apexrec</b>（Rust）<br/>擷取畫面 → GPU 編碼 → 錄影<br/>同時輸出縮小的偵測用小圖"]
-    ENG["<b>分析引擎 apexhl</b>（Python）<br/>OpenCV 模板比對<br/>擊倒／助攻／對局偵測"]
+    REC["<b>aditorrec</b>（Rust）<br/>擷取畫面 → GPU 編碼 → 錄影<br/>同時輸出縮小的偵測用小圖"]
+    ENG["<b>分析引擎 aditor</b>（Python）<br/>OpenCV 模板比對<br/>擊倒／助攻／對局偵測"]
     APP <-- "JSON 行（stdin／stdout）" --> REC
     APP <-- "JSON 行（stdin／stdout）" --> ENG
     REC -- "小圖（共享記憶體）" --> ENG
 ```
 
 - **分析引擎（Python）**：只吃畫面，吐出「第幾秒發生了什麼事件」。離線分析與即時偵測用同一套判斷邏輯，差別只在畫面來源（影片解碼 vs. 錄影程式即時送來的小圖）。
-- **錄影程式 apexrec（Rust）**：擷取畫面、用顯示卡編碼成影片，並順手把偵測需要的小塊畫面縮小後放進共享記憶體給引擎讀。
+- **錄影程式 aditorrec（Rust）**：擷取畫面、用顯示卡編碼成影片，並順手把偵測需要的小塊畫面縮小後放進共享記憶體給引擎讀。
 - **Electron App**：把以上串起來，並提供所有操作介面。App 本身不碰影像資料。
 
 兩個子程式都是獨立的 exe，用「一行一個 JSON」的文字協定溝通，所以任何一邊當掉都不會拖垮另一邊：引擎當掉，錄影照常進行，收尾後再補分析。
@@ -320,7 +320,7 @@ flowchart LR
 如果你想用 OBS 的編碼設定，可以改由 OBS 錄影：
 
 - 透過 OBS 內建的 WebSocket（v5）控制開始與停止，只走網路，不碰遊戲。
-- `apexrec` 仍然執行，但只擷取、輸出偵測小圖，不編碼；偵測流程與內建錄影相同。
+- `aditorrec` 仍然執行，但只擷取、輸出偵測小圖，不編碼；偵測流程與內建錄影相同。
 - 「一局一個檔」時，OBS 在看到倒數（`match_pending`）時開始錄，開局確認後沿用同一個檔；倒數被取消就停止，這個檔不加進媒體庫。
 - 如果 OBS 在你手動啟動錄影的狀態下被接管，本程式只沿用、絕不替你停止。
 
@@ -328,7 +328,7 @@ flowchart LR
 
 - 每次錄影前與錄影中檢查磁碟空間，低於門檻會提醒，更低時停止並收尾已錄的部分。
 - 遊戲啟動後等 20 秒才開始擷取，避開遊戲剛開啟時最容易出問題的時段。
-- 所有關鍵步驟寫入診斷日誌 `%APPDATA%\ApexHighlighter\recording.log`（每行即時寫入磁碟），萬一當機可以事後追查。
+- 所有關鍵步驟寫入診斷日誌 `%APPDATA%\Aditor\recording.log`（每行即時寫入磁碟），萬一當機可以事後追查。
 
 ---
 
@@ -374,8 +374,8 @@ flowchart LR
 
 ```
 app/        Electron App（main：錄影狀態機、OBS、匯出、媒體庫；renderer：React 介面）
-engine/     Python 分析引擎 apexhl（圖示偵測、事件追蹤、場景分類、對局狀態機、即時模式）
-recorder/   Rust 錄影程式 apexrec（擷取、硬體編碼、音訊、共享記憶體）
+engine/     Python 分析引擎 aditor（圖示偵測、事件追蹤、場景分類、對局狀態機、即時模式）
+recorder/   Rust 錄影程式 aditorrec（擷取、硬體編碼、音訊、共享記憶體）
 templates/  圖示樣板（icons）與場景樣板（scene）
 scripts/    建置腳本（build.ps1、fetch-ffmpeg.ps1）
 tools/      樣板擷取與準確度驗收工具
@@ -429,7 +429,7 @@ docs/       準確度報告與設計文件
    powershell -ExecutionPolicy Bypass -File scripts\build.ps1
    ```
    腳本依序完成：
-   - 用 PyInstaller 建置引擎（`build\engine\apexhl\`）
+   - 用 PyInstaller 建置引擎（`build\engine\aditor\`）
    - 下載並驗證 LGPL 版 FFmpeg（`build\ffmpeg\`）
    - 編譯 Rust 錄影程式
    - 編譯前端並用 `electron-builder` 打包安裝檔與免安裝版（輸出到 `dist\`）
@@ -441,14 +441,14 @@ docs/       準確度報告與設計文件
 ### 發版前檢查清單
 
 1. 先跑測試：
-   - `engine\.venv\Scripts\python.exe -m pytest -q`（設定 `APEXHL_GOLDEN_VIDEO` 才會真的執行 golden 測試）
+   - `engine\.venv\Scripts\python.exe -m pytest -q`（設定 `ADITOR_GOLDEN_VIDEO` 才會真的執行 golden 測試）
    - `npm --prefix app test`
    - `npm --prefix app run typecheck`
    - `npm --prefix app run test:e2e`
 2. 把舊的 `dist\`、`build\engine`、`build\pyinstaller-temp` 搬到備份位置，避免舊產物混入，再執行 `scripts\build.ps1`。
 3. 檢查產物：
    - `dist\win-unpacked\resources\templates\icons\` 含 `profile.json`、6 張圖示與全部觀戰樣板，且內容與 git 相同。
-   - `dist\win-unpacked\resources\engine\apexhl\apexhl.exe ipc` 的 ready 訊息中，`engine_version` 為 `0.3.0`。
+   - `dist\win-unpacked\resources\engine\aditor\aditor.exe ipc` 的 ready 訊息中，`engine_version` 為 `0.3.0`。
    - `ffmpeg.exe -buildconf` 沒有 `--enable-gpl`、`--enable-nonfree`，有 `--enable-version3` 與 `--enable-libdav1d`。
    - 安裝檔內含 `THIRD_PARTY_NOTICES.md` 與 `LICENSE`。
 4. 引擎 0.3.0 / icons@1 起改為圖示偵測；舊版（文字關鍵字法）產生的快取會自動重新分析，使用者的刪除與覆寫依「同類型、時間差 ≤ 1 秒」保留。
@@ -465,4 +465,4 @@ docs/       準確度報告與設計文件
 ## 免責聲明
 
 《Apex 英雄》（Apex Legends）為 Electronic Arts Inc. 之註冊商標。
-Apex Highlighter 為獨立開發之開源工具，非 Electronic Arts Inc. 或 Respawn Entertainment 所官方授權、贊助或附屬之軟體。
+Aditor 為獨立開發之開源工具，非 Electronic Arts Inc. 或 Respawn Entertainment 所官方授權、贊助或附屬之軟體。

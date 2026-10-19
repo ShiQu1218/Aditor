@@ -7,7 +7,7 @@ import { Library } from './library'
 let dir: string
 let file: string
 beforeEach(() => {
-  dir = fs.mkdtempSync(path.join(os.tmpdir(), 'apexhl-lib-'))
+  dir = fs.mkdtempSync(path.join(os.tmpdir(), 'aditor-lib-'))
   file = path.join(dir, 'library.json')
 })
 afterEach(() => {

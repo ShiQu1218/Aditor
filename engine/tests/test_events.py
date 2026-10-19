@@ -1,8 +1,8 @@
 import numpy as np
 
-from apexhl.events import EventTracker
-from apexhl.models import FrameResult, NameSig
-from apexhl.profile import load_profile
+from aditor.events import EventTracker
+from aditor.models import FrameResult, NameSig
+from aditor.profile import load_profile
 from pathlib import Path
 
 PROFILE = load_profile(Path(__file__).resolve().parents[2] / "templates" / "icons")
@@ -234,7 +234,7 @@ def test_every_frame_distinct_sig_is_still_one_event():
 
 
 def test_jitter_run_uses_representative_sig_not_first_frame():
-    from apexhl.detect import same_name
+    from aditor.detect import same_name
     good = sig(7)
     # 第 1 格是淡入的破碎指紋，之後多數格是同一個名字的變體，中間夾兩格不相干的抖動
     names = [sig(300), noisy(good, 1), sig(301), noisy(good, 2), noisy(good, 3), sig(302), noisy(good, 4)]

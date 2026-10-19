@@ -1,6 +1,6 @@
-"""即時偵測（python -m apexhl live）：讀 apexrec 共享記憶體的小圖 → 擊殺事件與對局起訖（規格 §3.3–§3.5）。
+"""即時偵測（python -m aditor live）：讀 aditorrec 共享記憶體的小圖 → 擊殺事件與對局起訖（規格 §3.3–§3.5）。
 
-輸入：apexrec 的具名 file mapping（版面見 recorder/src/shm.rs 檔頭）：4 fps 的 banner／spec（BGR24，與 decode.py
+輸入：aditorrec 的具名 file mapping（版面見 recorder/src/shm.rs 檔頭）：4 fps 的 banner／spec（BGR24，與 decode.py
 相同的 1920×1080 基準裁切），每 4 格帶一張 640×360 GRAY8 thumb（1 fps）。
 輸出：stdout 每行一個 JSON（ready／snapshot／match_pending／match_cancel／match_start／match_end／stats／error；見計畫 7 合約 1）。
 stdin 收到 EOF 或 {"cmd":"stop"} → 收尾、送出最終 snapshot、exit 0。
@@ -552,7 +552,7 @@ class LiveEngine:
 
 
 def _check_layout(layout: ShmLayout, profile: Profile) -> None:
-    """小圖尺寸必須與設定檔 ROI 相同（apexrec 以 1920×1080 基準裁切），thumb 必須足夠場景判斷。"""
+    """小圖尺寸必須與設定檔 ROI 相同（aditorrec 以 1920×1080 基準裁切），thumb 必須足夠場景判斷。"""
     if layout.banner != tuple(profile.banner_roi[2:]) or layout.spec != tuple(profile.spec_roi[2:]):
         raise LayoutError(f"banner／spec 尺寸 {layout.banner}／{layout.spec} 與設定檔 ROI 不符")
     if layout.thumb[0] < SCENE_SIZE[0] or layout.thumb[1] < SCENE_SIZE[1]:

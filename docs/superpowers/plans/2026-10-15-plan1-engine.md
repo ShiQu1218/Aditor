@@ -1,4 +1,4 @@
-# Apex Highlighter — 計畫 1：分析引擎 Implementation Plan
+# Aditor — 計畫 1：分析引擎 Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -8,21 +8,21 @@
 
 **Tech Stack:** Python 3.14、opencv-python（abi3 wheel）、numpy、pytest、ffmpeg/ffprobe 8.x（開發期用系統 PATH 上的版本）、ccl_chromium_reader（僅 tools）。
 
-**Spec:** `docs/superpowers/specs/2026-10-15-apex-highlighter-design.md`（執行者必讀，計畫中的 §編號皆指此檔）
+**Spec:** `docs/superpowers/specs/2026-10-15-aditor-design.md`（執行者必讀，計畫中的 §編號皆指此檔）
 
 ## Global Constraints
 
-- 套件路徑：`engine/apexhl/`；測試：`engine/tests/`；虛擬環境：`engine/.venv`（加入 `.gitignore`）。
+- 套件路徑：`engine/aditor/`；測試：`engine/tests/`；虛擬環境：`engine/.venv`（加入 `.gitignore`）。
 - 執行 Python 一律 `engine/.venv/Scripts/python -m pytest ...`，工作目錄為 `engine/`。
 - 依賴只允許：`opencv-python`、`numpy`（runtime）；`pytest`（dev）；`ccl_chromium_reader`（只給 `tools/outplayed_truth.py`）。
-- ffmpeg/ffprobe 路徑解析順序：環境變數 `APEXHL_FFMPEG`/`APEXHL_FFPROBE` → 引擎旁的 `ffmpeg/` 目錄 → PATH。集中在 `apexhl/ffbin.py`。
+- ffmpeg/ffprobe 路徑解析順序：環境變數 `ADITOR_FFMPEG`/`ADITOR_FFPROBE` → 引擎旁的 `ffmpeg/` 目錄 → PATH。集中在 `aditor/ffbin.py`。
 - 分析取樣率固定 `fps=4`；第 k 格時間 `t = start + k * 0.25`（`start` 為本次解碼的起點秒數），不得解析 showinfo、不得使用 `-copyts`。
 - ffmpeg 子程序的 stdout 與 stderr 必須由兩個執行緒同時讀取；stderr 保留最後 64KB。
 - 所有座標以 1920×1080 為基準。
 - 事件類型字串固定：`knock`、`assist_knock`、`assist_elim`、`elim`、`squad_wipe`；計數類型為前四者。
 - 預設值：`gap=20`、`n=3`、`before=8`、`after=4`、`max_len=90`、`dedupe_window=90`、連續命中 2 格、消失 ≥ 0.5 秒為新事件、觀戰連續 ≥ 2 秒成立、接續回退 5 秒、每 30 秒寫入 progress、16:9 容差 1%、校準比例 0.85–1.15 步長 0.05、校準收集 5 次命中。
-- `ENGINE_VERSION = "0.1.0"`，定義於 `apexhl/__init__.py`。
-- 測試用的真實影片路徑不寫死在測試中：以環境變數 `APEXHL_SAMPLE_DIR`（預設 `E:\Outplayed\Outplayed`）與 `APEXHL_GOLDEN_VIDEO` 指定，不存在時 `pytest.skip`。影片檔不得提交到 git。
+- `ENGINE_VERSION = "0.1.0"`，定義於 `aditor/__init__.py`。
+- 測試用的真實影片路徑不寫死在測試中：以環境變數 `ADITOR_SAMPLE_DIR`（預設 `E:\Outplayed\Outplayed`）與 `ADITOR_GOLDEN_VIDEO` 指定，不存在時 `pytest.skip`。影片檔不得提交到 git。
 - 不得修改 `E:\Outplayed\` 底下任何檔案（唯讀素材）。
 - Commit 訊息結尾加上：`Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>`
 
@@ -41,7 +41,7 @@
 ```
 engine/
   pyproject.toml
-  apexhl/
+  aditor/
     __init__.py        ENGINE_VERSION
     __main__.py        CLI 進入點（analyze / ipc 子命令）
     ffbin.py           ffmpeg/ffprobe 路徑解析
@@ -76,7 +76,7 @@ tools/
 ### Task 1: 專案骨架、資料模型、profile 載入、probe
 
 **Files:**
-- Create: `.gitignore`、`engine/pyproject.toml`、`engine/apexhl/__init__.py`、`engine/apexhl/ffbin.py`、`engine/apexhl/models.py`、`engine/apexhl/profile.py`、`engine/apexhl/probe.py`、`engine/tests/conftest.py`
+- Create: `.gitignore`、`engine/pyproject.toml`、`engine/aditor/__init__.py`、`engine/aditor/ffbin.py`、`engine/aditor/models.py`、`engine/aditor/profile.py`、`engine/aditor/probe.py`、`engine/tests/conftest.py`
 - Test: `engine/tests/test_models.py`、`engine/tests/test_probe.py`、`engine/tests/test_ffbin.py`
 
 **Interfaces:**
@@ -92,7 +92,7 @@ tools/
   - `probe.probe(path: str) -> VideoInfo`（ffprobe 失敗 raise `ProbeError`）、`probe.keyframes(path: str) -> list[float]`（以 `ffprobe -skip_frame nokey -select_streams v:0 -show_entries frame=pts_time` 取得，已扣除 start_time）、`probe.is_16x9(w: int, h: int) -> bool`。
   - `conftest.make_video(tmp_path, name, duration, *, start_time=0.0, vfr=False, marks: list[tuple[float, float]] = []) -> Path`：用 ffmpeg `testsrc2` 產生 1920×1080 H.264 影片；`marks` 為 `(t_start, t_end)`，在這些時間於 banner ROI 中央畫實心白框（`drawbox ... enable='between(t,a,b)'`）；`start_time` 以 `-output_ts_offset` 達成；`vfr=True` 以 `setpts` 抖動產生可變幀率。
 
-- [x] **Step 1: 建立骨架**：`git` 已初始化；建立 `.gitignore`（`engine/.venv/`、`__pycache__/`、`*.mp4`、`*.mkv`、`node_modules/`、`dist/`、`out/`）、`engine/pyproject.toml`（套件 `apexhl`，依賴 `opencv-python`, `numpy`；dev 依賴 `pytest`），以 `py -3.14 -m venv engine/.venv` 建立環境並 `pip install -e engine[dev]`。
+- [x] **Step 1: 建立骨架**：`git` 已初始化；建立 `.gitignore`（`engine/.venv/`、`__pycache__/`、`*.mp4`、`*.mkv`、`node_modules/`、`dist/`、`out/`）、`engine/pyproject.toml`（套件 `aditor`，依賴 `opencv-python`, `numpy`；dev 依賴 `pytest`），以 `py -3.14 -m venv engine/.venv` 建立環境並 `pip install -e engine[dev]`。
 - [x] **Step 2: 寫失敗測試**
 
 ```python
@@ -130,7 +130,7 @@ def test_keyframes_relative(tmp_path):
 
 # test_ffbin.py
 def test_ffbin_env_override(monkeypatch, tmp_path):
-    monkeypatch.setenv("APEXHL_FFMPEG", str(tmp_path / "nope.exe"))
+    monkeypatch.setenv("ADITOR_FFMPEG", str(tmp_path / "nope.exe"))
     with pytest.raises(FileNotFoundError): ffbin.ffmpeg()
 ```
 
@@ -147,7 +147,7 @@ def test_ffbin_env_override(monkeypatch, tmp_path):
 
 **Files:**
 - Create: `tools/extract_templates.py`、`templates/zh-TW/profile.json`、`templates/zh-TW/*.png`、`engine/tests/fixtures/zh-TW/{pos,neg}/*.png`、`engine/tests/fixtures/zh-TW/labels.json`、`engine/tests/test_profile_zh.py`
-- Modify: `docs/superpowers/specs/2026-10-15-apex-highlighter-design.md` §3（回寫查證結果）
+- Modify: `docs/superpowers/specs/2026-10-15-aditor-design.md` §3（回寫查證結果）
 
 **Interfaces:**
 - Consumes: `ffbin.ffmpeg()`、`profile.load_profile`
@@ -182,7 +182,7 @@ def test_zh_profile_loads():
 ### Task 3: 解碼管線
 
 **Files:**
-- Create: `engine/apexhl/decode.py`
+- Create: `engine/aditor/decode.py`
 - Test: `engine/tests/test_decode.py`
 
 **Interfaces:**
@@ -238,7 +238,7 @@ def test_stderr_flood_no_deadlock(tmp_path, zh_profile, monkeypatch):
 ### Task 4: 單格偵測
 
 **Files:**
-- Create: `engine/apexhl/detect.py`
+- Create: `engine/aditor/detect.py`
 - Test: `engine/tests/test_detect.py`
 
 **Interfaces:**
@@ -294,7 +294,7 @@ def test_stacked_banner(zh_detector, labeled):   # Task 2 證實不會堆疊時�
 ### Task 5: 水平比例校準
 
 **Files:**
-- Create: `engine/apexhl/calibrate.py`
+- Create: `engine/aditor/calibrate.py`
 - Test: `engine/tests/test_calibrate.py`
 
 **Interfaces:**
@@ -324,7 +324,7 @@ def test_scan_scales_empty(zh_detector):
 ### Task 6: 串流事件追蹤
 
 **Files:**
-- Create: `engine/apexhl/events.py`
+- Create: `engine/aditor/events.py`
 - Test: `engine/tests/test_events.py`
 
 **Interfaces:**
@@ -357,7 +357,7 @@ def test_spectating_interval():          # 9 格觀戰 → [t0, t0+2.25]；7 格
 ### Task 7: 計數推導
 
 **Files:**
-- Create: `engine/apexhl/derive.py`
+- Create: `engine/aditor/derive.py`
 - Test: `engine/tests/test_derive.py`
 
 **Interfaces:**
@@ -388,7 +388,7 @@ def test_manual_event_without_sig_counted(): # name_sig=None 的 manual knock �
 ### Task 8: 自動剪輯
 
 **Files:**
-- Create: `engine/apexhl/autoclip.py`
+- Create: `engine/aditor/autoclip.py`
 - Test: `engine/tests/test_autoclip.py`
 
 **Interfaces:**
@@ -418,14 +418,14 @@ def test_uses_final_counted():  # counted_override=False 的事件不計入
 ### Task 9: 快取與重新分析合併
 
 **Files:**
-- Create: `engine/apexhl/cache.py`
+- Create: `engine/aditor/cache.py`
 - Test: `engine/tests/test_cache.py`
 
 **Interfaces:**
 - Consumes: `VideoInfo`, `Event`, `Clip`, `SpecInterval`, `ENGINE_VERSION`
 - Produces:
   - 快取文件為 dict，結構同 spec §4.2，另加 `"keyframes": list[float]`。
-  - `cache.cache_path(video_path: str, cache_dir: Path, beside: bool = False) -> Path`：`beside=False` → `cache_dir / (sha1(normalize(path)).hexdigest() + ".json")`，`normalize` = `os.path.abspath` → 小寫 → `\` 統一為 `/`；`beside=True` → 影片同目錄 `<stem>.apexhl.json`。
+  - `cache.cache_path(video_path: str, cache_dir: Path, beside: bool = False) -> Path`：`beside=False` → `cache_dir / (sha1(normalize(path)).hexdigest() + ".json")`，`normalize` = `os.path.abspath` → 小寫 → `\` 統一為 `/`；`beside=True` → 影片同目錄 `<stem>.aditor.json`。
   - `cache.load_cache(p: Path) -> dict | None`（不存在或 JSON 損毀回 None）；`cache.save_cache(p: Path, doc: dict) -> Path`（先寫 `.tmp` 再 `os.replace`；目標目錄不可寫時改寫到 `fallback_dir` 參數並回傳實際路徑）。
   - `cache.needs_reanalysis(doc: dict, info: VideoInfo, templates_version: str) -> bool`：size、mtime、engine_version、templates_version 任一不同，或 `analysis.status != "done"`。
   - `cache.merge_reanalysis(old_events: list[Event], new_auto: list[Event]) -> tuple[list[Event], list[Event]]`：回傳 `(merged, unmatched)`；保留所有 `source="manual"`；舊 auto 事件的 `deleted`/`counted_override` 依「同 type 且 |Δt| ≤ 1.0」轉移到最近的新 auto 事件；轉移不到且帶有使用者狀態的舊事件放入 `unmatched`。
@@ -435,7 +435,7 @@ def test_uses_final_counted():  # counted_override=False 的事件不計入
 
 ```python
 def test_cache_key_path_only(tmp_path):     # 同路徑不同大小寫/斜線 → 同一個 key；檔案內容改變 key 不變
-def test_cache_beside_chinese_space(tmp_path):  # "Apex 影片/a b.mp4" → "a b.apexhl.json"
+def test_cache_beside_chinese_space(tmp_path):  # "Apex 影片/a b.mp4" → "a b.aditor.json"
 def test_atomic_save_and_load(tmp_path):
 def test_corrupt_cache_returns_none(tmp_path):
 def test_readonly_dir_falls_back(tmp_path):  # 以不存在且無法建立的目錄模擬 → 寫到 fallback_dir
@@ -453,14 +453,14 @@ def test_merge_clips_keeps_manual():
 ### Task 10: 分析流程、接續、CLI、IPC
 
 **Files:**
-- Create: `engine/apexhl/analyze.py`、`engine/apexhl/ipc.py`、`engine/apexhl/__main__.py`
+- Create: `engine/aditor/analyze.py`、`engine/aditor/ipc.py`、`engine/aditor/__main__.py`
 - Test: `engine/tests/test_analyze.py`、`engine/tests/test_ipc.py`、`engine/tests/test_golden.py`
 
 **Interfaces:**
 - Consumes: 前述所有模組
 - Produces:
   - `analyze.analyze(path: str, profile: Profile, *, cache_dir: Path, beside: bool = False, force: bool = False, on_progress: Callable[[float, float], None] = noop, cancel: threading.Event | None = None, hwaccel: bool = True) -> dict`：回傳完整快取文件，並在文件中加入 `"cache_path": <實際寫入的快取檔絕對路徑>`（前端依此路徑寫回手動修正；下次分析時 `merge_reanalysis` 讀到的就是含修正的版本）。流程：`probe` → 讀快取；若不需重新分析且非 `force` 直接回傳；若快取 `status="partial"` 且 size/mtime 未變，從 `progress_t - 5` 接續（`EventTracker(resume_start=...)`，新事件與既有事件以「同 type、|Δt| ≤ 1、名字指紋相似」去重）；否則 `calibrate` → 從 0 解碼。每 30 秒（影片時間）寫入 `status="partial"`、`progress_t` 與目前事件；完成後 `keyframes`、`derive`、`merge_reanalysis`、`status="done"`。取消時寫入 partial 後 raise `Cancelled`。
-  - IPC 協定（`python -m apexhl ipc`，stdin/stdout 每行一個 JSON，UTF-8）：
+  - IPC 協定（`python -m aditor ipc`，stdin/stdout 每行一個 JSON，UTF-8）：
     - 請求：`{"id": str, "cmd": "probe"|"analyze"|"cancel"|"derive"|"autoclip", "args": {...}}`
     - `probe` args `{"path"}` → result `VideoInfo` dict
     - `analyze` args `{"path","profile_dir","cache_dir","beside"?,"force"?,"hwaccel"?}` → 期間送 `{"id","type":"progress","t","duration"}`，結束送 `{"id","type":"result","data": <快取文件>}`；同時只執行一個 analyze（第二個請求回 error `"busy"`）
@@ -469,7 +469,7 @@ def test_merge_clips_keeps_manual():
     - `autoclip` args `{"events","params","duration"}` → result `{"clips"}`
     - 任何例外 → `{"id","type":"error","code": str,"message": str}`，`code` 取值：`bad_request`、`probe_failed`、`decode_failed`、`profile_error`、`busy`、`cancelled`、`internal`
     - 啟動時先送 `{"type":"ready","engine_version": ENGINE_VERSION}`
-  - CLI：`python -m apexhl analyze <video> --profile-dir templates/zh-TW --cache-dir <dir> [--force] [--no-hwaccel] [--out file.json]`，進度印到 stderr。
+  - CLI：`python -m aditor analyze <video> --profile-dir templates/zh-TW --cache-dir <dir> [--force] [--no-hwaccel] [--out file.json]`，進度印到 stderr。
 
 - [x] **Step 1: 寫失敗測試**
 
@@ -484,11 +484,11 @@ def test_ipc_ready_probe_and_error(tmp_path):   # 以 subprocess 啟動 ipc，�
 def test_ipc_busy_and_cancel(tmp_path):
 def test_ipc_autoclip_roundtrip():
 
-# test_golden.py：APEXHL_GOLDEN_VIDEO 不存在則 skip；結果與 engine/tests/golden/expected.json 比對（事件 type 與 t ±0.5）
+# test_golden.py：ADITOR_GOLDEN_VIDEO 不存在則 skip；結果與 engine/tests/golden/expected.json 比對（事件 type 與 t ±0.5）
 ```
 
 - [x] **Step 2: 確認失敗** → **Step 3: 實作** → **Step 4: 確認通過**
-- [x] **Step 5: 製作黃金短片**：從長片截 3–5 分鐘含多種事件的片段（`ffmpeg -ss … -t … -c copy`）存到 `E:\` 以外的本機路徑（例如 `D:\Develop\apexhl-samples\golden.mp4`，不進 git），跑 CLI，**人工逐一核對**事件後存成 `engine/tests/golden/expected.json`；設定 `APEXHL_GOLDEN_VIDEO` 後跑 `test_golden.py` 通過。
+- [x] **Step 5: 製作黃金短片**：從長片截 3–5 分鐘含多種事件的片段（`ffmpeg -ss … -t … -c copy`）存到 `E:\` 以外的本機路徑（例如 `D:\Develop\aditor-samples\golden.mp4`，不進 git），跑 CLI，**人工逐一核對**事件後存成 `engine/tests/golden/expected.json`；設定 `ADITOR_GOLDEN_VIDEO` 後跑 `test_golden.py` 通過。
 - [x] **Step 6: Commit** `feat(engine): analyze pipeline with resume, CLI and JSON Lines IPC`
 
 ---
@@ -499,7 +499,7 @@ def test_ipc_autoclip_roundtrip():
 - Create: `tools/outplayed_truth.py`、`tools/evaluate.py`、`tools/benchmark.py`、`engine/tests/test_evaluate.py`、`docs/accuracy-report.md`
 
 **Interfaces:**
-- Consumes: CLI `python -m apexhl analyze`、快取文件格式
+- Consumes: CLI `python -m aditor analyze`、快取文件格式
 - Produces:
   - `tools/outplayed_truth.py --out truth_dir`：用 `ccl_chromium_reader` 讀 spec §8 的 IndexedDB 路徑（**先複製整個資料夾到暫存目錄再讀**，避免鎖檔與誤改），輸出每支原始影片一個 `truth.json`：`{"video": <檔名>, "events": [{"t": float, "type": "knock"|"assist"|"kill"|...}]}`，時間換算為相對影片開頭的秒數。若無法解析，輸出錯誤原因並以非 0 結束；此時改走人工標註（於 Plan 2 完成後以介面手動修正）。
   - `tools/evaluate.py --truth truth.json --pred cache.json [--tolerance 1.5] [--types knock]`：以真值與預測的配對時間差中位數估計系統性偏移並扣除後，以貪婪最近配對計算各類型召回率／精確率，列出漏抓／誤抓時間點（`HH:MM:SS`）。核心函式 `evaluate(truth: list[tuple[float,str]], pred: list[tuple[float,str]], tolerance: float) -> Report` 可單元測試。

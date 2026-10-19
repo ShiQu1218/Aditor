@@ -6,7 +6,7 @@ import { setTimeout as delay } from 'timers/promises'
 import { DEFAULT_RECORDING_SETTINGS } from '../../shared/recording'
 import type { RecorderCommand, RecordingDeps } from './index'
 
-export const fakeRecorder = path.join(__dirname, '__fixtures__', 'apexrec.cjs')
+export const fakeRecorder = path.join(__dirname, '__fixtures__', 'aditorrec.cjs')
 
 export function tempRoot(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'apex-recording-'))
@@ -44,7 +44,7 @@ export async function waitFor(condition: () => boolean, timeout = 10000): Promis
 }
 
 const exe = process.platform === 'win32' ? '.exe' : ''
-export const ffmpeg = [process.env.APEXHL_FFMPEG,
+export const ffmpeg = [process.env.ADITOR_FFMPEG,
   path.resolve(__dirname, '../../../../build/ffmpeg/bin', 'ffmpeg' + exe), 'ffmpeg']
   .find((bin) => bin && spawnSync(bin, ['-version'], { windowsHide: true }).status === 0)
 

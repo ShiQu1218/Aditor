@@ -4,8 +4,8 @@ import shutil
 
 import pytest
 
-from apexhl.icon_detect import ICON_NAMES, enemy_color_mask
-from apexhl.profile import ProfileError, load_profile
+from aditor.icon_detect import ICON_NAMES, enemy_color_mask
+from aditor.profile import ProfileError, load_profile
 from conftest import ICON_DIR
 
 
@@ -47,7 +47,7 @@ def test_profile_yellow_pink_rules_match_icon_detector_mask():
     """名字指紋的黃／粉紅規則與圖示偵測的 enemy_color_mask 是同一組數值（紅規則刻意較寬：
     指紋要盡量讀到完整字形；圖示線索只需要有無敵人色）。"""
     import numpy as np
-    from apexhl.detect import red_mask
+    from aditor.detect import red_mask
     p = load_profile(ICON_DIR)
     rng = np.random.default_rng(0)
     px = rng.integers(0, 256, (1, 20000, 3), dtype=np.uint8)
@@ -71,7 +71,7 @@ def test_missing_icon_template_file(tmp_path, name):
 
 
 def test_undecodable_icon_template_raises_clear_error(tmp_path):
-    from apexhl.icon_detect import IconDetector
+    from aditor.icon_detect import IconDetector
     d = _copy(tmp_path)
     (d / "chev.png").write_bytes(b"not a png")
     with pytest.raises(ValueError, match="chev.png"):

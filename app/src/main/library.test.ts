@@ -9,7 +9,7 @@ describe('Library', () => {
   let lib: Library
 
   beforeEach(() => {
-    tmpFile = path.join(os.tmpdir(), `apexhl_lib_test_${Date.now()}_${Math.random()}.json`)
+    tmpFile = path.join(os.tmpdir(), `aditor_lib_test_${Date.now()}_${Math.random()}.json`)
     lib = new Library(tmpFile)
   })
 

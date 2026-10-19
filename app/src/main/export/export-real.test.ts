@@ -3,7 +3,7 @@
  * 來源是合成影片：長 GOP（4 秒一個關鍵影格）＋ B-frame＋AAC，片段起點都不在關鍵影格上——
  * 正是舊版用 concat inpoint 時交界卡住、音訊多出、第一幀前出現空白 edit 的條件。
  * 合輯用 closed GOP（OBS／x264／NVENC 預設）；另用 open GOP 來源檢查單檔快速無損會丟掉解不出來的 leading B 幀。
- * 找不到 ffmpeg（APEXHL_FFMPEG、repo 的 build/ffmpeg/bin、PATH）就略過。
+ * 找不到 ffmpeg（ADITOR_FFMPEG、repo 的 build/ffmpeg/bin、PATH）就略過。
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { spawnSync } from 'child_process'
@@ -18,8 +18,8 @@ const exe = process.platform === 'win32' ? '.exe' : ''
 
 function findBin(name: 'ffmpeg' | 'ffprobe'): string | null {
   const candidates = [
-    name === 'ffmpeg' ? process.env.APEXHL_FFMPEG : process.env.APEXHL_FFPROBE,
-    process.env.APEXHL_FFMPEG ? path.join(path.dirname(process.env.APEXHL_FFMPEG), name + exe) : undefined,
+    name === 'ffmpeg' ? process.env.ADITOR_FFMPEG : process.env.ADITOR_FFPROBE,
+    process.env.ADITOR_FFMPEG ? path.join(path.dirname(process.env.ADITOR_FFMPEG), name + exe) : undefined,
     path.resolve(__dirname, '../../../../build/ffmpeg/bin', name + exe),
     name
   ].filter((c): c is string => !!c)
@@ -86,7 +86,7 @@ describeReal('real ffmpeg export: clip junctions play cleanly', () => {
     })
 
   beforeAll(() => {
-    root = fs.mkdtempSync(path.join(os.tmpdir(), 'apexhl-real-'))
+    root = fs.mkdtempSync(path.join(os.tmpdir(), 'aditor-real-'))
     outDir = path.join(root, 'out')
     fs.mkdirSync(outDir)
     source = path.join(root, 'src.mp4')
@@ -110,7 +110,7 @@ describeReal('real ffmpeg export: clip junctions play cleanly', () => {
       expect(r.ok, JSON.stringify(r)).toBe(true)
       const out = path.join(outDir, 'Merged', `joined-${quality}.mp4`)
       // 中間檔都已清掉
-      expect(fs.readdirSync(path.join(outDir, 'Merged')).filter((f) => f.startsWith('.apexhl-seg'))).toEqual([])
+      expect(fs.readdirSync(path.join(outDir, 'Merged')).filter((f) => f.startsWith('.aditor-seg'))).toEqual([])
 
       const info = streamInfo(out)
       const v = info.findIndex((s) => s.codec_type === 'video')

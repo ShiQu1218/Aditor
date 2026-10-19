@@ -1,4 +1,4 @@
-# Apex Highlighter — 準確率與效能評估報告
+# Aditor — 準確率與效能評估報告
 
 日期：2026-10-15  
 版本：0.1.0  
@@ -8,7 +8,7 @@
 
 ## 1. 執行摘要
 
-本報告依據 [設計規格 (docs/superpowers/specs/2026-10-15-apex-highlighter-design.md)](file:///D:/Develop/Apex_highlighter/docs/superpowers/specs/2026-10-15-apex-highlighter-design.md) §1 與計畫 1 Task 11 驗收標準，針對繁體中文 1080p 遊戲錄影進行「擊倒」（`knock`）偵測準確率、端到端黃金短片驗證，以及兩支百分鐘原始長片（AV1、1916×1080、60fps）之分析與速度基準測試。
+本報告依據 [設計規格 (docs/superpowers/specs/2026-10-15-aditor-design.md)](file:///D:/Develop/Aditor/docs/superpowers/specs/2026-10-15-aditor-design.md) §1 與計畫 1 Task 11 驗收標準，針對繁體中文 1080p 遊戲錄影進行「擊倒」（`knock`）偵測準確率、端到端黃金短片驗證，以及兩支百分鐘原始長片（AV1、1916×1080、60fps）之分析與速度基準測試。
 
 ### 核心成果指標
 
@@ -32,7 +32,7 @@
 2. **原始長片（`Apex Legends/` 10-13 兩支，合計 237 分鐘）**：
    - Outplayed 記錄顯示錄製期間其事件服務狀態為 `isServiceDown=True`，故 Outplayed 無即時事件記錄。
    - 評估採完整分析執行，並輔以事件清單、去重與觀戰過濾統計核驗。
-3. **黃金短片（`apexhl-samples/golden.mp4`）**：
+3. **黃金短片（`aditor-samples/golden.mp4`）**：
    - 截自 `07-13 17-33-52` 的 600–826 秒，共 226 秒，包含 knock、assist_knock、assist_elim、squad_wipe 共 12 個逐格核對的黃金事件。
 
 ---
@@ -80,7 +80,7 @@
 
 ## 5. 長片分析結果（10-13 兩支原始錄影）
 
-對 `E:\Outplayed\Outplayed\Apex Legends` 兩支 AV1 長片進行端到端 `apexhl analyze`：
+對 `E:\Outplayed\Outplayed\Apex Legends` 兩支 AV1 長片進行端到端 `aditor analyze`：
 
 ### 5.1 影片 2 (`..._18-26-50-167.mp4`)
 - **規格**：時長 6002.25 秒（100.0 分鐘），AV1 1916×1080 60fps。

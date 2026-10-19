@@ -1,4 +1,4 @@
-"""黃金短片（舊版遊戲 2026-07 錄影的 226 秒片段，不進 git）：以 APEXHL_GOLDEN_VIDEO 指定才執行。
+"""黃金短片（舊版遊戲 2026-07 錄影的 226 秒片段，不進 git）：以 ADITOR_GOLDEN_VIDEO 指定才執行。
 
 expected.json 是人工逐一目視核對的事件（文字法時代建立，含 elim／squad_wipe）。產品範圍現在只有
 knock 與助攻，所以只比對 expected 中的 knock／assist_*：每一筆都必須被找到（類型相同、時間 ±0.5 秒）。
@@ -19,10 +19,10 @@ KNOWN_EXTRA = [39.0, 98.25, 138.5, 166.5]
 
 @pytest.mark.parametrize("jobs", [1, None], ids=["jobs1", "auto"])
 def test_golden(tmp_path, profile, jobs):
-    video = os.environ.get("APEXHL_GOLDEN_VIDEO")
+    video = os.environ.get("ADITOR_GOLDEN_VIDEO")
     if not video or not Path(video).exists():
-        pytest.skip("未設定 APEXHL_GOLDEN_VIDEO")
-    from apexhl.analyze import analyze
+        pytest.skip("未設定 ADITOR_GOLDEN_VIDEO")
+    from aditor.analyze import analyze
     doc = analyze(video, profile, cache_dir=tmp_path, jobs=jobs)
     got = [(e["type"], e["t"]) for e in doc["events"]]
     assert {t for t, _ in got} <= PRODUCT

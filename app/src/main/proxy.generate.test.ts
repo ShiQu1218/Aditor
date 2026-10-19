@@ -14,7 +14,7 @@ const KEYS = ['APPDATA', 'FAKE_OK_ENCODERS', 'FAKE_LOG', 'FAKE_SLEEP_MS']
 
 beforeEach(() => {
   saved = Object.fromEntries(KEYS.map((k) => [k, process.env[k]]))
-  appData = fs.mkdtempSync(path.join(os.tmpdir(), 'apexhl-proxy-'))
+  appData = fs.mkdtempSync(path.join(os.tmpdir(), 'aditor-proxy-'))
   process.env.APPDATA = appData
   process.env.FAKE_LOG = path.join(appData, 'calls.log')
 })

@@ -2,8 +2,8 @@
 import sys, os, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from ana import *
-from apexhl.detect import Detector
-from apexhl.profile import load_profile
+from aditor.detect import Detector
+from aditor.profile import load_profile
 cv2.setNumThreads(1)
 F = load("ENG"); N = 2000
 frames_ = [np.ascontiguousarray(F[i]) for i in range(N)]

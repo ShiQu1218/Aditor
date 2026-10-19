@@ -276,7 +276,7 @@ impl SegmentWriter {
         let worker_counts = counts.clone();
         let fps = video.fps;
         let worker = thread::Builder::new()
-            .name("apexrec-encode".into())
+            .name("aditorrec-encode".into())
             .spawn(move || {
                 monitor_worker(&worker_counts, || {
                     run_worker(

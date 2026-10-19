@@ -37,7 +37,7 @@ export function prepareStorageRoot(input: unknown, fsApi: typeof fs = fs): Prepa
     ]) {
       fsApi.mkdirSync(dir, { recursive: true })
     }
-    const probe = path.join(root, `.apexhl-write-test-${process.pid}`)
+    const probe = path.join(root, `.aditor-write-test-${process.pid}`)
     fsApi.writeFileSync(probe, '')
     fsApi.rmSync(probe, { force: true })
   } catch (err) {
@@ -55,7 +55,7 @@ export interface StorageRootSuggestInput {
   videosDir: string
 }
 
-/** 建議的儲存根資料夾：沿用既有 Recordings／Exports 的上一層，否則 影片資料夾\Apex Highlighter。 */
+/** 建議的儲存根資料夾：沿用既有 Recordings／Exports 的上一層，否則 影片資料夾\Aditor。 */
 export function suggestStorageRoot({ recordingOutputDir, defaultOutDir, videosDir }: StorageRootSuggestInput): string {
   if (recordingOutputDir && sameName(path.basename(recordingOutputDir), RECORDINGS_DIRNAME)) {
     return path.dirname(recordingOutputDir)
@@ -63,5 +63,5 @@ export function suggestStorageRoot({ recordingOutputDir, defaultOutDir, videosDi
   if (defaultOutDir && sameName(path.basename(defaultOutDir), EXPORTS_DIRNAME)) {
     return path.dirname(defaultOutDir)
   }
-  return path.join(videosDir, 'Apex Highlighter')
+  return path.join(videosDir, 'Aditor')
 }

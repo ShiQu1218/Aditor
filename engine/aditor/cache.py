@@ -20,7 +20,7 @@ def _normalize(path: str) -> str:
 def cache_path(video_path: str, cache_dir: Path, beside: bool = False) -> Path:
     if beside:
         v = Path(video_path)
-        return v.parent / (v.stem + ".apexhl.json")
+        return v.parent / (v.stem + ".aditor.json")
     key = hashlib.sha1(_normalize(video_path).encode("utf-8")).hexdigest()
     return Path(cache_dir) / (key + ".json")
 

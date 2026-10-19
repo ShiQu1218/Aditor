@@ -62,10 +62,10 @@ export const settingsI18n: Messages['settingsI18n'] = {
     },
     cacheLocation: {
       title: '缓存位置',
-      desc: '默认存在 %APPDATA%\\ApexHighlighter\\cache，不写入 Outplayed 目录。更改后对之后开始的分析生效；已分析过的视频仍可从原位置打开。',
+      desc: '默认存在 %APPDATA%\\Aditor\\cache，不写入 Outplayed 目录。更改后对之后开始的分析生效；已分析过的视频仍可从原位置打开。',
       keywords: ['缓存', '位置', 'cache', 'appdata'],
       appdata: 'App 文件夹',
-      besideVideo: '视频旁（.apexhl.json）'
+      besideVideo: '视频旁（.aditor.json）'
     },
     lowPerfMode: {
       title: '低性能模式',
@@ -117,7 +117,7 @@ export const settingsI18n: Messages['settingsI18n'] = {
     },
     projectAutosave: {
       title: '项目自动保存',
-      desc: '每次修改后自动存到 %APPDATA%\\ApexHighlighter\\projects\\，“另存文件”只用于分享。关闭后会恢复“未保存更改”提示。',
+      desc: '每次修改后自动存到 %APPDATA%\\Aditor\\projects\\，“另存文件”只用于分享。关闭后会恢复“未保存更改”提示。',
       keywords: ['项目', '自动保存', 'autosave', '保存']
     },
     storageRoot: {
@@ -164,7 +164,7 @@ export const settingsI18n: Messages['settingsI18n'] = {
       title: '版本与许可',
       desc: 'MIT 许可证。附带 LGPL 版 ffmpeg。',
       keywords: ['版本', '授权', '许可证', '关于', 'license', 'version', 'mit', 'ffmpeg'],
-      version: 'Apex Highlighter {version}',
+      version: 'Aditor {version}',
       licenses: '第三方许可'
     },
     trademark: {

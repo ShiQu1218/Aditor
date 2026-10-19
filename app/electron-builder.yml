@@ -1,5 +1,5 @@
-appId: com.apexhighlighter.app
-productName: Apex Highlighter
+appId: com.aditor.app
+productName: Aditor
 directories:
   output: ../dist
   buildResources: build
@@ -7,8 +7,8 @@ files:
   - out/**/*
   - package.json
 extraResources:
-  - from: ../build/engine/apexhl
-    to: engine/apexhl
+  - from: ../build/engine/aditor
+    to: engine/aditor
   - from: ../build/ffmpeg
     to: ffmpeg
   - from: resources

@@ -3,8 +3,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from apexhl.derive import is_counted
-from apexhl.models import AutoClipParams, Clip, Event
+from aditor.derive import is_counted
+from aditor.models import AutoClipParams, Clip, Event
 
 
 @dataclass

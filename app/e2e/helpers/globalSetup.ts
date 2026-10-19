@@ -3,7 +3,7 @@ import os from 'os'
 import path from 'path'
 import { makeFixtures } from './makeFixtures'
 
-export const FIXTURE_FILE = path.join(os.tmpdir(), 'apexhl-e2e-fixtures.json')
+export const FIXTURE_FILE = path.join(os.tmpdir(), 'aditor-e2e-fixtures.json')
 
 export default async function globalSetup(): Promise<void> {
   const set = makeFixtures()

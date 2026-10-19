@@ -1,14 +1,14 @@
 [package]
-name = "apexrec"
+name = "aditorrec"
 version = "0.1.0"
 edition = "2021"
 rust-version = "1.87"
-description = "Apex Highlighter 原生錄影核心：WGC 擷取、硬體編碼、WASAPI 音訊、fMP4 段落、共享記憶體小圖"
+description = "Aditor 原生錄影核心：WGC 擷取、硬體編碼、WASAPI 音訊、fMP4 段落、共享記憶體小圖"
 license = "MIT"
 publish = false
 
 [[bin]]
-name = "apexrec"
+name = "aditorrec"
 path = "src/main.rs"
 
 [dependencies]

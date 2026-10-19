@@ -47,7 +47,7 @@ describe('recording tray', () => {
   ] as const)('maps %s to its icon, tooltip and action', (phase, icon, label, action, enabled) => {
     const s = setup(phase)
     expect(basename(s.handle.setImage.mock.calls[0][0])).toBe(`tray-${icon}.png`)
-    expect(s.handle.setToolTip).toHaveBeenCalledWith(`Apex Highlighter — ${label}`)
+    expect(s.handle.setToolTip).toHaveBeenCalledWith(`Aditor — ${label}`)
     expect(s.items().find((item) => item.label === action)?.enabled).toBe(enabled)
     s.tray.destroy()
   })
@@ -84,7 +84,7 @@ describe('recording tray', () => {
   it('opens on double click or the menu and quits only through the exit action', async () => {
     const s = setup()
     expect(s.handle.on).toHaveBeenCalledWith('double-click', s.openWindow)
-    await s.click('打開 Apex Highlighter')
+    await s.click('打開 Aditor')
     expect(s.openWindow).toHaveBeenCalledOnce()
     expect(s.quit).not.toHaveBeenCalled()
     await s.click('結束')
@@ -119,7 +119,7 @@ describe('recording tray', () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => {})
     t.handle.setImage.mockImplementation(() => { throw new Error('Failed to load image from path') })
     expect(() => t.update({ phase: 'error' })).not.toThrow()
-    expect(t.handle.setToolTip).toHaveBeenLastCalledWith('Apex Highlighter — 錄影錯誤')
+    expect(t.handle.setToolTip).toHaveBeenLastCalledWith('Aditor — 錄影錯誤')
     expect(() => t.update({ phase: 'error', paused: true })).not.toThrow()
     expect(error).toHaveBeenCalledTimes(1)
     error.mockRestore()

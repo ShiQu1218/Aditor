@@ -13,7 +13,7 @@ import { buildAnalyzeArgs } from './settings-derived'
 import { currentE2EConfig } from './e2e'
 import { applyWindowSecurity } from './window-security'
 import { sanitizeAnalyzeArgs, sanitizeAutoclipArgs, sanitizeDeriveArgs, sanitizeProbeArgs } from './ipc-guards'
-import { apexrecCommand, appDataDir, cacheDir, engineCommand, ffmpegExecutable, liveEngineCommand, profileDir, sceneDir } from '../shared/paths'
+import { aditorrecCommand, appDataDir, cacheDir, engineCommand, ffmpegExecutable, liveEngineCommand, profileDir, sceneDir } from '../shared/paths'
 import { cacheFilePath } from './cache-io'
 import { generateThumbnail } from './thumbnail'
 import { createRecordingService } from './recording'
@@ -25,7 +25,7 @@ import type { RecordingService } from '../shared/recording'
 import { obsPassword } from './settings-ipc'
 import { createDiagnosticLog } from './recording/diagnostic-log'
 
-// E2E 掛鉤（僅 APEXHL_E2E=1）：暫存 appData／userData，測試不碰使用者資料；正式執行時為 null
+// E2E 掛鉤（僅 ADITOR_E2E=1）：暫存 appData／userData，測試不碰使用者資料；正式執行時為 null
 const e2e = currentE2EConfig()
 if (e2e?.appData) {
   process.env.APPDATA = e2e.appData
@@ -97,6 +97,10 @@ function createWindow(): void {
     }
     closeGate?.onClose(e)
   })
+  // 縮到系統匣時請 renderer 暫停播放，不在背景繼續出聲
+  win.on('hide', () => {
+    if (rendererAlive()) win.webContents.send('app:windowHidden')
+  })
   win.on('closed', () => {
     closeGate = null
     mainWindow = null
@@ -146,7 +150,7 @@ function showMainWindow(): void {
 async function initEngineAndServices(): Promise<void> {
   if (app.isPackaged) {
     const ffmpegPath = ffmpegExecutable(true)
-    process.env.APEXHL_FFMPEG = ffmpegPath
+    process.env.ADITOR_FFMPEG = ffmpegPath
     const binDir = resolve(join(ffmpegPath, '..'))
     process.env.PATH = `${binDir}${delimiter}${process.env.PATH || ''}`
   }
@@ -181,7 +185,7 @@ async function initEngineAndServices(): Promise<void> {
   watchManager = new WatchManager({ library, queue, settings: settingsStore })
   watchManager.start()
 
-  // 專案自動儲存：`%APPDATA%\ApexHighlighter\projects\<id>.json`
+  // 專案自動儲存：`%APPDATA%\Aditor\projects\<id>.json`
   const projectStore = new ProjectStore(join(appDataDir(), 'projects'))
 
   const handlers = registerIpcHandlers(library, queue, () => (mainWindow ? [mainWindow] : []), engineClient, settingsStore, watchManager, projectStore, (ok) => closeGate?.ack(ok))
@@ -204,8 +208,8 @@ async function initEngineAndServices(): Promise<void> {
     getObsPassword: () => obsPassword(settingsStore!.get().recording, safeStorage),
     probeVideo: async (file) => engineClient!.request('probe', sanitizeProbeArgs(file)).promise as Promise<import('../shared/types').VideoInfo>,
     getWatchFolders: () => settingsStore!.get().watchFolders,
-    defaultOutputDir: join(app.getPath('videos'), 'Apex Highlighter'),
-    recorderCommand: apexrecCommand(app.isPackaged),
+    defaultOutputDir: join(app.getPath('videos'), 'Aditor'),
+    recorderCommand: aditorrecCommand(app.isPackaged),
     ffmpegPath: ffmpegExecutable(app.isPackaged),
     profileDir: templateProfileDir,
     addToLibrary: (paths) => {

@@ -72,7 +72,7 @@ async function assertWritableDir(dir: string): Promise<void> {
     throw new RequestError(tr('輸出資料夾不存在'))
   }
   if (!st.isDirectory()) throw new RequestError(tr('輸出路徑不是資料夾'))
-  const probe = path.join(dir, `.apexhl-write-test-${process.pid}-${Math.random().toString(36).slice(2, 8)}.tmp`)
+  const probe = path.join(dir, `.aditor-write-test-${process.pid}-${Math.random().toString(36).slice(2, 8)}.tmp`)
   try {
     await fs.promises.writeFile(probe, '', { flag: 'wx' })
   } catch {

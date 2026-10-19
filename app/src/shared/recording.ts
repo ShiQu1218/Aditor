@@ -35,10 +35,10 @@ export interface RecordingSettings {
   obsPassword?: string
   obsFallbackBuiltin: boolean
   mode: RecordingMode
-  /** 錄影資料夾；null＝第一個監看資料夾，沒有監看資料夾時用「影片」資料夾下的 `Apex Highlighter` */
+  /** 錄影資料夾；null＝第一個監看資料夾，沒有監看資料夾時用「影片」資料夾下的 `Aditor` */
   outputDir: string | null
   codec: RecordingCodec
-  /** 'auto' 或 apexrec `hello` 回報的編碼器名稱 */
+  /** 'auto' 或 aditorrec `hello` 回報的編碼器名稱 */
   encoder: string
   fps: 10 | 20 | 30 | 60 | 90 | 120
   preset: 'speed' | 'balanced' | 'quality'
@@ -117,12 +117,12 @@ export const DEFAULT_RECORDING_SETTINGS: RecordingSettings = {
 export type RecordingPhase =
   /** Apex 未執行，或自動錄影關閉 */
   | 'idle'
-  /** 偵測到 Apex，apexrec 啟動中 */
+  /** 偵測到 Apex，aditorrec 啟動中 */
   | 'starting'
   | 'recording'
   /** 串接段落、加入媒體庫中 */
   | 'finalizing'
-  /** apexrec 連續重啟失敗或無硬體編碼器；`error` 有訊息 */
+  /** aditorrec 連續重啟失敗或無硬體編碼器；`error` 有訊息 */
   | 'error'
 
 export interface RecordingStatus {
@@ -136,7 +136,7 @@ export interface RecordingStatus {
   sessionId: string | null
   /** 錄影開始的 epoch ms */
   startedAt: number | null
-  /** apexrec `started` 回報的實際編碼器與尺寸 */
+  /** aditorrec `started` 回報的實際編碼器與尺寸 */
   encoder: string | null
   width: number | null
   height: number | null
@@ -145,7 +145,7 @@ export interface RecordingStatus {
   durationSec: number
   /** 錄影資料夾所在磁碟剩餘 bytes；未知時 null */
   diskFreeBytes: number | null
-  /** 最近一次 apexrec `stats` */
+  /** 最近一次 aditorrec `stats` */
   droppedFrames: number
   /** 自動錄影是否暫停（系統匣「暫停自動錄影」） */
   paused: boolean
@@ -176,7 +176,7 @@ export const IDLE_RECORDING_STATUS: RecordingStatus = {
   matchIndex: null
 }
 
-/** apexrec `hello` 的能力資訊（設定頁選單用）。 */
+/** aditorrec `hello` 的能力資訊（設定頁選單用）。 */
 export interface RecorderCapabilities {
   version: string
   encoders: string[]

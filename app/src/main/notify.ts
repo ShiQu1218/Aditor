@@ -25,7 +25,7 @@ export function createRecordingNotifier(
     if ((kind === 'matchStart' || kind === 'matchEnd') && !getSettings().notifyMatch) return
     try {
       if (!deps.isSupported()) return
-      const notice = deps.create({ title: 'Apex Highlighter', body: message, ...(kind === 'matchCancel' ? { silent: true, urgency: 'low' as const } : {}) })
+      const notice = deps.create({ title: 'Aditor', body: message, ...(kind === 'matchCancel' ? { silent: true, urgency: 'low' as const } : {}) })
       active.add(notice)
       notice.once('close', () => active.delete(notice))
       notice.once('failed', () => {

@@ -25,7 +25,7 @@ describe('cache:loadByVideo 依 cacheLocation 設定讀取', () => {
   let oldAppData: string | undefined
   beforeEach(() => {
     handlers.clear()
-    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'apexhl-cw-'))
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'aditor-cw-'))
     oldAppData = process.env.APPDATA
     process.env.APPDATA = path.join(dir, 'appdata')
   })
@@ -55,7 +55,7 @@ describe('cache:loadByVideo 依 cacheLocation 設定讀取', () => {
     expect(await load({}, video)).toEqual({ where: 'appdata' })
     fs.writeFileSync(besideFile, JSON.stringify({ where: 'beside' }))
     expect(await load({}, video)).toEqual({ where: 'beside' })
-    expect(besideFile).toBe(path.join(path.dirname(video), 'm.apexhl.json'))
+    expect(besideFile).toBe(path.join(path.dirname(video), 'm.aditor.json'))
 
     store.set({ cacheLocation: 'appdata' })
     expect(await load({}, video)).toEqual({ where: 'appdata' })

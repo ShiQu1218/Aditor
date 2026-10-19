@@ -19,7 +19,7 @@ beforeEach(() => {
     saved[k] = process.env[k]
     delete process.env[k]
   }
-  root = fs.mkdtempSync(path.join(os.tmpdir(), 'apexhl-ipc-'))
+  root = fs.mkdtempSync(path.join(os.tmpdir(), 'aditor-ipc-'))
   outDir = path.join(root, 'out')
   pidDir = path.join(root, 'pids')
   fs.mkdirSync(outDir)
@@ -241,7 +241,7 @@ describe('IPC 接線（假 ipcMain / webContents）', () => {
     expect(handlers.has('export:checkOutDir')).toBe(true)
     expect(await invoke('export:checkOutDir', sender, outDir)).toEqual({ ok: true })
     // 檢查用的暫存探測檔不留在資料夾裡
-    expect(fs.readdirSync(outDir).filter((f) => f.startsWith('.apexhl-write-test'))).toEqual([])
+    expect(fs.readdirSync(outDir).filter((f) => f.startsWith('.aditor-write-test'))).toEqual([])
     const missing = await invoke('export:checkOutDir', sender, path.join(root, 'nope'))
     expect(missing).toMatchObject({ ok: false })
     expect(missing.reason).toContain('不存在')

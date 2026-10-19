@@ -125,15 +125,15 @@ impl TestWindow {
                     RegisterClassW(&WNDCLASSW {
                         lpfnWndProc: Some(window_proc),
                         hInstance: instance,
-                        lpszClassName: w!("ApexrecDdaTest"),
+                        lpszClassName: w!("AditorrecDdaTest"),
                         ..Default::default()
                     })
                 });
                 assert_ne!(*atom, 0);
                 let hwnd = CreateWindowExW(
                     WS_EX_TOPMOST | WS_EX_NOACTIVATE,
-                    w!("ApexrecDdaTest"),
-                    w!("apexrec DDA 擷取測試"),
+                    w!("AditorrecDdaTest"),
+                    w!("aditorrec DDA 擷取測試"),
                     WS_POPUP | WS_VISIBLE,
                     40,
                     40,
@@ -476,7 +476,7 @@ fn dda_blacks_frames_and_emits_events_when_another_process_takes_foreground() {
     )
     .unwrap();
     let mut process = RecorderProcess(
-        Command::new(env!("CARGO_BIN_EXE_apexrec"))
+        Command::new(env!("CARGO_BIN_EXE_aditorrec"))
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit())

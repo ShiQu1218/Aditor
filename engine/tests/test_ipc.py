@@ -14,7 +14,7 @@ ENGINE = Path(__file__).resolve().parents[1]
 
 class Proc:
     def __init__(self):
-        self.p = subprocess.Popen([sys.executable, "-m", "apexhl", "ipc"], cwd=ENGINE,
+        self.p = subprocess.Popen([sys.executable, "-m", "aditor", "ipc"], cwd=ENGINE,
                                   stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         self.q: queue.Queue = queue.Queue()
         threading.Thread(target=self._read, daemon=True).start()
@@ -137,7 +137,7 @@ def test_ipc_no_false_busy_after_terminal_line(tmp_path):
 def test_server_prunes_finished_worker_threads():
     """長時間執行的 IPC 工作階段：已結束的工作緒不會一直留在 _threads。"""
     import io
-    from apexhl.ipc import Server
+    from aditor.ipc import Server
     srv = Server(io.BytesIO(), io.BytesIO())
     req = json.dumps({"id": "x", "cmd": "autoclip",
                       "args": {"events": [], "params": {}, "duration": 1}})

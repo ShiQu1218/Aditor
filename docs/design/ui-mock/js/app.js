@@ -1,4 +1,4 @@
-/* Apex Highlighter UI mock — 純前端示意（無建置步驟） */
+/* Aditor UI mock — 純前端示意（無建置步驟） */
 (function () {
   const $ = (s, r = document) => r.querySelector(s);
   const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
@@ -757,9 +757,9 @@ Conversion failed!</div></div><div class="dim">常見原因：磁碟空間不足
     $('#p-fold').onclick = () => { S.projCollapsed = !S.projCollapsed; renderStudio(); };
     $('#p-new').onclick = newProject;
     $('#np-ok').onclick = () => { S.project = []; hist = []; redoS = []; S.selProj = null; closeDlg(); renderStudio(); toast('已建立新專案；舊專案已自動儲存，可從「開啟檔案」或專案清單找回'); };
-    $('#np-save').onclick = () => { closeDlg(); toast('已另存為 我的精華專案.apexproj.json'); };
-    $('#p-save').onclick = () => toast('已另存為 我的精華專案.apexproj.json（專案本身已自動儲存）');
-    $('#p-open').onclick = () => toast('（示意）開啟 .apexproj.json 檔案選擇器');
+    $('#np-save').onclick = () => { closeDlg(); toast('已另存為 我的精華專案.aditorproj.json'); };
+    $('#p-save').onclick = () => toast('已另存為 我的精華專案.aditorproj.json（專案本身已自動儲存）');
+    $('#p-open').onclick = () => toast('（示意）開啟 .aditorproj.json 檔案選擇器');
     document.addEventListener('click', () => closePops());
     $('#btn-import').onclick = () => toast('（示意）開啟檔案選擇器');
     $('#mb-tog').onclick = () => $('#mockbar').classList.toggle('min');

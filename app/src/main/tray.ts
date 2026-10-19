@@ -66,14 +66,14 @@ export function createRecordingTray(opts: RecordingTrayOptions, deps: TrayDepend
     }
     shownImage = image
     const label = statusLabel(status)
-    tray.setToolTip(`Apex Highlighter — ${label}`)
+    tray.setToolTip(`Aditor — ${label}`)
     const active = status.phase === 'starting' || status.phase === 'recording'
     // 錄影中狀態每幾秒推播一次；選單開著時被換掉，點選就不會觸發，所以內容沒變就不重建。
     const menuKey = `${getActiveLocale()}|${active}|${status.phase === 'finalizing'}|${status.paused}`
     if (menuKey === shownMenu) return
     shownMenu = menuKey
     tray.setContextMenu(deps.buildMenu([
-      { label: tr('打開 Apex Highlighter'), click: opts.openWindow },
+      { label: tr('打開 Aditor'), click: opts.openWindow },
       { type: 'separator' },
       {
         label: active ? tr('停止錄影') : tr('開始錄影'),

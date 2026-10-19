@@ -96,14 +96,14 @@ describe('SettingsScreen markup（renderToString + fake window.api 資料）', (
 
   test('storage root row: unset shows the suggestion with a note and the three-folder preview, no open button', async () => {
     const api = fakeApi()
-    api.settings.suggestStorageRoot = async () => 'D:\\Videos\\Apex Highlighter'
+    api.settings.suggestStorageRoot = async () => 'D:\\Videos\\Aditor'
     const row = storageRowHtml(await render({ initialCategory: 'a' }, api))
-    expect(row).toContain('尚未設定（建議：D:\\Videos\\Apex Highlighter）')
+    expect(row).toContain('尚未設定（建議：D:\\Videos\\Aditor）')
     expect(row).toContain('變更…')
     expect(row).not.toContain('在檔案總管開啟')
-    expect(row).toContain('D:\\Videos\\Apex Highlighter\\Recordings\\日期')
-    expect(row).toContain('D:\\Videos\\Apex Highlighter\\Exports\\Merged')
-    expect(row).toContain('D:\\Videos\\Apex Highlighter\\Exports\\Clips')
+    expect(row).toContain('D:\\Videos\\Aditor\\Recordings\\日期')
+    expect(row).toContain('D:\\Videos\\Aditor\\Exports\\Merged')
+    expect(row).toContain('D:\\Videos\\Aditor\\Exports\\Clips')
     expect(row).toContain('錄影依日期分資料夾')
     expect(row).toContain('剪輯輸出：合併')
     expect(row).toContain('剪輯輸出：一段一段')

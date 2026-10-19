@@ -7,9 +7,9 @@ import { Library } from './library'
 import type { EngineClient } from './engine'
 import { cacheFilePath, saveCacheDoc } from './cache-io'
 
-const V1 = path.join(os.tmpdir(), 'apexhl-q', 'v1.mp4')
-const V2 = path.join(os.tmpdir(), 'apexhl-q', 'v2.mp4')
-const V3 = path.join(os.tmpdir(), 'apexhl-q', 'v3.mp4')
+const V1 = path.join(os.tmpdir(), 'aditor-q', 'v1.mp4')
+const V2 = path.join(os.tmpdir(), 'aditor-q', 'v2.mp4')
+const V3 = path.join(os.tmpdir(), 'aditor-q', 'v3.mp4')
 
 const tick = (ms = 10): Promise<void> => new Promise((r) => setTimeout(r, ms))
 
@@ -53,7 +53,7 @@ describe('AnalysisQueue real queue state', () => {
   let lib: Library
   let cacheDir: string
   beforeEach(() => {
-    cacheDir = fs.mkdtempSync(path.join(os.tmpdir(), 'apexhl-qcache-'))
+    cacheDir = fs.mkdtempSync(path.join(os.tmpdir(), 'aditor-qcache-'))
     lib = new Library(path.join(cacheDir, 'library.json'))
   })
   afterEach(() => {
@@ -166,7 +166,7 @@ describe('AnalysisQueue + cache clip preservation (Fix F)', () => {
   let lib: Library
   let dir: string
   beforeEach(() => {
-    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'apexhl-qf-'))
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'aditor-qf-'))
     lib = new Library(path.join(dir, 'library.json'))
   })
   afterEach(() => {

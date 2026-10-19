@@ -1,13 +1,13 @@
-# 手動錄影與量測：先 cargo build --release，再設定 APEXREC_FFMPEG_DIR 與 FFmpeg bin 的 PATH。
+# 手動錄影與量測：先 cargo build --release，再設定 ADITORREC_FFMPEG_DIR 與 FFmpeg bin 的 PATH。
 # 範例：./tools/rec-cli.ps1 -TargetPid 1234 -Seconds 60 -NoMicrophone
-# 擷取方式 A/B：-Capture wgc|dda；-GpuCounters 另外取樣 apexrec 與 dwm 的 GPU 引擎使用率（每秒一次）。
+# 擷取方式 A/B：-Capture wgc|dda；-GpuCounters 另外取樣 aditorrec 與 dwm 的 GPU 引擎使用率（每秒一次）。
 [CmdletBinding()]
 param(
     [ValidateSet('wgc', 'dda')][string]$Capture = 'wgc',
     [switch]$GpuCounters,
     [Parameter(Mandatory)][ValidateRange(1, 2147483647)][int]$TargetPid,
     [ValidateRange(1, 86400)][int]$Seconds = 10,
-    [string]$ExePath = (Join-Path $PSScriptRoot '../target/release/apexrec.exe'),
+    [string]$ExePath = (Join-Path $PSScriptRoot '../target/release/aditorrec.exe'),
     [string]$OutputDir,
     [ValidateSet('hevc', 'h264', 'av1')][string]$Codec = 'hevc',
     [string]$Encoder = 'auto',
@@ -85,7 +85,7 @@ try {
         $dwm = @(Get-Process dwm -ErrorAction SilentlyContinue | ForEach-Object { $_.Id })
         $gpuJob = Start-Job -ArgumentList $process.Id, $dwm, ([math]::Max(1, $Seconds - 3)) -ScriptBlock {
             param($recorder, $dwm, $count)
-            $watch = @{ apexrec = @($recorder); dwm = @($dwm) }
+            $watch = @{ aditorrec = @($recorder); dwm = @($dwm) }
             $sums = @{}
             $samples = @(Get-Counter -Counter '\GPU Engine(*)\Utilization Percentage' -SampleInterval 1 -MaxSamples $count -ErrorAction SilentlyContinue)
             foreach ($sample in $samples) {

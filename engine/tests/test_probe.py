@@ -1,6 +1,6 @@
 import pytest
 
-from apexhl.probe import ProbeError, is_16x9, keyframes, probe
+from aditor.probe import ProbeError, is_16x9, keyframes, probe
 from conftest import make_video
 
 
@@ -33,7 +33,7 @@ def test_keyframes_use_container_time_base_when_video_starts_late(tmp_path):
     """M3：視訊比音訊晚 0.5 秒開始的 mkv。事件時間以容器起點計（ffmpeg 解碼的時間軸），
     關鍵影格也必須是同一個基準（第一個關鍵影格在 0.5，而不是 0）。"""
     import subprocess
-    from apexhl import ffbin
+    from aditor import ffbin
     out = tmp_path / "late.mkv"
     r = subprocess.run([ffbin.ffmpeg(), "-v", "error", "-y",
                         "-f", "lavfi", "-i", "sine=frequency=440:duration=4",

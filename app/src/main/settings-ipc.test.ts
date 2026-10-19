@@ -17,7 +17,7 @@ describe('settings IPC（settings:get / settings:set / settings:changed）', () 
   let dir: string
   let file: string
   beforeEach(() => {
-    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'apexhl-sipc-'))
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'aditor-sipc-'))
     file = path.join(dir, 'settings.json')
   })
   afterEach(() => {

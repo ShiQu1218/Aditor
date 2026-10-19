@@ -25,7 +25,7 @@ export const recordingI18n: Messages['recordingI18n'] = {
   detectionOnly: 'Live detection running (not recording)',
   rows: {
     autoRecord: { title: 'Auto-record', desc: 'Starts recording automatically after Apex is detected running.' },
-    launchAtLogin: { title: 'Start at login and stay in system tray', desc: 'Starts Apex Highlighter in the background when your computer starts.' },
+    launchAtLogin: { title: 'Start at login and stay in system tray', desc: 'Starts Aditor in the background when your computer starts.' },
     closeToTray: { title: 'Minimize to system tray when closing the window', desc: 'Keeps detecting Apex and recording after the window is closed.' },
     backend: { title: 'Recording backend', desc: 'Chooses the recorder that captures the video. Takes effect at the next start.' },
     obsHost: { title: 'OBS host', desc: 'Hostname or IP address of the WebSocket server.' },
@@ -65,7 +65,7 @@ export const recordingI18n: Messages['recordingI18n'] = {
   analysisPerMatch: 'After each match',
   captureWgc: 'Window capture (WGC)',
   captureDda: 'Screen capture (DDA, lower latency)',
-  capabilitiesUnavailable: 'Unable to get recorder capabilities. Make sure apexrec is installed. For now, only the automatic encoder and default device are available.',
+  capabilitiesUnavailable: 'Unable to get recorder capabilities. Make sure aditorrec is installed. For now, only the automatic encoder and default device are available.',
   capabilitiesLoading: 'Getting recorder capabilities…',
   currentUnavailable: 'Current setting: {value} (not detected)',
   statusTitle: 'Recording status',

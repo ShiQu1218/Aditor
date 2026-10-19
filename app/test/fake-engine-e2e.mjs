@@ -1,5 +1,5 @@
 // E2E 用假引擎的實作（由 fake-engine.mjs 在 FAKE_ENGINE_MODE=e2e 時載入）。
-// 協定鏡像 engine/apexhl/ipc.py：probe / analyze（progress、cancel、busy、快取命中）/ derive / autoclip / cancel。
+// 協定鏡像 engine/aditor/ipc.py：probe / analyze（progress、cancel、busy、快取命中）/ derive / autoclip / cancel。
 // 影片資訊來自真的 ffprobe；事件為依影片長度決定性產生的合成資料（預設 300 筆）。
 import fs from 'fs'
 import path from 'path'
@@ -12,9 +12,9 @@ const COUNTING = new Set(['knock', 'assist_knock', 'assist_elim', 'elim'])
 const TYPES = ['knock', 'assist_knock', 'assist_elim']
 
 function ffprobeBin() {
-  if (process.env.APEXHL_FFPROBE) return process.env.APEXHL_FFPROBE
-  if (process.env.APEXHL_FFMPEG) {
-    const d = path.dirname(process.env.APEXHL_FFMPEG)
+  if (process.env.ADITOR_FFPROBE) return process.env.ADITOR_FFPROBE
+  if (process.env.ADITOR_FFMPEG) {
+    const d = path.dirname(process.env.ADITOR_FFMPEG)
     const cand = path.join(d, process.platform === 'win32' ? 'ffprobe.exe' : 'ffprobe')
     if (fs.existsSync(cand)) return cand
   }
@@ -55,7 +55,7 @@ function runProbe(file) {
 export function cachePath(video, cacheDir, beside) {
   if (beside) {
     const p = path.parse(video)
-    return path.join(p.dir, p.name + '.apexhl.json')
+    return path.join(p.dir, p.name + '.aditor.json')
   }
   const key = crypto.createHash('sha1').update(path.resolve(video).toLowerCase().replace(/\\/g, '/')).digest('hex')
   return path.join(cacheDir, key + '.json')
@@ -89,7 +89,7 @@ export function resolveProfile(profileDir) {
   }
 }
 
-/** 鏡像 engine/apexhl/cache.needs_reanalysis（取反）：完成、影片未變、引擎與樣板版本相同才算新。 */
+/** 鏡像 engine/aditor/cache.needs_reanalysis（取反）：完成、影片未變、引擎與樣板版本相同才算新。 */
 export function isCacheFresh(old, info, prof) {
   const a = old?.analysis
   if (!a || a.status !== 'done') return false
@@ -156,7 +156,7 @@ export function derive(events, spectating) {
 
 const isCounted = (e) => (e.deleted ? false : e.counted_override !== null && e.counted_override !== undefined ? e.counted_override : e.counted)
 
-/** engine/apexhl/autoclip.py 的移植。 */
+/** engine/aditor/autoclip.py 的移植。 */
 export function autoClips(events, params, duration) {
   const p = { gap: 20, n: 3, before: 8, after: 4, max_len: 90, ...params }
   const counted = events.filter(isCounted).sort((a, b) => a.t - b.t)

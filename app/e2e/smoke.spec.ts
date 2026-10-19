@@ -53,7 +53,7 @@ test('import fixtures via IPC → cards appear → analysis (fake engine) comple
 })
 
 test('analyzing card click shows toast and does not open studio', async ({ launch, videos }) => {
-  const gate = fs.mkdtempSync(path.join(os.tmpdir(), 'apexhl-e2e-gate-'))
+  const gate = fs.mkdtempSync(path.join(os.tmpdir(), 'aditor-e2e-gate-'))
   fs.writeFileSync(path.join(gate, 'hold'), '')
   try {
     const { page } = await launch({ env: { FAKE_ENGINE_GATE_DIR: gate } })
@@ -157,8 +157,8 @@ test('project autosave: item added, app restarted, project restored', async ({ l
 })
 
 test('export drawer: start export with fake ffmpeg, cancel, partial file removed', async ({ launch, videos }) => {
-  const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'apexhl-e2e-out-'))
-  const pidDir = fs.mkdtempSync(path.join(os.tmpdir(), 'apexhl-e2e-pid-'))
+  const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'aditor-e2e-out-'))
+  const pidDir = fs.mkdtempSync(path.join(os.tmpdir(), 'aditor-e2e-pid-'))
   try {
     const app = await launch({
       fakeExport: true,
@@ -218,7 +218,7 @@ test('settings: change low-perf mode, restart, value persisted; search filters r
 })
 
 test('1366x768: project track collapsed by default; export drawer does not cover top bar', async ({ launch, videos }) => {
-  const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'apexhl-e2e-out-'))
+  const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'aditor-e2e-out-'))
   try {
     const app = await launch({ size: { width: 1366, height: 768 }, settings: { defaultOutDir: outDir } })
     const { page } = app

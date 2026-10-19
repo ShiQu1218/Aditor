@@ -178,10 +178,10 @@ describe('lookupCopyCuts / measureMediaEnds', () => {
 })
 
 describe('defaultFfprobePath', () => {
-  it('APEXHL_FFPROBE wins, then ffprobe next to APEXHL_FFMPEG, then PATH', () => {
-    expect(defaultFfprobePath({ APEXHL_FFPROBE: 'X:/p.exe', APEXHL_FFMPEG: 'X:/bin/ffmpeg.exe' }, () => true)).toBe('X:/p.exe')
-    expect(defaultFfprobePath({ APEXHL_FFMPEG: 'X:/bin/ffmpeg.exe' }, () => true)).toBe(path.join('X:/bin', 'ffprobe.exe'))
-    expect(defaultFfprobePath({ APEXHL_FFMPEG: 'X:/bin/ffmpeg.exe' }, () => false)).toBe('ffprobe')
+  it('ADITOR_FFPROBE wins, then ffprobe next to ADITOR_FFMPEG, then PATH', () => {
+    expect(defaultFfprobePath({ ADITOR_FFPROBE: 'X:/p.exe', ADITOR_FFMPEG: 'X:/bin/ffmpeg.exe' }, () => true)).toBe('X:/p.exe')
+    expect(defaultFfprobePath({ ADITOR_FFMPEG: 'X:/bin/ffmpeg.exe' }, () => true)).toBe(path.join('X:/bin', 'ffprobe.exe'))
+    expect(defaultFfprobePath({ ADITOR_FFMPEG: 'X:/bin/ffmpeg.exe' }, () => false)).toBe('ffprobe')
     expect(defaultFfprobePath({}, () => true)).toBe('ffprobe')
   })
 })

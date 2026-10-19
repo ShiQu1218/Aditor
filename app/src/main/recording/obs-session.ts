@@ -30,7 +30,7 @@ export interface ObsMetadata {
   adopted: boolean
 }
 
-/** OBS 連線與檔案時間軸；斷線時不影響 apexrec 或 live 引擎。 */
+/** OBS 連線與檔案時間軸；斷線時不影響 aditorrec 或 live 引擎。 */
 export class ObsRecording extends EventEmitter {
   readonly client = new ObsClient()
   readonly meta: ObsMetadata = { recordStartedAt: Date.now(), captureStartedAt: Date.now(), adopted: false }

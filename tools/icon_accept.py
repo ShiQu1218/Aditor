@@ -65,9 +65,9 @@ def main() -> int:
     ap.add_argument("--jobs", type=int, nargs="+", default=[1, 4])
     ap.add_argument("videos", nargs="+", help="LAB=路徑")
     a = ap.parse_args()
-    from apexhl.analyze import analyze
-    from apexhl.probe import probe
-    from apexhl.profile import load_profile
+    from aditor.analyze import analyze
+    from aditor.probe import probe
+    from aditor.profile import load_profile
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
     base = Path(os.environ["ICON_ACCEPT_BASELINE"]) if os.environ.get("ICON_ACCEPT_BASELINE") else None

@@ -1,4 +1,4 @@
-# Apex Highlighter — 遊戲錄影與即時偵測設計
+# Aditor — 遊戲錄影與即時偵測設計
 
 日期：2026-10-18
 狀態：設計定稿（使用者已逐段確認 §1–§4）；實作分 5 期，第 1 期計畫見 `docs/superpowers/plans/2026-10-18-plan4-recorder-core.md`
@@ -35,7 +35,7 @@
 └──────┬──────────────────────────────┬────────────────────────┘
        │ JSON-lines（stdin/stdout）    │ JSON-lines（stdin/stdout）
 ┌──────▼───────────────────────┐  ┌───▼──────────────────────────────┐
-│ apexrec.exe（新，Rust）       │  │ Python 引擎（既有），新增 live 指令  │
+│ aditorrec.exe（新，Rust）       │  │ Python 引擎（既有），新增 live 指令  │
 │ WGC 擷取 Apex 視窗（D3D11）   │  │ 讀共享記憶體小圖 → 既有圖示偵測     │
 │  ├→ D3D11 影格零複製 → 硬體編碼│  │ → 擊殺／對局開始／對局結束事件      │
 │  │   → 每 2 秒一段 fMP4        │  └──────────────────────────────────┘
@@ -49,8 +49,8 @@
 
 1. **Rust**：`windows` crate 呼叫 WGC（`Windows.Graphics.Capture`）、D3D11、WASAPI。編碼與封裝透過 FFI 連結專案已內建的 LGPL ffmpeg DLL（`build/ffmpeg`，avcodec-63 等）。綁定以 bindgen 預先產生並提交進 repo，建置時不需要 libclang。
 2. **影像全程留在 GPU**：WGC 影格（BGRA `ID3D11Texture2D`）複製進 ffmpeg 的 D3D11 hwframe pool，直接交給 `hevc_nvenc`／`h264_nvenc`／`av1_nvenc`／`*_amf`／`*_qsv`。CPU 只碰小圖。
-3. **偵測沿用 Python**：`apexrec` 只輸出小圖（見 §3），Python live 模式用既有偵測器。日後若量測顯示 Python 是瓶頸，再移植到 Rust 並以比對測試確保結果一致。
-4. **OBS 模式**：`apexrec` 仍執行，但只做擷取＋小圖讀回（start 指令 `encode: null, audio: null`），錄影由 OBS 負責。偵測路徑兩種模式相同。
+3. **偵測沿用 Python**：`aditorrec` 只輸出小圖（見 §3），Python live 模式用既有偵測器。日後若量測顯示 Python 是瓶頸，再移植到 Rust 並以比對測試確保結果一致。
+4. **OBS 模式**：`aditorrec` 仍執行，但只做擷取＋小圖讀回（start 指令 `encode: null, audio: null`），錄影由 OBS 負責。偵測路徑兩種模式相同。
 5. **Electron 不碰影像資料**。
 6. **不注入**：WGC 是 Windows 官方擷取 API（OBS「視窗擷取」同一套）。
 
@@ -66,7 +66,7 @@
   seg_000001.m4s …  每段 2 秒；每段第一格是關鍵影格（GOP = 2 秒，強制對齊）
   index.jsonl       每段一行：{"seq":1,"pts":0.0,"dur":2.0,"bytes":…,"wall":"ISO8601"}
   events.jsonl      即時事件：擊殺／match_start／match_end／gap（錄影中斷）
-  session.json      設定快照（編碼器、解析度、模式、開始時間、apexrec 版本）
+  session.json      設定快照（編碼器、解析度、模式、開始時間、aditorrec 版本）
 ```
 
 - `sessionId` = `YYYYMMDD-HHMMSS-<4 位隨機>`。
@@ -88,7 +88,7 @@
 
 #### 2.3.1 逐局輸出與恢復
 
-- 兩種模式都在 Apex 執行期間維持同一個 apexrec 工作，不重啟擷取，即時觀看持續可用。`recording.json` 快照保存 `startedAt`、`postAnalysis`、`mode`；舊快照缺少或無效的模式視為 `session`。
+- 兩種模式都在 Apex 執行期間維持同一個 aditorrec 工作，不重啟擷取，即時觀看持續可用。`recording.json` 快照保存 `startedAt`、`postAnalysis`、`mode`；舊快照缺少或無效的模式視為 `session`。
 - 逐局選取 `pts + dur > start - 5` 且 `pts < end + 5` 的索引段落。錄影中等到索引出現 `pts >= end + 5` 才剪；停止時依序停止錄影器、停止 live 引擎取得最終快照，再補剪。未結束的最後一局以最後段落結束時間收尾；沒有 live.json 或沒有對局時保留整段。
 - ffmpeg 剪檔序列執行，失敗不影響錄影，收尾時重試。檔名使用 `startedAt + 首段 pts` 的本機時間：`Apex_<YYYY-MM-DD_HH-mm>.mp4`，撞名加 `_2`、`_3`。
 - `match-part.json` 記錄本工作的暫存檔路徑。串接到 `.part.mp4` 後，先原子寫入 `matches.json` 的 `cuts`（零起算的對局索引、起訖、首尾序號、輸出路徑、分析／快取／可信狀態），再改名、加入媒體庫、寫快取與通知。恢復時刪除未登記的暫存檔，已登記者直接完成改名，不重複串接；收尾僅回傳這次新剪出的路徑，所有既有剪檔仍補加媒體庫。
@@ -112,7 +112,7 @@
 
 - OBS ≥ 28 的內建 WebSocket v5 伺服器（工具 → WebSocket 伺服器設定）；App 使用固定版 `obs-websocket-js@5.0.6`，連線與指令各約 3 秒逾時。所有控制只走網路，不接觸遊戲程序。
 - 偵測 Apex（自動或手動）時，先查 `GetRecordStatus`：尚未錄影時，整段模式才立即送 `StartRecord`，逐局模式待命到開局；已在錄影則沿用（adopted），絕不對該錄影送開始或停止指令。Apex 結束／手動停止時停止擷取；自行開始的錄影送 `StopRecord`，沿用的錄影則繼續等候 OBS 停止事件（App 結束時解除監聽）。
-- `apexrec` 照常以相同 `capture` 與小圖範本啟動，但指定 `encode: null, audio: null`，live 擊殺與對局偵測路徑不變。OBS 無法連線時通知；預設本次回退內建錄影，關閉回退時只保留即時偵測。中途斷線不停止擷取，依 1、2、4…最多 30 秒退避重連，不重新送 `StartRecord`。重連後若已停止而錯過停止事件，v5 沒有歷史路徑查詢，通知使用者手動匯入並在結束偵測時無檔收尾。
+- `aditorrec` 照常以相同 `capture` 與小圖範本啟動，但指定 `encode: null, audio: null`，live 擊殺與對局偵測路徑不變。OBS 無法連線時通知；預設本次回退內建錄影，關閉回退時只保留即時偵測。中途斷線不停止擷取，依 1、2、4…最多 30 秒退避重連，不重新送 `StartRecord`。重連後若已停止而錯過停止事件，v5 沒有歷史路徑查詢，通知使用者手動匯入並在結束偵測時無檔收尾。
 - `.sessions/<id>/recording.json` 記錄本次實際 `backend`、模式與分析設定；`obs.json` 以 `writeJson` 原子寫入 `{ outputPath?, recordStartedAt, captureStartedAt, adopted }`（epoch ms），路徑由 `StopRecord` 回覆或 `RecordStateChanged/OBS_WEBSOCKET_OUTPUT_STOPPED` 補入。OBS 起點取 `OUTPUT_STARTED` 的接收時間，沿用時取目前時間減 `outputDuration`（ms）；擷取起點優先讀 `session.json.started_at`，缺少時取 `started` 事件時間。快取事件時間＝live 秒數＋`(captureStartedAt-recordStartedAt)/1000`；復原用同一份資料，不以「零段落」判定沒有錄影。
 - 從頭錄到尾：原路徑加入媒體庫，不搬移、改名或刪除 OBS 原檔；用引擎 probe／ffprobe 取得時長，寫入平移且裁到影片範圍的 live 快取。可信結果略過完整分析，其餘依本次 `postAnalysis` 設定排入分析。
 - 一局一個檔：自行控制的 OBS 在大廳只擷取偵測；match_pending（倒數／載入）立即開始錄影，match_start 確認後沿用同一檔；錯過序列時由 match_start 開始錄影（無法補錄前置時間），match_end 等到 max(現在, 結束時間＋5 秒) 停止；下一局開始會立即停止上一檔並重開。原檔直接入庫，不剪輯、不搬移。match_cancel 立即停止，標記 cancelled: true，保留 OBS 原檔但不入庫、不寫快取或排分析，僅送出一次低優先且靜音的 matchCancel 通知。obs-matches.json 原子保存每局起點、confirmed、cancelled、停止路徑、快取及分析進度；起點仍取各檔 OUTPUT_STARTED 接收時間。復原略過 cancelled，confirmed: false 的未確認錄影停止後視同取消；舊紀錄缺少 confirmed 時維持原行為；每局後排 perMatch，結束時補 afterExit 並更新可信快取。復原會核對 OBS 錄影起點再停止，無法連線或確認歸屬時保留工作。沿用使用者錄影與沒有逐局狀態的舊版工作仍走原本整段錄影及剪檔流程。狀態 phase 保持 recording，obsRecording 區分待命與錄影。
@@ -124,8 +124,8 @@
 
 ### 3.1 遊戲偵測（Electron 主程序）
 
-- 每 3 秒列舉程序，找 `r5apex.exe`／`r5apex_dx12.exe`。找到後把 PID 傳給 `apexrec`。
-- `apexrec` 依 PID 列舉頂層可見視窗（最大面積者）建立 WGC。視窗重建（換解析度／切全螢幕）時自動重建擷取並在 `events.jsonl` 記錄。
+- 每 3 秒列舉程序，找 `r5apex.exe`／`r5apex_dx12.exe`。找到後把 PID 傳給 `aditorrec`。
+- `aditorrec` 依 PID 列舉頂層可見視窗（最大面積者）建立 WGC。視窗重建（換解析度／切全螢幕）時自動重建擷取並在 `events.jsonl` 記錄。
 - 獨佔全螢幕可能得到黑畫面：連續 3 秒全黑則改用 `CreateForMonitor`（遊戲視窗所在螢幕）。設定頁建議無邊框視窗。
 - 擷取方式預設為 DDA（DXGI Desktop Duplication，設定「擷取方式」；實機測得大廳滑鼠延遲明顯低於 WGC，WGC 保留為選項）：擷取遊戲視窗所在的整個螢幕，不要求 DWM 合成遊戲視窗，避免 WGC 視窗擷取讓全螢幕遊戲退出獨立翻轉而多一格延遲。裝置建在擁有該螢幕的顯示卡上；`AcquireNextFrame` 以 0 逾時輪詢（等待時會占住共用裝置鎖）；時間戳取 `LastPresentTime` 並以編碼器同樣的四捨五入規則對齊到 1/fps 格點。每個輸出時段僅查詢一次前景視窗 PID 與最小化狀態，只有前景屬於目標 PID 且未最小化時才輸出桌面畫面；其餘時間以重用的 GPU 黑色 texture 按設定 fps 持續供應編碼與共享記憶體小圖，音訊不變，WGC 不受影響。切換時送出 `game_hidden`／`game_visible` 事件，`pts` 為錄影起點後的秒數。限制：遊戲仍在前景時，疊在同螢幕上的其他內容仍可能被錄；旋轉螢幕維持面板原生方向；HDR 由系統轉成 SDR。
 
@@ -138,7 +138,7 @@ Idle →(Apex 啟動)→ Lobby ⇄ InMatch →(Apex 關閉)→ Finalizing → Id
 
 錄影器在 Apex 執行期間持續錄；「一局一個檔」在後留段落落盤後剪出該局，收尾時才丟掉未使用的大廳段落。
 
-### 3.3 小圖（apexrec → 共享記憶體）
+### 3.3 小圖（aditorrec → 共享記憶體）
 
 | 名稱 | 內容 | 頻率 | 格式 |
 |---|---|---|---|
@@ -146,9 +146,9 @@ Idle →(Apex 啟動)→ Lobby ⇄ InMatch →(Apex 關閉)→ Finalizing → Id
 | spec | `profile.spec_roi` | 4 fps | BGR24 |
 | thumb | 全畫面縮到 640×360（對局場景判斷的最低需求，見 §3.4） | 1 fps（每 4 格帶一次） | GRAY8 |
 
-ROI 由 Python 端在 live 握手時傳給 apexrec（Python 讀 profile），apexrec 不解析 profile。
+ROI 由 Python 端在 live 握手時傳給 aditorrec（Python 讀 profile），aditorrec 不解析 profile。
 
-共享記憶體：具名 file mapping `Local\apexrec-<sessionId>`，固定 16 槽環形緩衝；槽頭含 `seq`（u64，寫完最後才更新，讀端比對前後 seq 判斷撕裂）、`pts`、各區塊尺寸與 offset。讀端落後超過 16 槽就跳到最新（偵測丟格不阻塞擷取）。
+共享記憶體：具名 file mapping `Local\aditorrec-<sessionId>`，固定 16 槽環形緩衝；槽頭含 `seq`（u64，寫完最後才更新，讀端比對前後 seq 判斷撕裂）、`pts`、各區塊尺寸與 offset。讀端落後超過 16 槽就跳到最新（偵測丟格不阻塞擷取）。
 
 ### 3.4 對局判斷（Python live）
 
@@ -172,7 +172,7 @@ ROI 由 Python 端在 live 握手時傳給 apexrec（Python 讀 profile），ape
   3. Apex 關閉。
 - 不得以「HUD 消失」或「死亡／觀戰」判斷結束（開地圖、背包、選單時 HUD 也會消失；可重生模式死亡後會回到戰場）。
 - 判斷依版面與圖示（面板外框、模式卡片外框、HUD 外框），不依文字，維持與語言無關。
-- 小圖：場景判斷需要 ≥ 640×360 灰階（`engine/apexhl/scene.py` 的 `SCENE_ROIS`），320×180 的 thumb 不夠；接 live 時把 thumb 提高到 640×360（或在共享記憶體 v2 加場景 ROI）。準確度見 `docs/accuracy-report-matches.md`。
+- 小圖：場景判斷需要 ≥ 640×360 灰階（`engine/aditor/scene.py` 的 `SCENE_ROIS`），320×180 的 thumb 不夠；接 live 時把 thumb 提高到 640×360（或在共享記憶體 v2 加場景 ROI）。準確度見 `docs/accuracy-report-matches.md`。
 - 範本來源與驗收：上述 4 段錄影；驗收標準為每局起訖誤差 ±5 秒、不得漏局或多切。
 
 ### 3.5 擊殺偵測
@@ -184,9 +184,9 @@ ROI 由 Python 端在 live 握手時傳給 apexrec（Python 讀 profile），ape
 | 項目 | 目標 |
 |---|---|
 | 遊戲 FPS | PresentMon 量測，平均與 1% low 下降 < 3%（RTX 5080，1440p） |
-| CPU（apexrec＋live 引擎） | 合計 < 3%；兩者以 `BELOW_NORMAL_PRIORITY_CLASS` 執行 |
+| CPU（aditorrec＋live 引擎） | 合計 < 3%；兩者以 `BELOW_NORMAL_PRIORITY_CLASS` 執行 |
 | GPU→CPU 讀回 | ≤ 0.5 MB/s |
-| 記憶體 | apexrec < 300 MB；live 引擎 < 200 MB |
+| 記憶體 | aditorrec < 300 MB；live 引擎 < 200 MB |
 | 編碼 | 只用硬體編碼單元 |
 | 背壓 | 編碼佇列滿 → 丟格（計數並回報）；偵測落後 → 跳格；擷取執行緒永不阻塞 |
 
@@ -214,7 +214,7 @@ ROI 由 Python 端在 live 握手時傳給 apexrec（Python 讀 profile），ape
 
 | 情況 | 處理 |
 |---|---|
-| apexrec 當掉 | 主程序自動重啟（指數退避，最多 5 次/10 分鐘），新段落序列續錄；`events.jsonl` 寫 `gap` |
+| aditorrec 當掉 | 主程序自動重啟（指數退避，最多 5 次/10 分鐘），新段落序列續錄；`events.jsonl` 寫 `gap` |
 | live 引擎當掉 | 自動重啟；錄影不受影響；漏掉的區間由完整分析補 |
 | 無硬體編碼器 | 不錄並通知 |
 | OBS 連不上／驗證失敗 | 通知；預設本次回退內建錄影，關閉回退時只做即時偵測 |
@@ -224,7 +224,7 @@ ROI 由 Python 端在 live 握手時傳給 apexrec（Python 讀 profile），ape
 | 磁碟不足 | §2.5 |
 | App 意外關閉 | 下次啟動補收尾 |
 
-### 4.4 IPC（主程序 ⇄ apexrec）
+### 4.4 IPC（主程序 ⇄ aditorrec）
 
 JSON-lines，stdin 指令、stdout 事件，stderr 為日誌。每行 ≤ 64 KB。
 
@@ -235,22 +235,22 @@ JSON-lines，stdin 指令、stdout 事件，stderr 為日誌。每行 ≤ 64 KB�
 - `render_source: "game"` 以 `ActivateAudioInterfaceAsync`／`AUDIOCLIENT_ACTIVATION_TYPE_PROCESS_LOOPBACK`／`PROCESS_LOOPBACK_MODE_INCLUDE_TARGET_PROCESS_TREE` 擷取錄影 PID 與子程序，請求 48 kHz float 立體聲並進入既有混音流程，不開啟程序 handle。需要 Windows 組建 20348 起的系統；啟用失敗時退回裝置 loopback，發出 `{"ev":"warning","code":"game_audio_unavailable","message":"…"}`，App 顯示非致命通知，錄影繼續。
 - `{"id":3,"cmd":"stop"}`；`{"id":4,"cmd":"ping"}`（小圖 ROI 只在 `start` 指定；要換 ROI 就 stop 再 start）
 
-事件（無 `id`）：`{"ev":"started","encoder":"hevc_nvenc","width":2560,"height":1440,"fps":60,"shm":"Local\\apexrec-…"}`、`{"ev":"segment","seq":12,"pts":22.0,"dur":2.0}`、`{"ev":"stats","fps_in":…,"fps_enc":…,"dropped":…,"q":…}`（每 5 秒）、`{"ev":"window_lost"}`、`{"ev":"stopped","reason":"…"}`、`{"ev":"error","code":"…","message":"…"}`。
+事件（無 `id`）：`{"ev":"started","encoder":"hevc_nvenc","width":2560,"height":1440,"fps":60,"shm":"Local\\aditorrec-…"}`、`{"ev":"segment","seq":12,"pts":22.0,"dur":2.0}`、`{"ev":"stats","fps_in":…,"fps_enc":…,"dropped":…,"q":…}`（每 5 秒）、`{"ev":"window_lost"}`、`{"ev":"stopped","reason":"…"}`、`{"ev":"error","code":"…","message":"…"}`。
 
 錯誤碼：`no_hw_encoder`、`window_not_found`、`capture_failed`、`encode_failed`、`audio_failed`、`disk_full`、`bad_request`、`internal`。
 
 ### 4.5 建置
 
-- `recorder/`：Cargo 專案（binary `apexrec`），`windows` crate、`serde_json`；ffmpeg 綁定在 `recorder/src/ffi/` 預先產生。
-- 連結 `build/ffmpeg/lib/*.lib`（環境變數 `APEXREC_FFMPEG_DIR` 可覆寫）；執行期由 `ffmpeg/bin` 載入 DLL（打包時與 `apexrec.exe` 同層或設定 DLL 搜尋路徑）。
-- `scripts/build.ps1` 加 `cargo build --release`；electron-builder `extraResources` 加入 `apexrec.exe`。
+- `recorder/`：Cargo 專案（binary `aditorrec`），`windows` crate、`serde_json`；ffmpeg 綁定在 `recorder/src/ffi/` 預先產生。
+- 連結 `build/ffmpeg/lib/*.lib`（環境變數 `ADITORREC_FFMPEG_DIR` 可覆寫）；執行期由 `ffmpeg/bin` 載入 DLL（打包時與 `aditorrec.exe` 同層或設定 DLL 搜尋路徑）。
+- `scripts/build.ps1` 加 `cargo build --release`；electron-builder `extraResources` 加入 `aditorrec.exe`。
 
 ### 4.6 測試
 
 - Rust 單元測試：段落索引、收尾串接範圍、共享記憶體版面、IPC 編解碼、混音。
 - Rust 整合測試：擷取自建測試視窗 5 秒 → 段落可解碼、時間連續；共享記憶體小圖內容正確。無 GPU 編碼器的環境 `#[ignore]`。
 - Python：live 模式以黃金錄影模擬即時串流，與離線分析比對（召回差 ≤ 5%、無新增誤判）；對局判斷以使用者錄影驗收（±5 秒）。
-- App：vitest＋假 apexrec 模擬完整流程與錯誤情境。
+- App：vitest＋假 aditorrec 模擬完整流程與錯誤情境。
 - 效能驗收：§3.6 腳本，於使用者機器實測。
 
 ---
@@ -259,7 +259,7 @@ JSON-lines，stdin 指令、stdout 事件，stderr 為日誌。每行 ≤ 64 KB�
 
 | 期 | 內容 | 可驗收的成果 |
 |---|---|---|
-| 1 | apexrec 核心：WGC、硬體編碼、音訊、fMP4 段落、共享記憶體小圖、IPC | `apexrec.exe` 以 CLI／IPC 錄 Apex（或任意視窗）成可播放段落 |
+| 1 | aditorrec 核心：WGC、硬體編碼、音訊、fMP4 段落、共享記憶體小圖、IPC | `aditorrec.exe` 以 CLI／IPC 錄 Apex（或任意視窗）成可播放段落 |
 | 2 | App 整合：遊戲偵測、狀態機、系統匣、設定、從頭錄到尾、收尾、崩潰補收尾 | 開 Apex 自動錄、關 Apex 得到一個檔進媒體庫 |
 | 3 | live 偵測＋錄影中 Studio（MSE） | 錄影中切出遊戲看到當局影片與即時擊殺 |
 | 4 | 對局偵測＋一局一個檔 | 使用者錄影已提供（`E:\Apex_highlighter_clip`） |
@@ -279,7 +279,7 @@ JSON-lines，stdin 指令、stdout 事件，stderr 為日誌。每行 ≤ 64 KB�
 
 ## 7. 內建逐局錄影的大廳暫存
 
-內建後端在「一局一個檔」模式持續擷取與編碼，每個段落通知都透過既有剪檔序列清理未受保護的 `seg_*.m4s`，不修改 apexrec 的 `index.jsonl` 或 `init.mp4`。從頭錄到尾與 OBS 後端不清理。
+內建後端在「一局一個檔」模式持續擷取與編碼，每個段落通知都透過既有剪檔序列清理未受保護的 `seg_*.m4s`，不修改 aditorrec 的 `index.jsonl` 或 `init.mp4`。從頭錄到尾與 OBS 後端不清理。
 
 保護範圍為所有已確認對局的開始前 5 秒至結束後 5 秒（包含已剪出的對局）、尚未確認的倒數開始前 5 秒起，以及 `pts + dur > latest_pts - 15` 的大廳滾動暫存。段落完整保留，因此 2 秒段落通常保留約 18 秒。尚未收到結束確認的對局維持開放範圍；大廳結束晚約 30 秒確認時，才依回溯的結束時間套用後留 5 秒。取消倒數後解除該倒數保護；直接排下一場保護兩局及新倒數。
 

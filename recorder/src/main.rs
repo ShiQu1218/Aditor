@@ -1,4 +1,4 @@
-//! apexrec：Apex Highlighter 原生錄影核心。由 Electron 主程序以 JSON-lines 驅動（規格
+//! aditorrec：Aditor 原生錄影核心。由 Electron 主程序以 JSON-lines 驅動（規格
 //! `docs/superpowers/specs/2026-10-18-live-recording-design.md`）。
 
 mod audio;

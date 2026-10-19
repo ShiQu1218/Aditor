@@ -16,7 +16,7 @@ import { downloadOpenH264 } from './codecs'
 
 describe('downloadOpenH264 default decompression (packaged build, no Python)', () => {
   test('decompresses without spawning any process and without the dev .venv', async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'apexhl-codecs-pk-'))
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'aditor-codecs-pk-'))
     const body = fs.readFileSync(path.join(__dirname, '__fixtures__', 'multi.bz2'))
     const dll = await downloadOpenH264({
       dir,

@@ -1,4 +1,4 @@
-# Apex Highlighter — Execution Notes & Decisions
+# Aditor — Execution Notes & Decisions
 
 ## Plan 1 Task 11: Completion & Accuracy Report
 
@@ -53,8 +53,8 @@
 ### Task 8: 打包、授權與說明文件
 - **Status**: Completed
 - **LGPL FFmpeg**: BtbN master Windows 64-bit shared LGPL build downloaded and verified with `ffmpeg -buildconf` (no `--enable-gpl`, no `--enable-nonfree`, includes `--enable-libdav1d`).
-- **Engine Packaging**: PyInstaller one-dir build produces standalone `apexhl.exe` in `build/engine/apexhl/`. Tested and verified execution in a sanitized environment with no Python and no FFmpeg in PATH.
-- **Electron Packaging**: `scripts/build.ps1` runs end-to-end build producing `dist/Apex Highlighter Setup 0.1.0.exe` (NSIS installer, 178.4 MB) and `dist/Apex Highlighter 0.1.0.exe` (portable, 178.2 MB).
+- **Engine Packaging**: PyInstaller one-dir build produces standalone `aditor.exe` in `build/engine/aditor/`. Tested and verified execution in a sanitized environment with no Python and no FFmpeg in PATH.
+- **Electron Packaging**: `scripts/build.ps1` runs end-to-end build producing `dist/Aditor Setup 0.1.0.exe` (NSIS installer, 178.4 MB) and `dist/Aditor 0.1.0.exe` (portable, 178.2 MB).
 - **Licenses & Documentation**: `LICENSE` (MIT), `THIRD_PARTY_NOTICES.md` (FFmpeg LGPL replacement rights, dav1d, OpenCV, NumPy, Cisco OpenH264), `README.md` (features, requirements, build steps, usage).
 
 ---
@@ -88,7 +88,7 @@
 - **Engine pytest suite**: `130 passed, 2 skipped, 1 xfailed in 54.14s`
 - **Engine golden accuracy test**: `1 passed` (12/12 events matched)
 - **App vitest suite**: `14 passed (14 test files, 58 unit and integration tests passed in 1.06s)`
-- **Isolated standalone test**: Verified `apexhl.exe` runs `analyze` in a clean environment with no Python and no FFmpeg in `PATH`.
+- **Isolated standalone test**: Verified `aditor.exe` runs `analyze` in a clean environment with no Python and no FFmpeg in `PATH`.
 
 ### 3. Key Accuracy & Performance Metrics
 - **Knockdown Recall**: 100% (8/8 on ground-truth clips)
@@ -132,7 +132,7 @@
 ## Plan 3 E2E（Task 18）
 
 - 指令：`npm --prefix app run test:e2e`（先 `electron-vite build`，再以 Playwright `_electron` 驅動已安裝的 Electron 33；不下載瀏覽器）。CI 不強制。
-- 環境掛鉤：`APEXHL_E2E=1`＋`APEXHL_APPDATA`（暫存 appData／userData）＋`APEXHL_ENGINE=fake`（`app/test/fake-engine.mjs` 的 `FAKE_ENGINE_MODE=e2e`，引擎形狀的 300 筆合成事件、progress／cancel／derive／autoclip）＋`APEXHL_E2E_FAKE_FFMPEG=1`（匯出改用真實子程序 `fake-ffmpeg.mjs`）。缺少 `APEXHL_E2E=1` 時一律無作用（`main/e2e.test.ts` 鎖定）。
+- 環境掛鉤：`ADITOR_E2E=1`＋`ADITOR_APPDATA`（暫存 appData／userData）＋`ADITOR_ENGINE=fake`（`app/test/fake-engine.mjs` 的 `FAKE_ENGINE_MODE=e2e`，引擎形狀的 300 筆合成事件、progress／cancel／derive／autoclip）＋`ADITOR_E2E_FAKE_FFMPEG=1`（匯出改用真實子程序 `fake-ffmpeg.mjs`）。缺少 `ADITOR_E2E=1` 時一律無作用（`main/e2e.test.ts` 鎖定）。
 - 影片：以系統 ffmpeg 的 `testsrc2`＋靜音 AAC 產生 3 支 12–20 秒 H.264 於暫存目錄；找不到 ffmpeg 時需要影片的案例 `skip` 並印出原因（實測：無 ffmpeg → 4 通過、17 略過、0 失敗）。
 - 結果（本機，ffmpeg 8.1.1）：**21 個案例，連跑 3 次皆 21 通過／0 略過／0 失敗**（每次約 47 秒），無 flaky。
 - 驗證不是空轉：暫時還原 Ctrl+→ 錨點修正、關閉時 flushSync、手勢 Esc 攔截，對應案例都會失敗（已還原）。
