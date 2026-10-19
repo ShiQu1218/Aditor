@@ -1,4 +1,4 @@
-/** 繁體中文（來源語言）：其他語言的鍵與佔位符以此為準。 */
+/** Traditional Chinese (source language): defines keys and placeholders for other languages. */
 const i18n = {
   lowPerf: {
     askText: '偵測到此電腦沒有硬體解碼，要開啟低效能模式嗎？',
@@ -11,7 +11,7 @@ const i18n = {
     viewer: '檢視器',
     editor: '剪輯專案'
   },
-  /** main 程序的原生對話框（標題與檔案類型過濾） */
+  /** Main-process native dialogs (titles and file type filters) */
   dialog: {
     selectFilesTitle: '選擇 Apex Legends 錄影檔案',
     videoFilter: '影片檔案',
@@ -36,7 +36,7 @@ const i18n = {
     date: {
       today: '今天',
       yesterday: '昨天',
-      /** 其他日期：2026 年 10 月 13 日 */
+      /** Other dates: October 13, 2026 */
       header: '{y} 年 {m} 月 {d} 日'
     },
     videoCount: '{n} 支影片',
@@ -542,7 +542,7 @@ const shellI18n = {
   }
 }
 
-/** 設定畫面（Task 16）：分類、卡片、各列文字與控制項標籤。 */
+/** Settings screen (Task 16): categories, cards, row text, and control labels. */
 const settingsI18n = {
   title: '設定',
   searchPlaceholder: '搜尋設定',
@@ -749,7 +749,7 @@ const settingsI18n = {
   }
 } as const
 
-/** 遊戲錄影設定與狀態面板。 */
+/** Game recording settings and status panel. */
 const recordingI18n = {
   title: '錄影',
   card: '遊戲錄影',
@@ -874,7 +874,7 @@ const recordingI18n = {
   matchIndex: '對局'
 }
 
-/** 錄影中觀看（第 3 期）。 */
+/** Playback during recording (phase 3). */
 const liveI18n = {
   obsRecording: 'OBS 錄影中，錄影結束後即可播放',
   detectionOnly: '即時偵測中，OBS 未連線，本次未錄影',

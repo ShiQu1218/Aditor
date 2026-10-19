@@ -19,13 +19,13 @@ interface PlayerInput {
   sessionId: string | null
   mime: string | null
   segments: LiveSegment[]
-  /** 可播放範圍（保留範圍起點、錄影結尾） */
+  /** Playable range (the start of the retained range through the end of the recording). */
   bounds: () => { start: number; end: number }
 }
 
 /**
- * MediaSource 播放：sourceopen 後建立 SourceBuffer 與 LiveBuffer；開啟時先停在最新附近並自動播放。
- * 時間更新驅動段落抓取；拖曳／停頓時重新檢查緩衝。
+ * MediaSource playback: create SourceBuffer and LiveBuffer on sourceopen; on open, seek near the live edge and autoplay.
+ * Time updates drive segment fetches; recheck the buffer when seeking or paused.
  */
 export function useLivePlayer({ sessionId, mime, segments, bounds }: PlayerInput): LivePlayer {
   const videoRef = useRef<HTMLVideoElement>(null)
@@ -34,7 +34,7 @@ export function useLivePlayer({ sessionId, mime, segments, bounds }: PlayerInput
   segmentsRef.current = segments
   const boundsRef = useRef(bounds)
   boundsRef.current = bounds
-  /** 尚未載入中繼資料前的目標時間（開啟時＝最新） */
+  /** Target time before metadata loads (the live edge on open). */
   const startRef = useRef<number | null>(null)
   const [current, setCurrent] = useState(0)
   const [playing, setPlaying] = useState(false)
@@ -71,7 +71,7 @@ export function useLivePlayer({ sessionId, mime, segments, bounds }: PlayerInput
         setDuration: (seconds) => {
           if (ms.readyState !== 'open' || sb.updating || !(seconds > 0)) return
           if (Number.isNaN(ms.duration) || ms.duration < seconds) {
-            try { ms.duration = seconds } catch { /* 另一個操作進行中：下一輪再設 */ }
+            try { ms.duration = seconds } catch { /* Another operation is in progress; retry next time. */ }
           }
         },
         onError: (err) => setError({ kind: 'load', message: err instanceof Error ? err.message : String(err) })

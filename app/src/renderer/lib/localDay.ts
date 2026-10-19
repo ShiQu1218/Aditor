@@ -1,7 +1,7 @@
-// 「今天／昨天」標籤會在本地午夜後過期：提供距下一個本地午夜的毫秒數，與重新取得現在時間的 hook。
+// Today/yesterday labels expire at local midnight: provide milliseconds until the next local midnight and a hook to refresh the current time.
 import { useEffect, useState } from 'react'
 
-/** 距下一個本地 00:00 的毫秒數（至少 1，避免 0 ms 的計時器空轉） */
+/** Milliseconds until the next local midnight (at least 1 to avoid a 0 ms timer loop). */
 export function msUntilNextLocalMidnight(now: number): number {
   const d = new Date(now)
   const next = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1).getTime()
@@ -13,7 +13,7 @@ function dayId(now: number): string {
   return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`
 }
 
-/** 回傳「目前時間」，並在本地午夜（計時器）與視窗取得焦點時（系統睡眠後計時器可能漏掉）更新；同一天內不變 */
+/** Return the current time; update at local midnight (timer) and when the window regains focus (timers may be missed during system sleep). Stable within the same day. */
 export function useLocalNow(): number {
   const [now, setNow] = useState(() => Date.now())
   useEffect(() => {

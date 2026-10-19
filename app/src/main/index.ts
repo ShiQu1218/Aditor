@@ -28,10 +28,10 @@ import { createDiagnosticLog } from './recording/diagnostic-log'
 import { canAutoUpdate, createAppUpdater } from './updater'
 import { broadcastUpdateStatus, registerUpdateIpc } from './update-ipc'
 
-// E2E 掛鉤（僅 ADITOR_E2E=1）：暫存 appData／userData，測試不碰使用者資料；正式執行時為 null
+// E2E hooks (ADITOR_E2E=1 only): use temporary appData/userData so tests do not touch user data; null in production.
 const e2e = currentE2EConfig()
 if (e2e?.appData) process.env.APPDATA = e2e.appData
-// 必須在 ready 前設定：預設 userData 的 Cache 與分析快取是同一個資料夾（見 chromiumUserDataDir）
+// Must be set before ready: the default userData Cache and analysis cache use the same directory (see chromiumUserDataDir).
 app.setPath('userData', chromiumUserDataDir())
 
 let mainWindow: BrowserWindow | null = null
@@ -47,11 +47,11 @@ let tray: ReturnType<typeof createRecordingTray> | null = null
 let unregisterRecordingIpc: (() => void) | null = null
 let unsubscribeSettings: (() => void) | null = null
 let quitting = false
-/** 目前生效的介面語言（設定 `language`，auto 時依 Windows 顯示語言） */
+/** Currently active interface language (from the `language` setting; `auto` follows the Windows display language). */
 let locale: Locale = 'zh-TW'
 let servicesReady = false
 let openRequested = !process.argv.includes('--hidden')
-/** renderer 未回應 flush 時最多等多久才關閉視窗 */
+/** Maximum time to wait before closing the window when the renderer does not respond to flush. */
 const CLOSE_FLUSH_TIMEOUT_MS = 1500
 
 function createWindow(): void {
@@ -65,7 +65,7 @@ function createWindow(): void {
     icon: join(app.isPackaged ? process.resourcesPath : resolve(__dirname, '../..'), 'resources/icon.png'),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
-      // preload 只用 contextBridge／ipcRenderer，可以在沙箱內執行（I2）
+      // preload uses only contextBridge/ipcRenderer and can run in the sandbox (I2).
       sandbox: true,
       contextIsolation: true
     }
@@ -73,8 +73,8 @@ function createWindow(): void {
 
   applyWindowSecurity(mainWindow.webContents)
 
-  // 關閉前先請 renderer 立即寫入最新專案（beforeunload 的 sendSync 之外的第二道保險）；
-  // 收到 flushDone 或逾時才真正關閉
+  // Ask the renderer to immediately save the latest project before closing (a second safeguard beyond beforeunload's sendSync).
+  // Close only after receiving flushDone or timing out.
   const win = mainWindow
   const rendererAlive = (): boolean => !win.isDestroyed() && !win.webContents.isDestroyed() && !win.webContents.isCrashed()
   const shouldHide = (): boolean => !quitting && tray !== null && settingsStore?.get().recording.closeToTray === true
@@ -83,7 +83,7 @@ function createWindow(): void {
     close: () => {
       if (shouldHide()) {
         win.hide()
-        // 每次縮到系統匣後重新建立握手，下次關閉仍要儲存最新專案。
+        // Recreate the handshake each time the app is minimized to the tray so the latest project is saved on the next close.
         closeGate = makeCloseGate()
       } else win.close()
     },
@@ -101,7 +101,7 @@ function createWindow(): void {
     }
     closeGate?.onClose(e)
   })
-  // 縮到系統匣或最小化時請 renderer 暫停播放，不在背景繼續出聲
+  // Ask the renderer to pause playback when minimized to the tray or taskbar so audio does not continue in the background.
   const pausePlayback = (): void => {
     if (rendererAlive()) win.webContents.send('app:windowHidden')
   }
@@ -110,7 +110,7 @@ function createWindow(): void {
   win.on('closed', () => {
     closeGate = null
     mainWindow = null
-    // 視窗關閉：進行中的匯出一併取消，ffmpeg 不會變成孤兒（webContents 'destroyed' 也會觸發同一個取消）
+    // Cancel exports when the window closes so ffmpeg is not orphaned (webContents 'destroyed' triggers the same cancellation).
     void cancelExport?.()
   })
 
@@ -122,7 +122,7 @@ function createWindow(): void {
   loadRenderer(mainWindow)
 }
 
-/** renderer 啟動時從網址的 `lang` 取得語言；換語言就用新的語言重新載入（未存檔的專案由 beforeunload 先寫入）。 */
+/** Read the language from the URL's `lang` when the renderer starts; reload with the new language after a change (beforeunload saves unsaved projects first). */
 function loadRenderer(win: BrowserWindow): void {
   if (process.env.ELECTRON_RENDERER_URL) {
     const url = new URL(process.env.ELECTRON_RENDERER_URL)
@@ -133,7 +133,7 @@ function loadRenderer(win: BrowserWindow): void {
   }
 }
 
-/** 依設定重新決定介面語言；回傳語言是否有變。 */
+/** Resolve the interface language again from settings; return whether it changed. */
 function syncLocale(): boolean {
   const next = resolveLocale(settingsStore?.get().language, app.getLocale())
   if (next === locale) return false
@@ -170,28 +170,28 @@ async function initEngineAndServices(): Promise<void> {
     console.error('[Engine] Failed to start engine:', err)
   }
 
-  // 上次中斷遺留的代理檔半成品
+  // Leftover partial proxy files from the previous interrupted run.
   ;(await import('./proxy')).cleanStaleProxyPartials()
 
   const templateProfileDir = profileDir(app.isPackaged)
 
   library = new Library(join(appDataDir(), 'library.json'))
-  // 上次執行中斷遺留的「分析中」條目沒有佇列在處理，重設為閒置
+  // Reset leftover "analyzing" entries from the previous interrupted run; no queue is processing them.
   library.resetStaleAnalyzing()
   settingsStore = new SettingsStore(join(appDataDir(), 'settings.json'))
   syncLocale()
   queue = new AnalysisQueue(engineClient, library, {
     profileDir: templateProfileDir,
     cacheDir: cacheDir(),
-    // decode／cacheLocation 每次分析時才讀取，設定變更免重啟
+    // Read decode/cacheLocation for each analysis so setting changes take effect without a restart.
     getSettings: () => settingsStore?.get()
   })
 
-  // 監看資料夾：依設定恢復；新影片自動匯入（autoAnalyze 開啟時排入佇列）
+  // Restore folder watching from settings; automatically import new videos (enqueue them when autoAnalyze is enabled).
   watchManager = new WatchManager({ library, queue, settings: settingsStore })
   watchManager.start()
 
-  // 專案自動儲存：`%APPDATA%\Aditor\projects\<id>.json`
+  // Project autosave: `%APPDATA%\Aditor\projects\<id>.json`.
   const projectStore = new ProjectStore(join(appDataDir(), 'projects'))
 
   const handlers = registerIpcHandlers(library, queue, () => (mainWindow ? [mainWindow] : []), engineClient, settingsStore, watchManager, projectStore, (ok) => closeGate?.ack(ok))
@@ -204,7 +204,7 @@ async function initEngineAndServices(): Promise<void> {
       try {
         if (!win.isDestroyed() && !win.webContents.isDestroyed()) win.webContents.send('library:updated', payload)
       } catch (error) {
-        console.error('無法推送錄影媒體庫更新：', error)
+        console.error('Failed to publish recording library update:', error)
       }
     }
   }
@@ -229,7 +229,7 @@ async function initEngineAndServices(): Promise<void> {
     liveEngineCommand: liveEngineCommand(app.isPackaged),
     sceneDir: sceneDir(app.isPackaged),
     liveCachePath: (videoPath) => cacheFilePath(videoPath, cacheDir(), settingsStore!.get().cacheLocation === 'besideVideo'),
-    // live 快取已是 done：媒體庫條目可直接開啟；若接著排完整分析，佇列會再改回等待中並在完成後覆蓋。
+    // Live cache is already done, so the library entry can open immediately; if full analysis is queued next, the queue returns it to pending and replaces it when complete.
     onLiveAnalysis: (videoPath, summary) => {
       library!.update(videoPath, { status: 'done', progress: 1, counts: summary.counts, durationSec: summary.durationSec, codec: summary.codec || undefined, hl: undefined })
       pushLibrary()
@@ -237,7 +237,7 @@ async function initEngineAndServices(): Promise<void> {
         if (!thumb || library!.get(videoPath)?.status !== 'done') return
         library!.update(videoPath, { thumb })
         pushLibrary()
-      }, (error) => console.error('無法產生錄影縮圖：', error))
+      }, (error) => console.error('Failed to generate recording thumbnail:', error))
     }
   })
   unregisterRecordingIpc = registerRecordingIpc(recordingService, () => BrowserWindow.getAllWindows())
@@ -261,7 +261,7 @@ async function initEngineAndServices(): Promise<void> {
   }
   updateLoginItem()
   const unsubscribeLogin = settingsStore.onChange(updateLoginItem)
-  // 自動更新：只有安裝版；E2E 不連 GitHub
+  // Auto-update is enabled only in installed builds; E2E does not connect to GitHub.
   const updater = createAppUpdater({
     updater: !e2e && canAutoUpdate(app.isPackaged) ? (await import('electron-updater')).autoUpdater : null,
     isEnabled: () => settingsStore!.get().autoUpdate,
@@ -281,7 +281,7 @@ async function initEngineAndServices(): Promise<void> {
     updater.stop()
     unregisterUpdateIpc()
   }
-  // E2E 不偵測真實 Apex，避免測試期間碰到正在執行的遊戲
+  // E2E does not detect real Apex to avoid interacting with a game running during tests.
   if (!e2e) recordingService.start()
 
   ipcMain.handle('engine:probe', async (_, videoPath: unknown) => {
@@ -289,7 +289,7 @@ async function initEngineAndServices(): Promise<void> {
   })
 
   ipcMain.handle('engine:analyze', async (event, args: unknown) => {
-    // renderer 只知道影片路徑；引擎需要的 profile_dir／cache_dir 由主程序補上（命中快取時直接回傳）
+    // The renderer knows only the video path; main adds the engine's profile_dir/cache_dir (return directly on a cache hit).
     const req = engineClient?.request('analyze', buildAnalyzeArgs({ profile_dir: templateProfileDir, cache_dir: cacheDir() }, settingsStore?.get(), sanitizeAnalyzeArgs(args)), (progress) => {
       event.sender.send('engine:progress', progress)
     })
@@ -310,7 +310,7 @@ async function initEngineAndServices(): Promise<void> {
   })
 }
 
-// 結束前等錄影收尾、匯出／代理檔 ffmpeg 被終止、引擎停止（I7）；逾時 5 秒仍會退出
+// Before quitting, wait for recording finalization, export/proxy ffmpeg termination, and engine shutdown (I7); still exit after a 5-second timeout.
 const quitGuard = createQuitGuard({
   tasks: [
     () => library?.flush(),

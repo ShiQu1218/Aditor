@@ -16,7 +16,7 @@ describe('ProjectBoot', () => {
     b.start()
     b.settingsLoaded(true)
     expect(b.restored(true)).toBe(true)
-    expect(b.restored(true)).toBe(false) // 第二次（不該發生）也不再套用
+    expect(b.restored(true)).toBe(false) // A second call (which should not happen) does not apply it again.
   })
 
   test('edit before the restore resolves: keep user project, skip restore', () => {

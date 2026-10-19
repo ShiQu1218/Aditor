@@ -4,7 +4,7 @@ from pathlib import Path
 
 
 def _find(env_var: str, exe: str, required_name: str) -> str:
-    """解析順序：環境變數 → ADITOR_FFMPEG 同目錄 → 引擎旁的 ffmpeg/ 目錄 → PATH。"""
+    """Resolve in this order: environment variable → ADITOR_FFMPEG sibling directory → engine's ffmpeg/ directory → PATH."""
     env = os.environ.get(env_var)
     if env:
         if Path(env).exists():

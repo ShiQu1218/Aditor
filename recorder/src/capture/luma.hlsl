@@ -1,4 +1,4 @@
-// 對 320×180 thumb 計算整數灰階總和；只讀回一個 u32，不重複讀回完整小圖。
+// Sum integer luminance for the 320×180 thumbnail; read back one u32 instead of the full image again.
 Texture2D<float4> thumb : register(t0);
 RWStructuredBuffer<uint> result : register(u0);
 groupshared uint partial[256];

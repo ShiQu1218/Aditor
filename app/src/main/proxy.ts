@@ -34,17 +34,17 @@ export function buildProxyArgs(input: string, output: string, encoder: string): 
 
 const ENCODER_PRIORITY = ['h264_nvenc', 'h264_qsv', 'h264_amf', 'libopenh264']
 
-/** 依優先順序列出「偵測到可用」的 H.264 編碼器（不可用的不會出現）。 */
+/** List detected, available H.264 encoders in priority order (unavailable encoders are omitted). */
 export function orderEncoders(available: string[]): string[] {
   return ENCODER_PRIORITY.filter((e) => available.includes(e))
 }
 
-/** 第一個可用的編碼器；沒有則回 null（不再假設 NVENC 存在）。 */
+/** First available encoder; return null when none are available (do not assume NVENC exists). */
 export function pickEncoder(available: string[]): string | null {
   return orderEncoders(available)[0] ?? null
 }
 
-/** 由 ffmpeg stderr 的 `time=HH:MM:SS.xx` 與影片長度換算進度 0–1；無法判讀回 null。 */
+/** Convert ffmpeg stderr `time=HH:MM:SS.xx` and video duration to progress 0–1; return null when it cannot be parsed. */
 export function parseFfmpegProgress(line: string, durationSec: number): number | null {
   if (!(durationSec > 0)) return null
   const m = /time=(\d+):(\d+):(\d+(?:\.\d+)?)/.exec(line)
@@ -54,7 +54,7 @@ export function parseFfmpegProgress(line: string, durationSec: number): number |
 }
 
 export interface ProxyDeps {
-  /** 取得實測可用的編碼器清單；預設為 detectEncoders()（結果快取，不會每次重測）。 */
+  /** Get the list of encoders verified to work; defaults to detectEncoders() (cached, not retested every time). */
   detect?: () => Promise<string[]>
   ffmpeg?: { bin: string; prefixArgs?: string[] }
 }
@@ -63,19 +63,19 @@ let detectedCache: Promise<string[]> | null = null
 async function defaultDetect(): Promise<string[]> {
   if (!detectedCache) {
     detectedCache = detectEncoders().then((r) => {
-      // 空清單可能只是暫時失敗（例如剛安裝 OpenH264），不快取
+      // An empty list may reflect a temporary failure (for example, OpenH264 was just installed), so do not cache it.
       if (r.length === 0) detectedCache = null
       return r
     })
   }
   return detectedCache
 }
-/** 安裝 OpenH264 後呼叫，讓下次產生代理檔重新偵測。 */
+/** Call after installing OpenH264 so the next proxy generation redetects encoders. */
 export function resetProxyEncoderCache(): void {
   detectedCache = null
 }
 
-/** 把 codecsDir() 放到 PATH 最前面（libopenh264 備援才找得到 DLL）；Windows 的環境變數名稱大小寫不分（Path）。 */
+/** Put codecsDir() first in PATH so the libopenh264 fallback can find its DLL; Windows environment variable names are case-insensitive (Path). */
 function envWithCodecsPath(): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = { ...process.env }
   const key = Object.keys(env).find((k) => k.toUpperCase() === 'PATH') ?? 'PATH'
@@ -87,14 +87,14 @@ export function partialProxyPath(final: string): string {
   return final.replace(/.mp4$/i, '.partial.mp4')
 }
 
-/** 啟動時清掉上次中斷遺留的 .partial.mp4（已完成的代理檔不受影響）。 */
+/** Remove .partial.mp4 files left by an interrupted previous run at startup (completed proxies are unaffected). */
 export function cleanStaleProxyPartials(): void {
   try {
     for (const f of fs.readdirSync(proxyDir())) {
       if (f.toLowerCase().endsWith('.partial.mp4')) fs.rmSync(path.join(proxyDir(), f), { force: true })
     }
   } catch {
-    // 資料夾不存在＝沒有遺留
+    // Missing directory means no leftovers.
   }
 }
 
@@ -102,7 +102,7 @@ const running = new Set<ChildProcess>()
 let cancelling = false
 const inflight = new Map<string, Promise<string>>()
 
-/** 取消所有進行中的代理檔產生（App 關閉時）：殺掉 ffmpeg 樹，等 partial 清掉。 */
+/** Cancel all active proxy generations on app close: kill the ffmpeg tree and wait for partial files to be removed. */
 export async function cancelAllProxies(): Promise<void> {
   cancelling = true
   try {
@@ -160,8 +160,8 @@ async function removePartial(p: string): Promise<void> {
 }
 
 /**
- * 產生 960x540 代理檔：用實測可用的編碼器（依優先順序逐一嘗試）、先寫 .partial.mp4，成功才 rename 成正式檔。
- * 失敗或取消都會刪掉 partial，`proxy:get` 因此不會看到壞檔。
+ * Generate a 960x540 proxy using encoders verified to work (try them in priority order); write to .partial.mp4 first and rename to the final file only on success.
+ * Remove partial files on failure or cancellation so `proxy:get` never sees a broken file.
  */
 export function generateProxy(
   videoPath: string,

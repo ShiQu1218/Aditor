@@ -1,6 +1,6 @@
-// 對話框／浮層的焦點陷阱：純索引函式＋可重用的 DOM 啟用器（所有對話框共用同一份實作）。
+// Focus trap for dialogs and popovers: pure index helpers plus a reusable DOM activator shared by all dialogs.
 
-/** Tab／Shift+Tab 後應聚焦的索引；無可聚焦元素回 -1。 */
+/** Return the index to focus after Tab or Shift+Tab; return -1 when nothing is focusable. */
 export function nextTrapIndex(count: number, current: number, shift: boolean): number {
   if (count <= 0) return -1
   if (current < 0) return shift ? count - 1 : 0
@@ -10,7 +10,7 @@ export function nextTrapIndex(count: number, current: number, shift: boolean): n
 const FOCUSABLE =
   'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
 
-/** 容器內目前可用 Tab 聚焦的元素（略過 disabled、hidden、inert 子樹；單選群組只算已選取的那一個，與瀏覽器的 Tab 行為一致）。 */
+/** Return elements currently focusable with Tab in the container (skip disabled, hidden, and inert subtrees; count only the selected radio in a group, matching browser Tab behavior). */
 export function focusablesIn(root: HTMLElement): HTMLElement[] {
   const all = Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE)).filter(
     (el) => !el.hidden && el.closest('[inert], [hidden]') === null
@@ -28,21 +28,21 @@ export function focusablesIn(root: HTMLElement): HTMLElement[] {
 }
 
 export interface FocusTrapOptions {
-  /** Esc：呼叫後事件不再傳給全域 keymap（避免同一個 Esc 被處理兩次） */
+  /** Esc: stop propagation after calling this so the global keymap does not handle it twice. */
   onEscape?: () => void
-  /** 開啟時聚焦的元素；省略＝第一個可聚焦元素，沒有則聚焦容器本身 */
+  /** Element to focus on open; defaults to the first focusable element, or the container if none exists. */
   initialFocus?: HTMLElement | null
-  /** 關閉時還原焦點的元素；省略＝開啟當下的焦點元素（觸發元素） */
+  /** Element to restore focus to on close; defaults to the element focused when opened (the trigger). */
   returnFocusTo?: HTMLElement | null
 }
 
 /**
- * 啟用焦點陷阱並回傳解除函式：
- * - 開啟時記住目前焦點（觸發元素）並把焦點移進 `box`；
- * - Tab／Shift+Tab 只在 `box` 內循環（焦點跑到框外也會被拉回）；
- * - Esc 交給 `onEscape`（IME 組字中忽略）；
- * - 解除時把焦點還給觸發元素（若它仍在文件中，且焦點沒有被使用者移到別處）。
- * 監聽綁在 window 的捕捉階段，焦點不在框內時也有效。
+ * Enable the focus trap and return a cleanup function:
+ * - Remember the current focus (the trigger) on open and move focus into `box`.
+ * - Keep Tab and Shift+Tab inside `box` (pull focus back if it escapes).
+ * - Pass Esc to `onEscape` (ignore it during IME composition).
+ * - On cleanup, restore focus to the trigger if it remains in the document and the user has not moved focus elsewhere.
+ * The listener runs on window during capture, so it also works when focus is outside the box.
  */
 export function activateFocusTrap(box: HTMLElement, opts: FocusTrapOptions = {}): () => void {
   const opener = (document.activeElement as HTMLElement | null) ?? null
@@ -73,7 +73,7 @@ export function activateFocusTrap(box: HTMLElement, opts: FocusTrapOptions = {})
   return () => {
     window.removeEventListener('keydown', onKey, true)
     const back = opts.returnFocusTo === undefined ? opener : opts.returnFocusTo
-    // 只在焦點還在框內、或已掉到 body（框被移除）時還原；使用者已點到別處就不搶走焦點
+    // Restore focus only when it is still inside the box or has fallen to body (the box was removed); do not steal focus after the user clicks elsewhere.
     const active = document.activeElement
     const lost = !active || active === document.body || box.contains(active)
     if (lost && back && back.isConnected && typeof back.focus === 'function') back.focus()

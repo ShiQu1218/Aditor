@@ -5,7 +5,7 @@ import { fakeObs } from './obs-test-support'
 const cleanup: Array<() => Promise<void>> = []
 afterEach(async () => { for (const fn of cleanup.splice(0).reverse()) await fn() })
 describe('OBS WebSocket v5', () => {
-  it('驗證成功後查版本、開始及停止，接收輸出路徑', async () => {
+  it('checks the version after authentication, starts and stops recording, and receives the output path', async () => {
     const server = await fakeObs({ password: '測試密碼', outputPath: 'D:/OBS/original.mkv' })
     cleanup.push(server.close)
     const client = new ObsClient(); cleanup.push(() => client.close())
@@ -15,13 +15,13 @@ describe('OBS WebSocket v5', () => {
     await client.start()
     expect(await client.stop()).toBe('D:/OBS/original.mkv')
   })
-  it('驗證失敗不洩漏密碼；無法連線有明確錯誤', async () => {
+  it('does not expose the password on authentication failure and reports a clear connection error', async () => {
     const server = await fakeObs({ password: '正確密碼' }); cleanup.push(server.close)
     const client = new ObsClient(100); cleanup.push(() => client.close())
     await expect(client.connect('127.0.0.1', server.port, '不可洩漏')).rejects.toThrow('驗證')
     await expect(client.connect('127.0.0.1', 1)).rejects.toThrow('OBS')
   })
-  it.each(['hello', 'request'] as const)('伺服器沒有回應時連線或指令會逾時：%s', async (stall) => {
+  it.each(['hello', 'request'] as const)('Connection or command times out when the server does not respond: %s', async (stall) => {
     const server = await fakeObs({ stall }); cleanup.push(server.close)
     const client = new ObsClient(100); cleanup.push(() => client.close())
     if (stall === 'hello') await expect(client.connect('127.0.0.1', server.port)).rejects.toThrow('OBS')

@@ -26,10 +26,10 @@ import { ProjectItem } from '../renderer/editor/project'
 import { catalogFor } from '../renderer/i18n'
 import { getActiveLocale, tr } from '../shared/locale'
 
-/** 原生對話框的文字（隨目前介面語言）。 */
+/** Native dialog text (follows the current interface language). */
 const dialogText = (): ReturnType<typeof catalogFor>['i18n']['dialog'] => catalogFor(getActiveLocale()).i18n.dialog
 
-/** `library:updated` 廣播的最小間隔 */
+/** Minimum interval between `library:updated` broadcasts. */
 export const LIBRARY_UPDATE_INTERVAL_MS = 500
 
 const VIDEO_EXTS = new Set(['.mp4', '.mkv', '.mov', '.webm'])
@@ -63,10 +63,10 @@ export function registerIpcHandlers(
   projectStore?: ProjectStore,
   onProjectFlushDone?: (ok: boolean) => void
 ): { cancelExport: () => Promise<void> } {
-  // 快取位置設定（每次讀取，變更免重啟）：與引擎 analyze 的 beside 同一規則
+  // Read cache-location settings each time so changes take effect without a restart; follows the engine analyze beside rule.
   const cacheBeside = (): boolean => settings?.get().cacheLocation === 'besideVideo'
-  // library:updated 最多每 500 ms 一次（前緣＋尾端，最後一次更新必定送達）；
-  // 夾帶佇列的真實狀態（正在分析／排隊／進度／開始時間），renderer 不必為了佇列再拉整份 entries
+  // Send library:updated at most every 500 ms (leading and trailing edge, so the final update is always delivered).
+  // Include actual queue state (analyzing/queued/progress/start time), so the renderer does not need to fetch all entries again for queue state.
   const sendUpdated = () => {
     const payload = queue.payload()
     for (const win of getWindows()) {
@@ -151,12 +151,12 @@ export function registerIpcHandlers(
     return []
   })
 
-  // 路徑可能來自不受信任的專案檔：只接受本機絕對路徑＋影片副檔名的一般檔案（拒絕 UNC／裝置路徑，不碰網路）
+  // Paths may come from untrusted project files: accept only regular files with local absolute paths and video extensions (reject UNC/device paths without touching the network).
   ipcMain.handle('library:fileExists', (_, videoPath: unknown) => fileExistsSafe(videoPath))
 
-  // 惰性「N 精華」（spec §7.4）：卡片首次進入視窗且已分析完成、尚無記錄時，
-  // 讀取既有快取（無副作用、絕不觸發 analyze；沒有快取＝略過）後以預設參數呼叫 autoclip，
-  // 數字快取進 library.json。請求並行度 1、同一影片去重，避免捲動時 N 張卡片同時打引擎。
+  // Lazy "N highlights" (spec §7.4): when a card first enters the viewport, analysis is complete, and no count is stored,
+  // read the existing cache (no side effects and never triggers analyze; skip when there is no cache), call autoclip with default parameters,
+  // and cache the number in library.json. Concurrency is 1 and requests for the same video are deduplicated, avoiding simultaneous engine calls while scrolling.
   const hlQueue = createSerialQueue<number | null>()
   const hlGuard = createHlGuard()
   ipcMain.handle('library:computeHl', (_, videoPath: string) => {
@@ -178,7 +178,7 @@ export function registerIpcHandlers(
         hlGuard.markFailed(key)
         return null
       }
-      // 計算期間若有較新的 cache:save（或條目已不是 done／被重新分析），丟棄這個舊結果
+      // Discard this result if a newer cache:save occurred during computation (or the entry is no longer done/has been reanalyzed).
       const committed = hlGuard.commitIfCurrent(key, startedRev, () => {
         if (find()?.status === 'done') library.update(videoPath, { hl: count })
       })
@@ -239,12 +239,12 @@ export function registerIpcHandlers(
     broadcastUpdated()
   })
 
-  // 由影片路徑推得快取檔（無副作用、不啟動分析）；工作室載入用
+  // Derive the cache file from the video path (no side effects and no analysis); used when Studio loads.
   ipcMain.handle('cache:loadByVideo', async (_, videoPath: string) => loadCacheDoc(resolveCacheFile(videoPath, cacheDir(), cacheBeside())))
 
-  // 工作室存檔時同步影片庫的「N 精華」＝目前待確認建議數（重新分析的建議尚未重算＝清除，交給惰性重算）。
-  // 修訂號 bump：較早開始的 computeHl 不能再蓋掉這個較新的值
-  // 目的地由 main 依影片路徑推得（忽略 renderer 的 cache_path），影片必須在影片庫內（I1）
+  // When Studio saves, sync library "N highlights" with the current pending-suggestion count (clear it when post-reanalysis suggestions have not been recomputed, so lazy computation can handle it).
+  // Bump the revision so an older computeHl cannot overwrite this newer value.
+  // Main derives the destination from the video path (ignores renderer cache_path); the video must be in the library (I1).
   type SavedDoc = { cache_path?: string; video?: { path?: string }; clips?: Clip[]; app?: { suggestionsPending?: boolean } }
   const saveCacheFromRenderer = (doc: SavedDoc): boolean => {
     const plan = planCacheSave(doc, library, cacheDir(), cacheBeside())
@@ -259,7 +259,7 @@ export function registerIpcHandlers(
     return ok
   }
   ipcMain.handle('cache:save', async (_, doc: SavedDoc) => saveCacheFromRenderer(doc))
-  // 離開工作室／關閉視窗時用：阻塞到快取已寫入磁碟（I4）
+  // Used when leaving Studio or closing the window: block until the cache has been written to disk (I4).
   ipcMain.on('cache:saveSync', (event, doc: SavedDoc) => {
     try {
       event.returnValue = saveCacheFromRenderer(doc)
@@ -278,7 +278,7 @@ export function registerIpcHandlers(
 
   ipcMain.handle('proxy:generate', async (event, videoPath: unknown, durationSec?: unknown) => {
     const { generateProxy } = await import('./proxy')
-    // 進度只推給發出請求的視窗
+    // Send progress only to the requesting window.
     return handleProxyGenerate(event.sender, videoPath, durationSec, { generateProxy })
   })
 
@@ -307,7 +307,7 @@ export function registerIpcHandlers(
     return false
   })
 
-  // 用系統預設程式開啟打包內的第三方授權清單（I11）
+  // Open the bundled third-party notices with the system's default application (I11).
   ipcMain.handle('app:openLicenses', async () => {
     const file = noticesFile(app.isPackaged)
     if (!fs.existsSync(file)) return false
@@ -322,7 +322,7 @@ export function registerIpcHandlers(
     return { installed: hasOpenH264() }
   })
 
-  // OpenH264 下載：網址白名單與大小／雜湊驗證在 codecs.ts；進度只送給發出請求的視窗；同時只允許一個下載
+  // OpenH264 download: codecs.ts validates the allowlisted URL, size, and hash; send progress only to the requesting window; allow one download at a time.
   let h264Downloading: Promise<string> | null = null
   ipcMain.handle('export:downloadOpenH264', async (event) => {
     if (h264Downloading) throw new Error(tr('OpenH264 正在下載中'))
@@ -333,7 +333,7 @@ export function registerIpcHandlers(
     })
     try {
       const dll = await h264Downloading
-      // 新裝的 OpenH264 要讓代理檔的編碼器偵測重新來過
+      // Re-detect proxy encoders after installing OpenH264.
       ;(await import('./proxy')).resetProxyEncoderCache()
       return dll
     } finally {
@@ -341,7 +341,7 @@ export function registerIpcHandlers(
     }
   })
 
-  // 開啟輸出資料夾：只接受存在的本機絕對資料夾路徑
+  // Open an output folder; accept only existing local absolute directory paths.
   ipcMain.handle('export:openFolder', async (_event, dir: unknown) => {
     if (!isSafeLocalDirPath(dir)) return false
     const st = await fs.promises.stat(dir).catch(() => null)
@@ -358,9 +358,9 @@ export function registerIpcHandlers(
     return res.canceled || res.filePaths.length === 0 ? null : res.filePaths[0]
   })
 
-  // 匯出：start／cancel／diskSpace（驗證、單一匯出、視窗關閉即取消都在 export-ipc.ts）
+  // Export: start/cancel/diskSpace (validation, single-export enforcement, and cancel-on-window-close are in export-ipc.ts).
   const exportService = createExportService({
-    // E2E（ADITOR_E2E_FAKE_FFMPEG=1）才有值；正式執行為 undefined＝沿用預設 ffmpeg
+    // Set only for E2E (ADITOR_E2E_FAKE_FFMPEG=1); undefined in production to use the default ffmpeg.
     ffmpeg: currentE2EConfig()?.exportFfmpeg ?? undefined,
     probe: engine ? (source) => engine.request('probe', { path: source }).promise : undefined
   })

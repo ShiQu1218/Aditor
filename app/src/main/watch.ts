@@ -7,10 +7,10 @@ import type { AnalysisQueue } from './queue'
 import type { SettingsStore } from './settings'
 import { tr } from '../shared/locale'
 
-/** 檔案大小需穩定的預設毫秒數與輪詢間隔（`WatchManagerOptions` 未指定時採用） */
+/** Default milliseconds the file size must remain stable and polling interval (used when WatchManagerOptions does not specify them). */
 export const DEFAULT_STABILITY_MS = 2000
 export const DEFAULT_POLL_MS = 200
-/** 缺失資料夾的重試／死 watcher 偵測間隔（App 執行期間） */
+/** Interval for retrying missing folders and detecting dead watchers (while the app is running). */
 export const DEFAULT_RETRY_MS = 30000
 
 export type WatcherFactory = (
@@ -23,13 +23,13 @@ export interface WatchManagerOptions {
   library: Library
   queue: AnalysisQueue
   settings: SettingsStore
-  /** 檔案大小需穩定的毫秒數（預設 2000；測試注入較小值） */
+  /** Milliseconds the file size must remain stable (default 2000; tests inject a smaller value). */
   stabilityMs?: number
-  /** 大小檢查的輪詢間隔毫秒數（預設 200） */
+  /** File-size polling interval in milliseconds (default 200). */
   pollMs?: number
-  /** 缺失資料夾的重試間隔（預設 30000；測試注入較小值） */
+  /** Retry interval for missing folders (default 30000; tests inject a smaller value). */
   retryMs?: number
-  /** watcher 建立函式（預設 chokidar 包裝；測試可注入假的） */
+  /** Watcher factory (defaults to the chokidar wrapper; tests can inject a fake). */
   createWatcher?: WatcherFactory
 }
 
@@ -45,8 +45,8 @@ export class WatchDirError extends Error {
 }
 
 /**
- * 監看資料夾的唯一驗證器（`add`／`start`／設定同步共用）：必須是絕對路徑、存在、且為資料夾。
- * 通過時回傳 `path.resolve` 後的路徑；否則丟出帶 `code` 的 `WatchDirError`（訊息可直接顯示給使用者）。
+ * Single validator for watched folders (shared by `add`/`start`/settings sync): must be an absolute path to an existing directory.
+ * Return its `path.resolve` result when valid; otherwise throw a `WatchDirError` with a `code` (message can be displayed to the user).
  */
 export function validateWatchDir(dir: unknown): string {
   if (typeof dir !== 'string' || !path.isAbsolute(dir)) {
@@ -65,7 +65,7 @@ export function validateWatchDir(dir: unknown): string {
   return resolved
 }
 
-/** 路徑比對用的鍵：path.resolve（去尾端分隔符）＋ Windows 不分大小寫，兩種拼法不會開兩個 watcher。 */
+/** Path comparison key: path.resolve (remove trailing separators) plus case-insensitive comparison on Windows, so alternate spellings do not create duplicate watchers. */
 export function watchKey(dir: string): string {
   const resolved = path.resolve(dir)
   return process.platform === 'win32' ? resolved.toLowerCase() : resolved
@@ -75,23 +75,23 @@ const defaultFactory: WatcherFactory = (dir, onAdd, opts) => watchFolder(dir, on
 
 interface Activating {
   promise: Promise<void>
-  /** 立刻關閉尚在啟動中的 watcher 並放行等待者（stop()／移除時用） */
+  /** Immediately close a watcher that is still starting and release waiters (used by stop()/remove). */
   cancel: () => void
 }
 
 /**
- * 監看資料夾管理（main）：
- * - 設定清單（`settings.watchFolders`）為唯一真實來源；`add`／`remove` 寫入設定並同步 watcher，
- *   `start()` 依設定恢復（含外部經設定畫面直接修改 `watchFolders` 的情況）。
- * - 新影片需「大小穩定」後才匯入（chokidar awaitWriteFinish）；`autoAnalyze` 開啟時自動排入佇列。
- * - 資料夾不存在或被移除：不丟錯，清單保留（`missing()` 標記缺失），只警告一次；
- *   App 執行期間每 `retryMs`（預設 30 秒）與每次設定變更都會安靜地重試；
- *   資料夾被刪除時關閉失效的 watcher，重建後會得到全新的 watcher。
- * - `stop()` 之後才完成啟動的 watcher 會立刻被關閉（以 generation 世代號判斷），`stop()` 也會關閉啟動中的 watcher。
+ * Watched-folder manager (main):
+ * - Settings (`settings.watchFolders`) are the single source of truth; `add`/`remove` update settings and sync watchers,
+ *   and `start()` restores from settings (including direct external changes to `watchFolders` through Settings).
+ * - Import new videos only after their size stabilizes (chokidar awaitWriteFinish); enqueue them automatically when `autoAnalyze` is enabled.
+ * - Missing or removed folders do not throw; keep them in the list (`missing()` marks them missing) and warn only once.
+ *   Retry quietly every `retryMs` (30 seconds by default) while the app is running and after each settings change.
+ *   Close a watcher when its folder is deleted and create a new watcher if the folder is recreated.
+ * - Close watchers that finish starting after `stop()` immediately (checked with a generation number); `stop()` also closes watchers that are still starting.
  *
- * 已知限制（刻意不做啟動掃描）：watcher 使用 `ignoreInitial: true`，所以 App 關閉期間放進
- * 監看資料夾的影片，下次啟動時**不會**自動匯入（請用「匯入資料夾」）。不做啟動掃描的原因：
- * 使用者從影片庫移除（不刪檔）的影片會在每次啟動時復活。
+ * Known limitation (startup scanning is intentionally omitted): the watcher uses `ignoreInitial: true`, so videos added to
+ * watched folders while the app is closed are **not** imported automatically on next startup (use "Import folder"). Startup scanning is omitted
+ * because videos removed from the library (without deleting their files) would reappear on every startup.
  */
 export class WatchManager extends EventEmitter {
   private opts: WatchManagerOptions
@@ -101,7 +101,7 @@ export class WatchManager extends EventEmitter {
   private unsubscribe: (() => void) | null = null
   private retryTimer: ReturnType<typeof setInterval> | null = null
   private started = false
-  /** stop() 每次 +1；啟動中的 watcher 完成時若世代已變，立刻關閉 */
+  /** Incremented on every stop(); immediately close a starting watcher if the generation changed before it was ready. */
   private generation = 0
 
   constructor(opts: WatchManagerOptions) {
@@ -109,7 +109,7 @@ export class WatchManager extends EventEmitter {
     this.opts = opts
   }
 
-  /** 依設定啟動監看並訂閱設定變更；重複呼叫無效。 */
+  /** Start watching from settings and subscribe to changes; repeated calls have no effect. */
   start(): void {
     if (this.started) {
       return
@@ -121,8 +121,8 @@ export class WatchManager extends EventEmitter {
   }
 
   /**
-   * 新增監看資料夾：以共用驗證器檢查（絕對路徑、存在、為資料夾，否則丟出含原因的錯誤），
-   * 寫入設定並等待 watcher 就緒後才回傳。同一資料夾的不同拼法視為同一個。
+   * Add a watched folder: validate with the shared validator (absolute path, exists, directory; otherwise throw an error with a reason),
+   * update settings, and return only after the watcher is ready. Alternate spellings of the same folder are treated as one.
    */
   async add(dir: string): Promise<void> {
     const resolved = validateWatchDir(dir)
@@ -136,7 +136,7 @@ export class WatchManager extends EventEmitter {
     this.emit('update')
   }
 
-  /** 移除監看資料夾（清單沒有時仍安全）：停止 watcher 並從設定移除。 */
+  /** Remove a watched folder (safe when it is not in the list): stop its watcher and remove it from settings. */
   async remove(dir: string): Promise<void> {
     if (typeof dir !== 'string') {
       return
@@ -151,22 +151,22 @@ export class WatchManager extends EventEmitter {
     this.emit('update')
   }
 
-  /** 監看清單（依設定順序；包含目前不存在的資料夾）。 */
+  /** Watched-folder list (settings order; includes folders that are currently missing). */
   list(): string[] {
     return [...this.opts.settings.get().watchFolders]
   }
 
-  /** 清單中目前不存在或不是資料夾的項目。 */
+  /** Entries in the list that are currently missing or are not directories. */
   missing(): string[] {
     return this.list().filter((dir) => !isDirectory(dir))
   }
 
-  /** 目前實際運作中的 watcher 所監看的資料夾（診斷／測試用）。 */
+  /** Folders watched by active watchers (for diagnostics/tests). */
   activeDirs(): string[] {
     return [...this.watchers.values()].map((w) => w.dir)
   }
 
-  /** 所有 watcher（含啟動中者）關閉；之後 `start()` 可重新啟動。 */
+  /** Close all watchers, including those still starting; `start()` can be called again afterwards. */
   stop(): void {
     this.unsubscribe?.()
     this.unsubscribe = null
@@ -185,14 +185,14 @@ export class WatchManager extends EventEmitter {
     }
   }
 
-  /** 等待目前所有啟動中的 watcher 就緒（供 IPC／測試確保事件不漏接）。 */
+  /** Wait for all currently starting watchers to become ready (used by IPC/tests to avoid missing events). */
   async whenReady(): Promise<void> {
     while (this.activating.size > 0) {
       await Promise.all([...this.activating.values()].map((a) => a.promise))
     }
   }
 
-  /** 依設定清單同步 watcher：新增者啟動、移除者關閉；無效／不存在者只警告一次並略過。 */
+  /** Sync watchers with the settings list: start added folders, close removed ones, and warn once then skip invalid/missing folders. */
   private syncFromSettings(dirs: string[]): void {
     const wanted = new Map<string, string>()
     for (const dir of dirs) {
@@ -215,7 +215,7 @@ export class WatchManager extends EventEmitter {
     }
   }
 
-  /** 定時：偵測已消失資料夾（關閉死 watcher）並重試缺失者。 */
+  /** Periodically detect vanished folders (close dead watchers) and retry missing ones. */
   private tick(): void {
     let changed = false
     const wanted = new Map<string, string>()
@@ -296,7 +296,7 @@ export class WatchManager extends EventEmitter {
     const promise = new Promise<void>((resolve) => {
       resolveFn = resolve
     })
-    // 保底：即使 ready 未觸發也不讓呼叫端（IPC）卡住
+    // Safety net: do not leave the caller (IPC) blocked if ready never fires.
     const timer = setTimeout(() => finish(), 10000)
     const entry: Activating = {
       promise,
@@ -322,7 +322,7 @@ export class WatchManager extends EventEmitter {
       const stillWanted = this.opts.settings
         .get()
         .watchFolders.some((d) => typeof d === 'string' && watchKey(d) === key)
-      // stop() 之後才完成啟動、或啟動期間被移除：不留孤兒 watcher
+      // Startup completed after stop(), or the folder was removed while starting: do not leave an orphan watcher.
       if (gen !== this.generation || !stillWanted) {
         void watcher.close()
       } else {
@@ -348,7 +348,7 @@ export class WatchManager extends EventEmitter {
     }
   }
 
-  /** 新檔（穩定後）：支援的副檔名才匯入；autoAnalyze 開啟時排入佇列。 */
+  /** New file (after it stabilizes): import only supported extensions and enqueue when autoAnalyze is enabled. */
   private handleNewFiles(paths: string[]): void {
     const files = paths.filter((p) =>
       !p.split(/[\\/]/).some((part) => part.toLowerCase() === '.sessions') &&

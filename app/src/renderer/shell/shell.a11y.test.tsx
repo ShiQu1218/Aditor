@@ -175,7 +175,7 @@ describe('toast host: keyboard', () => {
     const undo = document.querySelector<HTMLButtonElement>('.toast button')!
     focusEl(undo)
     act(() => {
-      vi.advanceTimersByTime(60_000) // 遠超過 6 秒 TTL
+      vi.advanceTimersByTime(60_000) // Far beyond the 6-second TTL.
     })
     expect(document.querySelector('.toast')).not.toBeNull()
     act(() => undo.blur())

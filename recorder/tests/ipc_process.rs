@@ -1,4 +1,4 @@
-//! 驗證實際 aditorrec 子程序的 stdin／stdout JSON-lines 與 EOF 結束行為。
+//! Verify stdin/stdout JSON-lines and EOF shutdown behavior of the actual aditorrec child process.
 
 use std::io::Write;
 use std::process::{Command, Stdio};

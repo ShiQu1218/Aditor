@@ -130,12 +130,12 @@ def test_ipc_no_false_busy_after_terminal_line(tmp_path):
         rid = f"a{i}"
         p.send({"id": rid, "cmd": "analyze", "args": args})
         end = p.until(lambda m: m.get("id") == rid and m["type"] in ("error", "result"))
-        assert end["type"] == "result", end  # 收到終結訊息後立即重送，不得 busy
+        assert end["type"] == "result", end  # A resend immediately after the terminal message must not be busy.
     assert p.close() == 0
 
 
 def test_server_prunes_finished_worker_threads():
-    """長時間執行的 IPC 工作階段：已結束的工作緒不會一直留在 _threads。"""
+    """Long-lived IPC sessions do not keep completed worker threads in _threads."""
     import io
     from aditor.ipc import Server
     srv = Server(io.BytesIO(), io.BytesIO())

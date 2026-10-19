@@ -1,19 +1,19 @@
-"""圖示優先、與語言無關的擊殺橫幅逐格偵測（事件偵測的唯一路徑；上層見 detect.Detector）。
+"""Language-independent, icon-first per-frame kill-banner detection (the only event-detection path; see detect.Detector for the higher-level interface).
 
-橫幅上與語言無關的圖示（樣板見 templates/icons/，只從訓練素材 English.mkv／Japanese.mkv 裁切、平均）：
-- chev   ：分數右側的三層箭頭（「+N」分數圖示的左半；所有加分橫幅都有，含 REVIVE／CRATE REVEAL／敵方小隊已消滅）
-- person ：箭頭右側的單人圖示（個人擊殺分：擊倒、助攻擊倒、敵方小隊已消滅）
-- group  ：箭頭右側的三人圖示（小隊分：小隊抹殺、REVIVE、CRATE REVEAL…）
-- skull  ：第一行左側＝獨立擊殺；小隊抹殺第二行也有
-- hand   ：第一行左側＝助攻消滅；小隊抹殺第二行也有（助攻擊殺的隊友）
+Language-independent icons on the banner (templates are in templates/icons/, cropped and averaged only from the English.mkv/Japanese.mkv training clips):
+- chev   : three-layer chevron to the right of the score (left half of the "+N" score icon; present on all score banners, including REVIVE/CRATE REVEAL/enemy squad wipe)
+- person: solo icon to the right of the chevron (personal kill score: knock, assist-knock, enemy squad wipe)
+- group : three-person icon to the right of the chevron (squad score: squad wipe, REVIVE, CRATE REVEAL, etc.)
+- skull : left of the first line = solo kill; also appears on the second line of squad-wipe banners
+- hand  : left of the first line = assist elimination; also appears on the second line of squad-wipe banners (a teammate's assist kill)
 
-除了圖示，另用兩個與語言無關的版面線索：
-- line2_ink ：第一行下方是否有第二行文字（擊倒的傷害行、小隊抹殺的名單）；以白色頂帽（細亮筆畫）像素比例量測
-- name_color：第一行是否有敵人色（紅／黃／粉紅）文字；擊倒與獨立擊殺的敵人名字是敵人色，助攻與非事件橫幅是白字
+Two additional language-independent layout cues are used:
+- line2_ink : whether a second text line appears below the first (knock damage line or squad-wipe roster), measured by the ratio of white top-hat (thin bright-stroke) pixels
+- name_color: whether the first line contains enemy-colored (red/yellow/pink) text; enemy names in knocks and solo kills use this color, while assists and non-event banners use white text
 
-逐格輸出 IconFrame（特徵＋分類）；事件層（連續格聚成事件、名字切分）在 events.EventTracker。分類規則與門檻在 IconParams；
-每個數值由哪份訓練資料決定、驗收結果與已知失敗模式，見 .superpowers/sdd/icon-detect-report.md（實驗報告）。
-產品範圍只需要 knock 與 assist（assist_knock＋assist_elim）；elim／squad_wipe 只當反例。
+Emit an IconFrame (features and classification) for each frame. Event aggregation (grouping consecutive frames and splitting names) is handled by events.EventTracker. Classification rules and thresholds are in IconParams;
+for training-data sources, acceptance results, and known failure modes, see the experiment report at .superpowers/sdd/icon-detect-report.md.
+The product only needs knock and assist (assist_knock + assist_elim); elim/squad_wipe are used only as negative examples.
 """
 from __future__ import annotations
 
@@ -24,22 +24,22 @@ import cv2
 import numpy as np
 
 ICON_NAMES = ("chev", "person", "group", "skull", "hand", "plus")
-ROW0, ROW1 = 30, 150          # 搜尋帶（banner 座標）：涵蓋第一行 y≈60–110 與第二行
+ROW0, ROW1 = 30, 150          # Search band in banner coordinates, covering first-line y≈60–110 and the second line.
 DEFAULT_SCALES = (0.9, 0.95, 1.0, 1.05, 1.1)
 
 
 @dataclass
 class IconParams:
-    """分類門檻；預設值皆由訓練素材（English.mkv／Japanese.mkv／SC1.mkv）量測決定，驗收片沒有調參。"""
-    chev_min: float = 0.75       # 箭頭分數門檻
-    plus_min: float = 0.70       # 箭頭左側「+」號門檻（擋掉大廳小隊卡片上「0 ⇑人」之類沒有 + 的分數圖示）
-    fig_min: float = 0.60        # 單人／三人圖示的最低分
-    fig_lead: float = 0.10       # 單人與三人圖示的分數差至少要這麼多才判定
-    left_min: float = 0.85       # 第一行左側骷髏／握手門檻
-    line2_icon_min: float = 0.65  # 第二行骷髏／握手（小隊抹殺名單）門檻
-    line2_ink_min: float = 0.05  # 第二行細筆畫比例（扣背景參考帶後）門檻＝有第二行（傷害行）
-    name_color_min: int = 60     # 第一行敵人色像素數（扣背景參考帶後）門檻
-    left_above_max: float = 0.70  # 左側圖示上方一行若有箭頭（≥此分數）→ 它其實是第二行圖示
+    """Classification thresholds; defaults are measured from English.mkv/Japanese.mkv/SC1.mkv training clips, with no tuning on acceptance clips."""
+    chev_min: float = 0.75       # Chevron score threshold.
+    plus_min: float = 0.70       # "+" threshold to the left of the chevron (rejects lobby squad-card score icons without a plus sign).
+    fig_min: float = 0.60        # Minimum score for solo/group icons.
+    fig_lead: float = 0.10       # Minimum score difference between solo and group icons required to classify.
+    left_min: float = 0.85       # First-line skull/hand threshold.
+    line2_icon_min: float = 0.65  # Second-line skull/hand threshold (squad-wipe roster).
+    line2_ink_min: float = 0.05  # Second-line thin-stroke ratio threshold after background-reference subtraction.
+    name_color_min: int = 60     # First-line enemy-color pixel threshold after background-reference subtraction.
+    left_above_max: float = 0.70  # If an arrow appears on the line above the left icon (>= this score), the icon belongs to the second line.
 
 
 @dataclass
@@ -49,24 +49,24 @@ class IconFrame:
     chev_x: int = 0
     chev_y: int = 0
     chev_scale: float = 1.0
-    plus: float = 0.0                # 箭頭左側（分數數字前）的「+」號
+    plus: float = 0.0                # "+" to the left of the chevron (before the score digits).
     person: float = 0.0
     group: float = 0.0
-    skull: float = 0.0               # 第一行（或無箭頭時整帶）最佳骷髏
+    skull: float = 0.0               # Best skull score on the first line (or the full band when no chevron is present).
     skull_x: int = 0
     skull_y: int = 0
     hand: float = 0.0
     hand_x: int = 0
     hand_y: int = 0
-    left_above: float = 0.0          # 左側圖示上方一行的箭頭分數（判斷是否為第二行）
-    line2_icons: int = 0             # 箭頭下方一行的骷髏／握手個數
+    left_above: float = 0.0          # Chevron score on the line above the left icon (to determine whether it is on the second line).
+    line2_icons: int = 0             # Number of skull/hand matches on the line below the chevron.
     line2_ink: float = 0.0
     name_color: int = 0
-    line2_ink_bg: float = 0.0        # 背景參考帶（第一行正上方）的細筆畫比例
-    plus_x: int = 0                  # 「+」號左緣（banner 座標）：名字右界
-    line_l: int = 0                  # 第一行左界（banner 座標，由箭頭右緣對稱推得）
-    row_h: int = 0                   # 箭頭（＝第一行文字列）高度
-    name_color_bg: int = 0           # 背景參考帶的敵人色像素數（換算成與第一行同高）
+    line2_ink_bg: float = 0.0        # Thin-stroke ratio in the background reference band (just above the first line).
+    plus_x: int = 0                  # Left edge of the "+" sign in banner coordinates; right edge of the name.
+    line_l: int = 0                  # Left edge of the first line in banner coordinates, inferred symmetrically from the chevron's right edge.
+    row_h: int = 0                   # Height of the chevron (same as the first text line).
+    name_color_bg: int = 0           # Enemy-color pixel count in the background reference band, normalized to the first-line height.
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -75,7 +75,7 @@ class IconFrame:
 def _read_gray(path: Path) -> np.ndarray:
     img = cv2.imdecode(np.fromfile(str(path), dtype=np.uint8), cv2.IMREAD_GRAYSCALE)
     if img is None:
-        raise ValueError(f"圖示樣板無法解碼：{path}")
+        raise ValueError(f"Could not decode icon template: {path}")
     return img
 
 
@@ -86,7 +86,7 @@ def _rs(t: np.ndarray, s: float) -> np.ndarray:
 
 
 def enemy_color_mask(bgr: np.ndarray) -> np.ndarray:
-    """敵人名字色（紅／黃／粉紅；三種色盲模式）遮罩，與語言無關。數值同 templates/*/profile.json 的 red（含 yellow、pink）。"""
+    """Language-independent mask for enemy-name colors (red/yellow/pink across the three color-blind modes). Values match red (including yellow/pink) in templates/*/profile.json."""
     b, g, r = (bgr[..., i].astype(np.int16) for i in range(3))
     red = (r >= 185) & (g <= 185) & (b <= 185) & (r - np.maximum(g, b) >= 50)
     yellow = (r >= 160) & (g >= 150) & (b <= 110) & (r - b >= 90) & (np.abs(r - g) <= 30)
@@ -95,7 +95,7 @@ def enemy_color_mask(bgr: np.ndarray) -> np.ndarray:
 
 
 def is_knock(f: IconFrame, p: IconParams) -> bool:
-    """單人加分橫幅是否為擊倒：第一行有敵人色名字，或有第二行（傷害行）；皆以「扣掉背景參考帶」後的淨值判斷。"""
+    """Whether a solo-score banner is a knock: the first line has an enemy-colored name or a second (damage) line exists; both use net values after subtracting the background reference band."""
     return (f.name_color - f.name_color_bg >= p.name_color_min
             or f.line2_ink - f.line2_ink_bg >= p.line2_ink_min)
 
@@ -103,7 +103,7 @@ def is_knock(f: IconFrame, p: IconParams) -> bool:
 class IconDetector:
     def __init__(self, tpl_dir: Path, scales=DEFAULT_SCALES, params: IconParams | None = None,
                  diag: bool = False):
-        """diag=True：有箭頭時也計算左側圖示特徵（離線分析門檻用，較慢；分類結果不變）。"""
+        """With diag=True, also compute left-icon features when a chevron is present (for offline threshold analysis; slower but does not change classification)."""
         self.scales = tuple(scales)
         self.p = params or IconParams()
         self.diag = diag
@@ -112,7 +112,7 @@ class IconDetector:
         self.tpl = {k: {s: _rs(t, s) for s in self.scales} for k, t in base.items()}
         self._k = cv2.getStructuringElement(cv2.MORPH_RECT, (7, 7))
 
-    # ---- 比對 ----
+    # ---- Matching ----
     def _best(self, g: np.ndarray, key: str, scales=None) -> tuple[float, int, int, float]:
         out = (0.0, 0, 0, (scales or self.scales)[0])
         for s in scales or self.scales:
@@ -126,7 +126,7 @@ class IconDetector:
         return out
 
     def _peaks(self, g: np.ndarray, key: str, s: float, thr: float) -> int:
-        """g 內 key 圖示（尺度 s）超過 thr 的個數（非極大值抑制：同一圖示寬度內只算一個）。"""
+        """Count key-icon matches in g (at scale s) above thr, using non-maximum suppression so each icon width counts once."""
         t = self.tpl[key][s]
         if g.shape[0] < t.shape[0] or g.shape[1] < t.shape[1]:
             return 0
@@ -142,14 +142,14 @@ class IconDetector:
         return n
 
     def _score_features(self, g: np.ndarray) -> IconFrame:
-        """共用箭頭與加號比對，讓尺度校準不必計算其他分類特徵。"""
+        """Match the chevron and plus sign only, so scale calibration does not need to compute other classification features."""
         f = IconFrame()
         cs, cx, cy, sc = self._best(g, "chev")
         f.chev, f.chev_x, f.chev_y, f.chev_scale = cs, cx, cy + ROW0, sc
         ch = self.tpl["chev"][sc].shape
         if cs >= self.p.chev_min:
             near = tuple(s for s in self.scales if abs(s - sc) <= 0.051)
-            # 「+N」的加號：在箭頭左側 15–110 px、同列（數字 1–4 位）
+            # Plus sign in "+N": 15–110 px left of the chevron, on the same line (one to four digits).
             px0 = max(0, cx - int(110 * sc))
             f.plus, plx, _, _ = self._best(
                 g[max(0, cy - 4):cy + ch[0] + 4, px0:max(px0 + 1, cx - int(12 * sc))], "plus", near)
@@ -157,9 +157,9 @@ class IconDetector:
             f.row_h = ch[0]
         return f
 
-    # ---- 對外 ----
+    # ---- Public API ----
     def score_features(self, banner_bgr: np.ndarray) -> IconFrame:
-        """只計算尺度校準需要的箭頭、加號特徵；不分類橫幅。"""
+        """Compute only chevron and plus features needed for scale calibration; do not classify the banner."""
         g = cv2.cvtColor(np.ascontiguousarray(banner_bgr[ROW0:ROW1]), cv2.COLOR_BGR2GRAY)
         return self._score_features(g)
 
@@ -171,20 +171,21 @@ class IconDetector:
         cs, cx, cy, sc = f.chev, f.chev_x, f.chev_y - ROW0, f.chev_scale
         ch = self.tpl["chev"][sc].shape
         if cs >= p.chev_min:
-            # 箭頭右側：單人／三人圖示（同尺度附近）
+            # Right of the chevron: solo/group icons (at a nearby scale).
             near = tuple(s for s in self.scales if abs(s - sc) <= 0.051)
             x0, y0 = cx + ch[1] - 6, max(0, cy - 8)
             sub = g[y0:y0 + ch[0] + 16, x0:x0 + int(48 * sc)]
             f.person = self._best(sub, "person", near)[0]
             f.group = self._best(sub, "group", near)[0]
-            # 箭頭下方一行：小隊抹殺名單的骷髏／握手個數，與第二行細筆畫比例
+            # Below the chevron: skull/hand count in a squad-wipe roster and the second-line thin-stroke ratio.
             l2y0, l2y1 = cy + int(0.75 * ch[0]), min(g.shape[0], cy + int(2.1 * ch[0]))
             l2 = g[l2y0:l2y1]
             s_icon = min(self.scales, key=lambda s: abs(s - sc))
             f.line2_icons = self._peaks(l2, "skull", s_icon, p.line2_icon_min) + \
                 self._peaks(l2, "hand", s_icon, p.line2_icon_min)
-            # 橫幅整塊置中（banner 中心 x=400）：第一行的右界≈人形右緣 R，左界≈800−R。
-            # 第二行（傷害行）也置中且較短，只看中央 [400−w/4, 400+w/4]（w＝第一行寬），減少背景干擾。
+            # The full banner is centered (banner center x=400): the first line's right edge is approximately the figure's right edge R,
+            # and its left edge is approximately 800-R. The second (damage) line is also centered but shorter, so inspect only
+            # the center [400-w/4, 400+w/4] (w = first-line width) to reduce background interference.
             R = min(g.shape[1], cx + ch[1] + int(24 * sc))
             L = max(0, g.shape[1] - R)
             f.line_l = L
@@ -192,11 +193,11 @@ class IconDetector:
             xa, xb = max(0, 400 - q), min(g.shape[1], 400 + q)
             th = cv2.morphologyEx(l2, cv2.MORPH_TOPHAT, self._k)[:, xa:xb]
             f.line2_ink = float((th >= 60).mean()) if th.size else 0.0
-            # 第一行（箭頭同列、第一行左界到箭頭左側）的敵人色像素
+            # Enemy-color pixels on the first line (same row as the chevron, from the first-line left edge to the chevron's left edge).
             row = band[max(0, cy - 2):cy + ch[0] + 2, L:max(L, cx - 4)]
             f.name_color = int(enemy_color_mask(row).sum())
-            # 背景參考帶：第一行正上方、同高度（橫幅底板只蓋到文字行；上方是純背景）。
-            # 草地／黃色場景會同時讓第一行與參考帶的「敵人色」「細筆畫」變多，所以分類用差值。
+            # Background reference band: just above the first line, with the same height (the banner plate covers only text rows; the area above is background).
+            # Grass/yellow scenery increases both enemy-color and thin-stroke counts in the line and reference band, so classify using the difference.
             Y = cy + ROW0
             ry1 = max(0, Y - 4)
             ry0 = max(0, ry1 - (ch[0] + 4))
@@ -208,13 +209,13 @@ class IconDetector:
             if not self.diag:
                 f.kind = self.classify(f)
                 return f
-        # 沒有加分箭頭：找第一行左側的骷髏／握手（整帶搜尋）
+        # No score chevron: search the full band for a skull/hand to the left of the first line.
         ss, sx, sy, sk_s = self._best(g, "skull")
         hs, hx, hy, hd_s = self._best(g, "hand")
         f.skull, f.skull_x, f.skull_y = ss, sx, sy + ROW0
         f.hand, f.hand_x, f.hand_y = hs, hx, hy + ROW0
         if max(ss, hs) >= p.left_min:
-            # 圖示右側同列的敵人色，以及上一行是否有箭頭（＝它是小隊抹殺第二行的名單圖示）
+            # Enemy-colored pixels to the right of the icon on the same line, and whether a chevron is on the line above (meaning this is a squad-wipe second-line roster icon).
             lx, ly, lsc, key = (sx, sy, sk_s, "skull") if ss >= hs else (hx, hy, hd_s, "hand")
             th_ = self.tpl[key][lsc].shape
             row = band[max(0, ly - 2):ly + th_[0] + 2, lx + th_[1]:lx + th_[1] + 320]
@@ -227,7 +228,7 @@ class IconDetector:
         return f
 
     def classify(self, f: IconFrame) -> str | None:
-        """依圖示與版面線索分類。score_other＝有加分圖示但不是擊殺（REVIVE、CRATE REVEAL 等三人圖示）。"""
+        """Classify using icons and layout cues. score_other means a score icon that is not a kill (group icons such as REVIVE or CRATE REVEAL)."""
         p = self.p
         if f.chev >= p.chev_min:
             if f.plus < p.plus_min:
@@ -235,9 +236,9 @@ class IconDetector:
             fig = None
             if max(f.person, f.group) >= p.fig_min and abs(f.person - f.group) >= p.fig_lead:
                 fig = "person" if f.person > f.group else "group"
-            if fig == "group":  # 小隊分：小隊抹殺（第二行有名單圖示）或 REVIVE／CRATE REVEAL 等
+            if fig == "group":  # Squad score: squad wipe (roster icon on the second line) or REVIVE/CRATE REVEAL, etc.
                 return "squad_wipe" if f.line2_icons >= 1 else "score_other"
-            if fig == "person":  # 個人擊殺分：擊倒（敵人色名字或傷害行）／助攻擊倒（白字、單行）
+            if fig == "person":  # Personal kill score: knock (enemy-colored name or damage line) / assist-knock (white text, one line).
                 return "knock" if is_knock(f, p) else "assist_knock"
             return "squad_wipe" if f.line2_icons >= 1 else None
         left = max(f.skull, f.hand)
@@ -246,13 +247,13 @@ class IconDetector:
         return None
 
     def chev_best(self, banner_bgr: np.ndarray) -> tuple[float, float]:
-        """整個橫幅帶上箭頭的最佳 (分數, 尺度)；校準用（便宜：只比對箭頭一張樣板）。"""
+        """Return the best (score, scale) for the chevron in the full banner band; used for calibration (fast: matches one chevron template only)."""
         g = cv2.cvtColor(np.ascontiguousarray(banner_bgr[ROW0:ROW1]), cv2.COLOR_BGR2GRAY)
         s, _, _, sc = self._best(g, "chev")
         return s, sc
 
     def maybe_banner(self, banner_bgr: np.ndarray) -> bool:
-        """便宜的初篩（箭頭或握手有跡象）：學習錨點時只對這些格做完整特徵計算。"""
+        """Cheap initial filter for possible chevron or handshake matches; compute full features only for these frames when learning anchors."""
         g = cv2.cvtColor(np.ascontiguousarray(banner_bgr[ROW0:ROW1]), cv2.COLOR_BGR2GRAY)
         if self._best(g, "chev")[0] >= 0.6:
             return True

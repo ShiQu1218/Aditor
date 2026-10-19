@@ -1,6 +1,6 @@
 import { LONG_FIXTURE_PATH } from './fixture'
 
-/** 僅開發模式（由 App 在 import.meta.env.DEV 內動態載入，不進入正式 bundle）：跨兩支影片的示範專案。 */
+/** Development only (dynamically imported by App under import.meta.env.DEV and excluded from the production bundle): a sample project spanning two videos. */
 export function fixtureProjectItems(): { id: string; source: string; start: number; end: number }[] {
   return [
     { id: 'fx1', source: LONG_FIXTURE_PATH, start: 50, end: 62 },

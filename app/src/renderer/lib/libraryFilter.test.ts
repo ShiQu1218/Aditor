@@ -29,7 +29,7 @@ describe('filterEntries', () => {
     const all = filterEntries(list, { query: '', favoriteOnly: false, kind: 'all' })
     expect(all).toHaveLength(3)
 
-    // query：檔名（不分大小寫）子字串
+  // query: case-insensitive filename substring.
     expect(filterEntries(list, { query: 'apex', favoriteOnly: false, kind: 'all' }).map((e) => e.path)).toEqual([
       list[0].path,
       list[1].path
@@ -45,12 +45,12 @@ describe('filterEntries', () => {
       list[0].path
     ])
 
-    // 組合：apex + 收藏 + 有精華
+  // Combined filters: apex + favorites + has highlights.
     expect(
       filterEntries(list, { query: 'Apex', favoriteOnly: true, kind: 'hl' }).map((e) => e.path)
     ).toEqual([list[0].path])
 
-    // 未分析（無 counts／hl）的影片在事件／精華篩選下不顯示，但在「全部」顯示
+  // Unanalyzed videos (without counts/hl) are hidden by event/highlight filters but shown under All.
     const pending: LibraryEntry[] = [entry('D:/rec/pending.mp4', { status: 'pending', progress: 0 })]
     expect(filterEntries(pending, { query: '', favoriteOnly: false, kind: 'all' })).toHaveLength(1)
     expect(filterEntries(pending, { query: '', favoriteOnly: false, kind: 'knock' })).toHaveLength(0)

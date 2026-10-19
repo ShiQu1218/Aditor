@@ -1,5 +1,5 @@
-//! 在真實 D3D11 裝置上驗證 DDA（Desktop Duplication）擷取：以本測試程序的置頂視窗代替遊戲，
-//! 擷取它所在的整個螢幕；不開啟或操作遊戲程序。需要已登入、螢幕開啟的互動桌面。
+//! Validate DDA (Desktop Duplication) capture on a real D3D11 device: use this test process's topmost window in place of a game,
+//! and capture its entire display; does not open or operate a game process. Requires an interactive signed-in desktop with the display on.
 #![allow(dead_code)]
 
 #[path = "../src/capture/mod.rs"]
@@ -41,12 +41,12 @@ use windows::Win32::UI::WindowsAndMessaging::*;
 static HARDWARE: Mutex<()> = Mutex::new(());
 const WIDTH: i32 = 960;
 const HEIGHT: i32 = 540;
-/// 背景 COLORREF 0x00BBGGRR：藍；中央方塊：綠。
+/// Background COLORREF 0x00BBGGRR: blue; central square: green.
 const BACKGROUND: u32 = 0xff0000;
 const BLOCK: u32 = 0x00ff00;
 
 unsafe extern "system" fn window_proc(hwnd: HWND, message: u32, wp: WPARAM, lp: LPARAM) -> LRESULT {
-    // SAFETY: 所有訊息由此視窗的擁有執行緒處理，只畫自己的視窗。
+    // SAFETY: The window's owning thread handles all messages; only draw our window.
     unsafe {
         match message {
             WM_TIMER => {
@@ -69,7 +69,7 @@ unsafe extern "system" fn window_proc(hwnd: HWND, message: u32, wp: WPARAM, lp: 
                     },
                     BLOCK,
                 );
-                // 角落每格換色，讓桌面持續更新。
+                // Change corner colors each frame to keep the desktop updating.
                 static TICK: AtomicU32 = AtomicU32::new(0);
                 fill(
                     dc,
@@ -99,7 +99,7 @@ unsafe extern "system" fn window_proc(hwnd: HWND, message: u32, wp: WPARAM, lp: 
 }
 
 unsafe fn fill(dc: HDC, rect: RECT, color: u32) {
-    // SAFETY: dc 在 BeginPaint/EndPaint 之間有效；brush 在 FillRect 後立即釋放。
+    // SAFETY: dc is valid between BeginPaint/EndPaint; brush is released immediately after FillRect.
     unsafe {
         let brush = CreateSolidBrush(COLORREF(color));
         assert_ne!(FillRect(dc, &rect, brush), 0);
@@ -116,7 +116,7 @@ impl TestWindow {
     fn new() -> Self {
         let (ready, initialized) = mpsc::sync_channel(1);
         let worker = thread::spawn(move || {
-            // SAFETY: 測試只設定自己的視窗執行緒 DPI 模式；HWND 與訊息迴圈留在同執行緒。
+            // SAFETY: The test only sets its window thread's DPI mode; HWND and the message loop remain on that thread.
             unsafe {
                 let _ = SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
                 let instance = HINSTANCE(GetModuleHandleW(None).unwrap().0);
@@ -165,9 +165,9 @@ impl TestWindow {
         foreground(HWND(self.hwnd as *mut _));
     }
 
-    /// 綠色方塊中心在「所在螢幕」座標系中的位置，以及該螢幕的實體尺寸。
+    /// Green square center in its display's coordinate system, and the display's physical dimensions.
     fn block_center_on_monitor(&self) -> ((u32, u32), (u32, u32)) {
-        // SAFETY: 本執行緒設為 per-monitor DPI aware，取得實體像素座標；HWND 在測試期間有效。
+        // SAFETY: This thread is per-monitor DPI aware to obtain physical pixel coordinates; HWND remains valid during the test.
         unsafe {
             let _ = SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
             let hwnd = HWND(self.hwnd as *mut _);
@@ -196,7 +196,7 @@ impl TestWindow {
 
 impl Drop for TestWindow {
     fn drop(&mut self) {
-        // SAFETY: WM_CLOSE 由擁有此視窗的執行緒處理，join 後 HWND 不再使用。
+        // SAFETY: The window's owning thread handles WM_CLOSE; HWND is unused after join.
         unsafe {
             let _ = PostMessageW(
                 Some(HWND(self.hwnd as *mut _)),
@@ -211,7 +211,7 @@ impl Drop for TestWindow {
     }
 }
 
-/// 記錄每格 pts／尺寸；`sample` 為 true 時在呼叫內讀回指定像素（測試才允許同步 Map）。
+/// Record each frame's pts/dimensions; when `sample` is true, read the requested pixel during the call (synchronous Map is allowed only in tests).
 struct Consumer {
     gpu: Gpu,
     staging: ID3D11Texture2D,
@@ -243,7 +243,7 @@ impl FrameConsumer for Consumer {
             bottom: self.point.1 + 1,
             back: 1,
         };
-        // SAFETY: 來源 texture 在本次呼叫期間有效；staging 為同裝置 1×1 BGRA，Map 後立即 Unmap。
+        // SAFETY: The source texture is valid during this call; staging is 1×1 BGRA on the same device, immediately unmapped after Map.
         unsafe {
             self.gpu.context.CopySubresourceRegion(
                 &self.staging,
@@ -283,7 +283,7 @@ fn staging(gpu: &Gpu) -> ID3D11Texture2D {
         ..Default::default()
     };
     let mut texture = None;
-    // SAFETY: 描述完整的 1×1 staging texture；輸出由 windows crate 管理。
+    // SAFETY: Complete 1×1 staging texture descriptor; the windows crate manages output.
     unsafe {
         gpu.device
             .CreateTexture2D(&desc, None, Some(&mut texture))
@@ -308,7 +308,7 @@ fn notice_until(
 }
 
 #[test]
-#[ignore = "需要可切換前景的互動桌面；此執行環境的 SetForegroundWindow 拒絕啟用測試視窗"]
+#[ignore = "Requires an interactive desktop that permits foreground switching; SetForegroundWindow refuses to activate the test window in this environment"]
 fn dda_captures_monitor_pixels_with_increasing_pts_and_reconnects() {
     let _lock = HARDWARE.lock().unwrap_or_else(|error| error.into_inner());
     let window = TestWindow::new();
@@ -350,21 +350,21 @@ fn dda_captures_monitor_pixels_with_increasing_pts_and_reconnects() {
     );
     thread::sleep(Duration::from_secs(2));
     let initial: Vec<_> = frames.try_iter().collect();
-    eprintln!("DDA 兩秒收到 {} 格（螢幕 {monitor:?}）", initial.len());
-    assert!(initial.len() >= 30, "兩秒只收到 {} 格", initial.len());
-    // pts 與 QPC 同源：最後一格在「現在」之前不到半秒（對齊格點最多往後推半格）。
+    eprintln!("DDA received {} frames over two seconds (display {monitor:?})", initial.len());
+    assert!(initial.len() >= 30, "Only received {} frames over two seconds", initial.len());
+    // pts and QPC share an origin: the last frame is less than half a second old (grid alignment shifts forward by at most half a frame).
     let age = clock::now_ticks() - origin - initial.last().unwrap().0;
     assert!(
         (-TICKS_PER_SEC / 120..TICKS_PER_SEC / 2).contains(&age),
-        "最後一格距今 {age} tick"
+        "Last frame is {age} ticks old"
     );
-    // pts 對齊到 1/60 s 格點：間隔是整數格（容許 1 tick 的整數除法誤差）。
+    // pts aligns to a 1/60 s grid: intervals are whole frames (allow 1 tick of integer division error).
     let slot = TICKS_PER_SEC as f64 / 60.0;
     for pair in initial.windows(2) {
         let slots = (pair[1].0 - pair[0].0) as f64 / slot;
         assert!(
             slots >= 0.99 && (slots - slots.round()).abs() * slot <= 1.5,
-            "間隔 {slots} 格"
+            "Interval of {slots} frames"
         );
     }
     assert!(initial.windows(2).all(|pair| pair[0].0 < pair[1].0));
@@ -372,14 +372,14 @@ fn dda_captures_monitor_pixels_with_increasing_pts_and_reconnects() {
     assert!(initial
         .iter()
         .all(|frame| (frame.1, frame.2) == (monitor.0, monitor.1)));
-    // 60 fps 節流：兩秒內不會超過約 121 格。
-    assert!(initial.len() <= 122, "節流失效：{} 格", initial.len());
+    // 60 fps throttling: no more than about 121 frames in two seconds.
+    assert!(initial.len() <= 122, "Throttling failed: {} frames", initial.len());
 
     sample.store(true, Ordering::Release);
     let pixel = pixels.recv_timeout(Duration::from_secs(3)).unwrap();
-    eprintln!("DDA 方塊像素 BGRA {pixel:?}");
+    eprintln!("DDA square pixel BGRA {pixel:?}");
     for (actual, expected) in pixel[..3].iter().zip([0u8, 255, 0]) {
-        assert!(actual.abs_diff(expected) <= 8, "像素 {pixel:?} 不是綠色");
+        assert!(actual.abs_diff(expected) <= 8, "Pixel {pixel:?} is not green");
     }
 
     drop(window);
@@ -397,18 +397,18 @@ fn dda_captures_monitor_pixels_with_increasing_pts_and_reconnects() {
             break false;
         }
     };
-    assert!(resumed, "視窗重新出現後沒有新影格");
+    assert!(resumed, "No new frames after the window reappeared");
     let started = Instant::now();
     capture.stop();
     assert!(started.elapsed() < Duration::from_secs(2));
 }
 
 fn foreground(hwnd: HWND) {
-    // SAFETY: 只要求視窗管理員切換前景，不開啟任何程序；系統拒絕時明確讓互動測試失敗。
+    // SAFETY: Only request a foreground switch from the window manager without opening processes; explicitly fail the interactive test if denied.
     unsafe {
         assert!(
             SetForegroundWindow(hwnd).as_bool(),
-            "互動桌面拒絕切換前景視窗"
+            "Interactive desktop denied foreground switching"
         );
         assert_eq!(GetForegroundWindow(), hwnd);
     }
@@ -423,12 +423,12 @@ impl Drop for RecorderProcess {
     }
 }
 
-/// 同時檢查送給編碼器的 BGRA 來源、小圖與真實 recorder 的 JSON-lines IPC。
+/// Check BGRA encoder input, small images, and the real recorder's JSON-lines IPC together.
 #[test]
-#[ignore = "需要可切換前景的互動桌面；此執行環境的 SetForegroundWindow 拒絕啟用測試視窗"]
+#[ignore = "Requires an interactive desktop that permits foreground switching; SetForegroundWindow refuses to activate the test window in this environment"]
 fn dda_blacks_frames_and_emits_events_when_another_process_takes_foreground() {
     let _lock = HARDWARE.lock().unwrap_or_else(|error| error.into_inner());
-    // SAFETY: 僅保存原前景視窗，作為另一個 PID 的視窗；不取得其程序控制代碼。
+    // SAFETY: Only save the original foreground window as another PID's window without obtaining its process handle.
     let other = unsafe { GetForegroundWindow() };
     let mut other_pid = 0;
     unsafe { GetWindowThreadProcessId(other, Some(&mut other_pid)) };
@@ -517,7 +517,7 @@ fn dda_blacks_frames_and_emits_events_when_another_process_takes_foreground() {
     thread::sleep(Duration::from_millis(500));
     sample.store(true, Ordering::Release);
     let visible = pixels.recv_timeout(Duration::from_secs(3)).unwrap();
-    assert!(visible[1] >= 247, "遊戲前景未擷取到綠色方塊：{visible:?}");
+    assert!(visible[1] >= 247, "Green square not captured while game is foreground: {visible:?}");
 
     foreground(other);
     let hidden = notice_until(&notices, |n| matches!(n, CaptureNotice::GameHidden { .. }));
@@ -531,13 +531,13 @@ fn dda_blacks_frames_and_emits_events_when_another_process_takes_foreground() {
         pixels.recv_timeout(Duration::from_secs(3)).unwrap(),
         [0, 0, 0, 255]
     );
-    // 停止測試視窗的重繪，確認黑幀不依賴新的桌面影格。
+    // Stop redrawing the test window to verify black frames do not depend on new desktop frames.
     unsafe { KillTimer(Some(HWND(window.hwnd as *mut _)), 1).unwrap() };
     thread::sleep(Duration::from_millis(1200));
     let hidden_frames: Vec<_> = frames.try_iter().filter(|f| f.0 > hidden_pts).collect();
     assert!(
         hidden_frames.len() >= 55,
-        "隱藏期間只有 {} 格",
+        "Only {} frames while hidden",
         hidden_frames.len()
     );
     assert!(hidden_frames.iter().all(|f| (f.1, f.2) == monitor));
@@ -545,7 +545,7 @@ fn dda_blacks_frames_and_emits_events_when_another_process_takes_foreground() {
         .windows(2)
         .all(|p| p[1].0 > p[0].0 && p[1].0 - p[0].0 <= TICKS_PER_SEC / 10));
     let hidden_small: Vec<_> = small.try_iter().filter(|s| s.pts > hidden_pts).collect();
-    assert!(hidden_small.len() >= 3, "隱藏期間小圖未持續輸出");
+    assert!(hidden_small.len() >= 3, "Small-image output did not continue while hidden");
     assert!(
         hidden_small.iter().all(|s| s
             .banner
@@ -553,7 +553,7 @@ fn dda_blacks_frames_and_emits_events_when_another_process_takes_foreground() {
             .chain(&s.spec)
             .chain(s.thumb.iter().flatten())
             .all(|&v| v == 0)),
-        "隱藏期間小圖不是全黑"
+        "Small images are not black while hidden"
     );
     assert!(!notices
         .try_iter()
@@ -567,7 +567,7 @@ fn dda_blacks_frames_and_emits_events_when_another_process_takes_foreground() {
     thread::sleep(Duration::from_millis(100));
     sample.store(true, Ordering::Release);
     let restored = pixels.recv_timeout(Duration::from_secs(3)).unwrap();
-    assert!(restored[1] >= 247, "恢復前景後不是綠色：{restored:?}");
+    assert!(restored[1] >= 247, "Not green after returning to foreground: {restored:?}");
     capture.stop();
     process.0.stdin.take();
     assert!(process.0.wait().unwrap().success());
@@ -584,13 +584,13 @@ fn dda_reports_missing_window() {
     );
 }
 
-/// 裝置不在擁有螢幕的轉接器上（例：Microsoft Basic Render Driver，沒有任何輸出）時，
-/// DDA 必須以 capture_failed 明確拒絕，而不是靜默沒有畫面。
+/// When the device is not on the adapter owning the display (for example, Microsoft Basic Render Driver without outputs),
+/// DDA must explicitly reject it with capture_failed instead of silently producing no frames.
 #[test]
 fn dda_rejects_device_on_adapter_without_the_monitor() {
     let _lock = HARDWARE.lock().unwrap_or_else(|error| error.into_inner());
     let _window = TestWindow::new();
-    // SAFETY: 只列舉轉接器與輸出，COM 物件由 windows crate 管理。
+    // SAFETY: Only enumerate adapters and outputs; the windows crate manages COM objects.
     let outputless: Option<IDXGIAdapter> = unsafe {
         let factory: IDXGIFactory1 = CreateDXGIFactory1().unwrap();
         (0..)
@@ -605,13 +605,13 @@ fn dda_rejects_device_on_adapter_without_the_monitor() {
             .map(|adapter| adapter.cast().unwrap())
     };
     let Some(adapter) = outputless else {
-        eprintln!("沒有無輸出的轉接器，略過");
+        eprintln!("No adapter without outputs; skipping");
         return;
     };
     let gpu = match Gpu::create_on(&adapter) {
         Ok(gpu) => gpu,
         Err(error) => {
-            eprintln!("無輸出的轉接器無法建立裝置（{error:#}），略過");
+            eprintln!("Cannot create device on adapter without outputs ({error:#}); skipping");
             return;
         }
     };
@@ -635,5 +635,5 @@ fn dda_rejects_device_on_adapter_without_the_monitor() {
     .unwrap();
     let message = format!("{error:#}");
     assert!(message.starts_with("capture_failed:"), "{message}");
-    assert!(message.contains("顯示卡"), "{message}");
+    assert!(message.contains("adapter"), "{message}");
 }

@@ -1,4 +1,4 @@
-"""SC2（驗收、簡中、紅名、無文字真值）：列出所有圖示 run 並輸出接觸表；另抽 20 個非命中區段。"""
+"""SC2 (acceptance, Simplified Chinese, red names, no text ground truth): list all icon runs and export contact sheets; also sample 20 non-hit intervals."""
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from ana import *
@@ -10,7 +10,7 @@ for b in range(0, len(R), 16):
     ch = R[b:b + 16]
     sheet([F[idx((r["t"] + r["end"]) / 2)] for r in ch], [f"#{b+i} {r['t']} {r['type']}" for i, r in enumerate(ch)],
           SP / f"{lab.lower()}_{b//16}.png", cols=2, scale=0.75, rows=(40, 140))
-# 非命中區段：把不在任何 run（±3 s）內的時間切成 3 秒段，固定亂數種子抽 20 段，每段取 1 fps 的 3 格
+# Non-hit intervals: divide times outside all runs (±3 s) into 3-second segments, sample 20 with a fixed random seed, and take 3 frames at 1 fps from each.
 rng = np.random.default_rng(0)
 covered = np.zeros(len(F), bool)
 for r in R:

@@ -1,6 +1,6 @@
 import type { Messages } from '../index'
 
-/** 録画中の視聴（第 3 期）。 */
+/** Playback during recording (phase 3). */
 export const liveI18n: Messages['liveI18n'] = {
   obsRecording: 'OBS で録画中。録画が終わると再生できます',
   detectionOnly: 'リアルタイム検出中。OBS が未接続のため、今回は録画されていません',

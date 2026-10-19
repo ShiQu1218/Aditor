@@ -57,7 +57,7 @@ describe('fileExistsSafe', () => {
     expect(await fileExistsSafe('\\\\server\\share\\a.mp4', stat)).toBe(false)
     expect(await fileExistsSafe(42 as unknown as string, stat)).toBe(false)
     expect(called).toBe(0)
-    expect(await fileExistsSafe('C:\\ok.mp4', stat)).toBe(false) // stat 丟錯 → false
+    expect(await fileExistsSafe('C:\\ok.mp4', stat)).toBe(false) // A stat error returns false.
     expect(called).toBe(1)
   })
 })

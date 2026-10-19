@@ -54,7 +54,7 @@ describe('recording notifications', () => {
   })
 })
 
-it('倒數取消使用低優先靜音通知', () => {
+it('countdown cancellation uses a low-priority silent notification', () => {
   const s = setup()
   s.notify('matchCancel', '倒數後未開局')
   expect(s.create).toHaveBeenCalledWith({ title: 'Aditor', body: '倒數後未開局', silent: true, urgency: 'low' })

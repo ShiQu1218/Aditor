@@ -9,7 +9,7 @@ const state = vi.hoisted(() => ({ store: null as ReturnType<typeof createQueueSt
 vi.mock('../queue/QueueProvider', () => ({ useQueueStore: () => state.store }))
 afterEach(() => { cleanupMounted(); vi.restoreAllMocks() })
 
-test('佇列圖示在收到任務時顯示進度，清空後恢復待命，卸載後取消訂閱', () => {
+test('Queue icon shows progress when tasks arrive, returns to idle when cleared, and unsubscribes on unmount', () => {
   const store = createQueueStore()
   state.store = store
   const unsubscribe = vi.fn()

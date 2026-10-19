@@ -14,9 +14,9 @@ import App from './App'
 import { installGlobalDropGuard } from './lib/dropGuard'
 import { installPauseOnHide } from './lib/pauseOnHide'
 
-// 拖入檔案時不讓 Chromium 導航離開 App（I2）
+// Prevent Chromium from navigating away from the app when files are dropped (I2).
 installGlobalDropGuard()
-// 縮到系統匣或最小化時暫停播放（瀏覽器預覽沒有 preload API，略過）
+// Pause playback when hidden or minimized (skip browser previews, which do not have the preload API).
 const onWindowHidden = window.api?.app?.onWindowHidden
 if (typeof onWindowHidden === 'function') installPauseOnHide(onWindowHidden)
 

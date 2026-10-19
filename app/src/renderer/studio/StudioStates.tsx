@@ -1,7 +1,7 @@
 import React from 'react'
 import { i18n } from '../i18n'
 
-/** 工作室載入前／被擋下／載入失敗的整頁狀態（不顯示任何假資料）。 */
+/** Full-page states before studio loading, when blocked, or after load failure (never show fabricated data). */
 export function StudioLoadingView(): JSX.Element {
   return (
     <div className="studio-blocked" role="status">
@@ -28,7 +28,7 @@ interface LoadErrorViewProps {
   onBack: () => void
 }
 
-/** 載入失敗：錯誤代碼＋〔重試〕〔複製錯誤訊息〕〔返回影片庫〕。 */
+/** Load failure: error code plus Retry, Copy Error, and Back to Library actions. */
 export function StudioLoadErrorView({ code, onRetry, onCopy, onBack }: LoadErrorViewProps): JSX.Element {
   const t = i18n.studio.loadFailed
   return (

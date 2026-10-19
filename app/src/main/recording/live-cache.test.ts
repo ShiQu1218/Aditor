@@ -13,7 +13,7 @@ function root(): string { const value = tempRoot(); roots.push(value); return va
 const ev = (id: string, t: number, type = 'knock', counted = true): EngineEvent => ({ id, t, type, score: 1, damage_line: false,
   name_sig: null, counted, counted_reason: counted ? 'first' : 'duplicate', counted_override: null, source: 'auto' })
 
-/** 已串接的工作（finalized.json 已寫）：收尾只做 live 快取、媒體庫與分析，不需要 ffmpeg。 */
+/** For a job that has already been concatenated (finalized.json exists), finalization only handles the live cache, library, and analysis; FFmpeg is not needed. */
 function finishedSession(base: string, postAnalysis: 'none' | 'afterExit', live: object | null): { dir: string; output: string } {
   const dir = sessionDir(base)
   const output = path.join(base, 'videos', 'Apex_2026-10-18_12-34.mp4')
@@ -31,8 +31,8 @@ const LIVE = {
   spectating: [{ start: 4, end: 7 }], matches: [{ start: 0.5, end: 5 }], width: 2560, height: 1440
 }
 
-describe('live.json → 分析快取', () => {
-  it('組出引擎相同格式，done 但 engine_version 標成 live（完整分析仍會重跑），超出影片的事件剔除', () => {
+describe('live.json to analysis cache', () => {
+  it('builds the engine format, marks status done with a live engine_version for later full analysis, and drops events outside the video', () => {
     const doc = buildLiveCacheDoc(LIVE, { path: 'D:\\v.mp4', size: 10, mtime: 1.5, duration: 6, width: 2560, height: 1440, codec: 'hevc' }, 0, 'tv1', 'C:\\c.json')
     expect(doc).toMatchObject({
       version: 1,
@@ -46,7 +46,7 @@ describe('live.json → 分析快取', () => {
     expect(shifted.events.map((e) => [e.id, e.t])).toEqual([['a2000', 0], ['a3000', 1]])
   })
 
-  it('即時結果判定完整時寫正式引擎版本與尺度，收尾不再排完整分析', async () => {
+  it('writes the official engine version and scale for complete live results and skips full analysis at finalization', async () => {
     const base = root()
     const deps = makeDeps(base)
     deps.enqueueAnalysis = vi.fn()
@@ -65,7 +65,7 @@ describe('live.json → 分析快取', () => {
   it.each([
     ['不完整', { complete: false, reasons: ['frames_lost'], hScale: 1 }],
     ['沒有判定（被強制結束）', null]
-  ])('即時結果%s時照常排完整分析', async (_label, quality) => {
+  ])('queues full analysis as usual when live results are %s', async (_label, quality) => {
     const base = root()
     const deps = makeDeps(base)
     deps.enqueueAnalysis = vi.fn()
@@ -77,7 +77,7 @@ describe('live.json → 分析快取', () => {
     expect(JSON.parse(fs.readFileSync(cacheFilePath(output, cacheDir), 'utf8')).analysis.engine_version).toBe('live-0.3.0')
   })
 
-  it.each(['none', 'afterExit'] as const)('收尾寫入快取並在排分析前通知媒體庫（%s）', async (postAnalysis) => {
+  it.each(['none', 'afterExit'] as const)('Finalization writes the cache and notifies the library before queuing analysis (%s)', async (postAnalysis) => {
     const base = root()
     const deps = makeDeps(base)
     fs.writeFileSync(path.join(base, 'profile.json'), JSON.stringify({ ...JSON.parse(fs.readFileSync(path.join(base, 'profile.json'), 'utf8')), templates_version: 'icons-7' }))
@@ -99,7 +99,7 @@ describe('live.json → 分析快取', () => {
     expect(fs.existsSync(dir)).toBe(false)
   })
 
-  it('沒有 live.json、已有快取或轉換失敗都不阻擋收尾，也不覆蓋既有快取', async () => {
+  it('does not block finalization or overwrite an existing cache when live.json is missing, a cache already exists, or conversion fails', async () => {
     const base = root()
     const deps = makeDeps(base)
     deps.onLiveAnalysis = vi.fn()
@@ -124,7 +124,7 @@ describe('live.json → 分析快取', () => {
     expect(fs.existsSync(broken.dir)).toBe(false)
   })
 
-  it('寫入期間完成的完整分析不可被可信 live 快取覆蓋，暫存檔也不與引擎共用', async () => {
+  it('does not overwrite a full analysis completed during the write with a trusted live cache and uses a separate temporary file from the engine', async () => {
     const base = root()
     const deps = makeDeps(base)
     deps.liveCachePath = (output) => output + '.aditor.json'

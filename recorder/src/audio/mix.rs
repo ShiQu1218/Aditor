@@ -1,5 +1,5 @@
-//! 純函式混音與格式轉換（任務 B3）：聲道數轉換、重取樣到 48 kHz、增益、夾值。
-//! 不依賴 WASAPI，全部可單元測試。
+//! Pure mixing and format conversion (task B3): channel conversion, resampling to 48 kHz, gain, and clamping.
+//! Independent of WASAPI and fully unit-testable.
 
 use anyhow::{bail, Result};
 
@@ -34,14 +34,14 @@ impl Format {
     ) -> Result<Self> {
         let bits = match sample {
             Sample::Pcm(bits @ (8 | 16 | 24 | 32)) | Sample::Float(bits @ (32 | 64)) => bits,
-            _ => bail!("不支援的音訊樣本格式"),
+            _ => bail!("Unsupported audio sample format"),
         };
         if !(8_000..=384_000).contains(&rate)
             || !(1..=32).contains(&channels)
             || usize::from(block_align) != usize::from(channels) * usize::from(bits / 8)
             || (mask != 0 && mask.count_ones() != u32::from(channels))
         {
-            bail!("裝置音訊格式的取樣率、聲道或區塊大小無效");
+            bail!("Invalid sample rate, channel count, or block alignment in device audio format");
         }
         let positions = if channels == 1 {
             [Some(0), Some(0), None]
@@ -66,7 +66,7 @@ impl Format {
             return Ok(vec![[0.0; 2]; frames]);
         }
         if frames.checked_mul(self.block_align) != Some(bytes.len()) {
-            bail!("音訊封包長度與格式不符");
+            bail!("Audio packet length does not match its format");
         }
         let width = self.block_align / self.channels;
         Ok(bytes
@@ -97,7 +97,7 @@ impl Format {
                                 sample[0], sample[1], sample[2], sample[3], sample[4], sample[5],
                                 sample[6], sample[7],
                             ]) as f32,
-                            _ => 0.0, // 建構時已驗證所有可接受的格式。
+                            _ => 0.0, // All accepted formats were validated at construction.
                         })
                     })
                 };
@@ -126,7 +126,7 @@ fn finite(value: f32) -> f32 {
     }
 }
 
-/// 保留跨封包的相位與前一個樣本，避免 44.1 kHz 的逐塊四捨五入造成累積漂移。
+/// Preserve phase and the previous sample across packets to prevent accumulated drift from per-block rounding at 44.1 kHz.
 pub(super) struct Resampler {
     rate: u32,
     input_frames: u64,
@@ -177,7 +177,7 @@ pub(super) fn ticks_from_frames(frames: i64) -> i64 {
     (i128::from(frames) * i128::from(TICKS_PER_SEC) / i128::from(AUDIO_RATE)) as i64
 }
 
-/// 固定一秒的環形緩衝；缺樣本預設為靜音，已輸出的資料與過遠的未來資料直接丟棄。
+/// Fixed one-second ring buffer; missing samples default to silence, and already emitted or far-future data is discarded.
 pub(super) struct Timeline {
     samples: Vec<[f32; 2]>,
     pub cursor: i64,

@@ -1,4 +1,4 @@
-// 影片庫的純決策函式：卡片開啟行為與 Esc 的分層關閉。不依賴 React／DOM，便於單獨測試。
+// Pure library decision functions: card-opening behavior and layered Esc handling. No React/DOM dependency, so they can be tested independently.
 import type { LibraryEntry } from '../../main/library'
 import type { QueueItemState } from '../../shared/queueState'
 import { i18n } from '../i18n'
@@ -11,7 +11,7 @@ export function thumbnailUrl(path: string): string {
   return `file://${encodeURI(path.replace(/\\/g, '/')).replace(/#/g, '%23').replace(/\?/g, '%3F')}`
 }
 
-/** 未排隊的 pending 與真正等待分析的項目分開顯示。 */
+/** Distinguish pending items that are not queued from items actually waiting for analysis. */
 export function cardStatusText(entry: Pick<LibraryEntry, 'status'>, queueState: QueueItemState): string {
   const t = i18n.library.card
   if (entry.status === 'done') return ''
@@ -23,9 +23,9 @@ export function cardStatusText(entry: Pick<LibraryEntry, 'status'>, queueState: 
 export type CardActivation = 'open' | 'toast-not-analyzed' | 'toast-blocked' | 'none'
 
 /**
- * 主要按鈕（.vcard-open）被啟動（點擊／Enter／Space）時要做什麼。
- * 只有 done 能開；分析中／等待中顯示 Toast（尚未排入佇列者用「尚未分析」提示）；error 什麼都不做（用卡片上的〔重試〕）。
- * 內部按鈕（收藏、⋯、重試、移除）是主要按鈕的兄弟元素，不會經過這裡。
+ * Determine what happens when the main button (.vcard-open) is activated (click/Enter/Space).
+ * Only done items open; processing/waiting items show a toast (items not yet queued show "not analyzed"); error items do nothing (use Retry on the card).
+ * Inner buttons (favorite, ⋯, retry, remove) are siblings of the main button and do not pass through here.
  */
 export function resolveCardActivation(
   entry: Pick<LibraryEntry, 'status'>,
@@ -38,7 +38,7 @@ export function resolveCardActivation(
 
 export type EscapeAction = 'close-menu' | 'clear-query' | 'none'
 
-/** Esc（已通過 keymap 的 IME 檢查）依最上層優先：卡片選單 → 搜尋字串 → 無動作。 */
+/** Handle Esc (after keymap's IME check) by topmost priority: card menu → search text → no action. */
 export function resolveLibraryEscape(state: { menuOpen: boolean; query: string }): EscapeAction {
   if (state.menuOpen) return 'close-menu'
   if (state.query !== '') return 'clear-query'

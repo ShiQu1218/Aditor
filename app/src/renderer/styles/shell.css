@@ -1,4 +1,4 @@
-/* 外框：56px 圖示欄 + 主區 */
+/* App shell: 56px icon rail plus main content. */
 .app { display: grid; grid-template-columns: var(--rail-w) 1fr; height: 100vh; min-width: 760px; position: relative; }
 .app-main { min-width: 0; min-height: 0; overflow: auto; position: relative; }
 
@@ -11,7 +11,7 @@
 .rail-btn .badge { position: absolute; top: 4px; right: 3px; min-width: 16px; height: 16px; padding: 0 4px; border-radius: var(--r-pill); background: var(--accent); color: var(--on-accent); font-size: 10px; font-weight: 700; display: grid; place-items: center; }
 .rail-spacer { flex: 1; }
 
-/* 即時 tooltip（純 CSS） */
+/* Live tooltip (CSS only). */
 [data-tip] { position: relative; }
 [data-tip]:hover::after, [data-tip]:focus-visible::after { content: attr(data-tip); position: absolute; left: calc(100% + 10px); top: 50%; transform: translateY(-50%); background: #000; border: 1px solid var(--line-strong); padding: 4px 8px; border-radius: var(--r-xs); font-size: var(--fs-small); font-weight: 700; white-space: nowrap; z-index: 120; pointer-events: none; }
 
@@ -20,7 +20,7 @@
 .toast { background: var(--bg-popover); border: 1px solid var(--line-strong); border-radius: var(--r-sm); padding: 10px 14px; box-shadow: var(--shadow-pop); display: flex; align-items: center; gap: 12px; font-weight: 700; }
 .toast button { border: 0; background: none; color: var(--accent-bright); font-weight: 700; padding: 0; }
 
-/* 快捷鍵說明對話框（由 KEY_TABLE 產生；見 shell/ShortcutsDialog.tsx） */
+/* Keyboard shortcut dialog (generated from KEY_TABLE; see shell/ShortcutsDialog.tsx). */
 .sc-dialog {
   width: min(720px, calc(100vw - 2 * var(--sp-6)));
   max-height: calc(100vh - 2 * var(--sp-6));
@@ -42,12 +42,12 @@
 .sc-row dd { margin: 0; display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; flex: none; }
 .sc-hint { flex: none; margin: 0; padding: var(--sp-2) var(--sp-4) var(--sp-3); color: var(--text-3); font-size: var(--fs-small); }
 
-/* Overlay（對話框容器） */
+/* Overlay (dialog container). */
 .overlay-host { position: fixed; inset: 0; z-index: 100; background: var(--bg-scrim); display: grid; place-items: center; }
 
 .placeholder-page { padding: var(--sp-6); color: var(--text-2); }
 
-/* 佇列環形進度（圖示欄與佇列條共用；--p = 0–100） */
+/* Circular queue progress (shared by the icon rail and queue bar; --p = 0–100). */
 .ring {
   width: 22px;
   height: 22px;
@@ -57,7 +57,7 @@
   place-items: center;
 }
 
-/* 分析佇列浮層（圖示欄旁；strip 變體由佇列條容器定位） */
+/* Analysis queue popover (next to the icon rail; the strip variant is positioned by the queue-bar container). */
 .qpop {
   position: absolute;
   left: calc(var(--rail-w) + 12px);
@@ -82,7 +82,7 @@
 .qrow .bar { grid-column: 1 / -1; height: 3px; background: var(--bg-active); border-radius: 2px; overflow: hidden; }
 .qrow .bar i { display: block; height: 100%; background: var(--accent-bright); }
 
-/* 佇列以清單與時鐘辨識；有任務時保留環形進度角標。 */
+/* Identify the queue with a list and clock; retain the circular progress badge while tasks are active. */
 .queue-indicator { position: relative; display: inline-grid; place-items: center; flex: none; }
 .queue-indicator .queue-progress { position: absolute; width: 8px; height: 8px; right: -2px; bottom: 0; }
 .queue-indicator:not([data-active="true"]) .queue-progress { display: none; }

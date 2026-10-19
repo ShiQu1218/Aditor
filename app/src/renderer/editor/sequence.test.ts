@@ -29,7 +29,7 @@ describe('sequence', () => {
 
     expect(nextAfter(project, 'b', 30)).toEqual({ kind: 'end' })
     expect(nextAfter(project, 'b', 100)).toEqual({ kind: 'end' })
-    // 片段不存在（例如剛被刪除）→ 結束
+    // The clip no longer exists (for example, it was just deleted) → end.
     expect(nextAfter(project, 'missing', 5)).toEqual({ kind: 'end' })
   })
 
@@ -45,7 +45,7 @@ describe('sequence', () => {
       expect(r.item.id).toBe('b')
       expect(r.item.source).not.toBe(project.items[0].source)
     }
-    // 不同來源的下一段播完 → 專案結束
+    // The next clip from another source finishes → end the project.
     expect(nextAfter(project, 'b', 12)).toEqual({ kind: 'end' })
   })
 })

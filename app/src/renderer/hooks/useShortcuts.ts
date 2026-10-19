@@ -15,7 +15,7 @@ export interface KeymapState extends Required<Omit<KeymapOptions, 'enabled'>> {
   handlers: KeymapHandlers
 }
 
-/** 建立 keydown 處理函式（與 React 無關，便於單獨測試）。 */
+/** Create a keydown handler independent of React for isolated testing. */
 export function createKeyDownHandler(getState: () => KeymapState): (e: KeyboardEvent) => void {
   return (e) => {
     if (e.isComposing || e.keyCode === 229) return
@@ -38,14 +38,14 @@ export function createKeyDownHandler(getState: () => KeymapState): (e: KeyboardE
   }
 }
 
-/** 工作室的空白鍵不可觸發原生按鈕；文字欄位與組字仍交給瀏覽器。 */
+/** In the studio, Space must not trigger native button clicks; leave text fields and IME composition to the browser. */
 function isStudioSpace(e: KeyboardEvent, state: KeymapState): boolean {
   return state.screen === 'studio' && (e.code === 'Space' || e.key === ' ') &&
     !e.ctrlKey && !e.metaKey && !e.altKey && !e.isComposing && e.keyCode !== 229 &&
     targetKindOf(e.target as HTMLElement | null) !== 'text'
 }
 
-/** 綁定到 target 並回傳解除函式。 */
+/** Attach to target and return a cleanup function. */
 export function attachKeymap(
   target: Pick<Window, 'addEventListener' | 'removeEventListener'>,
   getState: () => KeymapState
@@ -63,12 +63,12 @@ export function attachKeymap(
 }
 
 /**
- * 綁定 window.keydown，以 resolveKey 解析後呼叫對應 handler 並 preventDefault。
- * 未提供 handler 的指令不攔截（保留瀏覽器／原生行為）。
+ * Bind window.keydown, resolve the key with resolveKey, call its handler, and preventDefault.
+ * Do not intercept commands without a handler; preserve browser/native behavior.
  */
 export function useKeymap(handlers: KeymapHandlers, opts: KeymapOptions = {}): void {
   const { enabled = true, screen = 'studio', mode = 'source', overlayOpen = false } = opts
-  // 以 ref 讀最新值，避免每次 render 重綁監聽
+  // Read the latest value through a ref to avoid rebinding on every render.
   const latest = useRef<KeymapState>({ handlers, screen, mode, overlayOpen })
   latest.current = { handlers, screen, mode, overlayOpen }
 

@@ -1,49 +1,49 @@
 /**
- * 匯出用、以 ffprobe 只讀封包（不解碼）的查詢：
- * 1. 快速無損切點（pickCopyCut）：片段起點（含）之前最近的視訊關鍵影格，以及不會在尾端留下空洞的終點。
- * 2. 合輯：量中間檔實際播放到的終點，作為 concat 清單的 duration（parseMediaEnd）。
- * 3. 精準合輯：確認來源有無音軌，無音軌時先補靜音再串接。
+ * Export queries using ffprobe to read packets without decoding:
+ * 1. Fast stream-copy cuts (pickCopyCut): the nearest video keyframe at or before each segment start, and an end that leaves no gap.
+ * 2. Concatenation: measure the intermediate file's actual playback end for the concat list duration (parseMediaEnd).
+ * 3. Precise concatenation: detect whether a source has audio and add silence before concatenating when it does not.
  *
- * stream copy 只能從關鍵影格開始。若直接用片段起點 `-ss`，ffmpeg 會從前一個關鍵影格開始複製，
- * 再靠 MP4 edit list 把多出的畫面「藏起來」；剪輯軟體（DaVinci 等）常不理會或處理錯 edit list，
- * 造成第一幀黑畫面、影音不同步；用 concat demuxer 的 inpoint 則會把多出的封包與前一段重疊，
- * 時間戳倒退而卡頓。先查到關鍵影格，切點就能直接對齊它（介面已提示「可能多出約 X 秒」）。
+ * Stream copy can start only at a keyframe. If `-ss` is set directly to the segment start, ffmpeg copies from the previous keyframe
+ * and relies on the MP4 edit list to hide the extra frames; editing software (such as DaVinci) often ignores or mishandles that edit list,
+ * causing a black first frame or audio/video desynchronization. Using the concat demuxer's inpoint overlaps the extra packets with the previous segment,
+ * producing backward timestamps and stutter. Find the keyframe first so the cut can align to it directly (the UI notes "may add about X seconds").
  */
 import fs from 'fs'
 import path from 'path'
 import { spawn } from 'child_process'
 
-/** 往前多讀幾秒找關鍵影格；ffprobe 的 read_intervals 會先 seek 到起點之前的關鍵影格，所以一定至少讀到一個。 */
+/** Read a few extra seconds before the start to find a keyframe; ffprobe read_intervals seeks to the keyframe before the start, so at least one is read. */
 const LOOKBACK_S = 10
-/** 視窗終點多讀一點，涵蓋來源 start_time 不為 0 的情況（start_time 更大時只會選到較早的關鍵影格，仍然正確） */
+/** Read past the window end to cover sources whose start_time is not 0 (a larger start_time only selects an earlier keyframe, which remains correct). */
 const LOOKAHEAD_S = 2
-/** 終點附近讀多少秒來判斷 B-frame 尾端 */
+/** How many seconds to read around the end to inspect the B-frame tail. */
 const END_WINDOW_S = 2
 const PROBE_TIMEOUT_MS = 15_000
 const MAX_STDOUT_BYTES = 8 * 1024 * 1024
-/** 浮點誤差容許值（秒） */
+/** Tolerance for floating-point error (seconds). */
 const EPS = 1e-6
-/** 關鍵影格（扣掉 start_time 後）比 0 還早超過這個值就視為資料異常 */
+/** Treat data as invalid when a keyframe is earlier than 0 by more than this amount after subtracting start_time. */
 const MIN_RELATIVE_KEYFRAME_S = -0.1
-/** 找不到下一個封包時，終點放在最後一個保留封包之後多少秒 */
+/** End time offset after the last retained packet when no following packet is found. */
 const END_PAD_S = 0.001
-/** 音訊截在視訊播完前這麼多秒：AAC 一個封包約 21～23 ms，最後一個封包會跨過截點，兩者結束時間相差約 ±10 ms */
+/** End audio this many seconds before video playback ends: an AAC packet is about 21–23 ms, and the final packet crosses the cut, so end times differ by about ±10 ms. */
 const AUDIO_TAIL_MARGIN_S = 0.01
 const MAX_END_PASSES = 32
 
-/** 快速無損切點（秒，相對來源 start_time） */
+/** Fast stream-copy cut points (seconds relative to source start_time). */
 export interface CopyCut {
-  /** 從這個關鍵影格開始 copy */
+  /** Start copying at this keyframe. */
   keyframe: number
-  /** 整段（主要是音訊）在這裡結束：視訊最後一幀播完的時間，讓下一段接上時不會有一段無聲 */
+  /** End the segment (primarily audio) here: when the last video frame finishes, so no silence appears before the next segment. */
   end: number
-  /** 視訊封包只保留 DTS 小於此值的（B-frame 尾端不留空洞）；沒有時視訊也以 end 截斷 */
+  /** Retain video packets only when DTS is below this value (avoids a gap at the B-frame tail); if absent, truncate video at end too. */
   videoCut?: number
 }
 
 export type CutLookup = (item: { source: string; start: number; end: number }, signal?: AbortSignal) => Promise<CopyCut | null>
 
-/** ffprobe 路徑：`ADITOR_FFPROBE` → `ADITOR_FFMPEG` 同目錄的 ffprobe → PATH 上的 `ffprobe`。 */
+/** ffprobe path lookup: `ADITOR_FFPROBE` → ffprobe beside `ADITOR_FFMPEG` → `ffprobe` on PATH. */
 export function defaultFfprobePath(env: NodeJS.ProcessEnv = process.env, exists: (p: string) => boolean = fs.existsSync): string {
   if (env.ADITOR_FFPROBE) return env.ADITOR_FFPROBE
   if (env.ADITOR_FFMPEG) {
@@ -54,7 +54,7 @@ export function defaultFfprobePath(env: NodeJS.ProcessEnv = process.env, exists:
   return 'ffprobe'
 }
 
-/** 兩個讀取區間：起點前 10 秒～起點後 2 秒（找關鍵影格）、終點前後 2 秒（檢查尾端）。終點一律用絕對時間：`%+N` 是從實際 seek 到的位置起算，可能讀不到目標附近。 */
+/** Two read intervals: 10 seconds before to 2 seconds after the start (find keyframes), and 2 seconds around the end (inspect the tail). Always use absolute end times: `%+N` is relative to the actual seek position and may miss the target area. */
 export function cutProbeArgs(source: string, start: number, end: number): string[] {
   const from = Math.max(0, start - LOOKBACK_S)
   const tailFrom = Math.max(0, end - END_WINDOW_S)
@@ -88,7 +88,7 @@ interface ProbedPacket {
   key: boolean
 }
 
-/** ffprobe JSON → 封包（秒，相對 start_time）；資料不完整回傳 null */
+/** Convert ffprobe JSON to packets (seconds relative to start_time); return null for incomplete data. */
 function parsePackets(raw: unknown): ProbedPacket[] | null {
   if (typeof raw !== 'object' || raw === null) return null
   const doc = raw as { packets?: unknown; streams?: unknown; format?: { start_time?: unknown } }
@@ -120,10 +120,10 @@ function keyframeAtOrBefore(packets: ProbedPacket[], t: number): number | null {
 }
 
 /**
- * stream copy 的 `-t` 以 DTS 截斷：有 B-frame 時，最後保留的 P 幀顯示時間可能晚於幾個被截掉的 B 幀，
- * 片段尾端就少了一兩幀（畫面跳一下、音訊比畫面早結束，接下一段時出現短暫無聲）。
- * 這裡把終點往後延到「已保留封包中最大的 PTS 之前，沒有任何被截掉的幀」為止（通常只多一兩幀），
- * 並把終點放在兩個 DTS 中間，避免剛好落在某個封包上時 ffmpeg 取捨不定。
+ * Stream-copy `-t` truncates by DTS: with B-frames, the last retained P-frame may display after several discarded B-frames,
+ * leaving one or two missing frames at the segment end (a visual jump and audio ending before video, with brief silence before the next segment).
+ * Extend the end until no discarded frame has a PTS earlier than the maximum PTS among retained packets (usually only one or two more frames),
+ * and place the end between two DTS values to avoid ambiguity when it lands exactly on a packet.
  */
 export function cleanCutEnd(packets: ReadonlyArray<{ pts: number; dts: number | null }>, end: number): number {
   const withDts = packets.filter((p): p is { pts: number; dts: number } => p.dts !== null)
@@ -142,13 +142,13 @@ export function cleanCutEnd(packets: ReadonlyArray<{ pts: number; dts: number | 
   return later.length > 0 ? (lastKept + Math.min(...later)) / 2 : lastKept + END_PAD_S
 }
 
-/** 從 ffprobe JSON 算出快速無損切點；找不到關鍵影格或資料異常時回傳 null（呼叫端改用保守的切法）。 */
+/** Compute fast stream-copy cut points from ffprobe JSON; return null when no keyframe is found or data is invalid (caller uses the conservative method). */
 export function pickCopyCut(raw: unknown, start: number, end: number): CopyCut | null {
   const packets = parsePackets(raw)
   if (!packets) return null
   const keyframe = keyframeAtOrBefore(packets, start)
   if (keyframe === null) return null
-  // 依 DTS 取終點附近的封包（兩個讀取區間重疊時封包會重複，不影響最大／最小值的判斷）
+  // Select packets near the end by DTS (packets duplicated by overlapping read intervals do not affect min/max checks).
   const tail = packets.filter((p) => p.dts !== null && Math.abs(p.dts - end) <= END_WINDOW_S + EPS)
   const videoCut = cleanCutEnd(tail, end)
   const shownEnd = presentationEnd(tail, videoCut)
@@ -156,7 +156,7 @@ export function pickCopyCut(raw: unknown, start: number, end: number): CopyCut |
   return { keyframe, end: Math.max(videoCut, shownEnd - AUDIO_TAIL_MARGIN_S), videoCut }
 }
 
-/** DTS < cut 的視訊封包播完的時間＝最大 PTS＋一幀（幀長取相鄰 PTS 的最小間隔） */
+/** Playback end of video packets where DTS < cut = maximum PTS + one frame (frame duration is the smallest gap between adjacent PTS values). */
 export function presentationEnd(packets: ReadonlyArray<{ pts: number; dts: number | null }>, cut: number): number | null {
   const kept = packets.filter((p) => p.dts !== null && p.dts < cut).map((p) => p.pts)
   if (kept.length === 0) return null
@@ -182,9 +182,9 @@ export function createCutLookup(ffprobeBin: string = defaultFfprobePath(), timeo
 }
 
 /**
- * 檔案實際播放到的終點（秒）＝所有封包 pts＋duration 的最大值。
- * B-frame 來源以 stream copy 切尾時，最後一個 P 幀的顯示時間會晚於 MP4 記錄的 duration（以 DTS 加總），
- * concat demuxer 若用那個 duration 接下一段，交界會有兩幀同一個時間戳；所以合輯清單改用這個值。
+ * Actual playback end of a file (seconds) = maximum packet pts + duration.
+ * When trimming B-frame sources with stream copy, the last P-frame display time can exceed the MP4 duration (sum of DTS values).
+ * If concat demuxer uses that duration for the next segment, two frames share a timestamp at the boundary; use this value in the concat list instead.
  */
 export function parseMediaEnd(csv: string): number | null {
   let end: number | null = null
@@ -199,7 +199,7 @@ export function parseMediaEnd(csv: string): number | null {
 
 export type MediaEndProbe = (file: string, signal?: AbortSignal) => Promise<number | null>
 
-/** true＝有音軌，false＝確定沒有；無法查詢時為 null，不可把既有聲音換成靜音。 */
+/** true = has an audio track; false = confirmed no audio; null when the query fails (never replace existing audio with silence). */
 export type AudioProbe = (file: string, signal?: AbortSignal) => Promise<boolean | null>
 
 export function createAudioProbe(ffprobeBin: string = defaultFfprobePath(), timeoutMs = PROBE_TIMEOUT_MS): AudioProbe {
@@ -218,7 +218,7 @@ export function createMediaEndProbe(ffprobeBin: string = defaultFfprobePath(), t
     )
 }
 
-/** 執行 ffprobe 取 stdout；非 0 結束、逾時、中止或輸出過大都回傳 null。 */
+/** Run ffprobe and return stdout; return null on non-zero exit, timeout, cancellation, or oversized output. */
 function runFfprobe(ffprobeBin: string, args: string[], timeoutMs: number, signal?: AbortSignal): Promise<string | null> {
   return new Promise((resolve) => {
     if (signal?.aborted) return resolve(null)
@@ -236,7 +236,7 @@ function runFfprobe(ffprobeBin: string, args: string[], timeoutMs: number, signa
       try {
         proc.kill()
       } catch {
-        // 已結束
+        // Already exited.
       }
       finish(null)
     }
@@ -254,7 +254,7 @@ function runFfprobe(ffprobeBin: string, args: string[], timeoutMs: number, signa
 
 const PROBE_CONCURRENCY = 4
 
-/** 依序處理，最多同時 limit 個；中止後不再開始新的（未處理的結果為 null）。 */
+/** Process in order with at most limit active at once; do not start more after cancellation (unprocessed results are null). */
 async function mapLimit<T, R>(inputs: ReadonlyArray<T>, limit: number, fn: (v: T) => Promise<R | null>, signal?: AbortSignal): Promise<Array<R | null>> {
   const results: Array<R | null> = inputs.map(() => null)
   let next = 0
@@ -268,7 +268,7 @@ async function mapLimit<T, R>(inputs: ReadonlyArray<T>, limit: number, fn: (v: T
   return results
 }
 
-/** 查每個片段的快速無損切點（相同來源與起訖只查一次，最多同時 4 個 ffprobe）。 */
+/** Find fast stream-copy cut points for every segment (query identical sources/start/end only once; at most 4 concurrent ffprobe processes). */
 export async function lookupCopyCuts(
   items: ReadonlyArray<{ source: string; start: number; end: number }>,
   lookup: CutLookup,
@@ -281,7 +281,7 @@ export async function lookupCopyCuts(
   return items.map((it) => byKey.get(keyOf(it)) ?? null)
 }
 
-/** 量每個中間檔的實際播放終點（最多同時 4 個 ffprobe）。 */
+/** Measure the actual playback end of every intermediate file (at most 4 concurrent ffprobe processes). */
 export function measureMediaEnds(files: ReadonlyArray<string>, probe: MediaEndProbe, signal?: AbortSignal): Promise<Array<number | null>> {
   return mapLimit(files, PROBE_CONCURRENCY, (f) => probe(f, signal), signal)
 }

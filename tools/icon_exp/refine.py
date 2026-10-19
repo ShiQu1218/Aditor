@@ -1,5 +1,5 @@
-"""以訓練素材（EN、JA、SC1）把種子圖示對齊平均成精煉樣板（兩輪）。只讀訓練素材。
-輸出到 templates/icons/<name>.png 與統計（之後 chev 改回種子、person 裁成 17 欄，見報告）。"""
+"""Align and average seed icons from training data (EN, JA, SC1) into refined templates in two passes. Reads training data only.
+Writes templates/icons/<name>.png and statistics (chev was later restored to its seed, and person was cropped to 17 columns; see the report)."""
 from fr import *
 
 DST = Path(ENGINE).parent / "templates" / "icons"; DST.mkdir(parents=True, exist_ok=True)

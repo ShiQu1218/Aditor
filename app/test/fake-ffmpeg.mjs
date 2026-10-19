@@ -1,11 +1,11 @@
-// 假 ffmpeg：供匯出取消測試使用（真實子程序，不 mock）。
-// 行為由環境變數控制：
-//   FAKE_FFMPEG_SLEEP_MS      預設睡眠毫秒（預設 0）
-//   FAKE_FFMPEG_SLEEP_MAP     JSON，如 {"_2": 30000}：輸出檔名含該 key 時改用該睡眠值
-//   FAKE_FFMPEG_EXIT          結束碼（預設 0）；FAKE_FFMPEG_EXIT_MAP 同理（依輸出檔名）
-//   FAKE_FFMPEG_STDERR_BYTES  失敗時往 stderr 寫多少位元組（尾端標記 TAIL_MARKER）
-//   FAKE_FFMPEG_GRANDCHILD    "1" 時啟動一個會睡眠的孫程序
-//   FAKE_FFMPEG_PID_DIR       目錄；寫入 <輸出檔名>.pids.json（{ ffmpeg, grandchild }）
+// Fake ffmpeg for export-cancellation tests (a real child process, not a mock).
+// Behavior is controlled by environment variables:
+//   FAKE_FFMPEG_SLEEP_MS      Default sleep duration in milliseconds (default 0)
+//   FAKE_FFMPEG_SLEEP_MAP     JSON, e.g. {"_2": 30000}: use that duration when the output filename contains the key
+//   FAKE_FFMPEG_EXIT          Exit code (default 0); FAKE_FFMPEG_EXIT_MAP works the same way by output filename
+//   FAKE_FFMPEG_STDERR_BYTES  Number of bytes to write to stderr on failure (ends with TAIL_MARKER)
+//   FAKE_FFMPEG_GRANDCHILD    "1" starts a sleeping grandchild process
+//   FAKE_FFMPEG_PID_DIR       Directory for <output filename>.pids.json ({ ffmpeg, grandchild })
 import fs from 'fs'
 import path from 'path'
 import { spawn } from 'child_process'
@@ -25,7 +25,7 @@ function pick(valueEnv, mapEnv, fallback) {
 const sleepMs = pick('FAKE_FFMPEG_SLEEP_MS', 'FAKE_FFMPEG_SLEEP_MAP', 0)
 const exitCode = pick('FAKE_FFMPEG_EXIT', 'FAKE_FFMPEG_EXIT_MAP', 0)
 
-// 先寫出「寫到一半」的輸出檔，讓測試能驗證 .partial 檔被清掉
+// Write a partial output first so tests can verify that the .partial file is removed.
 fs.writeFileSync(output, 'partial-data')
 
 let grandchild = null

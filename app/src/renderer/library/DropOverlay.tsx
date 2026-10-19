@@ -1,7 +1,7 @@
 import React from 'react'
 import { i18n } from '../i18n'
 
-/** 整頁拖放覆蓋層（拖曳檔案進入影片庫時顯示） */
+/** Full-page drop overlay, shown when files are dragged into the library. */
 export function DropOverlay({ show }: { show: boolean }): JSX.Element | null {
   if (!show) return null
   return (

@@ -1,9 +1,9 @@
-"""live 模式（python -m aditor live）：共享記憶體讀端、撕裂／跳槽／寫端消失／stdin EOF，以及與離線分析一致性。
+"""Live mode (python -m aditor live): shared-memory reader, torn frames, skipped slots, writer disappearance, stdin EOF, and consistency with offline analysis.
 
-測試用寫端 ShmTestWriter 依 recorder/src/shm.rs 的版面以 Windows 具名 file mapping 寫入（mmap tagname）。
-驗收（需要外部影片，沒有就 skip）：
-- 黃金錄影（ADITOR_GOLDEN_VIDEO）：live 的最終計入事件與離線 analyze 比對（召回差 ≤ 5%、不得有離線沒有的計入事件）。
-- 使用者錄影（ADITOR_MATCH_DIR）：thumb 餵進 live，對局起訖與 analyze_matches 一致（±2 秒）。"""
+The test writer, ShmTestWriter, writes to a Windows named file mapping using the layout in recorder/src/shm.rs (mmap tagname).
+Acceptance checks require external videos and are skipped when they are unavailable:
+- Golden recording (ADITOR_GOLDEN_VIDEO): compare live's final counted events with offline analyze (recall difference <= 5%, no extra counted events).
+- User recordings (ADITOR_MATCH_DIR): feed thumbnails to live and compare match start/end times with analyze_matches (±2 seconds)."""
 from __future__ import annotations
 
 import json
@@ -22,7 +22,7 @@ import pytest
 
 from conftest import ICON_DIR, REPO, make_video
 
-pytestmark = pytest.mark.skipif(sys.platform != "win32", reason="共享記憶體讀端只支援 Windows")
+pytestmark = pytest.mark.skipif(sys.platform != "win32", reason="Shared memory reader supports Windows only")
 
 from aditor.live import (LATEST_SEQ_OFFSET, MAX_LAG_SLOTS, PTS_PER_SECOND, SHM_HEADER_BYTES, SHM_MAGIC,  # noqa: E402
                          SHM_SLOTS, SHM_VERSION, LayoutError, LiveEngine, LiveKills, ShmLayout, ShmReader)
@@ -30,7 +30,7 @@ from aditor.live import (LATEST_SEQ_OFFSET, MAX_LAG_SLOTS, PTS_PER_SECOND, SHM_H
 ENGINE_DIR = Path(__file__).resolve().parents[1]
 GOLDEN = os.environ.get("ADITOR_GOLDEN_VIDEO")
 MATCH_DIR = Path(os.environ.get("ADITOR_MATCH_DIR", "E:/Apex_highlighter_clip"))
-# 對局驗收只跑最短的一段＋一段長錄影，控制執行時間
+# Match acceptance runs only the shortest clip and one long recording to limit runtime.
 MATCH_VIDEOS = ["從上場不退出直接下一場~中途死掉，觀戰敵人同時排隊.mp4", "外卡模式.mp4"]
 TICK = 0.25
 
@@ -40,7 +40,7 @@ def _name() -> str:
 
 
 class ShmTestWriter:
-    """依 shm.rs 版面寫入的測試寫端：seq_end=0 → seq_begin → 資料 → seq_end → latest_seq。"""
+    """Test writer that follows the shm.rs layout: seq_end=0 → seq_begin → data → seq_end → latest_seq."""
 
     def __init__(self, name: str, layout: ShmLayout, *, magic: bytes = SHM_MAGIC, version: int = SHM_VERSION):
         self.layout = layout
@@ -110,10 +110,10 @@ class FakeClock:
         return self.now
 
 
-# ---------------- 版面與讀端 ----------------
+# ---------------- Layout and reader ----------------
 
 def test_slot_size_matches_rust_layout():
-    # 與 shm.rs 測試相同的版面：banner 7×3、spec 5×2、thumb 4×2 → 63+30+8+32 = 133 → 對齊 8 = 136
+    # Same layout as the shm.rs test: banner 7×3, spec 5×2, thumb 4×2 → 63+30+8+32 = 133 → align to 8 = 136.
     lay = ShmLayout((7, 3), (5, 2), (4, 2))
     assert lay.slot_size == 136
     assert lay.total_size == SHM_HEADER_BYTES + 16 * 136
@@ -154,11 +154,11 @@ def test_torn_and_overwritten_slots_are_rejected():
     try:
         b, s = np.zeros((3, 7, 3), np.uint8), np.zeros((2, 5, 3), np.uint8)
         w.write(0, b, s)
-        w.set_seq_end(1, 0)            # 寫入中（seq_end 尚未更新）
+        w.set_seq_end(1, 0)            # Write in progress (seq_end has not been updated).
         assert r.read(1) is None
         w.set_seq_end(1, 1)
         assert r.read(1) is not None
-        for _ in range(SHM_SLOTS):     # seq 17 覆寫 seq 1 的槽
+        for _ in range(SHM_SLOTS):     # seq 17 overwrites seq 1's slot.
             w.write(0, b, s)
         assert r.read(1) is None and r.read(17) is not None
         assert r.read(0) is None
@@ -169,10 +169,10 @@ def test_torn_and_overwritten_slots_are_rejected():
 
 @pytest.mark.parametrize("mutate, message", [
     (lambda mm: mm.__setitem__(slice(0, 8), b"BADMAGIC"), "magic"),
-    (lambda mm: struct.pack_into("<I", mm, 8, 2), "版本"),
-    (lambda mm: struct.pack_into("<I", mm, 12, 8), "槽數"),
-    (lambda mm: struct.pack_into("<I", mm, 16, 128), "槽大小"),
-    (lambda mm: struct.pack_into("<I", mm, 20, 0), "大於 0"),
+    (lambda mm: struct.pack_into("<I", mm, 8, 2), "version"),
+    (lambda mm: struct.pack_into("<I", mm, 12, 8), "Slot count"),
+    (lambda mm: struct.pack_into("<I", mm, 16, 128), "Slot size"),
+    (lambda mm: struct.pack_into("<I", mm, 20, 0), "greater than 0"),
 ])
 def test_bad_header_rejected(mutate, message):
     lay = ShmLayout((7, 3), (5, 2), (4, 2))
@@ -190,11 +190,11 @@ def test_open_missing_mapping_fails_without_creating_it():
     name = _name()
     with pytest.raises(OSError):
         ShmReader.open(name)
-    with pytest.raises(OSError):  # 讀端不得建立 mapping（否則 aditorrec 之後會拒絕建立）
+    with pytest.raises(OSError):  # The reader must not create the mapping, or aditorrec will refuse to create it later.
         ShmReader.open(name)
 
 
-# ---------------- 引擎輪詢：跳槽、撕裂、時間格線 ----------------
+# ---------------- Engine polling: skipped slots, torn frames, and time grid ----------------
 
 def _engine(name, lay, profile, scene, clock=None):
     out: list[dict] = []
@@ -210,12 +210,12 @@ def test_engine_jumps_to_latest_when_lagging(profile, layout, scene):
         b, s, th = _blank(layout)
         w.write(0, b, s, th)
         assert eng.poll() == 1
-        for k in range(1, 40):         # 寫端一口氣寫 39 格：未讀 39 > 16
+        for k in range(1, 40):         # Writer produces 39 frames at once: 39 unread > 16.
             w.write(_pts(k * TICK), b, s, th if k % 4 == 0 else None)
-        assert eng.poll() == 1         # 只讀最新一格
+        assert eng.poll() == 1         # Read only the latest frame.
         assert eng.skipped == 38 and eng.torn == 0 and eng.frames == 2
         assert eng.last_t == 39 * TICK
-        for k in range(40, 40 + MAX_LAG_SLOTS):  # 剛好 16 格未讀：不跳
+        for k in range(40, 40 + MAX_LAG_SLOTS):  # Exactly 16 unread frames: do not skip.
             w.write(_pts(k * TICK), b, s)
         assert eng.poll() == MAX_LAG_SLOTS and eng.skipped == 38
     finally:
@@ -241,7 +241,7 @@ def test_engine_starts_with_bounded_backlog(profile, layout, scene):
     w, r, eng, out = _engine(_name(), layout, profile, scene)
     try:
         b, s, _ = _blank(layout)
-        for k in range(12):            # 讀端開始輪詢前已寫 12 格：只補讀最近 8 格
+        for k in range(12):            # 12 frames were written before the reader began polling: catch up on only the latest 8.
             w.write(_pts(k * TICK), b, s)
         assert eng.poll() == 8 and eng.skipped == 0
         assert eng.last_t == 11 * TICK
@@ -255,14 +255,14 @@ def test_engine_snaps_jittered_pts_to_quarter_second_grid(profile, layout, scene
     try:
         b, s, _ = _blank(layout)
         ts = []
-        for raw in (0.0, 0.26, 0.49, 0.74, 0.76, 1.01, 1.6):  # 0.76 與 0.74 落在同一格；1.6 跳過一格
+        for raw in (0.0, 0.26, 0.49, 0.74, 0.76, 1.01, 1.6):  # 0.76 and 0.74 fall in the same frame; 1.6 skips a frame.
             w.write(_pts(raw), b, s)
             eng.poll()
             ts.append(eng.last_t)
         assert ts == [0.0, 0.25, 0.5, 0.75, 1.0, 1.25, 1.5]
-        w.write(_pts(1.52), b, s)      # 寫端略快：推到下一格（仍在一格誤差內）
+        w.write(_pts(1.52), b, s)      # Writer is slightly ahead: advance to the next frame (still within one-frame tolerance).
         assert eng.poll() == 1 and eng.last_t == 1.75
-        w.write(_pts(1.54), b, s)      # 再快就會超前一格以上：多餘格丟棄
+        w.write(_pts(1.54), b, s)      # Any faster would be more than one frame ahead; discard the extra frame.
         assert eng.poll() == 0 and eng.skipped == 1 and eng.last_t == 1.75
     finally:
         r.close()
@@ -290,7 +290,7 @@ def test_engine_emits_stats_and_final_snapshot(profile, layout, scene):
         w.close()
 
 
-# ---------------- CLI：ready／EOF／stop／寫端消失／錯誤 ----------------
+# ---------------- CLI: ready/EOF/stop, writer disappearance, and errors ----------------
 
 def _spawn(name: str):
     env = dict(os.environ, PYTHONPATH=str(ENGINE_DIR))
@@ -300,7 +300,7 @@ def _spawn(name: str):
 
 
 class _Lines:
-    """背景讀 stdout 的 JSON 行（測試不可被子程序的輸出阻塞）。"""
+    """Read JSON lines from stdout in the background so subprocess output cannot block the test."""
 
     def __init__(self, proc):
         self.items: list[dict] = []
@@ -342,7 +342,7 @@ def test_cli_stops_on_eof_or_stop_after_writer_disappears(layout, how):
         for k in range(n):
             w.write(_pts(k * TICK), b, s, th if k % 4 == 0 else None)
             time.sleep(0.03)
-        w.close()                      # 寫端消失：讀端仍持有 mapping，不得當掉或忙等
+        w.close()                      # If the writer disappears while the reader holds the mapping, it must not crash or busy-wait.
         time.sleep(0.5)
         assert proc.poll() is None
         if how == "stop":
@@ -376,13 +376,13 @@ def test_cli_eof_before_any_frame(layout):
 
 
 def test_cli_errors(layout):
-    proc = _spawn(_name())             # 不存在的 mapping
+    proc = _spawn(_name())             # Mapping does not exist.
     out, _ = proc.communicate(timeout=60)
     assert proc.returncode == 1
     err = json.loads(out.decode("utf-8").splitlines()[-1])
     assert err["ev"] == "error" and err["code"] == "shm_open_failed"
 
-    name = _name()                     # 小圖尺寸與設定檔 ROI 不符
+    name = _name()                     # Small image dimensions do not match the configured ROI.
     w = ShmTestWriter(name, ShmLayout((7, 3), (5, 2), (640, 360)))
     try:
         proc = _spawn(name)
@@ -393,16 +393,16 @@ def test_cli_errors(layout):
         w.close()
 
 
-# ---------------- 與離線分析一致 ----------------
+# ---------------- Consistency with offline analysis ----------------
 
 def _with_thumbs(frames, thumbs):
-    """(t, banner, spec) 串流每 4 格附一張 thumb（1 fps，同 aditorrec）；thumb 用完後不附。"""
+    """Attach one thumbnail every four frames (1 fps, like aditorrec) to the (t, banner, spec) stream; omit thumbnails after they run out."""
     for k, (t, banner, spec) in enumerate(frames):
         yield t, banner, spec, (next(thumbs, None) if k % 4 == 0 else None)
 
 
 def _run_live(layout, profile, scene, frames):
-    """在同一程序內交錯「寫一槽 → 輪詢」（不跳槽），回傳 (輸出事件, 引擎)。frames：(t, banner, spec, thumb|None)。"""
+    """Alternate writing a slot and polling in one process without skipped slots; return (output events, engine). frames: (t, banner, spec, thumb|None)."""
     clock = FakeClock()
     w, r, eng, out = _engine(_name(), layout, profile, scene, clock)
     try:
@@ -442,7 +442,7 @@ def _counted(events):
 
 
 def _compare(offline, live):
-    """回傳 (召回率, 離線沒有的 live 計入事件)：類型相同、時間 ±0.5 秒算同一事件。"""
+    """Return (recall, live counted events absent offline); events match when their types agree and times differ by at most 0.5 seconds."""
     left = list(live)
     hit = 0
     for typ, t in offline:
@@ -470,7 +470,7 @@ def test_live_matches_offline_on_synthetic_video(tmp_path, profile, layout, scen
 
 
 def test_live_kills_small_buffers_degrade_gracefully(tmp_path, profile, knock_banner_png):
-    """緩衝上限極小時提早決定尺度／學關鍵字，仍能產出事件、不當掉。"""
+    """With a very small buffer limit, determine scale and learn keywords early while still producing events without crashing."""
     from aditor.decode import FrameStream
     video = make_video(tmp_path, "kills.mp4", 12, overlay=(knock_banner_png, [(2, 5), (8, 10)]))
     logs: list[str] = []
@@ -479,7 +479,7 @@ def test_live_kills_small_buffers_degrade_gracefully(tmp_path, profile, knock_ba
         kills.feed(t, banner, spec)
     events, _ = kills.finish()
     assert kills.phase == "detecting" and kills.h_scale is not None
-    assert any("提早" in m for m in logs)
+    assert any("early" in m for m in logs)
     assert len(events) >= 2
     assert {"calib_buffer_cap", "pending_buffer_cap"} & set(kills.degraded)
 
@@ -501,7 +501,7 @@ def test_quality_flags_lost_frames(profile, layout, scene):
 @pytest.mark.timeout(900)
 def test_golden_live_vs_offline(tmp_path, profile, layout, scene):
     if not GOLDEN or not Path(GOLDEN).exists():
-        pytest.skip("未設定 ADITOR_GOLDEN_VIDEO")
+        pytest.skip("ADITOR_GOLDEN_VIDEO is not set")
     from aditor.analyze import analyze
     from aditor.decode import FrameStream
     from aditor.matches import _video_frames
@@ -517,10 +517,10 @@ def test_golden_live_vs_offline(tmp_path, profile, layout, scene):
     cpu = 1000.0 * eng.cpu_total / eng.frames
     identical = ([(e["type"], e["t"], e["counted"]) for e in final["events"]]
                  == [(e["type"], e["t"], e["counted"]) for e in doc["events"]])
-    print(f"\n黃金錄影：離線計入 {len(offline)}、live 計入 {len(live)}、召回 {recall:.3f}、額外 {extra}；"
-          f"全部事件 {len(doc['events'])}／{len(final['events'])}，完全相同 {identical}；"
-          f"h_scale 離線 {doc['analysis']['h_scale']} live {eng.kills.h_scale}；"
-          f"{eng.frames} 格、CPU {cpu:.2f} ms/格")
+    print(f"\nGolden recording: {len(offline)} offline and {len(live)} live counted events, recall {recall:.3f}, {extra} extra; "
+          f"{len(doc['events'])}/{len(final['events'])} total events, identical: {identical}; "
+          f"h_scale offline {doc['analysis']['h_scale']}, live {eng.kills.h_scale}; "
+          f"{eng.frames} frames, CPU {cpu:.2f} ms/frame")
     assert recall >= 0.95
     assert extra == []
     assert [o for o in out if o["ev"] == "snapshot"]
@@ -531,7 +531,7 @@ def test_golden_live_vs_offline(tmp_path, profile, layout, scene):
 def test_recording_matches_live_vs_offline(profile, layout, scene, name):
     video = MATCH_DIR / name
     if not video.is_file():
-        pytest.skip(f"未提供對局驗收影片：{video}")
+        pytest.skip(f"No match acceptance video provided: {video}")
     from aditor.matches import _video_frames, analyze_matches
     from aditor.probe import probe
     info = probe(str(video))
@@ -548,7 +548,7 @@ def test_recording_matches_live_vs_offline(profile, layout, scene, name):
     out, eng = _run_live(layout, profile, scene, frames())
     starts = [o for o in out if o["ev"] == "match_start"]
     ends = [o for o in out if o["ev"] == "match_end"]
-    print(f"\n{name}：離線 {offline}；live start {starts} end {ends}")
+    print(f"\n{name}: offline {offline}; live start {starts} end {ends}")
     assert len(starts) == len(ends) == len(offline)
     for s, e, m in zip(starts, ends, offline):
         assert abs(s["t"] - m["start"]) <= 2

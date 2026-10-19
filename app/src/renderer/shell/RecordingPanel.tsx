@@ -36,7 +36,7 @@ export function RecordingPanel({ onClose, onWatchLive }: { onClose: () => void; 
     try {
       if (action === 'start') {
         if (!await api.startManual()) {
-          // 失敗原因（例如錄影器錯誤）優先顯示；沒有錯誤才是找不到 Apex
+          // Show the failure reason (such as a recorder error) first; report that Apex was not found only when there is no error.
           const latest = await api.getStatus()
           setActionError(latest.error?.message ?? t.apexNotRunning)
         }

@@ -1,4 +1,4 @@
-/* 設定畫面：分類欄＋內容欄（≤720 px）整組水平置中；<900 px 分類欄變頂部分段列。色彩一律使用 tokens.css 變數；類名一律 set- 前綴。 */
+/* Settings screen: center the category and content columns together at <=720 px; convert categories to a top tab row below 900 px. Use tokens.css colors and the set- class prefix. */
 
 .set-screen { height: 100%; display: flex; flex-direction: column; min-height: 0; }
 .set-topbar {
@@ -21,7 +21,7 @@
   overflow: hidden;
 }
 
-/* ---- 分類欄 ---- */
+/* ---- Category column ---- */
 .set-nav { width: 200px; flex: none; display: flex; flex-direction: column; gap: 2px; padding-top: 44px; }
 .set-cat {
   position: relative;
@@ -45,7 +45,7 @@
 .set-cat-label { white-space: nowrap; }
 .set-hit { margin-left: auto; font-size: var(--fs-caption); color: var(--text-1); background: var(--bg-active); border-radius: var(--r-pill); padding: 0 6px; }
 
-/* ---- 內容欄 ---- */
+/* ---- Content column ---- */
 .set-pane { flex: 1; max-width: 720px; min-width: 0; display: flex; flex-direction: column; min-height: 0; }
 .set-search { position: relative; width: 100%; margin-bottom: 14px; flex: none; }
 .set-search input {
@@ -93,7 +93,7 @@
 .set-err { grid-column: 1 / -1; margin: 0; color: var(--danger); font-size: var(--fs-small); font-weight: var(--fw-bold); }
 .set-newtag { font-size: 10px; font-weight: var(--fw-bold); color: var(--info); border: 1px solid color-mix(in srgb, var(--info) 50%, transparent); border-radius: var(--r-xs); padding: 0 4px; margin-left: 6px; }
 
-/* ---- 控制項 ---- */
+/* ---- Controls ---- */
 .set-switch {
   appearance: none;
   -webkit-appearance: none;
@@ -193,7 +193,7 @@
 .set-dlg-sec ul { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: var(--sp-1); }
 .set-dlg-foot { flex: none; display: flex; justify-content: flex-end; gap: var(--sp-2); margin-top: var(--sp-4); padding-top: var(--sp-3); border-top: 1px solid var(--line); }
 
-/* ---- 窄視窗（<900 px）：分類欄收合為頂部橫向分段列，選中項底部 3 px 紅線 ---- */
+/* ---- Narrow windows (<900 px): collapse categories into a horizontal tab row; add a 3 px red underline to the selected tab. ---- */
 @media (max-width: 899px) {
   .set-body { flex-direction: column; justify-content: flex-start; align-items: stretch; gap: 10px; padding: 12px 16px 0; }
   .set-nav { width: 100%; flex: none; flex-direction: row; padding-top: 0; overflow-x: auto; }

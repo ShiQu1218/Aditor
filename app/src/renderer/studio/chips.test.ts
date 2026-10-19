@@ -19,11 +19,11 @@ function ev(t: number, type: EventType, extra: Partial<EngineEvent> = {}): Engin
 }
 
 describe('studio filter chips', () => {
-  test('chip 只有擊倒與助攻（elim／squad_wipe 引擎不再產生）', () => {
+  test('Chips include only kills and assists (the engine no longer produces elim/squad_wipe)', () => {
     expect(CHIP_TYPES).toEqual(['knock', 'assist_knock', 'assist_elim'])
   })
 
-  test('chipCounts 依類型計算未刪除事件', () => {
+  test('chipCounts counts undeleted events by type', () => {
     const events = [ev(1, 'knock'), ev(2, 'knock'), ev(3, 'elim'), ev(4, 'assist_elim', { deleted: true })]
     const counts = chipCounts(events)
     expect(counts.knock).toBe(2)
@@ -32,23 +32,23 @@ describe('studio filter chips', () => {
     expect(counts.squad_wipe).toBe(0)
   })
 
-  test('toggleFilter 切換類型進出篩選集合', () => {
+  test('toggleFilter adds or removes a type from the filter set', () => {
     const base: Set<EventType> = new Set(['knock'])
     const removed = toggleFilter(base, 'knock')
     expect(removed.has('knock')).toBe(false)
-    expect(base.has('knock')).toBe(true) // 不變動原集合
+    expect(base.has('knock')).toBe(true) // Original set is unchanged.
     const added = toggleFilter(base, 'elim')
     expect(added.has('elim')).toBe(true)
   })
 
-  test('nearCount 只計入近 90 秒內「計入」的事件（含邊界、排除刪除與不計入）', () => {
+  test('nearCount counts only counted events from the last 90 seconds (including boundary; excluding deleted and uncounted events)', () => {
     const events = [
-      ev(10, 'knock'), // 視窗邊界（100-90）：含
-      ev(9.9, 'knock'), // 視窗之前：排除
+      ev(10, 'knock'), // At the window boundary (100-90): included.
+      ev(9.9, 'knock'), // Before the window: excluded.
       ev(50, 'knock'),
       ev(95, 'elim'),
-      ev(99, 'squad_wipe', { counted_override: false }), // 不計入：排除
-      ev(80, 'elim', { deleted: true }) // 已刪除：排除
+      ev(99, 'squad_wipe', { counted_override: false }), // Not counted: excluded.
+      ev(80, 'elim', { deleted: true }) // Deleted: excluded.
     ]
     expect(nearCount(events, 100)).toBe(3)
   })

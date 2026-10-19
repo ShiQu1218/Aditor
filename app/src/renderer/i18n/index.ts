@@ -12,7 +12,7 @@ type Widen<T> = T extends string ? string
   : T extends object ? { [K in keyof T]: Widen<T[K]> }
   : T
 
-/** 一套語言的全部介面文字；鍵與結構以繁體中文（zh-TW.ts）為準，其他語言由型別檢查補齊。 */
+/** All interface text for one language; Traditional Chinese (zh-TW.ts) defines keys and structure, with type checking enforcing other catalogs. */
 export type Messages = Widen<typeof zhTW>
 
 const CATALOGS: Readonly<Record<Locale, Messages>> = { 'zh-TW': zhTW, 'zh-CN': zhCN, en, ja, ko }
@@ -22,8 +22,8 @@ export function catalogFor(locale: Locale): Messages {
 }
 
 /**
- * renderer 啟動時的語言：main 載入頁面時以 `?lang=` 帶入（見 main/index.ts），換語言會重新載入視窗；
- * 因此各模組頂層引用文字不必處理即時切換。沒有參數（測試、純瀏覽器開發）用預設語言。
+ * Renderer startup locale: main supplies `?lang=` when loading the page (see main/index.ts); changing language reloads the window.
+ * Module-level text references therefore need no live switching. Use the default locale without a parameter (tests and browser-only development).
  */
 function bootLocale(): Locale {
   const search = typeof location === 'undefined' ? '' : location.search

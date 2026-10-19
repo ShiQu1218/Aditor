@@ -1,11 +1,11 @@
-"""敵人名字顏色（色盲模式）的名字指紋：黃（紅／藍色盲）、關閉模式的紅、綠色盲的粉紅。
+"""Enemy-name signatures for colorblind modes: yellow (protanopia/deuteranopia), red (colorblind mode off), and pink (deuteranopia).
 
-fixtures/colorblind 是從使用者提供的真實錄影裁出的「只含名字區」小圖（每張 < 50 KB）：
-- yellow_*    ：SC1.mkv（簡中介面，紅／藍色盲，名字黃色）
-- off_red_*   ：SC2.mkv（簡中介面，關閉模式，名字紅色）
-- pink_en_*   ：English.mkv（綠色盲，名字粉紅）
-- pink_ja_*   ：Japanese.mkv（綠色盲，名字粉紅）
-每個事件（name）兩張相隔 0.25–0.75 s 的畫格。labels.json 記錄來源時間與名字代號。
+fixtures/colorblind contains small crops showing only the name region, taken from user-provided recordings (each < 50 KB):
+- yellow_*    : SC1.mkv (Simplified Chinese UI, red/blue colorblindness, yellow names)
+- off_red_*   : SC2.mkv (Simplified Chinese UI, off mode, red names)
+- pink_en_*   : English.mkv (green colorblindness, pink names)
+- pink_ja_*   : Japanese.mkv (green colorblindness, pink names)
+Each event (name) has two frames 0.25–0.75 s apart. labels.json records source timestamps and name IDs.
 """
 import copy
 import itertools
@@ -21,7 +21,7 @@ from conftest import FIXTURES, ICON_DIR
 
 DIR = FIXTURES / "colorblind"
 LABELS = json.loads((DIR / "labels.json").read_text(encoding="utf-8"))
-MIN_DENSITY = 0.12          # 真名字的指紋墨密度約 0.14–0.31；< 0.03 視為沒有鑑別力
+MIN_DENSITY = 0.12          # Real-name fingerprint ink density is about 0.14–0.31; < 0.03 is considered non-discriminative.
 PINK = "green_blind_pink"
 
 
@@ -88,7 +88,7 @@ def _without_pink(prof):
 
 
 def test_pink_fallback_does_not_touch_red_or_yellow_names(prof):
-    """標準遮罩已取得像樣指紋的名字（黃、紅）不會走備援：指紋位元完全相同。"""
+    """Names with usable fingerprints from the standard mask (yellow, red) do not use the fallback; fingerprint bits match exactly."""
     base = _without_pink(prof)
     for n in LABELS:
         if LABELS[n]["mode"] == PINK:

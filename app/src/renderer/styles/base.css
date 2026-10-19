@@ -1,4 +1,4 @@
-/* 基礎樣式：reset、全域字型、焦點環、圖示尺寸 */
+/* Base styles: reset, global fonts, focus rings, and icon sizes. */
 * { box-sizing: border-box; }
 html, body, #root { margin: 0; height: 100%; }
 body {
@@ -23,7 +23,7 @@ h1, h2, h3, h4 { line-height: var(--lh-tight); letter-spacing: 0; }
 kbd { font-family: var(--font-mono); font-size: 11px; padding: 1px 6px; border: 1px solid var(--line-strong); border-bottom-width: 2px; border-radius: var(--r-xs); color: var(--text-2); background: rgba(255,255,255,.04); }
 .hidden { display: none !important; }
 
-/* 捲軸：細、無箭頭、隨深色介面（預設的 Windows 淺色捲軸在深色介面上很突兀） */
+/* Scrollbars: thin, no arrows, and suited to the dark interface (the default light Windows scrollbar looks out of place). */
 :root { color-scheme: dark; }
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }

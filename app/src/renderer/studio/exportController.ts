@@ -3,8 +3,8 @@ import { tr } from '../../shared/locale'
 import { exportSubDirName, joinForDisplay } from '../../shared/storage'
 
 /**
- * 匯出抽屜的狀態機（純 TS，不依賴 React／DOM；window.api 以參數注入，便於用假 api 測試）。
- * 所有 IPC 的訂閱與退訂都在這裡：進度事件只在 start()／下載期間訂閱，結束或 dispose 即退訂。
+ * Export drawer state machine (pure TS, no React/DOM dependency; window.api is injected for testing with a fake API).
+ * All IPC subscriptions are managed here: progress events are subscribed only during start()/download and unsubscribed on completion or dispose.
  */
 
 export interface ExportItem {
@@ -22,7 +22,7 @@ export interface ExportApi {
   openFolder(dir: string): Promise<boolean>
   start(opts: unknown): Promise<StartResult>
   cancel(): Promise<{ cancelled: boolean }>
-  /** 開始前檢查輸出資料夾是否存在且可寫入 */
+/** Check that the output directory exists and is writable before starting. */
   checkOutDir(dir: string): Promise<{ ok: true } | { ok: false; reason: string }>
   diskSpace(dir: string): Promise<{ freeBytes: number; totalBytes: number }>
   onProgress(cb: (data: unknown) => void): () => void
@@ -39,9 +39,9 @@ export type ExportPhase = 'settings' | 'running' | 'done' | 'failed'
 export interface ExportSettings {
   mode: 'concat' | 'separate'
   quality: 'copy' | 'precise'
-  /** 實際送到 main 的編碼器（由 encoderChoice 與偵測結果算出） */
+/** Encoder actually sent to main (derived from encoderChoice and detection results). */
   encoder: string
-  /** 使用者的選擇：'auto'＝依優先序；否則是偵測到可用的編碼器名稱 */
+/** User choice: 'auto' uses priority order; otherwise, the name of a detected available encoder. */
   encoderChoice: string
   outDir: string | null
   baseName: string
@@ -59,7 +59,7 @@ export interface ExportResult {
   cancelled: boolean
   outputs: string[]
   notices: string[]
-  /** 失敗時的 ffmpeg stderr 末段（或驗證錯誤訊息） */
+/** Tail of ffmpeg stderr on failure (or a validation error message). */
   error: string | null
   durationMs: number
 }
@@ -91,7 +91,7 @@ function pickEncoder(encoders: string[]): string {
   return encoders[0] ?? ''
 }
 
-/** 'auto' 或已不可用的選擇＝依優先序挑；否則採用使用者選的編碼器。 */
+/** For 'auto' or an unavailable choice, select by priority; otherwise use the encoder selected by the user. */
 function resolveEncoder(choice: string, encoders: string[]): { choice: string; encoder: string } {
   if (choice !== ENCODER_AUTO && encoders.includes(choice)) return { choice, encoder: choice }
   return { choice: ENCODER_AUTO, encoder: pickEncoder(encoders) }
@@ -130,7 +130,7 @@ export function createExportController(api: ExportApi, initialName = 'highlight'
       set({ disk: null, outDirError: i18n.export.blockNoOutDir })
       return
     }
-    // 先確認資料夾存在且可寫入：壞資料夾在設定頁就是阻擋條件，不等到按下開始才失敗
+    // Verify the directory exists and is writable first: an invalid directory blocks in Settings rather than failing only after Start is pressed.
     try {
       const check = await api.checkOutDir(dir)
       if (!check.ok) {
@@ -234,7 +234,7 @@ export function createExportController(api: ExportApi, initialName = 'highlight'
       set({ outDirError: i18n.export.blockNoOutDir })
       return
     }
-    if (state.outDirError) return // 輸出資料夾檢查未通過：與按鈕停用同一條件，不送出 export:start
+    if (state.outDirError) return // Output-directory validation failed; use the same condition as the disabled button and do not send export:start.
     lastItems = items
     const startedAt = Date.now()
     set({ phase: 'running', progress: { percent: 0, jobIndex: 0, totalJobs: 1, outTimeSeconds: 0 }, result: null })
@@ -282,7 +282,7 @@ export function createExportController(api: ExportApi, initialName = 'highlight'
     try {
       await api.cancel()
     } catch {
-      // 取消失敗時匯出會自然結束，結果由 start() 回報
+      // If cancellation fails, export will end naturally and start() will report the result.
     }
   }
 
@@ -292,7 +292,7 @@ export function createExportController(api: ExportApi, initialName = 'highlight'
     return start(lastItems)
   }
 
-  /** 實際輸出目錄：使用者選的 outDir 底下依模式分的子資料夾（Merged／Clips）；outDir 為空時 null。 */
+  /** Actual output directory: mode-specific subfolder (Merged/Clips) under the user's outDir; null when outDir is empty. */
   function getOutputDir(): string | null {
     const { outDir, mode } = state.settings
     return outDir ? joinForDisplay(outDir, exportSubDirName(mode)) : null
@@ -304,11 +304,11 @@ export function createExportController(api: ExportApi, initialName = 'highlight'
     try {
       await api.openFolder(dir)
     } catch {
-      // 開不了資料夾不影響匯出結果
+      // Failure to open the folder does not affect the export result.
     }
   }
 
-  /** 完成／失敗後回到設定頁。 */
+  /** Return to Settings after completion or failure. */
   function finish(): void {
     if (state.phase === 'running') return
     set({ phase: 'settings', result: null, progress: null })
@@ -335,7 +335,7 @@ export function createExportController(api: ExportApi, initialName = 'highlight'
     init,
     setMode: (mode: ExportSettings['mode']): void => setSettings({ mode }),
     setQuality,
-    /** 'auto' 或偵測到可用的編碼器；不可用的名稱忽略。 */
+/** 'auto' or a detected available encoder; ignore unavailable names. */
     setEncoder: (choice: string): void => {
       if (choice !== ENCODER_AUTO && !state.encoders.includes(choice)) return
       const r = resolveEncoder(choice, state.encoders)

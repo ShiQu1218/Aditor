@@ -1,4 +1,4 @@
-// 影片庫篩選（純函式）：搜尋、只看收藏、事件／精華類型。
+// Library filters (pure functions): search, favorites only, and event/highlight type.
 import type { LibraryEntry } from '../../main/library'
 
 export type LibraryKind = 'all' | 'knock' | 'assist' | 'hl'

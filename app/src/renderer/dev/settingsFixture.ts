@@ -1,4 +1,4 @@
-/** 僅開發模式（App 以 import.meta.env.DEV 動態載入）：?fixture=settings 的假 window.api，供截圖與版面檢查。 */
+/** Development only (dynamically imported by App under import.meta.env.DEV): fake window.api for ?fixture=settings screenshots and layout checks. */
 import { DEFAULT_SETTINGS, type Settings } from '../../shared/settings'
 
 export function installSettingsFixtureApi(failWrites: boolean): void {

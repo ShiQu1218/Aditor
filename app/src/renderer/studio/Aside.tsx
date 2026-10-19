@@ -8,7 +8,7 @@ interface AsideProps {
   children: React.ReactNode
 }
 
-/** 工作室側欄：精華清單。 */
+/** Studio sidebar: highlights list. */
 export function Aside({ hlCount, locked, children }: AsideProps): JSX.Element {
   const t = i18n.studio.tabs
   return (

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-// I11：設定頁「第三方授權」不再是停用列，按下去會請 main 開啟隨安裝包附帶的授權檔。
+// I11: Third-party licenses is now an active settings row that asks main to open the bundled license file.
 import React from 'react'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { SettingsScreen } from './SettingsScreen'
@@ -32,7 +32,7 @@ test('the about row is not disabled', () => {
   expect(SETTING_ROWS.find((r) => r.id === 'about')!.disabledReason).toBeUndefined()
 })
 
-test('clicking 〔第三方授權〕 asks main to open the bundled notices', async () => {
+test('Clicking Third-party licenses asks main to open the bundled notices', async () => {
   click(document.getElementById('set-tab-about')!)
   await flush(10)
   const btn = buttonByText(document, settingsI18n.row.about.licenses)!

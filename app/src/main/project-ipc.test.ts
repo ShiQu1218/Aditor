@@ -102,13 +102,13 @@ describe('createCloseGate', () => {
     expect(close).not.toHaveBeenCalled()
     gate.ack()
     expect(close).toHaveBeenCalledTimes(1)
-    // close() 觸發的第二次 close 事件放行
+    // Allow the second close event triggered by close().
     const e2 = ev()
     gate.onClose(e2)
     expect(e2.preventDefault).not.toHaveBeenCalled()
   })
 
-  test('儲存失敗不關窗且可重試', () => {
+  test('a save failure keeps the window open and can be retried', () => {
     const request = vi.fn()
     const close = vi.fn()
     const gate = createCloseGate({ request, close, timeoutMs: 1500 })
@@ -153,7 +153,7 @@ describe('createCloseGate', () => {
     expect(request).not.toHaveBeenCalled()
   })
 
-  test('quitting 中延後關窗會取消 Electron 的 quit，完成存檔（或逾時）後必須重新觸發 quit；一般關窗／縮到系統匣不觸發 quit', () => {
+  test('a deferred close while quitting cancels Electron quit and must retrigger it after saving (or timeout); regular close/minimize-to-tray does not trigger quit', () => {
     let quitting = false
     let closeToTray = true
     let hidden = false
@@ -184,7 +184,7 @@ describe('createCloseGate', () => {
     })
     gate = makeGate()
 
-    // 1. 一般關窗（closeToTray=true, quitting=false）：存檔後只縮到系統匣，不呼叫 quit
+    // 1. Regular close (closeToTray=true, quitting=false): save, then minimize to tray without calling quit.
     const hideClose = ev()
     gate.onClose(hideClose)
     expect(hideClose.preventDefault).toHaveBeenCalled()
@@ -194,7 +194,7 @@ describe('createCloseGate', () => {
     expect(appExited).toBe(false)
     expect(request).toHaveBeenCalledTimes(1)
 
-    // 2. 視窗已縮到系統匣時，系統匣按「結束」（quitting=true）：第一次 close 被擋下以存檔，ack 後關窗並繼續 quit 讓 App 真正結束
+    // 2. When the window is in the tray and the user selects Quit (quitting=true): prevent the first close to save, then close and continue quitting after ack.
     quitting = true
     const quitClose = ev()
     gate.onClose(quitClose)
@@ -205,7 +205,7 @@ describe('createCloseGate', () => {
     expect(closed).toBe(true)
     expect(appExited).toBe(true)
 
-    // 3. closeToTray=false 且 quitting 中 renderer 逾時未回應：逾時後仍關窗並繼續 quit
+    // 3. With closeToTray=false, if the renderer times out during quit, close anyway and continue quitting.
     closed = false
     appExited = false
     closeToTray = false

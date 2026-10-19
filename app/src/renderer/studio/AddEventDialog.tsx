@@ -6,24 +6,24 @@ import { i18n } from '../i18n'
 import { CHIP_TYPES } from './chips'
 
 interface AddEventDialogProps {
-  /** 新增位置（目前播放頭，秒） */
+  /** Position for the new event (current playhead, in seconds). */
   time: number
   onCancel: () => void
   onConfirm: (t: EventType) => void
 }
 
-/** Enter 是否由視窗層級處理器確認：按鈕上的 Enter 交給按鈕自己（取消鈕不得確認）。 */
+/** Whether Enter is handled by the window-level handler; buttons handle their own Enter (the cancel button must not confirm). */
 export function enterConfirms(target: { tagName: string } | null): boolean {
   return !target || target.tagName.toUpperCase() !== 'BUTTON'
 }
 
-/** 新增事件對話框（M）：顯示播放頭時間，Enter 確認、Esc 取消。 */
+/** Add-event dialog (M): shows the playhead time, Enter confirms, and Esc cancels. */
 export function AddEventDialog({ time, onCancel, onConfirm }: AddEventDialogProps): JSX.Element {
   const [type, setType] = useState<EventType>('knock')
   const boxRef = useRef<HTMLDivElement>(null)
 
   const titleId = useId()
-  // 焦點陷阱＋Esc 取消＋關閉後還原焦點（共用 a11y/focusTrap）；開啟時聚焦對話框本身，Enter 直接確認
+  // Focus trap, Esc cancellation, and focus restoration on close (shared a11y/focusTrap); focus the dialog on open so Enter confirms immediately.
   useFocusTrap(boxRef, { onEscape: onCancel, initialFocus: () => boxRef.current })
 
   useEffect(() => {

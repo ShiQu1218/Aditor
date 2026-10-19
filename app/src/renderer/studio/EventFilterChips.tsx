@@ -9,7 +9,7 @@ interface EventFilterChipsProps {
   onToggle: (t: EventType) => void
 }
 
-/** 事件類型篩選 chip（帶計數）：圖示色塊＋數量，按下切換該類型。 */
+/** Event-type filter chips with counts: icon swatch and count; click to toggle that type. */
 export function EventFilterChips({ counts, filter, onToggle }: EventFilterChipsProps): JSX.Element {
   const types = i18n.timeline.types
   return (

@@ -1,7 +1,6 @@
-"""每支影片的圖示尺度校準（spec §5.1）：處理 HUD 縮放與非 1080p 錄影。
+"""Per-video icon scale calibration (spec §5.1) handles HUD scaling and recordings below 1080p.
 
-圖示樣板取自 1080p、HUD 100%；其他 HUD 縮放下圖示大小不同。校準一次：找到幾個有加分橫幅的畫格
-（箭頭＋「+」號），在 DEFAULT_SCALES 各尺度比對，取最佳尺度的中位數；之後整支影片只用這一個尺度（速度）。"""
+Icon templates use 1080p footage with HUD at 100%; icons differ in size at other HUD scales. Calibrate once by finding frames with score banners (an arrow and plus sign) and comparing them at each DEFAULT_SCALES value. Use the median of the best scales, then use that single scale for the rest of the video."""
 from __future__ import annotations
 
 import threading
@@ -17,11 +16,11 @@ from .models import VideoInfo
 from .profile import Profile
 
 WANTED_HITS = 5
-PROBE_MIN = 0.45  # 單尺度（1.0）箭頭分數的初篩門檻：尺度偏離 10% 時分數會掉到 0.5–0.7，此門檻只用來挑出值得做多尺度驗證的畫格
+PROBE_MIN = 0.45  # Initial single-scale (1.0) arrow-score threshold: a 10% scale deviation drops the score to 0.5–0.7; this only selects frames for multi-scale verification.
 
 
 def pick_scale(scales: list[float]) -> float:
-    """各命中畫格的最佳尺度 → 中位數（落在兩個尺度之間時取最接近 1.0 的那個）；無畫格回傳 1.0。"""
+    """Return the median of the best scale for each hit frame (if between two scales, choose the one closest to 1.0); return 1.0 when there are no frames."""
     if not scales:
         return 1.0
     med = float(np.median(scales))
@@ -31,7 +30,7 @@ def pick_scale(scales: list[float]) -> float:
 def _collect(path: str, profile: Profile, probe: IconDetector, multi: IconDetector, start: float,
              budget: float, limit: float | None, cancel: threading.Event | None = None,
              codec: str | None = None, hwaccel: bool = True) -> tuple[list[float], float]:
-    """從 start 解碼最多 budget 秒（且不超過時間 limit），回傳 (命中畫格的最佳尺度, 實際掃描秒數)。"""
+    """Decode up to budget seconds from start (without exceeding the time limit); return (best scale for hit frames, actual seconds scanned)."""
     hits: list[float] = []
     scanned = 0.0
     stream = FrameStream(path, profile, start=start, codec=codec, hwaccel=hwaccel)
@@ -57,8 +56,8 @@ def _collect(path: str, profile: Profile, probe: IconDetector, multi: IconDetect
 def calibrate(path: str, info: VideoInfo, profile: Profile, *,
               max_scan_seconds: float = 600.0,
               cancel: threading.Event | None = None, hwaccel: bool = True) -> float:
-    """從 duration/2 起解碼（到尾端後從 0 繼續，總計最多 max_scan_seconds），
-    收集有加分橫幅的畫格，回傳最佳圖示尺度；一張都沒有則 1.0。"""
+    """Decode from duration/2 (continue from 0 after reaching the end, up to max_scan_seconds total), collect frames with
+    score banners, and return the best icon scale; return 1.0 if no such frames are found."""
     probe = IconDetector(profile.dir, scales=(1.0,))
     multi = IconDetector(profile.dir, scales=DEFAULT_SCALES)
     mid = info.duration / 2
@@ -71,24 +70,25 @@ def calibrate(path: str, info: VideoInfo, profile: Profile, *,
     return pick_scale(hits)
 
 
-# ---- 擊殺關鍵字樣板的學習（每支影片一次，見 detect.Keywords） ----
-# 先掃描影片開頭 LEARN_SCAN_SECONDS 秒（稀疏的影片中段可能一個錨點也沒有）；開頭幾乎沒有擊殺、樣板學不齊時，
-# 延伸到影片結尾繼續蒐集錨點，只補上缺的樣板（extend_keywords）。開頭依 jobs 切段平行；每段完整掃描
-# （只有該段已蒐集滿上限時提早結束），結果依時間排序合併，因此學到的樣板與 jobs 無關（jobs=1／4 一致）。
-# analyze 不呼叫 learn_keywords：主分析邊解碼邊用同樣的 AnchorCollector／build_keywords 學（analyze._Learner），
-# 省下這一趟解碼；learn_keywords 留作獨立掃描與「兩者結果相同」的對照測試。
+# ---- Per-video kill keyword template learning (see detect.Keywords) ----
+# Scan the first LEARN_SCAN_SECONDS of the video first (sparse mid-video kills may provide no anchors). If there are too few
+# kills near the beginning to learn all templates, continue collecting anchors through the end and fill only missing templates
+# (extend_keywords). Split the opening window across jobs; scan each segment fully unless its anchor limit is reached early.
+# Merge results in timestamp order so learned templates do not depend on jobs (jobs=1 and jobs=4 produce the same result).
+# analyze does not call learn_keywords: the main analysis learns with the same AnchorCollector/build_keywords while decoding
+# (analyze._Learner), avoiding another decode pass. learn_keywords remains for standalone scanning and equivalence tests.
 LEARN_SCAN_SECONDS = 900.0
-ANCHOR_BANNERS = (4, 4)    # 助攻、擊倒錨點各取前這麼多個「橫幅」（時間相隔 > 2 秒算不同橫幅）
+ANCHOR_BANNERS = (4, 4)    # Number of earliest banners to use for assist and knock anchors (timestamps > 2 seconds apart count as separate banners).
 ANCHORS_PER_BANNER = 2
-KNOCK_ANCHOR_L2 = 0.05     # 擊倒錨點：傷害行細筆畫淨值（＋讀得到像樣的敵人名字指紋）
-KNOCK_SIG_WIDTH = 40       # 擊倒錨點：名字指紋最小寬度
-KNOCK_SIG_DENSITY = 0.12   # 擊倒錨點：名字指紋最小墨密度
-HAND_ANCHOR_MIN = 0.92     # 助攻消滅錨點：握手分數
-MAX_ASSIST_CANDS = 80      # 判斷 assist_by_knock 用的助攻擊倒候選畫格上限
-ASSIST_BY_KNOCK_BANNERS = 2  # 至少這麼多個不同橫幅的助攻擊倒含擊倒關鍵字，才算這支影片的助攻橫幅含擊倒關鍵字
-BANNER_GAP = 2.0           # 錨點時間相隔超過這麼多秒＝不同橫幅
+KNOCK_ANCHOR_L2 = 0.05     # Knock anchor: net fine-stroke value on the damage line, plus a readable enemy-name fingerprint.
+KNOCK_SIG_WIDTH = 40       # Minimum name-fingerprint width for a knock anchor.
+KNOCK_SIG_DENSITY = 0.12   # Minimum name-fingerprint ink density for a knock anchor.
+HAND_ANCHOR_MIN = 0.92     # Handshake score for an assist-elimination anchor.
+MAX_ASSIST_CANDS = 80      # Maximum assist-knock candidate frames used to determine assist_by_knock.
+ASSIST_BY_KNOCK_BANNERS = 2  # Number of distinct assist-knock banners containing the knock keyword required to treat this video's assist banners as containing it.
+BANNER_GAP = 2.0           # Anchor timestamps farther apart than this count as separate banners.
 
-Group = tuple[float, float, list]   # (第一格時間, 最後一格時間, 錨點遮罩們)
+Group = tuple[float, float, list]   # (first frame timestamp, last frame timestamp, anchor masks)
 
 
 class _Anchors:
@@ -110,12 +110,13 @@ class _Anchors:
         return len(self.groups) >= self.want
 
     def accepts(self, t: float) -> bool:
-        """還需要這個時間點的錨點嗎（群數沒滿，或仍屬最後一個群）。"""
+        """Whether an anchor is still needed at this timestamp (the group limit is not reached, or it belongs to the last group)."""
         return not self.done or t - self.groups[-1][1] <= BANNER_GAP
 
 
 def _merge_groups(parts: list[list[Group]], want: int) -> list[Group]:
-    """各段的錨點群依時間合併（被段界切開的同一橫幅接回去，錨點取時間上最早的 ANCHORS_PER_BANNER 個），取前 want 個。"""
+    """Merge anchor groups from each segment in timestamp order (rejoin banners split at segment boundaries and take the earliest
+    ANCHORS_PER_BANNER anchors by timestamp), then return the first want groups."""
     out: list[Group] = []
     for groups in parts:
         for t0, t1, strips in groups:
@@ -133,18 +134,18 @@ def _hit_groups(cands: list, tpl: np.ndarray) -> int:
 
 
 class AnchorCollector:
-    """逐格餵畫面，蒐集助攻消滅（握手）與擊倒（敵人色名字＋傷害行）的錨點。"""
+    """Feed frames one at a time and collect anchors for assist eliminations (handshake) and knocks (enemy-colored name plus damage line)."""
 
     def __init__(self, profile: Profile, det: Detector):
         self.profile, self.det = profile, det
-        self.assist_cands: list[tuple[float, np.ndarray, int, int]] = []  # (t, 第一行白字遮罩, plus_x, line_l)
+        self.assist_cands: list[tuple[float, np.ndarray, int, int]] = []  # (t, first-line white-text mask, plus_x, line_l)
         self.hand, self.knock = _Anchors(ANCHOR_BANNERS[0]), _Anchors(ANCHOR_BANNERS[1])
         self._last_hit = -1e9
         self._hand_hw = det.icons.tpl["hand"][det.icon_scale].shape
 
     def full(self, t: float) -> bool:
-        """已蒐集滿上限（本段不需要再掃）；要等最後一個錨點橫幅結束（靜默 > BANNER_GAP）才算，
-        否則最後一群的錨點會被截斷，與不切段時不同。"""
+        """Whether the limit has been reached and this segment needs no more scanning. Wait until the last anchor banner ends
+        (silence > BANNER_GAP), or the final group's anchors may be truncated compared with an unsegmented scan."""
         return (self.hand.done and self.knock.done and len(self.assist_cands) >= MAX_ASSIST_CANDS
                 and t - self._last_hit > BANNER_GAP)
 
@@ -155,7 +156,7 @@ class AnchorCollector:
         self.feed_features(t, banner, det.icons.features(banner))
 
     def feed_features(self, t: float, banner, f: IconFrame) -> None:
-        """f＝這格已算好的圖示特徵（主分析邊解碼邊學時直接沿用，不重算）。"""
+        """f contains the icon features already computed for this frame (reused during main analysis learning to avoid recomputation)."""
         if f.kind == "assist_elim" and f.hand >= HAND_ANCHOR_MIN and self.hand.accepts(t):
             s = hand_strip(banner, f, self._hand_hw, self.profile)
             if s is not None:
@@ -163,11 +164,11 @@ class AnchorCollector:
                 self._last_hit = t
         elif (f.kind == "assist_knock" and len(self.assist_cands) < MAX_ASSIST_CANDS
               and f.line2_ink - f.line2_ink_bg < 0.03 and f.name_color - f.name_color_bg < 20):
-            # 助攻擊倒候選：沒有傷害行、沒有敵人色名字（排除被判成助攻的擊倒）
+            # Assist-knock candidate: no damage line and no enemy-colored name (exclude knocks classified as assists).
             self.assist_cands.append((t, row_ink(banner, f, self.profile, pad=5), f.plus_x, f.line_l))
             self._last_hit = t
         elif f.kind == "knock" and f.line2_ink - f.line2_ink_bg >= KNOCK_ANCHOR_L2 and self.knock.accepts(t):
-            # 可靠的擊倒＝有傷害行，且讀得到像樣的敵人色名字指紋（紅／黃／粉紅皆可，與語言無關）
+            # Reliable knock: has a damage line and a readable enemy-colored name fingerprint (red/yellow/pink; language-independent).
             sig = self.det._knock_sig(banner, f)
             if sig is not None and sig.width >= KNOCK_SIG_WIDTH and float(sig.bits.mean()) >= KNOCK_SIG_DENSITY:
                 s = knock_strip(banner, f, self.profile)
@@ -177,27 +178,29 @@ class AnchorCollector:
 
 
 def build_keywords(cols: list[AnchorCollector]) -> Keywords:
-    """各段收集器（依時間順序）合併後學出樣板；沒有足夠錨點（< 3 個不同橫幅）的樣板為 None。"""
+    """Learn templates after merging collectors from each segment in timestamp order; templates with too few anchors (< 3 distinct banners) are None."""
     hand = _merge_groups([c.hand.groups for c in cols], ANCHOR_BANNERS[0])
     knock = _merge_groups([c.knock.groups for c in cols], ANCHOR_BANNERS[1])
     cands = sorted((x for c in cols for x in c.assist_cands), key=lambda x: x[0])[:MAX_ASSIST_CANDS]
     kw = Keywords(_consensus([s for _, _, ss in hand for s in ss], len(hand)),
                   _consensus([s for _, _, ss in knock for s in ss], len(knock)))
     if kw.knock is not None:
-        # 助攻擊倒候選（含非擊殺橫幅）中，有多少個不同橫幅的字含擊倒關鍵字
+        # Count distinct assist-knock candidate banners (including non-kill banners) whose text contains the knock keyword.
         kw.assist_by_knock = _hit_groups(cands, kw.knock) >= ASSIST_BY_KNOCK_BANNERS
     return kw
 
 
 def keywords_complete(kw: Keywords | None) -> bool:
-    """學到的樣板已能驗證所有類別（不需要延伸學習；見 Detector._verify）：擊倒要有擊倒樣板；助攻擊倒要有助攻前綴樣板，
-    或這支影片的助攻橫幅含擊倒關鍵字。助攻消滅本來就少見，不能要求一定學到助攻前綴，否則多數影片都會延伸學習到結尾。"""
+    """Whether learned templates can verify every category without extended learning (see Detector._verify): knocks need a knock
+    template; assist-knocks need an assist-prefix template or this video's assist banners must contain the knock keyword.
+    Assist eliminations are uncommon, so requiring an assist prefix would make most videos extend learning to the end."""
     return kw is not None and kw.knock is not None and (kw.assist is not None or kw.assist_by_knock)
 
 
 def extend_keywords(base: Keywords, wider: Keywords) -> Keywords:
-    """延伸學習：學習範圍內已學到的樣板維持不變（結果與只學前段時相同），只補上前段學不到、
-    擴大到整支影片後才學到的樣板。wider＝前段＋延伸範圍的收集器一起 build_keywords 的結果。"""
+    """Extended learning keeps templates learned in the initial window unchanged (same result as learning only the opening section)
+    and fills only templates that could be learned after scanning a wider range. wider is the build_keywords result from collectors
+    for both the initial and extended windows."""
     knock = base.knock if base.knock is not None else wider.knock
     by_knock = base.assist_by_knock if base.knock is not None else wider.assist_by_knock
     return Keywords(base.assist if base.assist is not None else wider.assist, knock, by_knock)
@@ -213,7 +216,7 @@ def same_keywords(a: Keywords | None, b: Keywords | None) -> bool:
 def _scan_segment(path: str, profile: Profile, scale: float, start: float, end: float,
                   cancel: threading.Event | None, codec: str | None, hwaccel: bool,
                   abort: threading.Event | None = None) -> AnchorCollector:
-    """abort：其他段已失敗時由 learn_keywords 設定，本段立刻停止（不必解碼完整段才回報錯誤）。"""
+    """abort is set by learn_keywords when another segment fails; stop this segment immediately instead of decoding it fully before reporting the error."""
     col = AnchorCollector(profile, Detector(profile, scale))
     stream = FrameStream(path, profile, start=start, end=end, codec=codec, hwaccel=hwaccel)
     try:
@@ -231,9 +234,10 @@ def _scan_segment(path: str, profile: Profile, scale: float, start: float, end: 
 def learn_keywords(path: str, info: VideoInfo, profile: Profile, scale: float, *, jobs: int = 1,
                    max_scan_seconds: float = LEARN_SCAN_SECONDS, cancel: threading.Event | None = None,
                    hwaccel: bool = True) -> Keywords:
-    """掃描影片開頭（最多 max_scan_seconds）蒐集助攻消滅與擊倒橫幅的錨點，學出關鍵字樣板（見 build_keywords）。
-    前段學不齊（開頭幾乎沒有擊殺）時延伸到影片結尾繼續蒐集，只補上缺的樣板（見 extend_keywords）。
-    仍沒有足夠錨點的樣板為 None（不啟用，行為退回只看圖示）。jobs 只影響速度，結果與 jobs 無關。"""
+    """Scan the start of the video (up to max_scan_seconds) for assist-elimination and knock-banner anchors, then learn keyword
+    templates (see build_keywords). If the opening section lacks enough kills to learn all templates, continue collecting
+    through the end and fill only missing templates (see extend_keywords). Templates without enough anchors remain None
+    (disabled; behavior falls back to icons only). jobs affects speed but not the result."""
     total = min(info.duration, max_scan_seconds)
     cols = _scan_head(path, info, profile, scale, total, jobs, cancel, hwaccel)
     base = build_keywords(cols)
@@ -245,7 +249,7 @@ def learn_keywords(path: str, info: VideoInfo, profile: Profile, scale: float, *
 
 def _scan_head(path: str, info: VideoInfo, profile: Profile, scale: float, total: float, jobs: int,
                cancel: threading.Event | None, hwaccel: bool) -> list[AnchorCollector]:
-    """[0, total) 依 jobs 切段平行蒐集錨點，回傳依時間排序的各段收集器。"""
+    """Split [0, total) across jobs to collect anchors in parallel, and return the segment collectors sorted by timestamp."""
     n = max(1, min(int(jobs), int(total // 30)))
     bounds = [round(total * i / n / FPS_GRID) * FPS_GRID for i in range(n)] + [total]
     spans = [(bounds[i], bounds[i + 1]) for i in range(n)]
@@ -258,7 +262,7 @@ def _scan_head(path: str, info: VideoInfo, profile: Profile, scale: float, total
         try:
             return _scan_segment(path, profile, scale, a, b, cancel, info.codec, hwaccel, abort)
         except BaseException:
-            abort.set()  # 一段失敗 → 其他段立刻停止
+            abort.set()  # One segment failed: stop all others immediately.
             raise
 
     cols: list[AnchorCollector] = []
@@ -269,7 +273,7 @@ def _scan_head(path: str, info: VideoInfo, profile: Profile, scale: float, total
             try:
                 cols.append(f.result())
             except BaseException as e:  # noqa: BLE001
-                # 真正的錯誤優先於「因其他段失敗而停止」的 Cancelled（使用者取消時全部都是 Cancelled）
+                # Prefer the actual failure over Cancelled errors caused by another segment failing (all errors are Cancelled on user cancellation).
                 if error is None or (isinstance(error, Cancelled) and not isinstance(e, Cancelled)):
                     error = e
     if error is not None:

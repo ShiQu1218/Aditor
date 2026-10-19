@@ -1,4 +1,4 @@
-"""列出文字偵測逐格結果聚成的 run：tlist.py LAB LANG"""
+"""List runs grouped from per-frame text detection results: tlist.py LAB LANG"""
 import sys
 from fr import *
 lab, lang = sys.argv[1], sys.argv[2]

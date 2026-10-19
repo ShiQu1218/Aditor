@@ -3,9 +3,9 @@ import { i18n } from '../i18n'
 import { ChevronLeft, Menu } from '../components/icons'
 
 interface StudioHeaderProps {
-  /** 影片檔名 */
+  /** Video filename. */
   title: string
-  /** 1920×1080 · H.264 · 13:42 · 19 個事件 */
+  /** Example: 1920×1080 · H.264 · 13:42 · 19 events. */
   meta: string
   statusDone: boolean
   asideOpen: boolean
@@ -13,7 +13,7 @@ interface StudioHeaderProps {
   onToggleAside: () => void
 }
 
-/** 工作室頂欄：返回、檔名與資訊、狀態、側欄切換。 */
+  /** Studio header: back, filename and metadata, status, and sidebar toggle. */
 export function StudioHeader({
   title,
   meta,

@@ -1,26 +1,26 @@
 import type { ProjectItem } from './project'
 
 /**
- * 專案軌版面純函式（Task 13）：
- * 卡片寬度（6 px/秒、夾在 92–360）、拖曳插入位置（中點判定）、
- * 把手拖曳換算新起訖（最短 1 秒、不超出影片）。
+ * Pure project-track layout functions (Task 13):
+ * card width (6 px/second, clamped to 92–360), drag insertion position (based on midpoints),
+ * and new clip bounds from handle drags (minimum 1 second, within the video duration).
  */
 
 const PX_PER_SEC = 6
 const MIN_W = 92
 const MAX_W = 360
-/** 拖曳調整把手的最短片段長度（秒）；`trimItem` 自身保留 0.1 s 容差。 */
+/** Minimum clip length in seconds for drag handles; `trimItem` itself keeps a 0.1 s tolerance. */
 const MIN_LEN = 1
 
-/** 片段卡寬度：6 px/秒，夾在 [92, 360]。 */
+/** Clip card width: 6 px/second, clamped to [92, 360]. */
 export function itemWidth(durationSec: number): number {
   const raw = Math.max(0, durationSec) * PX_PER_SEC
   return Math.max(MIN_W, Math.min(MAX_W, raw))
 }
 
 /**
- * 拖曳插入位置：由左而右找第一張中點在指標右側的卡片 → 插到它前面；
- * 都不到時插到最後（回傳 0..len 的插入索引）。
+ * Find the first card from left to right whose midpoint is to the right of the pointer, then insert before it.
+ * If none match, insert at the end (returns an insertion index from 0 to len).
  */
 export function dropIndex(xs: number[], widths: number[], pointerX: number): number {
   for (let i = 0; i < xs.length; i++) {
@@ -38,8 +38,8 @@ function round3(v: number): number {
 }
 
 /**
- * 拖曳把手：依位移換算拖曳邊的新時間（秒）。
- * 起點夾在 [0, end - 1]、終點夾在 [start + 1, duration]；另一邊不變。
+ * Convert handle drag distance into a new time in seconds for the dragged edge.
+ * Clamp the start to [0, end - 1] and the end to [start + 1, duration]; leave the other edge unchanged.
  */
 export function trimFromDrag(
   item: Pick<ProjectItem, 'start' | 'end'>,
@@ -63,8 +63,8 @@ function samePath(a: string, b: string): boolean {
 }
 
 /**
- * 把手拖曳的終點上界：只有「開啟的影片」知道長度；其他來源的長度未知 → Infinity
- * （不得用開啟影片的長度去夾別的來源）。
+ * Upper bound for a handle drag: only the currently open video has a known duration; use Infinity for other sources.
+ * Do not clamp another source to the duration of the open video.
  */
 export function trimUpperBound(itemSource: string, openVideo: string, openDuration: number): number {
   return samePath(itemSource, openVideo) && openDuration > 0 ? openDuration : Infinity

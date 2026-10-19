@@ -37,9 +37,9 @@ export function LibraryScreen({ onSelectVideo, onOpenSettings }: LibraryScreenPr
   const searchRef = useRef<HTMLInputElement>(null)
   const queryRef = useRef(query)
   queryRef.current = query
-  // 設定「建議代理檔」（即時）：關閉時卡片不顯示「建議代理檔」徽章
+  // Proxy suggestion setting (immediate): when disabled, cards hide the proxy-suggestion badge.
   const [proxySuggest, setProxySuggest] = useState(true)
-  // 影片庫檔案損毀時（已由 main 備份）提示一次
+  // Show one notice when the library file is corrupt (main has already backed it up).
   useEffect(() => {
     void window.api?.library?.getLoadNotice?.()?.then((p: string | null) => {
       if (p) toast({ message: t.corruptNotice.replace('{path}', p) })
@@ -53,10 +53,10 @@ export function LibraryScreen({ onSelectVideo, onOpenSettings }: LibraryScreenPr
     openMenuClose.current = close
   }, [])
 
-  // main 已把 library:updated 節流為最多每 500 ms 一次（含尾端），這裡不再另行節流
+  // Main already throttles library:updated to at most once every 500 ms (including a trailing event); do not throttle again here.
   const load = useCallback(async () => {
     if (library500Requested()) {
-      // 僅 DEV：動態載入，正式包不含合成資料（見 libraryFixtureFlag）
+      // Development only: load dynamically so production builds exclude synthetic data (see libraryFixtureFlag).
       const m = await import('../dev/libraryFixture')
       setEntries(m.libraryFixtureOnce())
       return
@@ -78,7 +78,7 @@ export function LibraryScreen({ onSelectVideo, onOpenSettings }: LibraryScreenPr
       focusSearch: () => searchRef.current?.focus(),
       toggleFavoriteFilter: () => setFavoriteOnly((v) => !v),
       showShortcuts: overlay.openShortcuts,
-      // Esc 只走 keymap（已排除 IME 組字）：最上層優先——開啟中的卡片選單 → 搜尋字串 → 無動作
+      // Esc is handled only by keymap (IME composition is excluded), in priority order: open card menu → search text → no action.
       closeOverlay: () => {
         const action = resolveLibraryEscape({ menuOpen: openMenuClose.current !== null, query: queryRef.current })
         if (action === 'close-menu') openMenuClose.current?.()
@@ -89,7 +89,7 @@ export function LibraryScreen({ onSelectVideo, onOpenSettings }: LibraryScreenPr
   )
 
   const filtered = useMemo(() => filterEntries(entries, { query, favoriteOnly, kind }), [entries, query, favoriteOnly, kind])
-  const now = useLocalNow() // 本地午夜或視窗重新取得焦點後重算「今天／昨天」
+  const now = useLocalNow() // Recalculate Today/Yesterday after local midnight or when the window regains focus.
   const groups = useMemo(() => groupByDate(filtered, now), [filtered, now])
   const counts = useMemo(
     () => ({
@@ -153,7 +153,7 @@ export function LibraryScreen({ onSelectVideo, onOpenSettings }: LibraryScreenPr
         setDragging(true)
       }}
       onDragLeave={(e) => {
-        // 只在離開整個畫面時收起覆蓋層
+        // Dismiss the overlay only when leaving the entire screen.
         if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragging(false)
       }}
       onDrop={handleDrop}

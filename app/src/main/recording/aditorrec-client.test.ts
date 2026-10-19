@@ -18,7 +18,7 @@ afterEach(async () => {
 })
 
 describe('aditorrec JSON-lines client', () => {
-  it('握手、遞增 id 的亂序回覆、事件及正常停止', async () => {
+  it('handshakes, handles out-of-order replies with increasing IDs and events, and stops cleanly', async () => {
     const root = tempRoot(); roots.push(root)
     const trace = path.join(root, 'trace.jsonl')
     const value = new AditorrecClient(fakeCommand('normal', { FAKE_RECORDER_TRACE: trace }))
@@ -37,11 +37,11 @@ describe('aditorrec JSON-lines client', () => {
     expect(fs.readFileSync(trace, 'utf8').trim().split('\n').map((line) => JSON.parse(line).id)).toEqual([1, 2, 3, 4, 5])
   })
 
-  it.each(['invalid-json', 'oversize'])('拒絕不合法協定：%s', async (mode) => {
+  it.each(['invalid-json', 'oversize'])('Reject invalid protocol data: %s', async (mode) => {
     await expect(client(mode).hello()).rejects.toMatchObject({ code: 'bad_reply' })
   })
 
-  it('保留最後 64 KB stderr 並拒絕所有等待中的請求', async () => {
+  it('retains the last 64 KB of stderr and rejects all pending requests', async () => {
     const value = client('stderr-exit')
     const error = await value.hello().catch((e: RecorderError) => e)
     if (!(error instanceof RecorderError)) throw new Error('測試預期收到錄影程序錯誤')
@@ -50,7 +50,7 @@ describe('aditorrec JSON-lines client', () => {
     expect(Buffer.byteLength(error.message)).toBeLessThan(65640)
   })
 
-  it('hello 10 秒逾時並可關閉子程序', async () => {
+  it('times out hello after 10 seconds and closes the child process', async () => {
     vi.useFakeTimers()
     const value = client('hello-timeout')
     const result = value.hello().catch((error) => error)
@@ -58,7 +58,7 @@ describe('aditorrec JSON-lines client', () => {
     expect(await result).toMatchObject({ code: 'recorder_timeout' })
   })
 
-  it('stop 15 秒逾時後關閉，且啟動中的事件等待可取消', async () => {
+  it('closes after stop times out at 15 seconds and allows pending startup-event waits to be cancelled', async () => {
     const root = tempRoot(); roots.push(root)
     const value = client('stop-stall')
     await value.hello()
@@ -74,7 +74,7 @@ describe('aditorrec JSON-lines client', () => {
     expect(await pending).toMatchObject({ code: 'recorder_closed' })
   })
 
-  it('找不到執行檔會回報錯誤', async () => {
+  it('reports an error when the executable cannot be found', async () => {
     const root = tempRoot(); roots.push(root)
     const value = new AditorrecClient({ command: path.join(root, 'missing.exe'), args: [] })
     clients.push(value)

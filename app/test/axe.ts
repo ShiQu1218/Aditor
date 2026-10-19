@@ -1,14 +1,18 @@
-// axe-core（jsdom）輔助：只回報 serious／critical 違規，並列出停用的規則與理由。
+// axe-core (jsdom) helper: report only serious/critical violations and list disabled rules with their rationale.
 import axe, { type Result, type RunOptions } from 'axe-core'
 
 /**
- * jsdom 不做版面與繪圖，下列規則在這裡無法得到可信結果，因此停用（其保證改由別處鎖定）：
- * - color-contrast：需要實際算色／版面。對比由 a11y/contrast.test.ts 鎖定 tokens.css 的整個矩陣（spec §5.1）。
- * - color-contrast-enhanced：同上（AAA，非本專案目標）。
- * - target-size：需要元素實際尺寸；最小點擊目標以 CSS（26/32 px）與 spec §3.8 為準，jsdom 全部回 0×0。
- * - scrollable-region-focusable：需要 scrollHeight/clientHeight；jsdom 恆為 0，永遠不會觸發（停用以免給人假安心）；
- *   可捲動區域的鍵盤可達性改由「容器 tabIndex／內含可聚焦子項」的元件測試鎖定。
- * - landmark-*／region／page-has-heading-one：頁面級最佳實務（moderate），元件測試只掛載片段。
+ * jsdom does not perform layout or drawing, so these rules cannot produce reliable results here and are disabled
+ * (their guarantees are covered elsewhere):
+ * - color-contrast: Requires actual color and layout calculations. a11y/contrast.test.ts checks the full tokens.css
+ *   matrix (spec §5.1).
+ * - color-contrast-enhanced: Same as above (AAA, outside this project's goals).
+ * - target-size: Requires actual element dimensions. The minimum target sizes are defined in CSS (26/32 px) and
+ *   spec §3.8; jsdom reports 0×0 for every element.
+ * - scrollable-region-focusable: Requires scrollHeight/clientHeight; jsdom always reports 0, so this never fires
+ *   (disabled to avoid false confidence). Component tests cover keyboard access using container tabIndex and
+ *   focusable descendants.
+ * - landmark-*, region, and page-has-heading-one: Page-level best practices (moderate); component tests mount fragments only.
  */
 export const DISABLED_RULES: Record<string, string> = {
   'color-contrast': 'jsdom has no layout/paint; contrast is locked by a11y/contrast.test.ts against tokens.css',

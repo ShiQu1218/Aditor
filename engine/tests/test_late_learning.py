@@ -1,9 +1,8 @@
-"""延伸學習：影片開頭（學習範圍）幾乎沒有擊殺、關鍵字樣板學不齊時，繼續往後蒐集錨點補上缺的樣板，
-並用學到的樣板重新定案整支影片（離線不重新解碼、即時不吃光記憶體），結果與 jobs、離線／即時無關。
+"""Extended learning: when the video starts with too few kills to learn all keyword templates, collect later anchors to fill in missing templates,
+then reclassify the entire video with the learned templates (without re-decoding offline or using unbounded memory live), independent of jobs or offline/live mode.
 
-用合成的逐格結果驅動真的 analyze／LiveKills／EventTracker／derive：假偵測器把「真擊倒」與「長得像擊倒的
-非擊殺橫幅（例如敵方小隊已消滅）」都產出待驗證格；有擊倒樣板時非擊殺橫幅被擋掉，沒有樣板時兩者都算擊倒。
-假收集器把真擊倒當錨點，假 build_keywords 在 ≥ 3 個不同橫幅時學出擊倒樣板。"""
+Drive the real analyze/LiveKills/EventTracker/derive pipeline with synthetic frame results. A fake detector marks both real knocks and non-kill banners that resemble knocks (such as enemy squad eliminated) for validation; a knock template filters non-kill banners, while without one both count as knocks.
+A fake collector treats real knocks as anchors, and a fake build_keywords learns a knock template from at least three distinct banners."""
 import threading
 from types import SimpleNamespace
 
@@ -21,7 +20,7 @@ from conftest import make_video
 
 STEP = 0.25
 DURATION = 60.0
-LEARN = 10.0          # 測試用學習範圍（正式為 900 秒）
+LEARN = 10.0          # Test learning range (production value is 900 seconds).
 TPL = np.ones((2, 2), np.float32)
 
 
@@ -34,9 +33,9 @@ def _script(kills, fakes):
     return s
 
 
-# 開頭 10 秒只有一個非擊殺橫幅；真擊倒都在學習範圍之後；結尾前還有一個非擊殺橫幅
+# The first 10 seconds contain one non-kill banner; all real knocks occur after the learning range, with another non-kill banner near the end.
 LATE = _script(kills=[(14.0, 16.0), (22.0, 24.0), (31.0, 33.0), (41.0, 43.0)], fakes=[(4.0, 6.0), (50.0, 52.0)])
-# 對照：真擊倒都在學習範圍內
+# Control case: all real knocks are inside the learning range.
 EARLY = _script(kills=[(0.5, 1.5), (4.0, 5.0), (7.5, 8.5)], fakes=[(20.0, 22.0), (50.0, 52.0)])
 
 
@@ -83,7 +82,7 @@ class _FakeDetector:
 
 
 class _FakeCollector:
-    """真擊倒的畫格當錨點（相隔 > BANNER_GAP 秒算不同橫幅）。"""
+    """Use frames with real knocks as anchors (gaps > BANNER_GAP seconds indicate separate banners)."""
     script: dict = {}
 
     def __init__(self, profile, det):
@@ -130,7 +129,7 @@ def _knocks(events):
             for e in events]
 
 
-# ---- 純函式 ----
+# ---- Pure functions ----
 
 def test_extend_keeps_head_templates_and_only_fills_missing_ones():
     head_k, wide_k, wide_a = TPL, TPL * 0.5, TPL * 0.2
@@ -140,14 +139,14 @@ def test_extend_keeps_head_templates_and_only_fills_missing_ones():
     out = extend_keywords(Keywords(), Keywords(wide_a, wide_k, True))
     assert out.knock is wide_k and out.assist_by_knock is True
     assert keywords_complete(Keywords(TPL, TPL)) and not keywords_complete(Keywords(None, TPL))
-    # 助攻消滅本來就少見：助攻橫幅含擊倒關鍵字（中文、英文）時，只有擊倒樣板也能驗證所有類別，不需要延伸學習
+    # Assist-elim is uncommon. When assist banners contain knock keywords (in Chinese or English), a knock template alone can validate all categories without extended learning.
     assert keywords_complete(Keywords(None, TPL, assist_by_knock=True))
     assert not keywords_complete(Keywords(TPL, None, assist_by_knock=True))
     assert same_keywords(Keywords(None, TPL), Keywords(None, TPL.copy()))
     assert not same_keywords(Keywords(None, TPL), Keywords())
 
 
-# ---- 離線 ----
+# ---- Offline ----
 
 def test_offline_learns_after_head_and_rejects_lookalike_banners(fake_env):
     doc = az.analyze(str(fake_env.video), fake_env.profile, cache_dir=fake_env.tmp / "c", jobs=1)
@@ -188,7 +187,7 @@ def test_cancel_while_late_learning_saves_only_calibration_and_resume_matches(fa
         class W:
             def __iter__(s):
                 for t, b, sp in it:
-                    if t >= 45.0:  # 延伸學習進行中（學習範圍 10 秒早已結束）
+                    if t >= 45.0:  # Extended learning is active (the 10-second learning range ended long ago).
                         cancel.set()
                     yield t, b, sp
 
@@ -202,12 +201,12 @@ def test_cancel_while_late_learning_saves_only_calibration_and_resume_matches(fa
             az.analyze(str(fake_env.video), fake_env.profile, cache_dir=cache, cancel=cancel, jobs=1)
     part = load_cache(cache_path(str(fake_env.video), cache))
     assert part["analysis"]["status"] == "partial" and part["events"] == []
-    assert "keywords" not in part["analysis"]  # 未定案的樣板不寫入：接續時重新學（含延伸學習）
+    assert "keywords" not in part["analysis"]  # Do not write unfinalized templates; relearn them on resume, including extended learning.
     done = az.analyze(str(fake_env.video), fake_env.profile, cache_dir=cache, jobs=1)
     assert _knocks(done["events"]) == _knocks(full["events"])
 
 
-# ---- 即時 ----
+# ---- Live ----
 
 class _FakeCalibration:
     def __init__(self, profile, max_scan, max_bytes):
@@ -243,8 +242,8 @@ def test_live_matches_offline_with_late_learning(live_env):
 def test_live_snapshot_drops_lookalike_once_learned_mid_stream(live_env):
     kills = lv.LiveKills(live_env.profile, learn_seconds=LEARN)
     _run_live(kills, upto=20.0)
-    assert ("knock", 4.0) in _knocks(kills.snapshot()[0])  # 只學到 1 個橫幅：非擊殺橫幅暫時算擊倒
-    _run_live_from(kills, 20.0, 36.0)  # 第 3 個真擊倒（31–33 秒）之後學到擊倒樣板 → 立刻重新定案
+    assert ("knock", 4.0) in _knocks(kills.snapshot()[0])  # With only one learned banner, the non-kill banner is temporarily treated as a knock.
+    _run_live_from(kills, 20.0, 36.0)  # Learn the knock template after the third real knock (31–33 seconds), then immediately finalize again.
     assert _knocks(kills.snapshot()[0]) == [("knock", 14.0), ("knock", 22.0), ("knock", 31.0)]
 
 
@@ -254,7 +253,7 @@ def test_live_late_learning_memory_cap_degrades_without_crashing(live_env):
     _run_live(kills)
     events, _ = kills.finish()
     assert "late_learn_cap" in kills.degraded
-    assert any("延伸學習" in m for m in logs)
+    assert any("Extended learning" in m for m in logs)
     assert len(events) >= 4
 
 

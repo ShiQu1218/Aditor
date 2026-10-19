@@ -30,7 +30,7 @@ function pickStringOrNull(v: unknown, fallback: string | null): string | null {
   return typeof v === 'string' || v === null ? v : fallback
 }
 
-/** 字串陣列：非陣列回退；陣列中非字串項目剔除。 */
+/** String array: fall back when not an array; remove non-string items from arrays. */
 function pickStringArray(v: unknown, fallback: string[]): string[] {
   if (!Array.isArray(v)) {
     return fallback
@@ -46,7 +46,7 @@ function pickProjectTrackCollapsed(v: unknown, fallback: 'auto' | boolean): 'aut
   return v === 'auto' || typeof v === 'boolean' ? v : fallback
 }
 
-/** autoclip 逐欄位驗證：型別／範圍不符的欄位回退 fallback，其餘保留。 */
+/** Validate autoclip fields individually: use fallback for fields with invalid types/ranges and preserve the rest. */
 function pickAutoClip(v: unknown, fallback: AutoClipParams): AutoClipParams {
   const src = isPlainObject(v) ? v : {}
   return {
@@ -58,7 +58,7 @@ function pickAutoClip(v: unknown, fallback: AutoClipParams): AutoClipParams {
   }
 }
 
-/** 錄影數值夾限；型別錯誤與非有限數值保留原值。 */
+/** Clamp recording numeric values; preserve the original value when the type is wrong or the value is non-finite. */
 function clampRecordingNumber(v: unknown, range: { min: number; max: number }, fallback: number): number {
   return typeof v === 'number' && Number.isFinite(v) ? Math.min(range.max, Math.max(range.min, v)) : fallback
 }
@@ -112,14 +112,14 @@ function pickRecording(v: unknown, base: RecordingSettings): RecordingSettings {
   }
 }
 
-/** 深拷貝（避免呼叫端改到內部狀態或 DEFAULT_SETTINGS）。 */
+/** Deep copy (prevent callers from mutating internal state or DEFAULT_SETTINGS). */
 function cloneSettings(s: Settings): Settings {
   return { ...s, watchFolders: [...s.watchFolders], autoclip: { ...s.autoclip }, recording: { ...s.recording } }
 }
 
 /**
- * 以 base 為底，逐欄位套用 src 中「型別正確且在範圍內」的值：
- * 無效／缺少的欄位保留 base 值（整份不作廢）、未知鍵丟棄、version 一律為現行版本。
+ * Start with base and apply values from src field by field when their types and ranges are valid:
+ * keep base values for invalid/missing fields (do not invalidate the whole object), discard unknown keys, and always use the current version.
  */
 function applySettings(base: Settings, src: unknown): Settings {
   const s = isPlainObject(src) ? src : {}
@@ -150,8 +150,8 @@ function applySettings(base: Settings, src: unknown): Settings {
 }
 
 /**
- * 把任意來源（舊版／損毀欄位）的原始資料遷移並正規化為現行設定：
- * `version` 缺失或較舊一律視為舊版，已知且合法的值保留、其餘逐欄位回退預設。
+ * Migrate and normalize raw data from any source (legacy/invalid fields) into current settings:
+ * treat a missing or older `version` as legacy, preserve known valid values, and fall back to defaults for other fields individually.
  */
 export function migrateSettings(raw: unknown): Settings {
   const migrated = applySettings(cloneSettings(DEFAULT_SETTINGS), raw)
@@ -162,13 +162,13 @@ export function migrateSettings(raw: unknown): Settings {
       migrated.recording.outputDir = null
     }
   }
-  // 舊設定檔的 gameLang（已移除：偵測與語言無關）等未知欄位由 applySettings 安全丟棄
+  // applySettings safely discards unknown fields such as gameLang from legacy settings (removed because detection is language-independent).
   return migrated
 }
 
 /**
- * 讀取設定檔：檔案不存在 → 預設值（不建立檔案）；
- * JSON 損毀 → 原檔改名 `<file>.bak` 後回預設；其餘走 `migrateSettings` 正規化。
+ * Read settings: missing file → defaults (do not create a file);
+ * corrupt JSON → rename the original to `<file>.bak` and return defaults; otherwise normalize through `migrateSettings`.
  */
 export function loadSettings(file: string): Settings {
   let raw: string
@@ -192,7 +192,7 @@ export function loadSettings(file: string): Settings {
   return migrateSettings(parsed)
 }
 
-/** 損毀檔案改名為 `<file>.bak`（失敗只記錄，不影響回傳預設值）。 */
+/** Rename a corrupt file to `<file>.bak` (log failures without affecting the returned defaults). */
 function backupCorrupt(file: string): void {
   try {
     fs.renameSync(file, `${file}.bak`)
@@ -202,8 +202,8 @@ function backupCorrupt(file: string): void {
 }
 
 /**
- * 原子寫入（暫存檔＋rename）：寫入失敗或 `renameSync` 失敗時回傳 false，
- * 既有檔案保持完好、暫存檔清除。
+ * Atomic write (temporary file + rename): return false on write or `renameSync` failure;
+ * preserve the existing file and remove the temporary file.
  */
 export function saveSettings(file: string, s: Settings): boolean {
   const tmp = `${file}.tmp`
@@ -224,17 +224,17 @@ export function saveSettings(file: string, s: Settings): boolean {
 }
 
 /**
- * 設定記憶體狀態＋持久化的唯一入口（main process）。
- * `set(partial)` 只套用合法欄位並通知訂閱者，回傳 `{ settings, persisted }`：
- * 寫檔失敗時記憶體仍更新、`persisted=false`（呼叫端必須讓使用者看見），
- * 之後任何一次 `set`（即使沒有欄位變更）都會再嘗試補寫。
- * 沒有任何欄位實際變更且磁碟已是最新時不寫檔（磁碟內容與修改時間保持不變）。
+ * The only entry point for in-memory settings state and persistence (main process).
+ * `set(partial)` applies only valid fields, notifies subscribers, and returns `{ settings, persisted }`:
+ * on write failure memory is still updated and `persisted=false` (the caller must surface this to the user),
+ * and every later `set` retries the write even when no fields changed.
+ * Do not write when no fields changed and disk is current (leave file contents and modification time unchanged).
  */
 export class SettingsStore {
   private file: string
   private settings: Settings
   private listeners: Array<(s: Settings) => void> = []
-  /** 記憶體領先磁碟（上次寫檔失敗）時為 true */
+  /** True when memory is ahead of disk (the previous write failed). */
   private dirty = false
 
   constructor(file: string) {
@@ -276,7 +276,7 @@ export class SettingsStore {
     return Object.keys(errors).length > 0 ? { settings: snapshot, persisted, errors } : { settings: snapshot, persisted }
   }
 
-  /** 訂閱變更；回傳解除訂閱函式。 */
+  /** Subscribe to changes; return an unsubscribe function. */
   onChange(cb: (s: Settings) => void): () => void {
     this.listeners.push(cb)
     return () => {

@@ -1,13 +1,13 @@
 /**
- * 節流（前緣＋尾端）：視窗外的第一次呼叫立即送出；視窗內的呼叫合併成一次、在視窗結束時送出，
- * 所以「最後一次更新」一定會送達，且兩次送出間隔不小於 ms。
- * main 用它限制 `library:updated` 廣播（500 ms）。以 `Date.now()` 計時，測試用 fake timers 即可。
+ * Throttle (leading + trailing): the first call outside the window fires immediately; calls inside the window are
+ * combined into one call at the end, so the last update is always delivered and calls are at least ms apart.
+ * main uses this to limit `library:updated` broadcasts (500 ms). It uses `Date.now()`, so tests can use fake timers.
  */
 export interface Throttle {
   trigger(): void
-  /** 若有排隊中的尾端呼叫，立刻送出 */
+  /** Immediately fire a pending trailing call, if any. */
   flush(): void
-  /** 丟棄排隊中的尾端呼叫 */
+  /** Discard a pending trailing call. */
   cancel(): void
 }
 
@@ -28,7 +28,7 @@ export function createThrottle(fn: () => void, ms: number): Throttle {
 
   return {
     trigger() {
-      if (timer) return // 已排尾端：本次合併進去
+      if (timer) return // A trailing call is already scheduled; merge this call into it.
       const wait = lastFire + ms - Date.now()
       if (wait <= 0) {
         fire()

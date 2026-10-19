@@ -1,4 +1,4 @@
-//! 透過 Windows 音訊引擎依 PID 擷取；不開啟或存取目標程序。
+//! Capture by PID through the Windows audio engine without opening or accessing the target process.
 
 use std::{mem::ManuallyDrop, sync::mpsc, time::Duration};
 
@@ -47,7 +47,7 @@ impl IActivateAudioInterfaceCompletionHandler_Impl for Completion_Impl {
 }
 
 pub(super) fn activate(pid: u32) -> Result<IAudioClient> {
-    ensure!(pid != 0, "程序音訊擷取需要有效的 PID");
+    ensure!(pid != 0, "Process audio capture requires a valid PID");
     let mut params = Box::new(AUDIOCLIENT_ACTIVATION_PARAMS {
         ActivationType: AUDIOCLIENT_ACTIVATION_TYPE_PROCESS_LOOPBACK,
         Anonymous: AUDIOCLIENT_ACTIVATION_PARAMS_0 {
@@ -57,7 +57,7 @@ pub(super) fn activate(pid: u32) -> Result<IAudioClient> {
             },
         },
     });
-    // 參數由完成回呼持有；即使等待逾時也不會提前釋放，不以 PropVariantClear 清除借用的 blob。
+    // The completion callback owns the parameters until completion even on timeout; do not clear the borrowed blob with PropVariantClear.
     let variant = ManuallyDrop::new(PROPVARIANT {
         Anonymous: PROPVARIANT_0 {
             Anonymous: ManuallyDrop::new(PROPVARIANT_0_0 {
@@ -78,7 +78,7 @@ pub(super) fn activate(pid: u32) -> Result<IAudioClient> {
         _params: params,
     }
     .into();
-    // SAFETY: 呼叫端已在 MTA 初始化 COM；參數於非同步啟用完成前保持有效。
+    // SAFETY: The caller initialized COM in the MTA; parameters remain valid until asynchronous activation completes.
     let operation = unsafe {
         ActivateAudioInterfaceAsync(
             VIRTUAL_AUDIO_DEVICE_PROCESS_LOOPBACK,
@@ -87,17 +87,17 @@ pub(super) fn activate(pid: u32) -> Result<IAudioClient> {
             &handler,
         )
     }
-    .context("啟用程序音訊介面失敗")?;
+    .context("Failed to activate process audio interface")?;
     completed
         .recv_timeout(Duration::from_secs(3))
-        .context("等待程序音訊啟用逾時")?;
+        .context("Timed out waiting for process audio activation")?;
     let mut result = HRESULT(0);
     let mut interface = None;
-    // SAFETY: 完成通知已收到，輸出指標有效；音訊介面仍在同一個 MTA 使用。
+    // SAFETY: Completion was received and output pointers are valid; audio interfaces remain in the same MTA.
     unsafe { operation.GetActivateResult(&mut result, &mut interface) }?;
-    result.ok().context("系統不支援程序音訊擷取")?;
+    result.ok().context("The system does not support process audio capture")?;
     interface
-        .context("程序音訊介面為空")?
+        .context("Process audio interface is null")?
         .cast()
         .map_err(Into::into)
 }

@@ -17,7 +17,7 @@ describe('studio mode reducer', () => {
     const s1 = reduceMode(s0, { type: 'playItem', item: item('i1', 'C:\\v\\b.mp4') })
     expect(s1.mode).toBe('project')
     expect(s1.curItemId).toBe('i1')
-    // 來源影片（開啟的影片）不因片段切換而改變
+  // The source video (currently open video) does not change when switching clips.
     expect(s1.sourceVideo).toBe('C:\\v\\a.mp4')
   })
 

@@ -22,8 +22,8 @@ const ev = (id: string, t: number): LiveEvent => ({ id, t, type: 'knock', score:
   counted: true, counted_reason: 'first', counted_override: null, source: 'auto' })
 const traceOf = (file: string): Record<string, unknown>[] => fs.readFileSync(file, 'utf8').trim().split('\n').map((line) => JSON.parse(line))
 
-describe('live 引擎輸出解析', () => {
-  it('snapshot 欄位驗證：事件需有 id／t／type，觀戰區間需有效', () => {
+describe('live engine output parsing', () => {
+  it('validates snapshot fields: events require id/t/type and spectator intervals must be valid', () => {
     expect(parseSnapshot({ t: 1, events: [ev('a1', 1)], spectating: [{ start: 0, end: 1 }] })).not.toBeNull()
     expect(parseSnapshot({ t: 1, events: [{ id: 'a1', t: -1, type: 'knock' }], spectating: [] })).toBeNull()
     expect(parseSnapshot({ t: 1, events: [{ t: 1, type: 'knock' }], spectating: [] })).toBeNull()
@@ -32,7 +32,7 @@ describe('live 引擎輸出解析', () => {
     expect(parseSnapshot({ t: 1, events: 'x', spectating: [] })).toBeNull()
   })
 
-  it('最終 snapshot 帶判定；重啟過的合併結果一律不完整', () => {
+  it('includes an assessment in the final snapshot and marks merged results after a restart incomplete', () => {
     const final = parseSnapshot({ t: 1, events: [], spectating: [], final: true, quality: { complete: true, reasons: [], h_scale: 1.05 } })
     expect(final?.quality).toEqual({ complete: true, reasons: [], hScale: 1.05 })
     expect(parseSnapshot({ t: 1, events: [], spectating: [], quality: { complete: true } })?.quality).toBeUndefined()
@@ -40,7 +40,7 @@ describe('live 引擎輸出解析', () => {
     expect(merged.quality).toEqual({ complete: false, reasons: ['restarted'], hScale: 1.05 })
   })
 
-  it('重啟後合併：封存全部保留，新程序只取封存時間之後且不重複的事件', () => {
+  it('merges after restart by keeping all archived data and taking only unique events after the archive time', () => {
     const archived: LiveSnapshot = { t: 10, events: [ev('a1000', 1), ev('a9000', 9)], spectating: [{ start: 2, end: 3 }] }
     const fresh: LiveSnapshot = { t: 20, events: [ev('a5000', 5), ev('a9000', 9), ev('a15000', 15)], spectating: [{ start: 4, end: 5 }, { start: 12, end: 13 }] }
     const merged = mergeIncarnations(archived, fresh, 10)
@@ -51,8 +51,8 @@ describe('live 引擎輸出解析', () => {
   })
 })
 
-describe('LiveEngine 程序管理', () => {
-  it('傳遞參數、降低優先序、轉送事件；停止時送 stop 並等最終 snapshot', async () => {
+describe('LiveEngine process management', () => {
+  it('passes arguments, lowers priority, forwards events, and sends stop while waiting for the final snapshot', async () => {
     const dir = root()
     const trace = path.join(dir, 'trace.jsonl')
     const setPriority = vi.fn()
@@ -73,7 +73,7 @@ describe('LiveEngine 程序管理', () => {
     expect(lines).toContainEqual({ stdin: '{"cmd":"stop"}' })
   })
 
-  it('當掉後以退避重啟，並保留重啟前的事件', async () => {
+  it('restarts with backoff after a crash and preserves events from before the restart', async () => {
     const dir = root()
     const trace = path.join(dir, 'trace.jsonl')
     const value = engine('crash-once', { FAKE_LIVE_TRACE: trace, FAKE_LIVE_STATE: path.join(dir, 'state') })
@@ -82,7 +82,7 @@ describe('LiveEngine 程序管理', () => {
     value.start()
     await waitFor(() => restarting.mock.calls.length === 1 && (value.snapshot()?.events.length ?? 0) >= 2)
     expect(restarting.mock.calls[0][0].delayMs).toBe(10)
-    // 新程序在 t=0.5 的事件早於封存時間（最後一次看到 t=2），丟棄；a3000 保留。
+    // The new process's event at t=0.5 predates the seal time (last seen at t=2), so discard it; keep a3000.
     expect(value.snapshot()!.events.map((e) => e.id)).toEqual(['a1000', 'a3000'])
     expect(value.snapshot()!.spectating).toEqual([{ start: 0.2, end: 0.4 }])
     await value.stop()
@@ -91,7 +91,7 @@ describe('LiveEngine 程序管理', () => {
     expect(traceOf(trace).filter((line) => line.argv)).toHaveLength(2)
   })
 
-  it('10 分鐘內重啟 5 次後放棄並回報，不再啟動', async () => {
+  it('gives up and reports after 5 restarts within 10 minutes without starting again', async () => {
     const value = new LiveEngine({ command: { command: process.execPath, args: ['-e', 'process.exit(2)'] }, args: [], restartBaseMs: 1, setPriority: () => undefined })
     engines.push(value)
     const failed = vi.fn()
@@ -105,7 +105,7 @@ describe('LiveEngine 程序管理', () => {
     expect(String(failed.mock.calls[0][0].message)).toContain('錄影不受影響')
   })
 
-  it('格式錯誤的行只略過；停止逾時就強制結束', async () => {
+  it('ignores malformed lines and force-terminates after a stop timeout', async () => {
     const garbage = engine('garbage')
     const warning = vi.fn()
     garbage.on('warning', warning)
@@ -121,7 +121,7 @@ describe('LiveEngine 程序管理', () => {
   })
 })
 
-it.each(['match_pending', 'match_cancel'])('解析與驗證新對局事件：%s', (ev) => {
+it.each(['match_pending', 'match_cancel'])('Parse and validate new match events: %s', (ev) => {
   const live = engine('normal')
   const listener = vi.fn()
   live.on('match', listener)
@@ -131,7 +131,7 @@ it.each(['match_pending', 'match_cancel'])('解析與驗證新對局事件：%s'
   expect(listener).toHaveBeenCalledWith({ ev, t: 1, reason: '測試' })
 })
 
-it('stats 有處理影格才回報分析進度；未處理或格式錯誤略過', () => {
+it('reports analysis progress only when stats include processed frames, ignoring unprocessed or malformed stats', () => {
   const live = engine('normal')
   const listener = vi.fn()
   live.on('progress', listener)

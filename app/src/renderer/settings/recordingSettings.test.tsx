@@ -63,8 +63,8 @@ async function slider(field: string, value: string): Promise<void> {
   await flush()
 }
 
-describe('錄影設定畫面與 controller', () => {
-  test('選擇 OBS 後顯示連線設定、隱藏影像音訊設定，重掛保留並顯示測試結果', async () => {
+describe('Recording settings screen and controller', () => {
+  test('Selecting OBS shows connection settings, hides video/audio settings, preserves values on remount, and shows the test result', async () => {
     const r = await show()
     r.api.recording!.testObs = vi.fn(async () => ({ ok: true as const, obsVersion: '31.0.0', obsWebSocketVersion: '5.5.0' }))
     select('backend', 'obs')
@@ -104,7 +104,7 @@ describe('錄影設定畫面與 controller', () => {
     expect(document.body.textContent).toContain('OBS 密碼驗證失敗')
   })
 
-  test('OBS 密碼為唯寫欄位，儲存錯誤會顯示，已設定狀態不回填密碼', async () => {
+  test('OBS password is write-only, save errors are shown, and an existing password is not filled back in', async () => {
     const r = await show()
     select('backend', 'obs'); await flush()
     r.set.mockImplementationOnce(async () => ({ settings: r.controller.getState().settings!, persisted: true, errors: { obsPassword: '加密服務無法使用' } }))
@@ -122,9 +122,9 @@ describe('錄影設定畫面與 controller', () => {
     expect(control<HTMLInputElement>('obsPassword').placeholder).toBe('已設定')
   })
 
-  test('完整列順序、label、啟用的一局一個檔及符合格式的編碼器／裝置選項', async () => {
+  test('Full row order and labels, enabled one-file-per-match, and encoder/device options matching the selected format', async () => {
     await show()
-    // 開機啟動／縮到系統匣屬於整個 App，移到「一般」；OBS 列只在選 OBS 時出現
+    // Launch-at-login and minimize-to-tray are app-wide settings under General; OBS rows appear only for the OBS backend.
     const fields = [
       'autoRecord', 'mode', 'postAnalysis',
       'backend',
@@ -153,7 +153,7 @@ describe('錄影設定畫面與 controller', () => {
     expect(control<HTMLSelectElement>('captureMethod').querySelector('option[value="hook"]')?.textContent).toBe('遊戲擷取')
   })
 
-  test('開關、格式、裝置及數值單位會送出並同步回傳結果，重新掛載保留值', async () => {
+  test('Toggles, format, device, and numeric units are submitted and updated from the result; values persist after remount', async () => {
     const r = await show()
     click(control('autoRecord'))
     await flush()
@@ -186,12 +186,12 @@ describe('錄影設定畫面與 controller', () => {
     expect(control<HTMLSelectElement>('mode').value).toBe('match')
   })
 
-  test('錄影分頁不再有獨立的錄影資料夾列（改由「儲存位置」統一設定）', async () => {
+  test('Recording tab has no separate recording-folder row (configured centrally under Storage location)', async () => {
     await show()
     expect(document.querySelector('[data-row="recording-outputDir"]')).toBeNull()
   })
 
-  test('capabilities=null 或查詢失敗只顯示預設選項與提示，不送出設定', async () => {
+  test('When capabilities are null or loading fails, shows only default options and a notice without submitting settings', async () => {
     const r = await show(null)
     expect(options('encoder')).toEqual(['auto'])
     expect(options('renderDevice')).toEqual(['default'])
@@ -208,7 +208,7 @@ describe('錄影設定畫面與 controller', () => {
     expect(r.set).not.toHaveBeenCalled()
   })
 
-  test('連續設定操作以最新回傳快照為準；IPC 失敗重新讀取並解除訂閱', async () => {
+  test('Rapid setting changes use the latest returned snapshot; IPC failure reloads state and unsubscribes', async () => {
     const r = rig()
     await r.controller.start()
     await Promise.all([r.controller.setRecording('fps', 90), r.controller.setRecording('micEnabled', false)])
@@ -222,14 +222,14 @@ describe('錄影設定畫面與 controller', () => {
     expect(r.listeners.size).toBe(0)
   })
 
-  test('搜尋可找到錄影分類並顯示命中數', async () => {
+  test('Search finds the recording category and shows the match count', async () => {
     const r = rig()
     mount(<SettingsScreen controller={r.controller} initialQuery="麥克風" />)
     await flush()
     expect(document.querySelector('[data-row="recording-micGain"]')).not.toBeNull()
     expect(document.querySelector('#set-tab-recording .set-hit')).not.toBeNull()
   })
-  test('進階預設收合、搜尋自動展開，位元率保留清單外值及音源停用狀態', async () => {
+  test('Advanced settings are collapsed by default and expand on search; bitrate preserves custom values and audio-source disabled state', async () => {
     const r = await show()
     const sections = Array.from(document.querySelectorAll('details'))
     expect(sections).toHaveLength(2)
@@ -261,7 +261,7 @@ describe('錄影設定畫面與 controller', () => {
     expect(document.querySelector('details')?.open).toBe(true)
   })
 
-  test('切換至遊戲擷取跳出 5 秒警告對話框：倒數期間停用確認，5 秒後確認才套用 hook；從 hook 改回其他方式不跳出', async () => {
+  test('Switching to game capture opens a 5-second warning dialog: confirm is disabled during countdown and applies hook afterward; switching away from hook has no warning', async () => {
     const r = await show()
     const details = control('captureMethod').closest('details')!
     details.open = true
@@ -295,7 +295,7 @@ describe('錄影設定畫面與 controller', () => {
     expect(confirmBtn.disabled).toBe(true)
     expect(confirmBtn.textContent).toBe('確認（5）')
 
-    // 倒數期間點擊、Enter、空白鍵均無法確認
+    // Click, Enter, and Space cannot confirm during the countdown.
     click(confirmBtn)
     act(() => {
       confirmBtn.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
@@ -304,7 +304,7 @@ describe('錄影設定畫面與 controller', () => {
     expect(document.querySelector('[role="alertdialog"]')).not.toBeNull()
     expect(r.controller.getState().settings?.recording.captureMethod).toBe('wgc')
 
-    // 逐秒倒數至第 4 秒仍停用
+    // The button remains disabled through the countdown to 4 seconds.
     for (const expected of ['確認（4）', '確認（3）', '確認（2）', '確認（1）']) {
       act(() => { vi.advanceTimersByTime(1000) })
       expect(confirmBtn.disabled).toBe(true)
@@ -313,7 +313,7 @@ describe('錄影設定畫面與 controller', () => {
     click(confirmBtn)
     expect(r.controller.getState().settings?.recording.captureMethod).toBe('wgc')
 
-    // 滿 5 秒後啟用並顯示「確認」
+    // Enable the button and show "Confirm" after 5 seconds.
     act(() => { vi.advanceTimersByTime(1000) })
     expect(confirmBtn.disabled).toBe(false)
     expect(confirmBtn.textContent).toBe('確認')
@@ -326,24 +326,24 @@ describe('錄影設定畫面與 controller', () => {
     expect(control<HTMLSelectElement>('captureMethod').value).toBe('hook')
     expect(document.activeElement).toBe(control('captureMethod'))
 
-    // 已是 hook 時重新選 hook 不跳出
+    // Selecting hook again while already using hook does not open the dialog.
     select('captureMethod', 'hook')
     await flush()
     expect(document.querySelector('[role="alertdialog"]')).toBeNull()
 
-    // 從 hook 改回其他方式直接套用，不跳出對話框
+    // Switching from hook to another method applies immediately without opening the dialog.
     select('captureMethod', 'dda')
     await flush()
     expect(document.querySelector('[role="alertdialog"]')).toBeNull()
     expect(r.controller.getState().settings?.recording.captureMethod).toBe('dda')
 
-    // 再次從其他方式切回 hook 仍要跳出（不記住確認）
+    // Switching back to hook still opens the dialog; confirmation is not remembered.
     select('captureMethod', 'hook')
     await flush()
     expect(document.querySelector('[role="alertdialog"]')).not.toBeNull()
   })
 
-  test('遊戲擷取警告對話框：取消、Esc、點外部均維持原值並將焦點還原至下拉選單，且鎖定 Tab 焦點', async () => {
+  test('Game-capture warning: cancel, Esc, and outside click preserve the value and restore focus to the selector; Tab focus stays trapped', async () => {
     const r = await show()
     const selectEl = control<HTMLSelectElement>('captureMethod')
     selectEl.closest('details')!.open = true
@@ -351,14 +351,14 @@ describe('錄影設定畫面與 controller', () => {
     await flush()
     r.set.mockClear()
 
-    // 1. 按下「取消」
+    // 1. Click Cancel.
     select('captureMethod', 'hook')
     await flush()
     const cancelBtn = document.getElementById('set-recording-captureHook-cancel') as HTMLButtonElement
     const bodyEl = document.getElementById('set-capture-hook-warn-desc') as HTMLElement
     expect(document.activeElement).toBe(cancelBtn)
 
-    // Tab 焦點鎖在對話框內（確認按鈕 disabled 時在可捲動內文容器與取消按鈕之間循環）
+    // Keep Tab focus inside the dialog; with Confirm disabled, cycle between the scrollable body and Cancel.
     press(cancelBtn, 'Tab')
     expect(document.activeElement).toBe(bodyEl)
     press(bodyEl, 'Tab')
@@ -372,7 +372,7 @@ describe('錄影設定畫面與 controller', () => {
     expect(r.set).not.toHaveBeenCalled()
     expect(document.activeElement).toBe(selectEl)
 
-    // 2. 按下 Escape
+    // 2. Press Escape.
     select('captureMethod', 'hook')
     await flush()
     expect(document.querySelector('[role="alertdialog"]')).not.toBeNull()
@@ -384,7 +384,7 @@ describe('錄影設定畫面與 controller', () => {
     expect(r.set).not.toHaveBeenCalled()
     expect(document.activeElement).toBe(selectEl)
 
-    // 3. 點擊對話框外部遮罩
+    // 3. Click the backdrop outside the dialog.
     select('captureMethod', 'hook')
     await flush()
     const scrim = document.querySelector<HTMLElement>('.set-dlg-scrim')!

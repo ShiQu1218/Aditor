@@ -13,7 +13,7 @@ const mk = (over: Partial<SettingRow> & { id: string }): SettingRow => ({
   ...over
 })
 
-describe('SETTING_ROWS（資料表）', () => {
+describe('SETTING_ROWS (data table)', () => {
   test('every category has rows and a one-line description', () => {
     for (const c of CATEGORIES) {
       expect(SETTING_ROWS.filter((r) => r.category === c.id).length, c.id).toBeGreaterThanOrEqual(2)
@@ -25,7 +25,7 @@ describe('SETTING_ROWS（資料表）', () => {
     expect(CATEGORIES.map((c) => c.label)).toEqual(['一般', '錄影', '匯入與分析', '剪輯', '匯出', '關於'])
   })
 
-  test('every recording setting appears exactly once; app-wide ones live under 一般', () => {
+  test('Every recording setting appears exactly once; app-wide settings belong under General', () => {
     const ids = SETTING_ROWS.filter((r) => r.control.kind === 'recording').map((r) => r.id)
     expect([...ids].sort()).toEqual(Object.keys(recordingI18n.rows).map((f) => `recording-${f}`).sort())
     for (const id of ['recording-launchAtLogin', 'recording-closeToTray']) {
@@ -50,7 +50,7 @@ describe('SETTING_ROWS（資料表）', () => {
     for (const r of SETTING_ROWS) expect(r.title.length).toBeGreaterThan(0)
   })
 
-  test('no row text contains 需新增 IPC (rows.ts, i18n and every row)', () => {
+  test('No row text contains “IPC needs to be added” (rows.ts, i18n, and every row)', () => {
     const banned = '需新增 IPC'
     for (const r of SETTING_ROWS) {
       const text = [r.title, r.desc, r.card, r.disabledReason, ...(r.keywords ?? [])].join('|')
@@ -87,11 +87,11 @@ describe('filterRows', () => {
   })
 
   test('filterRows is case-insensitive and matches title, desc, keywords and card name', () => {
-    expect(filterRows(rows, 'WATCH').byCategory.analysis.map((r) => r.id)).toEqual(['r1']) // keyword，大小寫不同
+    expect(filterRows(rows, 'WATCH').byCategory.analysis.map((r) => r.id)).toEqual(['r1']) // Keyword, different case.
     expect(filterRows(rows, 'nvenc').byCategory.export.map((r) => r.id)).toEqual(['r4'])
     expect(filterRows(rows, 'MEDIACAPABILITIES').byCategory.editing.map((r) => r.id)).toEqual(['r3']) // desc
-    expect(filterRows(rows, '解碼').byCategory.analysis.map((r) => r.id)).toEqual(['r2']) // title
-    expect(filterRows(rows, '影片來源').byCategory.analysis.map((r) => r.id)).toEqual(['r1']) // card 名
+    expect(filterRows(rows, '解碼').byCategory.analysis.map((r) => r.id)).toEqual(['r2']) // Title.
+    expect(filterRows(rows, '影片來源').byCategory.analysis.map((r) => r.id)).toEqual(['r1']) // Card name.
   })
 
   test('counts only include categories with hits', () => {

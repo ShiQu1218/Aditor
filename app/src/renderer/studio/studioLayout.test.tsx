@@ -12,8 +12,8 @@ afterEach(() => {
 })
 const T = i18n.studio
 
-describe('工作室版面與操作', () => {
-  test('只顯示精華；保留播放列事件統計與篩選，移除 Ctrl+M／Ctrl+S', async () => {
+describe('Studio layout and interactions', () => {
+  test('Shows only highlights; keeps transport event counts and filters, removes Ctrl+M/Ctrl+S', async () => {
     s = await mountStudio()
     expect(document.querySelector('.studio-aside')?.getAttribute('aria-label')).toBe('精華')
     expect(document.querySelector('.hl-tab')?.getAttribute('aria-labelledby')).toBe('aside-tab-hl')
@@ -28,7 +28,7 @@ describe('工作室版面與操作', () => {
     expect(document.querySelector('.toast')).toBeNull()
   })
 
-  test('快速剪輯與 AI 在事件統計左側，匯出在加入外部影片右側且可開啟抽屜', async () => {
+  test('Quick Clip and AI are left of event stats; Export is right of Add External Video and opens the drawer', async () => {
     s = await mountStudio()
     const transport = document.querySelector('.transport')!
     const quick = buttonByText(transport, T.quickClip)!
@@ -49,7 +49,7 @@ describe('工作室版面與操作', () => {
     expect(document.querySelector('.xd')).not.toBeNull()
   })
 
-  test('AI 按鈕維持浮層開關與錨點', async () => {
+  test('AI button keeps its popover toggle and anchor', async () => {
     s = await mountStudio()
     const ai = document.querySelector<HTMLButtonElement>('.transport [data-autoclip="toggle"]')!
     ai.getBoundingClientRect = () => ({ top: 450, left: 500, bottom: 480, right: 620, width: 120, height: 30, x: 500, y: 450, toJSON: () => ({}) })
@@ -62,7 +62,7 @@ describe('工作室版面與操作', () => {
     expect(ai.getAttribute('aria-expanded')).toBe('false')
   })
 
-  test('加入外部影片依序選檔、加入影片庫及排入分析，整批加入專案並播放第一段', async () => {
+  test('Add External Video selects files, adds them to the library and analysis queue, adds them all to the project, and plays the first clip', async () => {
     const paths = ['D:/a.mp4', 'D:/b.mp4']
     const select = vi.fn(async () => paths)
     const add = vi.fn(async () => undefined)
@@ -81,7 +81,7 @@ describe('工作室版面與操作', () => {
     expect(document.querySelectorAll('.pclip')).toHaveLength(0)
   })
 
-  test('取消選檔不匯入也不分析', async () => {
+  test('Canceling file selection does not import or analyze', async () => {
     s = await mountStudio()
     click(buttonByText(document, T.track.addExternalVideo)!)
     await flush()
@@ -89,7 +89,7 @@ describe('工作室版面與操作', () => {
     expect(s.fake.api.queue.enqueue).not.toHaveBeenCalled()
   })
 
-  test('部分長度探測失敗會通知、保留影片庫匯入，並播放其餘成功的新片段', async () => {
+  test('A partial duration-probe failure shows a notice, keeps library imports, and plays the other successfully added clips', async () => {
     const onOpenVideo = vi.fn()
     s = await mountStudio({
       onOpenVideo,
@@ -107,7 +107,7 @@ describe('工作室版面與操作', () => {
     expect(onOpenVideo).toHaveBeenCalledWith('D:/good.mp4', expect.anything())
   })
 
-  test('匯入失敗顯示通知且不排入分析', async () => {
+  test('Import failure shows a notice and does not enqueue analysis', async () => {
     s = await mountStudio({ api: { overrides: { library: { selectFiles: async () => ['D:/a.mp4'], add: async () => { throw new Error('失敗') } } } } })
     click(buttonByText(document, T.track.addExternalVideo)!)
     await flush()

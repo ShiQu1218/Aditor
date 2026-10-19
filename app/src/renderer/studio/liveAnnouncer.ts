@@ -1,6 +1,6 @@
 /**
- * 限速的 aria-live 播報：第一則立即送出；間隔內的連續訊息只保留最後一則，間隔結束後補送。
- * 供鍵盤驅動的播放頭／縮放變更使用（避免螢幕閱讀器被洗版）。
+ * Throttled aria-live announcements: send the first immediately; keep only the last message during the interval and send it when the interval ends.
+ * Used for keyboard-driven playhead/zoom changes to avoid flooding screen readers.
  */
 export interface Announcer {
   announce: (msg: string) => void

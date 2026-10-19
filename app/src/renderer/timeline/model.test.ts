@@ -162,7 +162,7 @@ describe('Timeline zoom modes', () => {
     const state = zoomTimeline(full(), 0.5, 200)
     expect(state.mode).toBe('custom')
     expect(state.view.span).toBe(300)
-    expect(state.view.start).toBe(50) // 200 置中：視窗 [50, 350]
+    expect(state.view.start).toBe(50) // Center on 200: viewport [50, 350].
     expect(timeToX(200, state.view)).toBe(500)
     expect(state.customZoom).toBe(2)
     expect(setCustomZoom(state, 1000, 150).view.span).toBe(10)
@@ -171,7 +171,7 @@ describe('Timeline zoom modes', () => {
   })
 
   it('custom zoom centres on the playhead, not on the current view centre', () => {
-    // 先停在影片前段放大，再把播放頭移到 450 後調倍率：視窗應以 450 為中心
+    // Zoom in near the start, then move the playhead to 450 and change scale: the viewport should center on 450.
     const zoomed = setCustomZoom(full(), 4, 100)
     expect(zoomed.view.start).toBe(25)
     const moved = setCustomZoom(zoomed, 8, 450)

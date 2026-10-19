@@ -1,6 +1,6 @@
-"""單格偵測：圖示偵測（icon_detect）＋敵人名字指紋＋觀戰提示條，把一格 (banner, spec) 轉成 FrameResult（spec §5.2）。
+"""Per-frame detection converts (banner, spec) into a FrameResult using icon detection, enemy-name signatures, and spectator banners (spec §5.2).
 
-同時放名字指紋的比對函式（same_name／fragment_of），events 與 derive 共用。"""
+Also contains name-signature comparison helpers (same_name/fragment_of) shared by events and derive."""
 from __future__ import annotations
 
 import base64
@@ -15,9 +15,9 @@ from .icon_detect import IconDetector, IconFrame, IconParams
 from .models import FrameResult, NameSig
 from .profile import Profile
 
-TEXT_H = 22  # 橫幅第一行文字高度（1080p，像素）：名字右界的空白判斷用
+TEXT_H = 22  # Height in pixels of the first banner text line at 1080p; used to detect whitespace after the name.
 
-# 粉紅備援的指紋至少要有這麼高的墨密度（真名字約 0.2–0.3），避免把場景裡零星的粉橘像素當成名字。
+# Pink fallback fingerprints must have at least this ink density (real names are about 0.2–0.3), to avoid treating sparse peach pixels in the scene as a name.
 PINK_FALLBACK_MIN_DENSITY = 0.12
 
 
@@ -26,27 +26,27 @@ def _imread_gray(path) -> np.ndarray:
 
 
 def white_mask(img_bgr: np.ndarray, white: dict) -> np.ndarray:
-    """高亮度、低飽和度像素 → uint8 0/255。white＝{"v_min", "s_max"}。"""
+    """Map high-value, low-saturation pixels to uint8 0/255. white = {"v_min", "s_max"}."""
     hsv = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2HSV)
     ok = (hsv[..., 2] >= white["v_min"]) & (hsv[..., 1] <= white["s_max"])
     return ok.astype(np.uint8) * 255
 
 
 def red_mask(img_bgr: np.ndarray, profile: Profile, pink: bool = False) -> np.ndarray:
-    """R 高、G/B 低的像素 → uint8 0/255。pink=True 時另併入粉紅（綠色盲）規則，僅供名字指紋的備援使用。"""
+    """Map pixels with high R and low G/B to uint8 0/255. When pink=True, also include the pink (green color-blind) rule as a fallback for name fingerprints."""
     b, g, r = img_bgr[..., 0], img_bgr[..., 1], img_bgr[..., 2]
     ok = (r >= profile.red["r_min"]) & (g <= profile.red["g_max"]) & (b <= profile.red["b_max"])
     if "r_diff_min" in profile.red:
         ok = ok & (r.astype(np.int16) - np.maximum(g, b).astype(np.int16) >= profile.red["r_diff_min"])
     y = profile.red.get("yellow")
     if y:
-        # 色盲模式（紅色盲／藍色盲）敵人名字為黃色：R、G 高且接近、B 低。未設定時（zh-TW）行為不變。
+        # In red/blue color-blind modes, enemy names are yellow: R and G are high and close, while B is low. Behavior is unchanged when unset (zh-TW).
         r16, g16, b16 = r.astype(np.int16), g.astype(np.int16), b.astype(np.int16)
         ok = ok | ((r16 >= y["r_min"]) & (g16 >= y["g_min"]) & (b16 <= y["b_max"])
                    & (r16 - b16 >= y["rb_min"]) & (np.abs(r16 - g16) <= y["rg_max"]))
     pk = profile.red.get("pink") if pink else None
     if pk:
-        # 綠色盲模式敵人名字為粉紅色（約 R 220、G 152、B 163）：R 高且明顯高於 G、B 不低於 G（排除橘／膚色場景）。
+        # In green color-blind mode, enemy names are pink (about R 220, G 152, B 163): R is high and clearly above G, and B is at least G (excluding orange/skin-tone scenes).
         r16, g16, b16 = r.astype(np.int16), g.astype(np.int16), b.astype(np.int16)
         ok = ok | ((r16 >= pk["r_min"]) & (g16 >= pk["g_min"]) & (r16 - g16 >= pk["rg_min"]) & (b16 - g16 >= pk["bg_min"])
                    & (r16 - b16 >= pk["rb_min"]))
@@ -54,12 +54,12 @@ def red_mask(img_bgr: np.ndarray, profile: Profile, pink: bool = False) -> np.nd
 
 
 def name_sig_similarity(a: NameSig, b: NameSig) -> float:
-    """兩個名字指紋的相關係數（-1..1）。寬度不同時把 b 縮放到 a 的寬度再比。"""
+    """Correlation (-1..1) between two name fingerprints. Resize b to a's width before comparing if their widths differ."""
     ba = a.bits.astype(np.float32)
     bb = b.bits.astype(np.float32)
     if bb.shape[1] != ba.shape[1]:
         bb = cv2.resize(bb, (ba.shape[1], ba.shape[0]), interpolation=cv2.INTER_AREA)
-    # 輕微模糊：容許 1 px 的筆畫錯位（紅、白字邊緣與縮放取樣不同）
+    # Apply slight blur to tolerate 1 px stroke misalignment (red and white text edges differ due to scaling and sampling).
     ba = cv2.GaussianBlur(ba, (3, 3), 0.8)
     bb = cv2.GaussianBlur(bb, (3, 3), 0.8)
     ba = ba - ba.mean()
@@ -72,8 +72,8 @@ def name_sig_similarity(a: NameSig, b: NameSig) -> float:
 
 def _ink_box(mask: np.ndarray, pad: int = 8, rows_limit: tuple[int, int] | None = None
              ) -> tuple[int, int, int, int]:
-    """遮罩中有像素的外框 (x0, y0, x1, y1)，外加 pad；全黑時回傳空框。純加速用。
-    rows_limit 先把列範圍限制在 [y0, y1)。"""
+    """Return the bounding box (x0, y0, x1, y1) of nonzero mask pixels, expanded by pad; return an empty box for an all-black mask. This is only an optimization.
+    rows_limit first restricts the row range to [y0, y1)."""
     if rows_limit is not None:
         lo, hi = rows_limit
         x0, y0, x1, y1 = _ink_box(mask[lo:hi], pad)
@@ -88,8 +88,8 @@ def _ink_box(mask: np.ndarray, pad: int = 8, rows_limit: tuple[int, int] | None 
 
 
 def same_name(a: NameSig | None, b: NameSig | None, threshold: float) -> bool:
-    """兩個名字指紋是否屬於同一敵人：任一為 None → False；寬度比差 ≥ 15% → False；
-    否則相關係數 ≥ threshold（profile.name_sig_threshold）。"""
+    """Whether two name fingerprints belong to the same enemy: return False if either is None or their width ratio differs by >= 15%;
+    otherwise require correlation >= threshold (profile.name_sig_threshold)."""
     if a is None or b is None:
         return False
     if abs(a.width - b.width) / max(a.width, b.width) >= 0.15:
@@ -97,16 +97,17 @@ def same_name(a: NameSig | None, b: NameSig | None, threshold: float) -> bool:
     return name_sig_similarity(a, b) >= threshold
 
 
-FRAGMENT_MIN_WIDTH = 30    # 殘片比對：較短指紋至少要這麼寬（再窄的殘片在別人名字上也常偶然相關）
-FRAGMENT_THRESHOLD = 0.70  # 較短指紋在較長指紋上滑動的最大相關係數門檻
+FRAGMENT_MIN_WIDTH = 30    # Minimum width of the shorter fingerprint for fragment matching (narrower fragments often correlate by chance with other names).
+FRAGMENT_THRESHOLD = 0.70  # Maximum sliding correlation threshold for the shorter fingerprint against the longer one.
 
 
 def fragment_of(a: NameSig | None, b: NameSig | None) -> bool:
-    """一方是否為另一方被遮擋／淡出的殘片（同一敵人）：寬度差 >= 15%，且較短者在較長者上滑動的
-    最大相關係數 >= FRAGMENT_THRESHOLD。寬度相近的比對交給 same_name。
+    """Whether one fingerprint is an occluded/faded fragment of the other (same enemy): width difference >= 15% and the
+    maximum sliding correlation of the shorter against the longer >= FRAGMENT_THRESHOLD. Similar-width comparisons use same_name.
 
-    門檻依據三語言全部 fixture 的名字指紋：寬度 >= 30 的不同名字配對，滑動最大相關最高約 0.53
-    （p99 0.48）；同名字裁出 40–75% 的殘片（含 4% 位元雜訊）至少 0.9。"""
+    Thresholds are based on name fingerprints from fixtures in all three languages: different-name pairs with width >= 30
+    have a maximum sliding correlation of about 0.53 (p99 0.48); 40–75% fragments of the same name (including 4% bit noise)
+    score at least 0.9."""
     if a is None or b is None:
         return False
     short, long_ = (a, b) if a.width <= b.width else (b, a)
@@ -123,7 +124,7 @@ def fragment_of(a: NameSig | None, b: NameSig | None) -> bool:
 
 
 def _segments(cols: np.ndarray) -> list[tuple[int, int]]:
-    """把「該欄是否有墨」的布林陣列切成連續區段 [(起, 迄)]（含迄）。"""
+    """Split a Boolean array indicating whether each column contains ink into contiguous ranges [(start, end)], inclusive."""
     idx = np.flatnonzero(cols)
     if idx.size == 0:
         return []
@@ -134,8 +135,8 @@ def _segments(cols: np.ndarray) -> list[tuple[int, int]]:
 
 
 def _despeckle(ink: np.ndarray, min_area: int = 3) -> np.ndarray:
-    """去掉不像字形筆畫的墨：粗亮塊（火光、反光，筆畫寬 < 5 px 故用 5x5 開運算偵測）、
-    孤立雜點與細長線條（橫線、稀疏斜線）。"""
+    """Remove ink that does not resemble glyph strokes: large bright regions (fire or reflections; strokes are < 5 px wide,
+    so detect these with a 5x5 opening), isolated noise, and thin lines (horizontal lines or sparse diagonals)."""
     u8 = ink.astype(np.uint8)
     thick = cv2.morphologyEx(u8, cv2.MORPH_OPEN, np.ones((5, 5), np.uint8))
     if thick.any():
@@ -150,16 +151,17 @@ def _despeckle(ink: np.ndarray, min_area: int = 3) -> np.ndarray:
 
 
 def _weak_sig(sig: NameSig | None, min_density: float = 0.03) -> bool:
-    """指紋為空，或墨密度低於 min_density（筆畫太細／只剩雜點，沒有鑑別力）。"""
+    """Whether the fingerprint is empty or its ink density is below min_density (strokes are too thin or only noise remains, so it is not discriminative)."""
     return sig is None or float(sig.bits.mean()) < min_density
 
 
 def name_sig_from_row(row_bgr: np.ndarray, profile: Profile, pink: bool = False) -> NameSig | None:
-    """從第一行裁出的列（x 範圍＝第一行左界到「+」號）取敵人名字指紋，縮放成高 16 的 0/1 字形。
+    """Extract the enemy name fingerprint from a crop of the first text line (x range from the line's left edge to the "+" sign),
 
-    墨＝敵人名字色（紅／黃，pink=True 時併入粉紅）∪ 白字，先去掉粗亮塊與雜點；名字的範圍由敵人色欄位決定
-    （第一段起、段間空白 ≤ 1.5 倍字高，更大的空白視為名字結束），再取範圍內的全部墨。
-    關鍵字（白字）因此不會進入指紋，與語言無關。"""
+    then resize it to a 16-pixel-tall binary glyph. Ink combines enemy-name colors (red/yellow, plus pink when pink=True)
+    with white text; remove large bright regions and noise first. Determine the name range from enemy-colored columns
+    (starting at the first run; gaps <= 1.5 text heights are included, larger gaps end the name), then take all ink in that range.
+    This excludes the keyword (white text) from the fingerprint, making it language-independent."""
     if row_bgr.size == 0:
         return None
     red = red_mask(row_bgr, profile, pink) > 0
@@ -185,7 +187,7 @@ def name_sig_from_row(row_bgr: np.ndarray, profile: Profile, pink: bool = False)
 
 
 def _match(mask: np.ndarray, tpl: np.ndarray, box=None) -> tuple[float, int, int]:
-    """回傳 (最高分, x, y)，座標為 mask 座標。box 限定搜尋範圍；範圍比範本小視為無命中。"""
+    """Return (best score, x, y) in mask coordinates. box restricts the search area; an area smaller than the template is a miss."""
     ox = oy = 0
     if box is not None:
         ox, oy, x1, y1 = box
@@ -200,7 +202,7 @@ def _match(mask: np.ndarray, tpl: np.ndarray, box=None) -> tuple[float, int, int
 
 
 def read_name_sig(row_bgr: np.ndarray, profile: Profile) -> NameSig | None:
-    """名字指紋：標準規則（紅、黃）取不到像樣的字形時，備援改用粉紅（綠色盲）規則。"""
+    """Name fingerprint fallback: use the pink (green color-blind) rule when standard red/yellow rules do not produce a usable glyph."""
     sig = name_sig_from_row(row_bgr, profile, False)
     if _weak_sig(sig, PINK_FALLBACK_MIN_DENSITY) and "pink" in profile.red:
         alt = name_sig_from_row(row_bgr, profile, True)
@@ -209,29 +211,31 @@ def read_name_sig(row_bgr: np.ndarray, profile: Profile) -> NameSig | None:
     return sig
 
 
-# ---- 每支影片自學的「擊殺關鍵字」樣板（與語言無關的驗證） ----
-# 單人加分圖示也用在許多非擊殺橫幅（弱者獎勵、旗幟取回、敵方小隊已消滅、安全區、進化球…，分數數字甚至與助攻相同），
-# 圖示與分數都分不開，只有橫幅文字不同。文字隨語言不同，所以不用預先做好的文字樣板，而是**從這支影片自己學**：
-# - 助攻前綴：助攻消滅橫幅（握手圖示很可靠）握手右側的前幾個字（「助攻，」「ASSIST,」「アシスト、」），
-#   助攻擊倒橫幅的行首是同一段字（沒有握手）。
-# - 擊倒關鍵字：擊倒橫幅（敵人色名字＋傷害行，很可靠）名字左側的字（「擊倒」「KNOCKED DOWN」），
-#   助攻擊倒橫幅在名字前也是同一個字（日文的助攻擊倒不是，靠助攻前綴）。
-# 候選橫幅的第一行白字遮罩與樣板的最大正規化相關 ≥ KW_THRESHOLD 才算擊殺橫幅。
-KW_THRESHOLD = 0.7      # 開發集 H950：真橫幅畫格 25 百分位 0.93（10 百分位 0.6–0.66）、非擊殺橫幅 99 百分位 0.62–0.68
-PREFIX_W = 64           # 助攻前綴樣板寬（像素，已是校準後尺度）
-KEYWORD_W = 36          # 擊倒關鍵字樣板寬（名字左側）
-KW_MIN_INK = 0.04       # 樣板的筆畫比例下限（避免全空樣板）
+# ---- Per-video learned kill keyword templates (language-independent validation) ----
+# The solo score icon also appears in many non-kill banners (e.g. weak-champion rewards, flag returns, enemy squad wipes,
+# safe-zone notices, evolution orbs); even the score can match assists. Only the banner text differs, and text varies by
+# language, so learn templates from each video instead of using fixed text templates:
+# - Assist prefix: the first few characters to the right of the reliable handshake icon in an assist-elimination banner;
+#   assist-knock banners start with the same text but have no handshake icon.
+# - Knock keyword: text to the left of the name in a reliable knock banner (enemy-colored name plus damage line); in assist-knock
+#   banners it is also before the name in most languages, while Japanese relies on the assist prefix.
+# A candidate banner counts as a kill banner when its first-line white-text mask has normalized maximum correlation >= KW_THRESHOLD.
+KW_THRESHOLD = 0.7      # H950 development set: true-banner frame p25 0.93 (p10 0.6–0.66); non-kill banner p99 0.62–0.68.
+PREFIX_W = 64           # Assist-prefix template width in pixels at calibrated scale.
+KEYWORD_W = 36          # Knock-keyword template width to the left of the name.
+KW_MIN_INK = 0.04       # Minimum template stroke ratio to avoid an empty template.
 
 
-INK_SCALE = 100.0       # 頂帽亮度差到這個值就算滿分的筆畫（0–1 連續值）
+INK_SCALE = 100.0       # Top-hat brightness difference at which a stroke reaches full weight (continuous 0–1 values).
 _INK_K = cv2.getStructuringElement(cv2.MORPH_RECT, (7, 7))
 
 
 def ink_mask(bgr: np.ndarray, profile: Profile) -> np.ndarray:
-    """關鍵字樣板用的文字筆畫圖（0–1 連續值）：局部頂帽（細亮筆畫相對於局部背景的亮度差）。
-    不用絕對白色門檻：低對比錄影（驗收片 test-TC 的文字偏灰，舊文字法在上面也只有 0.49–0.60 的分數）會漏字，
-    亮背景（雪地、天空、沙地）會混入背景塊。連續值而不是二值化：二值化的文字樣圖樣彼此相關偏高
-    （開發集 H950 非擊殺橫幅誤接受 40–75%），連續值加較高門檻（KW_THRESHOLD）則誤接受 < 1%。"""
+    """Text-stroke image for keyword templates (continuous 0–1 values): a local top-hat measuring the brightness difference
+    of thin bright strokes from the local background. Avoid an absolute white threshold: low-contrast recordings (text in
+    acceptance clip test-TC is gray; the old text method scored only 0.49–0.60) lose strokes, while bright backgrounds
+    (snow, sky, sand) introduce background blocks. Continuous values avoid the high correlation between binary text patterns
+    (40–75% false acceptance of non-kill banners on H950); with a higher KW_THRESHOLD, continuous values have < 1% false acceptance."""
     g = cv2.cvtColor(np.ascontiguousarray(bgr), cv2.COLOR_BGR2GRAY)
     th = cv2.morphologyEx(g, cv2.MORPH_TOPHAT, _INK_K).astype(np.float32)
     return np.clip(th / INK_SCALE, 0.0, 1.0)
@@ -245,26 +249,26 @@ def _match_max(mask: np.ndarray, tpl: np.ndarray) -> float:
     return float(res.max()) if res.size else 0.0
 
 
-MIN_ANCHOR_BANNERS = 3  # 至少要來自 3 個不同橫幅：同一個橫幅的連續畫格背景幾乎相同，只有跨橫幅才能多數決掉亮背景
+MIN_ANCHOR_BANNERS = 3  # Require anchors from at least 3 distinct banners: consecutive frames from one banner have nearly identical backgrounds, so only cross-banner voting removes bright backgrounds.
 
 
 def _consensus(strips: list[np.ndarray], banners: int | None = None) -> np.ndarray | None:
-    """多個錨點的墨遮罩取多數決；錨點橫幅少於 MIN_ANCHOR_BANNERS 個（banners 未給時以錨點數計）
-    或樣板幾乎沒有墨 → None（不啟用該樣板）。"""
+    """Take a majority vote across ink masks from multiple anchors. Return None (disable the template) if there are fewer than
+    MIN_ANCHOR_BANNERS anchor banners (use anchor count when banners is omitted) or the template contains almost no ink."""
     if (len(strips) if banners is None else banners) < MIN_ANCHOR_BANNERS:
         return None
-    tpl = np.mean(strips, axis=0).astype(np.float32)   # 跨橫幅平均：每個橫幅不同的背景被平均掉，只剩共同的字
+    tpl = np.mean(strips, axis=0).astype(np.float32)   # Averaging across banners removes banner-specific backgrounds, leaving shared text.
     return tpl if float((tpl > 0.3).mean()) >= KW_MIN_INK else None
 
 
 class Keywords:
-    """每支影片學到的兩個樣板（None＝沒有足夠錨點，該樣板不啟用）。"""
+    """The two templates learned for each video (None means there are not enough anchors and the template is disabled)."""
 
     def __init__(self, assist: np.ndarray | None = None, knock: np.ndarray | None = None,
                  assist_by_knock: bool = False):
         self.assist, self.knock = assist, knock
-        # 這支影片的助攻擊倒橫幅是否含擊倒關鍵字（繁中「助攻，擊倒」、英文「ASSIST, KNOCKED DOWN」是；
-        # 日文「アシスト、名前をダウン」不是）：學習時由「擊倒關鍵字命中的助攻擊倒橫幅」的數量決定
+        # Whether assist-knock banners in this video contain the knock keyword (for example, Traditional Chinese and English do,
+        # while Japanese does not); determined during learning from the number of assist-knock banners matching the knock keyword.
         self.assist_by_knock = assist_by_knock
 
     @property
@@ -281,51 +285,51 @@ class Keywords:
 
     @classmethod
     def from_dict(cls, d: dict | None) -> "Keywords":
-        """還原快取中的樣板；格式不符（形狀、資料長度、base64）丟出 ValueError（呼叫端改為重新學習）。"""
+        """Restore templates from cache; raise ValueError for invalid shapes, data lengths, or base64 so the caller can relearn them."""
         def dec(e):
             if not e:
                 return None
             if not isinstance(e, dict):
-                raise ValueError("關鍵字樣板格式錯誤")
+                raise ValueError("Invalid keyword template format")
             shape = e.get("shape")
             if (not isinstance(shape, list) or len(shape) != 2
                     or any(isinstance(x, bool) or not isinstance(x, int) or x <= 0 for x in shape)):
-                raise ValueError(f"關鍵字樣板形狀錯誤：{shape!r}")
+                raise ValueError(f"Invalid keyword template shape: {shape!r}")
             h, w = shape
             raw = np.frombuffer(base64.b64decode(e.get("q8") or "", validate=True), dtype=np.uint8)
             if raw.size < h * w:
-                raise ValueError("關鍵字樣板資料長度不足")
+                raise ValueError("Keyword template data is too short")
             return (raw[: h * w].reshape(h, w).astype(np.float32)) / 255.0
         if d is not None and not isinstance(d, dict):
-            raise ValueError("關鍵字樣板格式錯誤")
+            raise ValueError("Invalid keyword template format")
         d = d or {}
         return cls(dec(d.get("assist")), dec(d.get("knock")), bool(d.get("assist_by_knock", False)))
 
     def scores(self, banner_bgr: np.ndarray, f, profile: Profile) -> tuple[float, float]:
-        """(助攻前綴分數, 擊倒關鍵字分數)；沒有該樣板時為 -1。"""
+        """Return (assist-prefix score, knock-keyword score); return -1 when the corresponding template is absent."""
         return self.scores_ink(keyword_ink(banner_bgr, f, profile), f)
 
     def scores_ink(self, m: np.ndarray, f) -> tuple[float, float]:
-        """同 scores，但輸入已是 keyword_ink 算好的第一行筆畫圖（延後驗證時只保存這一小塊）。"""
+        """Same as scores, but input is the first-line stroke image already computed by keyword_ink (only this small region is saved for deferred validation)."""
         a = _match_max(m[:, :f.plus_x], self.assist) if self.assist is not None else -1.0
         k = _match_max(m[:, max(0, f.line_l - 4):f.plus_x], self.knock) if self.knock is not None else -1.0
         return a, k
 
 
 def keyword_ink(banner_bgr: np.ndarray, f, profile: Profile) -> np.ndarray:
-    """關鍵字比對只看第一行「+」號左側：Keywords.scores_ink 需要的筆畫圖範圍。"""
+    """Keyword matching uses only the first line to the left of the "+" sign: the stroke-image region required by Keywords.scores_ink."""
     return row_ink(banner_bgr, f, profile, pad=5)[:, :max(0, f.plus_x)]
 
 
 def row_ink(banner_bgr: np.ndarray, f, profile: Profile, pad: int = 2) -> np.ndarray:
-    """第一行（箭頭同列）的文字筆畫圖（見 ink_mask）。"""
+    """Text-stroke image for the first line (same row as the arrow); see ink_mask."""
     y0 = max(0, f.chev_y - pad)
     y1 = min(banner_bgr.shape[0], f.chev_y + f.row_h + pad)
     return ink_mask(banner_bgr[y0:y1], profile)
 
 
 def hand_strip(banner_bgr: np.ndarray, f, hand_hw: tuple[int, int], profile: Profile) -> np.ndarray | None:
-    """助攻消滅橫幅：握手圖示右側 PREFIX_W 像素的文字筆畫圖（助攻前綴的錨點）。"""
+    """Assist-elimination banner: text-stroke image PREFIX_W pixels to the right of the handshake icon (anchor for the assist prefix)."""
     th, tw = hand_hw
     x0 = f.hand_x + tw + 4
     b = banner_bgr[max(0, f.hand_y - 2):f.hand_y + th + 2, x0:x0 + PREFIX_W]
@@ -335,7 +339,7 @@ def hand_strip(banner_bgr: np.ndarray, f, hand_hw: tuple[int, int], profile: Pro
 
 
 def knock_strip(banner_bgr: np.ndarray, f, profile: Profile) -> np.ndarray | None:
-    """擊倒橫幅：敵人色名字左側 KEYWORD_W 像素的文字筆畫圖（擊倒關鍵字的錨點）。"""
+    """Knock banner: text-stroke image KEYWORD_W pixels to the left of the enemy-colored name (anchor for the knock keyword)."""
     y0 = max(0, f.chev_y - 2)
     y1 = min(banner_bgr.shape[0], f.chev_y + f.row_h + 2)
     row = banner_bgr[y0:y1, f.line_l:max(f.line_l, f.plus_x - 3)]
@@ -350,24 +354,24 @@ def knock_strip(banner_bgr: np.ndarray, f, profile: Profile) -> np.ndarray | Non
     return ink_mask(row[:, ns - 6 - KEYWORD_W:ns - 6], profile).astype(np.float32)
 
 
-# 沒有擊殺意義的橫幅類型當前事件的橫幅類型（獨立消滅、小隊抹殺、REVIVE／CRATE REVEAL 等三人加分）
+# Banner types that do not indicate a kill but can appear alongside the current event (solo elimination, squad wipe, REVIVE/CRATE REVEAL, and other three-person score banners).
 _OTHER_KINDS = frozenset({"elim", "squad_wipe", "score_other"})
 PRODUCT_KINDS = frozenset({"knock", "assist_knock", "assist_elim"})
 
 
 @dataclass(frozen=True)
 class Pending:
-    """待關鍵字驗證的單人加分格（Detector.prepare 產出、Detector.resolve 定案）：只保留驗證需要的小塊資料，
-    不保留整張橫幅，讓「邊解碼邊學關鍵字」時可以先緩衝、學完再定案。"""
-    kind: str                 # 圖示線索的類型：knock／assist_knock
+    """Solo-score frame pending keyword validation (created by Detector.prepare and finalized by Detector.resolve). Keep only
+    the small regions needed for validation, not the full banner, so frames can be buffered while learning and finalized later."""
+    kind: str                 # Type inferred from the icon: knock/assist_knock.
     f: IconFrame
-    ink: np.ndarray           # keyword_ink：第一行「+」號左側的筆畫圖
-    sig: NameSig | None       # 擊倒的敵人名字指紋（圖示判為擊倒時才讀；驗證後仍是擊倒才用）
+    ink: np.ndarray           # keyword_ink: first-line stroke image to the left of the "+" sign.
+    sig: NameSig | None       # Enemy-name fingerprint for a knock (read only when the icon indicates a knock; used only if validation confirms it).
     spectating: bool
 
 
 class Detector:
-    """單格偵測器：icon_scale 由 calibrate 每支影片決定一次，之後單尺度比對（速度）。"""
+    """Single-frame detector: calibrate determines icon_scale once per video, then matching uses a single scale for speed."""
 
     def __init__(self, profile: Profile, icon_scale: float = 1.0, params: IconParams | None = None,
                  keywords: Keywords | None = None):
@@ -375,7 +379,7 @@ class Detector:
         self.icon_scale = icon_scale
         self.set_keywords(keywords)
         self.icons = IconDetector(Path(profile.dir), scales=(icon_scale,), params=params)
-        # 觀戰樣板依白字門檻分組：同一組只算一次遮罩
+        # Group spectator templates by white-text threshold and compute one mask per group.
         groups: dict[tuple, list[tuple[np.ndarray, float]]] = {}
         for s in profile.spectating:
             groups.setdefault((s.white["v_min"], s.white["s_max"]), []).append(
@@ -383,7 +387,7 @@ class Detector:
         self._spec_groups = [({"v_min": k[0], "s_max": k[1]}, v) for k, v in groups.items()]
 
     def _spectating(self, spec_bgr: np.ndarray) -> bool:
-        """任一語言的觀戰樣板命中即算觀戰（見 templates/icons/PROVENANCE.md 的誤判量測）。"""
+        """A match from a spectator template in any language counts as spectating (see false-positive measurements in templates/icons/PROVENANCE.md)."""
         for white, tpls in self._spec_groups:
             sm = white_mask(spec_bgr, white)
             box = _ink_box(sm)
@@ -392,20 +396,22 @@ class Detector:
         return False
 
     def _knock_sig(self, banner_bgr: np.ndarray, f) -> NameSig | None:
-        """第一行（箭頭同列）、第一行左界到「+」號之間的敵人名字指紋；粉紅（綠色盲）只在標準遮罩讀不到像樣字形時備援。"""
+        """Enemy-name fingerprint on the first line (same row as the arrow), between the line's left edge and the "+" sign; use pink (green color-blind) only if the standard mask does not yield a usable glyph."""
         y0, y1 = max(0, f.chev_y - 2), min(banner_bgr.shape[0], f.chev_y + f.row_h + 2)
         x1 = f.plus_x - 3 if f.plus_x > f.line_l + 8 else f.chev_x - 4
         row = banner_bgr[y0:y1, f.line_l:max(f.line_l, x1)]
         return read_name_sig(row, self.profile)
 
     def _verify(self, ink: np.ndarray, f, kind: str) -> str | None:
-        """用這支影片學到的關鍵字樣板驗證單人加分橫幅；沒有樣板時不驗證。
+        """Validate solo-score banners with keyword templates learned from this video; skip validation when templates are absent.
 
-        - 助攻前綴命中（行首是「助攻，」之類）→ 助攻擊倒（沒有敵人色名字時，修正圖示線索判錯的擊倒）。
-        - 擊倒關鍵字命中 → 維持圖示線索的類型。
-        - 都不命中 → None（非擊殺橫幅）；但只驗證「有對應樣板」的類別：擊倒要有擊倒樣板；助攻擊倒要有助攻前綴樣板，
-          或這支影片的助攻橫幅含擊倒關鍵字（assist_by_knock）。沒有對應樣板（影片裡沒有足夠的錨點可學；
-          日文式的助攻橫幅不含擊倒關鍵字）時維持原判。"""
+        - An assist-prefix match (line starts with text such as "Assist,") means assist-knock; without an enemy-colored name,
+          this corrects a knock misclassified from icon evidence.
+        - A knock-keyword match preserves the type inferred from the icon.
+        - No match returns None (not a kill banner). Validate only categories with a corresponding template: knocks need a knock
+          template; assist-knocks need an assist-prefix template or assist banners in this video must contain the knock keyword
+          (assist_by_knock). Preserve the original classification when no corresponding template can be learned from enough
+          anchors (including Japanese-style assist banners that do not contain the knock keyword)."""
         kw = self.keywords
         if kw is None:
             return kind
@@ -414,7 +420,7 @@ class Detector:
             return "assist_knock" if f.name_color - f.name_color_bg < self.icons.p.name_color_min else kind
         if k >= KW_THRESHOLD:
             return kind
-        # 只有「有對應樣板可驗證」的類別才會被擋：擊倒要有擊倒關鍵字樣板；助攻擊倒要有助攻前綴樣板
+        # Reject only categories with a corresponding validation template: knocks need a knock-keyword template; assist-knocks need an assist-prefix template.
         if kind == "knock":
             verifiable = kw.knock is not None
         else:
@@ -428,34 +434,35 @@ class Detector:
         return self.resolve(self.prepare(banner_bgr, spec_bgr)[0])
 
     def prepare(self, banner_bgr: np.ndarray, spec_bgr: np.ndarray) -> tuple[FrameResult | Pending, IconFrame]:
-        """不需要關鍵字樣板的部分：回傳 (FrameResult 或待驗證的 Pending, 圖示特徵)。"""
+        """Process the portion that does not need keyword templates; return (FrameResult or Pending validation, icon features)."""
         spectating = self._spectating(spec_bgr)
         f = self.icons.features(banner_bgr)
         p = self.icons.p
         kind = f.kind
         if kind in ("knock", "assist_knock"):
             sig = self._knock_sig(banner_bgr, f) if kind == "knock" else None
-            ink = keyword_ink(banner_bgr, f, self.profile)  # 一律保存：關鍵字可能之後才給（set_keywords）
+            ink = keyword_ink(banner_bgr, f, self.profile)  # Always save this in case keywords are provided later by set_keywords.
             return Pending(kind, f, ink, sig, spectating), f
         if kind == "assist_elim":
             return FrameResult(kind, f.hand, f.hand_x, False, None, spectating), f
         if kind in _OTHER_KINDS:
-            # 別種橫幅（獨立消滅、小隊抹殺、REVIVE 等）：視同沒有橫幅。橫幅至少停留約 2 秒（8 格），
-            # 單格的圖示判斷不確定只是雜訊；連續 ≥ 2 格的非擊殺格依 GAP 規則自然結束進行中的事件。
+            # Other banners (solo elimination, squad wipe, REVIVE, etc.) count as no banner. A banner lasts at least ~2 seconds
+            # (8 frames), so an uncertain icon classification in one frame is noise; >= 2 consecutive non-kill frames naturally
+            # end the in-progress event under the GAP rule.
             return FrameResult(None, 0.0, 0, False, None, spectating), f
         if f.chev >= p.chev_min and f.plus >= p.plus_min:
-            # 有加分箭頭與「+」，但人形不確定（淡入淡出）：不算命中，但不中斷進行中的事件
+            # Score arrow and "+" are present, but the person icon is uncertain (fade in/out): not a hit, but do not interrupt an in-progress event.
             return FrameResult(None, 0.0, 0, False, None, spectating, hint="cont"), f
         return FrameResult(None, 0.0, 0, False, None, spectating), f
 
     def resolve(self, r: FrameResult | Pending) -> FrameResult:
-        """用目前的關鍵字樣板（set_keywords）定案 prepare 的結果。"""
+        """Finalize the result of prepare using the current keyword templates (set via set_keywords)."""
         if isinstance(r, FrameResult):
             return r
         f = r.f
         kind = self._verify(r.ink, f, r.kind)
         if kind is None:
-            # 單人加分圖示但文字不是擊倒／助攻（弱者獎勵、旗幟取回、敵方小隊已消滅…）：視同沒有橫幅
+            # Solo-score icon whose text is not a knock/assist (weak-champion reward, flag return, enemy squad wipe, etc.): treat as no banner.
             return FrameResult(None, 0.0, 0, False, None, r.spectating)
         sig = r.sig if kind == "knock" else None
         dmg = f.line2_ink - f.line2_ink_bg >= self.icons.p.line2_ink_min

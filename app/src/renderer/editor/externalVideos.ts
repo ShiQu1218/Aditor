@@ -10,7 +10,7 @@ interface ExternalVideoApi {
 
 const norm = (path: string): string => path.replace(/\\/g, '/').toLowerCase()
 
-/** 加入影片庫與分析佇列後探測長度；個別失敗不撤回影片庫，也不影響其他影片。 */
+/** Probe duration after adding videos to the library and analysis queue; an individual failure does not remove the library entry or affect other videos. */
 export async function importExternalVideos(paths: string[], api: ExternalVideoApi): Promise<{
   items: Omit<ProjectItem, 'id'>[]
   failed: string[]
@@ -24,7 +24,7 @@ export async function importExternalVideos(paths: string[], api: ExternalVideoAp
   for (const source of unique) {
     const entry = entries.find((e) => norm(e.path) === norm(source))
     try {
-      // library:add 已自動排程；完成／分析中／已排隊的影片不可再分析。
+      // library:add already schedules analysis; completed, analyzing, and queued videos must not be analyzed again.
       if (entry?.status !== 'done' && entry?.status !== 'analyzing' && !busy.has(norm(source))) {
         await api.queue.enqueue(source)
       }

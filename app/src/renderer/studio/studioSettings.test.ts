@@ -8,8 +8,8 @@ import { resolve } from 'path'
 
 const weak = { supported: false, smooth: false, powerEfficient: false }
 
-describe('toStudioSettings（純決策）', () => {
-  test('缺值／型別錯誤 → 預設；合法值保留', () => {
+describe('toStudioSettings (pure decision logic)', () => {
+  test('Missing values or wrong types use defaults; valid values are preserved', () => {
     expect(toStudioSettings(undefined)).toMatchObject({ before: 8, proxySuggest: true, autoSuggestOnOpen: true })
     const s = toStudioSettings({ before: 3, after: 'x', proxySuggest: false, autoclip: { ...DEFAULT_SETTINGS.autoclip, n: 5 } })
     expect(s.before).toBe(3)
@@ -19,7 +19,7 @@ describe('toStudioSettings（純決策）', () => {
   })
 })
 
-describe('leadInSeek 使用設定的前秒數', () => {
+describe('leadInSeek uses the configured number of seconds', () => {
   test('leadInSeek = max(0, t - before)', () => {
     expect(leadInSeek(30, 8)).toBe(22)
     expect(leadInSeek(30, 3)).toBe(27)
@@ -28,18 +28,18 @@ describe('leadInSeek 使用設定的前秒數', () => {
 })
 
 describe('proxySuggest → studioNotice', () => {
-  test('false 時不建議代理檔；true（預設）才建議', () => {
+  test('Does not suggest a proxy when false; suggests one when true (the default)', () => {
     expect(studioNotice({ analysis: 'done', playability: weak, proxyState: 'none', proxySuggest: false })).toBeNull()
     expect(studioNotice({ analysis: 'done', playability: weak, proxyState: 'none', proxySuggest: true })?.id).toBe('proxy-suggest')
     expect(studioNotice({ analysis: 'done', playability: weak, proxyState: 'none' })?.id).toBe('proxy-suggest')
   })
-  test('proxySuggest=false 不影響引擎錯誤通知', () => {
+  test('proxySuggest=false does not affect engine error notices', () => {
     expect(studioNotice({ analysis: 'error', playability: weak, proxyState: 'none', proxySuggest: false })?.kind).toBe('error')
   })
 })
 
-describe('autoclip 預設 → 自動建議與 AI 浮層', () => {
-  test('planSuggestions 以 settings.autoclip 為參數', () => {
+describe('autoclip defaults → automatic suggestions and AI popover', () => {
+  test('planSuggestions receives settings.autoclip as an argument', () => {
     const settings: StudioSettings = toStudioSettings({ autoclip: { n: 7, gap: 30, before: 6, after: 3, max_len: 120 } })
     const doc = {
       analysis: { status: 'done' },
@@ -75,8 +75,8 @@ function fakeApi(initial: unknown) {
 }
 const tick = (): Promise<void> => new Promise((r) => setTimeout(r, 0))
 
-describe('subscribeStudioSettings：讀取＋settings:changed 即時生效', () => {
-  test('初始值與後續變更都送到 consumer；解除訂閱後不再送', async () => {
+describe('subscribeStudioSettings: initial read and immediate settings:changed updates', () => {
+  test('Sends the initial value and subsequent changes to the consumer; stops after unsubscribe', async () => {
     const f = fakeApi({ ...DEFAULT_SETTINGS, before: 10, proxySuggest: false })
     const seen: StudioSettings[] = []
     const off = subscribeStudioSettings(f.api, (s) => seen.push(s))
@@ -91,7 +91,7 @@ describe('subscribeStudioSettings：讀取＋settings:changed 即時生效', () 
     expect(seen.at(-1)!.before).toBe(2)
   })
 
-  test('較新的 changed 事件不會被較晚回來的 get() 蓋掉', async () => {
+  test('A newer changed event is not overwritten by a later get() response', async () => {
     let resolveGet!: (v: unknown) => void
     const listeners = new Set<(s: unknown) => void>()
     const api = {
@@ -108,7 +108,7 @@ describe('subscribeStudioSettings：讀取＋settings:changed 即時生效', () 
     expect(seen.at(-1)!.before).toBe(20)
   })
 
-  test('沒有 api／get 失敗 → 回退預設，不拋錯', async () => {
+  test('Missing api or failed get() falls back to defaults without throwing', async () => {
     const seen: StudioSettings[] = []
     subscribeStudioSettings(undefined, (s) => seen.push(s))
     expect(seen.at(-1)).toMatchObject({ before: 8 })
@@ -120,9 +120,9 @@ describe('subscribeStudioSettings：讀取＋settings:changed 即時生效', () 
   })
 })
 
-describe('StudioScreen 接線（原始碼掃描：不得再有寫死的 8/4）', () => {
+describe('StudioScreen wiring (source scan: no more hardcoded 8/4)', () => {
   const src = readFileSync(resolve(__dirname, 'StudioScreen.tsx'), 'utf-8')
-  test('事件 lead-in seek 使用設定值；刀片不使用前後秒數', () => {
+  test('Event lead-in seek uses the setting; blade mode does not use before/after seconds', () => {
     expect(src).not.toMatch(/createClipAt\([^)]*,\s*8,\s*4,/)
     expect(src).not.toMatch(/ev\.t\s*-\s*8/)
     expect(src).not.toMatch(/^\s*8,\s*\n\s*4,\s*\n\s*duration/m)

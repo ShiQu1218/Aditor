@@ -6,11 +6,11 @@ import { addItems, type Project, type ProjectItem } from '../editor/project'
 import { i18n } from '../i18n'
 
 /**
- * 精華分頁的純函式（spec §3.2.3、§3.2.4、§3.6）：
- * 自動放置判定、建議狀態轉換、浮層套用合併、加入專案（含復原）、標題與事件字形。
+ * Pure functions for the highlights tab (spec §3.2.3, §3.2.4, §3.6):
+ * automatic placement, suggestion state transitions, popover merge, adding clips to a project (including undo), titles, and event glyphs.
  */
 
-/** 開啟影片時是否自動放置 AI 建議框：設定開啟、分析完成且文件中沒有任何 AI 片段（spec §3.2.6）。 */
+/** Whether to place AI suggestions automatically on open: enabled in settings, analysis is complete, and the document has no AI clips (spec §3.2.6). */
 export function shouldAutoPlace(doc: CacheDoc, settings: { autoSuggestOnOpen: boolean }): boolean {
   return (
     Boolean(settings.autoSuggestOnOpen) &&
@@ -19,14 +19,14 @@ export function shouldAutoPlace(doc: CacheDoc, settings: { autoSuggestOnOpen: bo
   )
 }
 
-/** 引擎 autoclip 輸出 → 建議狀態片段（origin 與區間原樣保留）。 */
+/** Convert engine autoclip output to suggested clips (preserve origin and intervals as-is). */
 export function toSuggestions(clips: Clip[]): Clip[] {
   return normalizeClips(clips).map((c) => ({ ...c, status: 'suggested' as const }))
 }
 
 /**
- * 「套用（取代現有建議）」：只取代 suggested 的 AI 片段；手動、已加入與已略過的片段全部保留
- * （使用者的略過不會被重設）。與保留片段（含已略過）起點 <1s 的新建議不重複、id 撞號改發新 id。
+ * Apply (replace existing suggestions): replace only suggested AI clips; keep manual, added, and skipped clips
+ * (user skips are not reset). Avoid new suggestions starting within 1s of retained clips (including skipped ones), and generate a new id for collisions.
  */
 export function applyAutoClip(oldClips: Clip[], newClips: Clip[]): Clip[] {
   const kept = normalizeClips(oldClips).filter((c) => !(c.origin === 'ai' && c.status === 'suggested'))
@@ -44,7 +44,7 @@ export function applyAutoClip(oldClips: Clip[], newClips: Clip[]): Clip[] {
   return [...kept, ...added].sort((a, b) => a.start - b.start)
 }
 
-/** 依 id 移除專案片段（回傳新專案）。 */
+/** Remove project clips by id and return a new project. */
 export function removeProjectItems(project: Project, ids: string[]): Project {
   if (ids.length === 0) return project
   const set = new Set(ids)
@@ -52,15 +52,15 @@ export function removeProjectItems(project: Project, ids: string[]): Project {
 }
 
 export interface AcceptResult {
-  /** 本次實際新增的片段（已存在相同來源＋時段＝空陣列，呼叫端據此判斷重複）。 */
+  /** Clips actually added this time (empty if the same source and interval already exist, which callers use to detect duplicates). */
   added: ProjectItem[]
-  /** 復原：只移除本次加入的片段（可套用於當下最新的專案狀態）。 */
+  /** Undo by removing only the clips added this time (can be applied to the latest project state). */
   undo: (project: Project) => Project
 }
 
 const SAME_EPS = 1e-3
 
-/** 同來源且起訖幾乎相同＝同一片段（避免重複加入）。 */
+/** Same source and nearly identical start/end times means the same clip (prevents duplicates). */
 function sameItem(item: ProjectItem, source: string, clip: Clip): boolean {
   return (
     item.source === source &&
@@ -73,14 +73,14 @@ function newItemId(): string {
   return `item_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`
 }
 
-/** 專案中對應此片段的項目 id（來源＋起訖相同＝同一片段）。 */
+/** Find the project item id for this clip (same source and interval means the same clip). */
 export function findItemsForClip(clip: Clip, source: string, project: Project): string[] {
   return project.items.filter((it) => sameItem(it, source, clip)).map((it) => it.id)
 }
 
 /**
- * 把片段加入專案（spec §3.6）：重複加入為幂等（回傳空 `added`）；
- * 回傳的 `undo` 只移除本次加入的片段，供 Toast〔復原〕使用。
+ * Add clips to the project (spec §3.6): duplicate additions are idempotent (return empty `added`).
+ * The returned `undo` removes only clips added this time for use by the Toast Undo action.
  */
 export function acceptToProject(clip: Clip, source: string, project: Project): AcceptResult {
   if (project.items.some((it) => sameItem(it, source, clip))) {
@@ -94,18 +94,18 @@ export function acceptToProject(clip: Clip, source: string, project: Project): A
   }
 }
 
-/** 片段指向的事件（依事件清單順序；找不到者略過）。 */
+/** Events referenced by a clip, in event-list order; skip events that cannot be found. */
 function eventsOfClip(clip: Clip, events: EngineEvent[]): EngineEvent[] {
   const ids = new Set(clip.event_ids ?? [])
   return events.filter((e) => ids.has(e.id))
 }
 
-/** 片段內計入的事件數（軟刪除與 override 由 isCounted 統一判定）。 */
+/** Number of counted events in a clip (isCounted handles soft deletion and overrides). */
 export function countedEventCount(clip: Clip, events: EngineEvent[]): number {
   return eventsOfClip(clip, events).filter((e) => isCounted(e)).length
 }
 
-/** 卡片標題：「N 殺精華」／手動「快速剪輯」／沒有計入事件「精華片段」。 */
+/** Card title: “N-kill highlight,” “Quick Clip” for manual clips, or “Highlight Clip” when there are no counted events. */
 export function clipTitle(clip: Clip, events: EngineEvent[]): string {
   const t = i18n.studio.hl
   if (clip.origin === 'manual') return t.quickTitle
@@ -119,13 +119,13 @@ export interface ClipGlyph {
 }
 
 export interface ClipGlyphRow {
-  /** 上限內的字形（不計入者淡色顯示）。 */
+  /** Glyphs within the limit (uncounted events appear dimmed). */
   glyphs: ClipGlyph[]
-  /** 超過上限未顯示的事件數（顯示「+N」）。 */
+  /** Number of events beyond the limit (displayed as “+N”). */
   overflow: number
 }
 
-/** 事件字形列：最多 max 個，超過顯示 +N；不計入者標記為淡色。 */
+/** Event glyph row: show at most max glyphs, then +N; mark uncounted events as dimmed. */
 export function clipEventGlyphs(clip: Clip, events: EngineEvent[], max = 12): ClipGlyphRow {
   const all = eventsOfClip(clip, events)
   const glyphs = all.slice(0, max).map((e) => ({ type: e.type, counted: isCounted(e) }))
@@ -133,7 +133,7 @@ export function clipEventGlyphs(clip: Clip, events: EngineEvent[], max = 12): Cl
 }
 
 /**
- * 是否仍是待確認建議（status 缺省＝舊檔視為已加入）。
+ * Whether this is still a pending suggestion (missing status in legacy files means added).
  */
 export function isSuggested(clip: Clip): boolean {
   return clip.origin === 'ai' && (clip.status ?? 'accepted') === 'suggested'
@@ -142,9 +142,9 @@ export function isSuggested(clip: Clip): boolean {
 const normPath = (p: string): string => p.replace(/\\/g, '/').toLowerCase()
 
 /**
- * 顯示用狀態：「已加入」以專案實際內容為準。專案中沒有同來源且時段重疊的片段
- * （從專案區刪除、開新專案、復原加入…）時，已加入的片段顯示回建議，可再次加入。
- * 用重疊而非起訖相同，片軌把手修剪過的專案片段仍算已加入。未變動者保留原物件。
+ * Display status: determine “added” from actual project content. If no clip from the same source overlaps in time
+ * (deleted from the project, a new project was opened, an addition was undone, etc.), show it as suggested so it can be added again.
+ * Use overlap instead of exact bounds so project clips trimmed with track handles still count as added. Preserve unchanged objects.
  */
 export function withProjectStatus(clips: Clip[], source: string, project: Project): Clip[] {
   const src = normPath(source)
@@ -157,8 +157,8 @@ export function withProjectStatus(clips: Clip[], source: string, project: Projec
 }
 
 /**
- * 目前作用中的建議（`Enter` 加入、`Delete` 略過、`↑↓` 移動用）：
- * 跳過已加入／已略過與 status 缺省（舊檔視為已加入）者；找不到下一個時環繞。
+ * Current active suggestion (used by `Enter` to add, `Delete` to skip, and `↑↓` to move):
+ * Skip added, skipped, and missing-status clips (legacy files treat them as added); wrap when no next item is found.
  */
 export function nextSuggestion(clips: Clip[], activeId: string | null, dir: 1 | -1 = 1): string | null {
   if (clips.length === 0) return null
@@ -173,11 +173,11 @@ export function nextSuggestion(clips: Clip[], activeId: string | null, dir: 1 | 
 
 export interface AddAllPlan {
   project: Project
-  /** 本次實際新增的專案片段 id（空＝沒有新增，呼叫端不應推歷史／Toast） */
+  /** Project clip ids actually added this time (empty means nothing changed; callers should not push history or show a Toast). */
   addedIds: string[]
 }
 
-/** 全部加入（Ctrl+E）：逐一以幂等的 acceptToProject 加入；重複觸發不會產生重複片段。 */
+/** Add all (Ctrl+E): add each with idempotent acceptToProject; repeated calls do not create duplicate clips. */
 export function planAddAll(suggested: Clip[], source: string, project: Project): AddAllPlan {
   let next = project
   const addedIds: string[] = []
@@ -190,17 +190,17 @@ export function planAddAll(suggested: Clip[], source: string, project: Project):
 }
 
 export interface AcceptPlan {
-  /** 套用後的專案（沒有新增時就是原物件） */
+  /** Project after applying (the original object when nothing was added). */
   project: Project
-  /** 卡片的新狀態 */
+  /** New card status. */
   clipStatus: 'accepted'
-  /** 'added'＝實際新增；'duplicate'＝專案已有此片段（顯示資訊 Toast、不附復原） */
+  /** 'added' means a clip was added; 'duplicate' means it already exists (show an informational Toast without Undo). */
   notice: 'added' | 'duplicate'
-  /** 復原動作（duplicate 時為 null）：移除本次加入的專案片段，並讓卡片回到原狀態（Enter 可再次加入） */
+  /** Undo action (null for duplicates): remove the project clip added this time and restore the card's prior state so Enter can add it again. */
   undo: { project: (p: Project) => Project; clipStatus: 'suggested' | 'accepted' } | null
 }
 
-/** 單張卡片「加入」（卡片／Enter／＋從來源加入）的純規劃：專案變更、卡片狀態、Toast 復原內容（spec §3.6）。 */
+/** Pure plan for adding one card (card/Enter/Add from Source): project change, card status, and Toast Undo content (spec §3.6). */
 export function planAccept(clip: Clip, source: string, project: Project): AcceptPlan {
   const res = acceptToProject(clip, source, project)
   if (res.added.length === 0) {
@@ -216,33 +216,33 @@ export function planAccept(clip: Clip, source: string, project: Project): Accept
 
 export type SuggestionPlan =
   | { kind: 'none' }
-  /** 載入路徑：文件沒有 AI 片段，放置新建議 */
+  /** Load path: the document has no AI clips; place new suggestions. */
   | { kind: 'place'; params: AutoClipParams }
-  /** 重新分析：重跑 autoclip 並以 mergeOnReanalyze 合併（accepted→stale、舊建議丟棄） */
+  /** Reanalysis: rerun autoclip and merge with mergeOnReanalyze (accepted → stale; discard old suggestions). */
   | { kind: 'merge'; params: AutoClipParams }
 
 export interface SuggestionInput {
   doc: CacheDoc
-  /** 目前（重新分析前）的片段 */
+  /** Current clips (before reanalysis). */
   clips: Clip[]
   settings: { autoSuggestOnOpen: boolean; autoclip: AutoClipParams }
   /**
-   * 這次文件是否為重新分析的結果。預設取自文件旗標 `doc.app.suggestionsPending`
-   * （main 在重新分析完成後寫入；引擎文件本身看不出來）。
+   * Whether this document is the result of reanalysis. Defaults to the document flag `doc.app.suggestionsPending`
+   * (written by main after reanalysis; the engine document does not indicate this on its own).
    */
   reanalyzed?: boolean
 }
 
-/** 文件是否帶有「重新分析後建議尚未重算」旗標（main 寫入；工作室合併一次後清除）。 */
+/** Whether the document has the “suggestions pending after reanalysis” flag (written by main and cleared after one studio merge). */
 export function isSuggestionsPending(doc: Pick<CacheDoc, 'app'>): boolean {
   return Boolean(doc.app?.suggestionsPending)
 }
 
 /**
- * 分析完成後是否／如何產生建議。引擎 analyze 的文件只含手動片段（engine/aditor/analyze.py），
- * main 在重新分析後把手動＋已加入（stale）的片段寫回並設 `app.suggestionsPending`，
- * 所以帶旗標的文件一律以目前預設參數重跑 autoclip 並 mergeOnReanalyze；
- * 單純載入（首次分析、無旗標）則維持 shouldAutoPlace 規則（不標 stale）。
+ * Whether and how to generate suggestions after analysis. The engine's analyze document contains manual clips only (engine/aditor/analyze.py).
+ * After reanalysis, main writes back manual and accepted (stale) clips and sets `app.suggestionsPending`,
+ * so flagged documents always rerun autoclip with the current defaults and use mergeOnReanalyze.
+ * A normal load (first analysis, no flag) follows shouldAutoPlace and does not mark clips stale.
  */
 export function planSuggestions(input: SuggestionInput): SuggestionPlan {
   const { doc, settings } = input
@@ -253,7 +253,7 @@ export function planSuggestions(input: SuggestionInput): SuggestionPlan {
   return { kind: 'none' }
 }
 
-/** 把 autoclip 新結果合併進目前片段（'merge'＝mergeOnReanalyze；'place'＝保留手動、加入建議）。 */
+/** Merge new autoclip results into current clips ('merge' uses mergeOnReanalyze; 'place' keeps manual clips and adds suggestions). */
 export function mergeSuggestions(kind: 'place' | 'merge', current: Clip[], freshAi: Clip[]): Clip[] {
   if (kind === 'merge') return mergeOnReanalyze(current, freshAi)
   const manual = normalizeClips(current).filter((c) => c.origin === 'manual')

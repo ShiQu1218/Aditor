@@ -5,7 +5,7 @@ import { isSafeLocalDirPath } from './safe-path'
 import type { SettingsStore } from './settings'
 import { prepareStorageRoot, suggestStorageRoot } from './storage-root'
 
-/** 取得「建議的儲存根資料夾」的 IPC 頻道（首次啟動引導與設定畫面用）。 */
+/** IPC channel for retrieving the suggested storage root (used by first-run setup and Settings). */
 export const STORAGE_SUGGEST_CHANNEL = 'settings:suggestStorageRoot'
 
 export interface PasswordStorage {
@@ -14,7 +14,7 @@ export interface PasswordStorage {
   decryptString(value: Buffer): string
 }
 
-/** 所有設定 IPC 出口共用，密文也不跨越 renderer 邊界。 */
+/** Shared by all settings IPC endpoints; ciphertext does not cross the renderer boundary. */
 export function publicSettings(settings: Settings): Settings {
   if (!settings?.recording) return settings
   const { obsPasswordEnc, obsPassword: _password, ...recording } = settings.recording
@@ -28,7 +28,7 @@ export function obsPassword(settings: Settings['recording'], storage: PasswordSt
   catch { throw new Error('無法解密 OBS 密碼，請重新設定') }
 }
 
-/** ipcMain 的最小子集（方便測試注入）。 */
+/** Minimal ipcMain subset (for dependency injection in tests). */
 export interface SettingsIpcLike {
   handle(channel: string, fn: (event: any, ...args: any[]) => unknown): void
 }
@@ -39,9 +39,9 @@ export interface WindowLike {
 }
 
 /**
- * 經由設定畫面寫入的資料夾路徑驗證：必須是本機絕對路徑、存在、且為資料夾。
- * 通過時回傳 `path.resolve` 後的路徑；否則丟出訊息可直接顯示在設定列的錯誤。
- * （SettingsStore 只做型別驗證；路徑是否存在屬於 main 的 UI 入口職責。）
+ * Validate a folder path written through Settings: it must be a local absolute path to an existing directory.
+ * Return the `path.resolve` result when valid; otherwise throw an error that can be displayed directly in the Settings row.
+ * (SettingsStore validates types only; checking path existence belongs to the main UI entry point.)
  */
 export function validateOutDir(dir: unknown): string {
   if (!isSafeLocalDirPath(dir)) {
@@ -60,7 +60,7 @@ export function validateOutDir(dir: unknown): string {
   return resolved
 }
 
-/** 處理 partial 內的 storageRoot（就地改寫 partial；錯誤寫入 errors）。 */
+/** Handle storageRoot in a partial settings object (mutate partial in place; add failures to errors). */
 function applyStorageRoot(partial: Partial<Settings>, errors: NonNullable<SettingsSetResult['errors']>): void {
   if (!('storageRoot' in partial) || partial.storageRoot === null) return
   try {
@@ -76,12 +76,12 @@ function applyStorageRoot(partial: Partial<Settings>, errors: NonNullable<Settin
 }
 
 /**
- * `storageRoot`（字串）：建立 `<根>` 與子資料夾後，同步把 `recording.outputDir`、`defaultOutDir` 指到
- * `<根>/Recordings`、`<根>/Exports`；失敗時三個欄位都不套用並回報 `errors.storageRoot`。null 只清除 `storageRoot`。
+ * `storageRoot` (string): create `<root>` and its subdirectories, then set `recording.outputDir` and `defaultOutDir` to
+ * `<root>/Recordings` and `<root>/Exports`; on failure, apply none of the three fields and return `errors.storageRoot`. null clears only `storageRoot`.
  * `settings:get`／`settings:set`／`settings:changed`。
- * - `settings:set` 回傳 `{ settings, persisted, errors? }`（寫檔失敗以 `persisted:false` 回報，不丟錯）。
- * - `defaultOutDir` 在此驗證（絕對路徑／存在／資料夾），失敗時該欄位不套用並附 `errors.defaultOutDir`。
- * - `watchFolders` 只能經 `library:*WatchFolder`（WatchManager 驗證）修改，這裡一律忽略。
+ * - `settings:set` returns `{ settings, persisted, errors? }` (reports write failures as `persisted:false` instead of throwing).
+ * - Validate `defaultOutDir` here (absolute path/existing/directory); on failure, do not apply the field and add `errors.defaultOutDir`.
+ * - Modify `watchFolders` only through `library:*WatchFolder` (validated by WatchManager); always ignore it here.
  */
 export function registerSettingsHandlers(
   ipc: SettingsIpcLike,

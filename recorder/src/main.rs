@@ -1,4 +1,4 @@
-//! aditorrec：Aditor 原生錄影核心。由 Electron 主程序以 JSON-lines 驅動（規格
+//! aditorrec: Aditor native recording core. Driven by the Electron main process over JSON-lines (spec
 //! `docs/superpowers/specs/2026-10-18-live-recording-design.md`）。
 
 mod audio;
@@ -22,15 +22,15 @@ fn main() {
         eprintln!("internal: {error:#}");
         std::process::exit(1);
     }
-    // SAFETY: 僅調整目前程序的排程優先序，不開啟遊戲或其他程序。
+    // SAFETY: Adjusts the scheduling priority of this process only; it does not open the game or any other process.
     unsafe {
         use windows::Win32::System::Threading::{
             GetCurrentProcess, SetPriorityClass, BELOW_NORMAL_PRIORITY_CLASS,
         };
         if let Err(error) = SetPriorityClass(GetCurrentProcess(), BELOW_NORMAL_PRIORITY_CLASS) {
-            eprintln!("設定錄影程序優先序失敗：{error}");
+            eprintln!("Failed to set recorder process priority: {error}");
         }
-        // libavutil/log.h：AV_LOG_QUIET = -8；錯誤由各模組的 Result 回報。
+        // libavutil/log.h: AV_LOG_QUIET = -8; errors are reported through each module's Result.
         av_log_set_level(-8);
     }
     let events = ipc::EventSink::new(Box::new(std::io::stdout()));

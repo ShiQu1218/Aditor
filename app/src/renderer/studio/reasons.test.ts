@@ -28,17 +28,17 @@ describe('eventReason', () => {
     )
     expect(eventReason(ev({ counted_reason: 'manual', source: 'manual' }))).toBe('手動')
 
-    // override 優先於 counted_reason
+  // override takes precedence over counted_reason.
     expect(eventReason(ev({ counted_override: true }))).toBe('強制計入')
     expect(eventReason(ev({ counted: false, counted_reason: 'spectating', counted_override: false }))).toBe(
       '強制不計入'
     )
 
-    // 軟刪除最優先
+  // Soft deletion takes precedence.
     expect(eventReason(ev({ deleted: true, counted: false, counted_reason: 'deleted' }))).toBe('已刪除')
     expect(eventReason(ev({ deleted: true, counted_override: true }))).toBe('已刪除')
 
-    // 未知原因原樣顯示（向前相容）
+  // Show unknown reasons unchanged (forward compatibility).
     expect(eventReason(ev({ counted_reason: 'new_reason' }))).toBe('new_reason')
   })
 })

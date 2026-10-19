@@ -15,11 +15,11 @@ export interface LibraryEntry {
   counts?: { knock: number; assist: number }
   durationSec?: number
   thumb?: string
-  /** 預設參數下可產生的精華段數（Task 11 惰性寫入，供卡片徽章與「有精華」篩選） */
+  /** Number of highlight clips available with default parameters (Task 11 lazy write, used by card badges and the "has highlights" filter). */
   hl?: number
-  /** 影片編碼（分析完成後寫入，供卡片代理檔建議徽章） */
+  /** Video codec (written after analysis, used by the card's proxy suggestion badge). */
   codec?: string
-  /** main 記錄的分析開始時間（epoch ms；僅分析中有值，供 ETA = now - analyzingSince） */
+  /** Analysis start time recorded by main (epoch ms; set only while analyzing, used for ETA = now - analyzingSince). */
   analyzingSince?: number
 }
 
@@ -38,7 +38,7 @@ export class Library {
     this.load()
   }
 
-  /** 讀到損毀檔時，原檔被改名成的備份路徑（供提示使用者）；正常為 null。 */
+  /** Path of the renamed backup when a corrupt file is found (for notifying the user); null otherwise. */
   corruptBackup: string | null = null
   private saveTimer: ReturnType<typeof setTimeout> | null = null
   private dirty = false
@@ -47,10 +47,10 @@ export class Library {
     if (!fs.existsSync(this.file)) return
     try {
       const parsed: unknown = JSON.parse(fs.readFileSync(this.file, 'utf-8'))
-      if (!Array.isArray(parsed)) throw new Error('library.json 不是陣列')
+      if (!Array.isArray(parsed)) throw new Error('library.json is not an array')
       this.entries = parsed as LibraryEntry[]
     } catch (err) {
-      // 損毀：先把原檔改名備份，之後的 save() 才不會用空陣列蓋掉它
+      // Corrupt file: rename it as a backup first so a later save() does not overwrite it with an empty array.
       this.entries = []
       const bak = path.join(path.dirname(this.file), `library.bak.${Date.now()}.json`)
       try {
@@ -63,7 +63,7 @@ export class Library {
     }
   }
 
-  /** 原子寫入（tmp + fsync + rename）；失敗時原檔不變。 */
+  /** Atomic write (tmp + fsync + rename); the original file is unchanged on failure. */
   save(): void {
     if (this.saveTimer) {
       clearTimeout(this.saveTimer)
@@ -89,7 +89,7 @@ export class Library {
     }
   }
 
-  /** 進度更新只動記憶體，最多每 2 秒落盤一次（2 小時分析不會每秒寫 4 次）。 */
+  /** Progress updates change memory only and are persisted at most once every 2 seconds (a 2-hour analysis will not write 4 times per second). */
   private scheduleSave(): void {
     this.dirty = true
     if (this.saveTimer) return
@@ -100,7 +100,7 @@ export class Library {
     this.saveTimer.unref?.()
   }
 
-  /** 立即寫入尚未落盤的變更（App 結束前呼叫）。 */
+  /** Immediately persist pending changes (called before the app exits). */
   flush(): void {
     if (this.dirty) this.save()
   }
@@ -109,15 +109,15 @@ export class Library {
     return [...this.entries]
   }
 
-  /** 以路徑取得單一條目（不複製整個陣列） */
+  /** Get a single entry by path (without copying the full array). */
   get(videoPath: string): LibraryEntry | undefined {
     const norm = normalizePath(videoPath)
     return this.entries.find((e) => normalizePath(e.path) === norm)
   }
 
   /**
-   * 啟動時呼叫：上次執行中斷（崩潰／強制關閉）遺留的 'analyzing' 條目沒有任何佇列在處理，
-   * 重設為閒置（pending／0／無 analyzingSince）；回傳重設筆數。
+   * Called at startup: entries left as 'analyzing' by a previous interrupted run (crash/forced close) are not in any queue,
+   * so reset them to idle (pending/0/no analyzingSince) and return the number reset.
    */
   resetStaleAnalyzing(): number {
     let n = 0
@@ -227,9 +227,9 @@ export class Library {
 }
 
 export interface WatchFolderOptions {
-  /** 檔案大小需穩定的毫秒數（預設 5000，維持既有行為） */
+  /** Milliseconds the file size must remain stable (default 5000, preserving existing behavior). */
   stabilityMs?: number
-  /** 大小檢查的輪詢間隔毫秒數（預設 500） */
+  /** File-size polling interval in milliseconds (default 500). */
   pollMs?: number
 }
 

@@ -7,19 +7,19 @@ describe('toastQueue', () => {
   beforeEach(() => { vi.useFakeTimers() })
   afterEach(() => { vi.useRealTimers() })
 
-  it('max=3 時第 4 則丟掉最舊', () => {
+  it('With max=3, the fourth toast drops the oldest', () => {
     const q = createToastQueue(3)
     q.push(t('a')); q.push(t('b')); q.push(t('c'))
     const list = q.push(t('d'))
     expect(list.map((x) => x.id)).toEqual(['b', 'c', 'd'])
   })
 
-  it('defaultTtl：含 action 6000、否則 3800', () => {
+  it('defaultTtl is 6000 with an action and 3800 otherwise', () => {
     expect(defaultTtl(true)).toBe(6000)
     expect(defaultTtl(false)).toBe(3800)
   })
 
-  it('到期後自動移除並通知訂閱者', () => {
+  it('Automatically removes expired toasts and notifies subscribers', () => {
     const q = createToastQueue()
     const seen: string[][] = []
     q.subscribe((l) => seen.push(l.map((x) => x.id)))
@@ -31,7 +31,7 @@ describe('toastQueue', () => {
     expect(seen[seen.length - 1]).toEqual([])
   })
 
-  it('pause 後不過期、resume 後剩餘時間續算', () => {
+  it('Paused toasts do not expire; resuming continues the remaining time', () => {
     const q = createToastQueue()
     q.push(t('a', 1000))
     vi.advanceTimersByTime(400)
@@ -45,7 +45,7 @@ describe('toastQueue', () => {
     expect(q.list()).toHaveLength(0)
   })
 
-  it('dismiss 移除；不存在的 id 不丟錯', () => {
+  it('dismiss removes a toast; a missing id does not throw', () => {
     const q = createToastQueue()
     q.push(t('a'))
     expect(() => q.dismiss('nope')).not.toThrow()
@@ -56,7 +56,7 @@ describe('toastQueue', () => {
     vi.advanceTimersByTime(5000)
   })
 
-  it('被丟掉的舊 toast 計時器不再觸發', () => {
+  it('The timer for a dropped old toast no longer fires', () => {
     const q = createToastQueue(1)
     q.push(t('a', 1000)); q.push(t('b', 5000))
     vi.advanceTimersByTime(1000)

@@ -1,9 +1,9 @@
 import { VideoInfo } from './types'
 
 /**
- * Chromium HTML5 <video> 對 MP4/WebM 檔案的 currentTime 一律從檔案開頭的 0.0 起算，
- * 與引擎解碼輸出 t = k * 0.25（從影片開頭起算）一致。
- * 因此 startOffset 為 0.0。
+ * Chromium HTML5 <video> measures currentTime for MP4/WebM files from 0.0 at the start of the file,
+ * matching the engine's decoded output t = k * 0.25 (also measured from the start of the video).
+ * Therefore, startOffset is 0.0.
  */
 export function getStartOffset(_info?: VideoInfo): number {
   return 0.0

@@ -2,18 +2,18 @@ import { describe, expect, test } from 'vitest'
 import path from 'path'
 import { resolveE2EConfig } from './e2e'
 
-describe('resolveE2EConfig（正式行為不受環境變數影響）', () => {
-  test('沒有 ADITOR_E2E=1 時一律回傳 null，即使設了其他變數', () => {
+describe('resolveE2EConfig (environment variables do not affect production behavior)', () => {
+  test('returns null without ADITOR_E2E=1, even when other variables are set', () => {
     expect(resolveE2EConfig({}, '/t', false)).toBeNull()
     expect(resolveE2EConfig({ ADITOR_ENGINE: 'fake', ADITOR_APPDATA: '/x', ADITOR_E2E_FAKE_FFMPEG: '1' }, '/t', false)).toBeNull()
     expect(resolveE2EConfig({ ADITOR_E2E: '0', ADITOR_ENGINE: 'fake' }, '/t', false)).toBeNull()
   })
 
-  test('E2E 開啟：不指定其他變數＝全部沿用正式設定', () => {
+  test('E2E enabled: unspecified variables retain all production settings', () => {
     expect(resolveE2EConfig({ ADITOR_E2E: '1' }, '/t', false)).toEqual({ appData: null, fakeEngine: null, exportFfmpeg: null })
   })
 
-  test('假引擎、暫存 appData、假 ffmpeg 解析', () => {
+  test('resolves fake engine, temporary appData, and fake ffmpeg', () => {
     const c = resolveE2EConfig(
       { ADITOR_E2E: '1', ADITOR_ENGINE: 'fake', ADITOR_APPDATA: '/tmp/a', ADITOR_E2E_FAKE_FFMPEG: '1', ADITOR_E2E_NODE: '/bin/node' },
       '/repo/app/test',
@@ -28,13 +28,13 @@ describe('resolveE2EConfig（正式行為不受環境變數影響）', () => {
     expect(c.exportFfmpeg).toEqual({ bin: '/bin/node', prefixArgs: [path.join('/repo/app/test', 'fake-ffmpeg.mjs')] })
   })
 
-  test('I15：打包版（isPackaged=true）一律回傳 null，即使環境變數都設了', () => {
+  test('I15: packaged build (isPackaged=true) always returns null, even when all environment variables are set', () => {
     const env = { ADITOR_E2E: '1', ADITOR_ENGINE: 'fake', ADITOR_APPDATA: '/x', ADITOR_E2E_FAKE_FFMPEG: '1', ADITOR_E2E_NODE: 'evil.exe' }
     expect(resolveE2EConfig(env, '/t', true)).toBeNull()
     expect(resolveE2EConfig(env, '/t', false)).not.toBeNull()
   })
 
-  test('ADITOR_ENGINE 不是 fake 時不啟用假引擎', () => {
+  test('does not enable the fake engine unless ADITOR_ENGINE is fake', () => {
     expect(resolveE2EConfig({ ADITOR_E2E: '1', ADITOR_ENGINE: 'real' }, '/t', false)!.fakeEngine).toBeNull()
   })
 })

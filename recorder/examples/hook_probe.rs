@@ -1,9 +1,9 @@
-//! 可行性驗證：以 OBS 官方簽章的 graphics-hook 擷取遊戲畫面，經 OpenSharedResource 收進我們的 D3D11 裝置。
-//! 協定對照 OBS 32.1.2：plugins/win-capture/game-capture.c、graphics-hook/graphics-hook.c、
-//! shared/obs-hook-config/graphics-hook-info.h。
+//! Feasibility test: capture game frames with the OBS-signed graphics-hook and import them into our D3D11 device with OpenSharedResource.
+//! Protocol references for OBS 32.1.2: plugins/win-capture/game-capture.c, graphics-hook/graphics-hook.c,
+//! and shared/obs-hook-config/graphics-hook-info.h.
 //!
-//! 用法：hook_probe <pid> [秒數] [--hook-dir <OBS win-capture 目錄>] [--direct] [--out <截圖目錄>]
-//! 預設用反作弊相容注入（SetWindowsHookEx，與 OBS「使用反作弊相容掛鉤」相同）。
+//! Usage: hook_probe <pid> [seconds] [--hook-dir <OBS win-capture directory>] [--direct] [--out <screenshot directory>]
+//! Uses anti-cheat-compatible injection by default (SetWindowsHookEx, same as OBS's "Use anti-cheat compatibility hook").
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -47,7 +47,7 @@ struct GraphicsOffsets {
     d3d12_execute_command_lists: u32,
 }
 
-/// graphics-hook-info.h 的 `struct hook_info`（#pragma pack(8)，x64 與 repr(C) 相同）。
+/// `struct hook_info` from graphics-hook-info.h (#pragma pack(8), matching repr(C) on x64).
 #[repr(C)]
 struct HookInfo {
     hook_ver_major: u32,
@@ -74,11 +74,11 @@ struct HookInfo {
 const _: () = assert!(std::mem::size_of::<HookInfo>() == 648);
 const CAPTURE_TYPE_TEXTURE: u32 = 1;
 
-/// 具名核心物件的控制代碼，離開作用域時關閉。
+/// Handle to a named kernel object; closed when leaving scope.
 struct Owned(HANDLE);
 impl Drop for Owned {
     fn drop(&mut self) {
-        // SAFETY: 只關閉本程式開啟的控制代碼。
+        // SAFETY: Closes only handles opened by this process.
         unsafe {
             let _ = CloseHandle(self.0);
         }
@@ -88,7 +88,7 @@ impl Drop for Owned {
 struct View(MEMORY_MAPPED_VIEW_ADDRESS);
 impl Drop for View {
     fn drop(&mut self) {
-        // SAFETY: 只解除本程式建立的 view。
+        // SAFETY: Unmaps only views created by this process.
         unsafe {
             let _ = UnmapViewOfFile(self.0);
         }
@@ -100,7 +100,7 @@ fn wide(s: &str) -> HSTRING {
 }
 
 fn open_event(name: &str) -> Option<Owned> {
-    // SAFETY: 只開啟具名事件。
+    // SAFETY: Opens only a named event.
     unsafe {
         OpenEventW(
             EVENT_MODIFY_STATE | SYNCHRONIZATION_SYNCHRONIZE,
@@ -113,14 +113,14 @@ fn open_event(name: &str) -> Option<Owned> {
 }
 
 fn open_mutex(name: &str) -> Option<Owned> {
-    // SAFETY: 只開啟具名 mutex。
+    // SAFETY: Opens only a named mutex.
     unsafe { OpenMutexW(SYNCHRONIZATION_SYNCHRONIZE, false, &wide(name)) }
         .ok()
         .map(Owned)
 }
 
 fn open_map(name: &str, size: usize) -> Option<(Owned, View)> {
-    // SAFETY: 開啟既有的具名 file mapping 並映射指定大小。
+    // SAFETY: Opens an existing named file mapping and maps the requested size.
     unsafe {
         let handle = OpenFileMappingW(FILE_MAP_ALL_ACCESS.0, false, &wide(name)).ok()?;
         let view = MapViewOfFile(handle, FILE_MAP_ALL_ACCESS, 0, 0, size);
@@ -133,7 +133,7 @@ fn open_map(name: &str, size: usize) -> Option<(Owned, View)> {
 }
 
 fn signalled(event: &Owned, ms: u32) -> bool {
-    // SAFETY: 等待有效的事件控制代碼。
+    // SAFETY: Waits on a valid event handle.
     unsafe { WaitForSingleObject(event.0, ms) == WAIT_OBJECT_0 }
 }
 
@@ -143,11 +143,11 @@ struct Search {
 }
 
 unsafe extern "system" fn visit(hwnd: HWND, param: LPARAM) -> BOOL {
-    // SAFETY: param 是 find_window 傳入的 Search 指標，EnumWindows 期間有效。
+    // SAFETY: param is the Search pointer passed by find_window and remains valid during EnumWindows.
     let search = unsafe { &mut *(param.0 as *mut Search) };
     let mut pid = 0;
     let mut rect = RECT::default();
-    // SAFETY: 只查詢視窗資訊。
+    // SAFETY: Queries window information only.
     unsafe {
         GetWindowThreadProcessId(hwnd, Some(&mut pid));
         if pid == search.pid
@@ -165,18 +165,18 @@ unsafe extern "system" fn visit(hwnd: HWND, param: LPARAM) -> BOOL {
 
 fn find_window(pid: u32) -> Result<HWND> {
     let mut search = Search { pid, best: None };
-    // SAFETY: search 在 EnumWindows 期間有效。
+    // SAFETY: search remains valid during EnumWindows.
     unsafe {
         let _ = EnumWindows(Some(visit), LPARAM(&mut search as *mut _ as isize));
     }
-    Ok(search.best.context("找不到該 PID 的可見視窗")?.0)
+    Ok(search.best.context("No visible window found for the PID")?.0)
 }
 
-/// 與 OBS 相同：執行 get-graphics-offsets64.exe，解析 ini 格式的輸出。
+/// As OBS does, run get-graphics-offsets64.exe and parse its INI-style output.
 fn graphics_offsets(dir: &Path) -> Result<GraphicsOffsets> {
     let out = Command::new(dir.join("get-graphics-offsets64.exe"))
         .output()
-        .context("無法執行 get-graphics-offsets64.exe")?;
+        .context("Could not run get-graphics-offsets64.exe")?;
     let text = String::from_utf8_lossy(&out.stdout);
     let mut section = String::new();
     let mut o = GraphicsOffsets::default();
@@ -204,16 +204,16 @@ fn graphics_offsets(dir: &Path) -> Result<GraphicsOffsets> {
         }
     }
     if o.dxgi_present == 0 || o.dxgi_resize == 0 {
-        bail!("get-graphics-offsets 沒有給出 DXGI 偏移：{text}");
+        bail!("get-graphics-offsets did not provide DXGI offsets: {text}");
     }
     Ok(o)
 }
 
-/// hook 透過 CaptureHook_Pipe{pid} 送出以 NUL 結尾的 log 字串；在背景執行緒印出。
+/// The hook sends NUL-terminated logs through CaptureHook_Pipe{pid}; print them on a background thread.
 fn spawn_pipe_logger(pid: u32) {
     std::thread::spawn(move || loop {
         let name = wide(&format!(r"\\.\pipe\CaptureHook_Pipe{pid}"));
-        // SAFETY: 建立單一實例、只收訊息的 named pipe；控制代碼由本執行緒擁有。
+        // SAFETY: Create a single-instance, receive-only named pipe; this thread owns the handle.
         let pipe = unsafe {
             CreateNamedPipeW(
                 &name,
@@ -227,16 +227,16 @@ fn spawn_pipe_logger(pid: u32) {
             )
         };
         if pipe.is_invalid() {
-            eprintln!("[probe] 無法建立 hook log pipe");
+            eprintln!("[probe] Could not create hook log pipe");
             return;
         }
         let pipe = Owned(pipe);
-        // SAFETY: 阻塞等待 hook 連線。
+        // SAFETY: Blocks while waiting for the hook to connect.
         let _ = unsafe { ConnectNamedPipe(pipe.0, None) };
         let mut buf = vec![0u8; 64 * 1024];
         loop {
             let mut read = 0u32;
-            // SAFETY: buf 在呼叫期間有效。
+            // SAFETY: buf remains valid for the duration of the call.
             if unsafe { ReadFile(pipe.0, Some(&mut buf), Some(&mut read), None) }.is_err()
                 || read == 0
             {
@@ -264,20 +264,20 @@ fn bytes_per_pixel(format: DXGI_FORMAT) -> Option<usize> {
     }
 }
 
-/// 縮小的 BGR 影像：(寬, 高, 像素)。
+/// Downscaled BGR image: (width, height, pixels).
 type SmallImage = (usize, usize, Vec<u8>);
 
-/// 讀回一格：回傳 (亮度平均, 抽樣雜湊, 縮小的 BGR 影像)。只在每秒一次的驗證中使用。
+/// Read back one frame: return (average luminance, sample hash, downscaled BGR image). Used only for once-per-second validation.
 fn read_back(
     device: &ID3D11Device,
     context: &ID3D11DeviceContext,
     texture: &ID3D11Texture2D,
 ) -> Result<(f64, u64, SmallImage)> {
     let mut desc = D3D11_TEXTURE2D_DESC::default();
-    // SAFETY: 讀取描述。
+    // SAFETY: Reads the texture description.
     unsafe { texture.GetDesc(&mut desc) };
     let bpp =
-        bytes_per_pixel(desc.Format).with_context(|| format!("不支援的格式 {:?}", desc.Format))?;
+        bytes_per_pixel(desc.Format).with_context(|| format!("Unsupported format {:?}", desc.Format))?;
     let staging_desc = D3D11_TEXTURE2D_DESC {
         Usage: D3D11_USAGE_STAGING,
         BindFlags: 0,
@@ -286,10 +286,10 @@ fn read_back(
         ..desc
     };
     let mut staging = None;
-    // SAFETY: 建立同尺寸同格式的 staging，複製後映射讀取。
+    // SAFETY: Creates a staging texture with matching dimensions and format, copies the resource, then maps it for reading.
     unsafe {
         device.CreateTexture2D(&staging_desc, None, Some(&mut staging))?;
-        let staging = staging.context("沒有 staging")?;
+        let staging = staging.context("No staging texture returned")?;
         context.CopyResource(&staging, texture);
         let mut mapped = D3D11_MAPPED_SUBRESOURCE::default();
         context.Map(&staging, 0, D3D11_MAP_READ, 0, Some(&mut mapped))?;
@@ -341,7 +341,7 @@ fn read_back(
     }
 }
 
-/// 存成 24-bit BMP（由下而上），避免額外相依。
+/// Save as a 24-bit bottom-up BMP without adding dependencies.
 fn save_bmp(path: &Path, (w, h, bgr): &SmallImage) -> Result<()> {
     let row = (w * 3 + 3) & !3;
     let size = 54 + row * h;
@@ -366,7 +366,7 @@ fn save_bmp(path: &Path, (w, h, bgr): &SmallImage) -> Result<()> {
 
 fn foreground_pid() -> (u32, bool) {
     let mut pid = 0;
-    // SAFETY: 只查詢前景視窗。
+    // SAFETY: Queries the foreground window only.
     unsafe {
         let hwnd = GetForegroundWindow();
         GetWindowThreadProcessId(hwnd, Some(&mut pid));
@@ -378,7 +378,7 @@ fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().collect();
     let pid: u32 = args
         .get(1)
-        .context("用法：hook_probe <pid> [秒數] [--hook-dir 目錄] [--direct] [--out 目錄]")?
+        .context("Usage: hook_probe <pid> [seconds] [--hook-dir DIR] [--direct] [--out DIR]")?
         .parse()?;
     let seconds: u64 = args.get(2).and_then(|s| s.parse().ok()).unwrap_or(60);
     let opt = |name: &str| {
@@ -396,9 +396,9 @@ fn main() -> Result<()> {
 
     let hwnd = find_window(pid)?;
     let mut owner = 0;
-    // SAFETY: 查詢視窗所屬執行緒。
+    // SAFETY: Queries the thread that owns the window.
     let thread_id = unsafe { GetWindowThreadProcessId(hwnd, Some(&mut owner)) };
-    println!("[probe] 視窗 0x{:x}，執行緒 {thread_id}", hwnd.0 as usize);
+    println!("[probe] Window 0x{:x}, thread {thread_id}", hwnd.0 as usize);
 
     let offsets = graphics_offsets(&hook_dir)?;
     println!(
@@ -406,22 +406,22 @@ fn main() -> Result<()> {
         offsets.dxgi_present, offsets.dxgi_resize
     );
 
-    // keepalive：hook 每 5 秒檢查一次，不存在就停止擷取。
-    // SAFETY: 建立具名 mutex，程式結束時關閉。
+    // Keepalive: the hook checks every 5 seconds and stops capture if it no longer exists.
+    // SAFETY: Creates a named mutex and closes it when the process exits.
     let _keepalive =
         Owned(unsafe { CreateMutexW(None, false, &wide(&format!("CaptureHook_KeepAlive{pid}")))? });
     spawn_pipe_logger(pid);
 
     if let Some(restart) = open_event(&format!("CaptureHook_Restart{pid}")) {
-        println!("[probe] 遊戲裡已有 hook（可能是 OBS 載入的），直接要求重新開始");
-        // SAFETY: 有效事件。
+        println!("[probe] A hook is already in the game (possibly loaded by OBS); requesting a restart");
+        // SAFETY: Valid event handle.
         unsafe { SetEvent(restart.0)? };
     } else {
         let dll = hook_dir.join("graphics-hook64.dll");
         let (mode, id) = if direct { ("0", pid) } else { ("1", thread_id) };
         println!(
-            "[probe] 注入（{}）：{}",
-            if direct { "直接" } else { "反作弊相容" },
+            "[probe] Injection ({}): {}",
+            if direct { "direct" } else { "anti-cheat-compatible" },
             dll.display()
         );
         let status = Command::new(hook_dir.join("inject-helper64.exe"))
@@ -429,27 +429,27 @@ fn main() -> Result<()> {
             .arg(mode)
             .arg(id.to_string())
             .status()
-            .context("無法執行 inject-helper64.exe")?;
-        println!("[probe] inject-helper 結束碼 {:?}", status.code());
+            .context("Could not run inject-helper64.exe")?;
+        println!("[probe] inject-helper exit code: {:?}", status.code());
         if !status.success() {
-            bail!("注入失敗（結束碼 {:?}）", status.code());
+            bail!("Injection failed (exit code {:?})", status.code());
         }
     }
 
-    // 反作弊相容注入要等遊戲執行緒處理訊息才會載入 DLL；以 texture mutex 是否存在判斷。
+    // Anti-cheat-compatible injection waits for the game thread to process messages before loading the DLL; check whether the texture mutex exists.
     let deadline = Instant::now() + Duration::from_secs(15);
     while open_mutex(&format!("CaptureHook_TextureMutex1{pid}")).is_none() {
         if Instant::now() > deadline {
-            bail!("15 秒內 hook 沒有載入（可能被反作弊擋下，或遊戲視窗沒有在處理訊息）");
+            bail!("Hook did not load within 15 seconds (it may have been blocked by anti-cheat, or the game window may not be processing messages)");
         }
         std::thread::sleep(Duration::from_millis(100));
     }
-    println!("[probe] hook 已載入");
+    println!("[probe] Hook loaded");
 
     let (_info_map, info_view) =
-        open_map(&format!("CaptureHook_HookInfo{pid}"), 648).context("無法開啟 hook_info")?;
+        open_map(&format!("CaptureHook_HookInfo{pid}"), 648).context("Could not open hook_info")?;
     let info = info_view.0.Value as *mut HookInfo;
-    // SAFETY: info 指向 648 bytes 的共享記憶體，佈局與 hook_info 相同；hook 端只在初始化擷取時寫入。
+    // SAFETY: info points to 648 bytes of shared memory matching hook_info; the hook writes only during capture initialization.
     unsafe {
         (*info).offsets = offsets;
         (*info).capture_overlay = false;
@@ -459,23 +459,23 @@ fn main() -> Result<()> {
         (*info).frame_interval = 1_000_000_000 / 120;
     }
     let event = |name: &str| {
-        open_event(&format!("{name}{pid}")).with_context(|| format!("無法開啟事件 {name}"))
+        open_event(&format!("{name}{pid}")).with_context(|| format!("Could not open event {name}"))
     };
     let restart = event("CaptureHook_Restart")?;
     let stop = event("CaptureHook_Stop")?;
     let init = event("CaptureHook_Initialize")?;
     let ready = event("CaptureHook_HookReady")?;
-    // SAFETY: 有效事件。
+    // SAFETY: Valid event handle.
     unsafe {
         SetEvent(init.0)?;
         SetEvent(restart.0)?;
     }
-    println!("[probe] 已送出初始化，等待遊戲下一次 Present……");
+    println!("[probe] Initialization sent; waiting for the game's next Present...");
     if !signalled(&ready, 15_000) {
-        bail!("15 秒內 hook 沒有回報就緒（遊戲沒有 Present，或 DX12 掛鉤失敗；請看上面的 [hook] log）");
+        bail!("Hook did not report readiness within 15 seconds (the game may not have presented a frame, or DX12 hooking may have failed; see the [hook] log above)");
     }
 
-    // SAFETY: hook 回報就緒後 hook_info 已填好。
+    // SAFETY: hook_info is populated after the hook reports readiness.
     let (hook_ver, kind, window, map_id, cx, cy, format) = unsafe {
         (
             (*info).hook_ver_major,
@@ -487,18 +487,18 @@ fn main() -> Result<()> {
             (*info).format,
         )
     };
-    println!("[probe] hook {hook_ver}.x 就緒：{cx}x{cy} 格式 {format} 類型 {kind}");
+    println!("[probe] Hook {hook_ver}.x ready: {cx}x{cy}, format {format}, type {kind}");
     if kind != CAPTURE_TYPE_TEXTURE {
-        bail!("hook 選擇了共享記憶體模式（非共享材質）；這個測試只驗證共享材質");
+        bail!("The hook selected shared-memory mode (not a shared texture); this test validates shared textures only");
     }
     let (_tex_map, tex_view) = open_map(&format!("CaptureHook_Texture_{window}_{map_id}"), 4)
-        .context("無法開啟共享材質資訊")?;
-    // SAFETY: shtex_data 只有一個 u32。
+        .context("Could not open shared texture metadata")?;
+    // SAFETY: shtex_data contains only one u32.
     let tex_handle = unsafe { *(tex_view.0.Value as *const u32) };
 
     let mut device = None;
     let mut context = None;
-    // SAFETY: 在預設硬體轉接器建立裝置。
+    // SAFETY: Creates a device on the default hardware adapter.
     unsafe {
         D3D11CreateDevice(
             None,
@@ -512,26 +512,26 @@ fn main() -> Result<()> {
             Some(&mut context),
         )?;
     }
-    let device = device.context("沒有裝置")?;
-    let context = context.context("沒有 context")?;
-    // SAFETY: 查詢轉接器名稱供確認與遊戲同一張顯示卡。
+    let device = device.context("No device returned")?;
+    let context = context.context("No context returned")?;
+    // SAFETY: Query the adapter name to confirm it matches the game's GPU.
     unsafe {
         let adapter = device.cast::<IDXGIDevice>()?.GetAdapter()?.GetDesc()?;
         let name = String::from_utf16_lossy(&adapter.Description);
-        println!("[probe] 我們的裝置：{}", name.trim_end_matches('\0'));
+        println!("[probe] Our device: {}", name.trim_end_matches('\0'));
     }
     let mut texture: Option<ID3D11Texture2D> = None;
-    // SAFETY: 舊式共享 handle（D3D11_RESOURCE_MISC_SHARED），以 OpenSharedResource 開啟。
+    // SAFETY: Opens the legacy shared handle (D3D11_RESOURCE_MISC_SHARED) with OpenSharedResource.
     unsafe { device.OpenSharedResource(HANDLE(tex_handle as usize as *mut _), &mut texture) }
-        .context("OpenSharedResource 失敗（可能與遊戲不在同一張顯示卡）")?;
-    let texture = texture.context("沒有共享材質")?;
-    println!("[probe] 共享材質開啟成功，開始 {seconds} 秒驗證（每秒讀回一次）");
+        .context("OpenSharedResource failed (the game may be using a different GPU)")?;
+    let texture = texture.context("No shared texture returned")?;
+    println!("[probe] Shared texture opened; starting {seconds}-second validation (one readback per second)");
 
     let mut last_hash = 0;
     for second in 1..=seconds {
         std::thread::sleep(Duration::from_secs(1));
         if signalled(&stop, 0) {
-            println!("[probe] hook 送出停止訊號");
+            println!("[probe] Hook sent the stop signal");
             break;
         }
         let (fg, iconic) = foreground_pid();
@@ -539,24 +539,24 @@ fn main() -> Result<()> {
         let changed = hash != last_hash;
         last_hash = hash;
         println!(
-            "[probe] {second:>3}s 亮度 {luma:>6.1} {} 遊戲{}{}",
+            "[probe] {second:>3}s luminance {luma:>6.1} {} game {}{}",
             if changed {
-                "畫面有更新"
+                "frame changed"
             } else {
-                "畫面未變  "
+                "unchanged"
             },
-            if fg == pid { "在前景" } else { "在背景" },
-            if iconic { "（最小化）" } else { "" }
+            if fg == pid { "foreground" } else { "background" },
+            if iconic { " (minimized)" } else { "" }
         );
         if second % 5 == 0 {
             save_bmp(&out_dir.join(format!("shot_{second:03}.bmp")), &small)?;
         }
         let _ = std::io::stdout().flush();
     }
-    // SAFETY: 有效事件；通知 hook 停止擷取（DLL 仍留在遊戲裡，下次可直接沿用）。
+    // SAFETY: Valid event; tell the hook to stop capture (the DLL remains in the game for reuse).
     unsafe {
         let _ = SetEvent(stop.0);
     }
-    println!("[probe] 結束；截圖在 {}", out_dir.display());
+    println!("[probe] Finished; screenshots are in {}", out_dir.display());
     Ok(())
 }

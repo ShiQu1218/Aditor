@@ -60,10 +60,10 @@ describe('shouldAutoPlace', () => {
     expect(
       shouldAutoPlace(doc({ analysis: { ...doc().analysis, status: 'partial' } }), { autoSuggestOnOpen: true })
     ).toBe(false)
-    // 已有任何 AI 片段（含已加入／已略過）＝不再自動放
+    // If any AI clip already exists (including added/skipped), do not auto-place more.
     expect(shouldAutoPlace(doc({ clips: [clip('c1', 10, { status: 'accepted' })] }), { autoSuggestOnOpen: true })).toBe(false)
     expect(shouldAutoPlace(doc({ clips: [clip('c2', 10, { status: 'skipped' })] }), { autoSuggestOnOpen: true })).toBe(false)
-    // 手動片段不算
+    // Manual clips do not count.
     expect(shouldAutoPlace(doc({ clips: [clip('m1', 10, { origin: 'manual' })] }), { autoSuggestOnOpen: true })).toBe(true)
   })
 })
@@ -88,7 +88,7 @@ describe('applyAutoClip', () => {
 
     const next = applyAutoClip(old, [clip('n1', 20, { status: undefined }), clip('n2', 300, { status: undefined })])
 
-    // 只有 suggested 被取代；已略過保留原狀
+    // Replace only suggested clips; keep skipped clips unchanged.
     expect(next.map((c) => c.id)).toEqual(['n1', 'a1', 'm1', 'n2', 'k1'])
     expect(next.find((c) => c.id === 's1')).toBeUndefined()
     expect(next.find((c) => c.id === 'n1')?.status).toBe('suggested')
@@ -96,10 +96,10 @@ describe('applyAutoClip', () => {
     expect(next.find((c) => c.id === 'k1')).toEqual(skipped)
     expect(next.find((c) => c.id === 'a1')).toEqual(accepted)
     expect(next.find((c) => c.id === 'm1')).toEqual(manual)
-    // 不改動輸入陣列
+    // Do not mutate the input array.
     expect(old).toHaveLength(4)
 
-    // 與保留片段起點 <1s 的新建議不重複
+    // Do not duplicate a new suggestion whose start is within <1 s of a retained clip.
     expect(applyAutoClip([accepted], [clip('near', 100.4)]).map((c) => c.id)).toEqual(['a1'])
   })
 
@@ -121,7 +121,7 @@ describe('planAccept (single-card add + Toast undo)', () => {
     expect(plan.project.items).toHaveLength(1)
     expect(plan.clipStatus).toBe('accepted')
     expect(plan.undo?.clipStatus).toBe('suggested')
-    // 在最新專案上套用復原
+    // Apply undo to the latest project.
     const later = { ...plan.project, name: 'renamed' }
     const undone = plan.undo!.project(later)
     expect(undone.items).toHaveLength(0)
@@ -141,7 +141,7 @@ describe('planAccept (single-card add + Toast undo)', () => {
 
 describe('planSuggestions + mergeSuggestions (real data flow)', () => {
   const settings = { autoSuggestOnOpen: true, autoclip: { n: 3, gap: 20, before: 8, after: 4, max_len: 90 } }
-  // 引擎 analyze 回傳的文件只有手動片段（engine/aditor/analyze.py）
+  // The document returned by engine analyze contains only manual clips (engine/aditor/analyze.py).
   const engineDoc = doc({ events: [ev('e1', 100), ev('e2', 105), ev('e3', 110)], clips: [clip('m1', 500, { origin: 'manual', status: 'accepted' })] })
 
   test('load path: auto-place only when enabled and no ai clips; never marks stale', () => {
@@ -154,7 +154,7 @@ describe('planSuggestions + mergeSuggestions (real data flow)', () => {
     ).toEqual({ kind: 'none' })
     const withAi = [clip('a1', 10, { status: 'accepted' })]
     expect(planSuggestions({ doc: doc({ events: engineDoc.events, clips: withAi }), clips: withAi, settings, reanalyzed: false })).toEqual({ kind: 'none' })
-    // 沒有事件＝不呼叫
+    // No events means no call.
     expect(planSuggestions({ doc: doc(), clips: [], settings, reanalyzed: false })).toEqual({ kind: 'none' })
   })
 
@@ -166,7 +166,7 @@ describe('planSuggestions + mergeSuggestions (real data flow)', () => {
       reanalyzed: true
     })
     expect(plan).toEqual({ kind: 'merge', params: settings.autoclip })
-    // 分析未完成不執行
+    // Do not run until analysis is complete.
     expect(
       planSuggestions({ doc: doc({ events: engineDoc.events, analysis: { ...doc().analysis, status: 'partial' } }), clips: [], settings, reanalyzed: true })
     ).toEqual({ kind: 'none' })
@@ -174,7 +174,7 @@ describe('planSuggestions + mergeSuggestions (real data flow)', () => {
 
   test('REAL load flow: fresh studio (empty state) + main-rewritten doc with suggestionsPending -> stale accepted kept, new suggested placed, flag cleared; second open does nothing', () => {
     const fresh0 = { doc: doc(), filter: new Set<never>(), clips: [] as Clip[], dirty: false }
-    // main 在重新分析後改寫的文件：手動片段＋已加入（stale）的 AI 片段，旗標 suggestionsPending
+    // Document rewritten by main after reanalysis: manual clips plus added (stale) AI clips, with suggestionsPending set.
     const onDisk = doc({
       events: [ev('e1', 100), ev('e2', 105), ev('e3', 110)],
       clips: [
@@ -184,17 +184,17 @@ describe('planSuggestions + mergeSuggestions (real data flow)', () => {
       app: { suggestionsPending: true }
     })
 
-    // 1) 載入：工作室全新掛載，狀態沒有任何片段（重新分析只存在影片庫）
+    // 1) Load: the studio mounts fresh with no clips in state (reanalysis exists only in the library).
     let state = viewerReducer(fresh0, { type: 'analysisResult', doc: onDisk })
     expect(state.clips.map((c) => c.id)).toEqual(['a1', 'm1'])
     expect(state.doc.app?.suggestionsPending).toBe(true)
     expect(state.dirty).toBe(false)
 
-    // 2) 規劃：由文件旗標決定（不是由「狀態裡有沒有 AI 片段」）；autoSuggestOnOpen 關閉也要重算
+    // 2) Plan based on the document flag, not whether AI clips are in state; recalculate even if autoSuggestOnOpen is disabled.
     const plan = planSuggestions({ doc: state.doc, clips: state.clips, settings: { ...settings, autoSuggestOnOpen: false } })
     expect(plan).toEqual({ kind: 'merge', params: settings.autoclip })
 
-    // 3) autoclip 新結果：一段與保留片段重疊、一段全新 -> 合併後套用並清除旗標
+    // 3) New autoclip results: one overlaps a retained clip and one is new; merge, apply, and clear the flag.
     const freshAi = [clip('f1', 100.3, { status: undefined }), clip('f2', 700, { status: undefined })]
     const merged = mergeSuggestions('merge', state.clips, freshAi)
     state = viewerReducer(state, { type: 'applySuggestions', clips: merged })
@@ -205,9 +205,9 @@ describe('planSuggestions + mergeSuggestions (real data flow)', () => {
     ])
     expect(state.doc.clips).toEqual(state.clips)
     expect(state.doc.app?.suggestionsPending).toBe(false)
-    expect(state.dirty).toBe(true) // 之後由 1 秒去抖存檔
+    expect(state.dirty).toBe(true) // Save afterward with a 1-second debounce.
 
-    // 4) 第二次開啟（讀回剛存的文件，旗標已清除）：不再規劃；使用者之後的略過不會被覆蓋
+    // 4) On the second open (read the saved document with the flag cleared), do not plan again; later user skips must not be overwritten.
     const skipped = viewerReducer(state, { type: 'skipClip', id: 'f2' })
     const reopened = viewerReducer(fresh0, { type: 'analysisResult', doc: skipped.doc })
     expect(planSuggestions({ doc: reopened.doc, clips: reopened.clips, settings })).toEqual({ kind: 'none' })
@@ -223,7 +223,7 @@ describe('planSuggestions + mergeSuggestions (real data flow)', () => {
       { type: 'applySuggestions', clips: base.doc.clips }
     )
     expect(pending.doc.app).toEqual({ suggestionsPending: false })
-    // 使用者在合併前自己套用浮層（applyClips）也視為已決定：旗標一併清除
+    // If the user applies the popover (applyClips) before merging, treat that as a decision and clear the flag too.
     const popover = viewerReducer(
       { ...base, doc: { ...base.doc, app: { suggestionsPending: true } } },
       { type: 'applyClips', clips: base.doc.clips }
@@ -253,13 +253,13 @@ describe('acceptToProject', () => {
     const r2 = acceptToProject(c, 'v.mp4', p1)
     expect(r2.added).toHaveLength(0)
 
-    // undo 只移除本次加入的片段
+    // Undo removes only the clips added in this operation.
     const other: ProjectItem = { id: 'x1', source: 'v.mp4', start: 500, end: 510 }
     const withOther = { ...p1, items: [...p1.items, other] }
     const undone = r1.undo(withOther)
     expect(undone.items.map((i) => i.id)).toEqual(['x1'])
 
-    // 相同時間但不同來源視為不同片段
+    // Same time from different sources represents different clips.
     const r3 = acceptToProject(c, 'other.mp4', p1)
     expect(r3.added).toHaveLength(1)
   })
@@ -277,7 +277,7 @@ describe('removeProjectItems', () => {
 })
 
 describe('clipTitle', () => {
-  test('clipTitle counts only counted events; manual clip titled 快速剪輯', () => {
+  test('clipTitle counts only counted events; manual clips are titled Quick Clip', () => {
     const events = [
       ev('e1', 1),
       ev('e2', 2, { counted: false, counted_reason: 'spectating' }),
@@ -285,11 +285,11 @@ describe('clipTitle', () => {
       ev('e4', 4, { counted: true })
     ]
     expect(clipTitle(clip('c1', 0, { event_ids: ['e1', 'e2', 'e3', 'e4'] }), events)).toBe('3 殺精華')
-    // 已軟刪除的事件不計
+    // Exclude soft-deleted events.
     expect(clipTitle(clip('c2', 0, { event_ids: ['e1', 'e2'] }), [events[0], { ...events[1], deleted: true }])).toBe('1 殺精華')
-    // 手動片段固定「快速剪輯」
+    // Manual clips are always Quick Clip.
     expect(clipTitle(clip('m1', 0, { origin: 'manual', event_ids: ['e1'] }), events)).toBe('快速剪輯')
-    // 沒有計入事件
+    // No included events.
     expect(clipTitle(clip('c3', 0, { event_ids: ['e2'] }), events)).toBe('精華片段')
   })
 })
@@ -309,7 +309,7 @@ describe('clipEventGlyphs', () => {
     expect(small.glyphs).toHaveLength(1)
     expect(small.overflow).toBe(0)
 
-    // 找不到的事件（來源已變）直接略過
+    // Skip events that cannot be found (the source has changed).
     expect(clipEventGlyphs(clip('c3', 0, { event_ids: ['gone'] }), events).glyphs).toEqual([])
   })
 })
@@ -324,11 +324,11 @@ describe('nextSuggestion', () => {
     ]
     expect(nextSuggestion(clips, null, 1)).toBe('s1')
     expect(nextSuggestion(clips, 's1', 1)).toBe('s2')
-    expect(nextSuggestion(clips, 's2', 1)).toBe('s1') // 環繞
-    expect(nextSuggestion(clips, 's1', -1)).toBe('s2') // 往前環繞
+    expect(nextSuggestion(clips, 's2', 1)).toBe('s1') // Wrap around.
+    expect(nextSuggestion(clips, 's1', -1)).toBe('s2') // Wrap around in the reverse direction.
     expect(nextSuggestion(clips, null, -1)).toBe('s2')
     expect(nextSuggestion([clip('a1', 0, { status: 'accepted' })], null, 1)).toBeNull()
-    // status undefined（舊檔）視為已加入，不算建議
+    // Treat undefined status (from older files) as accepted, not a suggestion.
     const legacy = [{ ...clip('l1', 0) }] as Clip[]
     delete legacy[0].status
     expect(nextSuggestion(legacy, null, 1)).toBeNull()
@@ -355,7 +355,7 @@ describe('planAddAll (Ctrl+E twice must not duplicate)', () => {
   })
 })
 
-describe('withProjectStatus（已加入＝專案內實際有對應片段）', () => {
+describe('withProjectStatus (added means a matching clip exists in the project)', () => {
   const src = 'C:/v/a.mp4'
   const item = (id: string, start: number, end: number, source = src): ProjectItem => ({ id, source, start, end })
 

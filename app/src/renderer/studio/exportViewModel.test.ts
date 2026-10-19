@@ -62,7 +62,7 @@ describe('exportViewModel', () => {
 
   test('extraSecondsHint uses keyframe gaps for copy mode only', () => {
     const p = proj([['1', A, 10, 20], ['2', A, 31, 40]])
-    const kf = { [A]: [0, 8, 30] } // 10-8=2, 31-30=1 → 平均 1.5
+    const kf = { [A]: [0, 8, 30] } // 10-8=2 and 31-30=1, so the average is 1.5.
     const copy = exportViewModel(p, plan({ quality: 'copy', keyframes: kf }), HW)
     expect(copy.extraSecondsHint).toBeCloseTo(1.5, 5)
     const precise = exportViewModel(p, plan({ quality: 'precise', keyframes: kf }), HW)
@@ -79,11 +79,11 @@ describe('exportViewModel', () => {
     const vm = exportViewModel(p, plan({ quality: 'precise' }), { encoders: [], openh264: false })
     expect(vm.openh264Required).toBe(true)
     expect(vm.canStart).toBe(false)
-    // 快速無損不需要編碼器
+  // Fast lossless does not require an encoder.
     const copy = exportViewModel(p, plan({ quality: 'copy', mode: 'separate' }), { encoders: [], openh264: false })
     expect(copy.openh264Required).toBe(false)
     expect(copy.canStart).toBe(true)
-    // 有硬體編碼器或已安裝都不需要
+  // Not needed when a hardware encoder is available or it is already installed.
     expect(exportViewModel(p, plan({ quality: 'precise' }), HW).openh264Required).toBe(false)
     expect(exportViewModel(p, plan({ quality: 'precise' }), { encoders: ['libopenh264'], openh264: true }).openh264Required).toBe(false)
   })

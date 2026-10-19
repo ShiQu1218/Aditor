@@ -15,8 +15,8 @@ test('closing the window within 500 ms of an edit still restores the project aft
   await page.keyboard.press('Enter')
   const t0 = Date.now()
   await expect(page.locator('.pclip')).toHaveCount(1)
-  await app.closeWindow() // 立刻關閉：去抖尚未觸發，靠 flushSync／關閉握手寫入
-  // 編輯到關閉指令之間的時間遠小於 500 ms 去抖（否則這個案例沒有意義）
+  await app.closeWindow() // Close immediately: debounce has not fired, so persistence relies on flushSync/the close handshake.
+  // The interval between editing and the close command is far shorter than the 500 ms debounce (otherwise this case is meaningless).
   expect(Date.now() - t0).toBeLessThan(450)
   const saved = await waitProjectFileOffline(app.projectsDir, 1)
   expect(saved.id).toMatch(/^p_/)
@@ -24,7 +24,7 @@ test('closing the window within 500 ms of an edit still restores the project aft
   await expect(app2.page.locator('.rail-btn .badge')).toHaveText('1')
   await openStudio(app2.page, 'E2E clip A')
   await expect(app2.page.locator('.pclip')).toHaveCount(1)
-  // lastProjectId 與磁碟上的專案檔一致，重啟後仍然一致
+  // lastProjectId matches the project file on disk and remains consistent after restart.
   expect(readSettings(app2).lastProjectId).toBe(saved.id)
 })
 
@@ -42,7 +42,7 @@ async function waitProjectFileOffline(dir: string, items: number): Promise<{ id:
           }
         }
       } catch {
-        /* 尚未寫入 */
+        /* Not written yet. */
       }
       return false
     })
@@ -62,7 +62,7 @@ test('hand-corrupted project file: backup .bak.<ts>.json is created and the app 
       .poll(() => fs.readdirSync(projects).filter((n) => /^p_corrupt\.bak\.\d+\.json$/.test(n)).length)
       .toBe(1)
     expect(fs.existsSync(path.join(projects, 'p_corrupt.json'))).toBe(false)
-    await expect(app.page.locator('.rail-btn .badge')).toHaveCount(0) // 回到空白新專案
+    await expect(app.page.locator('.rail-btn .badge')).toHaveCount(0) // Back to a blank new project.
   } catch (e) {
     fs.rmSync(root, { recursive: true, force: true })
     throw e
@@ -92,7 +92,7 @@ test('export cancel kills the fake-ffmpeg process tree and removes .partial; a s
     expect(isAlive(pids.ffmpeg)).toBe(true)
     expect(isAlive(pids.grandchild)).toBe(true)
 
-    // 進行中再開始一次匯出會被拒絕（單一匯出）
+    // Starting another export while one is in progress is rejected (only one export at a time).
     const second = await page.evaluate(
       (o) => (window as unknown as { api: AnyApi }).api.export.start(o),
       { items: proj.items, mode: 'concat', quality: 'copy', outDir, baseName: 'second' }
@@ -120,7 +120,7 @@ test('re-analysis: cancel mid-way then complete keeps the accepted AI clip as st
     await importAndAnalyze(page, [video.path], [video.title])
     await openStudio(page, video.title)
     await expect(page.locator('.hl-card')).toHaveCount(3)
-    await page.keyboard.press('Enter') // 加入第一張建議
+    await page.keyboard.press('Enter') // Add the first suggestion.
     await expect(page.locator('.hl-card .hl-badge.accepted')).toHaveCount(1)
 
     const cacheFile = path.join(app.cacheDir, fs.readdirSync(app.cacheDir).find((n) => /^[0-9a-f]{40}\.json$/.test(n))!)
@@ -129,21 +129,21 @@ test('re-analysis: cancel mid-way then complete keeps the accepted AI clip as st
     await expect.poll(() => readCache().clips.filter((c) => c.status === 'accepted').length, { timeout: 10_000 }).toBe(1)
     const acceptedId = readCache().clips.find((c) => c.status === 'accepted')!.id
 
-    // 回到影片庫；模擬模板版本更新使快取過期（引擎才會真的重新分析）
+    // Return to the library; simulate a template version update that expires the cache (the engine then reanalyzes).
     await page.getByRole('button', { name: shellI18n.rail.library, exact: true }).click()
     const doc = readCache()
     doc.analysis.templates_version = 'zh-TW@old'
     fs.writeFileSync(cacheFile, JSON.stringify(doc), 'utf-8')
 
-    // 重新分析並在中途取消
+    // Reanalyze and cancel midway.
     fs.writeFileSync(path.join(gate, 'hold'), '')
     await page.evaluate((p) => (window as unknown as { api: AnyApi }).api.queue.enqueue(p), video.path)
     await expect(card(page, video.title).locator('.vcard-progress')).toBeVisible()
     await page.evaluate((p) => (window as unknown as { api: AnyApi }).api.queue.cancel(p), video.path)
     await expect(card(page, video.title).locator('.vcard-progress')).toHaveCount(0)
-    await expect.poll(() => readCache().analysis.status).toBe('partial') // 引擎取消時寫入 partial（只剩手動片段）
+    await expect.poll(() => readCache().analysis.status).toBe('partial') // Cancellation writes partial status (only manual clips remain).
 
-    // 再跑一次並完成
+    // Run it again and let it finish.
     fs.rmSync(path.join(gate, 'hold'), { force: true })
     await page.evaluate((p) => (window as unknown as { api: AnyApi }).api.queue.enqueue(p), video.path)
     await expect(card(page, video.title).locator('.vcard-counts')).toBeVisible()
@@ -153,7 +153,7 @@ test('re-analysis: cancel mid-way then complete keeps the accepted AI clip as st
     const kept = merged.clips.find((c) => c.id === acceptedId)
     expect(kept).toMatchObject({ status: 'accepted', stale: true })
 
-    // 開啟工作室：已加入的 AI 片段以過期狀態還原，建議只重算一次
+    // Open Studio: restore added AI clips as stale and recompute suggestions only once.
     await openStudio(page, video.title)
     const stale = page.locator('.hl-card', { hasText: i18n.studio.hl.stale })
     await expect(stale).toHaveCount(1)
@@ -161,7 +161,7 @@ test('re-analysis: cancel mid-way then complete keeps the accepted AI clip as st
     await expect.poll(() => page.locator('.hl-card').count()).toBeGreaterThan(1)
     const count = await page.locator('.hl-card').count()
     await expect.poll(() => readCache().app?.suggestionsPending ?? false, { timeout: 10_000 }).toBe(false)
-    // 離開再開啟：不再合併（張數不變、沒有重複）
+    // Close and reopen: do not merge again (the clip count stays the same with no duplicates).
     await page.getByRole('button', { name: i18n.studio.back }).click()
     await openStudio(page, video.title)
     await expect(page.locator('.hl-card')).toHaveCount(count)

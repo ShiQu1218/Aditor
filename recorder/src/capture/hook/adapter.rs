@@ -1,8 +1,8 @@
-//! 共享材質的顯示卡選擇與開啟。
+//! Selects a graphics adapter and opens a shared texture.
 //!
-//! OBS `graphics-hook` 使用舊式 DXGI 共享資源（`D3D11_RESOURCE_MISC_SHARED`），
-//! 其共享 handle 不能跨顯示卡開啟。因此在未知遊戲位於哪一張顯示卡時，
-//! 需依序列舉系統上的硬體轉接器並嘗試 `OpenSharedResource`，選用第一個成功的裝置。
+//! OBS graphics-hook uses legacy DXGI shared resources, whose handles cannot be opened across adapters.
+//! Its shared handle cannot be opened across adapters. When the game's adapter is unknown,
+//! enumerate the system's hardware adapters and try `OpenSharedResource`, using the first device that succeeds.
 
 use std::ffi::c_void;
 
@@ -25,30 +25,30 @@ fn adapter_name(description: &[u16]) -> String {
     String::from_utf16_lossy(&description[..end])
 }
 
-/// 舊式共享 handle 不能跨顯示卡：依序在每張轉接器上建立裝置並嘗試 OpenSharedResource，
-/// 回傳第一個成功的裝置與開啟的材質。全部失敗 → "hook_unavailable: ..." 錯誤（列出嘗試過的轉接器名稱）。
+/// Legacy shared handles cannot cross adapters: create a device on each adapter in turn and try OpenSharedResource,
+/// returning the first successful device and opened texture. If all attempts fail, returns a "hook_unavailable: ..." error listing the attempted adapters.
 pub fn open_shared(handle: u32) -> Result<(Gpu, ID3D11Texture2D)> {
-    // SAFETY: 建立 DXGI factory 不需額外前置條件；回傳的 COM 物件由 windows crate 管理。
+    // SAFETY: Creating a DXGI factory has no additional preconditions; the windows crate manages the returned COM object.
     let factory: IDXGIFactory1 =
-        unsafe { CreateDXGIFactory1() }.context("hook_unavailable: 建立 DXGI factory 失敗")?;
+        unsafe { CreateDXGIFactory1() }.context("hook_unavailable: Failed to create DXGI factory")?;
     let mut tried = Vec::new();
     for index in 0.. {
-        // SAFETY: 依序列舉轉接器，序號超出範圍時回傳 DXGI_ERROR_NOT_FOUND。
+        // SAFETY: Enumerate adapters in order; out-of-range indices return DXGI_ERROR_NOT_FOUND.
         let adapter1 = match unsafe { factory.EnumAdapters1(index) } {
             Ok(adapter) => adapter,
             Err(error) if error.code() == DXGI_ERROR_NOT_FOUND => break,
-            Err(error) => return Err(error).context("hook_unavailable: 列舉顯示卡失敗"),
+            Err(error) => return Err(error).context("hook_unavailable: Failed to enumerate adapters"),
         };
-        // SAFETY: adapter1 為剛列舉到的有效 COM 物件。
+        // SAFETY: adapter1 is a valid COM object just enumerated.
         let desc =
-            unsafe { adapter1.GetDesc1() }.context("hook_unavailable: 讀取顯示卡資訊失敗")?;
+            unsafe { adapter1.GetDesc1() }.context("hook_unavailable: Failed to read adapter information")?;
         if (desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE.0 as u32) != 0 {
             continue;
         }
         let name = adapter_name(&desc.Description);
         let adapter: IDXGIAdapter = adapter1
             .cast()
-            .context("hook_unavailable: 轉型 IDXGIAdapter 失敗")?;
+            .context("hook_unavailable: Failed to cast to IDXGIAdapter")?;
         if let Ok(gpu) = Gpu::create_on(&adapter) {
             if let Ok(texture) = open_shared_on(&gpu, handle) {
                 return Ok((gpu, texture));
@@ -57,22 +57,22 @@ pub fn open_shared(handle: u32) -> Result<(Gpu, ID3D11Texture2D)> {
         tried.push(name);
     }
     let list = if tried.is_empty() {
-        "無可用硬體顯示卡".to_string()
+        "No hardware adapters available".to_string()
     } else {
-        tried.join("、")
+        tried.join(", ")
     };
-    bail!("hook_unavailable: 無法在任何顯示卡上開啟共享材質（handle=0x{handle:x}，已嘗試：{list}）")
+    bail!("hook_unavailable: Could not open shared texture on any adapter (handle=0x{handle:x}; tried: {list})")
 }
 
-/// 在既有裝置上開啟（hook 重新初始化時用）；失敗 → "hook_unavailable: ..."。
+/// Opens the texture on an existing device (used when the hook reinitializes); failures return "hook_unavailable: ...".
 pub fn open_shared_on(gpu: &Gpu, handle: u32) -> Result<ID3D11Texture2D> {
     let raw = HANDLE(handle as usize as *mut c_void);
     let mut texture: Option<ID3D11Texture2D> = None;
-    // SAFETY: 以舊式 DXGI 共享 handle 在指定裝置上開啟 2D 材質；無效或跨卡 handle 由 D3D11 回傳錯誤。
+    // SAFETY: Opens a 2D texture on the specified device using a legacy DXGI shared handle; D3D11 reports invalid or cross-adapter handles.
     unsafe { gpu.device.OpenSharedResource(raw, &mut texture) }
-        .with_context(|| format!("hook_unavailable: 無法開啟共享材質（handle=0x{handle:x}）"))?;
+        .with_context(|| format!("hook_unavailable: Could not open shared texture (handle=0x{handle:x})"))?;
     texture.with_context(|| {
-        format!("hook_unavailable: OpenSharedResource 未回傳材質（handle=0x{handle:x}）")
+        format!("hook_unavailable: OpenSharedResource returned no texture (handle=0x{handle:x})")
     })
 }
 
@@ -106,7 +106,7 @@ mod tests {
             ..Default::default()
         };
         let mut source = None;
-        // SAFETY: 在測試裝置建立具備 D3D11_RESOURCE_MISC_SHARED 的 2D 材質。
+        // SAFETY: Create a 2D texture with D3D11_RESOURCE_MISC_SHARED on the test device.
         unsafe {
             creator
                 .device
@@ -115,13 +115,13 @@ mod tests {
         }
         let source = source.unwrap();
         let resource: IDXGIResource = source.cast().unwrap();
-        // SAFETY: 取得舊式共享資源 handle。
+        // SAFETY: Get the legacy shared-resource handle.
         let shared_handle = unsafe { resource.GetSharedHandle() }.unwrap();
         let handle = shared_handle.0 as usize as u32;
 
         let (gpu, opened) = open_shared(handle).unwrap();
         let mut opened_desc = D3D11_TEXTURE2D_DESC::default();
-        // SAFETY: 讀取剛開啟的共享材質描述。
+        // SAFETY: Read the newly opened shared texture description.
         unsafe { opened.GetDesc(&mut opened_desc) };
         assert_eq!(opened_desc.Width, 64);
         assert_eq!(opened_desc.Height, 32);
@@ -129,14 +129,14 @@ mod tests {
 
         let reopened = open_shared_on(&gpu, handle).unwrap();
         let mut reopened_desc = D3D11_TEXTURE2D_DESC::default();
-        // SAFETY: 讀取在既有裝置重新開啟的共享材質描述。
+        // SAFETY: Read the shared texture description reopened on the existing device.
         unsafe { reopened.GetDesc(&mut reopened_desc) };
         assert_eq!(reopened_desc.Width, 64);
         assert_eq!(reopened_desc.Height, 32);
         assert_eq!(reopened_desc.Format, DXGI_FORMAT_R8G8B8A8_UNORM);
 
         let err = match open_shared(0xDEAD_BEEF) {
-            Ok(_) => panic!("無效 handle 不應開啟成功"),
+            Ok(_) => panic!("Invalid handle should not open successfully"),
             Err(err) => err.to_string(),
         };
         assert!(err.starts_with("hook_unavailable:"), "{err}");

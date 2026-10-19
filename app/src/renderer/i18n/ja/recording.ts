@@ -1,6 +1,6 @@
 import type { Messages } from '../index'
 
-/** ゲーム録画の設定とステータスパネル。 */
+/** Game recording settings and status panel. */
 export const recordingI18n: Messages['recordingI18n'] = {
   title: '録画',
   card: 'ゲーム録画',

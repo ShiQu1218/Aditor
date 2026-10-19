@@ -1,9 +1,9 @@
 /**
- * 用真的 ffmpeg／ffprobe 跑完整匯出（export-ipc → plan → run），驗證片段交界的時間戳。
- * 來源是合成影片：長 GOP（4 秒一個關鍵影格）＋ B-frame＋AAC，片段起點都不在關鍵影格上——
- * 正是舊版用 concat inpoint 時交界卡住、音訊多出、第一幀前出現空白 edit 的條件。
- * 合輯用 closed GOP（OBS／x264／NVENC 預設）；另用 open GOP 來源檢查單檔快速無損會丟掉解不出來的 leading B 幀。
- * 找不到 ffmpeg（ADITOR_FFMPEG、repo 的 build/ffmpeg/bin、PATH）就略過。
+ * Run a complete export with real ffmpeg/ffprobe (export-ipc → plan → run) and verify timestamps at clip boundaries.
+ * Source videos are synthetic: long GOP (one keyframe every 4 seconds) + B-frames + AAC, with clip starts away from keyframes—
+ * the conditions that caused the old concat inpoint implementation to stall at boundaries, add audio, and create a blank edit before the first frame.
+ * Use closed GOP for concatenation (OBS/x264/NVENC defaults); also use an open-GOP source to check that single-file fast stream copy preserves leading B-frames that cannot be decoded.
+ * Skip when ffmpeg cannot be found (ADITOR_FFMPEG, repo build/ffmpeg/bin, or PATH).
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { spawnSync } from 'child_process'
@@ -52,7 +52,7 @@ function streamInfo(file: string): Array<{ codec_type: string; start_time: strin
   return JSON.parse(run(FFPROBE!, ['-v', 'error', '-show_entries', 'stream=codec_type,start_time', '-of', 'json', file]).stdout).streams
 }
 
-/** 交界處不得有時間戳倒退、也不得有被擠成 1 tick 的封包（舊版 concat 會把重疊的封包壓在一起） */
+/** Clip boundaries must have no backward timestamps or packets compressed to 1 tick (old concat overlapped packets). */
 function expectCleanTimeline(pkts: Pkt[], stream: number, frame: number): void {
   const s = pkts.filter((p) => p.stream === stream)
   for (let i = 1; i < s.length; i++) {
@@ -114,13 +114,13 @@ describeReal('real ffmpeg export: clip junctions play cleanly', () => {
       const r = await service().start(sender(), { items: items(), mode: 'concat', quality, encoder: 'mpeg4', outDir, baseName: `joined-${quality}` })
       expect(r.ok, JSON.stringify(r)).toBe(true)
       const out = path.join(outDir, 'Merged', `joined-${quality}.mp4`)
-      // 中間檔都已清掉
+      // All intermediate files have been removed.
       expect(fs.readdirSync(path.join(outDir, 'Merged')).filter((f) => f.startsWith('.aditor-seg'))).toEqual([])
 
       const info = streamInfo(out)
       const v = info.findIndex((s) => s.codec_type === 'video')
       const a = info.findIndex((s) => s.codec_type === 'audio')
-      // 視訊從 0 開始：沒有前置的空白 edit（剪輯軟體顯示為第一幀全黑）
+      // Video starts at 0: no leading blank edit (which appears as a black first frame in editing software).
       expect(Number(info[v].start_time)).toBeCloseTo(0, 3)
       const pkts = packets(out)
       const firstVideo = pkts.find((p) => p.stream === v)!
@@ -132,13 +132,13 @@ describeReal('real ffmpeg export: clip junctions play cleanly', () => {
 
       const end = (s: number) => Math.max(...pkts.filter((p) => p.stream === s).map((p) => p.pts + p.dur))
       const audioTotal = pkts.filter((p) => p.stream === a).reduce((sum, p) => sum + p.dur, 0)
-      // 音訊不會比畫面多出一段（舊版每個交界多出最多一個 GOP 的聲音）
+      // Audio does not run past the video (the old implementation added up to one GOP of audio at every boundary).
       expect(Math.abs(end(a) - end(v))).toBeLessThan(0.05)
       expect(audioTotal).toBeLessThan(end(v) + 0.05)
 
       const requested = items().reduce((s, it) => s + it.end - it.start, 0)
       if (quality === 'precise') expect(end(v)).toBeCloseTo(requested, 1)
-      // 快速無損從關鍵影格切：只會比要求的長（最多每段一個 GOP）
+      // Fast stream copy cuts at keyframes, so it can only exceed the requested duration (by at most one GOP per segment).
       else expect(end(v)).toBeGreaterThanOrEqual(requested - 0.05)
 
       const dec = run(FFMPEG!, ['-v', 'error', '-i', out, '-f', 'null', '-'])
@@ -186,7 +186,7 @@ describeReal('real ffmpeg export: clip junctions play cleanly', () => {
       const v = info.findIndex((s) => s.codec_type === 'video')
       const first = pkts.find((p) => p.stream === v)!
       expect(first.key).toBe(true)
-      // 沒有被 edit list 藏起來（pts < 0）的前置畫面
+      // No leading frames are hidden by an edit list (pts < 0).
       expect(Math.min(...pkts.filter((p) => p.stream === v).map((p) => p.pts))).toBeGreaterThanOrEqual(-0.001)
       expect(Number(info[v].start_time)).toBeCloseTo(0, 3)
       expect(run(FFMPEG!, ['-v', 'error', '-i', out, '-f', 'null', '-']).stderr.trim()).toBe('')

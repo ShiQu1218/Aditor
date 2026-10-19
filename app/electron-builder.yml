@@ -33,12 +33,12 @@ win:
     - target: portable
       arch:
         - x64
-# 自動更新來源：每次 Release 必須上傳安裝檔、.blockmap 與 latest.yml（build.ps1 只產生、不上傳）
+# Auto-update source: each release must upload the installer, .blockmap, and latest.yml (build.ps1 only generates them; it does not upload).
 publish:
   provider: github
   owner: ShiQu1218
   repo: Aditor
-# 檔名不能有空格：GitHub 會把上傳檔名的空格換成「.」，跟 latest.yml 對不上
+# Filenames must not contain spaces: GitHub replaces spaces with "." in uploaded filenames, which no longer matches latest.yml.
 portable:
   artifactName: ${productName}-${version}-Portable.${ext}
 nsis:

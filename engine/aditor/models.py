@@ -5,7 +5,7 @@ from dataclasses import asdict, dataclass, field, fields
 
 import numpy as np
 
-# 引擎只輸出 knock／assist_knock／assist_elim；elim 保留在計數類型內只為相容舊專案檔與手動事件
+# The engine only emits knock/assist_knock/assist_elim; keep elim as a countable type for compatibility with older project files and manual events.
 COUNTING_TYPES = frozenset({"knock", "assist_knock", "assist_elim", "elim"})
 
 
@@ -25,7 +25,7 @@ class VideoInfo:
 
 
 class NameSig:
-    """敵人名字字形指紋：高度固定 16 的 0/1 陣列。"""
+    """Enemy-name glyph signature: a binary array with a fixed height of 16."""
 
     HEIGHT = 16
 
@@ -54,7 +54,7 @@ class FrameResult:
     damage_line: bool
     name_sig: NameSig | None
     spectating: bool
-    # kind 為 None 時的提示：cont＝有加分箭頭與「+」但人形不確定（淡入淡出），延續進行中的事件（不算命中）。
+    # Hint when kind is None: cont means a score arrow and "+" are present, but the person icon is uncertain (fade in/out); continue the in-progress event (not a hit).
     hint: str | None = None
 
 

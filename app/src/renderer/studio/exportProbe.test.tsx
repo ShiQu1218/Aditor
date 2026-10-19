@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-// I9：匯出抽屜要用 api.engine.probe 收集其他來源的規格（舊程式呼叫不存在的 api.probe，永遠是 null）。
+// I9: the export drawer must use api.engine.probe to collect metadata for other sources (the old code called nonexistent api.probe, which always returned null).
 import { afterEach, expect, test, vi } from 'vitest'
 import { cleanupMounted, flush, focusEl, installDomShims, press } from '../../../test/dom'
 import { mountStudio, STUDIO_VIDEO, type StudioMount } from '../../../test/studioHarness'

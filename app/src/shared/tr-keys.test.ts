@@ -18,7 +18,7 @@ function sourceFiles(dir: string): string[] {
   })
 }
 
-/** 掃描原始碼裡所有 `tr('原文'…)` 的原文（必須是單純字串字面值）。 */
+/** Scan the source for all `tr('source text'…)` keys (which must be plain string literals). */
 function usedKeys(): Map<string, string> {
   const keys = new Map<string, string>()
   const call = /\btr\(\s*(?:'((?:[^'\\\n]|\\.)*)'|"((?:[^"\\\n]|\\.)*)"|`((?:[^`\\$]|\\.)*)`)/g
@@ -36,34 +36,34 @@ const placeholders = (text: string): string => [...text.matchAll(/\{(\w+)\}/g)].
 const used = usedKeys()
 
 describe('tr()', () => {
-  it('繁中回傳原文並代入佔位符；缺少的變數保留原樣', () => {
+  it('Traditional Chinese returns the source text and substitutes placeholders; missing variables remain unchanged', () => {
     setActiveLocale('zh-TW')
     expect(tr('第 {index} 局開始', { index: 3 })).toBe('第 3 局開始')
     expect(tr('第 {index} 局開始', {})).toBe('第 {index} 局開始')
   })
 
-  it('其他語言查不到時退回原文，查到時使用譯文', () => {
+  it('Other languages fall back to the source text when no translation exists and use the translation when available', () => {
     setActiveLocale('en')
     expect(tr('這句話沒有翻譯')).toBe('這句話沒有翻譯')
     setActiveLocale('zh-TW')
   })
 
-  it('原始碼有使用 tr()（掃描規則沒有失效）', () => {
+  it('The source uses tr() (the scan rule is still working)', () => {
     expect(used.size).toBeGreaterThan(10)
   })
 })
 
-describe.each([['en', en], ['ja', ja], ['ko', ko], ['zh-CN', zhCN]] as Array<[string, MessageTable]>)('訊息表 %s', (_name, table) => {
-  it('涵蓋原始碼中所有 tr() 原文', () => {
+describe.each([['en', en], ['ja', ja], ['ko', ko], ['zh-CN', zhCN]] as Array<[string, MessageTable]>)('Message table %s', (_name, table) => {
+  it('covers every tr() source string used in the source code', () => {
     const missing = [...used.entries()].filter(([key]) => !(key in table)).map(([key, file]) => `${file}: ${key}`)
     expect(missing).toEqual([])
   })
 
-  it('沒有已不再使用的多餘條目', () => {
+  it('contains no unused entries', () => {
     expect(Object.keys(table).filter((key) => !used.has(key))).toEqual([])
   })
 
-  it('佔位符與原文一致、譯文不為空', () => {
+  it('has matching placeholders and non-empty translations', () => {
     const bad = Object.entries(table).filter(([key, value]) => value.trim() === '' || placeholders(key) !== placeholders(value)).map(([key]) => key)
     expect(bad).toEqual([])
   })

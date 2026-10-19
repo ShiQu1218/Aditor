@@ -114,7 +114,7 @@ def test_merge_clips_keeps_manual():
 
 
 def test_caches_from_text_keyword_engine_are_stale():
-    """改為圖示偵測（引擎 0.3.0／icons@1）後，舊文字關鍵字法（0.2.0／zh-TW@3 等）的快取一律失效。"""
+    """Caches from the old text-keyword method (0.2.0/zh-TW@3, etc.) are invalidated after switching to icon detection (engine 0.3.0/icons@1)."""
     from aditor import ENGINE_VERSION
     assert ENGINE_VERSION == "0.3.0"
     old_engine = good_doc()
@@ -127,10 +127,10 @@ def test_caches_from_text_keyword_engine_are_stale():
 
 
 def test_merge_reanalysis_matches_assist_subtypes():
-    """I6：改版後大量 assist_elim 變 assist_knock，使用者的刪除／覆寫不應因此全部變成 unmatched。"""
+    """I6: after an upgrade changes many assist_elim events to assist_knock, user deletions and overrides must not all become unmatched."""
     old = [ev("o1", 10.0, "assist_elim", deleted=True)]
     new = [ev("n1", 10.25, "assist_knock")]
     merged, unmatched = cache.merge_reanalysis(old, new)
     assert unmatched == [] and merged[0].deleted is True
     merged, unmatched = cache.merge_reanalysis([ev("o2", 10.0, "knock", deleted=True)], new)
-    assert len(unmatched) == 1   # 不同家族仍不配對
+    assert len(unmatched) == 1   # Different event families still do not match.

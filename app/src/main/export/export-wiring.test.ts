@@ -3,7 +3,7 @@ import fs from 'fs'
 import path from 'path'
 import { registerExportHandlers, createExportService } from './export-ipc'
 
-/** 預載腳本 ↔ main 處理器 ↔ renderer 使用的頻道必須一致（不靠人眼對照）。 */
+/** Channels used by preload, main handlers, and renderer must match (verified programmatically). */
 const root = path.resolve(__dirname, '..', '..')
 const read = (rel: string): string => fs.readFileSync(path.join(root, rel), 'utf-8')
 

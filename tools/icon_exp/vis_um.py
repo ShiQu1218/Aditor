@@ -1,4 +1,4 @@
-"""vis_um.py LAB：把未對上真值的圖示 run（中間格）與漏掉的真值事件（t+0.5）拼成接觸表。"""
+"""vis_um.py LAB: create contact sheets from icon runs unmatched to ground truth (middle frame) and missed truth events (t+0.5)."""
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from ana import *

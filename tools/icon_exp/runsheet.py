@@ -1,5 +1,5 @@
-"""runsheet.py LAB out_prefix [--p=...] [--all]：列出圖示 run，並把每個 run 的中間格拼成接觸表（每張 12 個）。
---all：含負類別（elim/squad_wipe/score_other）的 run。"""
+"""runsheet.py LAB out_prefix [--p=...] [--all]: list icon runs and make contact sheets from their middle frames (12 per sheet).
+--all: include runs from negative classes (elim/squad_wipe/score_other)."""
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from ana import *

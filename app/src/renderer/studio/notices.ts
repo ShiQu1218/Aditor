@@ -13,20 +13,20 @@ export interface StudioNotice {
 
 export interface StudioNoticeInput {
   analysis: 'done' | 'error'
-  /** 影片檔案找不到或無法播放（來源模式 `<video>` 載入失敗） */
+/** Video file is missing or unplayable (source-mode `<video>` load failure). */
   videoMissing?: boolean
   playability: PlayabilityResult
-  /** 代理檔狀態：none＝未產生（才會建議）、available＝已有、generating＝產生中（進度由 UI 顯示） */
+/** Proxy status: none means not generated (eligible for suggestion), available means present, generating means in progress (UI shows progress). */
   proxyState: 'none' | 'available' | 'generating'
-  /** 引擎錯誤代碼（顯示於文案） */
+/** Engine error code (shown in the message). */
   errorCode?: string | number
-  /** 設定「建議代理檔」：false 時不建議（預設 true） */
+/** Proxy suggestion setting: do not suggest when false (defaults to true). */
   proxySuggest?: boolean
 }
 
 /**
- * 工作室頂部 notice 的純函式（spec §3.2.6）：
- * 引擎異常 → 錯誤＋〔接續分析〕；非可播放／無硬體解碼且尚無代理檔 → 代理檔建議；其餘 null。
+ * Pure function for the studio's top notice (spec §3.2.6):
+ * engine error → error plus Resume Analysis; unplayable/no hardware decoding without an existing proxy → proxy suggestion; otherwise null.
  */
 export function studioNotice(input: StudioNoticeInput): StudioNotice | null {
   const t = i18n.studio.notices
@@ -63,7 +63,7 @@ export function studioNotice(input: StudioNoticeInput): StudioNotice | null {
   return null
 }
 
-/** 代理檔產生中的狀態列：有進度（0–1）顯示百分比，否則通用文字。 */
+/** Proxy-generation status bar: show a percentage when progress (0–1) is available, otherwise generic text. */
 export function proxyBusyNotice(ratio: number | null): StudioNotice {
   const t = i18n.studio.notices
   const title =

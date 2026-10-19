@@ -1,6 +1,6 @@
-//! OBS `graphics-hook` 注入、共享記憶體初始化、就緒等待與診斷 log pipe。
-//! 對照 OBS 32.1.2：`plugins/win-capture/game-capture.c`、`graphics-hook/graphics-hook.c`、
-//! `shared/ipc-util/ipc-util/pipe-windows.c`、`plugins/win-capture/inject-library.h`。
+//! OBS graphics-hook injection, shared-memory initialization, readiness waiting, and diagnostic log pipe.
+//! References OBS 32.1.2 implementation files for game capture, graphics hook, pipe I/O, and library injection.
+//! References OBS 32.1.2 pipe-windows.c and inject-library.h implementation files.
 
 use std::mem::size_of;
 use std::os::windows::process::CommandExt;
@@ -39,12 +39,12 @@ const DLL_FILE_NAME: &str = "graphics-hook64.dll";
 const INJECTOR_FILE_NAME: &str = "inject-helper64.exe";
 const OFFSETS_FILE_NAME: &str = "get-graphics-offsets64.exe";
 
-/// 反作弊相容注入需等待遊戲視窗執行緒處理訊息才會載入 DLL；每 100 ms 輪詢一次。
+/// Anti-cheat-compatible injection waits for the game window thread to process messages before the DLL loads; poll every 100 ms.
 const HOOK_LOAD_POLL_INTERVAL: Duration = Duration::from_millis(100);
-/// 對照 OBS `IPC_PIPE_BUF_SIZE`。
+/// Matches the OBS IPC_PIPE_BUF_SIZE constant.
 const PIPE_BUFFER_SIZE: u32 = 1024;
 
-/// hook 檔所在目錄；建構時檢查三個檔案都存在。
+/// Directory containing hook files; construction verifies that all three files exist.
 #[derive(Debug, Clone)]
 pub struct HookFiles {
     dir: PathBuf,
@@ -55,7 +55,7 @@ impl HookFiles {
         let files = Self { dir: dir.into() };
         for path in [files.dll(), files.injector(), files.offsets_tool()] {
             if !path.is_file() {
-                bail!("hook_unavailable: 找不到 hook 檔案 {}", path.display());
+                bail!("hook_unavailable: Hook file not found {}", path.display());
             }
         }
         Ok(files)
@@ -74,7 +74,7 @@ impl HookFiles {
     }
 }
 
-/// hook 回報就緒後的共享材質資訊。
+/// Shared-texture information reported after the hook becomes ready.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SharedTexture {
     pub handle: u32,
@@ -83,17 +83,17 @@ pub struct SharedTexture {
     pub format: u32,
 }
 
-/// 具名核心物件控制代碼；離開作用域時自動關閉。
+/// Named kernel-object handle; automatically closed when it leaves scope.
 struct OwnedHandle(HANDLE);
 
-// SAFETY: Win32 核心物件控制代碼（Event、Mutex、FileMapping、NamedPipe）屬於程序層級，
-// 不綁定建立時的執行緒，可安全轉移至其他執行緒使用與關閉。
+// SAFETY: Win32 kernel handles are process-scoped and can be transferred, used, and closed on another thread.
+// Handles are not tied to their creating thread and may be transferred, used, and closed by another thread.
 unsafe impl Send for OwnedHandle {}
 
 impl Drop for OwnedHandle {
     fn drop(&mut self) {
         if !self.0.is_invalid() {
-            // SAFETY: 只關閉本結構獨占擁有的有效控制代碼。
+            // SAFETY: Closes only a valid handle exclusively owned by this structure.
             unsafe {
                 let _ = CloseHandle(self.0);
             }
@@ -101,14 +101,14 @@ impl Drop for OwnedHandle {
     }
 }
 
-/// `MapViewOfFile` 映射區段；離開作用域時先解除映射再關閉 file mapping 控制代碼。
+/// Mapped file region; unmap it before closing the file-mapping handle on drop.
 struct MappedRegion {
     view: MEMORY_MAPPED_VIEW_ADDRESS,
     _map: OwnedHandle,
 }
 
-// SAFETY: 映射後的共享記憶體指標在程序地址空間內對所有執行緒有效；
-// 由 `HookSession` 獨占持有，不會跨執行緒同時存取。
+// SAFETY: The mapped shared-memory pointer is valid for all process threads and exclusively owned by HookSession.
+// HookSession exclusively owns the mapping; it is never accessed concurrently across threads.
 unsafe impl Send for MappedRegion {}
 
 impl MappedRegion {
@@ -120,7 +120,7 @@ impl MappedRegion {
 impl Drop for MappedRegion {
     fn drop(&mut self) {
         if !self.view.Value.is_null() {
-            // SAFETY: view 由 open_map 的 MapViewOfFile 建立，且僅在此處解除一次。
+            // SAFETY: view was created by MapViewOfFile in open_map and is unmapped here exactly once.
             unsafe {
                 let _ = UnmapViewOfFile(self.view);
             }
@@ -133,7 +133,7 @@ fn wide(s: &str) -> HSTRING {
 }
 
 fn open_event(name: &str) -> Option<OwnedHandle> {
-    // SAFETY: 只依名稱開啟既有的核心事件物件。
+    // SAFETY: Opens an existing kernel event by name only.
     unsafe {
         OpenEventW(
             EVENT_MODIFY_STATE | SYNCHRONIZATION_SYNCHRONIZE,
@@ -146,14 +146,14 @@ fn open_event(name: &str) -> Option<OwnedHandle> {
 }
 
 fn open_mutex(name: &str) -> Option<OwnedHandle> {
-    // SAFETY: 只依名稱開啟既有的核心 mutex 物件。
+    // SAFETY: Opens an existing kernel event by name only.
     unsafe { OpenMutexW(SYNCHRONIZATION_SYNCHRONIZE, false, &wide(name)) }
         .ok()
         .map(OwnedHandle)
 }
 
 fn open_map(name: &str, size: usize) -> Option<MappedRegion> {
-    // SAFETY: 開啟既有的具名 file mapping 並映射指定位元組數；失敗時立即關閉控制代碼。
+    // SAFETY: Opens an existing named file mapping and maps the requested byte count; closes the handle immediately on failure.
     unsafe {
         let handle = OpenFileMappingW(FILE_MAP_ALL_ACCESS.0, false, &wide(name)).ok()?;
         let map = OwnedHandle(handle);
@@ -165,27 +165,27 @@ fn open_map(name: &str, size: usize) -> Option<MappedRegion> {
     }
 }
 
-/// 對照 OBS `inject-library.h` 的結束碼說明。
+/// Matches the OBS IPC_PIPE_BUF_SIZE constant.
 fn inject_code_reason(code: i32) -> &'static str {
     match code {
-        0 => "成功",
-        -1 => "注入失敗",
-        -2 => "參數錯誤",
-        -3 => "無法開啟程序",
-        -4 => "非預期失敗",
-        _ => "未知錯誤",
+        0 => "Success",
+        -1 => "Injection failed",
+        -2 => "Invalid arguments",
+        -3 => "Could not open process",
+        -4 => "Unexpected failure",
+        _ => "Unknown error",
     }
 }
 
-/// 檢查 `inject-helper64.exe` 結束碼；非 0 時轉為含中文原因與數值的 `hook_unavailable` 錯誤。
+/// Checks the helper exit code and maps nonzero codes to hook_unavailable errors.
 fn check_inject_exit(code: Option<i32>) -> Result<()> {
     match code {
         Some(0) => Ok(()),
         Some(code) => bail!(
-            "hook_unavailable: inject-helper64.exe {}（結束碼 {code}）",
+            "hook_unavailable: inject-helper64.exe {} (exit code {code})",
             inject_code_reason(code)
         ),
-        None => bail!("hook_unavailable: inject-helper64.exe 非預期終止（無結束碼）"),
+        None => bail!("hook_unavailable: inject-helper64.exe terminated unexpectedly (no exit code)"),
     }
 }
 
@@ -193,41 +193,41 @@ fn fetch_offsets(files: &HookFiles) -> Result<GraphicsOffsets> {
     let output = Command::new(files.offsets_tool())
         .creation_flags(CREATE_NO_WINDOW.0)
         .output()
-        .context("hook_unavailable: 無法執行 get-graphics-offsets64.exe")?;
+        .context("hook_unavailable: Failed to run get-graphics-offsets64.exe")?;
     if !output.status.success() {
         bail!(
-            "hook_unavailable: get-graphics-offsets64.exe 失敗（結束碼 {:?}）",
+            "hook_unavailable: get-graphics-offsets64.exe failed (exit code {:?})",
             output.status.code()
         );
     }
     let text = String::from_utf8_lossy(&output.stdout);
     protocol::parse_offsets(&text)
-        .map_err(|err| anyhow::anyhow!("hook_unavailable: 解析圖形偏移失敗：{err}"))
+        .map_err(|err| anyhow::anyhow!("hook_unavailable: Failed to parse graphics offsets：{err}"))
 }
 
 fn create_keepalive(pid: u32) -> Result<OwnedHandle> {
     let name = protocol::keepalive(pid);
     if open_mutex(&name).is_some() {
-        bail!("hook_unavailable: OBS 或其他程式正在擷取此遊戲");
+        bail!("hook_unavailable: OBS or another application is already capturing this game");
     }
-    // SAFETY: 建立具名 mutex；隨後檢查 ERROR_ALREADY_EXISTS 防止與其他程式競爭。
+    // SAFETY: Creates a named mutex, then checks ERROR_ALREADY_EXISTS to prevent races.
     let raw = unsafe { CreateMutexW(None, false, &wide(&name)) }
-        .context("hook_unavailable: 無法建立 keepalive mutex")?;
+        .context("hook_unavailable: Failed to create keepalive mutex")?;
     let handle = OwnedHandle(raw);
-    // SAFETY: CreateMutexW 在 mutex 已存在時仍走成功路徑回傳控制代碼，windows-rs 不會在 Ok 分支讀取或覆寫
-    // thread last error，因此此處直接呼叫 GetLastError() 檢查 ERROR_ALREADY_EXISTS 是可靠的。
+    // SAFETY: CreateMutexW returns a handle even if the mutex exists; windows-rs does not overwrite last error on success,
+    // so GetLastError reliably detects ERROR_ALREADY_EXISTS here.
     if unsafe { GetLastError() } == ERROR_ALREADY_EXISTS {
-        bail!("hook_unavailable: OBS 或其他程式正在擷取此遊戲");
+        bail!("hook_unavailable: OBS or another application is already capturing this game");
     }
     Ok(handle)
 }
 
 fn inject_anticheat(hwnd: HWND, files: &HookFiles) -> Result<()> {
     let mut window_pid = 0u32;
-    // SAFETY: 僅查詢視窗執行緒 ID，不開啟程序控制代碼。
+    // SAFETY: Queries only the window thread ID and does not open a process handle.
     let thread_id = unsafe { GetWindowThreadProcessId(hwnd, Some(&mut window_pid)) };
     if thread_id == 0 {
-        bail!("hook_unavailable: 無法取得遊戲視窗執行緒 ID");
+        bail!("hook_unavailable: Failed to get the game window thread ID");
     }
     let dll = std::path::absolute(files.dll()).unwrap_or_else(|_| files.dll());
     let status = Command::new(files.injector())
@@ -236,13 +236,13 @@ fn inject_anticheat(hwnd: HWND, files: &HookFiles) -> Result<()> {
         .arg("1")
         .arg(thread_id.to_string())
         .status()
-        .context("hook_unavailable: 無法執行 inject-helper64.exe")?;
+        .context("hook_unavailable: Failed to run inject-helper64.exe")?;
     check_inject_exit(status.code())
 }
 
-/// 背景執行緒接收 `\\.\pipe\CaptureHook_Pipe{pid}` 的診斷訊息。
-/// 使用 `FILE_FLAG_OVERLAPPED` 搭配手動重設的 `stop_event`：不論執行緒正阻塞在
-/// `ConnectNamedPipe` 或已連上後阻塞在 `ReadFile`，Drop 時皆可立即喚醒並取消 I/O，不留孤兒執行緒。
+/// Background thread receives diagnostic messages from the hook named pipe.
+/// Uses overlapped I/O and a manual-reset stop event to cancel blocked pipe I/O on Drop and avoid orphaned threads.
+/// Drop can wake and cancel I/O blocked in ConnectNamedPipe or ReadFile immediately, preventing an orphaned thread.
 struct PipeLogger {
     stop_event: OwnedHandle,
     worker: Option<JoinHandle<()>>,
@@ -250,11 +250,11 @@ struct PipeLogger {
 
 impl PipeLogger {
     fn spawn(pid: u32) -> Result<Self> {
-        // SAFETY: 建立無名手動重設事件，用於通知 log 執行緒結束。
+        // SAFETY: Creates a manual-reset event to signal the log thread to stop.
         let stop_raw = unsafe { CreateEventW(None, true, false, None) }
-            .context("hook_unavailable: 無法建立 log pipe 停止事件")?;
+            .context("hook_unavailable: Failed to create log-pipe stop event")?;
         let stop_event = OwnedHandle(stop_raw);
-        // 直接把 stop_event 控制代碼數值傳給背景執行緒讀取（生命週期由 PipeLogger::drop 先 join 再關閉保證）。
+        // Passes the stop-event handle value to the worker; PipeLogger::drop joins it before closing the handle.
         let stop_handle_val = stop_event.0 .0 as isize;
         let (bound_tx, bound_rx) = mpsc::sync_channel(1);
         let worker = thread::Builder::new()
@@ -262,8 +262,8 @@ impl PipeLogger {
             .spawn(move || {
                 pipe_logger_loop(pid, stop_handle_val, Some(bound_tx));
             })
-            .context("hook_unavailable: 無法啟動 log pipe 執行緒")?;
-        // 等待第一次 CreateNamedPipeW 完成再繼續，確保緊接著觸發 Restart 時 hook 端能連上 pipe。
+            .context("hook_unavailable: Failed to start log-pipe thread")?;
+        // Waits for pipe creation so the hook can connect when Restart is triggered.
         let _ = bound_rx.recv();
         Ok(Self {
             stop_event,
@@ -274,7 +274,7 @@ impl PipeLogger {
 
 impl Drop for PipeLogger {
     fn drop(&mut self) {
-        // SAFETY: stop_event 在 worker join 完成前維持有效。
+        // SAFETY: stop_event remains valid until the worker joins.
         unsafe {
             let _ = SetEvent(self.stop_event.0);
         }
@@ -286,7 +286,7 @@ impl Drop for PipeLogger {
 
 fn create_log_pipe(pid: u32) -> Option<OwnedHandle> {
     let name = wide(&protocol::pipe(pid));
-    // SAFETY: 建立雙向、訊息模式、支援 Overlapped 的具名 pipe，使用預設安全描述元。
+    // SAFETY: Creates a named mutex, then checks ERROR_ALREADY_EXISTS to prevent races.
     let raw = unsafe {
         CreateNamedPipeW(
             &name,
@@ -306,7 +306,7 @@ fn create_log_pipe(pid: u32) -> Option<OwnedHandle> {
 }
 
 fn cancel_and_wait(pipe: HANDLE, overlapped: &OVERLAPPED) {
-    // SAFETY: 取消此 pipe 上的特定 overlapped 操作，並等待核心完成以免堆疊上的 OVERLAPPED 提前釋放。
+    // SAFETY: Cancels the selected overlapped pipe operation and waits before freeing stack OVERLAPPED data.
     unsafe {
         let _ = CancelIoEx(pipe, Some(overlapped));
         let mut unused = 0u32;
@@ -320,7 +320,7 @@ fn pipe_logger_loop(
     mut first_ready: Option<mpsc::SyncSender<()>>,
 ) {
     let stop_handle = HANDLE(stop_handle_val as *mut _);
-    // SAFETY: 建立此執行緒專用的手動重設 I/O 完成事件。
+    // SAFETY: Creates a named mutex, then checks ERROR_ALREADY_EXISTS to prevent races.
     let Ok(io_raw) = (unsafe { CreateEventW(None, true, false, None) }) else {
         if let Some(tx) = first_ready.take() {
             let _ = tx.send(());
@@ -330,7 +330,7 @@ fn pipe_logger_loop(
     let io_event = OwnedHandle(io_raw);
 
     loop {
-        // SAFETY: stop_handle 在此執行緒結束前均有效。
+        // SAFETY: stop_event remains valid until the worker joins.
         if unsafe { WaitForSingleObject(stop_handle, 0) } == WAIT_OBJECT_0 {
             break;
         }
@@ -353,9 +353,9 @@ fn pipe_logger_loop(
     }
 }
 
-/// 等待 hook 連上 named pipe；回傳 `false` 代表收到停止訊號或不可恢復錯誤，應結束執行緒。
+/// Waits for the hook to connect; false indicates stop or an unrecoverable error.
 fn wait_pipe_connect(pipe: HANDLE, io_event: HANDLE, stop_event: HANDLE) -> bool {
-    // SAFETY: 重設 I/O 事件並發起 Overlapped ConnectNamedPipe。
+    // SAFETY: Resets the I/O event and starts an overlapped pipe connection.
     unsafe {
         let _ = ResetEvent(io_event);
     }
@@ -363,7 +363,7 @@ fn wait_pipe_connect(pipe: HANDLE, io_event: HANDLE, stop_event: HANDLE) -> bool
         hEvent: io_event,
         ..Default::default()
     };
-    // SAFETY: pipe 與 overlapped 在整個等待與取消期間有效。
+    // SAFETY: pipe and overlapped remain valid throughout the wait and cancellation.
     if let Err(err) = unsafe { ConnectNamedPipe(pipe, Some(&mut overlapped)) } {
         let code = err.code();
         if code == ERROR_PIPE_CONNECTED.to_hresult() {
@@ -373,14 +373,14 @@ fn wait_pipe_connect(pipe: HANDLE, io_event: HANDLE, stop_event: HANDLE) -> bool
             return false;
         }
         let handles = [io_event, stop_event];
-        // SAFETY: handles 內兩個事件控制代碼皆有效。
+        // SAFETY: Both event handles are valid.
         let wait = unsafe { WaitForMultipleObjects(&handles, false, INFINITE) };
         if wait != WAIT_OBJECT_0 {
             cancel_and_wait(pipe, &overlapped);
             return false;
         }
         let mut unused = 0u32;
-        // SAFETY: io_event 已觸發，查詢連線結果。
+        // SAFETY: io_event was signaled; query the result.
         if unsafe { GetOverlappedResult(pipe, &overlapped, &mut unused, false) }.is_err() {
             return false;
         }
@@ -388,14 +388,14 @@ fn wait_pipe_connect(pipe: HANDLE, io_event: HANDLE, stop_event: HANDLE) -> bool
     true
 }
 
-/// 持續讀取訊息直到客戶端斷線（回傳 `true` 以重建 pipe）或收到 `stop_event`（回傳 `false` 結束執行緒）。
+/// Reads until the client disconnects (recreate the pipe) or stop_event is signaled (exit the thread).
 fn read_pipe_messages(pipe: HANDLE, io_event: HANDLE, stop_event: HANDLE) -> bool {
     let mut buf = [0u8; PIPE_BUFFER_SIZE as usize];
     let mut message = Vec::new();
     let handles = [io_event, stop_event];
 
     loop {
-        // SAFETY: 每次讀取前重設手動重設事件。
+        // SAFETY: Resets the manual-reset event before each read.
         unsafe {
             let _ = ResetEvent(io_event);
         }
@@ -403,7 +403,7 @@ fn read_pipe_messages(pipe: HANDLE, io_event: HANDLE, stop_event: HANDLE) -> boo
             hEvent: io_event,
             ..Default::default()
         };
-        // SAFETY: buf 與 overlapped 在此次 I/O 完成或取消前維持有效。
+        // SAFETY: buf and overlapped remain valid until this I/O completes or is cancelled.
         if let Err(err) = unsafe { ReadFile(pipe, Some(&mut buf), None, Some(&mut overlapped)) } {
             let code = err.code();
             if code != ERROR_IO_PENDING.to_hresult() && code != ERROR_MORE_DATA.to_hresult() {
@@ -411,7 +411,7 @@ fn read_pipe_messages(pipe: HANDLE, io_event: HANDLE, stop_event: HANDLE) -> boo
             }
         }
 
-        // SAFETY: 等待讀取完成或停止事件。
+        // SAFETY: Waits for the read to finish or the stop event.
         let wait = unsafe { WaitForMultipleObjects(&handles, false, INFINITE) };
         if wait != WAIT_OBJECT_0 {
             cancel_and_wait(pipe, &overlapped);
@@ -419,7 +419,7 @@ fn read_pipe_messages(pipe: HANDLE, io_event: HANDLE, stop_event: HANDLE) -> boo
         }
 
         let mut bytes = 0u32;
-        // SAFETY: io_event 已觸發，取得實際讀取位元組數。
+        // SAFETY: io_event was signaled; query the result.
         let res = unsafe { GetOverlappedResult(pipe, &overlapped, &mut bytes, false) };
         let more_data = res
             .as_ref()
@@ -438,34 +438,34 @@ fn read_pipe_messages(pipe: HANDLE, io_event: HANDLE, stop_event: HANDLE) -> boo
     }
 }
 
-/// 與遊戲內 hook 的一次連線。Drop 時 `SetEvent(stop)` 並關閉 keepalive 與所有控制代碼。
+/// One connection to the in-game hook. Drop signals stop and closes keepalive and all handles.
 ///
-/// `CaptureHook_Stop` 是擷取端→hook 的單向訊號（僅於 `Drop` 時觸發）；hook 端重置擷取（`capture_free`）時
-/// 會自行 `SetEvent(restart)` 並在下一次 `Present` 重新初始化、再次觸發 `HookReady`，
-/// 因此擷取迴圈只需以 `wait_ready(Duration::ZERO)` 輪詢即可偵測重建，遊戲結束則由視窗／程序檢查涵蓋。
+/// CaptureHook_Stop is a one-way signal from capture to the hook, sent only on Drop; when the hook resets capture,
+/// the hook signals restart, reinitializes on the next Present, and signals HookReady again,
+/// so the capture loop polls wait_ready(Duration::ZERO) for recreation; window/process checks detect game exit.
 pub struct HookSession {
     hwnd: HWND,
     logger: Option<PipeLogger>,
     tex_map: Option<MappedRegion>,
     info_map: MappedRegion,
-    #[allow(dead_code)] // 連線期間保持開啟具名事件控制代碼。
+    #[allow(dead_code)] // Keeps the named event handle open for the duration of the connection.
     restart: OwnedHandle,
     stop: OwnedHandle,
-    #[allow(dead_code)] // 連線期間保持開啟具名事件控制代碼。
+    #[allow(dead_code)] // Keeps the named event handle open for the duration of the connection.
     init: OwnedHandle,
     ready: OwnedHandle,
     _keepalive: OwnedHandle,
 }
 
-// SAFETY: `HookSession` 內的視窗控制代碼、共享記憶體映射與核心物件皆不在多執行緒間共享，
-// 僅隨擷取執行緒生命週期移動與單一執行緒操作。
+// SAFETY: HookSession handles, shared-memory mapping, and kernel objects are not shared across threads,
+// and move with the capture-thread lifetime for single-threaded access.
 unsafe impl Send for HookSession {}
 
 impl HookSession {
-    /// 取得偏移 → 檢查 keepalive 衝突 → 建立 keepalive → 啟動 log pipe →
-    /// 既有 hook 則 SetEvent(restart)，否則以反作弊相容模式注入 → 等 hook 載入 →
-    /// 映射並 configure HookInfo → SetEvent(init)、SetEvent(restart)。
-    /// `timeout` 涵蓋到 hook 載入為止（不含等待就緒）。
+    /// Gets offsets, checks keepalive conflicts, starts the log pipe, and restarts or injects the hook.
+    /// Waits for hook loading, maps and configures HookInfo, then signals initialization and restart.
+    /// Maps and configures HookInfo, then signals initialization and restart.
+    /// timeout covers hook loading but not readiness waiting.
     pub fn attach(
         pid: u32,
         hwnd: HWND,
@@ -475,9 +475,9 @@ impl HookSession {
     ) -> Result<Self> {
         let deadline = Instant::now() + timeout;
 
-        // 先檢查 keepalive 是否已被 OBS 或其他程式持有，避免無謂執行外部工具或干擾既有擷取。
+        // Checks whether OBS or another application holds keepalive before running external tools.
         if open_mutex(&protocol::keepalive(pid)).is_some() {
-            bail!("hook_unavailable: OBS 或其他程式正在擷取此遊戲");
+            bail!("hook_unavailable: OBS or another application is already capturing this game");
         }
 
         let offsets = fetch_offsets(files)?;
@@ -485,9 +485,9 @@ impl HookSession {
         let logger = PipeLogger::spawn(pid)?;
 
         if let Some(existing_restart) = open_event(&protocol::restart(pid)) {
-            // SAFETY: existing_restart 為剛開啟的有效事件控制代碼。
+            // SAFETY: existing_restart is a valid event handle just opened.
             unsafe { SetEvent(existing_restart.0) }
-                .context("hook_unavailable: 無法觸發既有 hook 的 Restart 事件")?;
+                .context("hook_unavailable: Failed to signal the existing hook Restart event")?;
         } else {
             inject_anticheat(hwnd, files)?;
         }
@@ -496,16 +496,16 @@ impl HookSession {
         while open_mutex(&tex_mutex_name).is_none() {
             let now = Instant::now();
             if now >= deadline {
-                bail!("hook_unavailable: 逾時未載入（可能被反作弊阻擋）");
+                bail!("hook_unavailable: Timed out waiting for the hook to load (possibly blocked by anti-cheat)");
             }
             thread::sleep(HOOK_LOAD_POLL_INTERVAL.min(deadline - now));
         }
 
         let info_map = open_map(&protocol::hook_info(pid), size_of::<HookInfo>())
-            .context("hook_unavailable: 無法開啟或映射 HookInfo 共享記憶體")?;
+            .context("hook_unavailable: Failed to open or map HookInfo shared memory")?;
         let info_ptr = info_map.as_ptr() as *mut HookInfo;
-        // SAFETY: info_ptr 指向 648 bytes 的 HookInfo 共享記憶體（MapViewOfFile 對齊至頁面邊界，滿足 8-byte 對齊）；
-        // hook 端只在初始化擷取時寫入自己的欄位，此時尚未觸發 Initialize 事件。
+        // SAFETY: info_ptr points to 648 bytes of HookInfo shared memory aligned to an 8-byte boundary;
+        // the hook writes its fields during capture initialization, before Initialize is signaled.
         unsafe {
             let mut info = info_ptr.read_volatile();
             info.configure(offsets, fps);
@@ -518,18 +518,18 @@ impl HookSession {
         }
 
         let restart = open_event(&protocol::restart(pid))
-            .context("hook_unavailable: 無法開啟 CaptureHook_Restart 事件")?;
+            .context("hook_unavailable: Failed to open CaptureHook_Restart event")?;
         let stop = open_event(&protocol::stop(pid))
-            .context("hook_unavailable: 無法開啟 CaptureHook_Stop 事件")?;
+            .context("hook_unavailable: Failed to open CaptureHook_Stop event")?;
         let init = open_event(&protocol::init(pid))
-            .context("hook_unavailable: 無法開啟 CaptureHook_Initialize 事件")?;
+            .context("hook_unavailable: Failed to open CaptureHook_Initialize event")?;
         let ready = open_event(&protocol::ready(pid))
-            .context("hook_unavailable: 無法開啟 CaptureHook_HookReady 事件")?;
+            .context("hook_unavailable: Failed to open CaptureHook_HookReady event")?;
 
-        // SAFETY: init 與 restart 為剛開啟的有效事件控制代碼。
+        // SAFETY: init and restart are valid event handles just opened.
         unsafe {
-            SetEvent(init.0).context("hook_unavailable: 無法觸發 CaptureHook_Initialize 事件")?;
-            SetEvent(restart.0).context("hook_unavailable: 無法觸發 CaptureHook_Restart 事件")?;
+            SetEvent(init.0).context("hook_unavailable: Failed to signal CaptureHook_Initialize event")?;
+            SetEvent(restart.0).context("hook_unavailable: Failed to signal CaptureHook_Restart event")?;
         }
 
         Ok(Self {
@@ -545,28 +545,28 @@ impl HookSession {
         })
     }
 
-    /// 等 HookReady（逾時回傳 `Ok(None)`）；就緒時讀 `HookInfo` 與 texture map，回傳材質資訊。
-    /// `HookInfo.capture_type` 不是 `TEXTURE`、或格式 `protocol::conversion_for` 不支援 → `hook_unavailable` 錯誤。
+    /// Waits for HookReady (timeout returns Ok(None)); when ready, reads HookInfo and the texture map.
+    /// Returns hook_unavailable if capture_type is not TEXTURE or the format is unsupported.
     pub fn wait_ready(&mut self, timeout: Duration) -> Result<Option<SharedTexture>> {
         let timeout_ms = timeout.as_millis().min(u128::from(u32::MAX - 1)) as u32;
-        // SAFETY: self.ready 為有效的事件控制代碼。
+        // SAFETY: self.ready is a valid event handle.
         let wait = unsafe { WaitForSingleObject(self.ready.0, timeout_ms) };
         if wait == WAIT_TIMEOUT {
             return Ok(None);
         }
         if wait != WAIT_OBJECT_0 {
             bail!(
-                "hook_unavailable: 等待 CaptureHook_HookReady 事件失敗（狀態 0x{:x}）",
+                "hook_unavailable: Failed while waiting for CaptureHook_HookReady event(status 0x{:x}",
                 wait.0
             );
         }
 
-        // HookReady 在遊戲改解析度時會再次觸發，先關閉舊的 texture map 再開啟新映射。
+        // HookReady may signal again on resolution changes; close the old texture map before opening the new one.
         self.tex_map = None;
 
         let info_ptr = self.info_map.as_ptr() as *const HookInfo;
-        // SAFETY: info_ptr 指向 648 bytes 的 HookInfo 共享記憶體；hook 在觸發 HookReady 前已填妥這些欄位，
-        // 以 read_volatile 讀取避免編譯器快取跨程序共享記憶體。
+        // SAFETY: info_ptr points to 648 bytes of HookInfo shared memory aligned to an 8-byte boundary;
+        // read_volatile prevents compiler caching of inter-process shared memory.
         let (capture_type, window, map_id, width, height, format) = unsafe {
             (
                 ptr::addr_of!((*info_ptr).capture_type).read_volatile(),
@@ -579,13 +579,13 @@ impl HookSession {
         };
 
         if CaptureType::from_raw(capture_type) != Some(CaptureType::Texture) {
-            bail!("hook_unavailable: hook 未使用共享材質模式（capture_type={capture_type}）");
+            bail!("hook_unavailable: Hook is not using shared-texture mode (capture_type={capture_type})");
         }
         if protocol::conversion_for(format).is_none() {
-            bail!("hook_unavailable: 不支援的共享材質格式（DXGI_FORMAT={format}）");
+            bail!("hook_unavailable: Unsupported shared texture format (DXGI_FORMAT={format})");
         }
         if width == 0 || height == 0 {
-            bail!("hook_unavailable: 共享材質尺寸無效（{width}x{height}）");
+            bail!("hook_unavailable: Invalid shared texture dimensions ({width}x{height})");
         }
 
         let map_name = protocol::texture_map(window, map_id);
@@ -601,13 +601,13 @@ impl HookSession {
                     })
                     .flatten()
             })
-            .with_context(|| format!("hook_unavailable: 無法開啟共享材質映射 {map_name}"))?;
+            .with_context(|| format!("hook_unavailable: Failed to open shared-texture mapping {map_name}"))?;
 
         let handle_ptr = tex_map.as_ptr() as *const u32;
-        // SAFETY: tex_map 映射至少 4 bytes（shtex_data），第一個 u32 為共享材質 handle。
+        // SAFETY: tex_map maps at least four bytes; the first u32 is the shared-texture handle.
         let handle = unsafe { handle_ptr.read_volatile() };
         if handle == 0 {
-            bail!("hook_unavailable: 共享材質 handle 為 0");
+            bail!("hook_unavailable: Shared texture handle is 0");
         }
         self.tex_map = Some(tex_map);
 
@@ -622,11 +622,11 @@ impl HookSession {
 
 impl Drop for HookSession {
     fn drop(&mut self) {
-        // SAFETY: 通知遊戲內 hook 停止擷取（DLL 仍留在遊戲內供下次 Restart 沿用）。
+        // SAFETY: Signals the in-game hook to stop capture; its DLL remains loaded for a later Restart.
         unsafe {
             let _ = SetEvent(self.stop.0);
         }
-        // 先停止並等待 log 執行緒結束，其餘映射與控制代碼依欄位順序自動釋放。
+        // Stops and joins the log thread before releasing other mappings and handles.
         drop(self.logger.take());
     }
 }
@@ -714,11 +714,11 @@ mod tests {
         assert!(check_inject_exit(Some(0)).is_ok());
 
         for (code, expected) in [
-            (-1, "注入失敗"),
-            (-2, "參數錯誤"),
-            (-3, "無法開啟程序"),
-            (-4, "非預期失敗"),
-            (42, "未知錯誤"),
+            (-1, "Injection failed"),
+            (-2, "Invalid arguments"),
+            (-3, "Could not open process"),
+            (-4, "Unexpected failure"),
+            (42, "Unknown error"),
         ] {
             let err = check_inject_exit(Some(code)).unwrap_err().to_string();
             assert!(err.starts_with("hook_unavailable:"), "{err}");
@@ -734,7 +734,7 @@ mod tests {
     fn attach_aborts_before_external_tools_when_keepalive_already_exists() {
         let pid = u32::MAX - 7;
         let keepalive_name = protocol::keepalive(pid);
-        // SAFETY: 在測試中先建立假 PID 的 keepalive mutex 模擬 OBS 正在擷取。
+        // SAFETY: Creates a fake-PID keepalive mutex in the test to simulate OBS capture.
         let _obs_keepalive =
             OwnedHandle(unsafe { CreateMutexW(None, false, &wide(&keepalive_name)) }.unwrap());
 
@@ -744,7 +744,7 @@ mod tests {
 
         let err = HookSession::attach(pid, HWND::default(), &files, 60, Duration::from_millis(200))
             .err()
-            .expect("keepalive 已存在時 attach 應失敗")
+            .expect("attach should fail when keepalive already exists")
             .to_string();
         assert!(err.starts_with("hook_unavailable:"), "{err}");
         assert!(err.contains("OBS"), "{err}");
@@ -756,7 +756,7 @@ mod tests {
         let pid = u32::MAX - 8;
         let logger = PipeLogger::spawn(pid).unwrap();
         let pipe_name = wide(&protocol::pipe(pid));
-        // SAFETY: 比照 graphics-hook 的 ipc_pipe_client_open，以 GENERIC_READ | GENERIC_WRITE 連線。
+        // SAFETY: Connects with GENERIC_READ | GENERIC_WRITE, matching the hook pipe client.
         let client = OwnedHandle(
             unsafe {
                 CreateFileW(
@@ -773,17 +773,17 @@ mod tests {
         );
         let payload = b"hook unit test log\0";
         let mut written = 0u32;
-        // SAFETY: 寫入測試字串至已連線的 named pipe。
+        // SAFETY: Writes test data to the connected named pipe.
         unsafe {
             WriteFile(client.0, Some(payload), Some(&mut written), None).unwrap();
         }
         assert_eq!(written as usize, payload.len());
-        // 客戶端仍連線中直接 drop，驗證 CancelIoEx + stop_event 不會死鎖。
+        // Drops while the client remains connected to verify cancellation does not deadlock.
         drop(logger);
     }
 
     fn create_shared_map(name: &str, size: usize) -> MappedRegion {
-        // SAFETY: 測試建立具名頁面檔映射並映射至記憶體。
+        // SAFETY: Creates and maps a named page-file mapping for the test.
         unsafe {
             let raw = CreateFileMappingW(
                 INVALID_HANDLE_VALUE,
@@ -802,7 +802,7 @@ mod tests {
     }
 
     fn create_named_event(name: &str) -> OwnedHandle {
-        // SAFETY: 測試建立自動重設具名事件。
+        // SAFETY: Creates and maps a named page-file mapping for the test.
         OwnedHandle(unsafe { CreateEventW(None, false, false, &wide(name)) }.unwrap())
     }
 
@@ -832,7 +832,7 @@ mod tests {
 
         let window = 0x1020_3040u32;
         let tex_map_1 = create_shared_map(&protocol::texture_map(window, 1), size_of::<u32>());
-        // SAFETY: 寫入模擬的共享材質 handle 與 HookInfo。
+        // SAFETY: Writes test data to the connected named pipe.
         unsafe {
             (tex_map_1.as_ptr() as *mut u32).write_volatile(0xCAFE_BABE);
             (game_info.as_ptr() as *mut HookInfo).write_volatile(HookInfo {
@@ -856,12 +856,12 @@ mod tests {
                 format: DXGI_FORMAT_R8G8B8A8_UNORM.0 as u32,
             })
         );
-        // HookReady 為 auto-reset，未再次觸發前輪詢應回傳 None。
+        // HookReady may signal again on resolution changes; close the old texture map before opening the new one.
         assert_eq!(session.wait_ready(Duration::ZERO).unwrap(), None);
 
-        // 模擬解析度變更：建立新 map_id=2 並再次觸發 HookReady。
+        // Simulate a resolution change by creating map_id=2 and signaling HookReady again.
         let tex_map_2 = create_shared_map(&protocol::texture_map(window, 2), size_of::<u32>());
-        // SAFETY: 更新模擬的 HookInfo 與新 texture map。
+        // SAFETY: Updates the simulated HookInfo and texture map.
         unsafe {
             (tex_map_2.as_ptr() as *mut u32).write_volatile(0xDEAD_BEEF);
             let info_ptr = game_info.as_ptr() as *mut HookInfo;
@@ -880,8 +880,8 @@ mod tests {
             })
         );
 
-        // 模擬不支援的 capture_type（共享記憶體）。
-        // SAFETY: 修改模擬 HookInfo 的 capture_type 並觸發 HookReady。
+        // Simulate an unsupported capture_type (shared memory).
+        // SAFETY: Changes the simulated capture_type and signals HookReady.
         unsafe {
             let info_ptr = game_info.as_ptr() as *mut HookInfo;
             ptr::addr_of_mut!((*info_ptr).capture_type).write_volatile(CaptureType::MEMORY);
@@ -891,8 +891,8 @@ mod tests {
         assert!(err.starts_with("hook_unavailable:"), "{err}");
 
         drop(session);
-        // Drop 時必須觸發 stop 事件並釋放 keepalive。
-        // SAFETY: 檢查 game_stop 是否已被 HookSession::drop 觸發。
+        // Drop must signal the stop event and release keepalive.
+        // SAFETY: Checks whether HookSession::drop signaled game_stop.
         assert_eq!(
             unsafe { WaitForSingleObject(game_stop.0, 0) },
             WAIT_OBJECT_0

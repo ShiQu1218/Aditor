@@ -1,53 +1,53 @@
 /**
- * 遊戲錄影（第 2 期）的共用型別與 IPC 合約。規格：`docs/superpowers/specs/2026-10-18-live-recording-design.md`。
- * main（錄影服務）、preload 與 renderer（設定頁、側欄、狀態列）都只依賴本檔，彼此不直接 import。
+ * Shared types and IPC contract for game recording (phase 2). Spec: `docs/superpowers/specs/2026-10-18-live-recording-design.md`.
+ * main (recording service), preload, and renderer (settings page, sidebar, status bar) depend only on this file and do not import each other directly.
  */
 
 import type { EngineEvent } from './types'
 
-/** 內建錄影器或 OBS Studio（WebSocket v5）。 */
+/** Built-in recorder or OBS Studio (WebSocket v5). */
 export type RecordingBackend = 'builtin' | 'obs'
 
-/** 'match'＝持續錄影並逐局剪檔；'session'＝從頭錄到尾。 */
+/** 'match' = record continuously and split by match; 'session' = record from start to finish. */
 export type RecordingMode = 'match' | 'session'
 
-/** 錄後完整分析（R9）：不分析／關閉 Apex 後（預設）／每局結束後以低優先序 */
+/** Full post-recording analysis (R9): none, after Apex exits (default), or at low priority after each match. */
 export type PostRecordAnalysis = 'none' | 'afterExit' | 'perMatch'
 
 export type RecordingCodec = 'hevc' | 'h264' | 'av1'
 
-/** `settings.recording`（數值範圍見 `RECORDING_RANGES`，由 main 驗證）。 */
+/** `settings.recording` (value ranges are in `RECORDING_RANGES` and validated by main). */
 export interface RecordingSettings {
-  /** 偵測到 Apex 就自動錄影 */
+  /** Automatically record when Apex is detected. */
   autoRecord: boolean
-  /** 開機自動啟動並常駐系統匣（R8，預設開） */
+  /** Start automatically at login and stay in the system tray (R8, enabled by default). */
   launchAtLogin: boolean
-  /** 關閉主視窗時縮到系統匣而不是結束 */
+  /** Minimize to the system tray instead of quitting when the main window closes. */
   closeToTray: boolean
   backend: RecordingBackend
   obsHost: string
   obsPort: number
-  /** 僅主程序持有的 safeStorage 密文（base64）；IPC 回傳前移除。 */
+  /** safeStorage ciphertext (base64), held only by the main process and removed before IPC responses. */
   obsPasswordEnc?: string | null
-  /** renderer 只取得是否已設定密碼。 */
+  /** The renderer receives only whether a password is configured. */
   hasPassword?: boolean
-  /** 僅供設定 IPC 寫入；不納入設定快照或持久化。 */
+  /** Used only by settings IPC writes; excluded from settings snapshots and persistence. */
   obsPassword?: string
   obsFallbackBuiltin: boolean
   mode: RecordingMode
-  /** 錄影資料夾；null＝第一個監看資料夾，沒有監看資料夾時用「影片」資料夾下的 `Aditor` */
+  /** Recording folder; null uses the first watched folder, or `Aditor` under the Videos folder if none are watched. */
   outputDir: string | null
   codec: RecordingCodec
-  /** 'auto' 或 aditorrec `hello` 回報的編碼器名稱 */
+  /** 'auto' or the encoder name reported by aditorrec `hello`. */
   encoder: string
   fps: 10 | 20 | 30 | 60 | 90 | 120
   preset: 'speed' | 'balanced' | 'quality'
   forceAspect: boolean
   aspectMode: 'fit' | 'stretch'
-  /** 0＝原生解析度；否則輸出高度（720／1080／1440） */
+  /** 0 = native resolution; otherwise the output height (720/1080/1440). */
   height: 0 | 720 | 1080 | 1440
   bitrateKbps: number
-  /** 'default' 或 WASAPI 裝置 ID */
+  /** 'default' or a WASAPI device ID. */
   renderDevice: string
   captureDevice: string
   systemAudioEnabled: boolean
@@ -59,15 +59,15 @@ export interface RecordingSettings {
   /** 0..2 */
   micGain: number
   postAnalysis: PostRecordAnalysis
-  /** 低於此值（GB）提醒 */
+  /** Warn when free space falls below this value (GB). */
   diskWarnGb: number
-  /** 低於此值（GB）停止錄影並收尾 */
+  /** Stop recording and finalize when free space falls below this value (GB). */
   diskStopGb: number
-  /** 對局開始／結束是否發 Windows 通知（錯誤一律通知） */
+  /** Whether to show Windows notifications when a match starts or ends (errors always notify). */
   notifyMatch: boolean
-  /** 擷取方式：'wgc'＝視窗擷取（預設）；'dda'＝螢幕擷取（DXGI Desktop Duplication）；'hook'＝遊戲擷取（OBS graphics-hook，選用；無法使用時自動退回 DDA） */
+  /** Capture method: 'wgc' = window capture (default); 'dda' = screen capture (DXGI Desktop Duplication); 'hook' = game capture (optional OBS graphics hook, falls back to DDA if unavailable). */
   captureMethod: RecordingCaptureMethod
-  /** 偵測到 Apex 關閉時自動顯示 Aditor 視窗 */
+  /** Show the Aditor window automatically when Apex exits. */
   openOnGameExit: boolean
 }
 
@@ -116,46 +116,46 @@ export const DEFAULT_RECORDING_SETTINGS: RecordingSettings = {
   openOnGameExit: true
 }
 
-/** 錄影服務狀態（main → renderer 推播 `recording:status`，也可用 `recording:getStatus` 取）。 */
+/** Recording service status (pushed from main to renderer on `recording:status`, also available via `recording:getStatus`). */
 export type RecordingPhase =
-  /** Apex 未執行，或自動錄影關閉 */
+  /** Apex is not running or automatic recording is disabled. */
   | 'idle'
-  /** 偵測到 Apex，aditorrec 啟動中 */
+  /** Apex detected; aditorrec is starting. */
   | 'starting'
   | 'recording'
-  /** 串接段落、加入媒體庫中 */
+  /** Joining segments and adding to the media library. */
   | 'finalizing'
-  /** aditorrec 連續重啟失敗或無硬體編碼器；`error` 有訊息 */
+  /** aditorrec repeatedly failed to restart or no hardware encoder is available; `error` contains a message. */
   | 'error'
 
 export interface RecordingStatus {
   phase: RecordingPhase
   backend: RecordingBackend
-  /** OBS 目前是否正在寫入影片；逐局模式在大廳為 false。 */
+  /** Whether OBS is currently writing a video; false in the lobby in match mode. */
   obsRecording?: boolean
-  /** OBS 無法連線且未回退時，僅執行即時偵測。 */
+  /** Only live detection runs when OBS cannot connect and fallback is disabled. */
   detectionOnly?: boolean
-  /** 目前錄影工作；idle 時為 null */
+  /** Current recording job; null when idle. */
   sessionId: string | null
-  /** 錄影開始的 epoch ms */
+  /** Recording start time in epoch milliseconds. */
   startedAt: number | null
-  /** aditorrec `started` 回報的實際編碼器與尺寸 */
+  /** Actual encoder and dimensions reported by aditorrec `started`. */
   encoder: string | null
   width: number | null
   height: number | null
-  /** 已寫入的段落數與總秒數 */
+  /** Number of written segments and total duration in seconds. */
   segments: number
   durationSec: number
-  /** 錄影資料夾所在磁碟剩餘 bytes；未知時 null */
+  /** Free bytes on the volume containing the recording folder; null if unknown. */
   diskFreeBytes: number | null
-  /** 最近一次 aditorrec `stats` */
+  /** Most recent aditorrec `stats`. */
   droppedFrames: number
-  /** 自動錄影是否暫停（系統匣「暫停自動錄影」） */
+  /** Whether automatic recording is paused (system tray: "Pause automatic recording"). */
   paused: boolean
   error: { code: string; message: string } | null
-  /** 本局（尚無對局資訊時＝整段錄影）計入的擊倒＋消滅數（live 引擎；第 3 期） */
+  /** Counted knocks plus eliminations in this match (or the full recording before match data is available; live engine, phase 3). */
   kills: number
-  /** 第幾局（從 1 開始）；尚無對局資訊時 null */
+  /** Match number (starting at 1); null before match data is available. */
   matchIndex: number | null
 }
 
@@ -179,7 +179,7 @@ export const IDLE_RECORDING_STATUS: RecordingStatus = {
   matchIndex: null
 }
 
-/** aditorrec `hello` 的能力資訊（設定頁選單用）。 */
+/** Capabilities from aditorrec `hello` (used by the settings menu). */
 export interface RecorderCapabilities {
   version: string
   encoders: string[]
@@ -189,45 +189,45 @@ export interface RecorderCapabilities {
   }
 }
 
-/** main 端錄影服務對外介面（`main/recording/` 實作；`recording-ipc.ts`、系統匣只依賴這個介面）。 */
+/** Public interface for the main-process recording service (implemented in `main/recording/`; only `recording-ipc.ts` and the system tray depend on it). */
 export interface RecordingService {
   testObs?(): Promise<ObsTestResult>
   start(): void
   stop(): Promise<void>
-  /** 手動開始（不論 autoRecord；Apex 未執行時回傳 false） */
+  /** Start manually regardless of autoRecord; returns false if Apex is not running. */
   startManual(): Promise<boolean>
-  /** 手動停止目前錄影並收尾 */
+  /** Stop and finalize the current recording manually. */
   stopManual(): Promise<void>
   setPaused(paused: boolean): void
   status(): RecordingStatus
   capabilities(): Promise<RecorderCapabilities | null>
   onStatus(listener: (s: RecordingStatus) => void): () => void
-  /** 收尾產生的檔案（已加入媒體庫） */
+  /** Files produced during finalization (already added to the media library). */
   onFinalized(listener: (videoPaths: string[]) => void): () => void
-  /** 錄影中觀看（第 3 期）：目前錄影工作的段落、事件與對局；沒有錄影時 null */
+  /** Watch while recording (phase 3): segments, events, and matches for the current recording job; null when not recording. */
   live?(): Promise<LiveState | null>
-  /** 讀目前（或收尾中）錄影工作的 init.mp4 */
+  /** Read init.mp4 for the current recording job, including one being finalized. */
   readInit?(sessionId: string): Promise<Uint8Array>
-  /** 讀目前（或收尾中）錄影工作的段落；seq 必須已寫入索引 */
+  /** Read a segment for the current recording job, including one being finalized; seq must be indexed. */
   readSegment?(sessionId: string, seq: number): Promise<Uint8Array>
-  /** 段落與事件增量（main 推播 `recording:live`） */
+  /** Segment and event updates (pushed by main on `recording:live`). */
   onLive?(listener: (update: LiveUpdate) => void): () => void
 }
 
 export type ObsTestResult = { ok: true; obsVersion: string; obsWebSocketVersion: string } | { ok: false; error: string }
 
-/** 已寫入索引的 fMP4 段落（秒；0＝錄影開始）。 */
+/** Indexed fMP4 segment (seconds; 0 = recording start). */
 export interface LiveSegment { seq: number; pts: number; dur: number }
 
-/** 對局起訖（秒）；進行中 end＝null。 */
+/** Match start and end (seconds); end is null while in progress. */
 export interface LiveMatch { start: number; end: number | null }
 
-/** live 引擎事件（欄位與分析快取 `events` 相同，見 `shared/types.ts` 的 `EngineEvent`）。 */
+/** Live engine event (fields match the analysis cache's `events`; see `EngineEvent` in `shared/types.ts`). */
 export type LiveEvent = EngineEvent
 
 export interface LiveState {
   sessionId: string
-  /** `video/mp4; codecs="…"`（由 init.mp4 解析）；init.mp4 尚未寫出時 null */
+  /** `video/mp4; codecs="…"` parsed from init.mp4; null until init.mp4 is written. */
   mime: string | null
   segments: LiveSegment[]
   events: LiveEvent[]
@@ -236,12 +236,12 @@ export interface LiveState {
 }
 
 /**
- * `recording:live` 推播。`segment`／`match` 是增量；`events`／`spectating` 是 live 引擎最新快照的完整清單
- * （快照本身就是整份清單，最多每秒一次）。`finalized`：錄影收尾後的輸出檔。
+ * `recording:live` update. `segment`/`match` are incremental; `events`/`spectating` are complete lists
+ * from the latest live engine snapshot (the snapshot is the full list, sent at most once per second). `finalized` contains output files after recording finalization.
  */
 export interface LiveUpdate {
   sessionId: string
-  /** 清理後仍可讀取的完整段落清單。 */
+  /** Complete segment list that remains readable after cleanup. */
   segments?: LiveSegment[]
   segment?: LiveSegment
   events?: LiveEvent[]
@@ -250,7 +250,7 @@ export interface LiveUpdate {
   finalized?: string[]
 }
 
-/** IPC 頻道名稱（invoke 與推播）。 */
+/** IPC channel names (invoke and push). */
 export const RECORDING_CHANNELS = {
   testObs: 'recording:testObs',
   getStatus: 'recording:getStatus',
@@ -262,6 +262,6 @@ export const RECORDING_CHANNELS = {
   getLive: 'recording:getLive',
   readInit: 'recording:readInit',
   readSegment: 'recording:readSegment',
-  /** 推播：段落與事件增量（`LiveUpdate`） */
+  /** Push: segment and event updates (`LiveUpdate`). */
   live: 'recording:live'
 } as const

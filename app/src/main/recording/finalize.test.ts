@@ -10,8 +10,8 @@ const roots: string[] = []
 function root(): string { const value = tempRoot(); roots.push(value); return value }
 afterEach(() => { for (const value of roots.splice(0)) fs.rmSync(value, { recursive: true, force: true }) })
 
-describe('錄影索引與安全邊界', () => {
-  it('忽略未完成尾行，完整壞行或序號倒退則失敗', async () => {
+describe('recording index and safety boundaries', () => {
+  it('ignores an incomplete trailing line and fails on a malformed complete line or decreasing sequence number', async () => {
     const dir = sessionDir(root())
     const index = path.join(dir, 'index.jsonl')
     fs.writeFileSync(index, '{"seq":1,"pts":0,"dur":2}\n{"seq":2')
@@ -22,7 +22,7 @@ describe('錄影索引與安全邊界', () => {
     await expect(readIndex(dir)).rejects.toThrow('序號或時間')
   })
 
-  it('零段落只移除該工作，不刪除其他工作或外部路徑', async () => {
+  it('with zero segments, removes only that session and leaves other sessions and external paths untouched', async () => {
     const base = root(); const deps = makeDeps(base)
     const dir = sessionDir(base)
     const other = sessionDir(base, 'other')
@@ -33,7 +33,7 @@ describe('錄影索引與安全邊界', () => {
     expect(fs.existsSync(base)).toBe(true)
   })
 
-  it('finalized marker 僅補加媒體庫，輸出遺失時保留工作', async () => {
+  it('a finalized marker only retries library insertion and preserves the session when output is missing', async () => {
     const base = root(); const deps = makeDeps(base)
     deps.addToLibrary = vi.fn(); deps.enqueueAnalysis = vi.fn()
     const dir = sessionDir(base)
@@ -49,7 +49,7 @@ describe('錄影索引與安全邊界', () => {
     expect(fs.existsSync(missing)).toBe(true)
   })
 
-  it('舊版標記（輸出直接在 outputDir）仍可補收尾；日期資料夾內的標記也通過，其他子資料夾與非日期資料夾被拒絕', async () => {
+  it('recovers legacy markers in outputDir and markers in date folders, while rejecting other subfolders and non-date folders', async () => {
     const base = root(); const deps = makeDeps(base)
     deps.addToLibrary = vi.fn()
     const mark = (id: string, outputPath: string) => {
@@ -69,7 +69,7 @@ describe('錄影索引與安全邊界', () => {
     }
   })
 
-  it('恢復會掃描設定、監看與預設路徑，失敗的工作不影響其他工作', async () => {
+  it('recovery scans configured, watched, and default paths, and a failed session does not affect others', async () => {
     const base = root(); const deps = makeDeps(base)
     const extra = path.join(base, 'extra')
     const watched = path.join(base, 'watched')
@@ -88,13 +88,13 @@ describe('錄影索引與安全邊界', () => {
   })
 })
 
-describe.skipIf(!ffmpeg)('真實 ffmpeg 串流收尾', () => {
+describe.skipIf(!ffmpeg)('finalization with real ffmpeg streams', () => {
   let fixtureRoot: string
   let segments: string
   beforeAll(() => { fixtureRoot = tempRoot(); segments = createSegments(fixtureRoot) })
   afterAll(() => fs.rmSync(fixtureRoot, { recursive: true, force: true }))
 
-  it.each(['none', 'afterExit', 'perMatch'] as const)('影音可解碼、faststart、不撞名，並保留錄影時的分析設定：%s', async (postAnalysis) => {
+  it.each(['none', 'afterExit', 'perMatch'] as const)('Output is decodable, faststart, collision-free, and retains recording-time analysis settings: %s', async (postAnalysis) => {
     const base = root(); const deps = makeDeps(base); deps.ffmpegPath = ffmpeg!
     deps.addToLibrary = vi.fn(); deps.enqueueAnalysis = vi.fn()
     const dir = sessionDir(base); copySegments(segments, dir)
@@ -121,7 +121,7 @@ describe.skipIf(!ffmpeg)('真實 ffmpeg 串流收尾', () => {
     expect(fs.readdirSync(path.dirname(output)).some((name) => name.endsWith('.part.mp4'))).toBe(false)
   })
 
-  it('整段輸出放進起點本機日期資料夾，不留在 outputDir 根；.sessions 維持原位', async () => {
+  it('places the full output in the local date folder for its start time, not in outputDir root, and keeps .sessions in place', async () => {
     const base = root(); const deps = makeDeps(base); deps.ffmpegPath = ffmpeg!
     deps.addToLibrary = vi.fn()
     const dir = sessionDir(base); copySegments(segments, dir)
@@ -132,7 +132,7 @@ describe.skipIf(!ffmpeg)('真實 ffmpeg 串流收尾', () => {
     expect(fs.existsSync(path.join(base, 'videos', '.sessions'))).toBe(true)
   })
 
-  it('串接失敗保留段落，修復後可由啟動補收尾', async () => {
+  it('preserves segments after concatenation fails and recovers on startup after repair', async () => {
     const base = root(); const deps = makeDeps(base)
     const dir = sessionDir(base); copySegments(segments, dir)
     await expect(finalizeSession(dir, deps)).rejects.toThrow('串接失敗')
@@ -145,7 +145,7 @@ describe.skipIf(!ffmpeg)('真實 ffmpeg 串流收尾', () => {
     expect(fs.existsSync(dir)).toBe(false)
   })
 
-  it('媒體庫失敗後只重試 marker，不重跑 ffmpeg；分析失敗會再次排入', async () => {
+  it('retries only the marker after library failure without rerunning ffmpeg, and re-enqueues analysis after analysis failure', async () => {
     const base = root(); const deps = makeDeps(base); deps.ffmpegPath = ffmpeg!
     const dir = sessionDir(base); copySegments(segments, dir)
     fs.writeFileSync(path.join(dir, 'recording.json'), JSON.stringify({ startedAt: Date.now(), postAnalysis: 'afterExit' }))

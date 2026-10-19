@@ -34,8 +34,8 @@ describe('studioNotice', () => {
   })
 })
 
-describe('studioNotice（與語言無關）', () => {
-  test('偵測不再需要遊戲語言：沒有語言／觀戰支援相關的提示，正常情況回 null', () => {
+describe('studioNotice (language-independent)', () => {
+  test('Detection no longer depends on game language: no language or spectator-support notice; normal case returns null', () => {
     expect(studioNotice({ analysis: 'done', playability: okPlayability, proxyState: 'none' })).toBeNull()
   })
 })

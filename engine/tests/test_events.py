@@ -18,7 +18,7 @@ def fr(kind=None, name=None, spec=False, score=0.9, damage=False, hint=None):
 
 
 def seq(pattern, kind="knock", name=None, t0=0.0):
-    """每個字元一格 (0.25s)：'.' 無命中，其他字元命中。空白略過。"""
+    """One frame per character (0.25s): '.' is a miss and every other character is a hit. Spaces are ignored."""
     out = []
     i = 0
     for ch in pattern.replace(" ", ""):
@@ -56,7 +56,7 @@ def test_short_flicker_same_event():
 
 
 def test_name_change_new_event():
-    # 兩則橫幅之間有淡出（一格空白）→ 不同敵人（最終審查 I1：無空白的名字改變不再分裂，見下方）
+    # A fade (one blank frame) between banners indicates different enemies (final review I1: a name change without a blank no longer splits; see below).
     a, b = sig(1), sig(2)
     frames = seq("KKK", name=a) + seq("KKK", name=b, t0=1.0)
     ev, _ = run(frames)
@@ -164,7 +164,7 @@ def test_pair_then_gap_t_unchanged():
 
 
 def test_kind_change_lone_first_frame_not_established():
-    # 獨立消滅等別種橫幅（Detector 視同沒有橫幅）只有 1 格：不成事件，也不接在擊倒上
+    # Other banners such as standalone eliminations (which Detector treats as no banner) last only one frame: they do not form events or attach to a knock.
     frames = seq("KKK", kind="knock") + seq("...", t0=0.75)
     ev, _ = run(frames)
     assert [e.type for e in ev] == ["knock"]
@@ -184,7 +184,7 @@ def test_single_frame_name_jitter_does_not_split():
 
 def test_two_consecutive_frames_of_new_name_split_from_first_different_frame():
     a, b = sig(1), sig(2)
-    frames = seq("KKK", name=a) + seq("KK", name=b, t0=1.0)  # 中間一格空白
+    frames = seq("KKK", name=a) + seq("KK", name=b, t0=1.0)  # One blank frame in between.
     ev, _ = run(frames)
     assert [e.t for e in ev] == [0.0, 1.0]
     assert ev[1].name_sig == b.to_b64()
@@ -200,7 +200,7 @@ def test_alternating_names_never_split():
 
 
 def test_unstable_name_then_stable_name_is_one_event_with_stable_sig():
-    # 前 4 格每格指紋皆不同（抖動），之後穩定：應為單一事件，起點為第一格，簽名採穩定名字
+    # The first four frames have different fingerprints (jitter), then stabilize: expect one event starting at the first frame, with the stable name signature.
     jit = [sig(10 + i) for i in range(4)]
     stable = sig(99)
     frames = [(i * 0.25, fr("knock", jit[i])) for i in range(4)]
@@ -210,15 +210,15 @@ def test_unstable_name_then_stable_name_is_one_event_with_stable_sig():
     assert ev[0].name_sig == stable.to_b64()
 
 
-# --- Fix-ML-2：名字指紋逐格抖動（medoid／多數代表簽名） ---
+# --- Fix-ML-2: per-frame name fingerprint jitter (medoid/majority representative signature) ---
 
 def crop(base: NameSig, x0: int, w: int) -> NameSig:
-    """同一個名字的一段（被 HUD 遮擋或淡出後剩下的殘片）。"""
+    """A fragment of the same name left after HUD occlusion or a fade."""
     return NameSig(w, base.bits[:, x0:x0 + w].copy())
 
 
 def noisy(base: NameSig, seed: int, flips: int = 6) -> NameSig:
-    """同一個名字的輕微變體（翻幾個位元）：仍應判為同一人。"""
+    """A slight variant of the same name (a few flipped bits) should still be identified as the same person."""
     rng = np.random.default_rng(1000 + seed)
     bits = base.bits.copy()
     idx = rng.choice(bits.size, flips, replace=False)
@@ -227,7 +227,7 @@ def noisy(base: NameSig, seed: int, flips: int = 6) -> NameSig:
 
 
 def test_every_frame_distinct_sig_is_still_one_event():
-    # 連續 5 格命中、每格指紋彼此都不同（畫格層抖動）：不得整段被丟棄
+    # Five consecutive hits with different fingerprints per frame (frame-level jitter) must not cause the whole run to be discarded.
     frames = [(i * 0.25, fr("knock", sig(200 + i))) for i in range(5)]
     ev, _ = run(frames)
     assert len(ev) == 1 and ev[0].t == 0.0 and ev[0].type == "knock"
@@ -236,7 +236,7 @@ def test_every_frame_distinct_sig_is_still_one_event():
 def test_jitter_run_uses_representative_sig_not_first_frame():
     from aditor.detect import same_name
     good = sig(7)
-    # 第 1 格是淡入的破碎指紋，之後多數格是同一個名字的變體，中間夾兩格不相干的抖動
+    # Frame 1 has a fragmented fade-in fingerprint; most later frames are variants of the same name, with two unrelated jitter frames in between.
     names = [sig(300), noisy(good, 1), sig(301), noisy(good, 2), noisy(good, 3), sig(302), noisy(good, 4)]
     frames = [(i * 0.25, fr("knock", n)) for i, n in enumerate(names)]
     ev, _ = run(frames)
@@ -248,15 +248,15 @@ def test_jitter_run_uses_representative_sig_not_first_frame():
 def test_jitter_between_two_enemies_still_splits_once():
     a, b = sig(1), sig(2)
     frames = seq("KKK", name=a)
-    frames += [(1.0, fr("knock", sig(400))), (1.25, fr("knock", sig(401)))]  # 空白一格後，兩格各自不同的抖動
+    frames += [(1.0, fr("knock", sig(400))), (1.25, fr("knock", sig(401)))]  # Two different jitter frames after one blank.
     frames += seq("KKK", name=b, t0=1.5)
     ev, _ = run(frames)
-    assert len(ev) == 2 and ev[0].t == 0.0 and ev[1].t == 1.0  # 新橫幅從空白格之後的第一格起算（名字抖動格也是新橫幅）
+    assert len(ev) == 2 and ev[0].t == 0.0 and ev[1].t == 1.0  # The new banner starts at the first frame after the blank (including name-jitter frames).
     assert ev[1].name_sig == b.to_b64()
 
 
 def test_lone_frame_before_split_does_not_leave_phantom_event():
-    # 只有 1 格舊名字、之後是穩定的新名字 → 單一事件（舊名字格不獨立成事件）
+    # One frame has the old name, followed by a stable new name → one event (the old-name frame is not a separate event).
     a, b = sig(1), sig(2)
     frames = seq("K", name=a) + seq("KKKK", name=b, t0=0.25)
     ev, _ = run(frames)
@@ -264,7 +264,7 @@ def test_lone_frame_before_split_does_not_leave_phantom_event():
 
 
 def test_jitter_does_not_lower_minimum_frames():
-    # 兩格不連續（中間 1 格空白）、各自不同指紋：仍不成事件
+    # Two non-consecutive frames (one blank in between) with different fingerprints still do not form an event.
     frames = [(0.0, fr("knock", sig(500))), (0.5, fr("knock", sig(501)))]
     ev, _ = run(frames)
     assert ev == []
@@ -273,17 +273,17 @@ def test_jitter_does_not_lower_minimum_frames():
 
 
 def _runs(*parts):
-    """parts: (t0, kind, [名字指紋...])，每個指紋一格 (0.25s)。"""
+    """parts: (t0, kind, [name fingerprints...]), one fingerprint per frame (0.25s)."""
     frames = []
     for t0, kind, names in parts:
         frames += [(t0 + i * 0.25, fr(kind, n)) for i, n in enumerate(names)]
     return frames
 
 
-# --- Fix-ML-2：同一個助攻橫幅的 assist_knock／assist_elim 閃爍不拆成兩個事件 ---
+# --- Fix-ML-2: flickering between assist_knock/assist_elim in the same assist banner does not split it into two events ---
 
 def test_kind_flicker_is_one_event_with_majority_type():
-    # 擊倒／助攻擊倒共用同一個圖示，淡入時線索讀不準：短暫的閃爍不拆事件，類型取多數
+    # Knock and assist-knock share an icon, and fade-in clues are unreliable: brief flicker does not split the event; use the majority type.
     a = sig(7)
     kinds = ["knock", "knock", "assist_knock", "assist_knock", "assist_knock", "assist_knock"]
     frames = [(i * 0.25, fr(k, a)) for i, k in enumerate(kinds)]
@@ -312,7 +312,7 @@ def test_cont_frames_extend_a_banner_but_do_not_count_as_hits():
 
 
 def test_single_non_kill_frame_inside_a_banner_is_noise_but_two_end_it():
-    # 橫幅至少停留約 8 格：單格判斷不確定（JP 523.0 型）併入同一事件；連續 2 格非擊殺格（別種橫幅、被驗證擋掉的橫幅）結束事件
+    # The banner lasts at least about 8 frames: an uncertain one-frame classification (JP 523.0 type) joins the same event; two consecutive non-kill frames (another banner or one rejected by validation) end it.
     ev, _ = run(seq("KKK.KKK"))
     assert len(ev) == 1
     ev, _ = run(seq("KKK..KKK"))
@@ -334,7 +334,7 @@ def test_assist_family_does_not_merge_with_other_kinds():
 
 
 def test_recurring_jitter_name_seen_earlier_in_run_does_not_split():
-    # 同一橫幅內曾出現過的另一種讀法（抖動）再次連續 2 格出現：與已確認格相符，不算新名字
+    # If an alternate reading (jitter) previously seen in the same banner appears again for two consecutive frames, it matches confirmed frames and is not a new name.
     a, j, k = sig(1), sig(50), sig(51)
     names = [a, a, a, j, k, noisy(j, 1), noisy(j, 2), a, a]
     frames = [(i * 0.25, fr("knock", n)) for i, n in enumerate(names)]
@@ -342,7 +342,7 @@ def test_recurring_jitter_name_seen_earlier_in_run_does_not_split():
     assert len(ev) == 1 and ev[0].name_sig == a.to_b64()
 
 
-# --- 最終審查 I1：無空白格的名字變窄（遮擋／淡出）不是新敵人 ---
+# --- Final review I1: a narrowing name without a blank frame (occlusion/fade) is not a new enemy ---
 
 def test_i1_occluded_name_fragment_without_gap_does_not_split():
     full = sig(21, 120)
@@ -362,8 +362,8 @@ def test_i1_fade_out_fragments_of_assist_banner_do_not_split():
 
 
 def test_i1_unrelated_name_without_gap_or_score_dip_is_jitter():
-    # 實測（held-out）：HUD 遮擋後剩下的墨寬度驟降、內容與原名字無關（不是裁切殘片），分數不變、沒有空白格。
-    # 遊戲同一時間只有一個中央橫幅，換敵人必有淡出（空白）或分數凹陷 → 這種變化併入同一個 run
+    # Held-out observation: after HUD occlusion, ink width drops sharply and the remaining content is unrelated to the original name (not a clipped fragment); the score is unchanged and there is no blank frame.
+    # The game shows only one central banner at a time. A new enemy requires a fade (blank) or score dip, so this change belongs to the same run.
     a, b = sig(23, 300), sig(24, 55)
     frames = _runs((0.0, "knock", [a, a, a, a, a, a]), (1.5, "knock", [b, b]))
     ev, _ = run(frames)
@@ -372,7 +372,7 @@ def test_i1_unrelated_name_without_gap_or_score_dip_is_jitter():
 
 def test_i1_unrelated_name_after_gap_splits():
     a, b = sig(23, 100), sig(24, 55)
-    frames = _runs((0.0, "knock", [a, a, a, a]), (1.25, "knock", [b, b, b]))  # 一格空白
+    frames = _runs((0.0, "knock", [a, a, a, a]), (1.25, "knock", [b, b, b]))  # One blank frame.
     ev, _ = run(frames)
     assert len(ev) == 2 and ev[1].t == 1.25
 
@@ -385,11 +385,11 @@ def test_i1_unrelated_name_with_score_dip_splits():
     assert len(ev) == 2 and ev[1].t == 1.0
 
 
-# --- 最終審查 I2：助攻擊倒 → 助攻消滅（同一敵人）不併成同一個 run ---
+# --- Final review I2: assist_knock → assist_elim for the same enemy must not merge into one run ---
 
 def test_i2_assist_knock_then_assist_elim_are_two_events():
     a = sig(31, 76)
-    frames = _runs((0.0, "assist_knock", [a] * 9), (2.5, "assist_elim", [a] * 9))  # 2.25 空白一格
+    frames = _runs((0.0, "assist_knock", [a] * 9), (2.5, "assist_elim", [a] * 9))  # One blank frame at 2.25.
     ev, _ = run(frames)
     assert [e.type for e in ev] == ["assist_knock", "assist_elim"]
 
@@ -410,16 +410,16 @@ def test_i2_subkind_switch_with_gap_later_in_run_splits():
     assert [e.type for e in ev] == ["assist_knock", "assist_elim"]
 
 
-# --- 驗收片回歸（test-ENG 510.0）：背靠背不同敵人，中間只有一格「彈出」空白 ---
+# --- Acceptance-video regression (test-ENG 510.0): consecutive different enemies with only one "pop" blank between them ---
 
 def test_real_banner_replacement_after_blank_frame_is_not_absorbed_by_junk_sigs():
-    # 舊橫幅內曾出現過幾格雜訊指紋（遮擋／火光），其中一個碰巧與新名字互為殘片；
-    # 空白格之後出現的新橫幅只能和 run 的代表簽名（或其殘片）比對，不能被雜訊指紋吸收
+    # A few noisy fingerprints (occlusion/muzzle flash) appeared in the old banner; one happens to be a fragment of the new name.
+    # The banner after the blank may match only the run's representative signature (or its fragments), not be absorbed by a noisy fingerprint.
     a, b = sig(51, 75), sig(52, 110)
     junk1, junk2 = crop(b, 20, 45), crop(b, 40, 50)
     names = [a, a, a, a, junk1, junk1, a, a]
     frames = [(i * 0.25, fr("knock", n)) for i, n in enumerate(names)]
-    frames += [(2.25 + i * 0.25, fr("knock", b)) for i in range(5)]   # 1.75 之後只空白一格（2.0），2.25 起新橫幅；t 差 0.5 仍在同 run 容許內
+    frames += [(2.25 + i * 0.25, fr("knock", b)) for i in range(5)]   # Only one blank after 1.75 (at 2.0); the new banner starts at 2.25, and a 0.5 t difference is still allowed in one run.
     ev, _ = run(frames)
     assert [e.t for e in ev] == [0.0, 2.25] and ev[1].name_sig == b.to_b64()
 
@@ -432,11 +432,11 @@ def test_blank_gap_inside_banner_with_same_name_still_one_event():
 
 
 def test_new_banner_after_blank_starts_at_first_frame_even_if_name_unreadable_for_a_while():
-    # test-ENG 510.0：彈出空白格之後的新橫幅，前幾格名字讀不到、之後才讀到另一個名字；
-    # 新事件的 t 必須是空白格後的第一格（橫幅最早出現），而不是名字讀到的那格
+    # test-ENG 510.0: in the new banner after the pop blank, the name is unreadable for the first few frames and becomes readable later.
+    # The new event's t must be the first frame after the blank (when the banner first appears), not the frame where the name becomes readable.
     a, b = sig(61, 75), sig(62, 100)
     frames = [(i * 0.25, fr("knock", a)) for i in range(6)]                 # 0 – 1.25
-    frames += [(1.75 + i * 0.25, fr("knock", None)) for i in range(6)]      # 1.5 空白一格；1.75 – 3.0 名字讀不到
+    frames += [(1.75 + i * 0.25, fr("knock", None)) for i in range(6)]      # One blank at 1.5; the name is unreadable from 1.75 through 3.0.
     frames += [(3.25 + i * 0.25, fr("knock", b)) for i in range(4)]
     ev, _ = run(frames)
     assert [e.t for e in ev] == [0.0, 1.75] and ev[1].name_sig == b.to_b64()

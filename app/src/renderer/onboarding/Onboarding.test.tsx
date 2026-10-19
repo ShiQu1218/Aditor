@@ -34,8 +34,8 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-describe('Onboarding 各步驟的內容', () => {
-  test('對話框無障礙屬性與進度提示', () => {
+describe('Onboarding step content', () => {
+  test('Dialog accessibility attributes and progress indicator', () => {
     const out = html(0)
     expect(out).toContain('role="dialog"')
     expect(out).toContain('aria-modal="true"')
@@ -44,7 +44,7 @@ describe('Onboarding 各步驟的內容', () => {
     expect(html(2)).toContain('第 3 步，共 4 步')
   })
 
-  test('第 1 步：歡迎文字與語言下拉（跟隨系統＋各語言）', () => {
+  test('Step 1: welcome text and language selector (system default and all languages)', () => {
     const out = html(0)
     expect(out).toContain(t.welcome.title)
     expect(out).toContain(t.welcome.body)
@@ -55,7 +55,7 @@ describe('Onboarding 各步驟的內容', () => {
     expect(out).toContain(t.next)
   })
 
-  test('第 2 步：建議根資料夾與三個子資料夾預覽', () => {
+  test('Step 2: suggested root folder and preview of its three subfolders', () => {
     const out = html(1)
     expect(out).toContain(t.storage.title)
     expect(out).toContain(SUGGESTED)
@@ -66,7 +66,7 @@ describe('Onboarding 各步驟的內容', () => {
     expect(out).toContain(t.back)
   })
 
-  test('第 3 步：錄影模式單選卡片（預設選中 session）、解析度／影格率／位元率預設值', () => {
+  test('Step 3: recording mode radio cards (session selected by default) and default resolution, frame rate, and bitrate', () => {
     const out = html(2)
     expect(out).toContain('一局一個檔')
     expect(out).toContain('從頭錄到尾')
@@ -80,7 +80,7 @@ describe('Onboarding 各步驟的內容', () => {
     for (const label of ['720p (HD)', '1080p (Full HD)', '1440p (2K)', '原生']) expect(out).toContain(label)
   })
 
-  test('第 4 步：設定摘要與接下來會發生的事，按鈕是「開始使用」', () => {
+  test('Step 4: settings summary and next steps, with a “Get started” button', () => {
     const out = html(3, { mode: 'match', height: 1440, fps: 120, bitrateKbps: 30000 })
     expect(out).toContain(`儲存位置：${SUGGESTED}`)
     expect(out).toContain('錄影模式：一局一個檔')
@@ -91,13 +91,13 @@ describe('Onboarding 各步驟的內容', () => {
     expect(out).not.toContain(`>${t.next}<`)
   })
 
-  test('每一步都有「稍後再說」', () => {
+  test('Every step has a “Not now” option', () => {
     for (const step of [0, 1, 2, 3]) expect(html(step)).toContain(t.skip)
   })
 })
 
-describe('Onboarding 互動與送出內容', () => {
-  test('逐步前進、後退，完成時一次寫入全部設定', async () => {
+describe('Onboarding interactions and submitted data', () => {
+  test('Navigates forward and backward, then writes all settings once on completion', async () => {
     const { api, set } = makeApi()
     const onClose = vi.fn()
     mount(<Onboarding api={api} language="auto" onClose={onClose} />)
@@ -105,7 +105,7 @@ describe('Onboarding 互動與送出內容', () => {
     click(buttonByText(document.body, t.next)!)
     await flush()
     expect(document.body.textContent).toContain(t.storage.title)
-    expect(document.body.textContent).toContain(SUGGESTED) // 建議值由 IPC 取得
+    expect(document.body.textContent).toContain(SUGGESTED) // The suggested value comes from IPC.
     click(buttonByText(document.body, t.back)!)
     await flush()
     expect(document.body.textContent).toContain(t.welcome.title)
@@ -113,7 +113,7 @@ describe('Onboarding 互動與送出內容', () => {
     await flush()
     click(buttonByText(document.body, t.next)!)
     await flush()
-    // 第 3 步：改成「一局一個檔」
+    // Step 3: switch to "One file per match".
     click(document.querySelector<HTMLInputElement>('input[type="radio"][value="match"]')!)
     await flush()
     click(buttonByText(document.body, t.next)!)
@@ -129,7 +129,7 @@ describe('Onboarding 互動與送出內容', () => {
     expect(onClose).toHaveBeenCalledTimes(1)
   })
 
-  test('選擇資料夾會更換儲存位置並更新預覽（完成前不寫入）', async () => {
+  test('Selecting a folder changes the storage location and updates the preview without writing before completion', async () => {
     const { api, set } = makeApi({ picked: 'E:/Mine' })
     mount(<Onboarding api={api} language="auto" initialStep={1} />)
     await flush()
@@ -139,7 +139,7 @@ describe('Onboarding 互動與送出內容', () => {
     expect(set).not.toHaveBeenCalled()
   })
 
-  test('稍後再說：只寫 onboardingDone 並關閉', async () => {
+  test('Not now writes only onboardingDone and closes the dialog', async () => {
     const { api, set } = makeApi()
     const onClose = vi.fn()
     mount(<Onboarding api={api} language="auto" initialStep={2} onClose={onClose} />)
@@ -150,7 +150,7 @@ describe('Onboarding 互動與送出內容', () => {
     expect(onClose).toHaveBeenCalled()
   })
 
-  test('Esc 等同稍後再說', async () => {
+  test('Esc is equivalent to Not now', async () => {
     const { api, set } = makeApi()
     mount(<Onboarding api={api} language="auto" />)
     await flush()
@@ -159,7 +159,7 @@ describe('Onboarding 互動與送出內容', () => {
     expect(set).toHaveBeenCalledWith({ onboardingDone: true })
   })
 
-  test('儲存位置失敗：回到儲存位置步驟顯示錯誤，不關閉引導', async () => {
+  test('Storage location failure returns to that step, shows an error, and keeps onboarding open', async () => {
     const { api } = makeApi({
       set: async () => ({ settings: DEFAULT_SETTINGS, persisted: true, errors: { storageRoot: '無法建立或寫入儲存位置：Z:/nope' } })
     })
@@ -173,7 +173,7 @@ describe('Onboarding 互動與送出內容', () => {
     expect(document.querySelector('[role="alert"]')?.textContent).toContain('無法建立或寫入儲存位置：Z:/nope')
   })
 
-  test('語言下拉：立刻寫入 settings.language', async () => {
+  test('Language selector immediately writes settings.language', async () => {
     const { api, set } = makeApi()
     mount(<Onboarding api={api} language="auto" />)
     await flush()
@@ -187,19 +187,19 @@ describe('Onboarding 互動與送出內容', () => {
   })
 })
 
-describe('OnboardingHost 的顯示條件', () => {
-  test('onboardingDone 為 true、或設定尚未載入時不顯示', () => {
+describe('OnboardingHost visibility conditions', () => {
+  test('Hidden when onboardingDone is true or settings have not loaded', () => {
     const { api } = makeApi()
     expect(renderToString(<OnboardingHost settings={null} api={api} />)).toBe('')
     expect(renderToString(<OnboardingHost settings={{ ...DEFAULT_SETTINGS, onboardingDone: true }} api={api} />)).toBe('')
   })
-  test('onboardingDone 為 false 時顯示對話框', () => {
+  test('Shows the dialog when onboardingDone is false', () => {
     const { api } = makeApi()
     const out = renderToString(<OnboardingHost settings={{ ...DEFAULT_SETTINGS, onboardingDone: false }} api={api} />)
     expect(out).toContain('role="dialog"')
     expect(out).toContain(t.welcome.title)
   })
-  test('AppShell 以設定的 onboardingDone 決定是否顯示引導', () => {
+  test('AppShell uses the onboardingDone setting to decide whether to show onboarding', () => {
     const src = fs.readFileSync(path.join(__dirname, '../shell/AppShell.tsx'), 'utf-8')
     expect(src).toContain('OnboardingHost')
     expect(src).toContain('onboardingDone')

@@ -26,12 +26,12 @@ export default function App(): JSX.Element {
 
 function AppContent(): JSX.Element {
   const { project, apply } = useProject()
-  // 低效能模式：<html data-lowperf> 隨設定即時切換
+  // Low-performance mode: toggle <html data-lowperf> immediately when the setting changes.
   useEffect(() => {
     if (lowPerfFixtureRequested()) setLowPerf(true)
     return watchLowPerfSetting(window.api)
   }, [])
-  // 僅開發模式：?fixture=settings 直接開設定畫面，假 IPC 於動態載入後才掛上
+  // Development only: ?fixture=settings opens the settings screen directly and attaches fake IPC after dynamic import.
   const settingsFx = settingsFixtureRequested()
   const [fxReady, setFxReady] = useState(!settingsFx)
   useEffect(() => {
@@ -47,7 +47,7 @@ function AppContent(): JSX.Element {
   )
   const [playbackRequest, setPlaybackRequest] = useState<ProjectPlaybackRequest | undefined>()
 
-  // 僅開發模式：fixture 專案（截圖用），只放一次；內容動態載入，正式 bundle 不含
+  // Development only: load the screenshot project fixture once; its data is dynamically imported and excluded from the production bundle.
   const fixtureDoneRef = useRef(false)
   const projectRef = useRef(project)
   projectRef.current = project

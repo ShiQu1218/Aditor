@@ -1,4 +1,4 @@
-/* 時間軸塢（canvas 靜態層＋DOM 播放頭／tooltip）。顏色一律來自 tokens.css */
+/* Timeline dock (static canvas layer plus DOM playhead/tooltip). All colors come from tokens.css. */
 .tl-source { min-width: 0; background: var(--tl-bg); }
 .tl-toolbar {
   display: flex;

@@ -11,25 +11,25 @@ import { sourceBadge } from '../editor/sourceColors'
 
 export interface ProjectTrackProps {
   project: Project
-  /** 收合狀態（'auto' 的判定由呼叫端以 useMediaQuery 決定） */
+  /** Collapsed state ('auto' is resolved by the caller with useMediaQuery). */
   collapsed: boolean
   onToggleCollapsed: () => void
-  /** 目前選取的片段（專案軌游標；Alt+←/→、Ctrl+D、Delete、Enter 作用對象） */
+  /** Currently selected clip (project-track cursor; target of Alt+←/→, Ctrl+D, Delete, and Enter). */
   selectedId: string | null
   onSelect: (id: string | null) => void
-  /** 目前播放中的片段 id（專案模式；來源模式為 null） */
+  /** Id of the currently playing clip in project mode; null in source mode. */
   currentId: string | null
-  /** 目前片段內的進度 0..1 */
+  /** Progress within the current clip, from 0 to 1. */
   progress: number
-  /** 片段標籤（無對應片段時回「精華片段」） */
+  /** Clip label (falls back to “Highlight Clip” when no label matches). */
   labelOf: (item: ProjectItem) => string
-  /** 來源缺失的片段 id（警示且不可預覽；由 ProjectProvider 衍生） */
+  /** Clip ids with missing sources (warn and disable preview; derived by ProjectProvider). */
   missingIds: ReadonlySet<string>
-  /** 自動儲存狀態（軌頭小字） */
+  /** Autosave state (small text in the track header). */
   saveState: SaveState
-  /** 開啟的影片路徑（判斷片段來源是否為別的影片） */
+  /** Path of the open video (used to detect clips from another video). */
   videoPath: string
-  /** 開啟的影片長度（同影片的把手拖曳／步進上界） */
+  /** Duration of the open video (upper bound for handle dragging/stepping on the same video). */
   videoDuration: number
   onPlay: (item: ProjectItem) => void
   onMissing: () => void
@@ -48,9 +48,9 @@ export interface ProjectTrackProps {
   onExport: () => void
   exportOpen: boolean
   exportPercent: number | null
-  /** ＋從來源加入：加入第一段待確認建議（沒有時 Toast） */
+  /** Add from Source: add the first pending suggestion (show a Toast if none exists). */
   onAddFromSource: () => void
-  /** 新專案對話框開關（供呼叫端停用全域 keymap） */
+  /** New-project dialog state (lets the caller disable the global keymap). */
   onDialogOpenChange: (open: boolean) => void
 }
 
@@ -58,7 +58,7 @@ function clamp01(v: number): number {
   return Math.max(0, Math.min(1, v))
 }
 
-/** 0:42.8 形式的十進位秒（mock fmt1）。 */
+/** Decimal seconds in the 0:42.8 format (mock fmt1). */
 function fmt1(t: number): string {
   return `${formatTime(t)}.${Math.floor((t % 1) * 10)}`
 }
@@ -76,9 +76,9 @@ interface ReorderDrag {
 }
 
 /**
- * 專案軌（spec §3.2、§3.7；Task 13）：片段卡＋軌頭＋新專案對話框。
- * 卡片：序號、標籤、長度、來源色點；sel＝白框、cur＝內框＋進度。
- * 互動：拖曳重排、兩端把手微調（命中區 ±6px、hover／選取才顯示）。
+ * Project track (spec §3.2, §3.7; Task 13): clip cards, track header, and new-project dialog.
+ * Cards show sequence, label, duration, and source color; sel has a white border, while cur has an inset border and progress.
+ * Interactions: drag to reorder and trim with handles at either end (±6px hit area; visible on hover or selection).
  */
 export function ProjectTrack(props: ProjectTrackProps): JSX.Element {
   const {
@@ -130,16 +130,16 @@ export function ProjectTrack(props: ProjectTrackProps): JSX.Element {
   const dlgBoxRef = useRef<HTMLDivElement>(null)
 
   const total = project.items.reduce((sum, i) => sum + Math.max(0, i.end - i.start), 0)
-  // 來源順序＝專案內首次出現的順序（A、B、C… 穩定指派）
+  // Source order follows each source's first appearance in the project (stable A, B, C… assignment).
   const sources = useMemo(() => [...new Set(project.items.map((i) => i.source))], [project.items])
 
   useEffect(() => {
     setNameDraft(project.name)
   }, [project.name])
 
-  // roving tabindex：選取的片段（無選取時第一段）是整條軌道唯一的 Tab 停靠點
+  // Roving tabindex: the selected clip (or first clip when none is selected) is the track's only Tab stop.
   const rovingId = project.items.some((i) => i.id === selectedId) ? selectedId : (project.items[0]?.id ?? null)
-  /** 焦點在軌道的片段上（鍵盤選取改變、重排或刪除後才把焦點帶到新的選取片段） */
+  /** Focus is on a track clip (move focus to the newly selected clip only after keyboard selection, reorder, or deletion). */
   const focusInTrack = useRef(false)
 
   useEffect(() => {
@@ -152,7 +152,7 @@ export function ProjectTrack(props: ProjectTrackProps): JSX.Element {
     if (active === null || active === document.body || active.closest('.pclip')) el.focus()
   }, [selectedId, project.items])
 
-  /** Home／End：焦點在片段本身時跳到第一／最後一段（←→ 由 keymap 的 selectPrevItem／selectNextItem 處理） */
+  /** Home/End jumps to the first/last clip when focus is on a clip (←→ is handled by keymap's selectPrevItem/selectNextItem). */
   const onChipKeyDown = (e: React.KeyboardEvent<HTMLElement>): void => {
     if ((e.key !== 'Home' && e.key !== 'End') || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey || e.nativeEvent.isComposing) return
     if (!(e.target as HTMLElement).classList.contains('pclip')) return
@@ -167,7 +167,7 @@ export function ProjectTrack(props: ProjectTrackProps): JSX.Element {
     onDialogOpenChange(newDlgOpen)
   }, [newDlgOpen, onDialogOpenChange])
 
-  // 新專案對話框：焦點陷阱（開啟時聚焦第一個選項、Tab 在框內循環、Esc 只處理一次、關閉還原焦點）
+  // New-project dialog focus trap (focus the first option on open, keep Tab inside, handle Esc once, and restore focus on close).
   useFocusTrap(dlgBoxRef, { active: newDlgOpen, onEscape: () => setNewDlgOpen(false) })
 
   const commitName = useCallback(() => {
@@ -176,7 +176,7 @@ export function ProjectTrack(props: ProjectTrackProps): JSX.Element {
     else setNameDraft(project.name)
   }, [nameDraft, project.name, onRename])
 
-  /* ---------------- 卡片：點擊＝選取＋播放（缺失來源只選取） ---------------- */
+  /* ---------------- Cards: click selects and plays (missing sources are selected only) ---------------- */
 
   const handleCardClick = useCallback(
     (item: ProjectItem) => {
@@ -191,7 +191,7 @@ export function ProjectTrack(props: ProjectTrackProps): JSX.Element {
     [onSelect, onPlay, onMissing, missingIds]
   )
 
-  /* ---------------- 把手（trimFromDrag；hover／選取才顯示） ---------------- */
+  /* ---------------- Handles (trimFromDrag; visible on hover or selection) ---------------- */
 
   const handleTrimDown = useCallback((e: React.PointerEvent<HTMLElement>, item: ProjectItem, edge: 'start' | 'end') => {
     if (e.button !== 0) return
@@ -205,7 +205,7 @@ export function ProjectTrack(props: ProjectTrackProps): JSX.Element {
     try {
       e.currentTarget.setPointerCapture(e.pointerId)
     } catch {
-      /* 指標已失效（例如合成事件）：仍可拖曳，只是沒有鎖定 */
+      /* Pointer is unavailable (for example, in a synthetic event); dragging still works without pointer capture. */
     }
     setTrimDrag({ id: item.id, edge, start: item.start, end: item.end })
   }, [videoPath, videoDuration])
@@ -241,16 +241,16 @@ export function ProjectTrack(props: ProjectTrackProps): JSX.Element {
     setTrimDrag(null)
   }, [])
 
-  /* ---------------- 卡片：拖曳重排（dropIndex 中點判定） ---------------- */
+  /* ---------------- Cards: drag to reorder (dropIndex uses midpoints) ---------------- */
 
   const handleCardDown = useCallback((e: React.PointerEvent<HTMLElement>, item: ProjectItem) => {
     if (e.button !== 0) return
-    if ((e.target as HTMLElement).closest('.h')) return // 把手有自己的手勢
+    if ((e.target as HTMLElement).closest('.h')) return // Handles have their own gesture.
     orderRef.current = { id: item.id, startX: e.clientX, dragging: false }
     try {
       e.currentTarget.setPointerCapture(e.pointerId)
     } catch {
-      /* 指標已失效（例如合成事件）：仍可拖曳，只是沒有鎖定 */
+      /* Pointer is unavailable (for example, in a synthetic event); dragging still works without pointer capture. */
     }
   }, [])
 
@@ -303,7 +303,7 @@ export function ProjectTrack(props: ProjectTrackProps): JSX.Element {
     setReorder(null)
   }, [])
 
-  /* ---------------- 軌頭操作 ---------------- */
+  /* ---------------- Track-header actions ---------------- */
 
   const sel = selectedId ? project.items.find((i) => i.id === selectedId) ?? null : null
   const selIndex = sel ? project.items.findIndex((i) => i.id === sel.id) : -1
@@ -317,7 +317,7 @@ export function ProjectTrack(props: ProjectTrackProps): JSX.Element {
   )
 
   const requestNewProject = useCallback(() => {
-    if (project.items.length === 0) return // mock：空專案時不動作
+    if (project.items.length === 0) return // Mock: do nothing for an empty project.
     setNewDlgOpen(true)
   }, [project.items.length])
 
@@ -443,7 +443,7 @@ export function ProjectTrack(props: ProjectTrackProps): JSX.Element {
           }}
         >
           {project.items.length === 0 && <span className="dim track-empty">{t.empty}</span>}
-          {/* 清單本身只含片段（listitem）；〔＋從來源加入〕按鈕與插入線留在清單外（display: contents 不影響版面） */}
+          {/* The list itself contains clips only (listitem); keep the Add from Source button and insertion line outside it (display: contents does not affect layout). */}
           <div className="track-list" role="list" aria-label={t.title}>
           {project.items.map((item, i) => {
             const dragging = reorder?.id === item.id
@@ -471,7 +471,7 @@ export function ProjectTrack(props: ProjectTrackProps): JSX.Element {
                   .replace('{time}', formatTime(len))}
                 onClick={() => handleCardClick(item)}
                 onFocus={(e) => {
-                  // 焦點進入片段（Tab／點擊）＝選取它；內部控制項沒有（把手是 <i>）
+                  // Focus entering a clip (Tab/click) selects it; there are no nested controls (handles are <i> elements).
                   if (e.target === e.currentTarget && selectedId !== item.id) onSelect(item.id)
                 }}
                 onKeyDown={onChipKeyDown}

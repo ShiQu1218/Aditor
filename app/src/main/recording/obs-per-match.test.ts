@@ -8,7 +8,7 @@ import { recoverSessions } from './recovery'
 import { writeJson } from './finalize'
 import { makeDeps, tempRoot, fakeCommand, waitFor } from './test-support'
 
-it('逐局模式在大廳待命，開局才錄影', async () => {
+it('waits in the lobby in per-match mode and records only after a match starts', async () => {
   const root = tempRoot()
   const server = await fakeObs()
   const obs = new ObsRecording(root, { ...makeDeps(root).getSettings(), mode: 'match', obsPort: server.port }, undefined, vi.fn())
@@ -52,7 +52,7 @@ async function rig() {
   const event = (ev: string, t = 0) => active.live.onMatch({ ev, t })
   return { root, files, server, deps, service, active, event, settings, exit: () => { pid = null } }
 }
-it('開局、後置時間停止、直接入庫並平移範圍內事件；大廳不錄影', async () => {
+it('starts at match start, stops after the post-match delay, adds the file directly to the library, shifts in-range events, and skips lobby recording', async () => {
   const r = await rig()
   expect(r.service.status()).toMatchObject({ phase: 'recording', obsRecording: false })
   expect(r.server.calls).not.toContain('StartRecord')
@@ -72,7 +72,7 @@ it('開局、後置時間停止、直接入庫並平移範圍內事件；大廳�
   expect(r.deps.enqueueAnalysis).toHaveBeenCalledWith(r.files[0])
   expect(r.service.status()).toMatchObject({ phase: 'recording', obsRecording: false, detectionOnly: false })
 })
-it.each([false, true])('直接排下一局或後置等待中開局會停止再開始：%s', async (ended) => {
+it.each([false, true])('Stop and restart when directly queuing the next match or when one starts during post-session waiting: %s', async (ended) => {
   const r = await rig()
   r.event('match_start'); await waitFor(() => r.service.status().obsRecording === true)
   if (ended) r.event('match_end', (Date.now() - r.active.obs.meta.captureStartedAt) / 1000)
@@ -84,7 +84,7 @@ it.each([false, true])('直接排下一局或後置等待中開局會停止再�
   expect(r.deps.addToLibrary).toHaveBeenCalledWith([r.files[0]])
   expect(r.deps.addToLibrary).toHaveBeenCalledWith([r.files[1]])
 })
-it('沒有倒數的 hud_resume 仍開始錄影，大廳回溯結束立即停止', async () => {
+it('starts on hud_resume without a countdown and stops immediately when lobby rollback ends the match', async () => {
   const r = await rig()
   r.active.live.onMatch({ ev: 'match_start', t: 0, reason: 'hud_resume' }); await waitFor(() => r.service.status().obsRecording === true)
   r.active.obs.meta.captureStartedAt = Date.now() - 60000
@@ -92,14 +92,14 @@ it('沒有倒數的 hud_resume 仍開始錄影，大廳回溯結束立即停止'
   await waitFor(() => r.server.calls.includes('StopRecord'))
   expect(r.service.status().obsRecording).toBe(false)
 })
-it('對局中手動結束仍停止並加入最後一局', async () => {
+it('stops and adds the final match when recording is stopped manually mid-match', async () => {
   const r = await rig()
   r.event('match_start'); await waitFor(() => r.service.status().obsRecording === true)
   await r.service.stopManual()
   expect(r.deps.addToLibrary).toHaveBeenCalledWith([r.files[0]])
   expect(r.server.calls.filter((c) => c === 'StopRecord')).toHaveLength(1)
 })
-it.each([false, true])('開局時無法連線依設定回退：%s', async (fallback) => {
+it.each([false, true])('Use the configured fallback when connection fails at match start: %s', async (fallback) => {
   const r = await rig()
   r.settings.obsFallbackBuiltin = fallback
   r.server.disconnect()
@@ -108,7 +108,7 @@ it.each([false, true])('開局時無法連線依設定回退：%s', async (fallb
   await waitFor(() => fallback ? r.service.status().backend === 'builtin' : r.service.status().detectionOnly === true)
   expect(r.deps.notify).toHaveBeenCalled()
 })
-it('停止後未入庫的逐局工作復原一次，保留原檔', async () => {
+it('recovers a per-match session that was not added to the library after stop and preserves the original file', async () => {
   const r = await rig()
   await r.service.stopManual()
   const dir = path.join(r.root, 'videos', '.sessions', 'recover-match')
@@ -124,7 +124,7 @@ it('停止後未入庫的逐局工作復原一次，保留原檔', async () => {
   expect(fs.readFileSync(r.files[0], 'utf8')).toBe('測試影片')
 })
 
-it.each([false, true])('afterExit 在結束時依最終可信度排分析並更新快取：%s', async (trusted) => {
+it.each([false, true])('afterExit queues analysis and updates the cache based on final confidence: %s', async (trusted) => {
   const r = await rig()
   const configPath = path.join(r.active.dir, 'recording.json')
   const config = JSON.parse(fs.readFileSync(configPath, 'utf8'))
@@ -141,7 +141,7 @@ it.each([false, true])('afterExit 在結束時依最終可信度排分析並更�
   expect(cache.analysis.engine_version).toBe(trusted ? '0.3.0' : 'live-unknown')
   expect(r.deps.enqueueAnalysis).toHaveBeenCalledTimes(trusted ? 0 : 1)
 })
-it.each([false, true])('復原執行中的錄影，連線失敗保留工作且通知一次：%s', async (unreachable) => {
+it.each([false, true])('Recover an active recording; on connection failure preserve the job and notify once: %s', async (unreachable) => {
   const r = await rig()
   await r.service.stopManual()
   const dir = path.join(r.root, 'videos', '.sessions', 'recover-running')
@@ -151,7 +151,7 @@ it.each([false, true])('復原執行中的錄影，連線失敗保留工作且�
   await writeJson(path.join(dir, 'obs.json'), { captureStartedAt: now, recordStartedAt: now, adopted: false })
   await writeJson(path.join(dir, 'obs-matches.json'), [{ index: 1, recordStartedAt: now, stopped: false, liveCached: false, liveTrusted: false, analysisQueued: false }])
   r.server.setRecording(true)
-  // fake OBS 的目前輸出路徑由開始錄影決定。
+  // The fake OBS current output path is determined when recording starts.
   const client = new (await import('./obs-client')).ObsClient()
   await client.connect('127.0.0.1', r.server.port)
   await client.start(); await client.close()
@@ -165,7 +165,7 @@ it.each([false, true])('復原執行中的錄影，連線失敗保留工作且�
   else expect(r.deps.addToLibrary).toHaveBeenCalledWith([r.files[0]])
 })
 
-it('Apex 離開時停止並加入開放中的最後一局', async () => {
+it('stops and adds the final open match when Apex exits', async () => {
   const r = await rig()
   r.event('match_start'); await waitFor(() => r.service.status().obsRecording === true)
   r.exit()
@@ -173,7 +173,7 @@ it('Apex 離開時停止並加入開放中的最後一局', async () => {
   expect(r.deps.addToLibrary).toHaveBeenCalledWith([r.files[0]])
   expect(r.server.calls.filter((c) => c === 'StopRecord')).toHaveLength(1)
 })
-it('逐局模式沿用使用者錄影仍不送開始或停止指令', async () => {
+it('does not send start or stop commands when reusing a user-owned recording in per-match mode', async () => {
   const root = tempRoot(); cleanup.push(() => fs.rmSync(root, { recursive: true, force: true }))
   const server = await fakeObs({ recording: true }); cleanup.push(server.close)
   const obs = new ObsRecording(root, { ...makeDeps(root).getSettings(), mode: 'match', obsPort: server.port }, undefined, vi.fn())
@@ -187,7 +187,7 @@ it('逐局模式沿用使用者錄影仍不送開始或停止指令', async () =
   expect(fs.existsSync(path.join(root, 'obs-matches.json'))).toBe(false)
 })
 
-it('剛停止上一局時 OBS 仍回報錄影中，等它停下再開始下一局', async () => {
+it('waits for OBS to stop reporting active after the previous match before starting the next one', async () => {
   const root = tempRoot()
   const server = await fakeObs()
   const obs = new ObsRecording(root, { ...makeDeps(root).getSettings(), mode: 'match', obsPort: server.port }, undefined, vi.fn())
@@ -195,7 +195,7 @@ it('剛停止上一局時 OBS 仍回報錄影中，等它停下再開始下一�
     await obs.start()
     await obs.startMatch(1)
     await obs.stop()
-    // 模擬 OBS 停止中：StopRecord 已回覆，但狀態還要一下子才變成未錄影。
+    // Simulate OBS stopping: StopRecord has replied, but the status takes a moment to change to not recording.
     server.setRecording(true)
     setTimeout(() => server.setRecording(false), 150)
     await obs.startMatch(2)
@@ -203,7 +203,7 @@ it('剛停止上一局時 OBS 仍回報錄影中，等它停下再開始下一�
   } finally { await obs.close(); await server.close(); fs.rmSync(root, { recursive: true, force: true }) }
 })
 
-it('倒數立即錄影，HUD 確認沿用同一檔', async () => {
+it('records immediately during the countdown and reuses the same file after HUD confirmation', async () => {
   const r = await rig()
   r.event('match_pending')
   await waitFor(() => r.service.status().obsRecording === true)
@@ -218,7 +218,7 @@ it('倒數立即錄影，HUD 確認沿用同一檔', async () => {
   expect(r.server.calls.filter((c) => c === 'StartRecord')).toHaveLength(1)
   expect(r.deps.addToLibrary).toHaveBeenCalledWith([r.files[0]])
 })
-it('倒數取消立即停止，保留原檔且不入庫或分析', async () => {
+it('stops immediately when the countdown is cancelled, preserving the original without library insertion or analysis', async () => {
   const r = await rig()
   r.event('match_pending')
   await waitFor(() => r.service.status().obsRecording === true)
@@ -236,7 +236,7 @@ it('倒數取消立即停止，保留原檔且不入庫或分析', async () => {
   expect(fs.existsSync(r.files[0] + '.aditor.json')).toBe(false)
   expect(fs.existsSync(r.files[0])).toBe(true)
 })
-it('下一局倒數先停止上一檔再開始，確認不重開', async () => {
+it('stops the previous file before starting during the next countdown and does not restart after confirmation', async () => {
   const r = await rig()
   r.event('match_start')
   await waitFor(() => r.service.status().obsRecording === true)
@@ -247,7 +247,7 @@ it('下一局倒數先停止上一檔再開始，確認不重開', async () => {
   await r.service.stopManual()
   expect(r.server.calls.filter((c) => c === 'StartRecord' || c === 'StopRecord')).toEqual(['StartRecord', 'StopRecord', 'StartRecord', 'StopRecord'])
 })
-it.each([{ cancelled: true }, { confirmed: false }])('復原略過取消或未確認的已停止錄影：%j', async (state) => {
+it.each([{ cancelled: true }, { confirmed: false }])('Recovery skips stopped recordings that were cancelled or unconfirmed: %j', async (state) => {
   const r = await rig()
   await r.service.stopManual()
   const dir = path.join(r.root, 'videos', '.sessions', 'recover-pending')
@@ -261,7 +261,7 @@ it.each([{ cancelled: true }, { confirmed: false }])('復原略過取消或未�
   expect(fs.existsSync(r.files[0])).toBe(true)
 })
 
-it('未確認倒數在手動停止時立即取消，不等待後置時間', async () => {
+it('immediately cancels an unconfirmed countdown on manual stop without waiting for the post-match delay', async () => {
   const r = await rig()
   r.deps.obsMatchPostPadMs = 60000
   r.event('match_pending')

@@ -1,9 +1,9 @@
-// 唯一的「允許出現色碼字面值」清單（noRawColors.test.ts 使用）。
-// 設計規則：TSX／TS 內不得寫 #hex／rgb()／rgba()／hsl() 字面值，顏色一律來自 tokens.css 的 CSS 變數
-// （canvas 主題由 timeline/draw.ts 的 readTheme 於執行期從 CSS 變數讀出）。
-// 若真的需要例外，在此新增 { file, reason }；清單內的檔案必須確實含有色碼（否則視為過期條目，測試失敗）。
+// The only allowlist for color literals (used by noRawColors.test.ts).
+// Design rule: TSX/TS must not contain #hex, rgb(), rgba(), or hsl() literals; colors come from CSS variables in tokens.css.
+// (The canvas theme is read from CSS variables at runtime by readTheme in timeline/draw.ts.)
+// Add { file, reason } here only when an exception is needed; each listed file must contain a color literal or the test fails for a stale entry.
 export interface RawColorException {
-  /** 相對 app/src/renderer 的路徑，使用 / */
+/** Path relative to app/src/renderer, using /. */
   file: string
   reason: string
 }

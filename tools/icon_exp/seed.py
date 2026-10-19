@@ -1,8 +1,8 @@
-"""從訓練素材（EN/JA）手動選定的畫格裁出種子圖示（灰階），並量測各片的最佳尺度分布。"""
+"""Crop seed icons (grayscale) from manually selected frames in the training data (EN/JA) and measure the best scale distribution for each clip."""
 from fr import *
 import collections
 
-SEEDS = {  # name: (lab, t, x0, y0, x1, y1)  — 皆為訓練素材
+SEEDS = {  # name: (lab, t, x0, y0, x1, y1) — all from training data
     "chev":   ("EN", 25.0, 571, 75, 603, 107),
     "person": ("EN", 25.0, 603, 73, 623, 108),
     "group":  ("EN", 172.25, 512, 74, 548, 108),
@@ -15,7 +15,7 @@ for k, (lab, t, x0, y0, x1, y1) in SEEDS.items():
     g = cv2.cvtColor(np.ascontiguousarray(load(lab)[idx(t)][y0:y1, x0:x1]), cv2.COLOR_BGR2GRAY)
     cv2.imwrite(str(out / f"{k}.png"), g); T[k] = g
 print(cv2.__version__)
-# 尺度分布：種子 chev 在 EN/JA/SC1 每 2 格取 1 格
+# Scale distribution: sample every other frame for the seed chev icon in EN/JA/SC1.
 scales = [0.8, 0.85, 0.9, 0.95, 1.0, 1.05, 1.1, 1.15, 1.2]
 for lab in ["EN", "JA", "SC1"]:
     F = load(lab); hist = collections.Counter(); ys = collections.Counter()

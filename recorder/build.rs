@@ -14,7 +14,7 @@ fn main() {
         let path = root.join("lib").join(format!("{library}.lib"));
         assert!(
             path.is_file(),
-            "找不到 FFmpeg 匯入程式庫 {}；請將 ADITORREC_FFMPEG_DIR 設為含有 lib 與 bin 的 FFmpeg 根目錄",
+            "FFmpeg import library not found: {}; set ADITORREC_FFMPEG_DIR to the FFmpeg root containing lib and bin",
             path.display()
         );
         println!("cargo:rustc-link-lib=dylib={library}");

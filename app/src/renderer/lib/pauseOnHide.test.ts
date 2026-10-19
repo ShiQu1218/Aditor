@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { installPauseOnHide } from './pauseOnHide'
 
 describe('installPauseOnHide', () => {
-  it('視窗縮到系統匣時暫停頁面上所有影音；取消訂閱後不再暫停', () => {
+  it('Pauses all page media when the window is hidden; stops pausing after unsubscribe', () => {
     let emitHidden: () => void = () => {}
     const unsubscribe = vi.fn()
     const onHidden = vi.fn((cb: () => void) => { emitHidden = cb; return unsubscribe })

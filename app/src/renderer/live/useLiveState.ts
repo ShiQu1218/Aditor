@@ -7,15 +7,15 @@ export type LiveLoad = 'loading' | 'none' | 'ready'
 export interface LiveStateHook {
   load: LiveLoad
   state: LiveState | null
-  /** 錄影收尾後的輸出檔（收到 `finalized` 推播才有值） */
+  /** Output file after recording finishes (available only after the `finalized` update). */
   finalized: string[] | null
-  /** 最新一筆新計入事件（aria-live 宣告用） */
+  /** Most recent newly counted event (for aria-live announcement). */
   latestKill: LiveEvent | null
-  /** 新段落（播放器依此 append） */
+  /** New segment for the player to append. */
   onSegment: React.MutableRefObject<((segment: LiveState['segments'][number]) => void) | null>
 }
 
-/** 先訂閱 `recording:live` 再讀快照，快照之前到的推播在讀到後補套用。init.mp4 尚未寫出（mime＝null）時，新段落到達會再讀一次。 */
+/** Subscribe to `recording:live` before reading the snapshot, then apply updates received before the snapshot. If init.mp4 is not written yet (mime=null), reread when a new segment arrives. */
 export function useLiveState(): LiveStateHook {
   const [load, setLoad] = useState<LiveLoad>('loading')
   const [state, setState] = useState<LiveState | null>(null)

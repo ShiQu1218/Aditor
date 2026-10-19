@@ -1,11 +1,11 @@
-/** 工作室目前開啟中的浮層／對話框（純資料，供 keymap 的 overlayOpen 與 Esc 關閉順序使用）。 */
+/** Currently open studio overlays/dialogs (data only, used by keymap's overlayOpen state and Esc close order). */
 export interface OverlayState {
   addEvent: boolean
   autoClip: boolean
   newProject: boolean
-  /** OverlayHost 承載的對話框（匯出、快捷鍵說明…） */
+/** Dialogs hosted by OverlayHost (export, shortcut help, etc.). */
   hostDialog: boolean
-  /** 匯出抽屜（只覆蓋側欄；開啟時 keymap 只剩 Esc） */
+/** Export drawer (covers only the sidebar; while open, keymap handles only Esc). */
   exportDrawer: boolean
   queuePopover: boolean
   shortcuts: boolean
@@ -13,7 +13,7 @@ export interface OverlayState {
 
 export type OverlayKey = keyof OverlayState
 
-/** 由上而下＝最上層優先（Esc 先關最上層）。 */
+/** Top to bottom is highest to lowest priority (Esc closes the topmost first). */
 const PRIORITY: OverlayKey[] = ['addEvent', 'newProject', 'shortcuts', 'hostDialog', 'exportDrawer', 'autoClip', 'queuePopover']
 
 export function isAnyOverlayOpen(s: OverlayState): boolean {

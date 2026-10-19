@@ -1,4 +1,4 @@
-"""只保存必要場景 ROI 的灰階拼圖；還原座標後測試同一個全畫面入口。"""
+"""Store only grayscale crops of required scene ROIs; restore their coordinates and test the full-frame entry point."""
 import json
 from pathlib import Path
 
@@ -83,7 +83,7 @@ def test_roi_contract_and_fixture_budget():
 def test_text_and_artwork_outside_masks_do_not_affect_opening(detector):
     item = next(s for s in SCREENS["frames"] if s["file"] == "clip1_0004.png")
     frame = load_screen(item)
-    # 蓋掉模式／地圖文字、底部提示文字；保留右側斜框與底板缺口。
+    # Cover mode/map text and footer hints; preserve the slanted frame on the right and the gap in the panel.
     frame[20:85, :130] = 127
     frame[302:340, 200:460] = 255
     assert detector.classify(frame).kind == "pre_match"

@@ -1,2 +1,2 @@
-// 相容舊匯入路徑：實作已移到 a11y/focusTrap.ts（所有對話框共用）。
+// Backward-compatible import path; implementation moved to a11y/focusTrap.ts, shared by all dialogs.
 export { nextTrapIndex } from '../a11y/focusTrap'

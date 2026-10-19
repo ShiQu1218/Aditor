@@ -5,7 +5,7 @@ import { concatCompatible, StreamProbe } from '../../shared/exportCompat'
 import type { CopyCut } from './keyframe'
 import { tr } from '../../shared/locale'
 
-// 相容性判斷搬到 shared（匯出抽屜在 renderer 也要用）；此處重新匯出維持原 import 路徑
+// Compatibility checks live in shared (the renderer's export drawer also uses them); re-export here to preserve the existing import path.
 export { concatCompatible, extraSecondsForCopy } from '../../shared/exportCompat'
 export type { StreamProbe } from '../../shared/exportCompat'
 
@@ -13,7 +13,7 @@ export interface FfmpegJob {
   args: string[]
   output: string
   tempFiles?: string[]
-  /** 中間檔（正規化後的單段）：不算成品，結束後刪除 */
+  /** Intermediate file (a normalized segment): not a final output and deleted after the job. */
   intermediate?: boolean
 }
 
@@ -46,36 +46,36 @@ export interface BuildJobsOptions {
   outDir: string
   baseName: string
   /**
-   * 快速無損用：每個片段（與 items 同索引）的切點——起點之前最近的關鍵影格與修正後的終點（秒，相對來源 start_time）。
-   * 有值就從該關鍵影格精確切；null／缺少時退回保守切法（見 copyCutArgs）。
+   * For fast stream copy: cut points for each segment (same index as items)—the nearest keyframe before the start and adjusted end (seconds relative to source start_time).
+   * When present, cut exactly from that keyframe; when null/missing, use the conservative method (see copyCutArgs).
    */
   copyCuts?: ReadonlyArray<CopyCut | null | undefined>
-  /** 精準合輯：確定沒有音軌的來源，各段先補等長靜音以保持串流一致。 */
+  /** Precise concatenation: add equal-length silence to sources known to have no audio track, keeping streams consistent. */
   silentSources?: ReadonlySet<string>
 }
 
 /**
- * ffmpeg 對有 B-frame 的來源、且容器不支援以 PTS seek（如 MP4）時，會把輸入端 `-ss` 往前扣 3/23 秒再 seek
- * （ffmpeg_demux 的 dts heuristic）。關鍵影格就在 `-ss` 前 0.13 秒內時會因此落到「前一個」關鍵影格。
- * 所以 seek 點設為「關鍵影格 + 3/23 秒 + 1 ms」，再用同樣的 `-itsoffset` 把時間戳拉回：輸出時間 0＝該關鍵影格。
+ * For B-frame sources in containers that do not support PTS seeking (such as MP4), ffmpeg moves input `-ss` back by 3/23 seconds
+ * before seeking (ffmpeg_demux's dts heuristic). If a keyframe is within 0.13 seconds before `-ss`, this can select the previous keyframe.
+ * Set the seek point to "keyframe + 3/23 seconds + 1 ms", then use the same `-itsoffset` to restore timestamps so output time 0 is that keyframe.
  */
 const SEEK_DTS_HEURISTIC_S = 3 / 23
 const SEEK_MARGIN_S = 0.001
 const KEYFRAME_SEEK_PAD_S = SEEK_DTS_HEURISTIC_S + SEEK_MARGIN_S
 
-/** 單一視訊＋第一條音訊（沒有音訊也可以）；不帶來源的章節與中繼資料（MKV 的 DURATION／title 標籤會變成錯誤的 MP4 udta） */
+/** One video stream plus the first audio stream (audio is optional); omit source chapters and metadata (MKV DURATION/title tags become invalid MP4 udta). */
 const STREAM_SELECT = ['-map', '0:v:0', '-map', '0:a:0?']
 const STRIP_METADATA = ['-map_metadata', '-1', '-map_chapters', '-1']
 /**
- * open GOP 來源：關鍵影格之後解碼、顯示時間卻在它之前的 leading B 幀，參考的是前一個 GOP（切掉了），解不出來。
- * 單檔時會被 edit list 藏住，串接時卻會跑到上一段的時間範圍裡；直接丟掉（closed GOP 沒有這種幀，等於不做事）。
+ * In open-GOP sources, leading B-frames decoded after a keyframe but displayed before it reference the previous GOP (which was cut away) and cannot be decoded.
+ * They are hidden by the edit list in a single file but can fall into the previous segment's time range after concatenation; drop them directly (closed GOPs have none, so this has no effect).
  */
 const DROP_LEADING_PICTURES = 'lt(pts\\,startpts)'
 const AUDIO_AAC = ['-c:a', 'aac', '-b:a', '192k']
 
 const secs = (v: number): string => v.toFixed(3)
 const preciseSecs = (v: number): string => v.toFixed(6)
-/** 視訊另外在 videoCutRel（相對輸出 0 點的秒數，比較 DTS）截斷，讓音訊多留到視訊最後一幀播完 */
+/** Truncate video separately at videoCutRel (seconds relative to output time 0, compared by DTS), allowing audio to last until the final video frame finishes. */
 const videoBsf = (videoCutRel?: number): string[] => [
   '-bsf:v',
   `noise=drop=${DROP_LEADING_PICTURES}${videoCutRel === undefined ? '' : `+gte(dts*tb\\,${preciseSecs(videoCutRel)})`}`
@@ -83,12 +83,12 @@ const videoBsf = (videoCutRel?: number): string[] => [
 const durationOf = (item: ProjectItem): string => secs(Math.max(0.1, item.end - item.start))
 
 /**
- * 快速無損切一段：
- * - 已知關鍵影格 K：從 K 開始 stream copy，第一個封包就是關鍵影格且時間戳＝0，不需要 MP4 edit list 藏住多出的畫面；
- *   音訊丟掉 K 之前的封包（`-copypriorss:a 0`），音訊不會比畫面早開始；視訊截在 cut.videoCut（B-frame 尾端不留空洞），
- *   音訊截在 cut.end（視訊最後一幀播完），接下一段時不會出現一段無聲。
- * - 不知道 K：照舊從片段起點 seek（ffmpeg 會退到前一個關鍵影格），再以 `-avoid_negative_ts make_zero`
- *   把整段平移到 0 起算，同樣不留 edit list 跳過畫面。
+ * Fast stream-copy a segment:
+ * - Known keyframe K: start copying from K, making the first packet a keyframe with timestamp 0; no MP4 edit list is needed to hide extra frames.
+ *   Drop audio packets before K (`-copypriorss:a 0`) so audio does not start before video; truncate video at cut.videoCut (no gap at the B-frame tail),
+ *   and audio at cut.end (when the final video frame finishes), avoiding silence before the next segment.
+ * - Unknown K: seek from the segment start as before (ffmpeg backs up to the previous keyframe), then shift the whole segment to start at 0 with `-avoid_negative_ts make_zero`,
+ *   also avoiding an edit list that skips frames.
  */
 function usableCut(item: ProjectItem, cut: CopyCut | null | undefined): cut is CopyCut {
   if (!cut || !Number.isFinite(cut.keyframe) || !Number.isFinite(cut.end)) return false
@@ -138,14 +138,14 @@ export function copyCutArgs(item: ProjectItem, cut: CopyCut | null | undefined, 
   ]
 }
 
-/** 實際採用的品質：合輯＋快速無損但來源規格不相容時自動改成精準（附提示）。 */
+/** Actual quality used: for concatenation with fast stream copy, automatically switch to precise when source specs are incompatible (with a notice). */
 export function resolveQuality(
   items: ProjectItem[],
   opts: Pick<BuildJobsOptions, 'mode' | 'quality'>,
   probes: Map<string, StreamProbe>
 ): { quality: 'copy' | 'precise'; notices: string[] } {
   if (opts.mode === 'concat' && opts.quality === 'copy') {
-    // 同一來源只比對一次
+    // Compare each source only once.
     const probeList = [...new Set(items.map((it) => it.source))].map((src) => probes.get(src)).filter((p): p is StreamProbe => !!p)
     const check = concatCompatible(probeList)
     if (!check.ok) {
@@ -173,7 +173,7 @@ export function buildJobs(
   const jobs: FfmpegJob[] = items.map((item, idx) => {
     const output = path.join(opts.outDir, `${opts.baseName}_${idx + 1}.mp4`)
     if (quality === 'copy') return { args: copyCutArgs(item, opts.copyCuts?.[idx], output), output }
-    // -ss 放在 -i 前面：轉碼時同樣是精準 seek，但不必從檔頭解碼到起點（I8）
+    // Put -ss before -i: precise seeking when transcoding, without decoding from the start of the file to the cut (I8).
     const args = ['-ss', secs(item.start), '-i', item.source, '-t', durationOf(item), ...STREAM_SELECT, '-c:v', opts.encoder!, ...AUDIO_AAC, ...STRIP_METADATA, '-y', output]
     return { args, output }
   })
@@ -184,8 +184,8 @@ const segmentTag = (): string => Math.random().toString(36).slice(2, 8)
 const segmentPath = (outDir: string, tag: string, idx: number, ext: string): string => path.join(outDir, `.aditor-seg-${tag}-${idx + 1}${ext}`)
 
 /**
- * concat demuxer 清單。有量到每段實際播放終點（見 keyframe.ts 的 parseMediaEnd）就加上 `duration`，
- * 讓下一段精確接在上一段最後一幀之後，不依賴 MP4 以 DTS 加總、可能偏短的 duration。
+ * Build a concat demuxer list. When the actual playback end of each segment was measured (see parseMediaEnd in keyframe.ts), add `duration`
+ * so the next segment starts exactly after the previous segment's last frame instead of relying on MP4 duration summed from DTS, which may be too short.
  */
 export function concatList(files: ReadonlyArray<string>, durations: ReadonlyArray<number | null | undefined> = []): string {
   const lines: string[] = []
@@ -198,17 +198,17 @@ export function concatList(files: ReadonlyArray<string>, durations: ReadonlyArra
 }
 
 /**
- * 串接中間檔的輸入。`-copyts`：concat 輸入的 start_time 是 ffmpeg 從各流第一個時間戳估的（某些編碼的視訊估不出來，
- * 就只剩音訊的起點，例如 0.013 秒），不加的話整條時間軸會被平移，視訊第一幀變成負時間、被 edit list 藏掉。
- * 中間檔本來就都從 0 起算，直接沿用它們的時間戳。
+ * Input for concatenating intermediate files. `-copyts`: ffmpeg estimates concat input start_time from the first timestamp of each stream (for some video codecs it cannot estimate one,
+ * leaving only the audio start, such as 0.013 seconds). Without this flag, the whole timeline shifts, the first video frame gets a negative timestamp, and the edit list hides it.
+ * Intermediate files already start at 0, so keep their timestamps as-is.
  */
 const CONCAT_INPUT = ['-copyts', '-f', 'concat', '-safe', '0', '-i', 'LIST_FILE_PLACEHOLDER']
 const listOf = (jobs: FfmpegJob[]): string => concatList(jobs.map((j) => j.output))
 
 /**
- * 快速無損合輯：不用 concat demuxer 的 inpoint／outpoint 直接讀來源——長 GOP 編碼時 inpoint 前會多吐出一段
- * 從前一個關鍵影格起的封包，時間戳與上一段重疊（Non-monotonic DTS），播放器在交界卡住、音訊多出來而不同步。
- * 改成每段先從關鍵影格 stream copy 成中間檔（每段都從 0 起、第一幀是關鍵影格），最後 concat demuxer 直接接起來。
+ * Fast stream-copy concatenation: do not read sources directly with concat demuxer inpoint/outpoint. With long-GOP encoding, packets from the previous keyframe
+ * before the inpoint overlap the prior segment's timestamps (Non-monotonic DTS), causing playback to stall at the boundary and audio to overrun and desynchronize.
+ * Instead, stream-copy each segment from a keyframe into an intermediate file (each starts at 0 with a keyframe as its first frame), then join them with the concat demuxer.
  */
 function buildCopyConcat(
   items: ProjectItem[],
@@ -244,12 +244,12 @@ function normalizeFilter(items: ProjectItem[], probes: Map<string, StreamProbe>)
 }
 
 /**
- * 精準合輯：每段以 `-ss`（輸入端，精準 seek）轉成中間檔，最後 concat demuxer 接起來、視訊直接 copy、音訊整條一次編成 AAC。
- * - 不用 inpoint 直接轉碼來源：inpoint 前的音訊封包也會被解碼進去，每個交界多出最多一個 GOP 長度的聲音，影音越來越不同步。
- * - 中間檔音訊用 PCM（.mov）：AAC 每段都有 1024 樣本的 priming，串接後交界的音訊時間戳倒退、
- *   成品第一條視訊軌還會多一段空白 edit（剪輯軟體顯示為第一幀全黑）。PCM 沒有 priming，最後只編一次 AAC。
- * - 多來源且規格不一定相同時才加 scale／pad／fps／format 正規化（concat 需要每段規格一致）；
- *   同一來源的片段規格本來就一致，不改幀率與解析度。
+ * Precise concatenation: transcode each segment to an intermediate file using input-side `-ss` (precise seek), then join with concat demuxer, copying video and encoding the full audio stream to AAC once.
+ * - Do not transcode sources directly with inpoint: audio packets before the inpoint are decoded too, adding up to one GOP of sound at each boundary and increasing A/V desynchronization.
+ * - Use PCM audio in intermediate .mov files: each AAC segment has 1024 samples of priming, which makes audio timestamps go backward at joins and adds a blank edit to the first video track
+ *   (editing software displays a black first frame). PCM has no priming, so encode AAC only once at the end.
+ * - Add scale/pad/fps/format normalization only when sources may have different specs (concat requires matching specs for every segment);
+ *   clips from the same source already match, so do not change frame rate or resolution.
  */
 function buildPreciseConcat(
   items: ProjectItem[],
@@ -274,7 +274,7 @@ function buildPreciseConcat(
   const output = path.join(opts.outDir, `${opts.baseName}.mp4`)
   const final: FfmpegJob = {
     output,
-    // 補齊音訊時間戳的小幅空隙；無音軌來源已在中間檔補上靜音。
+    // Fill small gaps in audio timestamps; sources without audio already have silence in their intermediate files.
     args: [...CONCAT_INPUT, ...STREAM_SELECT, '-c:v', 'copy', '-af', 'aresample=async=1:first_pts=0', ...AUDIO_AAC, '-y', output]
   }
   const allNotices = normalize ? [...notices, tr('來源規格不同，已先將每段轉成相同規格再合併')] : notices
@@ -282,8 +282,8 @@ function buildPreciseConcat(
 }
 
 /**
- * 找一個不會覆蓋既有檔案的檔名主體（I6）：依序嘗試 `<base>`、`<base> (2)`、`<base> (3)`…，
- * 直到該模式會產生的所有輸出檔都不存在。
+ * Find a filename stem that does not overwrite existing files (I6): try `<base>`, `<base> (2)`, `<base> (3)`…
+ * until none of the output files for that mode exist.
  */
 export function resolveFreeBaseName(
   outDir: string,

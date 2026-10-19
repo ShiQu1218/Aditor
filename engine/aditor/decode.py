@@ -1,4 +1,4 @@
-"""ffmpeg 解碼管線（spec §5.1）：降幀 → 縮放到 1080p → 兩路裁切 → vstack → bgr24 rawvideo。"""
+"""ffmpeg decode pipeline (spec §5.1): reduce frame rate → scale to 1080p → crop two regions → vstack → bgr24 rawvideo."""
 from __future__ import annotations
 
 import subprocess
@@ -11,8 +11,8 @@ from . import ffbin
 from .profile import Profile
 
 HWACCEL_ARGS = ["-hwaccel", "auto"]
-# ffmpeg 預設用 libdav1d 解碼 AV1，該解碼器會忽略 -hwaccel；需指定原生 av1 解碼器才會走 D3D11VA。
-# 硬體路徑：畫格留在 GPU（d3d11 surface），fps 抽樣後才 hwdownload，省下每格 GPU→CPU 複製。
+# FFmpeg defaults to libdav1d for AV1, which ignores -hwaccel; specify the native AV1 decoder to use D3D11VA.
+# Hardware path: keep frames on the GPU (d3d11 surface) and hwdownload only after fps sampling to avoid a GPU-to-CPU copy per frame.
 GPU_HWACCEL_ARGS = ["-hwaccel", "d3d11va", "-hwaccel_output_format", "d3d11"]
 AV1_HWACCEL_ARGS = GPU_HWACCEL_ARGS + ["-c:v", "av1"]
 GPU_CODECS = ("av1", "h264", "hevc", "vp9")
@@ -29,14 +29,14 @@ class DecodeError(Exception):
 
 
 def is_gpu_path(codec: str | None, hwaccel: bool) -> bool:
-    """是否走「畫格留在 GPU」的硬體路徑（需已知且支援的編碼）。"""
+    """Whether to use the hardware path that keeps frames on the GPU (requires a known, supported codec)."""
     return bool(hwaccel and codec in GPU_CODECS)
 
 
 def build_filter(profile: Profile, gpu: bool = False, hw_format: str = "nv12") -> str:
-    """hw_format：hwdownload 後的像素格式。8-bit 解碼表面是 nv12；10-bit（HEVC Main10／AV1 10-bit，
-    HDR 錄影常見）是 p010le。ffmpeg 的 format 濾鏡只會取第一個候選，所以無法寫成 nv12|p010le，
-    改由 FrameStream 在第一格前失敗時換格式重試。"""
+    """hw_format is the pixel format after hwdownload. The 8-bit decode surface is nv12; 10-bit (HEVC Main10/AV1 10-bit,
+    common in HDR recordings) uses p010le. FFmpeg's format filter accepts only the first candidate, so nv12|p010le
+    cannot be specified. FrameStream retries with another format if decoding fails before the first frame."""
     bx, by, bw, bh = profile.banner_roi
     sx, sy, sw, sh = profile.spec_roi
     pre = f"fps={FPS},hwdownload,format={hw_format}" if gpu else f"fps={FPS}"
@@ -47,7 +47,7 @@ def build_filter(profile: Profile, gpu: bool = False, hw_format: str = "nv12") -
 
 
 def build_input_args(codec: str | None, hwaccel: bool, start: float) -> list[str]:
-    """-i 之前的輸入選項（解碼器選項與 -ss 都必須在 -i 之前）。"""
+    """Input options before -i (decoder options and -ss must both precede -i)."""
     args: list[str] = []
     if is_gpu_path(codec, hwaccel):
         args += AV1_HWACCEL_ARGS if codec == "av1" else GPU_HWACCEL_ARGS
@@ -59,7 +59,7 @@ def build_input_args(codec: str | None, hwaccel: bool, start: float) -> list[str
 
 
 class _Failed(Exception):
-    """硬體解碼的 ffmpeg 失敗（用於回退軟體）。k = 失敗前已產出的畫格數（0 = 第一格前就失敗）。"""
+    """FFmpeg hardware decoding failed (used to fall back to software). k is the number of frames produced before failure (0 means failure before the first frame)."""
 
     def __init__(self, k: int = 0):
         super().__init__(k)
@@ -67,7 +67,7 @@ class _Failed(Exception):
 
 
 class FrameStream:
-    """可迭代的解碼串流。產出 (t, banner_bgr, spec_bgr)，t = start + k * 0.25。"""
+    """Iterable decoded stream yielding (t, banner_bgr, spec_bgr), where t = start + k * 0.25."""
 
     def __init__(self, path: str, profile: Profile, *, start: float = 0.0, hwaccel: bool = True,
                  codec: str | None = None, end: float | None = None):
@@ -102,7 +102,7 @@ class FrameStream:
             pass
         finally:
             try:
-                pipe.close()  # 讀到 EOF（行程已結束）即釋放管線；硬體回退時舊行程的 stderr 不會留著
+                pipe.close()  # Release the pipe on EOF (the process has exited); this also prevents the old process's stderr from lingering during hardware fallback.
             except OSError:
                 pass
 
@@ -121,7 +121,7 @@ class FrameStream:
         return proc
 
     def _frames(self, hwaccel: bool, k0: int = 0) -> Iterator[tuple[float, np.ndarray, np.ndarray]]:
-        """k0：已由先前（失敗的）硬體解碼產出的畫格數；從 start + k0/FPS 重新開始，時間格線不變。"""
+        """k0 is the number of frames produced by the previous (failed) hardware decode; resume at start + k0/FPS to preserve the timeline grid."""
         bx, by, bw, bh = self.profile.banner_roi
         sx, sy, sw, sh = self.profile.spec_roi
         frame_bytes = bw * (bh + sh) * 3
@@ -146,17 +146,18 @@ class FrameStream:
         rc = proc.wait()
         if rc != 0 and not self._closed:
             if hwaccel or k == k0:
-                # 回退會產生新的 ffmpeg 行程並取代 self._proc；先關掉這個已結束行程的 stdout，避免管線控制代碼洩漏
+                # Fallback starts a new FFmpeg process and replaces self._proc; close the exited process's stdout first to avoid leaking pipe handles.
                 try:
                     proc.stdout.close()
                 except OSError:
                     pass
-                raise _Failed(k)  # 硬體解碼中途失敗（TDR、裝置遺失）：從下一格改用軟體繼續（I7）
-            raise DecodeError(f"ffmpeg 異常結束（{rc}）", self.stderr_tail)
+                raise _Failed(k)  # Hardware decoding failed mid-stream (TDR or device loss): continue in software from the next frame (I7).
+            raise DecodeError(f"ffmpeg exited unexpectedly ({rc})", self.stderr_tail)
 
     def __iter__(self) -> Iterator[tuple[float, np.ndarray, np.ndarray]]:
-        """依序嘗試：硬體（nv12）→ 硬體（p010le，僅限第一格前就失敗＝像素格式不符的 10-bit 影片）→ 軟體。
-        硬體在中途失敗時，從尚未產出的那一格起改用軟體繼續（時間格線不變）。"""
+        """Try hardware (nv12), then hardware (p010le, only if failure occurs before the first frame, indicating an unsupported
+        pixel format in a 10-bit video), then software. If hardware fails mid-stream, continue in software from the first
+        frame not yet produced, preserving the timeline grid."""
         if self.used_hwaccel:
             plans = [(True, "nv12")]
             if is_gpu_path(self.codec, True):
@@ -168,7 +169,7 @@ class FrameStream:
         try:
             for i, (hw, fmt) in enumerate(plans):
                 if fmt == "p010le" and k0 > 0:
-                    continue  # 已經解出畫格 → 不是像素格式問題，直接退回軟體
+                    continue  # Frames were already decoded, so this is not a pixel-format issue; fall back to software.
                 self._hw_format, self.used_hwaccel = fmt, hw
                 try:
                     yield from self._frames(hw, k0)
@@ -176,7 +177,7 @@ class FrameStream:
                 except _Failed as f:
                     k0 = f.k
                     if i == len(plans) - 1:
-                        raise DecodeError("ffmpeg 解碼失敗", self.stderr_tail) from None
+                        raise DecodeError("ffmpeg decoding failed", self.stderr_tail) from None
         finally:
             self.close()
 

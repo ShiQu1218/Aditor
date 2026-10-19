@@ -1,8 +1,8 @@
 import type { Project, ProjectItem } from '../editor/project'
 
 /**
- * 工作室模式：來源模式播放目前開啟的影片；專案模式依序預覽專案片段。
- * `sourceVideo` 是目前工作室來源；跨來源片段由 App 換檔並重新掛載。
+ * Studio modes: source mode plays the currently open video; project mode previews project clips in sequence.
+ * `sourceVideo` is the current studio source; App switches files and remounts when a clip uses another source.
  */
 export interface ModeState {
   mode: 'source' | 'project'
@@ -32,13 +32,13 @@ export function reduceMode(state: ModeState, action: ModeAction): ModeState {
   }
 }
 
-/** 目前專案模式下正在預覽的片段（找不到時 null）。 */
+/** Clip currently previewed in project mode (null if not found). */
 export function currentItem(state: ModeState, project: Project): ProjectItem | null {
   if (state.mode !== 'project' || !state.curItemId) return null
   return project.items.find((i) => i.id === state.curItemId) ?? null
 }
 
-/** 預覽中的片段不存在（例如被復原移除）→ 退回來源模式；其餘原樣回傳。 */
+/** If the previewed clip no longer exists (e.g. removed by undo), return to source mode; otherwise return the value unchanged. */
 export function reconcileMode(state: ModeState, project: Project): ModeState {
   if (state.mode === 'project' && !currentItem(state, project)) {
     return { ...state, mode: 'source', curItemId: null }

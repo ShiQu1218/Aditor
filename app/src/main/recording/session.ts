@@ -41,15 +41,16 @@ interface ActiveSession {
   obsEndAt?: number
   obsTimer?: ReturnType<typeof setTimeout>
   obsWork: Promise<void>
-  /** aditorrec 已回報 started（真的開始擷取） */
+  /** aditorrec has reported started (capture has actually begun). */
   captured: boolean
 }
 
-/** 停止自己的 OBS 錄影後，這段時間內 OBS 回報「錄影中」視為仍在停止 */
+/** After stopping our OBS recording, treat active status during this interval as still stopping. */
 const OBS_STOP_GRACE_MS = 30_000
 /**
- * 偵測到 Apex 程序後等這麼久才開始擷取：啟動期間遊戲正在建立視窗、切換全螢幕、載入反作弊驅動，
- * 此時對顯示卡做擷取／建立裝置最容易碰上驅動問題，而片頭本來就不需要錄。
+ * Delay capture after detecting Apex. During startup the game creates its window, switches to
+ * fullscreen, and loads its anti-cheat driver; capturing or creating devices at that point is
+ * most likely to trigger driver issues, and the intro does not need to be recorded anyway.
  */
 const GAME_START_DELAY_MS = 20_000
 
@@ -86,11 +87,11 @@ export class RecordingSessionService implements RecordingService {
   private statusTimer: ReturnType<typeof setTimeout> | null = null
   private capabilityRequests = new Set<AditorrecClient>()
   private pendingObs = new Map<string, ActiveSession>()
-  /** 上次由本 App 停止 OBS 錄影的時間（epoch ms） */
+  /** Epoch time when this app last stopped an OBS recording (ms). */
   private obsStoppedAt = 0
   private builtinFallbackPid: number | null = null
   private hookFallbackPid: number | null = null
-  /** 目前 PID 第一次被確認的時間 */
+  /** Time when the current PID was first confirmed. */
   private pidSeenAt = 0
   private startDelayTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -113,7 +114,7 @@ export class RecordingSessionService implements RecordingService {
         if (exited && this.deps.getSettings().openOnGameExit) this.deps.onGameExit?.()
         void this.serialize(async () => {
           if (!this.running) return
-          // 等候啟動或收尾期間可能已累積多次輪詢，只採用最新確認的 PID。
+          // Several polls may accumulate while starting or finalizing; use only the latest confirmed PID.
           if (this.active && this.active.pid !== this.gamePid) await this.finish()
           if (this.canAutoStart() && this.gameSettled()) await this.begin(this.gamePid!)
         })
@@ -139,7 +140,7 @@ export class RecordingSessionService implements RecordingService {
     this.cancelRetry()
     this.clearStartDelay()
     this.clearDiskTimer()
-    // 啟動中也能取消握手，不讓結束 App 等候完整的啟動逾時。
+    // Allow cancellation during startup handshakes so app shutdown does not wait for the full startup timeout.
     if (this.state.phase === 'starting') await this.active?.client.close()
     await Promise.all([...this.capabilityRequests].map((client) => client.close()))
     await this.serialize(() => this.finish())
@@ -235,7 +236,7 @@ export class RecordingSessionService implements RecordingService {
     return () => { this.events.off('live', listener) }
   }
 
-  /** 只允許目前（含收尾中、工作目錄尚未刪除）的錄影工作。 */
+  /** Allow only the current recording session, including finalization while its directory still exists. */
   private liveFor(sessionId: string): LiveSession {
     if (!this.active || this.active.id !== sessionId) throw new Error(tr('錄影工作不存在或已收尾'))
     return this.active.live
@@ -275,7 +276,7 @@ export class RecordingSessionService implements RecordingService {
             catch (error) {
               session.obsFailed = true
               this.notice('warning', tr('OBS 無法開始逐局錄影：{error}', { error: String(error) }))
-              // 重新建立擷取工作，讓內建編碼器從新的時間軸開始。
+              // Recreate the capture session so the built-in encoder starts on a new timeline.
               const fallback = this.deps.getSettings().obsFallbackBuiltin
               if (fallback) {
                 this.builtinFallbackPid = session.pid
@@ -322,7 +323,7 @@ export class RecordingSessionService implements RecordingService {
     return result
   }
 
-  /** 遊戲啟動未滿等待時間時排定一次重新檢查，回傳 false。 */
+  /** Schedule one recheck and return false when the game has not yet completed its startup delay. */
   private gameSettled(): boolean {
     const remaining = this.pidSeenAt + (this.deps.gameStartDelayMs ?? GAME_START_DELAY_MS) - Date.now()
     if (remaining <= 0) return true
@@ -394,7 +395,7 @@ export class RecordingSessionService implements RecordingService {
       })
       if (settings.backend === 'obs') {
         try {
-          // 解密錯誤與連線錯誤採相同回退規則，密碼不放入設定快照。
+          // Use the same fallback for decryption and connection errors; never include the password in the settings snapshot.
           const password = this.deps.getObsPassword?.()
           current.obs = new ObsRecording(dir, settings, password, (message) => this.notice('warning', message), this.deps.obsReconnectBaseMs)
           await current.obs.start(this.obsStoppedAt + (this.deps.obsStopGraceMs ?? OBS_STOP_GRACE_MS))
@@ -486,7 +487,7 @@ export class RecordingSessionService implements RecordingService {
           session.sequences.add(event.seq)
           session.live.addSegment({ seq: event.seq, pts: event.pts, dur: event.dur })
           this.scheduleCuts(session)
-          // 段落只更新快照，隨每五秒 stats 或階段變化推播，避免每段都送 IPC。
+          // Segments update only the snapshot; publish with five-second stats or phase changes to avoid one IPC per segment.
           this.update({ segments: session.sequences.size, durationSec: Math.max(this.state.durationSec, event.pts + event.dur) }, false)
         }
         break
@@ -514,7 +515,7 @@ export class RecordingSessionService implements RecordingService {
     }
   }
 
-  /** 獨立於錄影控制鏈，合併剪檔期間的通知；停止時等目前剪檔完成才收尾。 */
+  /** Separate from the recording control queue; coalesce notices during clipping and wait for the current clip before finalizing on stop. */
   private scheduleCuts(session: ActiveSession): void {
     if (session.backend === 'obs' || session.mode !== 'match' || session.ending) return
     session.cutPending = true
@@ -640,14 +641,14 @@ export class RecordingSessionService implements RecordingService {
     try { await session.client.stop() }
     catch (error) { this.notice('error', tr('錄影程序停止失敗，將收尾已完成段落：{error}', { error: String(error) })) }
     this.update({ phase: 'finalizing' })
-    // 等 live 引擎送出最終 snapshot 並寫入 live.json，收尾才能轉成分析快取。
+    // Wait for the live engine's final snapshot to be written to live.json before converting it into an analysis cache.
     await session.live.stop()
     try {
       await session.writes
       await session.cuts
       if (session.obs && !session.captured) {
-        // 擷取根本沒開始（例如遊戲正在關閉）：沒有可對齊的偵測結果。沿用的錄影不碰；
-        // 自己開始的錄影只停止，不把幾乎空白的 OBS 檔加入媒體庫。
+        // Capture never started (for example, the game was closing), so there are no aligned detection results.
+        // Leave reused recordings alone; stop recordings started by this app without adding an almost-empty OBS file to the library.
         if (!session.obs.meta.adopted) {
           await session.obs.stop()
           this.obsStoppedAt = Date.now()
@@ -685,7 +686,7 @@ export class RecordingSessionService implements RecordingService {
       if (paths.length) this.finalized(paths)
       return true
     } catch (error) {
-      // 即使事件寫入或剪檔失敗，也解除 OBS 連線並停止本次自行開始的錄影。
+      // Disconnect OBS and stop recordings started by this app even if event writing or clipping fails.
       try { await session.obs?.stop(); await session.obs?.close() }
       catch { this.notice('warning', tr('OBS 收尾連線未完成，請在 OBS 確認錄影狀態')) }
       this.active = null
@@ -708,7 +709,7 @@ export class RecordingSessionService implements RecordingService {
   private recordEvent(session: ActiveSession, event: RecorderEvent): void {
     session.writes = session.writes.then(() => fs.promises.appendFile(path.join(session.dir, 'events.jsonl'),
       JSON.stringify({ ...event, wall: new Date().toISOString() }) + '\n'))
-    // 立即掛上 rejection handler；finish 仍會檢查原始 promise 並保留工作目錄。
+    // Attach a rejection handler immediately; finish still checks the original promise and preserves the session directory.
     void session.writes.catch(() => {})
   }
 
@@ -739,7 +740,7 @@ export class RecordingSessionService implements RecordingService {
     this.deps.notify(kind, message)
   }
   private log(message: string): void {
-    try { this.deps.log?.(message) } catch { /* 診斷紀錄失敗不影響錄影 */ }
+    try { this.deps.log?.(message) } catch { /* A diagnostic logging failure must not affect recording. */ }
   }
   private cancelRetry(): void {
     if (this.retryTimer) clearTimeout(this.retryTimer)

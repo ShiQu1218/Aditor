@@ -22,7 +22,7 @@ interface Pending {
   cancelled: boolean
 }
 
-/** 可手動完成／取消的假引擎（取消＝以 Cancelled 拒絕，與真引擎一致） */
+/** Fake engine that can be completed/cancelled manually (cancellation rejects with Cancelled, matching the real engine). */
 function manualEngine(): { engine: EngineClient; pending: Pending[] } {
   const pending: Pending[] = []
   let n = 0
@@ -66,13 +66,13 @@ describe('AnalysisQueue real queue state', () => {
     const { engine, pending } = manualEngine()
     lib.add([V1, V2, V3])
     const q = mkQueue(engine)
-    // 匯入但未排隊（autoAnalyze=false／手動匯入）：status 是 pending，但不在佇列
+    // Imported but not queued (autoAnalyze=false/manual import): status is pending, but it is not in the queue.
     expect(q.snapshot()).toEqual({ analyzing: null, queued: [] })
 
     q.enqueue(V1)
     q.enqueue(V2)
     expect(q.snapshot()).toEqual({ analyzing: V1, queued: [V2] })
-    expect(lib.getEntries().find((e) => e.path === V3)?.status).toBe('pending') // 仍只是 pending
+    expect(lib.getEntries().find((e) => e.path === V3)?.status).toBe('pending') // Still pending.
 
     pending[0].resolve({ video: { duration: 10 }, events: [] })
     await tick(30)
@@ -92,7 +92,7 @@ describe('AnalysisQueue real queue state', () => {
     const e1 = lib.get(V1)!
     expect(e1.status).toBe('analyzing')
     expect(e1.analyzingSince).toBeGreaterThanOrEqual(before)
-    expect(lib.get(V2)?.analyzingSince).toBeUndefined() // 排隊中尚未開始
+    expect(lib.get(V2)?.analyzingSince).toBeUndefined() // Queued and not started yet.
 
     pending[0].onProgress?.({ t: 25, duration: 100 })
     expect(q.payload()).toEqual({
@@ -125,7 +125,7 @@ describe('AnalysisQueue real queue state', () => {
     q.enqueue(V1)
     q.enqueue(V2)
     q.cancel(V1)
-    // 立刻可見：V1 不在佇列、閒置；V2 等引擎真的停下才開始
+    // Visible immediately: V1 is idle and removed from the queue; V2 starts only after the engine actually stops.
     expect(q.snapshot().analyzing).toBeNull()
     expect(q.snapshot().queued).toEqual([V2])
     await tick(30)
@@ -195,7 +195,7 @@ describe('AnalysisQueue + cache clip preservation (Fix F)', () => {
     ...over
   })
 
-  /** 模擬引擎：寫入新快取（只留手動片段）並回傳該文件 */
+  /** Simulate the engine writing a new cache (manual clips only) and returning the document. */
   const engineWriting = (make: (videoPath: string) => Record<string, unknown>): EngineClient =>
     ({
       request: (_cmd: string, args: { path: string }) => ({
@@ -224,7 +224,7 @@ describe('AnalysisQueue + cache clip preservation (Fix F)', () => {
       }) as { cache_path: string }
     )
     lib.add([V1])
-    // 引擎重新分析（影片 mtime 變了）：文件只剩手動片段
+    // The engine reanalyzes after the video mtime changes; only manual clips remain in the document.
     const engine = engineWriting((p) =>
       baseDoc(p, {
         video: { path: p, size: 100, mtime: 2, duration: 100, width: 1920, height: 1080, codec: 'h264', start_time: 0 },

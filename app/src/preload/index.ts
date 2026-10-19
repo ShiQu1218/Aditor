@@ -42,7 +42,7 @@ const api = {
   library: {
     getEntries: () => ipcRenderer.invoke('library:getEntries'),
     add: (paths: string[]) => ipcRenderer.invoke('library:add', paths),
-    /** File.path 已移除；在 preload 解析拖入檔案的本機路徑，再沿用匯入流程。 */
+    /** File.path was removed; preload resolves the local path of a dropped file, then uses the existing import flow. */
     addDroppedFiles: (files: File[]) => {
       const paths = files.map((file) => webUtils.getPathForFile(file)).filter(Boolean)
       return paths.length > 0 ? ipcRenderer.invoke('library:add', paths) : Promise.resolve([])
@@ -55,7 +55,7 @@ const api = {
     addWatchFolder: () => ipcRenderer.invoke('library:addWatchFolder'),
     removeWatchFolder: (dir: string) => ipcRenderer.invoke('library:removeWatchFolder', dir),
     fileExists: (path: string) => ipcRenderer.invoke('library:fileExists', path),
-    /** 影片庫檔案損毀時的備份路徑（否則 null） */
+    /** Backup path when the library file is corrupt (null otherwise). */
     getLoadNotice: () => ipcRenderer.invoke('library:getLoadNotice'),
     computeHl: (path: string) => ipcRenderer.invoke('library:computeHl', path),
     onUpdated: (callback: (payload?: unknown) => void) => {
@@ -69,13 +69,13 @@ const api = {
   queue: {
     enqueue: (path: string) => ipcRenderer.invoke('queue:enqueue', path),
     cancel: (path: string) => ipcRenderer.invoke('queue:cancel', path),
-    /** 佇列的真實狀態（正在分析／排隊／進度／開始時間） */
+    /** Actual queue state (analyzing/queued/progress/start time). */
     getState: () => ipcRenderer.invoke('queue:getState')
   },
   cache: {
     loadByVideo: (videoPath: string) => ipcRenderer.invoke('cache:loadByVideo', videoPath),
     save: (doc: unknown) => ipcRenderer.invoke('cache:save', doc),
-    /** 離開工作室／關閉視窗時用：阻塞到 main 已把快取寫入磁碟 */
+    /** Used when leaving Studio/closing the window: blocks until main writes the cache to disk. */
     saveSync: (doc: unknown): boolean => ipcRenderer.sendSync('cache:saveSync', doc) === true
   },
   proxy: {
@@ -89,19 +89,19 @@ const api = {
       }
     },
     delete: (videoPath: string) => ipcRenderer.invoke('proxy:delete', videoPath),
-    /** 傳入影片路徑清單，回傳其代理檔數量與總位元組（設定頁顯示佔用空間） */
+    /** Pass a list of video paths and return proxy count and total bytes (used to show disk usage in Settings). */
     usage: (videoPaths: string[]) => ipcRenderer.invoke('proxy:usage', videoPaths)
   },
   projects: {
     save: (project: unknown) => ipcRenderer.invoke('projects:save', project),
     load: (id: string) => ipcRenderer.invoke('projects:load', id),
     list: () => ipcRenderer.invoke('projects:list'),
-    /** 最近一次專案讀寫錯誤（kind: save/corrupt/transient/unsupported）；沒有則 null */
+    /** Most recent project read/write error (kind: save/corrupt/transient/unsupported); null when none. */
     lastError: () => ipcRenderer.invoke('projects:lastError'),
     remove: (id: string) => ipcRenderer.invoke('projects:remove', id),
-    /** 關閉視窗時用：阻塞到 main 已把專案寫入磁碟（同時記下 lastProjectId）。 */
+    /** Used when closing the window: block until main writes the project to disk (and records lastProjectId). */
     flushSync: (project: unknown): boolean => ipcRenderer.sendSync('projects:flushSync', project) === true,
-    /** main 在關閉視窗前要求立即 flush。 */
+    /** Main requests an immediate flush before closing the window. */
     onFlushRequest: (callback: () => void) => {
       const handler = () => callback()
       ipcRenderer.on('projects:flushRequest', handler)
@@ -109,13 +109,13 @@ const api = {
         ipcRenderer.removeListener('projects:flushRequest', handler)
       }
     },
-    /** 通知 main：flush 完成，可以關閉視窗。 */
+    /** Notify main that flush is complete and the window can close. */
     flushDone: (ok = true) => ipcRenderer.send('projects:flushDone', ok)
   },
   app: {
-    /** 開啟隨安裝包附帶的第三方授權清單 */
+    /** Open the third-party notices bundled with the installer. */
     openLicenses: () => ipcRenderer.invoke('app:openLicenses'),
-    /** main 把視窗縮到系統匣或最小化時通知 */
+    /** Notified when main minimizes the window to the tray or taskbar. */
     onWindowHidden: (callback: () => void) => {
       const handler = () => callback()
       ipcRenderer.on('app:windowHidden', handler)
@@ -127,9 +127,9 @@ const api = {
   update: {
     getStatus: (): Promise<UpdateStatus> => ipcRenderer.invoke(UPDATE_CHANNELS.getStatus),
     check: (): Promise<UpdateStatus> => ipcRenderer.invoke(UPDATE_CHANNELS.check),
-    /** 已下載新版時立即結束並安裝 */
+    /** Quit and install immediately when an update has downloaded. */
     install: (): Promise<boolean> => ipcRenderer.invoke(UPDATE_CHANNELS.install),
-    /** 用瀏覽器開啟 GitHub Releases（免安裝版手動下載） */
+    /** Open GitHub Releases in a browser (manual download for portable builds). */
     openReleases: (): Promise<boolean> => ipcRenderer.invoke(UPDATE_CHANNELS.openReleases),
     onStatus: (callback: (status: UpdateStatus) => void): (() => void) => {
       const handler = (_: unknown, status: UpdateStatus) => callback(status)
@@ -140,7 +140,7 @@ const api = {
   settings: {
     get: () => ipcRenderer.invoke('settings:get'),
     set: (partial: unknown) => ipcRenderer.invoke('settings:set', partial),
-    /** 建議的儲存根資料夾（首次啟動引導與設定畫面顯示用） */
+    /** Suggested storage root (shown in first-run setup and Settings). */
     suggestStorageRoot: (): Promise<string> => ipcRenderer.invoke('settings:suggestStorageRoot'),
     onChanged: (callback: (settings: unknown) => void) => {
       const handler = (_: unknown, data: unknown) => callback(data)
@@ -157,10 +157,10 @@ const api = {
     openh264Status: () => ipcRenderer.invoke('export:openh264Status'),
     downloadOpenH264: () => ipcRenderer.invoke('export:downloadOpenH264'),
     start: (opts: unknown) => ipcRenderer.invoke('export:start', opts),
-    /** 中止進行中的匯出（ffmpeg 與子程序一併終止、刪除未完成的輸出） */
+    /** Cancel an active export (terminate ffmpeg and descendants and remove incomplete output). */
     cancel: () => ipcRenderer.invoke('export:cancel'),
     diskSpace: (dir: string) => ipcRenderer.invoke('export:diskSpace', dir),
-    /** 開始前檢查輸出資料夾（存在、是資料夾、可寫入）；回傳 { ok } 或 { ok:false, reason } */
+    /** Check the output directory before starting (exists, is a directory, and is writable); returns { ok } or { ok:false, reason }. */
     checkOutDir: (dir: string) => ipcRenderer.invoke('export:checkOutDir', dir),
     onProgress: (callback: (data: unknown) => void) => {
       const handler = (_: unknown, data: unknown) => callback(data)
@@ -169,7 +169,7 @@ const api = {
         ipcRenderer.removeListener('export:progress', handler)
       }
     },
-    /** OpenH264 下載進度（0–1） */
+    /** OpenH264 download progress (0–1). */
     onOpenH264Progress: (callback: (ratio: number) => void) => {
       const handler = (_: unknown, ratio: number) => callback(ratio)
       ipcRenderer.on('export:openh264Progress', handler)

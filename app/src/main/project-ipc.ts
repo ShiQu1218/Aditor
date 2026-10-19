@@ -1,16 +1,16 @@
 import { ProjectStore, StoredProject } from './projects'
 import type { SettingsStore } from './settings'
 
-/** ipcMain 的最小子集（方便測試注入）。 */
+/** Minimal ipcMain subset (for dependency injection in tests). */
 export interface IpcLike {
   handle(channel: string, fn: (event: any, ...args: any[]) => unknown): void
   on(channel: string, fn: (event: any, ...args: any[]) => void): void
 }
 
 /**
- * 專案 IPC：`projects:save`（async）與 `projects:flushSync`（關閉視窗時 renderer 以 sendSync 呼叫，
- * 回傳前已寫入磁碟）。兩者都在**同一次呼叫內**把 `lastProjectId` 記進設定，
- * 所以關閉前最後一次寫入也能在下次啟動還原。
+ * Project IPC: `projects:save` (async) and `projects:flushSync` (called by the renderer with sendSync when closing a window,
+ * and writes to disk before returning). Both update `lastProjectId` in settings in the same call,
+ * so the most recent save before closing can be restored at the next startup.
  */
 export function registerProjectHandlers(
   ipc: IpcLike,
@@ -46,7 +46,7 @@ export function registerProjectHandlers(
   ipc.on('projects:flushDone', (_event, ok?: boolean) => onFlushDone?.(ok !== false))
 
   ipc.handle('projects:load', async (_e, id: string) => store.load(id))
-  // 啟動還原遇到損毀／過新版本時，renderer 用它顯示 notice（I12）
+  // Used by the renderer to show a notice when startup restore finds a corrupt or newer-version project (I12).
   ipc.handle('projects:lastError', async () =>
     store.lastErrorKind && store.lastError ? { kind: store.lastErrorKind, message: store.lastError } : null
   )
@@ -58,22 +58,22 @@ export function registerProjectHandlers(
 }
 
 export interface CloseGateOptions {
-  /** 請 renderer 立刻 flush（送 `projects:flushRequest`）。 */
+  /** Ask the renderer to flush immediately (send `projects:flushRequest`). */
   request: () => void
-  /** 真正關閉視窗。 */
+  /** Actually close the window. */
   close: () => void
-  /** renderer 沒回應時最多等多久（ms）。 */
+  /** Maximum wait (ms) when the renderer does not respond. */
   timeoutMs: number
-  /** renderer 已毀損／崩潰時直接放行。 */
+  /** Allow the close immediately if the renderer is destroyed/crashed. */
   rendererAlive?: () => boolean
-  /** App 是否正在結束：延後關窗會取消 Electron 的 quit，完成 flush 後必須繼續結束。 */
+  /** Whether the app is quitting: deferring close cancels Electron quit, so continue quitting after flush completes. */
   isQuitting?: () => boolean
   quit?: () => void
 }
 
 /**
- * 視窗 `close` 事件的握手：第一次 close 先擋下並要求 renderer flush，
- * 收到 ack（`projects:flushDone`）或逾時才真正關閉；關閉觸發的第二次 close 放行。
+ * Handshake for the window `close` event: prevent the first close and ask the renderer to flush;
+ * close after receiving an ack (`projects:flushDone`) or timing out; allow the second close triggered by the actual close.
  */
 export function createCloseGate(opts: CloseGateOptions): {
   onClose: (e: { preventDefault(): void }) => void

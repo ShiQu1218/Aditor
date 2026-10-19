@@ -1,5 +1,5 @@
 param([string]$FFmpegDir = $env:ADITORREC_FFMPEG_DIR)
-# 重建需求：cargo install bindgen-cli --version 0.73.2 --locked，及 LLVM libclang。
+# Regeneration requirements: cargo install bindgen-cli --version 0.73.2 --locked and LLVM libclang.
 $ErrorActionPreference = 'Stop'
 if (-not $FFmpegDir) { $FFmpegDir = Join-Path $PSScriptRoot '../../build/ffmpeg' }
 $env:LIBCLANG_PATH = 'C:/Program Files/LLVM/bin'
@@ -24,9 +24,9 @@ try {
         --no-layout-tests --no-doc-comments --no-prepend-enum-name `
         --raw-line '#![allow(non_camel_case_types, non_snake_case, non_upper_case_globals, dead_code, clippy::all)]' `
         -- -I "$FFmpegDir/include"
-    if ($LASTEXITCODE -ne 0) { throw 'bindgen 產生失敗' }
+    if ($LASTEXITCODE -ne 0) { throw 'bindgen generation failed' }
     & rustfmt --edition 2021 (Join-Path $PSScriptRoot '../src/encode/ffi.rs')
-    if ($LASTEXITCODE -ne 0) { throw 'FFmpeg 綁定格式化失敗' }
+    if ($LASTEXITCODE -ne 0) { throw 'FFmpeg binding formatting failed' }
 } finally {
     Remove-Item -LiteralPath $header -ErrorAction SilentlyContinue
 }

@@ -19,7 +19,7 @@ def test_perfect_match():
 
 def test_constant_offset_estimated_and_removed():
     pred = [(t + 0.8, k) for t, k in TRUTH]
-    rep = evaluate(TRUTH, pred, 0.5)  # 容許誤差 < 偏移：不扣除偏移就會全部落空
+    rep = evaluate(TRUTH, pred, 0.5)  # Tolerance is smaller than the offset; without correction, every match would be missed.
     st = rep.types["knock"]
     assert rep.offset == pytest.approx(0.8)
     assert st.recall == 1.0 and st.precision == 1.0
@@ -73,7 +73,7 @@ def test_outplayed_truth_events_and_skip_empty(tmp_path):
 
 
 def test_large_systematic_offset_is_not_compensated():
-    """M8：偏移超過上限就不扣除，直接反映成漏抓／誤抓，並保留原始偏移供報告。"""
+    """M8: do not correct offsets above the limit; count them directly as misses/false positives and retain the raw offset for the report."""
     truth = [(10.0, "knock"), (30.0, "knock"), (50.0, "knock")]
     pred = [(t + 4.0, k) for t, k in truth]
     rep = evaluate(truth, pred, 1.5)

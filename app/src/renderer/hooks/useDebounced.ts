@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 
 /**
- * 去抖值控制器（與 React 解耦，方便單元測試）：
- * `update(v)` 重設計時器，停止變動 delayMs 後以最後一個值呼叫 emit；
- * `flush()` 立即發出待發值（無待發值時不動作）；`dispose()` 取消計時器。
+ * Debounced value controller, decoupled from React for unit testing:
+ * `update(v)` resets the timer and calls emit with the latest value after delayMs without changes.
+ * `flush()` emits the pending value immediately (does nothing when none is pending); `dispose()` cancels the timer.
  */
 export class DebouncedEmitter<T> {
   private delayMs: number
@@ -51,8 +51,8 @@ export class DebouncedEmitter<T> {
 }
 
 /**
- * 回傳 `value` 停止變動 `delayMs` 後的值（首次掛載直接回傳初始值、不觸發去抖）。
- * 供 AI 浮層「預計產生 N 段」等即時預覽使用。
+ * Return `value` after it has stopped changing for delayMs (on first mount, return the initial value without debouncing).
+ * Used for live previews such as the AI popover's “estimated N clips.”
  */
 export function useDebounced<T>(value: T, delayMs: number): T {
   const [debounced, setDebounced] = useState(value)

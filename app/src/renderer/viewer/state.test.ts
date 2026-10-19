@@ -110,7 +110,7 @@ describe('viewerReducer', () => {
       dirty: true
     }
 
-    // 保留舊版快取的刪除／覆寫；重新分析仍保留這些既有資料。
+  // Preserve deletions/overrides from older caches; reanalysis must retain this existing data.
     initialState.doc.events[0].deleted = true
     initialState.doc.events[1].counted_override = false
     const state = viewerReducer(initialState, { type: 'addManualEvent', t: 50, eventType: 'elim' })
@@ -189,7 +189,7 @@ describe('viewerReducer', () => {
     })
   })
 
-  describe('clip status guards、重新分析合併與載入', () => {
+describe('Clip status guards, reanalysis merge, and loading', () => {
     const base = (clips: Clip[] = []): ViewerState => ({
       doc: makeTestDoc(),
       filter: new Set(),
@@ -233,7 +233,7 @@ describe('viewerReducer', () => {
       ])
       const fresh = makeTestDoc()
       fresh.clips = [
-        { id: 'n1', start: 10.5, end: 20, origin: 'ai', event_ids: ['ne1'] }, // 與 a1 相差 <1s → 不重複
+        { id: 'n1', start: 10.5, end: 20, origin: 'ai', event_ids: ['ne1'] }, // Less than 1 s from a1, so do not duplicate.
         { id: 'n2', start: 90, end: 100, origin: 'ai', event_ids: ['ne2'] }
       ]
 

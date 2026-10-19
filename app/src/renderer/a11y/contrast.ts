@@ -1,4 +1,4 @@
-// WCAG 2.x 對比計算與 CSS 變數解析（測試與設計規則檢查用；不進 runtime 路徑）。
+// WCAG 2.x contrast calculation and CSS variable parsing (for tests and design checks; not used at runtime).
 
 export interface Rgba {
   r: number
@@ -7,7 +7,7 @@ export interface Rgba {
   a: number
 }
 
-/** 解析 `#rgb`／`#rrggbb`／`rgb()`／`rgba()`。 */
+/** Parse `#rgb`, `#rrggbb`, `rgb()`, and `rgba()`. */
 export function parseColor(input: string): Rgba {
   const s = input.trim().toLowerCase()
   let m = /^#([0-9a-f]{3})$/.exec(s)
@@ -27,7 +27,7 @@ export function parseColor(input: string): Rgba {
 
 const hex2 = (n: number): string => Math.round(Math.max(0, Math.min(255, n))).toString(16).padStart(2, '0')
 
-/** 把前景以 alpha 疊在不透明背景上，回傳 `#rrggbb`。 */
+/** Composite the foreground with alpha over an opaque background and return `#rrggbb`. */
 export function composite(fg: string, alpha: number, bg: string): string {
   const f = parseColor(fg)
   const b = parseColor(bg)
@@ -43,7 +43,7 @@ function luminance(c: Rgba): number {
   return 0.2126 * lin(c.r) + 0.7152 * lin(c.g) + 0.0722 * lin(c.b)
 }
 
-/** WCAG 對比值；fg 若半透明須先用 composite 疊到 bg 上。 */
+/** Calculate the WCAG contrast ratio; composite a translucent fg over bg first. */
 export function contrast(fg: string, bg: string): number {
   const l1 = luminance(parseColor(fg))
   const l2 = luminance(parseColor(bg))
@@ -51,7 +51,7 @@ export function contrast(fg: string, bg: string): number {
   return (hi + 0.05) / (lo + 0.05)
 }
 
-/** 取出 CSS 中所有 `--name: value;` 宣告（忽略註解；同名後者覆蓋前者）。 */
+/** Extract all `--name: value;` declarations from CSS (ignore comments; later declarations replace earlier ones). */
 export function parseCssVars(css: string): Record<string, string> {
   const out: Record<string, string> = {}
   const clean = css.replace(/\/\*[\s\S]*?\*\//g, '')

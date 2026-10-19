@@ -1,5 +1,5 @@
 ﻿# scripts/build.ps1
-# 建置引擎、LGPL FFmpeg、OBS hook、Rust 錄影器與 Electron 安裝檔。
+# Build the engine, LGPL FFmpeg, OBS hook, Rust recorder, and Electron installer.
 param(
     [switch]$SkipEngine,
     [switch]$SkipFfmpeg,
@@ -74,7 +74,7 @@ if (-not $SkipObsHook) {
     Write-Host "`n[3/6] Skipping OBS hook fetch."
 }
 
-# 4. 建置錄影器並與 FFmpeg DLL 放在同一層。
+# 4. Build the recorder and place it beside the FFmpeg DLLs.
 Write-Host "`n[4/6] Building Rust recorder..."
 $previousFfmpegDir = $env:ADITORREC_FFMPEG_DIR
 try {

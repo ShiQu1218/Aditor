@@ -42,7 +42,7 @@ afterEach(() => {
     if (savedEnv[k] === undefined) delete process.env[k]
     else process.env[k] = savedEnv[k]
   }
-  // 保險：殺掉測試殘留的孫程序
+  // Safety net: kill any grandchild process left by the test.
   for (const f of fs.readdirSync(pidDir)) {
     try {
       const { ffmpeg: a, grandchild: b } = JSON.parse(fs.readFileSync(path.join(pidDir, f), 'utf-8'))
@@ -92,7 +92,7 @@ async function readPids(name: string, timeoutMs = 5000): Promise<{ ffmpeg: numbe
 }
 const outFiles = () => fs.readdirSync(outDir).sort()
 
-describe('runExport 取消', () => {
+describe('runExport cancellation', () => {
   it('cancel terminates ffmpeg and its child within 2s', async () => {
     process.env.FAKE_FFMPEG_SLEEP_MS = '60000'
     process.env.FAKE_FFMPEG_GRANDCHILD = '1'
@@ -106,7 +106,7 @@ describe('runExport 取消', () => {
     ac.abort()
     const res = await p
     expect(res).toMatchObject({ ok: false, cancelled: true, outputs: [] })
-    // 以真實 PID 驗證：ffmpeg 與孫程序都已不存在
+    // Verify using real PIDs that ffmpeg and its grandchild no longer exist.
     const deadline = t0 + 2000
     while ((alive(pids.ffmpeg) || alive(pids.grandchild!)) && Date.now() < deadline) await sleep(25)
     expect(alive(pids.ffmpeg)).toBe(false)
@@ -120,7 +120,7 @@ describe('runExport 取消', () => {
     const ac = new AbortController()
     const p = runExport(baseOpts([job('b_1.mp4'), job('b_2.mp4'), job('b_3.mp4')]), { signal: ac.signal })
     await readPids('b_2.mp4')
-    // 第 2 個 job 進行中：.partial 檔存在，第 1 個已完成
+    // Job 2 is running: its .partial file exists, and job 1 is complete.
     expect(outFiles()).toEqual(['b_1.mp4', 'b_2.partial.mp4'])
     ac.abort()
     const res = await p
@@ -136,7 +136,7 @@ describe('runExport 取消', () => {
     expect(res).toMatchObject({ ok: false, cancelled: true, outputs: [] })
     expect(outFiles()).toEqual([])
     expect(fs.readdirSync(tempDir)).toEqual([])
-    expect(fs.readdirSync(pidDir)).toEqual([]) // 從未啟動 ffmpeg
+    expect(fs.readdirSync(pidDir)).toEqual([]) // FFmpeg was never started.
   })
 
   it('cancel after completion is a no-op', async () => {
@@ -170,7 +170,7 @@ describe('runExport 取消', () => {
     if (res.ok || res.cancelled) throw new Error('expected failure')
     expect(res.error).toContain('exit code 3')
     expect(res.error).toContain('TAIL_MARKER')
-    // 只保留最後 4 KB 的 stderr
+    // Keep only the last 4 KB of stderr.
     expect(res.error.length).toBeLessThan(4096 + 200)
     expect(outFiles()).toEqual([])
   })
@@ -228,7 +228,7 @@ describe('killTree', () => {
       return ee
     }) as never
     await killTree(fakeChild as never, { platform: 'win32', spawnImpl })
-    // argv 陣列（不經 shell 字串）
+    // argv array (not a shell command string).
     expect(calls[0]).toBe('spawn:taskkill /pid 4242 /T /F')
     expect(calls).toContain('kill:SIGKILL')
   })

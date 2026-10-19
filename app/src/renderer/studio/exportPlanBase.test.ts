@@ -26,7 +26,7 @@ describe('buildPlanBase', () => {
         return { codec: 'hevc', width: 1280, height: 720, duration: 1 }
       }
     )
-    expect(probed).toEqual(['D:/b.mp4']) // a 用快取；b 只探測一次；缺失的 c 不探測
+    expect(probed).toEqual(['D:/b.mp4']) // Use cache for a; probe b once; do not probe missing source c.
     expect(base.sources['D:/a.mp4']).toEqual({ codec: 'h264', width: 1920, height: 1080 })
     expect(base.sources['D:/b.mp4']).toEqual({ codec: 'hevc', width: 1280, height: 720 })
     expect(base.sources['D:/c.mp4']).toBeUndefined()

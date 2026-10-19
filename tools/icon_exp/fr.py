@@ -1,11 +1,11 @@
-"""共用：讀取 dump 的橫幅畫格、拼圖檢視。"""
+"""Shared helpers for reading dumped banner frames and building contact sheets."""
 import json, sys
 from pathlib import Path
 import numpy as np
 import cv2
 
 import os
-# 工作資料夾（畫格 dump、特徵、接觸表；動輒數 GB，不可放在 repo 內）：環境變數 ICON_EXP_DIR，預設為本檔所在資料夾
+# Working directory for frame dumps, features, and contact sheets (can be several GB; keep it outside the repo): ICON_EXP_DIR environment variable, defaults to this file's directory.
 SP = Path(os.environ.get("ICON_EXP_DIR", Path(__file__).resolve().parent))
 TOOLS = Path(__file__).resolve().parent
 FR = SP / "frames"
@@ -24,7 +24,7 @@ def idx(t):
 
 
 def sheet(imgs, labels, out, cols=2, scale=1.0, rows=(30, 150)):
-    """把多張橫幅（裁 rows 列）拼成一張圖，左上角標字。"""
+    """Combine multiple banners (cropping to rows) into one image and label each in the upper-left corner."""
     tiles = []
     for im, lb in zip(imgs, labels):
         im = np.ascontiguousarray(im[rows[0]:rows[1]])

@@ -1,11 +1,11 @@
-// 影片庫日期分組：依 addedAt 的「本地日期」分組，新到舊；組內亦新到舊。
+// Group library items by the local date of addedAt, newest first; items within each group are also newest first.
 import type { LibraryEntry } from '../../main/library'
 import { i18n } from '../i18n'
 
 export interface DateGroup {
-  /** 本地日期 key，例如 2026-10-16 */
+/** Local date key, e.g. 2026-10-16. */
   key: string
-  /** 今天／昨天／2026 年 10 月 13 日 */
+/** Today, yesterday, or a formatted date such as October 13, 2026. */
   label: string
   entries: LibraryEntry[]
 }
@@ -43,6 +43,6 @@ export function groupByDate(entries: LibraryEntry[], now: number = Date.now()): 
     }
     group.entries.push(entry)
   }
-  // Map 依照插入順序（已依 addedAt 新到舊），即群組新到舊
+  // Map preserves insertion order (already sorted by addedAt newest-first), so groups are newest-first too.
   return [...groups.values()]
 }

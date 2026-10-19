@@ -149,7 +149,7 @@ export function trimItem(
 
 export type ProjectShapeError = { kind: 'unsupported' | 'format'; message: string }
 
-/** 檢查任意資料是否為合法專案（版本、name、items 逐項形狀）；合法回 null。 */
+/** Validate arbitrary data as a project (version, name, and each item shape); return null when valid. */
 export function projectShapeError(data: unknown): ProjectShapeError | null {
   if (!data || typeof data !== 'object' || Array.isArray(data)) return { kind: 'format', message: tr('不是專案物件') }
   const d = data as Record<string, unknown>

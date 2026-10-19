@@ -1,5 +1,5 @@
-// 儲存位置（storageRoot）的建立與建議值：純檔案系統邏輯，不依賴 Electron，方便單元測試。
-// 結構見 shared/storage.ts：<根>/Recordings、<根>/Exports/Merged、<根>/Exports/Clips。
+// Storage-root creation and suggested values: pure filesystem logic with no Electron dependency, so it can be unit tested.
+// Structure is defined in shared/storage.ts: <root>/Recordings, <root>/Exports/Merged, <root>/Exports/Clips.
 import fs from 'fs'
 import path from 'path'
 import {
@@ -17,8 +17,8 @@ export interface PreparedStorageRoot {
 }
 
 /**
- * 驗證並建立儲存位置：必須是本機絕對路徑；建立根與全部子資料夾，並以暫存檔確認可寫入。
- * 失敗時丟出可直接顯示在設定列的錯誤訊息。
+ * Validate and create a storage location: it must be a local absolute path; create the root and all subdirectories, then verify writability with a temporary file.
+ * Throw an error that can be displayed directly in the Settings row on failure.
  */
 export function prepareStorageRoot(input: unknown, fsApi: typeof fs = fs): PreparedStorageRoot {
   if (!isSafeLocalDirPath(input)) {
@@ -55,7 +55,7 @@ export interface StorageRootSuggestInput {
   videosDir: string
 }
 
-/** 建議的儲存根資料夾：沿用既有 Recordings／Exports 的上一層，否則 影片資料夾\Aditor。 */
+/** Suggested storage root: reuse the parent of existing Recordings/Exports folders; otherwise use Videos\Aditor. */
 export function suggestStorageRoot({ recordingOutputDir, defaultOutDir, videosDir }: StorageRootSuggestInput): string {
   if (recordingOutputDir && sameName(path.basename(recordingOutputDir), RECORDINGS_DIRNAME)) {
     return path.dirname(recordingOutputDir)

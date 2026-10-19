@@ -12,7 +12,7 @@ const OPENH264_HOST = 'ciscobinary.openh264.org'
 const OPENH264_FILE = 'openh264-2.3.1-win64.dll.bz2'
 const OPENH264_DLL = 'openh264-2.3.1-win64.dll'
 
-/** 官方 2.3.1 win64 壓縮檔的大小與 SHA-256（2026-10-16 自官方網址下載計算並釘住；內容變動即拒絕）。 */
+/** Pinned size and SHA-256 for the official 2.3.1 win64 archive (downloaded from the official URL and verified on 2026-10-16; reject any content change). */
 export const OPENH264_BZ2_SIZE = 448806
 export const OPENH264_BZ2_SHA256 = '3d5bc8ce7a57f956f445f9aa98015d49c59623d89d78a9139ed8728ed853e197'
 
@@ -20,7 +20,7 @@ export function openh264Url(): string {
   return `https://${OPENH264_HOST}/${OPENH264_FILE}`
 }
 
-/** 只允許 https、主機完全等於 Cisco 官方網址、預設埠、無帳密、路徑為已知檔名。 */
+/** Allow only https, the exact official Cisco host, the default port, no credentials, and a known filename path. */
 export function isAllowedOpenH264Url(raw: string): boolean {
   let u: URL
   try {
@@ -52,7 +52,7 @@ export interface FetchedStream {
   contentLength: number
 }
 
-/** 不跟隨轉址：官方網址直接回 200；任何轉址（可能轉到非白名單主機）一律視為失敗。 */
+/** Do not follow redirects: the official URL returns 200 directly; reject every redirect (which could point to a non-allowlisted host). */
 function httpsFetch(url: string): Promise<FetchedStream> {
   return new Promise((resolve, reject) => {
     const req = https.get(url, (res) => {
@@ -69,7 +69,7 @@ function httpsFetch(url: string): Promise<FetchedStream> {
 
 export interface DownloadOptions {
   onProgress?: (ratio: number) => void
-  /** 測試用覆寫 */
+  /** Test override. */
   url?: string
   dir?: string
   fetchStream?: (url: string) => Promise<FetchedStream>
@@ -77,7 +77,7 @@ export interface DownloadOptions {
   expected?: { size: number; sha256: string }
 }
 
-/** 下載官方 OpenH264：白名單網址 → 串流寫入暫存檔 → 驗證大小與 SHA-256 → 解壓縮；失敗一律清掉半成品。 */
+/** Download official OpenH264: allowlisted URL → stream to a temporary file → verify size and SHA-256 → decompress; remove partial files on failure. */
 export async function downloadOpenH264(opts: DownloadOptions = {}): Promise<string> {
   const url = opts.url ?? openh264Url()
   if (!isAllowedOpenH264Url(url)) throw new Error(tr('OpenH264 下載網址不在允許清單內'))

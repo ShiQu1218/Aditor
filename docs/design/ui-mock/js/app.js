@@ -1,4 +1,4 @@
-/* Aditor UI mock — 純前端示意（無建置步驟） */
+/* Aditor UI mock — Frontend-only mock (no build step) */
 (function () {
   const $ = (s, r = document) => r.querySelector(s);
   const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
@@ -23,7 +23,7 @@
     });
   }
 
-  /* ---------------- 狀態 ---------------- */
+  /* ---------------- State ---------------- */
   const S = {
     screen: 'library', libFilter: 'all', libEmpty: false,
     t: 50, playing: false, speed: 1, mode: 'source', tab: 'hl', zone: null,
@@ -38,7 +38,7 @@
   };
   const visibleEvents = () => (S.studio === 'error' ? [] : S.events);
 
-  /* ---------------- 自動剪輯（對應 spec §5.4，僅供示意） ---------------- */
+  /* ---------------- Auto clips (spec §5.4, demonstration only) ---------------- */
   function autoclip(events, p, dur) {
     const ev = events.filter(isC).sort((a, b) => a.t - b.t);
     const groups = [];
@@ -74,7 +74,7 @@
     S.clips.sort((a, b) => a.start - b.start);
   }
 
-  /* ---------------- 路由 ---------------- */
+  /* ---------------- Routing ---------------- */
   function go(name) {
     S.screen = name;
     $$('.screen').forEach((s) => s.classList.toggle('active', s.id === 's-' + name));
@@ -93,7 +93,7 @@
     setTimeout(() => el.remove(), action ? 6000 : 3800);
   }
 
-  /* ---------------- 影片庫 ---------------- */
+  /* ---------------- Library ---------------- */
   function libMatch(v) {
     const q = $('#lib-search').value.trim().toLowerCase();
     if (q && !v.name.toLowerCase().includes(q)) return false;
@@ -161,7 +161,7 @@
     go('studio'); applyStudioState();
   }
 
-  /* ---------------- 工作室 ---------------- */
+  /* ---------------- Studio ---------------- */
   function loadDataset() {
     if (S.studio === 'long') { const g = genLong(); VIDEO = g.video; SPECTATING = g.spec; S.events = g.events; }
     else { VIDEO = V0; SPECTATING = SP0; S.events = JSON.parse(JSON.stringify(E0)); }
@@ -314,7 +314,7 @@
     renderStudio();
   }
 
-  /* ---- 專案軌 ---- */
+  /* ---- Project track ---- */
   const plen = (p) => p.end - p.start;
   let hist = [], redoS = [];
   function markSaved() { const el = $('#saved'); if (!el) return; el.innerHTML = '<i style="background:var(--warning)"></i>儲存中…'; setTimeout(() => (el.innerHTML = '<i></i>已自動儲存'), 700); }
@@ -357,7 +357,7 @@
     $('#add-slot').onclick = () => { const c = S.clips.find((x) => x.status === 'suggested'); if (c) hlAction('accept', c.id); else toast('沒有待加入的片段'); };
   }
 
-  /* ---- 播放 ---- */
+  /* ---- Playback ---- */
   let timer = null;
   function play(on) {
     S.playing = on === undefined ? !S.playing : on;
@@ -412,9 +412,9 @@
     ph.style.opacity = x < 0 || x > W ? 0 : 1;
   }
 
-  /* ---- 時間軸 canvas：依像素密度切換「密度檢視」與「圖示檢視」 ---- */
-  const MIN_PX_PER_EVENT = 8; // 平均每事件 < 8px → 只畫熱度條＋刻度＋建議框
-  const CLUSTER_PX = 22; // 圖示間距 < 22px → 合併為群集徽章
+  /* ---- Timeline canvas: switch between density and icon views based on pixel density ---- */
+  const MIN_PX_PER_EVENT = 8; // Average width per event < 8px → draw only heatmap, ticks, and suggestion outlines
+  const CLUSTER_PX = 22; // Icon spacing < 22px → merge into cluster badges
   function shapePath(g, type, x, y, R) {
     g.beginPath();
     if (type === 'elim') g.roundRect(x - R + 1, y - R + 1, 2 * R - 2, 2 * R - 2, 4);
@@ -448,7 +448,7 @@
     const v = S.view, D = VIDEO.duration;
     const BOT = H - 6, TOP = 40;
     g.font = '11px Lato, "Microsoft JhengHei UI", sans-serif'; g.textBaseline = 'top';
-    // 尺標
+    // Ruler
     const steps = [1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 900, 1800];
     const step = steps.find((s) => v.span / s <= W / 80) || 1800;
     g.fillStyle = '#9a9a9a'; g.strokeStyle = 'rgba(255,255,255,.14)'; g.lineWidth = 1;
@@ -457,7 +457,7 @@
       g.beginPath(); g.moveTo(x, 14); g.lineTo(x, 21); g.stroke(); g.fillText(fmt(t), x + 3, 2);
     }
     g.strokeStyle = 'rgba(255,255,255,.08)'; g.beginPath(); g.moveTo(0, 21.5); g.lineTo(W, 21.5); g.stroke();
-    // 觀戰斜線
+    // Spectating hatching
     SPECTATING.forEach((s) => {
       const x0 = X(s.start), x1 = X(s.end); if (x1 < 0 || x0 > W) return;
       g.save(); g.beginPath(); g.rect(x0, 22, Math.max(2, x1 - x0), H - 22); g.clip();
@@ -469,7 +469,7 @@
     });
     const ev = visibleEvents().filter((e) => !e.deleted);
     const L = layout(ev, X, W); lastLayout = L;
-    // 熱度條（藍灰；每 ~4px 一格）
+    // Heatmap (blue-gray; one cell per ~4px)
     const binPx = L.mode === 'density' ? 4 : 6, nb = Math.ceil(W / binPx), hc = new Float32Array(nb); let mx = 0;
     ev.filter(isC).forEach((e) => { const x = X(e.t); if (x < 0 || x >= W) return; const b = Math.floor(x / binPx); hc[b]++; if (hc[b] > mx) mx = hc[b]; });
     const maxH = L.mode === 'density' ? 46 : 16;
@@ -477,7 +477,7 @@
       const h = 3 + (hc[i] / mx) * (maxH - 3);
       g.fillStyle = `rgba(143,163,191,${0.35 + (hc[i] / mx) * 0.55})`; g.fillRect(i * binPx, BOT - h, binPx - 1, h);
     }
-    // 片段框（標籤獨立一行在框上緣）
+    // Clip outlines (labels on a separate row above the outline)
     S.clips.filter((cl) => cl.status !== 'skipped').forEach((cl) => {
       const x0 = X(cl.start), x1 = X(cl.end); if (x1 < 0 || x0 > W) return;
       const sug = cl.status === 'suggested', hov = S.hoverClip === cl.id || S.activeHl === cl.id;
@@ -490,7 +490,7 @@
       const lw = g.measureText(lbl).width + 8;
       if (x1 - x0 > lw - 4) { g.fillStyle = sug ? 'rgba(40,40,44,.95)' : '#f6f6f6'; g.fillRect(x0, 24, lw, 14); g.fillStyle = sug ? '#fff' : '#131313'; g.fillText(lbl, x0 + 4, 25); }
     });
-    // 事件
+    // Events
     if (L.mode === 'density') {
       L.vis.forEach((e) => {
         const x = Math.round(X(e.t)); g.globalAlpha = isC(e) ? 1 : 0.65;
@@ -517,7 +517,7 @@
           g.beginPath(); g.roundRect(it.x - w / 2, Y - 10, w, 20, 10); g.fill(); g.stroke();
           const sel = it.es.some((x) => S.selected.has(x.id));
           g.fillStyle = sel ? '#fff' : '#f6f6f6'; g.textBaseline = 'middle'; g.fillText(label, it.x - w / 2 + 8, Y + 1); g.textBaseline = 'top';
-          // 群集內計入比例小點
+          // Dots showing the counted proportion within a cluster
           const cnt = it.es.filter(isC).length;
           g.fillStyle = '#9a9a9a'; g.fillRect(it.x - w / 2 + 4, Y + 14, (w - 8) * (cnt / n), 2);
         }
@@ -620,7 +620,7 @@
     drawTL();
   }
 
-  /* ---------------- 浮層 ---------------- */
+  /* ---------------- Overlays ---------------- */
   function togglePop(id) {
     const p = $('#' + id), show = !p.classList.contains('show');
     closePops(); p.classList.toggle('show', show);
@@ -648,7 +648,7 @@
     openDlg('dlg-addev');
   }
 
-  /* ---- 匯出抽屜（與側欄同寬，只覆蓋側欄；頂欄、播放器、時間軸與專案軌保持可見） ---- */
+  /* ---- Export drawer (same width as sidebar, covering only the sidebar; header, player, timeline, and project track remain visible) ---- */
   function renderExport() {
     const total = S.project.reduce((a, p) => a + plen(p), 0), body = $('#dr-body'), foot = $('#dr-foot');
     const st = S.export;
@@ -680,7 +680,7 @@ Conversion failed!</div></div><div class="dim">常見原因：磁碟空間不足
   }
   function openExport(state) { S.export = state || 'config'; renderExport(); $('#drawer').classList.add('show'); }
 
-  /* ---- 快捷鍵清單（與 spec §3.2.7 矩陣一致） ---- */
+  /* ---- Shortcut list (matching the spec §3.2.7 matrix) ---- */
   const KEYS = [
     ['播放與瀏覽（全域）', [['播放／暫停（焦點在按鈕時為原生行為）', 'Space'], ['切換速度', 'S'], ['上一個／下一個事件', 'Ctrl ← / →'], ['前後快轉 5 秒', '← / →', 1], ['縮放時間軸', 'Ctrl + / − / 0'], ['顯示／隱藏側欄', 'Ctrl B', 1]]],
     ['剪輯', [['快速剪輯（來源）／分割（專案）', 'Ctrl Q'], ['新增事件', 'M'], ['起點／終點設為播放頭', '[ / ]', 1], ['選取事件建立合輯', 'Ctrl M', 1], ['加入專案（全部建議）', 'Ctrl E'], ['返回來源模式', 'Esc', 1]]],
@@ -691,7 +691,7 @@ Conversion failed!</div></div><div class="dim">常見原因：磁碟空間不足
     $('#sc-grid').innerHTML = KEYS.map(([h, rows]) => `<h4>${h}</h4>` + rows.map(([a, k, n]) => `<div><span>${a}${n ? '<span class="newtag">新</span>' : ''}</span><kbd>${k}</kbd></div>`).join('')).join('');
   }
 
-  /* ---------------- 設定 ---------------- */
+  /* ---------------- Settings ---------------- */
   function setupSettings() {
     const cats = $$('.set-cat'), cards = $$('.setcard[data-cat]'), q = $('#set-search');
     let cur = 'a';
@@ -720,7 +720,7 @@ Conversion failed!</div></div><div class="dim">常見原因：磁碟空間不足
     apply();
   }
 
-  /* ---------------- 全域事件 ---------------- */
+  /* ---------------- Global events ---------------- */
   function newProject() {
     if (!S.project.length) return;
     $('#np-n').textContent = S.project.length; openDlg('dlg-newproj');
@@ -811,7 +811,7 @@ Conversion failed!</div></div><div class="dim">常見原因：磁碟空間不足
     if (which === 'start' && S.t < cl.end - 1) cl.start = S.t; if (which === 'end' && S.t > cl.start + 1) cl.end = S.t;
     renderAside(); drawTL(); toast(`已將${which === 'start' ? '起點' : '終點'}設為 ${fmt(S.t)}`);
   }
-  /* 鍵 × 聚焦區：見 spec §3.2.7 矩陣 */
+  /* Key × focus zone: see spec §3.2.7 matrix */
   function onKey(e) {
     const tag = (e.target.tagName || '').toUpperCase();
     const native = ['BUTTON', 'SELECT', 'TEXTAREA', 'A'].includes(tag) || (tag === 'INPUT');
@@ -823,7 +823,7 @@ Conversion failed!</div></div><div class="dim">常見原因：磁碟空間不足
     if (S.screen === 'settings') { if (ctrl && k === 'f') { e.preventDefault(); $('#set-search').focus(); } return; }
     if (S.screen !== 'studio') return;
     const zone = zoneOf(document.activeElement) || S.zone;
-    // 先處理含修飾鍵的組合（Shift 組合必須在無 Shift 之前）
+    // Handle modifier combinations first (Shift combinations must precede those without Shift)
     if (ctrl && e.shiftKey && k === 'e') { e.preventDefault(); openExport('config'); return; }
     if (ctrl && e.shiftKey && k === 'z') { e.preventDefault(); redo(); return; }
     if (ctrl && k === 'z') { e.preventDefault(); undo(); return; }
@@ -844,7 +844,7 @@ Conversion failed!</div></div><div class="dim">常見原因：磁碟空間不足
       if (i >= 0 && j >= 0 && j < S.project.length) { e.preventDefault(); snap(); const [m] = S.project.splice(i, 1); S.project.splice(j, 0, m); renderProject(); }
       return;
     }
-    if (native) return; // 按鈕／下拉／數字框保留原生 Enter、Space、方向鍵、Delete 語意
+    if (native) return; // Preserve native Enter, Space, arrow key, and Delete behavior for buttons, selects, and number inputs
     if (e.code === 'Space') { e.preventDefault(); S.space = true; if (!e.repeat) play(); return; }
     if (!ctrl && k === 's') { $('#btn-speed').click(); return; }
     if (!ctrl && k === 'm') { openAddEvent(); return; }
@@ -865,7 +865,7 @@ Conversion failed!</div></div><div class="dim">常見原因：磁碟空間不足
     }
   }
 
-  /* ---------------- Mock 狀態切換 / hash ---------------- */
+  /* ---------------- Mock state switching / hash ---------------- */
   function applyMock(k) {
     closeDlg(); $('#drawer').classList.remove('show'); $('#drop-ov').classList.remove('show');
     if (k.startsWith('lib')) { S.libEmpty = k === 'lib-empty'; go('library'); renderLibrary(); if (k === 'lib-drag') $('#drop-ov').classList.add('show'); }

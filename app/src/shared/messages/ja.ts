@@ -1,6 +1,6 @@
 import type { MessageTable } from '../locale'
 
-/** 程式內零散訊息（通知、錯誤）的譯文；鍵是繁體中文原文，由 tr() 查表。 */
+/** Translations for scattered in-app messages (notifications and errors); keys are Traditional Chinese source strings looked up by tr(). */
 const messages: MessageTable = {
   '下載 OpenH264 失敗: HTTP {statusCode}': 'OpenH264のダウンロードに失敗しました: HTTP {statusCode}',
   '下載 OpenH264 逾時': 'OpenH264のダウンロードがタイムアウトしました',

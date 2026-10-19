@@ -1,7 +1,7 @@
-//! OBS `graphics-hook` 共享記憶體協定、具名核心物件名稱、偏移 ini 解析與材質格式對應。
-//! 對照 OBS 32.1.2：`shared/obs-hook-config/graphics-hook-info.h`、
-//! `plugins/win-capture/game-capture.c`、`plugins/win-capture/load-graphics-offsets.c`。
-//! 本模組僅含純函式與資料結構，不呼叫任何 Win32 API。
+//! OBS `graphics-hook` shared-memory protocol, named kernel objects, offset INI parsing, and texture format mapping.
+//! References OBS 32.1.2 graphics hook, game capture, and graphics-offset loader source files.
+//! OBS 32.1.2 reference files: shared/obs-hook-config/graphics-hook-info.h, plugins/win-capture/game-capture.c, and plugins/win-capture/load-graphics-offsets.c.
+//! This module contains only pure functions and data structures; it does not call any Win32 APIs.
 
 use std::fmt;
 
@@ -13,13 +13,13 @@ use windows::Win32::Graphics::Dxgi::Common::{
     DXGI_FORMAT_R8G8B8A8_UNORM_SRGB,
 };
 
-/// 未指定有效幀率時退回的預設值。
+/// Default frame rate used when no valid frame rate is specified.
 const DEFAULT_FPS: u32 = 60;
-/// 1 秒的納秒數（`HookInfo::frame_interval` 的單位）。
+/// Nanoseconds per second (`HookInfo::frame_interval` unit).
 const NANOS_PER_SEC: u64 = 1_000_000_000;
 
-/// `graphics-hook-info.h` 的 `struct graphics_offsets`。
-/// 各欄位為目標系統 DLL 內的函式或成員位移，由 `get-graphics-offsets64.exe` 取得後交給 hook。
+/// The graphics_offsets struct from graphics-hook-info.h.
+/// Each field is a function or member offset in a target system DLL, obtained by `get-graphics-offsets64.exe` and passed to the hook.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct GraphicsOffsets {
@@ -33,7 +33,7 @@ pub struct GraphicsOffsets {
     pub d3d12_execute_command_lists: u32,
 }
 
-/// `graphics-hook-info.h` 的 `struct hook_info`（`#pragma pack(8)`，x64 下與 `#[repr(C)]` 相同）。
+/// The hook_info struct from graphics-hook-info.h (pack 8; equivalent to repr(C) on x64).
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct HookInfo {
@@ -89,7 +89,7 @@ impl Default for HookInfo {
 }
 
 impl HookInfo {
-    /// 寫入擷取端設定與函式位移；`fps` 為 0 時視為 60，避免除以零並限制遊戲端的複製頻率。
+/// Writes capture settings and function offsets; treats `fps` as 60 when it is 0 to avoid division by zero and limit the game's copy rate.
     pub fn configure(&mut self, offsets: GraphicsOffsets, fps: u32) {
         let fps = if fps == 0 { DEFAULT_FPS } else { fps };
         self.offsets = offsets;
@@ -101,8 +101,8 @@ impl HookInfo {
     }
 }
 
-/// `graphics-hook-info.h` 的 `enum capture_type`。
-/// `HookInfo::capture_type` 位於跨程序共享記憶體，保留 `u32` 避免讀到未知值時產生未定義行為。
+/// The capture_type enum from graphics-hook-info.h.
+/// `HookInfo::capture_type` resides in inter-process shared memory; keep it as `u32` to avoid undefined behavior for unknown values.
 #[repr(u32)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CaptureType {
@@ -139,7 +139,7 @@ pub fn ready(pid: u32) -> String {
     format!("CaptureHook_HookReady{pid}")
 }
 
-#[allow(dead_code)] // 對照 OBS 具名事件規格完整保留。
+#[allow(dead_code)] // Retained to match the complete OBS named-event specification.
 pub fn exit(pid: u32) -> String {
     format!("CaptureHook_Exit{pid}")
 }
@@ -173,16 +173,16 @@ pub enum OffsetsError {
 impl fmt::Display for OffsetsError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::InvalidValue { key, value } => write!(f, "無法解析偏移 {key}={value}"),
-            Self::MissingDxgi => write!(f, "缺少 DXGI 偏移（dxgi.present 或 dxgi.resize）"),
+            Self::InvalidValue { key, value } => write!(f, "Unable to parse offset {key}={value}"),
+            Self::MissingDxgi => write!(f, "Missing DXGI offset (dxgi.present or dxgi.resize)"),
         }
     }
 }
 
 impl std::error::Error for OffsetsError {}
 
-/// 解析 `get-graphics-offsets64.exe` 的 ini 輸出。
-/// 未知 section／key 忽略；`dxgi.present` 或 `dxgi.resize` 為 0 或缺少時回傳錯誤（hook 需要這兩個才能掛 DXGI）。
+/// Parses the INI output from get-graphics-offsets64.exe.
+/// Ignores unknown sections/keys; returns an error if `dxgi.present` or `dxgi.resize` is zero or missing (the hook needs both to hook DXGI).
 pub fn parse_offsets(text: &str) -> Result<GraphicsOffsets, OffsetsError> {
     let mut section = "";
     let mut offsets = GraphicsOffsets::default();
@@ -228,20 +228,20 @@ pub fn parse_offsets(text: &str) -> Result<GraphicsOffsets, OffsetsError> {
     Ok(offsets)
 }
 
-/// 將 hook 的共享材質轉成我們自有 `B8G8R8A8_UNORM` 材質的方式。
+/// Method for converting the hook's shared texture to our own `B8G8R8A8_UNORM` texture.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TextureConversion {
-    /// 與 `B8G8R8A8_UNORM` 同一 typeless 家族，直接 `CopyResource`（SRGB 只是不同的 view，位元組相同）。
+    /// Same typeless family as `B8G8R8A8_UNORM`; copy directly with `CopyResource` (SRGB is a different view of the same bytes).
     Copy,
-    /// `B8G8R8X8_*`：以 compute shader 複製 BGR 並將 alpha 設為 1。
+    /// `B8G8R8X8_*`: copy BGR with a compute shader and set alpha to 1.
     Bgrx8,
-    /// `R8G8B8A8_*`：以 compute shader 對調 R／B 通道寫入 BGRA UAV。
+    /// `R8G8B8A8_*`: swap the R/B channels with a compute shader and write to a BGRA UAV.
     SwizzleRgba8,
-    /// `R10G10B10A2_*`：以 compute shader 將 10-bit RGB 轉為 8-bit BGRA。
+    /// `R10G10B10A2_*`: convert 10-bit RGB to 8-bit BGRA with a compute shader.
     Rgb10a2,
 }
 
-/// 依 `HookInfo::format`（`DXGI_FORMAT` 數值）決定材質轉換方式；不支援的格式回傳 `None`。
+/// Selects a texture conversion method from `HookInfo::format` (a `DXGI_FORMAT` value); returns `None` for unsupported formats.
 pub fn conversion_for(dxgi_format: u32) -> Option<TextureConversion> {
     match DXGI_FORMAT(dxgi_format as i32) {
         DXGI_FORMAT_B8G8R8A8_TYPELESS

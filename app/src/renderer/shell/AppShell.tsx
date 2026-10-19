@@ -12,7 +12,7 @@ import { useRecordingStatus } from './useRecordingStatus'
 import { useAppSettings } from './useAppSettings'
 import { OnboardingHost } from '../onboarding/Onboarding'
 
-/** 啟動還原遇到損毀／過新版本專案時顯示一次 Toast（I12）。 */
+/** Show a toast once when startup recovery encounters a corrupt or newer-version project (I12). */
 function RestoreNotice(): null {
   const { restoreNotice } = useProject()
   const toast = useToast()
@@ -30,7 +30,7 @@ interface AppShellProps {
   active: RailView | null
   projectCount: number
   onNavigate: (v: RailView) => void
-  /** 錄影面板「觀看當局」：切到錄影中觀看畫面 */
+  /** "Watch current match" in the recording panel: switch to the live recording view. */
   onOpenLive?: () => void
   children: React.ReactNode
 }
@@ -61,7 +61,7 @@ export function AppShell({ active, projectCount, onNavigate, onOpenLive, childre
   )
 }
 
-/** 殼層版面（在 OverlayProvider 內，圖示欄的鍵盤按鈕才能開啟快捷鍵說明）。 */
+/** Shell layout (inside OverlayProvider so the keyboard button in the icon rail can open the shortcuts dialog). */
 function ShellFrame({
   active,
   projectCount,
@@ -80,7 +80,7 @@ function ShellFrame({
 }): JSX.Element {
   const overlay = useOverlay()
   const recording = useRecordingStatus()
-  // 首次啟動引導：設定載入完成且 onboardingDone 為 false 時疊在整個 app 上
+  // First-run onboarding: overlay the entire app after settings load when onboardingDone is false.
   const settings = useAppSettings()
   return (
     <div className="app">

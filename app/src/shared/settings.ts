@@ -2,70 +2,70 @@ import { AutoClipParams } from './types'
 import { DEFAULT_RECORDING_SETTINGS, type RecordingSettings } from './recording'
 import type { LanguageSetting } from './locale'
 
-/** 設定檔格式版本；格式變更時遞增並在 `migrateSettings` 處理舊版。 */
+/** Settings file format version; increment when the format changes and handle older versions in `migrateSettings`. */
 export const SETTINGS_VERSION = 1
 
 /**
- * 應用程式設定（`%APPDATA%\Aditor\settings.json`）。
- * 欄位語意見 spec §3.3；數值範圍由 main 的 `set`／`migrateSettings` 驗證（spec §3.2）。
+ * Application settings (`%APPDATA%\Aditor\settings.json`).
+ * See spec §3.3 for field meanings; main's `set`/`migrateSettings` validate value ranges (spec §3.2).
  */
 export interface Settings {
   version: 1
-  /** 介面語言：'auto'＝跟隨系統（Windows 顯示語言），不支援的系統語言用英文 */
+  /** UI language: 'auto' follows the system (Windows display language); unsupported system languages use English. */
   language: LanguageSetting
   /**
-   * 儲存位置的根資料夾（見 shared/storage.ts）：錄影存 `<根>/Recordings/<日期>/`，剪輯輸出存
-   * `<根>/Exports/Merged` 與 `<根>/Exports/Clips`。null＝尚未設定。設定時 main 會同步寫入
-   * `recording.outputDir` 與 `defaultOutDir` 並建立資料夾，其餘程式照舊讀那兩個欄位。
+   * Storage root directory (see shared/storage.ts): recordings go to `<root>/Recordings/<date>/`, and clip exports go to
+   * `<root>/Exports/Merged` and `<root>/Exports/Clips`. null means unset. When configured, main also writes
+   * `recording.outputDir` and `defaultOutDir` and creates the directories; other code continues reading those two fields.
    */
   storageRoot: string | null
-  /** 已完成首次啟動引導 */
+  /** Whether the first-run onboarding is complete. */
   onboardingDone: boolean
-  /** 監看資料夾清單（新影片自動匯入） */
+  /** Watched folders (new videos are imported automatically). */
   watchFolders: string[]
-  /** 監看資料夾的新影片自動排入分析佇列 */
+  /** Automatically enqueue new videos in watched folders for analysis. */
   autoAnalyze: boolean
-  /** 解碼方式：'auto'＝硬體優先、'software'＝純軟體 */
+  /** Decode mode: 'auto' prefers hardware; 'software' uses software only. */
   decode: 'auto' | 'software'
-  /** 快取位置：'appdata'（%APPDATA%）或影片旁 */
+  /** Cache location: 'appdata' (%APPDATA%) or beside the video. */
   cacheLocation: 'appdata' | 'besideVideo'
-  /** 低效能模式：關閉動畫、降低熱度條解析度 */
+  /** Low-performance mode: disable animations and reduce heatmap resolution. */
   lowPerfMode: boolean
-  /** 非可播放影片建議產生代理檔 */
+  /** Suggest generating a proxy for videos that cannot be played. */
   proxySuggest: boolean
-  /** 快速剪輯：事件前秒數（0..30） */
+  /** Quick clip: seconds before the event (0..30). */
   before: number
-  /** 快速剪輯：事件後秒數（0..30） */
+  /** Quick clip: seconds after the event (0..30). */
   after: number
-  /** AI 自動剪輯預設參數（n 1..10、gap 5..60、before/after 0..30、max_len 15..300） */
+  /** Default AI auto-clip parameters (n 1..10, gap 5..60, before/after 0..30, max_len 15..300). */
   autoclip: AutoClipParams
-  /** 開啟影片時自動放置 AI 建議 */
+  /** Automatically place AI suggestions when opening a video. */
   autoSuggestOnOpen: boolean
-  /** 專案自動儲存（關閉後恢復「未儲存變更」提示行為） */
+  /** Automatically save projects (when disabled, restore the "unsaved changes" prompt behavior). */
   projectAutosave: boolean
-  /** 自動檢查 GitHub 新版本並在背景下載（只有安裝版有效；手動檢查不受影響） */
+  /** Automatically check GitHub for updates and download in the background (installed builds only; manual checks are unaffected). */
   autoUpdate: boolean
-  /** 匯出預設資料夾（null＝每次詢問） */
+  /** Default export folder (null prompts each time). */
   defaultOutDir: string | null
-  /** 專案軌預設收合：'auto' 依視窗高度（≤800px 收合），或固定布林 */
+  /** Whether project tracks are collapsed by default: 'auto' collapses when the window is ≤800px tall, or use a fixed boolean. */
   projectTrackCollapsed: 'auto' | boolean
-  /** 工作室同日影片列收合偏好 */
+  /** Whether same-day video rows are collapsed in Studio. */
   sameDayVideosCollapsed: boolean
-  /** 上次開啟的專案 id（啟動時還原） */
+  /** ID of the last opened project (restored at startup). */
   lastProjectId: string | null
-  /** 已詢問過「是否開啟低效能模式」（首次啟動偵測無硬體解碼時只問一次） */
+  /** Whether the user has been asked to enable low-performance mode (asked once if no hardware decoding is detected at first launch). */
   lowPerfAsked: boolean
-  /** 遊戲錄影設定；由 main 驗證與持久化。 */
+  /** Game recording settings; validated and persisted by main. */
   recording: RecordingSettings
 }
 
-/** 數值範圍（含端點） */
+/** Numeric range, inclusive of both endpoints. */
 export interface SettingsRange {
   readonly min: number
   readonly max: number
 }
 
-/** 數值欄位允許範圍（含端點；與 spec §3.2／§3.3 一致）。main 驗證與設定畫面夾限共用的唯一來源。 */
+/** Allowed ranges for numeric fields, inclusive and matching spec §3.2/§3.3. The single source shared by main validation and settings UI clamping. */
 export const SETTINGS_RANGES = {
   before: { min: 0, max: 30 },
   after: { min: 0, max: 30 },
@@ -78,16 +78,16 @@ export const SETTINGS_RANGES = {
   }
 } as const
 
-/** `settings:set` 的回傳：實際生效的設定、是否已寫入磁碟，以及路徑驗證失敗的欄位訊息。 */
+/** `settings:set` result: effective settings, whether they were written to disk, and field errors from path validation. */
 export interface SettingsSetResult {
   settings: Settings
-  /** false＝記憶體已更新但寫檔失敗（重啟後不會保留） */
+  /** false means memory was updated but writing the file failed (the change will not persist after restart). */
   persisted: boolean
-  /** main 對路徑類欄位的驗證錯誤（該欄位未被套用） */
+  /** Path-field validation errors from main (the affected field was not applied). */
   errors?: Partial<Record<'defaultOutDir' | 'recordingOutputDir' | 'obsPassword' | 'storageRoot', string>>
 }
 
-/** 預設設定；首次使用者（無設定檔）即採用此值，行為與舊版相同。 */
+/** Default settings; used for first-time users without a settings file, preserving the previous behavior. */
 export const DEFAULT_SETTINGS: Settings = {
   version: SETTINGS_VERSION,
   language: 'auto',

@@ -1,21 +1,21 @@
 export interface AutosaveOptions<T> {
-  /** 停止輸入後多久寫入（ms）。 */
+  /** Delay before writing after input stops (ms). */
   delayMs: number
-  /** 實際寫入函式（去抖後呼叫）。 */
+  /** Write function, called after debounce. */
   save: (state: T) => void
-  /** 關閉視窗時用的「寫完才返回」版本（ipcRenderer.sendSync）；未提供則退回 save。 */
+  /** Version that returns only after writing, used on window close (ipcRenderer.sendSync); falls back to save when omitted. */
   saveSync?: (state: T) => void
-  /** 關閉時不寫入並取消待寫內容（對應 settings.projectAutosave）。 */
+  /** When disabled, skip writes and cancel pending content (corresponds to settings.projectAutosave). */
   enabled?: boolean
-  /** 設定尚未載入：先保留待寫內容但不寫入，`setHeld(false)` 時才決定寫或丟。 */
+  /** Settings have not loaded: retain pending content without writing; decide whether to write or discard it when `setHeld(false)` is called. */
   held?: boolean
 }
 
 /**
- * 去抖自動儲存控制器（與 React 解耦，方便單元測試）。
- * `update(state)` 重設計時器；`flush()` 立即以一般 save 寫入待寫內容（切換專案前）；
- * `flushSync()` 以 saveSync 寫入（關閉視窗，忽略 hold 以免遺失編輯）；
- * `setEnabled(false)` 取消待寫；`setHeld(false)` 放行期間累積的待寫內容（只寫最新一次）；`dispose()` 清除計時器。
+ * Debounced autosave controller, decoupled from React for unit testing.
+ * `update(state)` resets the timer; `flush()` immediately writes pending content with regular save (before switching projects).
+ * `flushSync()` uses saveSync (on window close, ignoring hold so edits are not lost).
+ * `setEnabled(false)` cancels pending writes; `setHeld(false)` releases accumulated pending content (writing only the latest); `dispose()` clears the timer.
  */
 export class AutosaveController<T> {
   private delayMs: number
@@ -66,7 +66,7 @@ export class AutosaveController<T> {
       try {
         ;(this.saveSync ?? this.save)(s)
       } catch {
-        /* 關閉途中寫入失敗不能再丟錯；上一版檔案仍完好 */
+        /* Do not throw again if a write fails during close; the previous file remains intact. */
       }
     })
   }

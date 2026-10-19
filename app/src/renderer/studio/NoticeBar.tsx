@@ -6,7 +6,7 @@ import type { NoticeAction, StudioNotice } from './notices'
 interface NoticeBarProps {
   notice: StudioNotice
   onAction: (a: NoticeAction) => void
-  /** 代理檔產生中：顯示進行中文字並停用動作 */
+  /** Proxy generation in progress: show the progress text and disable actions. */
   busy?: boolean
 }
 
@@ -19,7 +19,7 @@ const ACTION_LABEL: Record<NoticeAction, string> = {
   back: i18n.studio.notices.back
 }
 
-/** 工作室頂部狀態列：引擎異常／代理檔建議／產生中。 */
+  /** Studio top status bar: engine errors, proxy suggestions, and generation progress. */
 export function NoticeBar({ notice, onAction, busy }: NoticeBarProps): JSX.Element {
   return (
     <div className={`notice notice-${notice.kind}`} role="status">

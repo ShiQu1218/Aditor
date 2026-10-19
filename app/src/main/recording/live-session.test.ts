@@ -20,8 +20,8 @@ const ev = (id: string, t: number, type = 'knock', counted = true): LiveEvent =>
   name_sig: null, counted, counted_reason: counted ? 'first' : 'duplicate', counted_override: null, source: 'auto' })
 const initFixture = path.join(__dirname, '__fixtures__', 'init-hevc.mp4')
 
-describe('對局與擊殺', () => {
-  it('開局、直接排下一場、結束；沒有開局的結束忽略', () => {
+describe('matches and kills', () => {
+  it('handles match start, a directly queued next match, and match end, while ignoring an end without a start', () => {
     let matches = applyMatchEvent([], { ev: 'match_end', t: 5, reason: 'lobby' })
     expect(matches).toEqual([])
     matches = applyMatchEvent(matches, { ev: 'match_start', t: 10, reason: 'countdown' })
@@ -31,7 +31,7 @@ describe('對局與擊殺', () => {
     expect(matches).toEqual([{ start: 10, end: 300 }, { start: 300, end: 500 }])
   })
 
-  it('只計本局計入的擊倒與消滅；手動取消計入與助攻不算', () => {
+  it('counts only this match’s knocks and kills, excluding manual cancellations and assists', () => {
     const events = [ev('a', 5), ev('b', 20, 'elim'), ev('c', 21, 'assist_knock'), ev('d', 22, 'knock', false),
       { ...ev('e', 23), counted_override: false }, ev('f', 400)]
     expect(countKills(events, [])).toBe(3)
@@ -39,7 +39,7 @@ describe('對局與擊殺', () => {
     expect(countKills(events, [{ start: 10, end: 300 }, { start: 350, end: null }])).toBe(1)
   })
 
-  it.each(['initial_match', 'initial_summary'])('恢復事件 %s 延續未結束對局，但仍可恢復新的對局', (reason) => {
+  it.each(['initial_match', 'initial_summary'])('Recovery event %s continues the unfinished match while allowing a new match to resume', (reason) => {
     const matches = [{ start: 10, end: null }]
     expect(applyMatchEvent(matches, { ev: 'match_start', t: 100, reason })).toBe(matches)
     expect(applyMatchEvent([], { ev: 'match_start', t: 100, reason })).toEqual([{ start: 100, end: null }])
@@ -48,7 +48,7 @@ describe('對局與擊殺', () => {
   })
 })
 
-it('對局中引擎崩潰重啟後不重複開局，對局狀態與磁碟紀錄保持一致', async () => {
+it('does not duplicate a match start after the engine restarts mid-match and keeps match state aligned with disk records', async () => {
   const dir = root()
   const recordEvent = vi.fn()
   const live = new LiveSession({ sessionId: 'restart', dir, profileDir: dir, recordEvent, notice: vi.fn(),
@@ -68,12 +68,12 @@ it('對局中引擎崩潰重啟後不重複開局，對局狀態與磁碟紀錄�
   expect(JSON.parse(fs.readFileSync(path.join(dir, 'live.json'), 'utf8')).matches).toEqual([{ start: 0.5, end: 3.5 }])
 })
 
-describe('LiveSession 檔案讀取', () => {
+describe('LiveSession file reads', () => {
   function session(dir: string): LiveSession {
     return new LiveSession({ sessionId: '20261018-123456-abcd', dir, profileDir: dir, recordEvent: vi.fn(), notice: vi.fn() })
   }
 
-  it('init.mp4 解析成 MIME；段落必須在索引中且是工作目錄內的一般檔案', async () => {
+  it('parses init.mp4 as MIME and requires segments to be indexed regular files inside the session directory', async () => {
     const dir = root()
     const live = session(dir)
     expect((await live.state()).mime).toBeNull()
@@ -94,7 +94,7 @@ describe('LiveSession 檔案讀取', () => {
     await expect(live.readSegment(3)).rejects.toThrow('一般檔案')
   })
 
-  it('找不到 live 引擎執行檔時只通知一次，不啟動', () => {
+  it('notifies once and does not start when the live engine executable cannot be found', () => {
     const dir = root()
     const notice = vi.fn()
     const live = new LiveSession({ sessionId: 'x', dir, profileDir: dir, recordEvent: vi.fn(), notice,
@@ -104,7 +104,7 @@ describe('LiveSession 檔案讀取', () => {
   })
 })
 
-describe('錄影服務整合 live 引擎', () => {
+describe('recording service integration with the live engine', () => {
   function rig(): { root: string; deps: RecordingDeps; service: RecordingService; trace: string; pid: { value: number | null } } {
     const base = root()
     const deps = makeDeps(base)
@@ -125,7 +125,7 @@ describe('錄影服務整合 live 引擎', () => {
     return { root: base, deps, service, trace, pid }
   }
 
-  it('started 後啟動 live 引擎；狀態帶擊殺與局數，推播段落／事件／對局，停止時等最終快照並收尾', async () => {
+  it('starts the live engine after started, includes kills and match count in status, publishes segments/events/matches, and waits for the final snapshot on stop', async () => {
     const r = rig()
     const updates: LiveUpdate[] = []
     r.service.onLive!((update) => updates.push(update))
@@ -149,7 +149,7 @@ describe('錄影服務整合 live 引擎', () => {
     expect(fs.readFileSync(path.join(sessionDir, 'events.jsonl'), 'utf8')).toContain('"ev":"match_start"')
     expect(r.deps.notify).toHaveBeenCalledWith('matchStart', '第 1 局開始')
 
-    // 收尾前讀出最終 live.json：把工作目錄的刪除攔下來
+    // Read the final live.json before finalization to prevent the work directory from being deleted.
     const rm = vi.spyOn(fs.promises, 'rm')
     let finalLive: Record<string, any> | null = null
     let finalEvents = ''
@@ -170,7 +170,7 @@ describe('錄影服務整合 live 引擎', () => {
   })
 })
 
-it('倒數與取消僅記錄並轉送，不改變確認對局清單或擊殺', async () => {
+it('records and forwards countdown and cancellation events without changing confirmed matches or kills', async () => {
   const dir = root()
   const recordEvent = vi.fn()
   const live = new LiveSession({ sessionId: 'pending', dir, profileDir: dir, recordEvent, notice: vi.fn() })
@@ -190,7 +190,7 @@ it('倒數與取消僅記錄並轉送，不改變確認對局清單或擊殺', a
   expect(JSON.parse(fs.readFileSync(path.join(dir, 'live.json'), 'utf8')).matches).toEqual(matches)
 })
 
-it('未啟動、尚無快照、重啟等待及失效皆不清理；健康時移除播放清單並推播', async () => {
+it('skips cleanup before startup, before the first snapshot, during restart waits, and after failure; removes the playback list and publishes updates when healthy', async () => {
   const dir = sessionDir(root())
   const live = new LiveSession({ sessionId: '清理', dir, profileDir: dir, recordEvent: vi.fn(), notice: vi.fn() })
   for (let i = 1; i <= 30; i++) {
@@ -220,7 +220,7 @@ it('未啟動、尚無快照、重啟等待及失效皆不清理；健康時移�
   await live.flush()
 })
 
-it('倒數確認後持續保護至延遲結束；取消後解除保護', async () => {
+it('keeps segments protected through the delay after countdown confirmation and unprotects them after cancellation', async () => {
   const dir = sessionDir(root())
   const live = new LiveSession({ sessionId: '倒數', dir, profileDir: dir, recordEvent: vi.fn(), notice: vi.fn() })
   const internal = live as any
@@ -255,7 +255,7 @@ it('倒數確認後持續保護至延遲結束；取消後解除保護', async (
   await live.flush()
 })
 
-it('大廳沒有擊殺快照時，引擎有處理影格即算健康並清理；只清到已分析的時間', async () => {
+it('treats processed frames as healthy in a lobby with no kill snapshots, cleans up only through analyzed time', async () => {
   const dir = sessionDir(root())
   const live = new LiveSession({ sessionId: '大廳', dir, profileDir: dir, recordEvent: vi.fn(), notice: vi.fn() })
   for (let i = 1; i <= 60; i++) {
@@ -279,7 +279,7 @@ it('大廳沒有擊殺快照時，引擎有處理影格即算健康並清理；�
   await live.flush()
 })
 
-it('停止時即時偵測正常才標記全程偵測；未啟動、失效或重啟中不標記', async () => {
+it('marks detection as healthy throughout only when live detection is healthy at stop, not when unstarted, failed, or restarting', async () => {
   const marker = (dir: string) => fs.existsSync(path.join(dir, 'live-complete.json'))
   const make = () => {
     const dir = sessionDir(root())

@@ -7,14 +7,14 @@ import { obsPassword, registerSettingsHandlers } from './settings-ipc'
 
 const roots: string[] = []
 afterEach(() => { for (const dir of roots.splice(0)) fs.rmSync(dir, { recursive: true, force: true }); vi.restoreAllMocks() })
-describe('OBS 設定與密碼 IPC', () => {
-  it('正規化後端、主機、埠號與回退設定', () => {
+describe('OBS settings and password IPC', () => {
+  it('normalizes backend, host, port, and fallback settings', () => {
     expect(migrateSettings({ recording: { backend: 'obs', obsHost: ' localhost ', obsPort: 5555, obsFallbackBuiltin: false } }).recording)
       .toMatchObject({ backend: 'obs', obsHost: 'localhost', obsPort: 5555, obsFallbackBuiltin: false })
     expect(migrateSettings({ recording: { backend: 'bad', obsHost: 'ws://evil/path', obsPort: 1.5 } }).recording)
       .toMatchObject({ backend: 'builtin', obsHost: '127.0.0.1', obsPort: 4455, obsFallbackBuiltin: true })
   })
-  it('密碼只以加密 base64 持久化，get/set/廣播不包含密文；重載保留', async () => {
+  it('persists the password only as encrypted base64; get/set/broadcast exclude ciphertext and reload preserves it', async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'apex-obs-settings-')); roots.push(root)
     const file = path.join(root, 'settings.json')
     const store = new SettingsStore(file)

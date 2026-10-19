@@ -1,5 +1,5 @@
-/* 內建字型（Latin 子集，OFL-1.1；來源見 assets/fonts/README.md）。中文不打包，由 token 字型堆疊的系統字型接手。
-   相對路徑 + Vite 打包 → 在 file:// 下可用，不連網。 */
+/* Bundled fonts (Latin subsets, OFL-1.1; see assets/fonts/README.md for sources). Chinese glyphs are not bundled; system fonts in the token font stack provide them.
+   Relative paths plus Vite bundling keep these usable under file:// without network access. */
 :root { font-synthesis: none; }
 
 

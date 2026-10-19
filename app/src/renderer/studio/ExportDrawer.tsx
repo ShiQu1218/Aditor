@@ -12,7 +12,7 @@ import { diskIsLow, ExportPlan, exportViewModel, ExportViewModel, formatBytes } 
 import { OpenH264Dialog } from './OpenH264Dialog'
 import { nextTrapIndex } from './focusTrap'
 
-/** 來源探測結果（與目前設定無關的部分）；mode／quality 由抽屜依設定補上。 */
+  /** Source-probe results (the parts unrelated to current settings); the drawer adds mode/quality from settings. */
 import type { ExportPlanBase } from './exportPlanBase'
 export type { ExportPlanBase }
 
@@ -44,7 +44,7 @@ export interface ExportDrawerViewProps {
 const fmt = (tpl: string, vars: Record<string, string | number>): string =>
   Object.entries(vars).reduce((s, [k, v]) => s.replace(`{${k}}`, String(v)), tpl)
 
-/** 編碼器的顯示名稱（不含「偵測到」之類的後綴）。 */
+/** Encoder display name without suffixes such as "detected". */
 function encoderName(name: string): string {
   const nice: Record<string, string> = { h264_nvenc: 'NVIDIA NVENC', h264_qsv: 'Intel Quick Sync', h264_amf: 'AMD AMF' }
   return nice[name] ?? name
@@ -280,12 +280,12 @@ function FailedBody({ state }: Pick<ExportDrawerViewProps, 'state'>): JSX.Elemen
   )
 }
 
-/** 抽屜的純呈現（依 state／vm 渲染；不含副作用），供 renderToString 測試四個狀態。 */
+/** Pure drawer rendering from state/view model (no side effects), used by renderToString tests for the four states. */
 export function ExportDrawerView(props: ExportDrawerViewProps & { drawerRef?: React.Ref<HTMLElement> }): JSX.Element {
   const { state, vm, on } = props
   const t = i18n.export
   const phase = state.phase
-  // 需要 OpenH264 時按鈕仍可按（會開同意對話框）；其他阻擋條件一律停用
+  // Keep the button enabled when OpenH264 is needed (it opens a consent dialog); disable it for every other blocking condition.
   const blocked = vm.blockers.length > 0 || !!state.outDirError || state.settings.baseName.trim() === '' || state.h264.step === 'downloading'
   const startDisabled = blocked || (!vm.canStart && !vm.openh264Required)
   return (
@@ -370,11 +370,11 @@ export interface ExportDrawerProps {
   controller: ExportController
   project: Project
   base: ExportPlanBase | null
-  /** 關閉抽屜（設定／完成／失敗：呼叫端關閉；進行中：縮小為徽章，匯出繼續） */
+  /** Close drawer (settings/completed/failed: caller closes it; running: minimize to badge and continue exporting). */
   onClose: () => void
 }
 
-/** 匯出抽屜容器：訂閱控制器、焦點進入／還原、Tab 陷阱、Esc（進行中＝縮小，不取消）。 */
+/** Export drawer container: subscribe to controller, manage focus entry/restoration, trap Tab, and handle Esc (minimize while running; do not cancel). */
 export function ExportDrawer({ controller, project, base, onClose }: ExportDrawerProps): JSX.Element {
   const state = useSyncExternalStore(controller.subscribe, controller.getState, controller.getState)
   const ref = useRef<HTMLElement>(null)
@@ -391,7 +391,7 @@ export function ExportDrawer({ controller, project, base, onClose }: ExportDrawe
     onClose()
   }
 
-  // 開啟時記住觸發元素並把焦點移進抽屜；關閉時還原
+  // Remember the trigger and move focus into the drawer on open; restore focus on close.
   useEffect(() => {
     const prev = document.activeElement as HTMLElement | null
     ref.current?.focus()
@@ -400,12 +400,12 @@ export function ExportDrawer({ controller, project, base, onClose }: ExportDrawe
     }
   }, [])
 
-  // 階段切換（按鈕換掉）後把焦點拉回抽屜，避免焦點掉到 body
+  // After a phase change replaces the button, return focus to the drawer to prevent it from falling to body.
   useEffect(() => {
     ref.current?.focus()
   }, [state.phase])
 
-  // 同意對話框出現時焦點進入它
+  // Move focus into the consent dialog when it appears.
   const h264Step = state.h264.step
   useEffect(() => {
     if (h264Step !== 'idle') ref.current?.querySelector<HTMLElement>('.xd-consent button:not([disabled])')?.focus()
@@ -417,10 +417,10 @@ export function ExportDrawer({ controller, project, base, onClose }: ExportDrawe
       const st = stateRef.current
       if (e.key === 'Escape') {
         e.preventDefault()
-        e.stopPropagation() // 抽屜開啟時只由這裡處理 Esc
+        e.stopPropagation() // Handle Esc here only while the drawer is open.
         if (st.h264.step === 'consent' || st.h264.step === 'error') controller.declineConsent()
         else if (st.h264.step === 'downloading') return
-        else closeNow() // 進行中：closeNow 只關閉（縮小），不取消
+        else closeNow() // While running, closeNow only minimizes the drawer; it does not cancel export.
       } else if (e.key === 'Tab') {
         const root = ref.current?.querySelector<HTMLElement>('.xd-consent') ?? ref.current
         if (!root) return

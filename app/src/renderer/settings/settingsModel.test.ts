@@ -18,7 +18,7 @@ describe('clampToRange', () => {
   })
 })
 
-describe('nextTabIndex（roving tabindex 的方向鍵）', () => {
+describe('nextTabIndex (arrow keys for roving tabindex)', () => {
   test('arrows move and wrap; Home/End jump; other keys are ignored', () => {
     expect(nextTabIndex('ArrowDown', 0, 3)).toBe(1)
     expect(nextTabIndex('ArrowRight', 1, 3)).toBe(2)

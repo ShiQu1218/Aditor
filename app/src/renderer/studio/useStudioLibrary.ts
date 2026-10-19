@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { LibraryEntry } from '../../main/library'
 
-/** 訂閱影片庫；較舊的讀取結果與卸載後的回應不再套用。 */
+/** Subscribe to the library; ignore stale load results and responses after unmount. */
 export function useStudioLibrary(): { entries: LibraryEntry[] | null; failed: boolean; retry: () => void } {
   const [entries, setEntries] = useState<LibraryEntry[] | null>(null)
   const [failed, setFailed] = useState(false)
@@ -14,7 +14,7 @@ export function useStudioLibrary(): { entries: LibraryEntry[] | null; failed: bo
       const request = ++sequence
       try {
         const data: unknown = await window.api?.library?.getEntries?.()
-        if (!Array.isArray(data)) throw new Error('影片庫資料無效')
+        if (!Array.isArray(data)) throw new Error('Invalid library data')
         if (alive && request === sequence) {
           setEntries(data)
           setFailed(false)

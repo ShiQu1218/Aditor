@@ -12,8 +12,8 @@ SPANS = [(2.0, 4.5), (10.0, 12.5)]
 
 @pytest.fixture
 def short_learn(monkeypatch):
-    """關鍵字只從開頭 1 秒學（邊解碼邊學，學完才存段進度）：讓短合成片中途取消也能測到段進度的保存與接續。
-    合成片沒有錨點可學：關掉延伸學習（延伸學習期間不存段進度，見 test_late_learning）。"""
+    """Learn keywords only from the first second, while decoding, and save segment progress after learning. This lets a short synthetic video test saving and resuming after cancellation.
+    The synthetic video has no learnable anchors, so disable extended learning (progress is not saved during extended learning; see test_late_learning)."""
     monkeypatch.setattr(az, "LEARN_SCAN_SECONDS", 1.0)
     monkeypatch.setattr(az, "EXTEND_LEARNING", False)
 
@@ -38,7 +38,7 @@ def test_analyze_uses_cache(tmp_path, profile, monkeypatch):
     az.analyze(str(v), profile, cache_dir=tmp_path / "cache")
 
     def boom(*a, **k):
-        raise AssertionError("不應解碼")
+        raise AssertionError("Decoding should not occur")
     monkeypatch.setattr(az, "FrameStream", boom)
     monkeypatch.setattr(az, "calibrate", boom)
     doc = az.analyze(str(v), profile, cache_dir=tmp_path / "cache")
@@ -46,7 +46,7 @@ def test_analyze_uses_cache(tmp_path, profile, monkeypatch):
 
 
 class _CancelAt:
-    """包住 FrameStream：產出 t >= at 的畫格前先設定 cancel。"""
+    """Wrap FrameStream and set cancel before yielding a frame with t >= at."""
 
     def __init__(self, at, cancel):
         self.at, self.cancel = at, cancel
@@ -91,7 +91,7 @@ def test_resume_no_duplicates(tmp_path, profile, fixture_video, monkeypatch, sho
             az.analyze(str(fixture_video), profile, cache_dir=cache, cancel=cancel)
     part = load_cache(cache_path(str(fixture_video), cache))
     assert part["analysis"]["status"] == "partial"
-    assert len(part["events"]) == 2  # 第二個提示在取消前已成立
+    assert len(part["events"]) == 2  # The second banner was already confirmed before cancellation.
 
     starts = []
     real = FrameStream
@@ -101,7 +101,7 @@ def test_resume_no_duplicates(tmp_path, profile, fixture_video, monkeypatch, sho
         return real(*a, **k)
     monkeypatch.setattr(az, "FrameStream", spy)
     doc = az.analyze(str(fixture_video), profile, cache_dir=cache)
-    # 擁有範圍回退 RESUME_BACK、再往前補足 PREROLL 上下文（此片很短 → 從 0 起）
+    # Resume ownership from RESUME_BACK, then add PREROLL context (this video is short, so start at 0).
     own = max(0.0, part["analysis"]["progress_t"] - az.RESUME_BACK)
     assert starts == [pytest.approx(max(0.0, own - az.SEGMENT_PREROLL))]
     ks = [e for e in doc["events"] if e["type"] == "knock"]
@@ -127,7 +127,7 @@ def test_progress_throttled_and_final(tmp_path, profile):
     calls = []
     az.analyze(str(v), profile, cache_dir=tmp_path / "cache", on_progress=lambda t, d: calls.append((t, d)))
     assert calls[-1][0] == pytest.approx(calls[-1][1])
-    assert len(calls) < 6 * 4 + 2  # 少於逐格呼叫
+    assert len(calls) < 6 * 4 + 2  # Fewer calls than decoding every frame.
 
 
 def test_cancel_during_calibration_leaves_partial(tmp_path, profile):
@@ -163,7 +163,7 @@ def test_normal_partial_resume_does_not_recalibrate(tmp_path, profile, monkeypat
         m.setattr(az, "calibrate", lambda *a, **k: 0.95)
         with pytest.raises(az.Cancelled):
             az.analyze(str(v), profile, cache_dir=tmp_path / "cache", cancel=cancel)
-    monkeypatch.setattr(az, "calibrate", lambda *a, **k: pytest.fail("不應重新校準"))
+    monkeypatch.setattr(az, "calibrate", lambda *a, **k: pytest.fail("Must not recalibrate"))
     doc = az.analyze(str(v), profile, cache_dir=tmp_path / "cache")
     assert doc["analysis"]["h_scale"] == 0.95
 
@@ -178,7 +178,7 @@ def test_partial_with_corrupt_keywords_relearns_instead_of_crashing(tmp_path, pr
             az.analyze(str(v), profile, cache_dir=cache, cancel=cancel)
     cp = cache_path(str(v), cache)
     part = load_cache(cp)
-    part["analysis"]["keywords"] = {"assist": {"shape": [27, 64], "q8": "AAAA"}}  # 損毀
+    part["analysis"]["keywords"] = {"assist": {"shape": [27, 64], "q8": "AAAA"}}  # Corrupt data.
     save_cache(cp, part)
     learned = []
     real = az._Learner
@@ -189,8 +189,7 @@ def test_partial_with_corrupt_keywords_relearns_instead_of_crashing(tmp_path, pr
 
 
 def test_cancel_before_keywords_learned_keeps_only_calibration(tmp_path, profile, fixture_video, monkeypatch):
-    """學習範圍（預設 900 秒）涵蓋整支短片：學完前取消 → partial 只存校準尺度；接續不重新校準，
-    從頭邊解碼邊學，結果與不中斷相同。"""
+    """The learning range (900 seconds by default) covers this short video: cancellation before learning finishes stores only the calibrated scale in partial; resume does not recalibrate, learns while decoding from the start, and matches uninterrupted results."""
     cache = tmp_path / "cache"
     full = az.analyze(str(fixture_video), profile, cache_dir=cache / "full")
     cancel = threading.Event()
@@ -202,7 +201,7 @@ def test_cancel_before_keywords_learned_keeps_only_calibration(tmp_path, profile
     a = load_cache(cache_path(str(fixture_video), cache))["analysis"]
     assert a["status"] == "partial" and a["progress_t"] == 0.0
     assert a["h_scale"] == full["analysis"]["h_scale"] and "keywords" not in a
-    monkeypatch.setattr(az, "calibrate", lambda *a, **k: pytest.fail("不應重新校準"))
+    monkeypatch.setattr(az, "calibrate", lambda *a, **k: pytest.fail("Must not recalibrate"))
     doc = az.analyze(str(fixture_video), profile, cache_dir=cache)
     assert doc["analysis"]["status"] == "done"
     assert [(e["type"], e["t"]) for e in doc["events"]] == [(e["type"], e["t"]) for e in full["events"]]
@@ -210,24 +209,24 @@ def test_cancel_before_keywords_learned_keeps_only_calibration(tmp_path, profile
 
 @pytest.mark.parametrize("jobs", [1, 3])
 def test_in_pass_keywords_equal_separate_learning_pass(tmp_path, profile, multi_video, monkeypatch, jobs):
-    """邊解碼邊學出的關鍵字樣板與獨立掃描（calibrate.learn_keywords）相同，與 jobs 無關。"""
+    """Keywords learned while decoding match the results of an independent scan (calibrate.learn_keywords), regardless of jobs."""
     from aditor.calibrate import learn_keywords
     from aditor.probe import probe
-    monkeypatch.setattr(az, "LEARN_SCAN_SECONDS", 45.0)  # 學習範圍跨過 jobs=3 的段界 20、40
+    monkeypatch.setattr(az, "LEARN_SCAN_SECONDS", 45.0)  # Learning range crosses the jobs=3 boundaries at 20 and 40.
     doc = az.analyze(str(multi_video), profile, cache_dir=tmp_path / "c", jobs=jobs)
     sep = learn_keywords(str(multi_video), probe(str(multi_video)), profile, doc["analysis"]["h_scale"],
                          max_scan_seconds=45.0)
-    assert sep.knock is not None  # 合成片的擊倒橫幅足以學出擊倒樣板，比較才有意義
+    assert sep.knock is not None  # The synthetic knock banners must produce a knock template for this comparison to be meaningful.
     assert doc["analysis"]["keywords"] == sep.to_dict()
 
 
-# ---- 切段平行解碼（jobs） ----
+# ---- Parallel segment decoding (jobs) ----
 
 def test_plan_segments_overlap_and_last_segment():
     segs = az.plan_segments(60.0, 3, min_len=5.0)
     assert segs == [(0.0, 20.0), (20.0, 40.0), (40.0, 60.0)]
     sg = [az._Seg(a, b, i == 2, 60.0) for i, (a, b) in enumerate(segs)]
-    assert [x.dec_end for x in sg] == [20.0 + az.SEGMENT_POSTROLL, 40.0 + az.SEGMENT_POSTROLL, None]  # 段尾後延解碼，最後一段到片尾
+    assert [x.dec_end for x in sg] == [20.0 + az.SEGMENT_POSTROLL, 40.0 + az.SEGMENT_POSTROLL, None]  # Decode through the segment post-roll; the last segment reaches the end of the video.
 
 
 def test_plan_segments_boundaries_on_quarter_grid():
@@ -238,7 +237,7 @@ def test_plan_segments_boundaries_on_quarter_grid():
 
 
 def test_plan_segments_short_duration_reduces_jobs_to_min_len():
-    assert len(az.plan_segments(100.0, 4)) == 3      # 每段 >= 30 秒
+    assert len(az.plan_segments(100.0, 4)) == 3      # Each segment is >= 30 seconds.
     assert len(az.plan_segments(59.0, 4)) == 1
     assert az.plan_segments(20.0, 4) == [(0.0, 20.0)]
     assert len(az.plan_segments(300.0, 4)) == 4
@@ -266,7 +265,7 @@ def multi_video(tmp_path_factory):
     ok, buf = cv2.imencode(".png", img[:180])
     png = d / "b.png"
     buf.tofile(str(png))
-    # jobs=3 → 邊界 20、40；提示 (19,22) 與 (39,42) 跨邊界，(24,26) 落在重疊區
+    # jobs=3 → boundaries at 20 and 40; banners (19,22) and (39,42) cross boundaries, while (24,26) falls in the overlap.
     spans = [(5.0, 7.0), (19.0, 22.0), (24.0, 26.0), (39.0, 42.0), (55.0, 57.0)]
     return make_video(d, "多段.mp4", 60, overlay=(png, spans))
 
@@ -287,8 +286,8 @@ def test_parallel_matches_single(tmp_path, profile, multi_video):
 
 
 class _Seg3Harness:
-    """包住 FrameStream：記錄所有串流；seg0 完成後 seg2 才觸發取消，seg1 卡到取消為止。
-    各段以 end 辨識（seg0 = 20 + 後延、seg1 = 40 + 後延、seg2 = None），名目起點 0／20／40。"""
+    """Wrap FrameStream and record every stream; trigger cancellation in seg2 after seg0 completes, while seg1 waits for cancellation.
+    Identify segments by end (seg0 = 20 + post-roll, seg1 = 40 + post-roll, seg2 = None); nominal starts are 0/20/40."""
 
     def __init__(self, cancel):
         self.cancel = cancel
@@ -340,12 +339,12 @@ def test_parallel_cancel_leaves_segments_and_resume_reruns_only_unfinished(
         with pytest.raises(az.Cancelled):
             az.analyze(str(multi_video), profile, cache_dir=cache, cancel=cancel, jobs=3)
     assert len(harness.inners) == 3
-    assert all(i._proc is not None and i._proc.poll() is not None for i in harness.inners)  # 無殘留 ffmpeg
+    assert all(i._proc is not None and i._proc.poll() is not None for i in harness.inners)  # No ffmpeg process remains.
     part = load_cache(cache_path(str(multi_video), cache))
     a = part["analysis"]
     assert a["status"] == "partial" and len(a["segments"]) == 3
     segs = a["segments"]
-    assert segs[0]["progress_t"] == pytest.approx(20.0 + az.SEGMENT_POSTROLL)  # seg0 已完成（含後延）
+    assert segs[0]["progress_t"] == pytest.approx(20.0 + az.SEGMENT_POSTROLL)  # seg0 is complete, including post-roll.
     assert segs[1]["progress_t"] < 40.0 + az.SEGMENT_POSTROLL and segs[2]["progress_t"] < 60.0
     assert [(s["start"], s["end"]) for s in segs] == [(0.0, 20.0), (20.0, 40.0), (40.0, 60.0)]
 
@@ -356,10 +355,10 @@ def test_parallel_cancel_leaves_segments_and_resume_reruns_only_unfinished(
         calls.append((k.get("start"), k.get("end")))
         return real(*a, **k)
     monkeypatch.setattr(az, "FrameStream", spy)
-    monkeypatch.setattr(az, "calibrate", lambda *a, **k: pytest.fail("不應重新校準"))
+    monkeypatch.setattr(az, "calibrate", lambda *a, **k: pytest.fail("Calibration should not run again."))
     doc = az.analyze(str(multi_video), profile, cache_dir=cache, jobs=3)
     calls.sort(key=lambda c: (c[1] is None, c[1]))
-    assert len(calls) == 2  # 只重跑 seg1、seg2，seg0 已完成
+    assert len(calls) == 2  # Only seg1 and seg2 run again; seg0 is already complete.
 
     def frm(start, p):
         own = max(start, p - az.RESUME_BACK)

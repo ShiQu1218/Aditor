@@ -13,7 +13,7 @@ export type BladeAction =
 
 export const initialBlade: BladeState = { enabled: false, anchor: null, hover: null }
 
-/** 兩次點擊決定範圍；過短時保留第一點，完成後仍可繼續切片。 */
+/** Two clicks define the range; if it is too short, keep the first point, and continue slicing after completion. */
 export function bladeReducer(state: BladeState, action: BladeAction): {
   state: BladeState
   range?: [number, number]

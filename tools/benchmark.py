@@ -1,10 +1,10 @@
-"""速度基準（spec §8）：以 hwaccel 開／關分析前 N 秒，輸出「影片秒數 / 實際秒數」倍速。
+"""Performance benchmark (spec §8): analyze the first N seconds with hwaccel on/off and report video seconds per wall-clock second.
 
-用法：python tools/benchmark.py <video> [--seconds 600] [--start 0] [--jobs N] [--hw-only]
+Usage: python tools/benchmark.py <video> [--seconds 600] [--start 0] [--jobs N] [--hw-only]
 
---jobs N：把 [start, start+seconds] 平均切成 N 段，各用一個 FrameStream 並行解碼（同 analyze 的切段平行）。
+--jobs N: Split [start, start+seconds] evenly into N segments, each decoded concurrently by its own FrameStream (parallel segmentation as in analyze).
 
-只量測解碼＋逐格偵測迴圈（不含校準與 keyframes）。AV1 軟體解碼視為低階電腦最差情況。
+Measures only decoding and per-frame detection (excluding calibration and keyframes). AV1 software decoding represents a worst case for low-end computers.
 """
 from __future__ import annotations
 
@@ -79,12 +79,12 @@ def run_segments(video: str, profile, seconds: float, start: float, jobs: int,
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description="hwaccel 開／關速度基準")
+    ap = argparse.ArgumentParser(description="Benchmark speed with hwaccel on and off")
     ap.add_argument("video")
     ap.add_argument("--seconds", type=float, default=600.0)
     ap.add_argument("--start", type=float, default=0.0)
     ap.add_argument("--jobs", type=int, default=1)
-    ap.add_argument("--hw-only", action="store_true", help="只量測硬體路徑")
+    ap.add_argument("--hw-only", action="store_true", help="Measure only the hardware path")
     ap.add_argument("--profile-dir", default=str(DEFAULT_PROFILE))
     a = ap.parse_args(argv)
     for s in (sys.stdout, sys.stderr):
@@ -98,10 +98,10 @@ def main(argv: list[str] | None = None) -> int:
             r = run_segments(a.video, profile, a.seconds, a.start, a.jobs, codec)
         else:
             r = run_once(a.video, profile, a.seconds, a.start, hw, codec)
-        label = f"硬體 jobs={a.jobs}" if hw else "軟體解碼  "
-        note = "" if r["used_hwaccel"] == hw else "（硬體解碼失敗，已退回軟體）"
-        print(f"{label}：影片 {r['video_s']:.1f} 秒 / 實際 {r['wall_s']:.1f} 秒 = "
-              f"{r['speed']:.2f}x 即時（{r['frames']} 格，啟動 {r['startup_s']:.1f} 秒）{note}", flush=True)
+        label = f"Hardware jobs={a.jobs}" if hw else "Software decode"
+        note = "" if r["used_hwaccel"] == hw else " (hardware decoding failed; fell back to software)"
+        print(f"{label}: {r['video_s']:.1f} s video / {r['wall_s']:.1f} s elapsed = "
+              f"{r['speed']:.2f}x realtime ({r['frames']} frames, {r['startup_s']:.1f} s startup){note}", flush=True)
     return 0
 
 

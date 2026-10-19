@@ -1,6 +1,6 @@
 /**
- * 全域拖放保護（I2）：在 document 層對 dragover／drop 呼叫 preventDefault，
- * 避免把檔案拖進視窗時 Chromium 導航到該檔案。各畫面自己的 drop 處理器（例如影片庫匯入）不受影響。
+ * Global drag-and-drop guard (I2): call preventDefault for dragover/drop at the document level
+ * to prevent Chromium from navigating to a file dropped into the window. Screen-specific drop handlers (such as library import) are unaffected.
  */
 export function installGlobalDropGuard(doc: Document = document): () => void {
   const block = (e: Event): void => {

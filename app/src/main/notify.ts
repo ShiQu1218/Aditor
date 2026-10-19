@@ -12,7 +12,7 @@ interface NotificationDependencies {
   create: (options: { title: string; body: string; silent?: boolean; urgency?: 'low' }) => Notice
 }
 
-/** 通知失敗不能中斷錄影或讓已完成的收尾被當成失敗。 */
+/** Notification failures must not interrupt recording or make completed finalization appear to have failed. */
 export function createRecordingNotifier(
   getSettings: () => RecordingSettings,
   deps: NotificationDependencies = {

@@ -1,4 +1,4 @@
-"""圖示尺度校準：每支影片校準一次，之後單尺度比對。"""
+"""Icon scale calibration: calibrate each video once, then compare at a single scale."""
 import cv2
 import numpy as np
 import pytest
@@ -11,17 +11,17 @@ def test_pick_scale_median_and_snap():
     assert calibrate.pick_scale([]) == 1.0
     assert calibrate.pick_scale([1.0, 1.0, 0.95]) == 1.0
     assert calibrate.pick_scale([1.05, 1.1, 1.1, 1.05, 1.1]) == 1.1
-    assert calibrate.pick_scale([0.95, 1.0]) == 1.0   # 落在兩尺度之間 → 取較接近 1.0 者
+    assert calibrate.pick_scale([0.95, 1.0]) == 1.0   # Between two scales, choose the one closer to 1.0.
 
 
 @pytest.mark.parametrize("scale", [1.0, 0.9, 1.1])
 def test_calibrate_finds_icon_scale_on_synthetic_video(tmp_path, profile, scale):
-    """把真實擊倒橫幅縮放後疊到影片上（模擬 HUD 縮放），校準應找回該尺度。"""
+    """Scale a real knock banner and overlay it on a video (simulating HUD scaling); calibration should recover that scale."""
     from aditor.probe import probe
     img = cv2.imdecode(np.fromfile(str(FIXTURES / "en" / "pos" / "knock_a002500.png"), np.uint8),
                        cv2.IMREAD_COLOR)[:180]
     h, w = img.shape[:2]
-    # 以橫幅中心縮放，貼回 800x180 畫布
+    # Scale around the banner center and place it back on an 800x180 canvas.
     r = cv2.resize(img, None, fx=scale, fy=scale, interpolation=cv2.INTER_LINEAR)
     canvas = np.zeros_like(img)
     ys, xs = (h - r.shape[0]) // 2, (w - r.shape[1]) // 2
@@ -67,7 +67,7 @@ def test_calibrate_cancel_raises_and_closes_stream(tmp_path, profile, monkeypatc
 
 
 def test_calibration_honours_no_hwaccel(tmp_path, profile, monkeypatch):
-    """M2：--no-hwaccel 時校準也不得走 GPU。"""
+    """M2: calibration must not use the GPU when --no-hwaccel is set."""
     from aditor import calibrate as cal
     from aditor.models import VideoInfo
     seen = []
@@ -88,7 +88,7 @@ def test_calibration_honours_no_hwaccel(tmp_path, profile, monkeypatch):
 
 
 def test_learn_keywords_failing_segment_stops_the_others_and_reports_the_real_error(profile, monkeypatch):
-    """關鍵字學習切段平行時，一段解碼失敗 → 其他段立刻停止（不必各自掃完 900 秒），且回報的是真正的錯誤。"""
+    """When keyword-learning segments run in parallel and one decode fails, stop the others immediately (without scanning all 900 seconds) and report the actual error."""
     import time
     from aditor import calibrate as cal
     from aditor.decode import DecodeError
@@ -100,7 +100,7 @@ def test_learn_keywords_failing_segment_stops_the_others_and_reports_the_real_er
     def fake_scan(path, prof, scale, start, end, cancel, codec, hwaccel, abort=None):
         if start == 0.0:
             raise DecodeError("boom")
-        assert abort is not None and abort.wait(timeout=10), "其他段沒有收到停止通知"
+        assert abort is not None and abort.wait(timeout=10), "Other segments did not receive the stop signal"
         stopped.append(start)
         raise Cancelled()
 

@@ -9,15 +9,15 @@ import './recording.css'
 export type RailView = 'library' | 'studio' | 'settings'
 
 interface RailProps {
-  /** 目前頁面 */
+  /** Current page. */
   active: RailView | null
   projectCount: number
   onNavigate: (v: RailView) => void
   onShortcuts?: () => void
   onQueue?: () => void
-  /** 佇列浮層是否開啟（aria-expanded） */
+  /** Whether the queue popover is open (aria-expanded). */
   queueOpen?: boolean
-  /** 供佇列浮層判斷「點擊外部」時排除觸發按鈕 */
+  /** Exclude the trigger button when the queue popover checks for outside clicks. */
   queueButtonRef?: React.Ref<HTMLButtonElement>
   recordingPhase?: RecordingPhase
   onRecording?: () => void

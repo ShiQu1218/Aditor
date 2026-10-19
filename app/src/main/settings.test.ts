@@ -5,7 +5,7 @@ import path from 'path'
 import { DEFAULT_SETTINGS } from '../shared/settings'
 import { loadSettings, saveSettings, SettingsStore } from './settings'
 
-describe('settings store（設定儲存）', () => {
+describe('settings store', () => {
   let dir: string
   let file: string
 
@@ -27,13 +27,13 @@ describe('settings store（設定儲存）', () => {
     expect(store.get()).toEqual(DEFAULT_SETTINGS)
     expect(fs.existsSync(file)).toBe(false)
 
-    // 第一次 set 才建立檔案
+    // The file is created only on the first set.
     store.set({ before: 10 })
     expect(fs.existsSync(file)).toBe(true)
     expect(JSON.parse(fs.readFileSync(file, 'utf-8')).before).toBe(10)
   })
 
-  it('同日影片列收合偏好寫入磁碟，重載保留，無效值不覆蓋', () => {
+  it('persists the same-day video-row collapse preference, preserves it after reload, and rejects invalid values', () => {
     const store = new SettingsStore(file)
     expect(store.get().sameDayVideosCollapsed).toBe(false)
     expect(store.set({ sameDayVideosCollapsed: true }).persisted).toBe(true)
@@ -42,7 +42,7 @@ describe('settings store（設定儲存）', () => {
     expect(loadSettings(file).sameDayVideosCollapsed).toBe(true)
   })
 
-  it('錄影新設定預設、舊 FPS 遷移、無效值與重新載入', () => {
+  it('recording setting defaults, legacy FPS migration, invalid values, and reload', () => {
     const store = new SettingsStore(file)
     expect(store.get().recording).toMatchObject({ preset: 'speed', forceAspect: false, aspectMode: 'fit',
       systemAudioEnabled: true, systemGain: 1, gameAudioOnly: false, micMono: false })
@@ -70,7 +70,7 @@ describe('settings store（設定儲存）', () => {
   })
 
   it('old/no-version file migrates and keeps known values', () => {
-    // 舊檔沒有 version 欄位：已知值保留，缺少的補預設
+    // Legacy file without a version field: preserve known values and fill missing fields with defaults.
     fs.writeFileSync(
       file,
       JSON.stringify({ before: 12, after: 2, watchFolders: ['D:/rec'], autoAnalyze: false }),
@@ -84,7 +84,7 @@ describe('settings store（設定儲存）', () => {
     expect(s.autoAnalyze).toBe(false)
     expect(s.autoclip).toEqual(DEFAULT_SETTINGS.autoclip)
 
-    // 較舊的版號一樣走遷移
+    // Older versions also go through migration.
     fs.writeFileSync(file, JSON.stringify({ version: 0, before: 6 }), 'utf-8')
     const s2 = loadSettings(file)
     expect(s2.version).toBe(1)
@@ -92,7 +92,7 @@ describe('settings store（設定儲存）', () => {
     expect(s2.after).toBe(DEFAULT_SETTINGS.after)
   })
 
-  it('舊設定檔帶有已移除的 gameLang（或其他未知欄位）→ 安全丟棄、不報錯，其餘欄位保留', () => {
+  it('safely drops removed gameLang (or other unknown fields) from legacy settings without errors and preserves remaining fields', () => {
     fs.writeFileSync(file, JSON.stringify({ version: 1, gameLang: 'ja', before: 5, mystery: 1 }), 'utf-8')
     const s = loadSettings(file) as unknown as Record<string, unknown>
     expect(s.before).toBe(5)
@@ -103,7 +103,7 @@ describe('settings store（設定儲存）', () => {
     expect('gameLang' in (loadSettings(file) as unknown as Record<string, unknown>)).toBe(false)
   })
 
-  it('lowPerfAsked：預設 false；非布林回退、布林保留並可持久化', () => {
+  it('lowPerfAsked defaults to false; non-booleans fall back, booleans are preserved and persisted', () => {
     expect(DEFAULT_SETTINGS.lowPerfAsked).toBe(false)
     fs.writeFileSync(file, JSON.stringify({ version: 1, lowPerfAsked: 'yes' }), 'utf-8')
     expect(loadSettings(file).lowPerfAsked).toBe(false)
@@ -119,11 +119,11 @@ describe('settings store（設定儲存）', () => {
       file,
       JSON.stringify({
         version: 1,
-        before: '八', // 型別不符 → 只回退此欄位
-        after: 9, // 正確 → 保留
-        lowPerfMode: true, // 正確 → 保留
-        watchFolders: ['D:/ok', 42], // 陣列中非字串剔除
-        autoclip: { n: '3', gap: 30 }, // n 型別不符回退、gap 保留
+        before: '八', // Type mismatch: fall back only this field.
+        after: 9, // Valid: keep it.
+        lowPerfMode: true, // Valid: keep it.
+        watchFolders: ['D:/ok', 42], // Remove non-string items from the array.
+        autoclip: { n: '3', gap: 30 }, // Fall back for n's type mismatch; keep gap.
         unknownKey: 'x',
         telemetry: { on: true }
       }),
@@ -131,7 +131,7 @@ describe('settings store（設定儲存）', () => {
     )
     const s = loadSettings(file) as unknown as Record<string, unknown>
 
-    // 整份不作廢：其他欄位保留；未知鍵全部丟棄
+    // Do not invalidate the whole object: preserve other fields and discard all unknown keys.
     expect(Object.keys(s).sort()).toEqual(Object.keys(DEFAULT_SETTINGS).sort())
     expect(s.before).toBe(DEFAULT_SETTINGS.before)
     expect(s.after).toBe(9)
@@ -150,7 +150,7 @@ describe('settings store（設定儲存）', () => {
     expect(s.before).toBe(12)
     expect(s.autoclip.n).toBe(5)
 
-    // 原子寫入：暫存檔＋rename，且不留下暫存檔
+    // Atomic write: temporary file + rename, with no temporary file left behind.
     expect(renameSpy).toHaveBeenCalledTimes(1)
     expect(fs.existsSync(`${file}.tmp`)).toBe(false)
     const onDisk = JSON.parse(fs.readFileSync(file, 'utf-8'))
@@ -158,7 +158,7 @@ describe('settings store（設定儲存）', () => {
     expect(onDisk.before).toBe(12)
     expect(onDisk.autoclip.n).toBe(5)
 
-    // 超出範圍／型別錯誤的欄位不生效（保留原值），合法欄位照常套用
+    // Out-of-range/incorrectly typed fields have no effect (preserve old values); valid fields are applied normally.
     const s2 = store.set({
       before: 99,
       after: -1,
@@ -172,7 +172,7 @@ describe('settings store（設定儲存）', () => {
     expect(s2.autoclip.n).toBe(5)
     expect(s2.lowPerfMode).toBe(true)
 
-    // 邊界值（含端點）允許
+    // Boundary values (including endpoints) are allowed.
     const s3 = store.set({ before: 0, after: 30 }).settings
     expect(s3.before).toBe(0)
     expect(s3.after).toBe(30)
@@ -183,18 +183,18 @@ describe('settings store（設定儲存）', () => {
     const previous = fs.readFileSync(file, 'utf-8')
     const store = new SettingsStore(file)
 
-    // 模擬 rename 失敗（例如檔案被鎖定）
+    // Simulate rename failure (for example, the file is locked).
     vi.spyOn(fs, 'renameSync').mockImplementation(() => {
       throw new Error('EPERM: rename failed')
     })
     const r = store.set({ before: 5 })
-    expect(r.settings.before).toBe(5) // 記憶體狀態仍更新，不丟錯
-    expect(r.persisted).toBe(false) // 但明確回報沒有寫入磁碟
+    expect(r.settings.before).toBe(5) // The in-memory state is still updated without throwing.
+    expect(r.persisted).toBe(false) // Explicitly report that nothing was written to disk.
     expect(store.get().before).toBe(5)
 
-    expect(fs.readFileSync(file, 'utf-8')).toBe(previous) // 舊檔完好
+    expect(fs.readFileSync(file, 'utf-8')).toBe(previous) // The old file remains intact.
     expect(JSON.parse(fs.readFileSync(file, 'utf-8')).before).toBe(10)
-    expect(fs.existsSync(`${file}.tmp`)).toBe(false) // 暫存檔已清掉
+    expect(fs.existsSync(`${file}.tmp`)).toBe(false) // The temporary file was removed.
   })
 
   it('onChange fires once per set', () => {
@@ -229,7 +229,7 @@ describe('settings store（設定儲存）', () => {
     })
     expect(store.set({ before: 5 }).persisted).toBe(false)
     spy.mockRestore()
-    // 即使這次沒有任何欄位變更，仍要把先前未寫入的狀態補寫
+    // Retry persisting previously unwritten state even if no fields changed this time.
     const r = store.set({})
     expect(r.persisted).toBe(true)
     expect(JSON.parse(fs.readFileSync(file, 'utf-8')).before).toBe(5)

@@ -1,6 +1,6 @@
-/* 低效能模式（spec §6）：設定「低效能模式」開啟時 <html data-lowperf>，或系統要求減少動態效果時。
-   不含任何色碼；必須最後載入，才能覆蓋其他樣式表的 transition／animation／hover 位移。
-   熱度條降為 60 格由 canvas（perf/lowPerf.ts 的 HEAT_BINS_LOWPERF）處理，縮圖本身是靜態圖片。 */
+/* Low-performance mode (spec §6): when the "Low performance mode" setting is enabled (<html data-lowperf>) or the system requests reduced motion.
+   No color values belong here. Load this last to override transitions, animations, and hover transforms from other stylesheets.
+   Canvas reduces the heatmap to 60 bins (HEAT_BINS_LOWPERF in perf/lowPerf.ts); thumbnails are static images. */
 html[data-lowperf] *,
 html[data-lowperf] *::before,
 html[data-lowperf] *::after {

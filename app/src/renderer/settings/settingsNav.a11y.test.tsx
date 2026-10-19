@@ -43,7 +43,7 @@ describe('settings category tabs (Task 16, verified in jsdom)', () => {
     press(tabs()[1], 'End')
     expect(document.activeElement).toBe(tabs()[5])
     press(tabs()[5], 'ArrowRight')
-    expect(document.activeElement).toBe(tabs()[0]) // 環繞
+    expect(document.activeElement).toBe(tabs()[0]) // Wraps around.
     press(tabs()[0], 'ArrowUp')
     expect(document.activeElement).toBe(tabs()[5])
     press(tabs()[5], 'Home')

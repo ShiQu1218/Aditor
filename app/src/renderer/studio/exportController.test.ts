@@ -97,7 +97,7 @@ describe('exportController wiring', () => {
     expect(c.getState().outDirError).toContain('輸出資料夾無法寫入')
     expect(c.getState().disk).toBeNull()
     expect(f.calls.some((x) => x[0] === 'diskSpace')).toBe(false)
-    // 阻擋中不會呼叫 export:start
+  // Do not call export:start while blocked.
     await c.start([{ id: 'a', source: 'D:/v.mp4', start: 0, end: 5 }])
     expect(f.calls.some((x) => x[0] === 'start')).toBe(false)
   })
@@ -401,8 +401,8 @@ describe('exportController misc', () => {
   })
 })
 
-describe('輸出子資料夾（合併 → Merged、分開 → Clips）', () => {
-  test('outputDir 依目前模式回傳 outDir 底下的子資料夾；outDir 為空時為 null', async () => {
+describe('Output subfolders (merged → Merged, separate → Clips)', () => {
+  test('outputDir returns the subfolder under outDir for the current mode, or null when outDir is empty', async () => {
     const c = createExportController(fake().api)
     await c.init(null)
     expect(c.getOutputDir()).toBeNull()
@@ -413,7 +413,7 @@ describe('輸出子資料夾（合併 → Merged、分開 → Clips）', () => {
     expect(c.getOutputDir()).toBe('/data/out/Clips')
   })
 
-  test('openFolder 開啟實際輸出目錄（子資料夾），不是 outDir；隨模式切換', async () => {
+  test('openFolder opens the actual output directory (the subfolder), not outDir, and follows mode changes', async () => {
     const opened: string[] = []
     const c = createExportController(fake({ openFolder: async (d: string) => (opened.push(d), true) }).api)
     await c.init('/data/out')
@@ -424,7 +424,7 @@ describe('輸出子資料夾（合併 → Merged、分開 → Clips）', () => {
     expect(opened).toEqual(['/data/out/Merged', '/data/out/Clips'])
   })
 
-  test('start 仍把使用者選的 outDir（非子資料夾）與 mode 送給 main', async () => {
+  test('start still sends the user-selected outDir (not the subfolder) and mode to main', async () => {
     const f = fake()
     const c = createExportController(f.api)
     await c.init('/data/out')

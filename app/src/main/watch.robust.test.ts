@@ -25,7 +25,7 @@ interface Rig {
   watchDir: string
   library: Library
   settings: SettingsStore
-  /** 匯入（enqueue）時刻，供下限斷言 */
+  /** Import (enqueue) time, used for a lower-bound assertion. */
   imports: Array<{ path: string; at: number }>
   queue: AnalysisQueue
   managers: WatchManager[]
@@ -73,12 +73,12 @@ afterEach(() => {
     try {
       fs.rmSync(rig.root, { recursive: true, force: true })
     } catch {
-      // Windows 檔案鎖
+      // Windows file lock.
     }
   }
 })
 
-/** 假 watcher：記錄 close，並可手動觸發 ready（模擬啟動很慢）。 */
+/** Fake watcher: records close calls and can trigger ready manually (simulates a slow startup). */
 function fakeFactory(): { factory: WatcherFactory; made: Array<{ dir: string; emitter: EventEmitter; close: ReturnType<typeof vi.fn>; opts: unknown }> } {
   const made: Array<{ dir: string; emitter: EventEmitter; close: ReturnType<typeof vi.fn>; opts: unknown }> = []
   const factory: WatcherFactory = (dir, _onAdd, opts) => {
@@ -134,7 +134,7 @@ describe('path normalisation', () => {
     expect(rig.settings.get().watchFolders).toEqual([rig.watchDir])
     expect(wm.activeDirs()).toEqual([rig.watchDir])
     expect(watchKey(rig.watchDir + path.sep)).toBe(watchKey(rig.watchDir))
-    // 用另一種拼法移除也要移掉
+    // Removing by another path spelling should still remove it.
     await wm.remove(rig.watchDir + path.sep)
     expect(rig.settings.get().watchFolders).toEqual([])
     expect(made[0].close).toHaveBeenCalled()
@@ -157,11 +157,11 @@ describe('stop() race', () => {
     const rig = makeRig()
     const { factory, made } = fakeFactory()
     const wm = manager(rig, { createWatcher: factory })
-    const pending = wm.add(rig.watchDir) // watcher 尚未 ready
+    const pending = wm.add(rig.watchDir) // The watcher is not ready yet.
     expect(made).toHaveLength(1)
     wm.stop()
-    expect(made[0].close).toHaveBeenCalledTimes(1) // stop() 關閉啟動中的 watcher
-    made[0].emitter.emit('ready') // 之後才 ready：不得被登記
+    expect(made[0].close).toHaveBeenCalledTimes(1) // stop() closes the watcher that is still starting.
+    made[0].emitter.emit('ready') // Becomes ready later; must not be registered.
     await pending
     expect(wm.activeDirs()).toEqual([])
   })
@@ -173,9 +173,9 @@ describe('stop() race', () => {
     const wm = manager(rig, { createWatcher: factory })
     wm.start()
     wm.stop()
-    wm.start() // 重新啟動會開第二個 watcher
+    wm.start() // Restarting creates a second watcher.
     expect(made).toHaveLength(2)
-    made[0].emitter.emit('ready') // 舊世代
+    made[0].emitter.emit('ready') // Old generation.
     made[1].emitter.emit('ready')
     await wm.whenReady()
     expect(made[0].close).toHaveBeenCalled()
@@ -192,7 +192,7 @@ describe('missing / deleted folders', () => {
     rig.settings.set({ watchFolders: [later] })
     const wm = manager(rig)
     wm.start()
-    // 多次設定變更 + 多次重試週期
+    // Multiple setting changes and retry cycles.
     rig.settings.set({ autoAnalyze: false })
     rig.settings.set({ autoAnalyze: true })
     await delay(350)
@@ -255,7 +255,7 @@ describe('stable-size window (lower bound)', () => {
     let lastWrite = started
     fs.writeFileSync(file, Buffer.alloc(64, 1))
     while (Date.now() - started < 1700) {
-      // 寫入橫跨 > 2 個穩定視窗，間隔小於視窗
+      // The write spans more than two stability windows, with intervals shorter than the window.
       await delay(120)
       fs.appendFileSync(file, Buffer.alloc(64, 2))
       lastWrite = Date.now()
@@ -287,7 +287,7 @@ describe('stable-size window (lower bound)', () => {
     fs.writeFileSync(file, Buffer.alloc(64, 1))
     const lastWrite = Date.now()
     await delay(1500)
-    expect(rig.imports).toHaveLength(0) // 視窗內
+    expect(rig.imports).toHaveLength(0) // Still within the debounce window.
     await waitFor(() => rig.imports.length === 1, 8000)
     expect(rig.imports[0].at).toBeGreaterThanOrEqual(lastWrite + 2000 - 40)
   }, 20000)

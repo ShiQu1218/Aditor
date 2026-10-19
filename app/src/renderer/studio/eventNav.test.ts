@@ -32,7 +32,7 @@ describe('navReference', () => {
   })
   test('"previous" from a lead-in position sees an event inside the lead-in window', () => {
     const events = [ev('a', 60), ev('b', 125), ev('c', 130)]
-    // 目前在 c 的 lead-in（122）；b(125) 位於 lead-in 區間內，應該先到 b 而不是跳過它
+  // Currently in c's lead-in (122); b (125) is within the lead-in interval, so navigate to b instead of skipping it.
     const prev = nextEvent(events, navReference(122, { eventT: 130, seekT: 122 }), -1, ALL)!
     expect(prev.id).toBe('b')
   })

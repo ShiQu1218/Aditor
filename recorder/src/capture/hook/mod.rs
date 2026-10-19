@@ -1,4 +1,4 @@
-//! OBS `graphics-hook` 遊戲擷取：準備階段（找視窗、注入、等就緒、選顯示卡）與固定節奏擷取主迴圈。
+//! OBS graphics-hook game capture: setup (window lookup, injection, readiness, adapter selection) and the paced capture loop.
 
 pub mod adapter;
 pub mod convert;
@@ -21,14 +21,14 @@ use super::{
 use crate::clock;
 use crate::gpu::Gpu;
 
-/// hook 初始化（含找視窗、注入、等待載入與首次 HookReady）的總時間上限。
+/// Total time budget for hook initialization, including window lookup, injection, loading, and initial HookReady.
 pub const PREPARE_BUDGET: Duration = Duration::from_secs(15);
 
-/// 視窗存活檢查間隔。
+/// Window liveness-check interval.
 const WINDOW_CHECK: Duration = Duration::from_secs(1);
 
-/// 已連上 hook 且拿到第一張共享材質；交給 `Capture::start_hook`。
-/// 欄位依釋放順序排列：若未進入主迴圈即被丟棄，先釋放共享材質，最後才由 `HookSession` 送出 Stop。
+/// Connected to the hook and received the first shared texture; passed to Capture::start_hook.
+/// Fields follow drop order: release the shared texture first and send Stop from HookSession last if setup fails.
 pub struct Prepared {
     texture: ID3D11Texture2D,
     info: SharedTexture,
@@ -41,9 +41,9 @@ const _: () = {
     assert_send::<Prepared>();
 };
 
-/// 在 `budget` 內完成：`find_window(pid)` → `HookFiles::new(hook_dir)` → `HookSession::attach`(剩餘時間)
-/// → `wait_ready`(剩餘時間) → `adapter::open_shared(handle)`。
-/// 回傳 `Prepared` 與「遊戲所在顯示卡」的 `Gpu`（整個錄影工作都用它）。
+/// Completes window lookup, hook-file validation, attachment, readiness wait, and shared-texture opening within the budget.
+/// → wait_ready (remaining time) → adapter::open_shared(handle).
+/// Returns the prepared capture and the GPU for the game adapter, used for the entire recording job.
 pub fn prepare(pid: u32, hook_dir: &Path, fps: u32, budget: Duration) -> Result<(Prepared, Gpu)> {
     let deadline = Instant::now() + budget;
     let hwnd = find_window(pid)?;
@@ -56,7 +56,7 @@ pub fn prepare(pid: u32, hook_dir: &Path, fps: u32, budget: Duration) -> Result<
         deadline.saturating_duration_since(Instant::now()),
     )?;
     let Some(info) = session.wait_ready(deadline.saturating_duration_since(Instant::now()))? else {
-        bail!("hook_unavailable: 逾時未就緒（遊戲沒有繪製，或不是支援的繪圖 API）");
+        bail!("hook_unavailable: Timed out waiting for readiness (the game may not be rendering or may use an unsupported graphics API)");
     };
     let (gpu, texture) = adapter::open_shared(info.handle)?;
     Ok((
@@ -89,7 +89,7 @@ struct HwndProbe {
     pid: u32,
 }
 
-// SAFETY: HWND 為系統層級視窗控制代碼，僅用於跨執行緒安全的視窗狀態查詢（window_matches）。
+// SAFETY: HWND is a system-level handle used only for thread-safe window-state queries.
 unsafe impl Send for HwndProbe {}
 
 impl WindowProbe for HwndProbe {
@@ -98,8 +98,8 @@ impl WindowProbe for HwndProbe {
     }
 }
 
-/// 計算下一格預定時間：正常為 `last + period`；落後時跳過整數個週期（不補格），
-/// 讓預定時間始終落在同一條時間格線上。
+/// Computes the next scheduled frame time; when behind, skips whole periods without filling frames,
+/// keeping scheduled times aligned to the same frame grid.
 fn next_frame_time(last: Instant, now: Instant, period: Duration) -> Instant {
     let next = last + period;
     if now <= next {
@@ -109,8 +109,8 @@ fn next_frame_time(last: Instant, now: Instant, period: Duration) -> Instant {
     last + Duration::from_nanos((period.as_nanos() * periods) as u64)
 }
 
-/// 以預定時間（而非實際醒來時間）換算 pts。編碼器以 `round(pts × fps)` 決定格號，
-/// 醒來時間的抖動會讓兩格落在同一格號而被丟棄、另一格號以前一格補上；用格線時間則每格恰好一個格號。
+/// Converts scheduled time (not wake time) to PTS. The encoder uses rounded PTS times FPS to determine frame indices,
+/// so wake-time jitter can collide with a frame index; grid times assign exactly one index per frame.
 fn grid_pts(start_ticks: i64, start: Instant, scheduled: Instant) -> i64 {
     start_ticks + (scheduled.saturating_duration_since(start).as_nanos() / 100) as i64
 }
@@ -144,8 +144,8 @@ pub(super) fn run(
     )
 }
 
-/// 遊戲在背景或最小化時仍持續 Present（Apex 實測），因此本擷取方式不做可見度處理、不送黑幀；
-/// 遊戲真的停止 Present 時材質會停在最後一格。
+/// The game continues presenting while in the background or minimized (observed with Apex), so this path does not check visibility or send black frames;
+/// If the game stops presenting, the texture remains on the last frame.
 #[allow(clippy::too_many_arguments)]
 fn run_loop<S: TextureSource, W: WindowProbe>(
     gpu: Gpu,
@@ -159,8 +159,8 @@ fn run_loop<S: TextureSource, W: WindowProbe>(
     stopped: Receiver<()>,
     ready: &mpsc::SyncSender<Result<()>>,
 ) -> Result<()> {
-    // 先綁定 source，確保無論正常結束或錯誤返回，Converter 與材質都先釋放，
-    // 最後才釋放 HookSession（觸發 CaptureHook_Stop）。
+    // Bind source first so Converter and textures are released before HookSession on both normal return and errors,
+    // which sends CaptureHook_Stop when released.
     let mut source = source;
     let mut shared_texture = initial_texture;
     let mut converter = Converter::new(&gpu, &shared_texture, initial_format)?;
@@ -236,7 +236,7 @@ fn run_loop<S: TextureSource, W: WindowProbe>(
         });
     }
 
-    // 明確依序釋放：先放轉換器與共享材質，最後放 HookSession。
+    // Explicit drop order: converter and shared texture first, then HookSession.
     drop(converter);
     drop(shared_texture);
     drop(consumer);
@@ -269,14 +269,14 @@ mod tests {
         let base = Instant::now();
         let period = Duration::from_millis(33);
 
-        // 正常：尚未到達下一格預定時間，維持 last + period。
+        // Normal: the next scheduled frame is not due; keep last + period.
         assert_eq!(
             next_frame_time(base, base + Duration::from_millis(5), period),
             base + period
         );
-        // 剛好在邊界上：維持 last + period。
+        // Exactly on the boundary: keep last + period.
         assert_eq!(next_frame_time(base, base + period, period), base + period);
-        // 落後：跳過整數個週期，仍落在格線上（不補格、不偏離格線）。
+        // Behind: skip whole periods and stay on the grid without filling frames.
         let late = base + Duration::from_millis(45);
         assert_eq!(next_frame_time(base, late, period), base + period);
         let very_late = base + Duration::from_millis(200);
@@ -297,7 +297,7 @@ mod tests {
         for _ in 0..600 {
             scheduled = next_frame_time(scheduled, scheduled, period);
             let pts = grid_pts(start_ticks, start, scheduled) - start_ticks;
-            // 與 encode/mod.rs 相同的格號換算。
+            // Uses the same frame-index calculation as encode/mod.rs.
             let slot = (pts as i128 * fps as i128 + 5_000_000) / 10_000_000;
             if let Some(prev) = previous {
                 assert_eq!(slot, prev + 1);
@@ -380,7 +380,7 @@ mod tests {
             SysMemSlicePitch: 0,
         };
         let mut tex = None;
-        // SAFETY: pixels 長度為 width * height * 4 bytes，建立測試用共享 2D 材質並 Flush。
+        // SAFETY: pixels has width * height * 4 bytes; create a shared 2D test texture and Flush.
         unsafe {
             gpu.device
                 .CreateTexture2D(&desc, Some(&init), Some(&mut tex))
@@ -389,7 +389,7 @@ mod tests {
         }
         let tex = tex.unwrap();
         let resource: IDXGIResource = tex.cast().unwrap();
-        // SAFETY: 取得舊式共享資源 handle。
+        // SAFETY: Get the legacy shared-resource handle.
         let raw_handle = unsafe { resource.GetSharedHandle() }.unwrap();
         let handle = raw_handle.0 as usize as u32;
         (
@@ -405,7 +405,7 @@ mod tests {
 
     fn read_top_left_bgra(gpu: &Gpu, texture: &ID3D11Texture2D) -> [u8; 4] {
         let mut src_desc = D3D11_TEXTURE2D_DESC::default();
-        // SAFETY: 讀取材質尺寸並複製至 staging 讀回左上角像素。
+        // SAFETY: Read texture dimensions and copy to staging to read back the top-left pixel.
         unsafe {
             texture.GetDesc(&mut src_desc);
             let staging_desc = D3D11_TEXTURE2D_DESC {
@@ -442,7 +442,7 @@ mod tests {
     #[test]
     fn capture_loop_delivers_frames_handles_resize_and_stops_promptly() {
         let creator = Gpu::create().unwrap();
-        // R=255, G=20, B=40, A=255 -> 轉成 BGRA 後應為 [40, 20, 255, 255]。
+        // R=255, G=20, B=40, A=255 should become BGRA [40, 20, 255, 255].
         let (_keep_tex1, shared1) =
             create_shared_rgba_texture(&creator, 64, 32, [255, 20, 40, 255]);
         let (gpu, initial_opened) = adapter::open_shared(shared1.handle).unwrap();
@@ -492,13 +492,13 @@ mod tests {
             }
         );
 
-        // 1. 以 30 fps 跑約 400 ms，檢查格數與嚴格遞增的 pts。
+        // 1. Run at 30 fps for about 400 ms and check frame count and strictly increasing PTS.
         thread::sleep(Duration::from_millis(400));
         {
             let recorded = samples.lock().unwrap();
             assert!(
                 (8..=16).contains(&recorded.len()),
-                "400ms @ 30fps 格數應在 8..=16，實際為 {}",
+                "Expected 8..=16 frames at 30 fps over 400 ms, got {}",
                 recorded.len()
             );
             assert!(recorded.windows(2).all(|w| w[1].pts > w[0].pts));
@@ -508,7 +508,7 @@ mod tests {
             }
         }
 
-        // 2. TextureSource 回傳不同尺寸的新共享材質：收到新的 WindowFound 且格尺寸改變。
+        // 2. TextureSource returns a new shared texture with different dimensions; expect WindowFound with the new size.
         let (_keep_tex2, shared2) =
             create_shared_rgba_texture(&creator, 128, 48, [10, 200, 60, 255]);
         queue.lock().unwrap().push_back(shared2);
@@ -527,21 +527,21 @@ mod tests {
                 .iter()
                 .filter(|s| (s.width, s.height) == (128, 48))
                 .collect();
-            assert!(!resized.is_empty(), "尺寸變更後應收到新尺寸影格");
+            assert!(!resized.is_empty(), "A frame with the new size should arrive after resize");
             for sample in resized {
                 assert_eq!(sample.top_left_bgra, [60, 200, 10, 255]);
             }
             assert!(recorded.windows(2).all(|w| w[1].pts > w[0].pts));
         }
 
-        // 3. 送出停止後 200 ms 內結束。
+        // 3. Stop and verify the worker exits within 200 ms.
         let stop_at = Instant::now();
         stop_tx.send(()).unwrap();
         worker.join().unwrap().unwrap();
         let elapsed = stop_at.elapsed();
         assert!(
             elapsed < Duration::from_millis(200),
-            "停止耗時過長：{elapsed:?}"
+            "Shutdown took too long: {elapsed:?}"
         );
     }
 }

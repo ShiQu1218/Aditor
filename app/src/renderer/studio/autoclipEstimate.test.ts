@@ -13,7 +13,7 @@ describe('autoclip estimate state machine', () => {
     expect(paramsEqual(null, P1)).toBe(false)
   })
 
-  test('idle / loading / error never allow apply and show 計算中', () => {
+test('idle, loading, and error never allow apply and show “Calculating”', () => {
     expect(canApply(initialEstimate, P1)).toBe(false)
     const loading = estimateReducer(initialEstimate, { type: 'request', seq: 1, params: P1 })
     expect(canApply(loading, P1)).toBe(false)
@@ -28,15 +28,15 @@ describe('autoclip estimate state machine', () => {
     s = estimateReducer(s, { type: 'resolve', seq: 1, clips: [clip('a', 0, 10), clip('b', 20, 35)] })
     expect(canApply(s, P1)).toBe(true)
     expect(estimateView(s, P1)).toEqual({ n: 2, total: 25 })
-    // 使用者已改參數（去抖前）：舊結果不可套用、不顯示
+    // The user changed parameters (before debounce): the old result cannot be applied or shown.
     expect(canApply(s, P2)).toBe(false)
     expect(estimateView(s, P2)).toBeNull()
   })
 
   test('typing fast: stale response for old params is discarded; apply never uses an old result', () => {
     let s = estimateReducer(initialEstimate, { type: 'request', seq: 1, params: P1 })
-    s = estimateReducer(s, { type: 'request', seq: 2, params: P2 }) // 又輸入了
-    // seq 1 的回應姍姍來遲
+    s = estimateReducer(s, { type: 'request', seq: 2, params: P2 }) // More input arrived.
+    // The response for seq 1 arrived late.
     s = estimateReducer(s, { type: 'resolve', seq: 1, clips: [clip('old', 0, 10)] })
     expect(s.status).toBe('loading')
     expect(s.clips).toEqual([])

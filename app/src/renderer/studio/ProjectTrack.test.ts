@@ -57,7 +57,7 @@ describe('ProjectTrack markup', () => {
     expect(out).not.toMatch(/<button[^>]*data-item-id/)
   })
 
-  test('split button is labelled 分割; two sources shown', () => {
+  test('Split button is labelled Split; two sources are shown', () => {
     const out = html(props())
     expect(out).toContain('aria-label="分割"')
     expect(out).toContain('來自 2 支影片')

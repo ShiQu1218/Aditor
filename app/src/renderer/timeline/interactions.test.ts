@@ -191,7 +191,7 @@ describe('playheadTarget', () => {
 
 describe('Escape swallowing', () => {
   type L = (e: KeyboardEvent) => void
-  /** 簡易 window：先跑 capture 監聽，再跑 bubble 監聽，遵守 stopPropagation */
+/** Minimal window mock: run capture listeners before bubble listeners and honor stopPropagation. */
   function fakeWindow(): {
     win: Pick<Window, 'addEventListener' | 'removeEventListener'>
     press: (key: string, opts?: { isComposing?: boolean; keyCode?: number }) => { defaultPrevented: boolean }
@@ -295,7 +295,7 @@ describe('Escape swallowing', () => {
     expect(cancel).toHaveBeenCalledTimes(1)
     expect(first.defaultPrevented).toBe(true)
 
-    // 手勢已取消（phase = idle），第二次 Escape 不得再被攔截
+  // The gesture has been canceled (phase = idle); a second Escape must not be intercepted.
     const second = press('Escape')
     expect(cancel).toHaveBeenCalledTimes(1)
     expect(second.defaultPrevented).toBe(false)

@@ -23,7 +23,7 @@ if (mode === 'chunked_ready') {
   send({ type: 'ready', engine_version: '0.1.0' })
 }
 
-// E2E 模式：FAKE_ENGINE_MODE=e2e → 回傳引擎形狀的合成分析結果（見 fake-engine-e2e.mjs）
+// E2E mode: FAKE_ENGINE_MODE=e2e returns synthetic analysis results shaped like the engine (see fake-engine-e2e.mjs).
 const e2eHandle = mode === 'e2e' ? createE2EHandler(send) : null
 
 const rl = readline.createInterface({

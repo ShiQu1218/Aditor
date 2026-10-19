@@ -1,10 +1,10 @@
-// jsdom 元件測試輔助：掛載（react-dom/client + act）、鍵盤事件、缺少的瀏覽器 API 墊片。
+// jsdom component-test helpers: mounting (react-dom/client + act), keyboard events, and missing browser API shims.
 import React, { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
-/** jsdom 沒有版面：給卷動容器一個固定尺寸，並補上 ResizeObserver／matchMedia／canvas 等。 */
+/** jsdom has no layout: give scroll containers fixed dimensions and provide ResizeObserver, matchMedia, canvas, etc. */
 export function installDomShims(size = { width: 1200, height: 700 }): void {
   const proto = HTMLElement.prototype
   Object.defineProperty(proto, 'clientWidth', { configurable: true, get: () => size.width })
@@ -30,7 +30,7 @@ export function installDomShims(size = { width: 1200, height: 700 }): void {
     })) as unknown as typeof window.matchMedia
   }
   if (!Element.prototype.scrollIntoView) Element.prototype.scrollIntoView = () => undefined
-  // canvas 2D：無實際繪圖，所有方法都是 no-op（measureText 回固定寬度）
+  // Canvas 2D: no drawing is performed; every method is a no-op (measureText returns a fixed width).
   const ctx = new Proxy({} as Record<string, unknown>, {
     get(target, prop: string) {
       if (prop in target) return target[prop]
@@ -74,27 +74,27 @@ export function mount(ui: React.ReactElement): Mounted {
   return m
 }
 
-/** 卸載所有已掛載的元件（afterEach 呼叫）。 */
+/** Unmount all mounted components (called from afterEach). */
 export function cleanupMounted(): void {
   while (mounted.length) {
     const m = mounted.pop()!
     try {
       m.unmount()
     } catch {
-      /* 已卸載 */
+      /* Already unmounted. */
     }
   }
   document.body.innerHTML = ''
 }
 
-/** 等 Promise／計時器：在 act 內推進，讓非同步 effect 的 setState 落地。 */
+/** Advance promises/timers inside act so state updates from asynchronous effects are applied. */
 export async function flush(ms = 0): Promise<void> {
   await act(async () => {
     await new Promise((r) => setTimeout(r, ms))
   })
 }
 
-/** 在元素上送出 keydown（冒泡、可取消），包在 act 內；回傳事件以檢查 defaultPrevented。 */
+/** Dispatch a bubbling, cancelable keydown event inside act; return it to inspect defaultPrevented. */
 export function press(target: Element | Window, key: string, init: KeyboardEventInit = {}): KeyboardEvent {
   const e = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...init })
   act(() => {
@@ -109,7 +109,7 @@ export function click(el: Element): void {
   })
 }
 
-/** 以 aria-label 找元素。 */
+/** Find an element by aria-label. */
 export function byLabel(root: ParentNode, label: string): HTMLElement | null {
   return root.querySelector<HTMLElement>(`[aria-label="${label}"]`)
 }
@@ -120,7 +120,7 @@ export function buttonByText(root: ParentNode, text: string): HTMLButtonElement 
   )
 }
 
-/** 在 act 內聚焦（焦點事件會觸發 React 狀態更新）。 */
+/** Focus inside act (focus events can trigger React state updates). */
 export function focusEl(el: HTMLElement): void {
   act(() => {
     el.focus()

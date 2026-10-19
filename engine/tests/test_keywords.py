@@ -1,8 +1,8 @@
-"""每支影片自學的擊殺關鍵字樣板（detect.Keywords／calibrate.AnchorCollector）：擋掉同樣用單人加分圖示的非擊殺橫幅。
+"""Per-video learned kill keyword templates (detect.Keywords/calibrate.AnchorCollector) filter non-kill banners that use the same solo-score icon.
 
-用既有 fixture 當「影片」：依序餵入某語言的正例畫格（時間間隔 10 秒＝不同橫幅）學樣板，再驗證其餘畫格。
-開發集是 H950（繁中，2026-08）；fixture 的 zh-TW（舊版）／en／ja 是訓練與回歸素材。樣板是從該語言自己的畫格學的，
-引擎本身沒有任何語言的文字樣板。"""
+Use existing fixtures as videos: feed positive frames for one language in sequence (10-second gaps represent separate banners) to learn templates, then validate the remaining frames.
+The development set is H950 (Traditional Chinese, 2026-08); zh-TW (old game), en, and ja fixtures are training and regression material. Templates are learned from the corresponding language frames;
+the engine itself contains no text templates for any language."""
 import numpy as np
 import pytest
 
@@ -35,9 +35,9 @@ def test_roundtrip_and_empty():
 
 
 @pytest.mark.parametrize("bad", [
-    {"assist": {"shape": [27, 64], "q8": "AAAA"}},            # 資料長度不足
-    {"assist": {"shape": [27], "q8": "AAAA"}},                # 形狀錯誤
-    {"knock": {"shape": [2, 2], "q8": "!!!not-base64!!!"}},   # base64 損毀
+    {"assist": {"shape": [27, 64], "q8": "AAAA"}},            # Data is too short.
+    {"assist": {"shape": [27], "q8": "AAAA"}},                # Invalid shape.
+    {"knock": {"shape": [2, 2], "q8": "!!!not-base64!!!"}},   # Corrupt base64.
     {"knock": "x"},
     "x",
 ])
@@ -60,8 +60,8 @@ def test_zh_learns_both_templates(zh_kw):
 
 
 def test_old_season_non_kill_single_person_banners_are_rejected_with_learned_keywords(profile, zh_kw):
-    """舊版（2026-07）的「敵方小隊已消滅」「小隊抹殺」「造訪過的興趣點」用單人加分圖示：沒有關鍵字樣板時全部誤報
-    （見 test_old_season_behaviour_is_documented_not_tuned）；有學到的樣板時全部擋掉。"""
+    """The old game (2026-07) uses solo bonus icons for several banners, causing false positives when there are no keyword templates
+    (see test_old_season_behaviour_is_documented_not_tuned); learned templates block all of them."""
     det = Detector(profile, 1.0, keywords=zh_kw)
     bad = []
     for lang_dir in ("neg", "pos"):
@@ -92,7 +92,7 @@ def test_japanese_assists_are_accepted_by_the_assist_prefix_not_the_knock_word(p
 
 def test_english_without_hand_anchors_uses_the_knock_word_for_assists(profile):
     kw = _learn(profile, "en")
-    assert kw.assist is None and kw.knock is not None  # en fixtures 沒有助攻消滅，學不到助攻前綴
+    assert kw.assist is None and kw.knock is not None  # en fixtures have no assist-elim, so an assist prefix cannot be learned.
     det = Detector(profile, 1.0, keywords=kw)
     names = [n for n, v in lang_labels("en").items() if v["kind"] == "assist_knock" and not v.get("fadein")]
     assert sum(det.detect(*load_fixture(n, "en")).kind == "assist_knock" for n in names) / len(names) >= 0.85

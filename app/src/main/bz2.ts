@@ -1,9 +1,9 @@
 import fs from 'fs'
 
 /**
- * 純 TypeScript 的 bzip2 解壓縮（單一串流）。
- * 打包後的 App 沒有 Python，無法再用 `bz2` 模組解 OpenH264，因此在 Node 端自行解碼。
- * 會驗證每個區塊與整個串流的 CRC32；不支援已淘汰的 randomised 區塊。
+ * Pure TypeScript bzip2 decompression (single stream).
+ * Packaged apps do not include Python, so OpenH264 is decoded in Node instead of using Python's `bz2` module.
+ * Validates the CRC32 of every block and the full stream; deprecated randomized blocks are not supported.
  */
 
 const CRC_TABLE = (() => {
@@ -28,10 +28,10 @@ class BitReader {
   private bitCnt = 0
   constructor(private readonly data: Uint8Array) {}
 
-  /** 讀 n 個位元（n <= 24），高位元在前。 */
+  /** Read n bits (n <= 24), most significant bit first. */
   bits(n: number): number {
     while (this.bitCnt < n) {
-      if (this.pos >= this.data.length) throw new Error('bz2: 資料意外結束')
+      if (this.pos >= this.data.length) throw new Error('bz2: unexpected end of data')
       this.bitBuf = ((this.bitBuf << 8) | this.data[this.pos++]) >>> 0
       this.bitCnt += 8
     }
@@ -85,17 +85,17 @@ function readSymbol(br: BitReader, t: HuffTable): number {
     n++
     v = (v << 1) | br.bit()
   }
-  if (n > t.maxLen) throw new Error('bz2: Huffman 解碼錯誤')
+  if (n > t.maxLen) throw new Error('bz2: Huffman decoding error')
   const idx = v - t.base[n]
-  if (idx < 0 || idx >= t.perm.length) throw new Error('bz2: Huffman 解碼錯誤')
+  if (idx < 0 || idx >= t.perm.length) throw new Error('bz2: Huffman decoding error')
   return t.perm[idx]
 }
 
 export function bunzip2(input: Uint8Array): Buffer {
   const br = new BitReader(input)
-  if (br.bits(8) !== 0x42 || br.bits(8) !== 0x5a || br.bits(8) !== 0x68) throw new Error('bz2: 不是 bzip2 資料')
+  if (br.bits(8) !== 0x42 || br.bits(8) !== 0x5a || br.bits(8) !== 0x68) throw new Error('bz2: not bzip2 data')
   const level = br.bits(8) - 0x30
-  if (level < 1 || level > 9) throw new Error('bz2: 標頭損毀')
+  if (level < 1 || level > 9) throw new Error('bz2: corrupt header')
   const maxBlock = level * 100000
   const tt = new Uint32Array(maxBlock)
   const out: Buffer[] = []
@@ -106,14 +106,14 @@ export function bunzip2(input: Uint8Array): Buffer {
     const m2 = br.bits(24)
     const crcStored = ((br.bits(16) << 16) | br.bits(16)) >>> 0
     if (m1 === 0x177245 && m2 === 0x385090) {
-      if (crcStored !== combined) throw new Error('bz2: 串流 CRC 不符')
+      if (crcStored !== combined) throw new Error('bz2: stream CRC mismatch')
       break
     }
-    if (m1 !== 0x314159 || m2 !== 0x265359) throw new Error('bz2: 區塊標頭損毀')
-    if (br.bit()) throw new Error('bz2: 不支援 randomised 區塊')
+    if (m1 !== 0x314159 || m2 !== 0x265359) throw new Error('bz2: corrupt block header')
+    if (br.bit()) throw new Error('bz2: randomized blocks are not supported')
     const origPtr = br.bits(24)
 
-    // 符號對照表
+    // Symbol lookup table.
     const inUse16 = br.bits(16)
     const seqToUnseq: number[] = []
     for (let i = 0; i < 16; i++) {
@@ -122,20 +122,20 @@ export function bunzip2(input: Uint8Array): Buffer {
         for (let j = 0; j < 16; j++) if (bitsUsed & (0x8000 >> j)) seqToUnseq.push(i * 16 + j)
       }
     }
-    if (seqToUnseq.length === 0) throw new Error('bz2: 區塊沒有任何符號')
+    if (seqToUnseq.length === 0) throw new Error('bz2: block contains no symbols')
     const alphaSize = seqToUnseq.length + 2
 
     const nGroups = br.bits(3)
-    if (nGroups < 2 || nGroups > 6) throw new Error('bz2: Huffman 群組數錯誤')
+    if (nGroups < 2 || nGroups > 6) throw new Error('bz2: invalid number of Huffman groups')
     const nSelectors = br.bits(15)
-    if (nSelectors < 1) throw new Error('bz2: selector 數錯誤')
+    if (nSelectors < 1) throw new Error('bz2: invalid selector count')
     const selMtf: number[] = Array.from({ length: nGroups }, (_, i) => i)
     const selectors = new Uint8Array(nSelectors)
     for (let i = 0; i < nSelectors; i++) {
       let j = 0
       while (br.bit()) {
         j++
-        if (j >= nGroups) throw new Error('bz2: selector 損毀')
+        if (j >= nGroups) throw new Error('bz2: corrupt selector')
       }
       const v = selMtf[j]
       selMtf.splice(j, 1)
@@ -149,7 +149,7 @@ export function bunzip2(input: Uint8Array): Buffer {
       let cur = br.bits(5)
       for (let s = 0; s < alphaSize; s++) {
         for (;;) {
-          if (cur < 1 || cur > 20) throw new Error('bz2: 碼長損毀')
+          if (cur < 1 || cur > 20) throw new Error('bz2: corrupt code length')
           if (!br.bit()) break
           cur += br.bit() ? -1 : 1
         }
@@ -158,7 +158,7 @@ export function bunzip2(input: Uint8Array): Buffer {
       tables.push(buildTable(lens, alphaSize))
     }
 
-    // Huffman + MTF + 游程解碼 → tt 的低 8 位元
+    // Huffman + MTF + run-length decoding → low 8 bits of tt.
     const eob = alphaSize - 1
     const mtf = new Uint8Array(256)
     for (let i = 0; i < seqToUnseq.length; i++) mtf[i] = i
@@ -172,7 +172,7 @@ export function bunzip2(input: Uint8Array): Buffer {
     const flushRun = (): void => {
       if (run === 0) return
       const byte = seqToUnseq[mtf[0]]
-      if (nblock + run > maxBlock) throw new Error('bz2: 區塊超過大小上限')
+      if (nblock + run > maxBlock) throw new Error('bz2: block exceeds maximum size')
       counts[byte] += run
       tt.fill(byte, nblock, nblock + run)
       nblock += run
@@ -181,7 +181,7 @@ export function bunzip2(input: Uint8Array): Buffer {
     }
     for (;;) {
       if (groupLeft === 0) {
-        if (selIdx >= nSelectors) throw new Error('bz2: selector 用盡')
+        if (selIdx >= nSelectors) throw new Error('bz2: selectors exhausted')
         table = tables[selectors[selIdx++]]
         groupLeft = 50
       }
@@ -190,7 +190,7 @@ export function bunzip2(input: Uint8Array): Buffer {
       if (sym <= 1) {
         run += runPos << sym
         runPos <<= 1
-        if (run > maxBlock) throw new Error('bz2: 游程過長')
+        if (run > maxBlock) throw new Error('bz2: run is too long')
         continue
       }
       flushRun()
@@ -199,14 +199,14 @@ export function bunzip2(input: Uint8Array): Buffer {
       const v = mtf[idx]
       mtf.copyWithin(1, 0, idx)
       mtf[0] = v
-      if (nblock >= maxBlock) throw new Error('bz2: 區塊超過大小上限')
+      if (nblock >= maxBlock) throw new Error('bz2: block exceeds maximum size')
       const byte = seqToUnseq[v]
       counts[byte]++
       tt[nblock++] = byte
     }
-    if (nblock === 0 || origPtr >= nblock) throw new Error('bz2: origPtr 超出範圍')
+    if (nblock === 0 || origPtr >= nblock) throw new Error('bz2: origPtr out of range')
 
-    // 反向 BWT
+    // Inverse BWT.
     const cftab = new Int32Array(256)
     let sum = 0
     for (let i = 0; i < 256; i++) {
@@ -218,7 +218,7 @@ export function bunzip2(input: Uint8Array): Buffer {
       tt[cftab[uc]++] |= i << 8
     }
 
-    // 逆向第一階段 RLE（連續 4 個相同位元組後接重複次數）
+    // Reverse the first-stage RLE (four repeated bytes followed by a repeat count).
     const chunks: Buffer[] = []
     let cur = Buffer.allocUnsafe(nblock + 1024)
     let curLen = 0
@@ -254,14 +254,14 @@ export function bunzip2(input: Uint8Array): Buffer {
     chunks.push(cur.subarray(0, curLen))
     const blockOut = chunks.length === 1 ? chunks[0] : Buffer.concat(chunks)
     const crc = blockCrc(blockOut)
-    if (crc !== crcStored) throw new Error('bz2: 區塊 CRC 不符')
+    if (crc !== crcStored) throw new Error('bz2: block CRC mismatch')
     combined = (((combined << 1) | (combined >>> 31)) ^ crc) >>> 0
     out.push(blockOut)
   }
   return Buffer.concat(out)
 }
 
-/** 解壓縮 `src` 到 `dst`（整檔載入記憶體；OpenH264 的 DLL 不到 1 MB）。 */
+/** Decompress `src` to `dst` (load the whole file into memory; the OpenH264 DLL is under 1 MB). */
 export async function decompressBz2File(src: string, dst: string): Promise<void> {
   const data = await fs.promises.readFile(src)
   fs.writeFileSync(dst, bunzip2(data))

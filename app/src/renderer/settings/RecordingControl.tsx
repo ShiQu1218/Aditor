@@ -191,7 +191,7 @@ export function RecordingControl({ field, ids, state, settings, controller }: {
       return null
   }
   const current = String(settings[field])
-  // 未連接裝置仍保留已儲存的值；不因能力探測失敗寫入預設值。
+  // Keep saved values when no device is connected; a failed capability probe must not write defaults.
   const missing = !options.some((o) => o.value === current)
   if (missing) options.push({ value: current, label: fillTemplate(t.currentUnavailable, { value: current }), disabled: true })
   const hint = field === 'encoder' && !caps.value ? caps.loading ? t.capabilitiesLoading : t.capabilitiesUnavailable : undefined

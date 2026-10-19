@@ -1,4 +1,4 @@
-/* 首次啟動引導（見 onboarding/Onboarding.tsx）：疊在整個 app 上的 modal 對話框；顏色一律取自 tokens.css */
+/* First-run onboarding (see onboarding/Onboarding.tsx): modal dialog over the entire app; all colors come from tokens.css. */
 .ob-scrim { position: fixed; inset: 0; z-index: 110; background: var(--bg-scrim); display: grid; place-items: center; padding: var(--sp-6); }
 .ob-dialog {
   width: min(640px, 100%);
@@ -24,7 +24,7 @@
 .ob-path { flex: 1; max-width: none; padding: 6px 8px; background: var(--bg-input); border: 1px solid var(--line); border-radius: var(--r-sm); }
 .ob-err { margin: 0; color: var(--danger); font-size: var(--fs-body); }
 
-/* 錄影模式：單選卡片（原生 radio，視覺隱藏、由卡片外框顯示選取與焦點） */
+/* Recording mode: radio cards (native radio inputs are visually hidden; the card outline shows selection and focus). */
 .ob-modes { margin: 0; padding: 0; border: 0; min-width: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-3); }
 .ob-modes legend { grid-column: 1 / -1; padding: 0; margin-bottom: var(--sp-1); }
 .ob-mode {
@@ -46,7 +46,7 @@
 .ob-mode-title { font-weight: var(--fw-bold); }
 .ob-mode-desc { color: var(--text-2); font-size: var(--fs-small); line-height: var(--lh-body); }
 
-/* 儲存位置預覽（設定頁與引導共用） */
+/* Storage location preview (shared by the settings page and onboarding). */
 .storage-preview { margin: 0; display: flex; flex-direction: column; gap: var(--sp-1); padding: var(--sp-3); background: var(--bg-input); border: 1px solid var(--line); border-radius: var(--r-sm); text-align: left; }
 .storage-preview-row { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--sp-1) var(--sp-3); }
 .storage-preview dt { color: var(--text-1); font-size: var(--fs-small); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }

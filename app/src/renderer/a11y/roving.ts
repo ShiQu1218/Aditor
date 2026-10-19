@@ -1,22 +1,22 @@
-// roving tabindex 的鍵盤移動規則（純函式）：網格／清單／軌道共用。
+// Pure keyboard movement rules for roving tabindex, shared by grids, lists, and tracks.
 
 export type RovingOrientation = 'grid' | 'vertical' | 'horizontal'
 
 export interface RovingParams {
-  /** 項目總數 */
+/** Total number of items. */
   count: number
-  /** 目前游標索引（-1＝尚無游標） */
+/** Current cursor index (-1 means no cursor yet). */
   index: number
   key: string
-  /** 網格欄數（直向清單給 1） */
+/** Number of grid columns (use 1 for a vertical list). */
   columns: number
-  /** grid＝四向；vertical＝只回應 ↑↓；horizontal＝只回應 ←→（預設 grid） */
+/** grid responds in four directions; vertical responds only to ↑↓; horizontal only to ←→ (defaults to grid). */
   orientation?: RovingOrientation
 }
 
 /**
- * 回傳按鍵後的新游標索引；不處理的鍵或已在邊界（無移動）回 null。
- * ←→ 移一格；↑↓ 移一整列（落在較短的最後一列時停在最後一項）；Home／End 到頭尾。不環繞。
+ * Return the new cursor index after a key press; return null for unsupported keys or when already at an edge.
+ * ←→ moves one item; ↑↓ moves one row (stopping at the last item in a shorter final row); Home/End moves to either end. Movement does not wrap.
  */
 export function rovingStep({ count, index, key, columns, orientation = 'grid' }: RovingParams): number | null {
   if (count <= 0) return null
@@ -46,7 +46,7 @@ export function rovingStep({ count, index, key, columns, orientation = 'grid' }:
       const step = orientation === 'grid' ? cols : 1
       if (from < 0) next = 0
       else if (from + step <= last) next = from + step
-      else if (Math.floor(from / step) < Math.floor(last / step)) next = last // 下一列較短
+      else if (Math.floor(from / step) < Math.floor(last / step)) next = last // The next row is shorter.
       else return null
       break
     }
@@ -69,7 +69,7 @@ export interface GridPos {
 }
 
 export interface GridStepParams {
-  /** 各日期分組的項目數 */
+/** Number of items in each date group. */
   groups: number[]
   group: number
   index: number
@@ -78,8 +78,8 @@ export interface GridStepParams {
 }
 
 /**
- * 影片庫網格（日期分組）的游標移動：組內用 rovingStep；
- * ←→ 與 ↑↓ 在組界上延伸到相鄰的非空分組（↑↓ 保持欄位並夾在該列範圍內）；Home／End 為整個網格的頭尾。
+ * Move the cursor in the date-grouped library grid: use rovingStep within a group.
+ * At group boundaries, ←→ and ↑↓ continue into the adjacent non-empty group (↑↓ preserves the column and clamps to that row's range); Home/End targets the ends of the whole grid.
  */
 export function gridStep({ groups, group, index, key, columns }: GridStepParams): GridPos | null {
   const cols = Math.max(1, Math.floor(columns) || 1)

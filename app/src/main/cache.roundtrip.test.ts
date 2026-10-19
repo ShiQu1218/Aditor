@@ -26,7 +26,7 @@ describe('cache save/load roundtrip', () => {
 })
 
 describe('cacheFilePath', () => {
-  // path.resolve 依平台而異，磁碟機代號路徑只在 Windows 有意義 → 非 win32 明確跳過（顯示於報告）
+  // path.resolve is platform-specific, and drive-letter paths are meaningful only on Windows → explicitly skip off win32 (reported in results).
   it.skipIf(process.platform !== 'win32')('matches the engine naming (sha1 of lowercased, slash-normalised absolute path) [win32 only: path.resolve drive semantics]', () => {
     // python: hashlib.sha1(b'd:/v/a.mp4').hexdigest()
     const expected = path.join('C:/cache', '10ad1835deb8203d4d73f32ede655b294e165740.json')

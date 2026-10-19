@@ -1,6 +1,6 @@
-// 設定畫面的狀態與 IPC：UI 與 window.api 之間唯一的一層（純 TS，可在 node 測試）。
-// 原則：控制項顯示的永遠是「main 回傳／廣播的設定」，不是使用者輸入的值；
-// 數值在送出前依 shared/settings 的範圍夾限；寫檔失敗（persisted=false）顯示「儲存失敗」。
+// Settings screen state and IPC: the only layer between the UI and window.api (plain TS, testable in Node).
+// Controls always show settings returned or broadcast by main, not the user's raw input.
+// Clamp values to the ranges in shared/settings before sending; show “Save failed” when a write fails (persisted=false).
 import {
   DEFAULT_SETTINGS,
   SETTINGS_RANGES,
@@ -22,13 +22,13 @@ interface WatchStatus {
   missing: string[]
 }
 
-/** 設定畫面用到的 window.api 子集（全部以此型別存取，缺少的部分優雅降級）。 */
+/** Subset of window.api used by the settings screen (access through this type and gracefully degrade when parts are missing). */
 export interface SettingsApi {
   recording?: { getCapabilities(): Promise<RecorderCapabilities | null>; testObs?(): Promise<ObsTestResult> }
   settings: {
     get(): Promise<Settings>
     set(partial: Partial<Settings>): Promise<SettingsSetResult | unknown>
-    /** 建議的儲存根資料夾（舊版 preload 可能沒有） */
+    /** Suggested storage root folder (may be missing from older preload versions). */
     suggestStorageRoot?(): Promise<string>
     onChanged(cb: (s: Settings) => void): () => void
   }
@@ -59,7 +59,7 @@ export interface SettingsApi {
   }
 }
 
-/** 設定頁的 OpenH264 下載流程：idle → consent（授權說明）→ downloading → idle／error。 */
+/** OpenH264 download flow for settings: idle → consent (license notice) → downloading → idle/error. */
 export interface OpenH264DownloadState {
   step: 'idle' | 'consent' | 'downloading' | 'error'
   ratio: number
@@ -67,24 +67,24 @@ export interface OpenH264DownloadState {
 }
 
 export interface SettingsState {
-  /** null＝尚未讀取 */
+  /** null means not loaded yet. */
   settings: Settings | null
   loadFailed: boolean
-  /** 最近一次儲存沒有寫入磁碟 */
+  /** The most recent save was not written to disk. */
   saveFailed: boolean
-  /** 每列的錯誤訊息（列 id → 文字） */
+  /** Error message for each row (row id → text). */
   rowErrors: Record<string, string>
   watch: { dirs: string[]; missing: string[] }
   proxy: { status: 'idle' | 'loading' | 'ready' | 'error'; count: number; bytes: number }
   encoders: { status: 'idle' | 'loading' | 'ready'; list: string[] }
   recordingCapabilities: { loading: boolean; value: RecorderCapabilities | null }
   obsConnection: { testing: boolean; result: ObsTestResult | null }
-  /** main 建議的儲存根資料夾；null＝尚未取得 */
+  /** Storage root suggested by main; null means not available yet. */
   suggestedStorageRoot: string | null
-  /** null＝未知 */
+  /** null means unknown. */
   openh264: boolean | null
   openh264Download: OpenH264DownloadState
-  /** 自動更新狀態；舊版 preload 沒有更新 API 時為 unsupported */
+  /** Auto-update status; unsupported when an older preload has no update API. */
   update: UpdateStatus
 }
 
@@ -104,7 +104,7 @@ export const INITIAL_SETTINGS_STATE: SettingsState = {
   update: { state: 'unsupported' }
 }
 
-/** 會顯示 main 路徑／密碼驗證錯誤的設定列 → `SettingsSetResult.errors` 的鍵。 */
+/** Settings rows that display main-process path/password validation errors → keys in `SettingsSetResult.errors`. */
 const ROW_ERROR_KEYS: Readonly<Record<string, keyof NonNullable<SettingsSetResult['errors']>>> = {
   storageRoot: 'storageRoot',
   'recording-obsPassword': 'obsPassword'
@@ -147,7 +147,7 @@ export class SettingsController {
     this.patch({ rowErrors: next })
   }
 
-  /** 讀取全部資料並訂閱 `settings:changed`。 */
+  /** Load all data and subscribe to `settings:changed`. */
   async start(): Promise<void> {
     this.unsubscribe?.()
     this.unsubscribe = this.api.settings.onChanged((s) => {
@@ -165,13 +165,13 @@ export class SettingsController {
     this.unsubscribeUpdate = null
   }
 
-  // ── 自動更新（狀態以 main 推送為準） ──
+  // ── Auto-update (main-process updates are authoritative) ──
   async refreshUpdate(): Promise<void> {
     try {
       const status = await this.api.update?.getStatus()
       if (status) this.patch({ update: status })
     } catch {
-      // 讀不到狀態時維持目前顯示
+      // Keep the current display if the status cannot be read.
     }
   }
 
@@ -189,7 +189,7 @@ export class SettingsController {
     try {
       await this.api.update?.install()
     } catch {
-      // 安裝程式啟動失敗時 main 會推送錯誤狀態
+      // Main sends an error status if the installer fails to start.
     }
   }
 
@@ -197,7 +197,7 @@ export class SettingsController {
     try {
       await this.api.update?.openReleases()
     } catch {
-      // 開不了瀏覽器不影響設定
+      // Failure to open the browser does not affect settings.
     }
   }
 
@@ -210,7 +210,7 @@ export class SettingsController {
     }
   }
 
-  /** 送出設定並以回傳值為準更新畫面。 */
+  /** Submit settings and update the screen from the returned value. */
   private async commit(rowId: string, partial: Partial<Settings>): Promise<void> {
     try {
       const res = await this.api.settings.set(partial)
@@ -224,7 +224,7 @@ export class SettingsController {
       }
       this.patch({ settings: res.settings, saveFailed: !res.persisted, rowErrors: next })
     } catch {
-      // IPC 失敗：無法確認狀態，重新讀取並提示儲存失敗
+      // On IPC failure, the state is unknown; reload it and show a save-failure notice.
       await this.loadSettings()
       this.patch({ saveFailed: true })
     }
@@ -234,7 +234,7 @@ export class SettingsController {
     return this.commit(field, { [field]: value } as Partial<Settings>)
   }
 
-  /** 同時操作多個錄影控制項時依序送出，避免整份快照覆蓋較新的設定。 */
+  /** Submit recording-control changes sequentially so a full snapshot cannot overwrite newer settings. */
   setRecording<K extends keyof RecordingSettings>(field: K, value: RecordingSettings[K]): Promise<void> {
     this.recordingWrites = this.recordingWrites.then(async () => {
       const base = this.state.settings?.recording ?? DEFAULT_SETTINGS.recording
@@ -246,7 +246,7 @@ export class SettingsController {
   async testObs(): Promise<void> {
     if (this.state.obsConnection.testing) return
     this.patch({ obsConnection: { testing: true, result: null } })
-    // 先等主機、連接埠與密碼寫入主程序，再測試目前持久化的設定。
+    // Wait for host, port, and password to be written to main before testing the persisted settings.
     await this.recordingWrites
     let result: ObsTestResult
     try { result = await this.api.recording?.testObs?.() ?? { ok: false, error: 'OBS 連線測試無法使用' } }
@@ -270,7 +270,7 @@ export class SettingsController {
   async setNumber(field: 'before' | 'after', value: number): Promise<void> {
     const v = clampToRange(SETTINGS_RANGES[field], value)
     if (v === null) {
-      // 無法解析：不送出，通知畫面還原成目前的設定值
+      // If parsing fails, do not submit; tell the screen to restore the current setting.
       this.patch({})
       return
     }
@@ -287,7 +287,7 @@ export class SettingsController {
     await this.commit('autoclip', { autoclip: { ...base, [key]: v } })
   }
 
-  // ── 儲存位置（錄影與剪輯輸出的根資料夾；main 會同步 recording.outputDir／defaultOutDir） ──
+  // ── Storage location (root folder for recordings and exports; main syncs recording.outputDir/defaultOutDir) ──
   async refreshStorageSuggestion(): Promise<void> {
     try {
       const dir = await this.api.settings.suggestStorageRoot?.()
@@ -312,18 +312,18 @@ export class SettingsController {
     await this.refreshStorageSuggestion()
   }
 
-  /** 在檔案總管開啟儲存位置；尚未設定時不做事。 */
+  /** Open the storage location in File Explorer; do nothing when it is not configured. */
   async openStorageRoot(): Promise<void> {
     const dir = this.state.settings?.storageRoot
     if (!dir) return
     try {
       await this.api.export?.openFolder?.(dir)
     } catch {
-      // 開啟失敗不影響設定
+      // Failure to open the folder does not affect settings.
     }
   }
 
-  // ── 監看資料夾（WatchManager IPC；驗證在 main） ──
+  // ── Watched folders (WatchManager IPC; validation runs in main) ──
   private applyWatch(res: WatchStatus | undefined): void {
     if (res && Array.isArray(res.dirs)) {
       this.patch({ watch: { dirs: res.dirs, missing: Array.isArray(res.missing) ? res.missing : [] } })
@@ -334,7 +334,7 @@ export class SettingsController {
     try {
       this.applyWatch(await this.api.library?.getWatchFolders())
     } catch {
-      // 留在目前狀態
+      // Keep the current state.
     }
   }
 
@@ -360,7 +360,7 @@ export class SettingsController {
     }
   }
 
-  // ── 代理檔 ──
+  // ── Proxies ──
   private async libraryPaths(): Promise<string[]> {
     const entries = await this.api.library?.getEntries()
     return Array.isArray(entries) ? entries.map((e) => e.path).filter((p) => typeof p === 'string') : []
@@ -380,7 +380,7 @@ export class SettingsController {
     }
   }
 
-  /** 刪除影片庫內所有影片的代理檔（逐一走 `proxy.delete`）；回傳成功／失敗數。 */
+  /** Delete proxies for every library video (call `proxy.delete` for each); return success/failure counts. */
   async deleteProxies(): Promise<{ deleted: number; failed: number }> {
     let deleted = 0
     let failed = 0
@@ -397,7 +397,7 @@ export class SettingsController {
     return { deleted, failed }
   }
 
-  // ── 編碼器 ──
+  // ── Encoders ──
   async refreshEncoders(): Promise<void> {
     if (!this.api.export) return
     this.patch({ encoders: { ...this.state.encoders, status: 'loading' } })
@@ -415,7 +415,7 @@ export class SettingsController {
     }
   }
 
-  // ── OpenH264 下載（授權同意後才下載；不論有無硬體編碼器都可手動安裝／重新下載） ──
+  // ── OpenH264 download (download only after license consent; manual install/re-download is available with or without a hardware encoder) ──
   requestOpenH264Download(): void {
     if (!this.api.export?.downloadOpenH264) return
     if (this.state.openh264Download.step === 'downloading') return

@@ -272,7 +272,7 @@ describe('drawTimeline', () => {
     )
     expect(idx).toBeGreaterThan(-1)
     expect(calls[idx].globalAlpha).toBe(0.65)
-    // 計入者在 alpha 1 下以實心色填滿
+  // Included events use a solid fill at alpha 1.
     const counted = calls.filter((c) => c.name === 'fill' && c.fillStyle === 'C_knock' && c.globalAlpha === 1)
     expect(counted).toHaveLength(1)
     const lastAlpha = [...calls].reverse().find((c) => c.name === 'set:globalAlpha')

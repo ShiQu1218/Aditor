@@ -13,9 +13,9 @@ interface SettingRowProps {
   controller: SettingsController
 }
 
-/** 這些控制項是「一組」輸入，標題以 aria-labelledby 命名群組；其餘由 <label for> 命名。 */
+/** These controls are groups of inputs named by their heading via aria-labelledby; others use <label for>. */
 const GROUP_KINDS = new Set(['numberPair', 'autoclip', 'none'])
-/** 控制項較寬時（清單、參數表）排在標題下方整列顯示。 */
+/** Wide controls (lists and parameter tables) span the full row below the title. */
 const WIDE_KINDS = new Set(['watchFolders', 'autoclip', 'storageRoot'])
 
 export function SettingRow({ row, state, settings, controller }: SettingRowProps): JSX.Element {

@@ -1,8 +1,8 @@
-// 自動更新：用 electron-updater 檢查 GitHub Releases，背景下載，結束 Aditor 時安裝。
-// 只有安裝版（NSIS）能更新；開發模式與免安裝版回報 unsupported，由設定頁引導到下載頁。
+// Auto-update: use electron-updater to check GitHub Releases, download in the background, and install when Aditor exits.
+// Only installed (NSIS) builds support updates; development and portable builds report unsupported, and Settings links to the download page.
 import type { UpdateStatus } from '../shared/update'
 
-/** electron-updater 的 AppUpdater 用到的子集（測試可注入假的）。 */
+/** Subset of electron-updater AppUpdater used here (tests can inject a fake). */
 export interface UpdaterLike {
   autoDownload: boolean
   autoInstallOnAppQuit: boolean
@@ -15,13 +15,13 @@ export interface UpdaterLike {
 }
 
 export interface UpdaterDeps {
-  /** null＝不支援自動更新（開發模式、免安裝版） */
+  /** null = auto-update is unsupported (development or portable build). */
   updater: UpdaterLike | null
-  /** 設定「自動檢查更新」是否開啟；手動檢查不受影響 */
+  /** Whether automatic update checks are enabled; manual checks are unaffected. */
   isEnabled: () => boolean
-  /** 新版下載完成時通知一次 */
+  /** Notify once when a new version finishes downloading. */
   notifyDownloaded: (version: string) => void
-  /** 狀態改變時推給所有視窗 */
+  /** Broadcast status changes to all windows. */
   broadcast: (status: UpdateStatus) => void
   initialDelayMs?: number
   intervalMs?: number
@@ -32,20 +32,20 @@ export interface UpdaterDeps {
 
 export interface AppUpdaterService {
   status(): UpdateStatus
-  /** 立即檢查（手動或排程）；回傳檢查後的狀態 */
+  /** Check immediately (manual or scheduled); return the resulting status. */
   check(): Promise<UpdateStatus>
-  /** 已下載時立即結束並安裝；回傳是否已開始安裝 */
+  /** Quit and install immediately when an update is downloaded; return whether installation started. */
   install(): boolean
   start(): void
   stop(): void
 }
 
 const HOUR = 60 * 60 * 1000
-/** 啟動後等一下再檢查，不跟引擎、錄影器搶開機資源 */
+/** Wait briefly after startup before checking, so the updater does not compete with the engine and recorder during launch. */
 export const UPDATE_INITIAL_DELAY_MS = 15_000
 export const UPDATE_INTERVAL_MS = 6 * HOUR
 
-/** 檢查中、下載中或已下載時，不再重複檢查 */
+/** Do not start another check while one is checking, downloading, or already downloaded. */
 const BUSY = new Set<UpdateStatus['state']>(['checking', 'downloading', 'downloaded'])
 
 export function createAppUpdater(deps: UpdaterDeps): AppUpdaterService {
@@ -74,7 +74,7 @@ export function createAppUpdater(deps: UpdaterDeps): AppUpdaterService {
       deps.notifyDownloaded(info.version)
     })
     updater.on('error', (error) => {
-      // 已下載完成後的錯誤（例如之後的排程檢查失敗）不蓋掉「已下載」
+      // Errors after download completion (for example, a later scheduled check failure) must not overwrite the "downloaded" state.
       if (current.state !== 'downloaded') set({ state: 'error', error: error.message })
     })
   }
@@ -122,7 +122,7 @@ export function createAppUpdater(deps: UpdaterDeps): AppUpdaterService {
   }
 }
 
-/** 是否能自動更新：只有打包後的安裝版；免安裝版由 electron-builder 設定 PORTABLE_EXECUTABLE_DIR。 */
+/** Auto-update is available only in an installed packaged build; electron-builder sets PORTABLE_EXECUTABLE_DIR for portable builds. */
 export function canAutoUpdate(isPackaged: boolean, env: NodeJS.ProcessEnv = process.env): boolean {
   return isPackaged && !env.PORTABLE_EXECUTABLE_DIR
 }

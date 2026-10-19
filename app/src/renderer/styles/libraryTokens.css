@@ -1,5 +1,5 @@
-/* 影片庫專用的衍生 token。tokens.css 必須與 docs/design/ui-mock/css/tokens.css 逐位元相同，所以衍生值放這裡。 */
+/* Derived tokens specific to the library. Keep derived values here because tokens.css must remain byte-for-byte identical to docs/design/ui-mock/css/tokens.css. */
 :root {
-  /* --warning (#ffd500) 的 14% 底色，用於「建議代理檔」徽章 */
+  /* 14% tint of --warning (#ffd500), used by the suggested-proxy badge. */
   --lib-warn-soft: color-mix(in srgb, var(--warning) 14%, transparent);
 }

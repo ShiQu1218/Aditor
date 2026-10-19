@@ -80,7 +80,7 @@ describe('SettingsController', () => {
 
   test('control state follows the returned settings, not what the user typed', async () => {
     const { c } = await started({
-      // 後端忽略此變更（例如被拒絕）：回傳舊值
+      // If the backend ignores this change (for example, rejects it), it returns the old value.
       set: async () => ({ settings: { ...DEFAULT_SETTINGS }, persisted: true })
     })
     await c.setBool('lowPerfMode', true)
@@ -94,7 +94,7 @@ describe('SettingsController', () => {
     })
     await c.setBool('lowPerfMode', true)
     expect(c.getState().saveFailed).toBe(true)
-    // 畫面狀態仍同步為回傳值
+    // Keep the view state synchronized with the returned value.
     expect(c.getState().settings?.lowPerfMode).toBe(true)
     persisted = true
     await c.setBool('lowPerfMode', false)

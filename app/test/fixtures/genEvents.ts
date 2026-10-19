@@ -1,6 +1,6 @@
 import type { EngineEvent, EventType } from '../../src/shared/types'
 
-/** 與 docs/design/ui-mock/js/data.js 的 genLong 同演算法（確定性 LCG，不使用 Math.random） */
+/** Same algorithm as genLong in docs/design/ui-mock/js/data.js (deterministic LCG; does not use Math.random). */
 export const LONG_DURATION = 8240.5
 export const LONG_SPECTATING = [
   { start: 2650, end: 2702 },
@@ -8,7 +8,7 @@ export const LONG_SPECTATING = [
   { start: 7905, end: 7962 }
 ]
 
-/** extraRandom：額外的隨機散布事件數（效能測試用，預設 0 即與 mock 相同的約 300 個） */
+/** extraRandom: additional randomly distributed events for performance tests (default 0, matching the mock's ~300 events). */
 export function genLong(extraRandom = 0): { events: EngineEvent[]; duration: number } {
   let seed = 7
   const r = (): number => {
@@ -32,7 +32,7 @@ export function genLong(extraRandom = 0): { events: EngineEvent[]; duration: num
   const push = (t: number, big: boolean): void => {
     const type = big ? 'knock' : pick()
     const score = 0.8 + r() * 0.19
-    const dmg = type === 'knock' && r() > 0.4 // 與 mock 相同：傷害線旗標
+    const dmg = type === 'knock' && r() > 0.4 // Same as the mock: damage-line flag.
     raw.push({ t: Math.round(t * 4) / 4, type, score, dmg })
   }
   for (let f = 0; f < 46; f++) {

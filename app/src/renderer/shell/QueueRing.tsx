@@ -3,8 +3,8 @@ import { AnalysisQueue } from '../components/icons'
 import { useQueueStore } from '../queue/QueueProvider'
 
 /**
- * 佇列環形進度：conic-gradient 讀 CSS 變數 `--p`（0–100）。
- * 進度更新時直接對 DOM 元素設定變數（不經 React state），所以圖示欄／AppShell 不會因進度事件重繪。
+ * Circular queue progress: conic-gradient reads the `--p` CSS variable (0–100).
+ * Update the variable directly on the DOM element (without React state), so the icon rail/AppShell do not rerender for progress events.
  */
 export function QueueRing(): JSX.Element {
   const store = useQueueStore()

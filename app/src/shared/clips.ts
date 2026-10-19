@@ -1,6 +1,6 @@
 import type { Clip } from './types'
 
-/** 舊檔相容：缺 status 視為 accepted、缺 event_ids 補 []、去除重複 id（保留先出現者）。 */
+/** Legacy compatibility: treat missing status as accepted, fill missing event_ids with [], and remove duplicate IDs (keep the first). */
 export function normalizeClips(clips: Clip[] | undefined): Clip[] {
   const seen = new Set<string>()
   const out: Clip[] = []
@@ -13,9 +13,9 @@ export function normalizeClips(clips: Clip[] | undefined): Clip[] {
 }
 
 /**
- * 重新分析合併規則（spec §4.2 擴充）：
- * manual 全留；已接受的 ai 保留並標 stale；suggested/skipped 的舊 ai 丟棄；
- * 新 ai 與保留片段起點差 < 1s 者不重複，其餘以 suggested 加入；依 start 排序。
+ * Reanalysis merge rules (extension to spec §4.2):
+ * keep all manual clips; keep accepted AI clips and mark them stale; discard old suggested/skipped AI clips;
+ * skip new AI clips whose start is within < 1s of a retained clip; add the rest as suggested; sort by start.
  */
 export function mergeOnReanalyze(oldClips: Clip[], newAi: Clip[]): Clip[] {
   const kept: Clip[] = []
@@ -28,7 +28,7 @@ export function mergeOnReanalyze(oldClips: Clip[], newAi: Clip[]): Clip[] {
   for (const n of normalizeClips(newAi)) {
     if (n.origin !== 'ai') continue
     if (kept.some((k) => Math.abs(k.start - n.start) < 1)) continue
-    // id 撞到保留片段時改發新 id，避免丟失建議
+    // Generate a new ID if it collides with a retained clip, so the suggestion is not lost.
     let id = n.id
     while (ids.has(id)) id = `${id}_n`
     ids.add(id)

@@ -1,4 +1,4 @@
-"""訓練素材：依文字偵測器的逐格標籤，列出圖示特徵分布（只看 EN/JA）。"""
+"""Training data: list icon feature distributions by per-frame text detector labels (EN/JA only)."""
 import sys, os; sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from ana import *
 cols = ["chev", "plus", "person", "group", "skull", "hand", "left_above", "line2_icons", "line2_ink", "name_color"]

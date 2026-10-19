@@ -2,7 +2,7 @@ import { BrowserWindow, ipcMain, shell } from 'electron'
 import { RELEASES_URL, UPDATE_CHANNELS, type UpdateStatus } from '../shared/update'
 import type { AppUpdaterService } from './updater'
 
-/** 推送更新狀態給所有視窗；視窗關閉中送失敗不影響更新流程。 */
+/** Send update status to every window; a send failure while a window is closing does not affect the update flow. */
 export function broadcastUpdateStatus(status: UpdateStatus): void {
   for (const win of BrowserWindow.getAllWindows()) {
     try {
@@ -13,12 +13,12 @@ export function broadcastUpdateStatus(status: UpdateStatus): void {
   }
 }
 
-/** 設定頁用的更新 IPC；回傳解除註冊函式。 */
+/** Update IPC for Settings; return an unregister function. */
 export function registerUpdateIpc(service: AppUpdaterService): () => void {
   ipcMain.handle(UPDATE_CHANNELS.getStatus, () => service.status())
   ipcMain.handle(UPDATE_CHANNELS.check, () => service.check())
   ipcMain.handle(UPDATE_CHANNELS.install, () => service.install())
-  // 只開固定的 Releases 網址，不接受 renderer 傳入的網址
+  // Open only the fixed Releases URL; do not accept a URL from the renderer.
   ipcMain.handle(UPDATE_CHANNELS.openReleases, async () => {
     await shell.openExternal(RELEASES_URL)
     return true

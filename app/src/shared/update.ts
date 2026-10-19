@@ -1,4 +1,4 @@
-/** 自動更新（electron-updater + GitHub Releases）的 IPC 通道與狀態。 */
+/** IPC channels and status for automatic updates (electron-updater + GitHub Releases). */
 
 export const UPDATE_CHANNELS = {
   getStatus: 'update:getStatus',
@@ -8,28 +8,28 @@ export const UPDATE_CHANNELS = {
   status: 'update:status'
 } as const
 
-/** 手動下載新版的頁面（免安裝版或更新失敗時使用）。 */
+/** Page for manually downloading a new version (used for portable builds or when an update fails). */
 export const RELEASES_URL = 'https://github.com/ShiQu1218/Aditor/releases/latest'
 
 export type UpdateState =
-  /** 開發模式或免安裝版：無法自動更新 */
+  /** Development mode or portable build: automatic updates are unavailable. */
   | 'unsupported'
-  /** 尚未檢查 */
+  /** Not checked yet. */
   | 'idle'
   | 'checking'
-  /** 已是最新版本 */
+  /** Already up to date. */
   | 'latest'
   | 'downloading'
-  /** 已下載，結束 Aditor 時安裝 */
+  /** Downloaded; install when Aditor exits. */
   | 'downloaded'
   | 'error'
 
 export interface UpdateStatus {
   state: UpdateState
-  /** 新版本號（downloading／downloaded） */
+  /** New version number (downloading/downloaded). */
   version?: string
-  /** 下載進度 0–100（downloading） */
+  /** Download progress, 0–100 (downloading). */
   percent?: number
-  /** 錯誤訊息（error） */
+  /** Error message (error). */
   error?: string
 }

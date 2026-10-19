@@ -27,14 +27,14 @@ export function pickEncoder(available: string[]): string | null {
   return null
 }
 
-/** NVENC／AMF／QSV 都有最小畫面尺寸限制（NVENC 約 145x49 以上），測試畫面用 256x256 才不會誤判硬體不可用。 */
+/** NVENC/AMF/QSV have minimum frame dimensions (about 145x49 for NVENC); use a 256x256 test frame to avoid false hardware-unavailable results. */
 export function encoderTestArgs(encoder: string): string[] {
   return ['-f', 'lavfi', '-i', 'color=c=black:s=256x256:d=0.1', '-c:v', encoder, '-f', 'null', '-']
 }
 
 const ENCODER_TEST_TIMEOUT_MS = 10_000
 
-/** 實際編一小段測試畫面；驅動卡住時逾時（預設 10 秒）就視為不可用並終止程序。 */
+/** Encode a short test frame; if the driver hangs, treat it as unavailable and terminate the process after the timeout (10 seconds by default). */
 export function testEncoder(
   ffmpegBin: string,
   encoder: string,

@@ -1,8 +1,8 @@
 /**
- * 內容安全政策（I2）：只允許自家腳本；圖片／影片只從本機檔案與 data: 載入；不允許 eval、內嵌腳本、外部連線。
- * 影片另允許 blob:（錄影中觀看以 MediaSource 播放，`URL.createObjectURL(mediaSource)` 產生 blob: URL）。
- * 樣式需要 'unsafe-inline'（React 的 style 屬性）。由 vite 外掛在**正式建置**時注入 index.html
- * （開發模式的 HMR 需要內嵌腳本，不套用）。
+ * Content Security Policy (I2): allow only our own scripts; load images/video only from local files and data:; disallow eval, inline scripts, and external connections.
+ * Also allow blob: for video (live viewing uses MediaSource, and `URL.createObjectURL(mediaSource)` returns a blob: URL).
+ * Styles require 'unsafe-inline' (React style attributes). A Vite plugin injects the policy into index.html in **production builds**
+ * (not in development, where HMR requires inline scripts).
  */
 export const CSP = [
   "default-src 'self'",
@@ -22,7 +22,7 @@ export function cspMetaTag(): string {
   return `<meta http-equiv="Content-Security-Policy" content="${CSP}" />`
 }
 
-/** vite 外掛：build 時把 CSP meta 放進 <head>；dev server（ctx.server 存在）不注入。 */
+/** Vite plugin: add the CSP meta tag to <head> during build; do not inject it on the dev server (ctx.server is present). */
 export function cspPlugin(): {
   name: string
   transformIndexHtml: (html: string, ctx: { server?: unknown }) => string

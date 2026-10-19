@@ -5,15 +5,15 @@ import zhCN from './messages/zh-CN'
 
 export const LOCALES = ['zh-TW', 'zh-CN', 'en', 'ja', 'ko'] as const
 export type Locale = (typeof LOCALES)[number]
-/** 設定值：'auto' 依系統語言決定。 */
+/** Setting value: 'auto' resolves from the system language. */
 export type LanguageSetting = 'auto' | Locale
 export const LANGUAGE_SETTINGS: readonly LanguageSetting[] = ['auto', ...LOCALES]
-/** 沒有指定語言時的語言（例如測試、renderer 沒收到 `?lang=`）。 */
+/** Language used when none is specified (for example, in tests or when the renderer does not receive `?lang=`). */
 export const DEFAULT_LOCALE: Locale = 'zh-TW'
-/** 系統語言不在支援清單、或讀不到時使用的語言。 */
+/** Language used when the system language is unsupported or unavailable. */
 export const FALLBACK_LOCALE: Locale = 'en'
 
-/** 各語言的自稱（語言選單固定用原文顯示，不隨目前介面語言翻譯）。 */
+/** Native names of each language (the language menu always shows these names as-is, regardless of the current interface language). */
 export const LOCALE_NAMES: Readonly<Record<Locale, string>> = {
   'zh-TW': '繁體中文', 'zh-CN': '简体中文', en: 'English', ja: '日本語', ko: '한국어'
 }
@@ -22,7 +22,7 @@ export function isLocale(value: unknown): value is Locale {
   return typeof value === 'string' && (LOCALES as readonly string[]).includes(value)
 }
 
-/** 把 BCP 47 語言標籤（`zh-Hant-TW`、`en-US`、`ja`…）對應到支援的語言；不支援時回傳 null。 */
+/** Map a BCP 47 language tag (`zh-Hant-TW`, `en-US`, `ja`, etc.) to a supported language; return null when unsupported. */
 export function matchLocale(tag: string | null | undefined): Locale | null {
   if (!tag) return null
   const t = tag.toLowerCase().replace(/_/g, '-')
@@ -31,15 +31,15 @@ export function matchLocale(tag: string | null | undefined): Locale | null {
   return base === 'en' || base === 'ja' || base === 'ko' ? base : null
 }
 
-/** 設定值（含 'auto'）轉成實際語言；auto 依 `systemTag`（例如 `app.getLocale()`），都不支援就用英文。 */
+/** Resolve a setting (including 'auto') to an actual language; 'auto' uses `systemTag` (such as `app.getLocale()`), falling back to English if unsupported. */
 export function resolveLocale(setting: unknown, systemTag?: string | null): Locale {
   return isLocale(setting) ? setting : matchLocale(systemTag) ?? FALLBACK_LOCALE
 }
 
 /**
- * 程式碼內的零散訊息（main 的通知與錯誤、共用的純函式）以繁體中文原文當鍵：
- * `tr('錄影程序已停止')`。繁中直接回傳原文，其他語言查 `messages/<語言>.ts`，查不到也回傳原文，
- * 所以漏翻只會顯示中文而不會壞掉。`{名稱}` 是佔位符，由 `vars` 代入。
+ * Scattered messages in code (main notifications/errors and shared pure functions) use the Traditional Chinese source text as the key,
+ * for example `tr('錄影程序已停止')`. Traditional Chinese returns the source directly; other languages look it up in `messages/<language>.ts`,
+ * falling back to the source if no translation exists, so a missing translation only displays Chinese. `{name}` placeholders are filled from `vars`.
  */
 export type MessageTable = Readonly<Record<string, string>>
 const TABLES: Readonly<Partial<Record<Locale, MessageTable>>> = { 'zh-CN': zhCN, en, ja, ko }

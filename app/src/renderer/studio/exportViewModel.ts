@@ -3,7 +3,7 @@ import { concatCompatible, extraSecondsForCopy, StreamProbe } from '../../shared
 import { i18n } from '../i18n'
 import { tr } from '../../shared/locale'
 
-/** 來源影片規格（engine:probe 的回傳）；其餘串流參數 main 端沿用預設值，因此這裡只比對這三項。 */
+/** Source video metadata (returned by engine:probe); main uses defaults for other stream parameters, so compare only these three. */
 export interface SourceInfo {
   codec: string
   width: number
@@ -13,11 +13,11 @@ export interface SourceInfo {
 export interface ExportPlan {
   mode: 'concat' | 'separate'
   quality: 'copy' | 'precise'
-  /** 以來源路徑為鍵；探測不到的來源不放（視為未知，不拿來判斷不一致） */
+/** Keyed by source path; omit sources that could not be probed (treat as unknown and do not use to detect mismatches). */
   sources: Record<string, SourceInfo | undefined>
-  /** 以來源路徑為鍵的關鍵影格時間（目前只有已分析的目前影片有） */
+/** Keyframe times keyed by source path (currently available only for the analyzed current video). */
   keyframes: Record<string, number[] | undefined>
-  /** 來源缺失的片段 id（ProjectProvider.missingItemIds） */
+/** IDs of clips with missing sources (ProjectProvider.missingItemIds). */
   missingItemIds: ReadonlySet<string>
 }
 
@@ -28,29 +28,29 @@ export interface Notice {
 
 export interface ExportEncoders {
   encoders: string[]
-  /** OpenH264 DLL 是否已安裝 */
+/** Whether the OpenH264 DLL is installed. */
   openh264: boolean
 }
 
 export interface ExportViewModel {
   notices: Notice[]
   copyAvailable: boolean
-  /** 快速無損下各片段起點平均多出的秒數；非快速無損、或沒有關鍵影格資料＝null（不捏造數字） */
+/** Average extra seconds at each clip start for fast lossless; null for other modes or without keyframe data (never fabricate a number). */
   extraSecondsHint: number | null
   canStart: boolean
   blockers: string[]
-  /** 實際會採用的品質（合輯且來源不一致時，快速無損會自動改為精準） */
+/** Quality that will actually be used (fast lossless automatically switches to precise for a merged export with mismatched sources). */
   effectiveQuality: 'copy' | 'precise'
-  /** 需要先取得 OpenH264（精準重新編碼、沒有任何可用編碼器、且尚未安裝） */
+/** Whether OpenH264 must be acquired first (precise re-encoding, no available encoder, and not already installed). */
   openh264Required: boolean
 }
 
 function toProbe(i: SourceInfo): StreamProbe {
-  // 幀率、像素格式與音訊規格引擎 probe 沒提供：以 0／空字串表示未知（見 concatCompatible）
+  // Engine probe does not provide frame rate, pixel format, or audio metadata; use 0/empty string for unknown (see concatCompatible).
   return { vcodec: i.codec, width: i.width, height: i.height, fps: 0, pix_fmt: '', acodec: '', sample_rate: 0, channels: 0 }
 }
 
-/** 匯出設定頁的衍生狀態（純函式）。相容性判斷沿用 shared/exportCompat（與 main 的 buildJobs 同一份）。 */
+/** Derived state for the export settings page (pure function). Reuse shared/exportCompat for compatibility checks, the same logic as main's buildJobs. */
 export function exportViewModel(project: Project, plan: ExportPlan | null, enc: ExportEncoders): ExportViewModel {
   const t = i18n.export
   const notices: Notice[] = []
@@ -70,7 +70,7 @@ export function exportViewModel(project: Project, plan: ExportPlan | null, enc: 
   let copyAvailable = true
   if (plan && plan.mode === 'concat') {
     const probes: StreamProbe[] = []
-    // 同一來源只算一次（重複片段來自同一支影片，本來就相容）
+  // Probe each source only once (duplicate clips from one video are already compatible).
     for (const src of new Set(items.map((it) => it.source))) {
       const info = plan.sources[src]
       if (info) probes.push(toProbe(info))
@@ -105,7 +105,7 @@ export function exportViewModel(project: Project, plan: ExportPlan | null, enc: 
   return { notices, copyAvailable, extraSecondsHint, canStart, blockers, effectiveQuality, openh264Required }
 }
 
-/** 位元組 → 「1.6 GB」「212 MB」。 */
+/** Format bytes as e.g. "1.6 GB" or "212 MB". */
 export function formatBytes(n: number): string {
   if (!Number.isFinite(n) || n < 0) return '0 MB'
   const gb = n / 1024 ** 3
@@ -113,7 +113,7 @@ export function formatBytes(n: number): string {
   return `${Math.max(1, Math.round(n / 1024 ** 2))} MB`
 }
 
-/** 剩餘空間是否不足（預估大小 × 1.1，與 main 的 checkDiskSpace 同一門檻）。 */
+/** Whether remaining disk space is insufficient (estimated size × 1.1, same threshold as main's checkDiskSpace). */
 export function diskIsLow(freeBytes: number, estimateBytes: number): boolean {
   return freeBytes < estimateBytes * 1.1
 }

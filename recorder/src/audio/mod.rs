@@ -1,7 +1,7 @@
-//! WASAPI 音訊（任務 B3）：系統聲音 loopback＋麥克風，各自轉成 48 kHz 立體聲 f32，
-//! 依 QPC 對齊後混成一軌（規格 §2.4、R7）。
+//! WASAPI audio (task B3): system loopback and microphone, each converted to 48 kHz stereo f32,
+//! aligned using QPC and mixed into one track (spec §2.4, R7).
 //!
-//! 介面由骨架固定，實作者不得改動簽章。
+//! The scaffold defines the interface; implementations must preserve signatures.
 
 pub mod mix;
 mod process;
@@ -42,7 +42,7 @@ use mix::{
 
 const PACKET_CAPACITY: usize = 32;
 
-/// 在音訊執行緒上被呼叫；不得阻塞。`interleaved` 為 48 kHz 立體聲 f32，`pts` 為第一個樣本的 tick。
+/// Called on the audio thread; must not block. `interleaved` is 48 kHz stereo f32; `pts` is the first sample tick.
 pub trait AudioSink: Send {
     fn on_audio(&mut self, interleaved: &[f32], pts: i64);
 }
@@ -63,8 +63,8 @@ pub struct AudioCapture {
 }
 
 impl AudioCapture {
-    /// `origin_ticks`：session 起點的 QPC tick；送出的 pts = 樣本 QPC − origin。
-    #[allow(dead_code)] // 保留既有裝置擷取介面供整合測試使用。
+    /// `origin_ticks`: session start in QPC ticks; emitted pts = sample QPC − origin.
+    #[allow(dead_code)] // Keep the existing device capture interface for integration tests.
     pub fn start(cfg: &AudioConfig, origin_ticks: i64, sink: Box<dyn AudioSink>) -> Result<Self> {
         Self::start_for_pid(cfg, 0, origin_ticks, sink)
     }
@@ -75,7 +75,7 @@ impl AudioCapture {
         origin_ticks: i64,
         sink: Box<dyn AudioSink>,
     ) -> Result<Self> {
-        cfg.validate().context("audio_failed: 音訊參數無效")?;
+        cfg.validate().context("audio_failed: Invalid audio parameters")?;
         let mut capture = Self {
             stop: Arc::new(AtomicBool::new(false)),
             workers: Vec::new(),
@@ -100,11 +100,11 @@ impl AudioCapture {
         }
         let config = cfg.clone();
         let stop = capture.stop.clone();
-        // 混音另用工作執行緒；WASAPI 執行緒僅複製封包與 try_send，不等待消費者。
+        // Mix on a separate worker; WASAPI threads only copy packets and try_send without waiting for consumers.
         let worker = thread::Builder::new()
             .name("aditorrec-audio-mix".into())
             .spawn(move || mix_loop(system, mic, origin_ticks, &config, &stop, sink))
-            .context("audio_failed: 建立混音執行緒失敗")?;
+            .context("audio_failed: Failed to create mixing thread")?;
         capture.workers.push(worker);
         Ok(capture)
     }
@@ -147,7 +147,7 @@ impl AudioCapture {
                 let mut warning = None;
                 let opened = if let Some(pid) = pid {
                     EndpointStream::open_process(pid).or_else(|error| {
-                        warning = Some(format!("無法只錄遊戲聲音，已改錄系統聲音：{error:#}"));
+                        warning = Some(format!("Game-only audio unavailable; switched to system audio: {error:#}"));
                         EndpointStream::open(&id, false)
                     })
                 } else {
@@ -165,19 +165,19 @@ impl AudioCapture {
                 }
                 let dropped = AtomicU64::new(0);
                 if let Err(error) = stream.run(&packets_tx, &stop, &dropped) {
-                    eprintln!("audio_failed: 音訊擷取中斷：{error:#}");
+                    eprintln!("audio_failed: Audio capture interrupted: {error:#}");
                     stop.store(true, Ordering::Release);
                 }
                 let dropped = dropped.load(Ordering::Relaxed);
                 if dropped != 0 {
-                    eprintln!("音訊擷取佇列已丟棄 {dropped} 個封包");
+                    eprintln!("Audio capture queue dropped {dropped} packets");
                 }
             })
-            .context("audio_failed: 建立音訊擷取執行緒失敗")?;
+            .context("audio_failed: Failed to create audio capture thread")?;
         self.workers.push(worker);
         let (format, warning) = ready_rx
             .recv_timeout(Duration::from_secs(5))
-            .context("audio_failed: 等待音訊裝置啟動失敗")?;
+            .context("audio_failed: Failed to wait for audio device startup")?;
         if warning.is_some() {
             self.warning = warning;
         }
@@ -187,10 +187,10 @@ impl AudioCapture {
 
     fn shutdown(&mut self) {
         self.stop.store(true, Ordering::Release);
-        // 先停兩個來源並關閉傳送端；混音執行緒會排空佇列並補齊尾端後退出。
+        // Stop both sources and close senders first; the mixing thread drains the queue and fills the tail before exiting.
         for worker in self.workers.drain(..) {
             if worker.join().is_err() {
-                eprintln!("audio_failed: 音訊執行緒異常結束");
+                eprintln!("audio_failed: Audio thread exited unexpectedly");
             }
         }
     }
@@ -209,10 +209,10 @@ struct Apartment {
 
 impl Apartment {
     fn enter() -> Result<Self> {
-        // SAFETY: 在目前執行緒初始化 COM；成功的呼叫由同執行緒的 Drop 配對。
+        // SAFETY: Initialize COM on this thread; successful calls are balanced by Drop on the same thread.
         let result = unsafe { CoInitializeEx(None, COINIT_MULTITHREADED) };
         if result != RPC_E_CHANGED_MODE {
-            result.ok().context("初始化音訊 COM 失敗")?;
+            result.ok().context("Failed to initialize audio COM")?;
         }
         Ok(Self {
             initialized: result.is_ok(),
@@ -224,7 +224,7 @@ impl Apartment {
 impl Drop for Apartment {
     fn drop(&mut self) {
         if self.initialized {
-            // SAFETY: 僅平衡目前執行緒先前成功的 CoInitializeEx。
+            // SAFETY: Only balance the successful CoInitializeEx on this thread.
             unsafe { CoUninitialize() };
         }
     }
@@ -234,30 +234,30 @@ struct TaskMem<T>(*mut T);
 
 impl<T> Drop for TaskMem<T> {
     fn drop(&mut self) {
-        // SAFETY: 此指標只包裝 WASAPI／COM 回傳的 task allocator 配置，且僅釋放一次。
+        // SAFETY: This pointer only wraps task allocator memory returned by WASAPI/COM and is freed exactly once.
         unsafe { CoTaskMemFree(Some(self.0.cast())) };
     }
 }
 
 fn task_string(value: PWSTR) -> Result<String> {
     let memory = TaskMem(value.0);
-    // SAFETY: GetId 與 PropVariantToStringAlloc 回傳以 NUL 結尾的有效 UTF-16 配置。
-    unsafe { PWSTR(memory.0).to_string() }.context("音訊裝置文字不是有效的 UTF-16")
+    // SAFETY: GetId and PropVariantToStringAlloc return valid NUL-terminated UTF-16 allocations.
+    unsafe { PWSTR(memory.0).to_string() }.context("Audio device text is not valid UTF-16")
 }
 
 fn enumerator() -> Result<IMMDeviceEnumerator> {
-    // SAFETY: 呼叫端已初始化 COM；沒有外部聚合物件，介面由 windows crate 管理。
+    // SAFETY: The caller initialized COM; there is no outer aggregate, and the windows crate manages interfaces.
     unsafe { CoCreateInstance(&MMDeviceEnumerator, None, CLSCTX_ALL) }
-        .context("建立音訊裝置列舉器失敗")
+        .context("Failed to create audio device enumerator")
 }
 
 fn device_id(device: &IMMDevice) -> Result<String> {
-    // SAFETY: device 是有效的 COM 介面，回傳的配置交由 task_string 釋放。
-    task_string(unsafe { device.GetId() }.context("讀取音訊裝置 ID 失敗")?)
+    // SAFETY: device is a valid COM interface; task_string frees the returned allocation.
+    task_string(unsafe { device.GetId() }.context("Failed to read audio device ID")?)
 }
 
 fn devices(enumerator: &IMMDeviceEnumerator, flow: EDataFlow) -> Result<Vec<AudioDevice>> {
-    // SAFETY: 列舉器有效，只取得目前啟用中的端點與預設端點。
+    // SAFETY: The enumerator is valid; only active endpoints and the default endpoint are queried.
     let (collection, default) = unsafe {
         (
             enumerator.EnumAudioEndpoints(flow, DEVICE_STATE_ACTIVE)?,
@@ -265,24 +265,24 @@ fn devices(enumerator: &IMMDeviceEnumerator, flow: EDataFlow) -> Result<Vec<Audi
         )
     };
     let default = default.as_ref().map(device_id).transpose()?;
-    // SAFETY: collection 是有效的 COM 集合。
+    // SAFETY: collection is a valid COM collection.
     let count = unsafe { collection.GetCount() }?;
     (0..count)
         .map(|index| {
-            // SAFETY: index 小於集合長度，屬性以唯讀方式開啟。
+            // SAFETY: index is within the collection; properties are opened read-only.
             let (device, mut name) = unsafe {
                 let device = collection.Item(index)?;
                 let properties = device.OpenPropertyStore(STGM_READ)?;
                 let name = properties.GetValue(&PKEY_Device_FriendlyName)?;
                 (device, name)
             };
-            // SAFETY: name 由 GetValue 初始化，轉字串後無論成功或失敗都會清除。
+            // SAFETY: GetValue initializes name, which is cleared after string conversion regardless of success.
             let text = unsafe { PropVariantToStringAlloc(&name) }
                 .map_err(anyhow::Error::from)
                 .and_then(task_string);
-            // SAFETY: 此 PROPVARIANT 尚未清除，且之後不再讀取。
-            unsafe { PropVariantClear(&mut name) }.context("釋放音訊裝置屬性失敗")?;
-            let name = text.context("讀取音訊裝置名稱失敗")?;
+            // SAFETY: This PROPVARIANT has not been cleared and will not be read again.
+            unsafe { PropVariantClear(&mut name) }.context("Failed to release audio device property")?;
+            let name = text.context("Failed to read audio device name")?;
             let id = device_id(&device)?;
             Ok(AudioDevice {
                 default: default.as_ref() == Some(&id),
@@ -297,7 +297,7 @@ struct Event(HANDLE);
 
 impl Drop for Event {
     fn drop(&mut self) {
-        // SAFETY: 此 handle 來自成功的 CreateEventW，且僅由此處關閉一次。
+        // SAFETY: This handle comes from a successful CreateEventW and is closed exactly once here.
         let _ = unsafe { CloseHandle(self.0) };
     }
 }
@@ -314,12 +314,12 @@ struct EndpointStream {
 impl EndpointStream {
     fn open(id: &str, mic: bool) -> Result<Self> {
         if id.contains('\0') {
-            bail!("音訊裝置 ID 含有 NUL 字元");
+            bail!("Audio device ID contains a NUL character");
         }
         let apartment = Apartment::enter()?;
         let enumerator = enumerator()?;
         let wide: Vec<_> = id.encode_utf16().chain(Some(0)).collect();
-        // SAFETY: COM 已初始化，wide 存活至呼叫返回；只使用系統音訊端點。
+        // SAFETY: COM is initialized and wide lives until the call returns; only system audio endpoints are used.
         let device = unsafe {
             if id == "default" {
                 enumerator.GetDefaultAudioEndpoint(if mic { eCapture } else { eRender }, eConsole)
@@ -329,16 +329,16 @@ impl EndpointStream {
         }
         .map_err(|error| {
             if id == "default" && error.code().0 == 0x80070490u32 as i32 {
-                anyhow::anyhow!("audio_device_missing: 沒有預設音訊裝置")
+                anyhow::anyhow!("audio_device_missing: No default audio device")
             } else {
-                anyhow::anyhow!("找不到指定的音訊裝置：{error}")
+                anyhow::anyhow!("Specified audio device not found: {error}")
             }
         })?;
-        // SAFETY: 在目前執行緒啟用有效裝置的音訊介面。
+        // SAFETY: Activate the valid device's audio interface on this thread.
         let client: IAudioClient =
-            unsafe { device.Activate(CLSCTX_ALL, None) }.context("啟用音訊裝置失敗")?;
-        // SAFETY: GetMixFormat 配置由 TaskMem 持有，直到 Initialize 返回後才釋放。
-        let raw = TaskMem(unsafe { client.GetMixFormat() }.context("取得裝置混音格式失敗")?);
+            unsafe { device.Activate(CLSCTX_ALL, None) }.context("Failed to activate audio device")?;
+        // SAFETY: TaskMem owns the GetMixFormat allocation until Initialize returns.
+        let raw = TaskMem(unsafe { client.GetMixFormat() }.context("Failed to get device mix format")?);
         let format = read_format(&raw)?;
         Self::initialize(client, raw.0, format, mic, apartment)
     }
@@ -366,11 +366,11 @@ impl EndpointStream {
         mic: bool,
         apartment: Apartment,
     ) -> Result<Self> {
-        // SAFETY: 不指定名稱與安全描述元，建立本程序擁有的 auto-reset 事件。
+        // SAFETY: Create an auto-reset event owned by this process without a name or security descriptor.
         let event = Event(unsafe { CreateEventW(None, false, false, None) }?);
         let flags =
             AUDCLNT_STREAMFLAGS_EVENTCALLBACK | if mic { 0 } else { AUDCLNT_STREAMFLAGS_LOOPBACK };
-        // SAFETY: 格式指標於 Initialize 返回前保持有效；shared event mode 的週期為 0。
+        // SAFETY: The format pointer remains valid until Initialize returns; shared event mode uses a zero period.
         let (capture, buffer_frames) = unsafe {
             client.Initialize(AUDCLNT_SHAREMODE_SHARED, flags, 0, 0, raw, None)?;
             client.SetEventHandle(event.0)?;
@@ -384,8 +384,8 @@ impl EndpointStream {
             buffer_frames,
             _apartment: apartment,
         };
-        // SAFETY: client 已成功初始化且事件已設定。
-        unsafe { stream.client.Start() }.context("啟動音訊串流失敗")?;
+        // SAFETY: client is initialized and its event is configured.
+        unsafe { stream.client.Start() }.context("Failed to start audio stream")?;
         Ok(stream)
     }
 
@@ -396,12 +396,12 @@ impl EndpointStream {
         dropped: &AtomicU64,
     ) -> Result<()> {
         while !stop.load(Ordering::Acquire) {
-            // SAFETY: event 在整個串流生命週期中保持有效；10 ms 逾時涵蓋無聲 loopback。
+            // SAFETY: event remains valid throughout the stream lifetime; the 10 ms timeout handles silent loopback.
             if unsafe { WaitForSingleObject(self.event.0, 10) } == WAIT_FAILED {
                 return Err(windows::core::Error::from_thread().into());
             }
             loop {
-                // SAFETY: capture 已啟動，只在此執行緒存取。
+                // SAFETY: capture is started and accessed only on this thread.
                 if unsafe { self.capture.GetNextPacketSize() }? == 0 {
                     break;
                 }
@@ -419,27 +419,27 @@ impl EndpointStream {
 
     fn copy_packet(&self) -> Result<Packet> {
         let (mut data, mut frames, mut flags, mut qpc) = (std::ptr::null_mut(), 0, 0, 0);
-        // SAFETY: 所有輸出指標有效，GetBuffer／ReleaseBuffer 僅在此執行緒成對執行。
+        // SAFETY: All output pointers are valid; GetBuffer/ReleaseBuffer are paired on this thread only.
         unsafe {
             self.capture
                 .GetBuffer(&mut data, &mut frames, &mut flags, None, Some(&mut qpc))
         }?;
         let result = (|| {
             if frames > self.buffer_frames {
-                bail!("WASAPI 封包超過裝置緩衝大小");
+                bail!("WASAPI packet exceeds device buffer size");
             }
             let bytes = if flags & AUDCLNT_BUFFERFLAGS_SILENT.0 as u32 != 0 || frames == 0 {
                 Vec::new()
             } else {
                 if data.is_null() {
-                    bail!("WASAPI 回傳空的音訊資料指標");
+                    bail!("WASAPI returned a null audio data pointer");
                 }
                 let length = frames as usize * self.format.block_align;
-                // SAFETY: GetBuffer 保證提供 frames 個完整 frame，ReleaseBuffer 前指標有效。
+                // SAFETY: GetBuffer guarantees frames complete frames, and the pointer is valid until ReleaseBuffer.
                 unsafe { std::slice::from_raw_parts(data, length) }.to_vec()
             };
             let pts = if flags & AUDCLNT_BUFFERFLAGS_TIMESTAMP_ERROR.0 as u32 == 0 {
-                i64::try_from(qpc).context("音訊 QPC 時間戳超過範圍")?
+                i64::try_from(qpc).context("Audio QPC timestamp is out of range")?
             } else {
                 now_ticks() - i64::from(frames) * TICKS_PER_SEC / i64::from(self.format.rate)
             };
@@ -450,36 +450,36 @@ impl EndpointStream {
                 pts,
             })
         })();
-        // SAFETY: 對應上方成功的 GetBuffer，即使檢查／複製失敗也釋放封包。
-        unsafe { self.capture.ReleaseBuffer(frames) }.context("釋放 WASAPI 封包失敗")?;
+        // SAFETY: Balance the successful GetBuffer above, releasing the packet even if validation or copying fails.
+        unsafe { self.capture.ReleaseBuffer(frames) }.context("Failed to release WASAPI packet")?;
         result
     }
 }
 
 impl Drop for EndpointStream {
     fn drop(&mut self) {
-        // SAFETY: 介面在同一 COM 執行緒釋放，Stop 之後才釋放事件及 apartment。
+        // SAFETY: Interfaces are released on the same COM thread; release the event and apartment after Stop.
         let _ = unsafe { self.client.Stop() };
     }
 }
 
 fn read_format(raw: &TaskMem<WAVEFORMATEX>) -> Result<Format> {
     if raw.0.is_null() {
-        bail!("裝置沒有回傳音訊格式");
+        bail!("Device returned no audio format");
     }
-    // SAFETY: GetMixFormat 至少配置完整的 WAVEFORMATEX；使用 unaligned 讀取 packed 結構。
+    // SAFETY: GetMixFormat allocates at least a complete WAVEFORMATEX; read the packed structure unaligned.
     let format = unsafe { raw.0.read_unaligned() };
     let (float, mask) = if u32::from(format.wFormatTag) == WAVE_FORMAT_EXTENSIBLE {
         if usize::from(format.cbSize)
             < std::mem::size_of::<WAVEFORMATEXTENSIBLE>() - std::mem::size_of::<WAVEFORMATEX>()
         {
-            bail!("WAVEFORMATEXTENSIBLE 長度不足");
+            bail!("WAVEFORMATEXTENSIBLE is too short");
         }
-        // SAFETY: cbSize 已驗證包含完整的擴充格式，且該配置仍有效。
+        // SAFETY: cbSize includes the complete extended format and the allocation remains valid.
         let extended = unsafe { raw.0.cast::<WAVEFORMATEXTENSIBLE>().read_unaligned() };
         let subformat = extended.SubFormat;
         if subformat != KSDATAFORMAT_SUBTYPE_PCM && subformat != KSDATAFORMAT_SUBTYPE_IEEE_FLOAT {
-            bail!("不支援的音訊擴充格式");
+            bail!("Unsupported extended audio format");
         }
         (
             subformat == KSDATAFORMAT_SUBTYPE_IEEE_FLOAT,
@@ -487,7 +487,7 @@ fn read_format(raw: &TaskMem<WAVEFORMATEX>) -> Result<Format> {
         )
     } else {
         if format.wFormatTag != 1 && u32::from(format.wFormatTag) != WAVE_FORMAT_IEEE_FLOAT {
-            bail!("不支援的裝置音訊格式");
+            bail!("Unsupported device audio format");
         }
         (u32::from(format.wFormatTag) == WAVE_FORMAT_IEEE_FLOAT, 0)
     };
@@ -583,7 +583,7 @@ impl Source {
             packet.flags & AUDCLNT_BUFFERFLAGS_SILENT.0 as u32 != 0 || packet.frames == 0,
         )?;
         let output = self.resampler.push(&samples);
-        let anchor = self.anchor.context("音訊時間錨點未初始化")?;
+        let anchor = self.anchor.context("Audio time anchor is not initialized")?;
         timeline.write(
             frames_from_ticks(anchor - origin) + self.output_frames,
             &output,
@@ -616,7 +616,7 @@ fn mix_loop(
             Ok(())
         })();
         if let Err(error) = result {
-            eprintln!("audio_failed: 音訊格式轉換失敗：{error:#}");
+            eprintln!("audio_failed: Audio format conversion failed: {error:#}");
             return;
         }
         let finished = stop.load(Ordering::Acquire)

@@ -15,15 +15,15 @@ describe('restoreLastProject', () => {
   })
 
   test('falls back to null when the setting is missing, the load fails, or the file is corrupt', async () => {
-    // 沒有 lastProjectId
+    // No lastProjectId.
     expect(
       await restoreLastProject({ getSettings: async () => ({ lastProjectId: null }), loadProject: vi.fn() })
     ).toBeNull()
-    // 檔案不存在／損毀（load 回 null）
+    // File is missing or corrupted (load returns null).
     expect(
       await restoreLastProject({ getSettings: async () => ({ lastProjectId: 'p_x' }), loadProject: async () => null })
     ).toBeNull()
-    // 設定讀取失敗
+    // Settings read fails.
     expect(
       await restoreLastProject({
         getSettings: async () => {

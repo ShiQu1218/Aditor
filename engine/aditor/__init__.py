@@ -1,3 +1,3 @@
-"""Aditor 分析引擎。"""
+"""Aditor analysis engine."""
 
 ENGINE_VERSION = "0.3.0"

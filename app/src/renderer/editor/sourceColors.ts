@@ -1,7 +1,7 @@
 /**
- * 專案片段卡的來源色點（Task 13）：
- * 依 `sources` 陣列順序穩定指派 A、B、…（第 27 個繞回 A）；色盤 6 色循環。
- * 不在清單中的來源退回第一格（實務上 `sources` 由專案片段推得，必含來源）。
+ * Source color dots for project clip cards (Task 13):
+ * Assign A, B, … in stable `sources` array order (the 27th wraps to A); cycle through the six-color palette.
+ * Sources absent from the list fall back to the first color (in practice, `sources` comes from project clips and includes each source).
  */
 
 const PALETTE = 6

@@ -1,6 +1,6 @@
-﻿# 手動錄影與量測：先 cargo build --release，再設定 ADITORREC_FFMPEG_DIR 與 FFmpeg bin 的 PATH。
-# 範例：./tools/rec-cli.ps1 -TargetPid 1234 -Seconds 60 -NoMicrophone
-# 擷取方式 A/B：-Capture wgc|dda|hook（hook 需 -HookDir，預設 D:\obs-studio 的 win-capture）；-GpuCounters 另外取樣 aditorrec 與 dwm 的 GPU 引擎使用率（每秒一次）。
+﻿# Manual recording and measurement: run cargo build --release, then set ADITORREC_FFMPEG_DIR and add FFmpeg bin to PATH.
+# Example: ./tools/rec-cli.ps1 -TargetPid 1234 -Seconds 60 -NoMicrophone
+# Compare capture methods with -Capture wgc|dda|hook (hook requires -HookDir, defaulting to D:\obs-studio win-capture); -GpuCounters also samples GPU engine utilization for aditorrec and dwm once per second.
 [CmdletBinding()]
 param(
     [ValidateSet('wgc', 'dda', 'hook')][string]$Capture = 'wgc',
@@ -25,9 +25,9 @@ param(
     [switch]$NoEncode
 )
 $ErrorActionPreference = 'Stop'
-if ($Banner.Count -ne 4 -or $Spectator.Count -ne 4) { throw 'ROI 必須包含 x、y、w、h 四個整數。' }
+if ($Banner.Count -ne 4 -or $Spectator.Count -ne 4) { throw 'Each ROI must contain four integers: x, y, w, and h.' }
 $executable = (Resolve-Path -LiteralPath $ExePath).Path
-# 錄影程序動態連結 FFmpeg；找不到 DLL 時會在輸出任何內容前結束。
+# The recorder dynamically links FFmpeg; it exits before producing output if the DLLs are missing.
 $ffmpegRoot = if ($env:ADITORREC_FFMPEG_DIR) { $env:ADITORREC_FFMPEG_DIR } else { Join-Path $PSScriptRoot '../../build/ffmpeg' }
 $ffmpegBin = Join-Path $ffmpegRoot 'bin'
 if (Test-Path -LiteralPath $ffmpegBin) { $env:PATH = (Resolve-Path -LiteralPath $ffmpegBin).Path + ';' + $env:PATH }
@@ -35,7 +35,7 @@ $sessionId = (Get-Date -Format 'yyyyMMdd-HHmmss') + '-' + [guid]::NewGuid().ToSt
 if (-not $OutputDir) { $OutputDir = Join-Path $PSScriptRoot "../target/recordings/$sessionId" }
 $directory = [IO.Path]::GetFullPath($OutputDir)
 $processors = [int](Get-CimInstance Win32_ComputerSystem).NumberOfLogicalProcessors
-if ($processors -lt 1) { throw '無法取得全機邏輯處理器數。' }
+if ($processors -lt 1) { throw 'Could not determine the system logical processor count.' }
 $video = $null
 if (-not $NoEncode) { $video = @{ codec = $Codec; encoder = $Encoder; fps = $Fps; height = $Height; bitrate_kbps = $BitrateKbps } }
 $audio = $null
@@ -61,19 +61,19 @@ $script:pendingLine = $null
 function Read-RecorderLine([datetime]$Deadline) {
     if (-not $script:pendingLine) { $script:pendingLine = $process.StandardOutput.ReadLineAsync() }
     while (-not $script:pendingLine.Wait(50)) {
-        if ([datetime]::UtcNow -gt $Deadline) { throw '等待錄影程序回覆逾時。' }
+        if ([datetime]::UtcNow -gt $Deadline) { throw 'Timed out waiting for the recorder response.' }
     }
     $line = $script:pendingLine.GetAwaiter().GetResult()
     $script:pendingLine = $null
-    if ($null -eq $line) { throw '錄影程序提早關閉輸出。' }
+    if ($null -eq $line) { throw 'The recorder closed stdout unexpectedly.' }
     $lines.Add($line)
     $value = $line | ConvertFrom-Json
     $events.Add($value)
-    if ($value.ev -eq 'error' -or ($null -ne $value.ok -and -not $value.ok)) { throw "錄影失敗 [$($value.code)]：$($value.message)" }
+    if ($value.ev -eq 'error' -or ($null -ne $value.ok -and -not $value.ok)) { throw "Recording failed [$($value.code)]: $($value.message)" }
     return $value
 }
 try {
-    if (-not $process.Start()) { throw '無法啟動錄影程序。' }
+    if (-not $process.Start()) { throw 'Could not start the recorder.' }
     $launched = $true
     $stderr = $process.StandardError.ReadToEndAsync()
     $process.StandardInput.WriteLine(($request | ConvertTo-Json -Depth 6 -Compress))
@@ -87,7 +87,7 @@ try {
     }
     $gpuJob = $null
     if ($GpuCounters) {
-        # 另開背景工作取樣，避免 Get-Counter 的一秒間隔卡住 stdout 讀取。
+        # Sample in a background job so Get-Counter's one-second interval does not block stdout reads.
         $dwm = @(Get-Process dwm -ErrorAction SilentlyContinue | ForEach-Object { $_.Id })
         $gpuJob = Start-Job -ArgumentList $process.Id, $dwm, ([math]::Max(1, $Seconds - 3)) -ScriptBlock {
             param($recorder, $dwm, $count)
@@ -128,10 +128,10 @@ try {
     $process.Refresh()
     $peak = $process.PeakWorkingSet64
     $process.StandardInput.Close()
-    if (-not $process.WaitForExit(15000)) { throw '錄影程序未在 EOF 後結束。' }
+    if (-not $process.WaitForExit(15000)) { throw 'The recorder did not exit after EOF.' }
     $log = $stderr.GetAwaiter().GetResult()
     if ($log) { Write-Warning $log }
-    if ($process.ExitCode -ne 0) { throw "錄影程序結束碼：$($process.ExitCode)" }
+    if ($process.ExitCode -ne 0) { throw "Recorder exit code: $($process.ExitCode)" }
     $index = @()
     if (-not $NoEncode) { $index = @(Get-Content -LiteralPath (Join-Path $directory 'index.jsonl') -Encoding UTF8 | ForEach-Object { $_ | ConvertFrom-Json }) }
     $stats = @($events | Where-Object { $_.ev -eq 'stats' }) | Select-Object -Last 1
@@ -152,7 +152,7 @@ try {
 finally {
     if ($gpuJob) { Remove-Job $gpuJob -Force -ErrorAction SilentlyContinue }
     if ($launched -and -not $process.HasExited) {
-        # EOF 讓原生程序先正常收尾；只有逾時才終止自己啟動的子程序。
+        # EOF lets the native process shut down cleanly; terminate the child process only if it times out.
         $process.StandardInput.Close()
         if (-not $process.WaitForExit(15000)) { $process.Kill(); $process.WaitForExit() }
     }

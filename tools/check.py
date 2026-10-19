@@ -1,4 +1,4 @@
-"""把計畫檔指定行的 `- [ ]` 改成 `- [x]`。用法：check.py <plan檔> <行號...>（行號可用 a-b 範圍）"""
+"""Replace `- [ ]` with `- [x]` on the specified lines in a plan file. Usage: check.py <plan-file> <line...> (line ranges such as a-b are supported)."""
 import sys
 
 p = sys.argv[1]

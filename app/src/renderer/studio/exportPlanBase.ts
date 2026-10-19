@@ -14,8 +14,8 @@ interface ProbeResult {
 }
 
 /**
- * 匯出抽屜開啟時收集每個來源影片的規格：目前開啟的影片用已載入的快取（含關鍵影格），
- * 其他來源以 `engine:probe` 各探測一次；來源缺失或探測失敗＝未知（不拿來判斷相容性，main 端匯出時仍會再驗證）。
+ * Collect metadata for each source video when the export drawer opens: use the loaded cache (including keyframes) for the current video,
+ * and probe each other source once with `engine:probe`; missing sources or probe failures are unknown (do not use them for compatibility checks; main validates again during export).
  */
 export async function buildPlanBase(
   project: Project,
@@ -41,7 +41,7 @@ export async function buildPlanBase(
           sources[src] = { codec: p.codec ?? '', width: p.width, height: p.height }
         }
       } catch {
-        // 探測不到就視為未知
+  // Treat sources that cannot be probed as unknown.
       }
     })
   )

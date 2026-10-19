@@ -20,10 +20,10 @@ describe('AutosaveController', () => {
     c.update(p1)
     vi.advanceTimersByTime(300)
     c.update(p2)
-    vi.advanceTimersByTime(300) // 距離最後一次更新僅 300ms → 尚未寫入
+    vi.advanceTimersByTime(300) // Only 300ms since the last update → not written yet.
     expect(save).not.toHaveBeenCalled()
 
-    vi.advanceTimersByTime(200) // 滿 500ms
+    vi.advanceTimersByTime(200) // 500ms elapsed.
     expect(save).toHaveBeenCalledTimes(1)
     expect(save).toHaveBeenCalledWith(p2)
   })
@@ -33,14 +33,14 @@ describe('AutosaveController', () => {
     const c = new AutosaveController({ delayMs: 500, save })
 
     c.update(p1)
-    c.flush() // 未滿 500ms 立即寫入
+    c.flush() // Write immediately before 500ms.
     expect(save).toHaveBeenCalledTimes(1)
     expect(save).toHaveBeenCalledWith(p1)
 
     vi.advanceTimersByTime(1000)
-    expect(save).toHaveBeenCalledTimes(1) // 計時器已取消，不重複寫
+    expect(save).toHaveBeenCalledTimes(1) // Timer was canceled; do not write twice.
 
-    c.flush() // 沒有 pending 時不寫
+    c.flush() // No pending content, so do not write.
     expect(save).toHaveBeenCalledTimes(1)
   })
 
@@ -51,14 +51,14 @@ describe('AutosaveController', () => {
     vi.advanceTimersByTime(1000)
     expect(save).not.toHaveBeenCalled()
 
-    // 執行中關閉：取消既有 pending
+    // Closing while enabled cancels existing pending content.
     const c = new AutosaveController({ delayMs: 500, save })
     c.update(p1)
     c.setEnabled(false)
     vi.advanceTimersByTime(1000)
     expect(save).not.toHaveBeenCalled()
 
-    // 重新開啟後可再運作
+    // It works again after being re-enabled.
     c.setEnabled(true)
     c.update(p2)
     vi.advanceTimersByTime(500)
@@ -101,7 +101,7 @@ describe('AutosaveController flush and hold', () => {
     const saveSync = vi.fn()
     const c = new AutosaveController({ delayMs: 500, save, saveSync })
     c.update(p2)
-    vi.advanceTimersByTime(100) // 關閉發生在去抖視窗內
+    vi.advanceTimersByTime(100) // Close occurs within the debounce window.
     c.flushSync()
     expect(saveSync).toHaveBeenCalledWith(p2)
     expect(save).not.toHaveBeenCalled()

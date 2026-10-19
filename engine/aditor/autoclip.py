@@ -1,4 +1,4 @@
-"""自動剪輯模組：依時間間隔分群、長度切割、重疊合併與中點平分（spec §5.4）。"""
+"""Automatic clip generation: group by time gap, split by length, merge overlaps, and divide at the midpoint (spec §5.4)."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -15,19 +15,19 @@ class _DraftClip:
 
 
 def auto_clips(events: list[Event], params: AutoClipParams, duration: float) -> list[Clip]:
-    """依參數自計數事件清單自動產生剪輯片段。
+    """Generate clips automatically from counted events and the supplied parameters.
 
-    規則（spec §5.4）：
-    1. 僅使用 is_counted 為 True 的事件，依時間排序。相鄰事件間隔 <= gap 歸為同一群。
-    2. 群內事件數 >= n 才成立。
-    3. 片段範圍為 [首殺 - before, 末殺 + after]，限制在影片範圍 [0, duration] 內。
-    4. 若片段超過 max_len：在群內最大事件間隔處切成兩個子群，持續切分；子群若事件數 < n 則不成立。
-       若群內事件時間完全相同無法切割，則輸出置中於群、長度為 max_len 且限制在影片範圍內的片段。
-    5. 重疊片段處理：
-       - 若合併後長度 <= max_len，則合併為一段（聯集 event_ids，依時間排序）。
-       - 若合併後長度 > max_len，則將前段 end 與後段 start 設為重疊區中點 ((next.start + prev.end) / 2)。
-       - 重複合併與邊界修正直到穩定。
-    6. Clip.id = f"c{int(start*1000)}" 於最終邊界確定後計算；origin="ai"；依 start 排序。
+    Rules (spec §5.4):
+    1. Use only events where is_counted is True, sorted by time. Adjacent events belong to the same group when their gap <= gap.
+    2. A group is valid only if it contains at least n events.
+    3. Clip range is [first kill - before, last kill + after], clamped to [0, duration].
+    4. If a clip exceeds max_len, split the group at its largest event gap and repeat; discard subgroups with fewer than n events.
+       If all event times are identical and cannot be split, center a max_len clip on the group and clamp it to the video range.
+    5. Handle overlapping clips:
+       - If the merged length is <= max_len, merge them (union event_ids, sorted by time).
+       - If the merged length is > max_len, set the previous end and next start to the overlap midpoint ((next.start + prev.end) / 2).
+       - Repeat merging and boundary adjustment until stable.
+    6. Set Clip.id = f"c{int(start*1000)}" after finalizing boundaries; set origin="ai"; sort by start.
     """
     counted_events = [e for e in events if is_counted(e)]
     if not counted_events:
@@ -36,7 +36,7 @@ def auto_clips(events: list[Event], params: AutoClipParams, duration: float) -> 
     counted_events.sort(key=lambda e: e.t)
     event_map = {e.id: e for e in counted_events}
 
-    # 1. 依 gap 分群
+    # 1. Group by gap.
     groups: list[list[Event]] = []
     current_group: list[Event] = []
     for e in counted_events:
@@ -50,12 +50,12 @@ def auto_clips(events: list[Event], params: AutoClipParams, duration: float) -> 
     if current_group:
         groups.append(current_group)
 
-    # 2. 群內事件數 >= n 才成立
+    # 2. Keep groups with at least n events.
     valid_groups = [g for g in groups if len(g) >= params.n]
     if not valid_groups:
         return []
 
-    # 3 & 4. 用索引範圍切分，避免深層遞迴與反覆複製子群；右側先入堆疊，維持由左到右輸出。
+    # 3 & 4. Split index ranges to avoid deep recursion and repeated subgroup copies; push the right side first to preserve left-to-right output.
     def _split_group(grp: list[Event]) -> list[_DraftClip]:
         clips: list[_DraftClip] = []
         pending = [(0, len(grp))]
@@ -74,7 +74,7 @@ def auto_clips(events: list[Event], params: AutoClipParams, duration: float) -> 
                 continue
 
             if grp[hi - 1].t == grp[lo].t:
-                # 同時間事件無法切割，沿用置中並限制於影片範圍內的規則。
+                # Events at the same time cannot be split; center the clip and clamp it to the video range.
                 center = (grp[lo].t + grp[hi - 1].t) / 2.0
                 c_start = max(0.0, center - params.max_len / 2.0)
                 c_end = min(duration, c_start + params.max_len)
@@ -83,7 +83,7 @@ def auto_clips(events: list[Event], params: AutoClipParams, duration: float) -> 
                 clips.append(_DraftClip(c_start, c_end, [grp[i].id for i in range(lo, hi)]))
                 continue
 
-            # 優先讓兩側皆 >= n；若無法成立則允許不足 n 的子群被捨棄。同間隔取最早切點。
+            # Prefer a split where both sides have >= n events; otherwise allow undersized subgroups to be discarded. Break gap ties at the earliest point.
             candidates = range(lo + params.n - 1, hi - params.n)
             if not candidates:
                 candidates = range(lo, hi - 1)
@@ -99,7 +99,7 @@ def auto_clips(events: list[Event], params: AutoClipParams, duration: float) -> 
     if not draft_clips:
         return []
 
-    # 5. 重疊合併與中點平分（重複直到穩定）
+    # 5. Merge overlaps and split at the midpoint (repeat until stable).
     while True:
         draft_clips.sort(key=lambda c: (c.start, c.end))
         changed = False
@@ -112,7 +112,7 @@ def auto_clips(events: list[Event], params: AutoClipParams, duration: float) -> 
                 merged_start = min(prev.start, nxt.start)
                 merged_end = max(prev.end, nxt.end)
                 if (merged_end - merged_start) <= params.max_len + 1e-9:
-                    # 合併片段並聯集事件清單（保持依事件時間排序）
+                    # Merge clips and union event IDs, keeping them sorted by event time.
                     merged_ids = list(dict.fromkeys(prev.event_ids + nxt.event_ids))
                     merged_ids.sort(key=lambda eid: event_map[eid].t)
                     draft_clips[i] = _DraftClip(
@@ -134,7 +134,7 @@ def auto_clips(events: list[Event], params: AutoClipParams, duration: float) -> 
         if not changed:
             break
 
-    # 6. 排除無效片段、依 start 排序並建立正式 Clip 物件
+    # 6. Drop invalid clips, sort by start, and create Clip objects.
     valid_clips = [c for c in draft_clips if c.end > c.start]
     valid_clips.sort(key=lambda c: (c.start, c.end))
 

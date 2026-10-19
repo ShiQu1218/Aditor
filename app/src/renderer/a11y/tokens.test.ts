@@ -13,32 +13,32 @@ function walk(dir: string, ext: RegExp): string[] {
   )
 }
 
-describe('tokens.css 與設計稿 mock 不漂移', () => {
+describe('tokens.css matches the design mock', () => {
   const app = parseCssVars(readFileSync(appTokens, 'utf-8'))
   const mock = parseCssVars(readFileSync(mockTokens, 'utf-8'))
 
-  test('變數集合相同', () => {
+  test('Variable sets match', () => {
     expect(Object.keys(app).sort()).toEqual(Object.keys(mock).sort())
     expect(Object.keys(app).length).toBeGreaterThan(60)
   })
-  test('每個變數的值相同', () => {
+  test('Every variable has the same value', () => {
     expect(app).toEqual(mock)
   })
-  test('位元組完全相同（app 的 tokens.css 是 mock 的原樣複本）', () => {
+  test('Files are byte-for-byte identical (the app tokens.css is an exact copy of the mock)', () => {
     expect(readFileSync(appTokens).equals(readFileSync(mockTokens))).toBe(true)
   })
 })
 
-describe('效能規則：不使用 backdrop-filter', () => {
+describe('Performance rule: do not use backdrop-filter', () => {
   const cssFiles = walk(renderer, /\.css$/)
-  test('有掃到樣式表', () => {
+  test('Scans at least one stylesheet', () => {
     expect(cssFiles.length).toBeGreaterThanOrEqual(10)
   })
-  test('任何 CSS 都沒有 backdrop-filter', () => {
+  test('No CSS file uses backdrop-filter', () => {
     const offenders = cssFiles.filter((f) => /backdrop-filter/i.test(readFileSync(f, 'utf-8').replace(/\/\*[\s\S]*?\*\//g, '')))
     expect(offenders).toEqual([])
   })
-  test('TSX／TS 內聯樣式也沒有 backdrop-filter／backdropFilter', () => {
+  test('TSX/TS inline styles do not use backdrop-filter or backdropFilter', () => {
     const offenders = walk(renderer, /\.(ts|tsx)$/).filter(
       (f) => !/\.test\.ts$/.test(f) && /backdrop-?filter/i.test(readFileSync(f, 'utf-8'))
     )

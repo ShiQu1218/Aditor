@@ -1,5 +1,5 @@
-/* 依介面語言換 CJK 字型，避免日文／簡中套到繁中字形。<html lang> 由 i18n/index.ts 在啟動時設定。
-   tokens.css 必須與設計稿 mock 逐位元相同，所以語言專用的字型變數放這裡。 */
+/* Select a CJK font by interface language to avoid Japanese/Simplified Chinese glyphs appearing in Traditional Chinese text. i18n/index.ts sets <html lang> at startup.
+   tokens.css must remain byte-for-byte identical to the design mock, so language-specific font variables live here. */
 :root[lang='zh-CN'] {
   --font-display: 'Montserrat', 'Noto Sans SC', 'Microsoft YaHei UI', 'Segoe UI', sans-serif;
   --font-ui: 'Lato', 'Noto Sans SC', 'Microsoft YaHei UI', 'Segoe UI', sans-serif;

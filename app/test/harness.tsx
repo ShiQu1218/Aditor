@@ -1,4 +1,4 @@
-// 元件測試用的外殼：與 App.tsx 相同的 Provider 順序（FocusZone → Project → AppShell），不含畫面切換。
+// Component-test shell: uses the same Provider order as App.tsx (FocusZone → Project → AppShell), without screen switching.
 import React from 'react'
 import { FocusZoneProvider } from '../src/renderer/input/FocusZoneProvider'
 import { ProjectProvider } from '../src/renderer/editor/ProjectProvider'

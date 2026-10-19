@@ -7,12 +7,12 @@ function requireVideoPath(p: unknown): string {
   return p
 }
 
-/** `engine:probe`：只接受本機影片路徑（拒絕 http://、concat:、UNC）。 */
+/** `engine:probe`: accept only local video paths (reject http://, concat:, and UNC). */
 export function sanitizeProbeArgs(videoPath: unknown): { path: string } {
   return { path: requireVideoPath(videoPath) }
 }
 
-/** `engine:analyze`：renderer 只能指定影片（與是否強制重跑）；cache_dir／profile_dir／beside／hwaccel 由 main 決定。 */
+/** `engine:analyze`: renderer may specify only the video (and whether to force a rerun); main determines cache_dir/profile_dir/beside/hwaccel. */
 export function sanitizeAnalyzeArgs(raw: unknown): { path: string; force?: boolean } {
   const r = (raw ?? {}) as Record<string, unknown>
   const out: { path: string; force?: boolean } = { path: requireVideoPath(r.path) }
@@ -32,8 +32,8 @@ export function sanitizeAutoclipArgs(raw: unknown): Record<string, unknown> {
 }
 
 /**
- * `cache:save`：忽略 renderer 的 `cache_path`，由影片路徑推得目的地；影片必須已在影片庫內。
- * 回傳 null＝拒絕。
+ * `cache:save`: ignore the renderer's `cache_path` and derive the destination from the video path; the video must already be in the library.
+ * Return null to reject the request.
  */
 export function planCacheSave<D extends { cache_path?: string; video?: { path?: string } }>(
   doc: D | null | undefined,

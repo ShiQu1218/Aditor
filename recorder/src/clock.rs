@@ -1,16 +1,16 @@
-//! QPC 時鐘。影像（WGC `SystemRelativeTime`）與音訊（WASAPI `QPCPosition`）都以 100 ns 為單位、
-//! 同源於 QueryPerformanceCounter，所以全部時間戳都用「100 ns tick」表示，0 = session 第一格。
+//! QPC clock. Video (WGC `SystemRelativeTime`) and audio (WASAPI `QPCPosition`) both use 100 ns units
+//! from QueryPerformanceCounter, so all timestamps use 100 ns ticks; 0 is the first session frame.
 
 use windows::Win32::System::Performance::{QueryPerformanceCounter, QueryPerformanceFrequency};
 
-/// 1 秒 = 10_000_000 tick（100 ns）。
+/// 1 second = 10_000_000 ticks (100 ns each).
 pub const TICKS_PER_SEC: i64 = 10_000_000;
 
-/// 目前時間（100 ns tick，QPC 換算）。
+/// Current time in 100 ns ticks, converted from QPC.
 pub fn now_ticks() -> i64 {
     let mut count = 0i64;
     let mut freq = 0i64;
-    // SAFETY: 兩個呼叫只寫入提供的 i64；Windows XP 以後永不失敗。
+    // SAFETY: Both calls only write to the supplied i64 values and never fail on Windows XP or later.
     unsafe {
         let _ = QueryPerformanceCounter(&mut count);
         let _ = QueryPerformanceFrequency(&mut freq);
@@ -18,7 +18,7 @@ pub fn now_ticks() -> i64 {
     qpc_to_ticks(count, freq)
 }
 
-/// QPC count → 100 ns tick（以 i128 避免溢位）。
+/// QPC count → 100 ns ticks (using i128 to avoid overflow).
 pub fn qpc_to_ticks(count: i64, freq: i64) -> i64 {
     ((count as i128 * TICKS_PER_SEC as i128) / freq as i128) as i64
 }

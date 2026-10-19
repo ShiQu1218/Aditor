@@ -1,4 +1,4 @@
-/* 工作室（spec §3.2）：頂欄＋播放區＋時間軸＋專案軌＋側欄。顏色一律來自 tokens.css */
+/* Studio (spec §3.2): top bar, playback area, timeline, project track, and sidebar. All colors come from tokens.css. */
 
 .studio {
   height: 100%;
@@ -9,7 +9,7 @@
   background: var(--bg-app);
 }
 
-/* ---- 頂欄 ---- */
+/* ---- Top bar ---- */
 .studio-head {
   height: var(--topbar-h);
   flex: none;
@@ -41,7 +41,7 @@
 }
 .studio-head-actions { margin-left: auto; display: flex; align-items: center; gap: var(--sp-2); }
 
-/* ---- 共用按鈕 ---- */
+/* ---- Shared buttons ---- */
 .btn-ghost,
 .btn-accent {
   display: inline-flex;
@@ -74,7 +74,7 @@
 .icon-btn:disabled { opacity: 0.4; cursor: default; }
 .icon-btn[aria-pressed='true'] { background: var(--bg-active); color: var(--text-1); }
 
-/* ---- 版面 ---- */
+/* ---- Layout ---- */
 .studio-body { flex: 1; min-height: 0; display: flex; }
 .studio-main {
   flex: 1;
@@ -86,7 +86,7 @@
   padding: var(--sp-3);
 }
 
-/* ---- 同日影片列 ---- */
+/* ---- Same-day video row ---- */
 .same-day-videos { flex: none; min-width: 0; }
 .studio > .same-day-videos { margin: var(--sp-3); }
 .same-day-head { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); }
@@ -134,7 +134,7 @@
 .same-day-status { display: flex; align-items: center; gap: 4px; color: var(--text-2); font-size: var(--fs-caption); }
 .same-day-status.error { color: var(--danger); }
 
-/* ---- 狀態列（Notice） ---- */
+/* ---- Status notices ---- */
 .notice {
   flex: none;
   display: flex;
@@ -156,7 +156,7 @@
 .notice-desc { color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .notice-actions { margin-left: auto; display: flex; align-items: center; gap: var(--sp-2); flex: none; }
 
-/* ---- 播放器舞台 ---- */
+/* ---- Player stage ---- */
 .stage {
   position: relative;
   flex: 1 1 auto;
@@ -210,7 +210,7 @@
   font-size: var(--fs-caption);
 }
 
-/* ---- 傳輸列 ---- */
+/* ---- Transport controls ---- */
 .transport {
   flex: none;
   display: flex;
@@ -242,7 +242,7 @@
   font-weight: var(--fw-bold);
 }
 
-/* ---- 事件篩選 chip ---- */
+/* ---- Event filter chips ---- */
 .chips { display: flex; align-items: center; gap: 6px; }
 .chip {
   height: 30px;
@@ -265,13 +265,13 @@
 .chip-squad_wipe .chip-dot { background: var(--ev-squad-wipe); }
 .chip-n { font-size: var(--fs-small); }
 
-/* ---- 來源時間軸 ---- */
+/* ---- Source timeline ---- */
 .studio-tl { position: relative; flex: none; border-radius: var(--r-sm); overflow: hidden; }
 
-/* ---- 專案軌 ---- */
-/* 樣式在 projectTrack.css（Task 13 完整取代唯讀占位） */
+/* ---- Project track ---- */
+/* Styles are in projectTrack.css (Task 13 fully replaced the read-only placeholder). */
 
-/* ---- 側欄 ---- */
+/* ---- Sidebar ---- */
 .studio-aside {
   width: var(--aside-w);
   flex: none;
@@ -298,7 +298,7 @@
 .aside-tab.on { color: var(--text-1); border-bottom-color: var(--accent); }
 .aside-panel { flex: 1; min-height: 0; overflow-y: auto; padding: var(--sp-3); }
 
-/* ---- 精華分頁（spec §3.2.3） ---- */
+/* ---- Highlights tab (spec §3.2.3) ---- */
 .hl-tab { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .hl-list-head {
   flex: none;
@@ -340,7 +340,7 @@
   font-size: var(--fs-small);
 }
 
-/* 卡片（精簡＝128×84 縮圖；大圖＝16:9 直排） */
+/* Cards (compact = 128×84 thumbnail; large = vertical 16:9 layout). */
 .hl-card {
   display: flex;
   gap: 10px;
@@ -396,7 +396,7 @@
 .hl-time { flex: none; font-size: var(--fs-caption); }
 .hl-sub { font-size: var(--fs-caption); }
 
-/* 事件字形列：形狀＋顏色雙重編碼；不計入＝空心＋65% 不透明 */
+/* Event glyphs encode type by shape and color; uncounted events are hollow at 65% opacity. */
 .hl-glyphs { display: flex; align-items: center; gap: 4px; min-height: 14px; }
 .hl-glyph { width: 12px; height: 12px; border-radius: 50%; background: var(--text-3); flex: none; }
 .hl-glyph[data-type='knock'] { background: var(--ev-knock); }
@@ -435,7 +435,7 @@
 .hl-foot > .dim { flex: 1; min-width: 0; font-size: var(--fs-caption); }
 .hl-foot .btn-accent { height: 28px; }
 
-/* ---- AI 自動剪輯浮層（spec §3.2.4） ---- */
+/* ---- AI auto-clip popover (spec §3.2.4) ---- */
 .autoclip-pop {
   position: fixed;
   z-index: 40;
@@ -471,7 +471,7 @@
 .ac-actions { display: flex; align-items: center; gap: var(--sp-2); margin-top: var(--sp-1); }
 .ac-actions .btn-accent { margin-left: 0; }
 
-/* ---- 新增事件對話框 ---- */
+/* ---- Add-event dialog ---- */
 .add-event-host {
   position: fixed;
   inset: 0;
@@ -495,7 +495,7 @@
 .add-event-actions { display: flex; align-items: center; gap: var(--sp-2); margin-top: var(--sp-4); }
 .add-event-actions .spacer { flex: 1; }
 
-/* ---- 阻擋狀態／無障礙 ---- */
+/* ---- Blocked state/accessibility ---- */
 .studio-blocked {
   height: 100%;
   display: grid;
@@ -504,7 +504,7 @@
   gap: var(--sp-3);
   color: var(--text-2);
 }
-/* 通知列的 margin-left:auto 在置中的格線裡會把按鈕推出畫面右側 */
+/* margin-left:auto on notices pushes buttons offscreen in a centered grid. */
 .studio-blocked .notice-actions { margin-left: 0; flex-wrap: wrap; justify-content: center; }
 .sr-only {
   position: absolute;
@@ -518,5 +518,5 @@
   border: 0;
 }
 
-/* 匯出進行中的鎖定（inert）：視覺上也降階，讓使用者知道為什麼不能操作 */
+/* While export is locked (inert), lower its visual emphasis so users understand why it cannot be operated. */
 [data-editor-lock][inert] { opacity: 0.55; }

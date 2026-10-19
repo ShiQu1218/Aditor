@@ -10,7 +10,7 @@ import { Playhead, playheadTarget } from './Playhead'
 import { TimelineScrollbar } from './TimelineScrollbar'
 import { useTimelineInteractions, type InteractionOptions } from './useTimelineInteractions'
 
-/** 命令式時間軸操作（keymap 的 Ctrl +/−/0 由外層呼叫）。 */
+/** Imperative timeline operations (the outer layer invokes Ctrl +/−/0 from keymap). */
 export interface TimelineHandle {
   zoomIn: () => void
   zoomOut: () => void
@@ -29,19 +29,19 @@ interface TimelineCanvasProps extends Pick<InteractionOptions,
   onSeek: (t: number) => void
   onSelectEvent?: (e: EngineEvent) => void
   onUpdateClip?: (clip: Clip) => void
-  /* 以下為新增的可選 props */
+  /* Optional props below. */
   height?: number
   selected?: Set<string>
-  /** 目前播放位置所在事件（畫外環） */
+  /** Event containing the current playhead (drawn with an outer ring). */
   currentEventId?: string
   activeClipId?: string | null
-  /** 點事件圖示時 seek 到 t - seekBefore（預設 8 秒；僅在未提供 onSelectEvent 時使用） */
+  /** Clicking an event icon seeks to t - seekBefore (8 seconds by default; used only when onSelectEvent is not provided). */
   seekBefore?: number
   onToggleSelect?: (id: string) => void
-  /** 播放中以 rAF 讀取目前時間（例如 video.currentTime），播放頭不經 React 重繪 */
+  /** Read current time during playback via rAF (e.g. video.currentTime); the playhead does not trigger React rerenders. */
   getPlayTime?: () => number
   playing?: boolean
-  /** 專案預覽時，自訂縮放也要讓來源播放頭保持可見。 */
+  /** Keep the source playhead visible at custom zoom levels during project preview. */
   followProject?: boolean
 }
 
@@ -102,17 +102,17 @@ export const TimelineCanvas = React.forwardRef<TimelineHandle, TimelineCanvasPro
   const changeMode = (next: ZoomMode): void => {
     setZoomState((state) => setZoomMode(state, next, playheadTarget(playback.current)))
   }
-  // 自訂縮放一律以播放頭為中心（滾輪、按鈕、快捷鍵、倍率滑桿）
+  // Center all custom zoom operations on the playhead (wheel, buttons, shortcuts, and zoom slider).
   const changeZoom = useCallback((factor: number): void => {
     setZoomState((state) => zoomTimeline(state, factor, playheadTarget(playback.current)))
   }, [])
 
-  // 時長改變時保留模式與自訂倍率，並夾在新來源範圍內
+  // When duration changes, preserve the mode and custom scale, clamped to the new source range.
   useEffect(() => {
     setZoomState((state) => resizeTimeline(state, duration, state.view.width, playheadTarget(playback.current)))
   }, [duration])
 
-  // 寬度：ResizeObserver
+  // Width: ResizeObserver.
   useEffect(() => {
     const el = wrapRef.current
     if (!el) return
@@ -126,7 +126,7 @@ export const TimelineCanvas = React.forwardRef<TimelineHandle, TimelineCanvasPro
     return () => ro.disconnect()
   }, [])
 
-  // 命令式縮放（keymap 的 Ctrl +/−/0）：以播放頭為中心
+  // Imperative zoom (Ctrl +/−/0 from keymap), centered on the playhead.
   useImperativeHandle(
     ref,
     () => ({
@@ -181,7 +181,7 @@ export const TimelineCanvas = React.forwardRef<TimelineHandle, TimelineCanvasPro
     return state
   }, [followProject])
 
-  // 細節視窗隨 seek／播放頭移動；播放時直接讀即時時間，避免 timeupdate 落後
+  // Move the detail window with seeks/the playhead; read live time during playback to avoid lagging timeupdate events.
   useEffect(() => {
     if (!following) return
     setZoomState(followPlayhead)
@@ -198,7 +198,7 @@ export const TimelineCanvas = React.forwardRef<TimelineHandle, TimelineCanvasPro
     return () => cancelAnimationFrame(id)
   }, [mode, playing, hasPlayTime, following, followProject, followPlayhead])
 
-  // 低效能模式（設定即時切換）：熱度條降為 60 格並重繪
+  // Low-performance mode (settings update immediately): reduce the heat bar to 60 bins and redraw.
   const lowPerf = useSyncExternalStore(subscribeLowPerf, isLowPerf, isLowPerf)
   const modelRef = useRef<DrawModel | null>(null)
   modelRef.current = {
@@ -246,7 +246,7 @@ export const TimelineCanvas = React.forwardRef<TimelineHandle, TimelineCanvasPro
     return () => observer.disconnect()
   }, [scheduler])
 
-  // 靜態層：只在資料／縮放／尺寸／選取／hover 改變時以 rAF 合併重繪（currentTime 不在其中）
+  // Static layer: use rAF to coalesce redraws only when data, zoom, size, selection, or hover changes (not currentTime).
   useEffect(() => {
     scheduler.invalidate()
   }, [scheduler, view, layout, spectating, clips, selected, currentEventId, ix.hoverClipId, activeClipId, height, lowPerf, projectItem, ix.blade])

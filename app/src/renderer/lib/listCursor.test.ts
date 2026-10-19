@@ -1,12 +1,12 @@
 import { describe, expect, test } from 'vitest'
 import { autoScrollDue, cursorScrollTarget, revealScrollTarget, rovingTarget } from './listCursor'
 
-const base = { rowHeight: 44, viewHeight: 440, count: 300 } // 可視 10 列，最大 scrollTop = 300*44-440 = 12760
+const base = { rowHeight: 44, viewHeight: 440, count: 300 } // Ten visible rows; max scrollTop = 300*44-440 = 12760.
 
 describe('cursorScrollTarget', () => {
   test('row already fully visible -> null (no scroll)', () => {
     expect(cursorScrollTarget({ ...base, index: 5, scrollTop: 0 })).toBeNull()
-    expect(cursorScrollTarget({ ...base, index: 14, scrollTop: 220 })).toBeNull() // 220..660 內
+    expect(cursorScrollTarget({ ...base, index: 14, scrollTop: 220 })).toBeNull() // Within 220..660.
   })
 
   test('row above the viewport aligns to its top edge', () => {
@@ -14,7 +14,7 @@ describe('cursorScrollTarget', () => {
   })
 
   test('row below the viewport aligns its bottom edge to the view bottom', () => {
-    // index 20 底 = 21*44 = 924；scrollTop = 924 - 440 = 484
+    // Index 20 bottom = 21*44 = 924; scrollTop = 924 - 440 = 484.
     expect(cursorScrollTarget({ ...base, index: 20, scrollTop: 0 })).toBe(484)
   })
 
@@ -26,7 +26,7 @@ describe('cursorScrollTarget', () => {
   test('far jump and clamping to [0, max]', () => {
     expect(cursorScrollTarget({ ...base, index: 150, scrollTop: 0 })).toBe(151 * 44 - 440)
     expect(cursorScrollTarget({ ...base, index: 295, scrollTop: 0 })).toBeLessThanOrEqual(12760)
-    // 內容比視窗短：永遠不需要捲動
+    // Content is shorter than the viewport, so scrolling is never needed.
     expect(cursorScrollTarget({ rowHeight: 44, viewHeight: 440, count: 5, index: 4, scrollTop: 0 })).toBeNull()
   })
 

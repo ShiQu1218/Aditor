@@ -9,8 +9,8 @@ import {
 } from '../../shared/storage'
 
 /**
- * 儲存位置的資料夾結構預覽（設定頁與首次啟動引導共用）：
- * 列出根資料夾底下三個子資料夾的實際路徑與用途。
+ * Preview the storage folder structure (shared by settings and onboarding):
+ * list the actual paths and purposes of the three subfolders under the root folder.
  */
 export function StoragePreview({ root }: { root: string }): JSX.Element {
   const t = settingsI18n.row.storageRoot.preview

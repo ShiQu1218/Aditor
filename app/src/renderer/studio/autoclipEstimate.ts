@@ -1,15 +1,15 @@
 import type { AutoClipParams, Clip } from '../../shared/types'
 
 /**
- * AI 自動剪輯浮層的預估狀態機（純函式）：
- * 預估數字與可套用的片段綁在同一個狀態物件裡，並記錄它是用哪組參數算的；
- * 以序號丟棄過期回應，參數一改舊結果就不可套用（spec §3.2.4）。
+ * Estimate state machine for the AI auto-clip popover (pure functions):
+ * keep the estimate and applicable clips in the same state object, along with the parameters used to calculate them;
+ * discard stale responses by sequence number, and make old results inapplicable as soon as parameters change (spec §3.2.4).
  */
 export interface EstimateState {
   status: 'idle' | 'loading' | 'ready' | 'error'
-  /** 目前這份結果（或進行中請求）對應的參數 */
+/** Parameters associated with the current result or in-flight request. */
   params: AutoClipParams | null
-  /** 最新請求序號；序號不符的回應一律丟棄 */
+/** Latest request sequence; discard any response with a different sequence. */
   seq: number
   clips: Clip[]
 }
@@ -39,12 +39,12 @@ export function paramsEqual(a: AutoClipParams | null, b: AutoClipParams | null):
   return a.n === b.n && a.gap === b.gap && a.before === b.before && a.after === b.after && a.max_len === b.max_len
 }
 
-/** 目前輸入的參數是否與已算好的結果一致（一致才可套用）。 */
+/** Whether the current inputs match the computed result (only a match can be applied). */
 export function canApply(state: EstimateState, current: AutoClipParams): boolean {
   return state.status === 'ready' && paramsEqual(state.params, current)
 }
 
-/** 顯示用預估（不一致、計算中或失敗＝null → 顯示「計算中…」）。 */
+/** Estimate for display (null when mismatched, calculating, or failed; display "Calculating…"). */
 export function estimateView(state: EstimateState, current: AutoClipParams): { n: number; total: number } | null {
   if (!canApply(state, current)) return null
   return {

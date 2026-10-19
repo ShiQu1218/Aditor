@@ -1,18 +1,18 @@
 /**
- * 錄影中觀看的 MSE 段落佇列（不依賴 DOM，可用假 SourceBuffer 測試）。
+ * MSE segment queue for watching an active recording (DOM-independent; testable with a mock SourceBuffer).
  *
- * - 先 append init.mp4，之後挑播放頭附近（後 BEHIND／前 AHEAD 秒）尚未緩衝的段落依時間順序 append；
- *   一次只做一個操作，等 `updateend` 再做下一個。`mode = 'segments'`：段落依自己的時間戳放置。
- * - 只保留最近 RETAIN_SEC（30 分鐘）：更早的緩衝以 `remove()` 釋放；瀏覽器回報配額不足時
- *   先移除播放頭之前的資料，下一輪再抓。
- * - 不一次載入整段錄影：高位元率錄影 30 分鐘遠超過 MSE 配額，只抓播放頭附近，拖曳／跳轉時再抓。
+ * - Append init.mp4 first, then append unbuffered segments near the playhead (BEHIND seconds behind / AHEAD seconds ahead) in time order;
+ *   perform one operation at a time and wait for `updateend` before the next. Use `mode = 'segments'` to place segments by their timestamps.
+ * - Retain only the latest RETAIN_SEC (30 minutes): release older buffered data with `remove()`; if the browser reports a quota error,
+ *   first remove data before the playhead and retry during the next cycle.
+ * - Do not load the entire recording at once: 30 minutes of high-bitrate footage exceeds MSE quota by far. Load only near the playhead, fetching more on seek/drag.
  */
 import type { LiveSegment } from '../../shared/recording'
 
 export const RETAIN_SEC = 30 * 60
 export const AHEAD_SEC = 8
 export const BEHIND_SEC = 2
-/** 跳到最新時停在最新段落結尾前幾秒（給解碼器一點緩衝）。 */
+/** When jumping to live, stop a few seconds before the newest segment ends to give the decoder some buffer. */
 export const LIVE_EDGE_OFFSET = 3
 const MAX_FAILURES = 3
 
@@ -37,7 +37,7 @@ export interface LiveBufferOptions {
   fetchInit: () => Promise<Uint8Array>
   fetchSegment: (seq: number) => Promise<Uint8Array>
   currentTime: () => number
-  /** 緩衝閒置時呼叫，讓 MediaSource.duration 跟著錄影增長 */
+/** Call while buffering is idle so MediaSource.duration grows with the recording. */
   setDuration?: (seconds: number) => void
   onError?: (error: unknown) => void
 }
@@ -72,16 +72,16 @@ export class LiveBuffer {
 
   addSegment(segment: LiveSegment): void { this.setSegments([...this.segments.filter(s => s.seq !== segment.seq), segment]) }
 
-  /** 錄影目前的結尾（秒）。 */
+/** Current end of the recording, in seconds. */
   liveEnd(): number {
     const last = this.segments[this.segments.length - 1]
     return last ? last.pts + last.dur : 0
   }
 
-  /** 保留範圍起點：更早的內容已釋放（收尾後請在工作室觀看）。 */
+/** Start of the retained range; earlier content has been released (watch it in the studio after recording ends). */
   retainStart(): number { return Math.max(0, this.liveEnd() - RETAIN_SEC) }
 
-  /** 拖曳／停頓後呼叫：瀏覽器可能自行回收了緩衝，重新檢查哪些段落要再抓。 */
+/** Call after seeking/pausing: the browser may have evicted buffered data, so recheck which segments need fetching. */
   revalidate(): void {
     const ranges = this.options.sourceBuffer.buffered
     for (const segment of this.segments) {
@@ -138,7 +138,7 @@ export class LiveBuffer {
       if (!this.segments.some(s => s.seq === segment.seq)) { this.pump(); return }
       this.failures.set(segment.seq, (this.failures.get(segment.seq) ?? 0) + 1)
       if ((error as DOMException)?.name === 'QuotaExceededError') {
-        // 配額不足：釋放播放頭之前的資料，下一輪（updateend）再抓這段。
+  // Quota exceeded: release data before the playhead and retry this segment in the next cycle (updateend).
         const ranges = this.options.sourceBuffer.buffered
         const cut = this.options.currentTime() - BEHIND_SEC
         if (ranges.length > 0 && ranges.start(0) < cut) this.removeRange(ranges.start(0), cut)

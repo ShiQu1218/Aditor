@@ -99,7 +99,7 @@ function addManualEvent(): void {
   click(q('.add-event .btn-accent'))
 }
 
-describe('專案片段與工作室來源同步', () => {
+describe('Project clips stay in sync with studio sources', () => {
   test('clicking a clip synchronizes custom viewport, source playhead, playback, and return-to-source position', async () => {
     await start([item('a1', A, 500, 510)])
     const slider = q<HTMLInputElement>('.tl-toolbar input[type="range"]')
@@ -133,7 +133,7 @@ describe('專案片段與工作室來源同步', () => {
     time(a, 20, true)
     await flush()
     expect(q('.studio-file').textContent).toBe('b.mp4')
-    // 跨來源直接跳轉：不顯示預覽橫幅
+    // Cross-source navigation is direct; do not show the preview banner.
     expect(document.querySelector('.ctx-banner')).toBeNull()
     expect(document.querySelector('.grayed')).toBeNull()
     expect(q<HTMLVideoElement>('video')).not.toBe(a)

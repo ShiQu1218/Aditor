@@ -11,7 +11,7 @@ import { cleanupMounted, flush, focusEl, installDomShims, mount, press } from '.
 const NOW = Date.now()
 const DAY = 24 * 60 * 60 * 1000
 
-/** 60 張卡分成兩個日期分組（今天 30、前天 30），順序＝索引 */
+/** Split 60 cards into two date groups (30 today, 30 the day before yesterday), ordered by index. */
 function testEntries(): LibraryEntry[] {
   return makeLibraryFixture(60, NOW).map((e, i) => ({
     ...e,
@@ -37,8 +37,8 @@ describe('library grid: roving tabindex + arrow navigation (jsdom, real keyboard
   let container: HTMLElement
 
   beforeEach(async () => {
-    installDomShims({ width: 1200, height: 700 }) // 4 columns
-    // 60 張卡：遠多於一個視窗，才能驗證虛擬化後游標卡片仍會被渲染並取得焦點
+    installDomShims({ width: 1200, height: 700 }) // Four columns.
+    // Use 60 cards, far more than fit in the viewport, to verify virtualization still renders and focuses the cursor card.
     fake = createFakeApi({ entries: testEntries() })
     restore = installFakeApi(fake)
     const m = mount(
@@ -58,9 +58,9 @@ describe('library grid: roving tabindex + arrow navigation (jsdom, real keyboard
   test('the grid is a single tab stop: only the first card (and its own controls) is tabbable', () => {
     const all = cards(container)
     expect(all.length).toBeGreaterThan(4)
-    expect(all.length).toBeLessThan(60) // 虛擬化：沒有渲染全部
+    expect(all.length).toBeLessThan(60) // Virtualization: not all cards are rendered.
     expect(openBtn(all[0]).tabIndex).toBe(0)
-    // 其餘卡片的所有控制項都不在 Tab 順序內
+    // Controls in all other cards are outside the Tab order.
     for (const c of all.slice(1)) {
       for (const b of Array.from(c.querySelectorAll('button'))) expect(b.tabIndex, b.getAttribute('aria-label') ?? b.textContent ?? '').toBe(-1)
     }
@@ -98,7 +98,7 @@ describe('library grid: roving tabindex + arrow navigation (jsdom, real keyboard
     const focused = document.activeElement as HTMLElement
     expect(focused.closest('.vcard')?.getAttribute('data-vcard-path')).toBe(lastPath)
     expect(scroller.scrollTop).toBeGreaterThan(0)
-    // Home 回到第一張並捲回頂端
+    // Home returns to the first card and scrolls back to the top.
     press(focused, 'Home')
     expect((document.activeElement as HTMLElement).closest('.vcard')?.getAttribute('data-vcard-path')).toBe(testEntries()[0].path)
     expect(scroller.scrollTop).toBe(0)

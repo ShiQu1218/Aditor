@@ -1,4 +1,4 @@
-"""vc.py LAB out.png t1 t2 ... [--p=...]：顯示畫格與逐格圖示分類、主要特徵。"""
+"""vc.py LAB out.png t1 t2 ... [--p=...]: show frames, per-frame icon classes, and key features."""
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from ana import *

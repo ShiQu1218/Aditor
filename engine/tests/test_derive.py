@@ -142,7 +142,7 @@ def test_sig_similar():
     assert sig_similar(sig_a, sig_a, 0.32) is True
     assert sig_similar(sig_a, sig_b, 0.32) is False
 
-    # 寬度差 >= 15%：(60 - 48) / 60 = 0.20 >= 0.15
+    # Width difference >= 15%: (60 - 48) / 60 = 0.20 >= 0.15.
     bits48 = np.ones((16, 48), dtype=np.uint8)
     sig48 = NameSig(48, bits48).to_b64()
     bits60 = np.ones((16, 60), dtype=np.uint8)
@@ -156,7 +156,7 @@ def test_derive_sorts_and_immutability(profile):
     e2 = make_event(id="e2", t=100.0, type="knock", name_sig=sig_a)
     res = derive([e1, e2], [], profile)
     assert [e.id for e in res] == ["e2", "e1"]
-    # 原始物件不可變
+    # The original object is immutable.
     assert e1.counted is False
     assert e1.counted_reason == ""
     assert e2.counted is False

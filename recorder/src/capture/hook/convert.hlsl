@@ -1,5 +1,5 @@
-// 遊戲擷取共享材質格式轉換：以 SV_VertexID 產生滿版三角形，
-// 由硬體透過 UNORM SRV 讀取與 BGRA RTV 輸出自動完成通道排列與位元深度轉換。
+// Convert shared game-capture texture formats using a fullscreen triangle generated with SV_VertexID.
+// Hardware handles channel ordering and bit-depth conversion through UNORM SRV reads and BGRA RTV output.
 
 Texture2D<float4> src : register(t0);
 

@@ -9,9 +9,9 @@ import { FIXTURE_FILE } from './globalSetup'
 export const SHOTS = path.join(os.tmpdir(), 'aditor-e2e-shots')
 
 interface Fixtures {
-  /** 啟動（可多次；測試結束時全部關閉並刪除暫存 appData） */
+  /** Launch (may be called multiple times; close all instances and delete temporary appData after tests). */
   launch: (opts?: LaunchOpts) => Promise<AppHandle>
-  /** 合成影片；找不到 ffmpeg 時整個案例 skip 並印出原因 */
+  /** Synthetic videos; skip the entire case and print the reason when ffmpeg is unavailable. */
   videos: FixtureSet
 }
 
@@ -43,10 +43,10 @@ export async function shot(page: Page, name: string): Promise<void> {
   await page.screenshot({ path: path.join(SHOTS, `${name}.png`) }).catch(() => undefined)
 }
 
-/** 影片庫卡片（以檔名主體定位）。 */
+/** Library card located by filename stem. */
 export const card = (page: Page, title: string) => page.locator('.vcard', { hasText: title })
 
-/** 經 IPC 匯入並等到每支影片分析完成（卡片出現事件徽章區）。 */
+/** Import through IPC and wait for each video analysis to finish (the event-badge area appears on the card). */
 export async function importAndAnalyze(page: Page, paths: string[], titles: string[]): Promise<void> {
   await page.evaluate((p) => (window as unknown as { api: { library: { add: (x: string[]) => Promise<unknown> } } }).api.library.add(p), paths)
   for (const t of titles) await expect(card(page, t).locator('.vcard-counts')).toBeVisible({ timeout: 60_000 })
@@ -73,7 +73,7 @@ export interface StoredProjectFile {
   items: Array<{ id: string; source: string; start: number; end: number }>
 }
 
-/** 等待磁碟上的專案檔存在且片段數符合；回傳其內容（id 取自檔名）。 */
+/** Wait for the project file on disk with the expected clip count, then return its contents (id comes from the filename). */
 export async function waitProjectFile(app: AppHandle, items: number): Promise<StoredProjectFile> {
   let found: StoredProjectFile | null = null
   await expect
@@ -89,7 +89,7 @@ export async function waitProjectFile(app: AppHandle, items: number): Promise<St
             }
           }
         } catch {
-          /* 寫入中或尚未建立 */
+          /* Being written or not created yet. */
         }
         return false
       },

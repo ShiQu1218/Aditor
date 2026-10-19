@@ -5,7 +5,7 @@ import { X } from '../components/icons'
 import { shellI18n } from '../i18n'
 import { tr } from '../../shared/locale'
 
-/** 說明中分組的顯示順序（其餘 scope 依 KEY_TABLE 出現順序接在後面）。 */
+/** Display order of groups in the help dialog (append remaining scopes in KEY_TABLE order). */
 const SCOPE_ORDER = [
   shellI18n.keymap.scope.global,
   shellI18n.keymap.scope.studio,
@@ -21,7 +21,7 @@ export interface KeyGroup {
   rows: KeyRow[]
 }
 
-/** 依 scope 分組（組內保持 KEY_TABLE 順序；每個 Command 恰出現一次）。 */
+/** Group by scope, preserving KEY_TABLE order within each group; include each Command exactly once. */
 export function groupKeyRows(rows: readonly KeyRow[]): KeyGroup[] {
   const map = new Map<string, KeyRow[]>()
   for (const r of rows) map.set(r.scope, [...(map.get(r.scope) ?? []), r])
@@ -31,8 +31,8 @@ export function groupKeyRows(rows: readonly KeyRow[]): KeyGroup[] {
 }
 
 /**
- * 快捷鍵說明對話框：內容完全由 `KEY_TABLE` 產生（與 keymap 測試鎖定的是同一份表），
- * 不手寫第二份。Esc 由 OverlayProvider 在 window 層關閉（焦點在不在框內都有效）。
+ * Shortcuts help dialog: content is generated entirely from `KEY_TABLE` (the same table covered by keymap tests); do not duplicate it here.
+ * OverlayProvider handles Escape at the window level, regardless of whether focus is inside the dialog.
  */
 export function ShortcutsDialog({ onClose }: { onClose: () => void }): JSX.Element {
   const t = shellI18n.shortcutsDialog

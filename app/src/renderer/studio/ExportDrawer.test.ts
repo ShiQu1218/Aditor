@@ -58,7 +58,7 @@ async function ready(over: Record<string, unknown> = {}, outDir: string | null =
 describe('ExportDrawer markup (all four states)', () => {
   test('settings: dialog semantics, summary, modes, quality, output, enabled start', async () => {
     const { c } = await ready()
-    // 兩段來自同一支影片（相容性可確認）；不同來源的規格引擎無法完整提供，會保守地改走精準編碼（I9）
+    // Both clips come from the same video (compatibility is known); engine metadata is incomplete for other sources, so conservatively use precise encoding (I9).
     const sameSource: Project = { ...project, items: [project.items[0], { ...project.items[1], source: A, start: 10, end: 40 }] }
     const m = html(c, sameSource)
     expect(html(c)).toContain('無法確認幀率')
@@ -76,7 +76,7 @@ describe('ExportDrawer markup (all four states)', () => {
     expect(m).toContain('可用 200 GB')
     expect(m).toContain('data-phase="settings"')
     expect(m).toMatch(/<button type="button" class="btn-accent"><svg[^>]*>[\s\S]*?<\/svg> 開始匯出<\/button>/)
-    expect(m).toContain('片段起點平均會多出約 2.0 秒') // 10-8 的關鍵影格間距（B 無資料）
+    expect(m).toContain('片段起點平均會多出約 2.0 秒') // Keyframe distance is 10-8 (B has no data).
   })
 
   test('running: progressbar with aria-valuenow, cancel button, lock explanation, minimize label', async () => {
@@ -166,7 +166,7 @@ describe('ExportDrawer blockers and warnings', () => {
     expect(m).toContain('剩餘空間不足')
   })
 
-  test('mixed source params: copy disabled with 不可用 and a fallback notice', async () => {
+  test('Mixed source parameters disable copy with an “Unavailable” label and a fallback notice', async () => {
     const { c } = await ready()
     const mixed: ExportPlanBase = { ...base, sources: { ...base.sources, [B]: { codec: 'h264', width: 1728, height: 1080 } } }
     const m = html(c, project, mixed)
@@ -222,7 +222,7 @@ describe('export path hygiene', () => {
     }
   })
 
-  test('encoder select offers 自動 plus every detected encoder, and stays enabled in copy mode', async () => {
+  test('Encoder selector offers Automatic and every detected encoder, and stays enabled in copy mode', async () => {
     const f = fakeApi({ detectEncoders: async () => ['h264_nvenc', 'h264_amf'] })
     const c = createExportController(f.api)
     await c.init('D:/o')
@@ -235,8 +235,8 @@ describe('export path hygiene', () => {
   })
 })
 
-describe('ExportDrawer 實際輸出路徑說明', () => {
-  test('顯示「實際會存到」並隨模式切換 Merged／Clips', async () => {
+describe('ExportDrawer output path explanation', () => {
+  test('Shows “Actual output location” and switches between Merged and Clips by mode', async () => {
     const { c } = await ready({}, '/data/out')
     c.setMode('concat')
     expect(html(c)).toContain('實際會存到：/data/out/Merged')
@@ -246,7 +246,7 @@ describe('ExportDrawer 實際輸出路徑說明', () => {
     expect(m).not.toContain('/data/out/Merged')
   })
 
-  test('outDir 為空時不顯示說明', async () => {
+  test('Does not show the explanation when outDir is empty', async () => {
     const { c } = await ready({}, null)
     expect(html(c)).not.toContain('實際會存到')
   })

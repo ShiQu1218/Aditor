@@ -1,5 +1,5 @@
 import { tr } from './locale'
-/** 匯出相容性判斷（純函式，main 的 plan.ts 與 renderer 的匯出抽屜共用）。 */
+/** Export compatibility checks (pure functions shared by main plan.ts and the renderer's export drawer). */
 
 export interface StreamProbe {
   vcodec: string
@@ -39,7 +39,7 @@ export function concatCompatible(probes: StreamProbe[]): { ok: boolean; reason?:
     return { ok: true }
   }
 
-  // 引擎 probe 目前只提供 codec／解析度；幀率、像素格式、音訊規格未知（0／空字串）時無法證明相容，保守地視為不相容
+  // The engine probe currently provides only codec/resolution; when frame rate, pixel format, or audio specs are unknown (0/empty), compatibility cannot be proven, so treat it conservatively as incompatible.
   if (probes.some((p) => !(p.fps > 0) || !p.pix_fmt || !p.acodec || !(p.sample_rate > 0) || !(p.channels > 0))) {
     return { ok: false, reason: tr('無法確認幀率、像素格式或音訊規格是否一致') }
   }

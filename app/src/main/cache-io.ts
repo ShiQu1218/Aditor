@@ -2,7 +2,7 @@ import fs from 'fs'
 import path from 'path'
 import crypto from 'crypto'
 
-/** 讀取快取 JSON；不存在或損毀回傳 null。內容原樣回傳（含 Clip.status），遷移由 renderer 的 normalizeClips 處理。 */
+/** Read cache JSON; return null when missing or corrupt. Return contents as-is (including Clip.status); renderer's normalizeClips handles migration. */
 export function loadCacheDoc(cachePath: string): unknown | null {
   try {
     if (fs.existsSync(cachePath)) {
@@ -14,7 +14,7 @@ export function loadCacheDoc(cachePath: string): unknown | null {
   return null
 }
 
-/** 原子寫入（tmp + rename）。 */
+/** Write atomically (tmp + rename). */
 export function saveCacheDoc(doc: { cache_path: string }): boolean {
   try {
     if (doc && doc.cache_path) {
@@ -32,8 +32,8 @@ export function saveCacheDoc(doc: { cache_path: string }): boolean {
 }
 
 /**
- * 與引擎 cache.py 的 `cache_path(video, cache_dir, beside)` 同一規則：
- * beside ⇒ `<影片資料夾>/<主檔名>.aditor.json`；否則 sha1(abspath 小寫、斜線正規化) 命名於快取資料夾。
+ * Uses the same rule as the engine's `cache_path(video, cache_dir, beside)` in cache.py:
+ * beside ⇒ `<video directory>/<filename stem>.aditor.json`; otherwise, use the lowercase, slash-normalized abspath's SHA-1 in the cache directory.
  */
 export function cacheFilePath(videoPath: string, cacheDir: string, beside = false): string {
   if (beside) {
@@ -45,9 +45,9 @@ export function cacheFilePath(videoPath: string, cacheDir: string, beside = fals
 }
 
 /**
- * 讀取用的快取位置：優先目前設定的位置；那裡沒有檔、另一個位置有 → 用另一個
- * （使用者切換「快取位置」後，既有分析結果仍可開啟／計算精華數）。
- * 寫入／重新分析一律用 `cacheFilePath`（與引擎本次會寫入的位置一致）。
+ * Cache location for reads: prefer the currently configured location; if its file is missing and the other location has one, use the other.
+ * (Existing analysis results remain available after the user changes the cache location, including for opening and counting highlights.)
+ * Writes and reanalysis always use `cacheFilePath`, matching the location the engine will write to.
  */
 export function resolveCacheFile(videoPath: string, cacheDir: string, beside: boolean): string {
   const preferred = cacheFilePath(videoPath, cacheDir, beside)

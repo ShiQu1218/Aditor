@@ -5,9 +5,9 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "aditor"
 version = "0.3.0"
-description = "Aditor 分析引擎"
+description = "Aditor analysis engine"
 requires-python = ">=3.11"
-# 下限＝目前驗證過的版本（發版建置時的環境）；上限避免大版本破壞
+# Lower bounds match versions verified in the release build environment; upper bounds prevent breaking major upgrades.
 dependencies = ["opencv-python>=5.0,<6", "numpy>=2.5,<3"]
 
 [project.optional-dependencies]

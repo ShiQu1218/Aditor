@@ -1,7 +1,7 @@
 import { describe, expect, test, vi } from 'vitest'
 import { AHEAD_SEC, LiveBuffer, RETAIN_SEC, covers, type SourceBufferLike } from './liveBuffer'
 
-/** 假 SourceBuffer：append／remove 後 updating=true，`finish()` 模擬 updateend；buffered 依 append 的時間範圍。 */
+/** Fake SourceBuffer: append/remove set updating=true; `finish()` simulates updateend; buffered reflects appended time ranges. */
 class FakeSourceBuffer implements SourceBufferLike {
   mode = 'sequence'
   updating = false
@@ -59,8 +59,8 @@ async function drain(sb: FakeSourceBuffer, rounds = 30): Promise<void> {
   }
 }
 
-describe('LiveBuffer 段落佇列', () => {
-  test('先 init，再依序 append 播放頭附近的段落；一次一個操作', async () => {
+describe('LiveBuffer segment queue', () => {
+  test('Appends init first, then nearby segments in order; performs one operation at a time', async () => {
     const r = rig(0)
     expect(r.sb.mode).toBe('segments')
     r.buffer.setSegments(r.segments)
@@ -76,7 +76,7 @@ describe('LiveBuffer 段落佇列', () => {
     expect(r.setDuration).toHaveBeenLastCalledWith(20)
   })
 
-  test('新段落到達時 append，跳到其他時間時抓那裡的段落', async () => {
+  test('Appends new segments as they arrive and fetches segments at a sought time', async () => {
     const r = rig(15, 10)
     r.buffer.setSegments(r.segments.slice(0, 8))
     await drain(r.sb)
@@ -92,7 +92,7 @@ describe('LiveBuffer 段落佇列', () => {
     expect(r.fetchSegment).toHaveBeenCalledWith(1)
   })
 
-  test('超過 30 分鐘的緩衝以 remove() 釋放，之後不再抓', async () => {
+  test('Releases buffered content older than 30 minutes with remove() and does not fetch it again', async () => {
     const segs = RETAIN_SEC / 2 + 20
     const r = rig(0, segs)
     r.buffer.setSegments(r.segments.slice(0, 5))
@@ -112,7 +112,7 @@ describe('LiveBuffer 段落佇列', () => {
     expect(r.fetchSegment.mock.calls.filter(([seq]) => seq <= 5)).toHaveLength(early)
   })
 
-  test('配額不足時移除播放頭之前的資料；取檔失敗重試有上限並回報', async () => {
+  test('On quota exhaustion, removes data before the playhead; failed fetches retry up to a limit and report the failure', async () => {
     const r = rig(10, 10)
     r.buffer.setSegments(r.segments)
     await drain(r.sb)
@@ -135,7 +135,7 @@ describe('LiveBuffer 段落佇列', () => {
     expect(failing.onError).toHaveBeenCalled()
   })
 
-  test('dispose 後不再操作 SourceBuffer', async () => {
+  test('Does not operate on SourceBuffer after dispose', async () => {
     const r = rig(0)
     r.buffer.setSegments(r.segments)
     r.buffer.dispose()
@@ -146,7 +146,7 @@ describe('LiveBuffer 段落佇列', () => {
   })
 })
 
-test('清單可從較晚序號開始並移除已清理片段', async () => {
+test('List can start at a later sequence number and removes already-pruned segments', async () => {
   const r = rig(16)
   r.buffer.setSegments(r.segments.slice(8))
   await drain(r.sb)

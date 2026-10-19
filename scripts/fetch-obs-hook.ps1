@@ -1,14 +1,14 @@
 ﻿# scripts/fetch-obs-hook.ps1
-# 下載並驗證 OBS Studio 官方發行的 graphics-hook 檔案（供遊戲擷取注入使用）。
+# Download and verify the OBS Studio official graphics-hook files for game capture injection.
 #
-# 為何必須使用 OBS 官方簽章版本：
-#   反作弊系統（如 Easy Anti-Cheat / BattlEye）係依據 OBS 官方的數位簽章憑證
-#   （CN="OBS Project, LLC"）放行 graphics-hook64.dll；自行編譯或自行簽章的二進位檔不會被放行。
+# Why the official OBS-signed build is required:
+#   Anti-cheat systems such as Easy Anti-Cheat and BattlEye allow graphics-hook64.dll based on the OBS official signing certificate
+#   (CN="OBS Project, LLC"); self-built or self-signed binaries are not allowed.
 #
-# 要升級 OBS hook 版本：
-#   1. 修改下方 $version、$expectedZipSha256，以及 $expectedFiles 內三個檔案的 SHA-256 雜湊值
-#      （若官方更新簽章憑證，亦需確認 $expectedSigner）。
-#   2. 同步更新 THIRD_PARTY_NOTICES.md 中 OBS Studio graphics-hook 段落的版本與原始碼連結。
+# To upgrade the OBS hook version:
+#   1. Update $version, $expectedZipSha256, and the SHA-256 hashes for the three files in $expectedFiles below
+#      (also verify $expectedSigner if the official signing certificate changes).
+#   2. Update the version and source link in the OBS Studio graphics-hook section of THIRD_PARTY_NOTICES.md.
 param(
     [string]$TargetDir = "$PSScriptRoot\..\build\obs-hook"
 )
@@ -30,7 +30,7 @@ $expectedFiles = [ordered]@{
 
 $targetFullPath = [System.IO.Path]::GetFullPath($TargetDir)
 
-# 若 TargetDir 已有三個檔案且雜湊全部正確，直接成功（不重新下載）
+# If TargetDir already contains all three files with matching hashes, succeed without downloading again.
 $allValid = $true
 if (Test-Path $targetFullPath) {
     foreach ($fileName in $expectedFiles.Keys) {
@@ -72,7 +72,7 @@ if (-not (Test-Path $zipPath)) {
 $actualZipSha256 = (Get-FileHash -Path $zipPath -Algorithm SHA256).Hash
 Write-Host "Verifying zip SHA256: $actualZipSha256"
 if ($actualZipSha256 -ne $expectedZipSha256) {
-    # 不符就失敗：不解壓、不打包未驗證的二進位。舊版下載請刪除 $zipPath 後重跑。
+    # Fail on a mismatch: do not extract or package an unverified binary. Delete $zipPath and rerun to download again.
     throw "FATAL: SHA256 mismatch for $asset! Expected $expectedZipSha256, got $actualZipSha256. Delete $zipPath and retry, or update the pinned values deliberately."
 }
 

@@ -1,15 +1,15 @@
 import { estimateEta } from './eta'
 
-/** main 的 AnalysisQueue 真實狀態：正在分析的影片與排隊中的影片（依順序）。 */
+/** Actual state from main AnalysisQueue: the video being analyzed and videos waiting in order. */
 export interface QueueSnapshot {
   analyzing: string | null
   queued: string[]
 }
 
-/** `library:updated` 事件與 `queue:getState` 的內容。 */
+/** Payload for the `library:updated` event and `queue:getState`. */
 export interface QueuePayload {
   queue: QueueSnapshot
-  /** 正在分析的項目進度；`analyzingSince` 為 main 記錄的分析開始時間（epoch ms） */
+  /** Progress of the item being analyzed; `analyzingSince` is the analysis start time recorded by main (epoch ms). */
   current: { path: string; progress: number; analyzingSince: number | null } | null
 }
 
@@ -23,18 +23,18 @@ export interface QueueRow {
 }
 
 export interface QueueSummary {
-  /** 分析中在前，排隊依序在後 */
+  /** Item being analyzed first, followed by queued items in order. */
   rows: QueueRow[]
   analyzing: QueueRow | null
-  /** 分析中＋排隊的總數（0＝佇列條隱藏） */
+  /** Total number analyzing + queued (0 hides the queue bar). */
   total: number
-  /** 目前分析進度 0–1（沒有分析中項目為 0） */
+  /** Current analysis progress 0–1 (0 when no item is being analyzed). */
   progress: number
 }
 
 export const EMPTY_SUMMARY: QueueSummary = { rows: [], analyzing: null, total: 0, progress: 0 }
 
-/** 路徑比對鍵（斜線與大小寫不敏感；shared 內不使用 Node path） */
+/** Path comparison key (slashes and case-insensitive; do not use Node path in shared code). */
 export function queueKey(p: string): string {
   return p.replace(/\\/g, '/').toLowerCase()
 }
@@ -42,8 +42,8 @@ export function queueKey(p: string): string {
 const clamp01 = (n: number): number => Math.min(1, Math.max(0, Number.isFinite(n) ? n : 0))
 
 /**
- * 佇列摘要（純函式）：只依 main 提供的真實佇列狀態，不看 Library 的 `status === 'pending'`。
- * ETA ＝ `estimateEta(progress, now - analyzingSince)`（耗時 < 3 秒或進度 < 2% 為 null）。
+ * Queue summary (pure function): use only actual queue state from main, not Library `status === 'pending'`.
+ * ETA = `estimateEta(progress, now - analyzingSince)` (null when elapsed < 3 seconds or progress < 2%).
  */
 export function summarizeQueue(payload: QueuePayload | null | undefined, now: number): QueueSummary {
   if (!payload) return EMPTY_SUMMARY
@@ -67,7 +67,7 @@ export function summarizeQueue(payload: QueuePayload | null | undefined, now: nu
   return { rows, analyzing, total: rows.length, progress: analyzing?.progress ?? 0 }
 }
 
-/** 卡片狀態：analyzing／queued 取自真實佇列；其餘（含匯入未排隊、取消後）一律 idle＝「尚未分析」。 */
+/** Card state: analyzing/queued come from actual queue state; all others (including imported-but-not-queued/cancelled) are idle = "not yet analyzed." */
 export function queueItemState(summary: QueueSummary, path: string): QueueItemState {
   const key = queueKey(path)
   const row = summary.rows.find((r) => queueKey(r.path) === key)

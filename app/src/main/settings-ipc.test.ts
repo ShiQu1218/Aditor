@@ -98,7 +98,7 @@ describe('settings IPC（settings:get / settings:set / settings:changed）', () 
       const res = await ipc.handlers.get('settings:set')!({}, { defaultOutDir: bad, before: 5 })
       expect(res.errors?.defaultOutDir, String(bad)).toBeTruthy()
       expect(res.settings.defaultOutDir).toBeNull()
-      expect(res.settings.before).toBe(5) // 其他合法欄位照常套用
+      expect(res.settings.before).toBe(5) // Other valid fields are still applied.
     }
     expect(store.get().defaultOutDir).toBeNull()
 
@@ -106,7 +106,7 @@ describe('settings IPC（settings:get / settings:set / settings:changed）', () 
     expect(ok.errors).toBeUndefined()
     expect(ok.settings.defaultOutDir).toBe(path.resolve(dir))
 
-    // null = 每次詢問，永遠允許
+    // null = ask every time and always allow.
     const cleared = await ipc.handlers.get('settings:set')!({}, { defaultOutDir: null })
     expect(cleared.errors).toBeUndefined()
     expect(cleared.settings.defaultOutDir).toBeNull()

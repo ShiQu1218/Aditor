@@ -1,7 +1,7 @@
-// 首次啟動的低效能詢問：偵測無硬體解碼 1080p60 H.264 時，顯示一次非模態通知。
+// First-launch low-performance prompt: show one non-modal notice when hardware decoding for 1080p60 H.264 is unavailable.
 import type { Settings } from '../../shared/settings'
 
-/** 探測設定：1080p60 H.264（應用程式最常見的錄影格式） */
+/** Probe settings: 1080p60 H.264 (the app's most common recording format). */
 export const PROBE_CONFIG = {
   type: 'file' as const,
   video: {
@@ -17,7 +17,7 @@ interface MediaCapabilitiesLike {
   decodingInfo(config: typeof PROBE_CONFIG): Promise<{ supported: boolean; smooth: boolean; powerEfficient: boolean }>
 }
 
-/** 無硬體解碼（不支援、不流暢或非省電＝軟體解碼）→ true。API 不存在或失敗 → false（不打擾使用者）。 */
+/** Return true without hardware decoding (unsupported, not smooth, or not power-efficient means software decoding). Return false if the API is missing or fails (do not bother the user). */
 export async function lacksHardwareDecode(mc: MediaCapabilitiesLike | undefined): Promise<boolean> {
   if (!mc?.decodingInfo) return false
   try {
@@ -41,8 +41,8 @@ export interface LowPerfPrompt {
 }
 
 /**
- * 狀態機：start() 於啟動時呼叫一次。從未詢問過、尚未開啟低效能模式且無硬體解碼 → 顯示通知，
- * 並立刻記下 `lowPerfAsked`（無論使用者之後怎麼回應，只問一次）。
+ * State machine: call start() once at startup. If the user has never been asked, low-performance mode is off, and hardware decoding is unavailable, show the notice
+ * and immediately set `lowPerfAsked` (ask only once, regardless of the user's response).
  */
 export function createLowPerfPrompt(deps: PromptDeps, onVisible: (visible: boolean) => void): LowPerfPrompt {
   return {
@@ -54,7 +54,7 @@ export function createLowPerfPrompt(deps: PromptDeps, onVisible: (visible: boole
         await deps.setSettings({ lowPerfAsked: true })
         onVisible(true)
       } catch {
-        /* 偵測／讀設定失敗＝不詢問 */
+        /* If detection or settings read fails, skip the prompt. */
       }
     },
     async accept() {

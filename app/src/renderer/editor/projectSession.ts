@@ -13,13 +13,13 @@ export interface SessionState {
   canUndo: boolean
   canRedo: boolean
   saveState: SaveState
-  /** 最近一次成功寫入的 timestamp（ms）。 */
+/** Timestamp (ms) of the most recent successful write. */
   lastSavedAt: number | null
-  /** 目前是否有尚未成功寫入的編輯（包含去抖等待中）。 */
+/** Whether any edits have not been written successfully yet (including edits waiting for debounce). */
   unsaved: boolean
 }
 
-/** 寫入通道：`save` 為一般 IPC；`saveSync` 為關閉視窗用的同步 IPC（回傳前 main 已寫入磁碟）。 */
+/** Write channel: `save` uses regular IPC; `saveSync` is synchronous IPC for window close (main writes to disk before returning). */
 export interface SessionIo {
   save(p: ProjectWithId): Promise<unknown>
   saveSync(p: ProjectWithId): void
@@ -33,8 +33,8 @@ interface ProjectsApi {
 }
 
 /**
- * 以 `window.api` 建立寫入通道。`lastProjectId` 由 main 在同一次 save／flushSync 內記錄，
- * 這裡不再另發設定 IPC（否則關閉前最後一次寫入會遺失）。回傳 false 視為失敗（丟錯）。
+ * Build the write channel from `window.api`. Main records `lastProjectId` during the same save/flushSync call,
+ * so this code must not send a separate settings IPC (the final write could otherwise be lost on close). A false return is treated as failure (throws).
  */
 export function createSessionIo(api: ProjectsApi | undefined): SessionIo {
   return {
@@ -58,11 +58,11 @@ export interface SessionOptions {
 }
 
 /**
- * 專案狀態的純控制器（React 之外）：undo 歷史、去抖自動儲存、saveState、啟動還原排序。
- * Provider 只負責訂閱並把 IPC／視窗事件接進來。
+ * Pure controller for project state (outside React): undo history, debounced autosave, saveState, and startup restoration ordering.
+ * The Provider only subscribes and connects IPC and window events.
  *
- * 自動儲存在設定載入前為 held（保留待寫但不寫），`settingsLoaded` 後依設定寫一次或丟棄；
- * 新增專案不寫入空檔（第一次編輯才寫）；啟動還原只在使用者尚未編輯時套用。
+ * Before settings load, autosave is held (retain pending writes without writing); after `settingsLoaded`, write or discard them based on the setting.
+ * A new project does not create an empty file (write after the first edit); apply startup restoration only if the user has not edited.
  */
 export class ProjectSession {
   private io: SessionIo
@@ -117,7 +117,7 @@ export class ProjectSession {
     for (const cb of [...this.listeners]) cb()
   }
 
-  /** 實際寫入；只有最新一次寫入的結果會更新 saveState（舊請求晚到不能蓋掉）。 */
+/** Perform the write; only the latest write may update saveState (a late older request cannot overwrite it). */
   private write(p: ProjectWithId): void {
     const seq = ++this.writeSeq
     this.commit('saving')
@@ -140,13 +140,13 @@ export class ProjectSession {
     )
   }
 
-  // ---- 啟動 ----
+// ---- Startup ----
 
   startBoot(): void {
     this.boot.start()
   }
 
-  /** 設定載入（或設定面板切換）後呼叫：決定自動儲存開關並放行／丟棄待寫內容。 */
+/** Call after settings load or a settings-panel change to set autosave and release or discard pending writes. */
   settingsLoaded(projectAutosave: unknown): void {
     const enabled = this.boot.settingsLoaded(projectAutosave)
     this.autosave.setEnabled(enabled)
@@ -154,7 +154,7 @@ export class ProjectSession {
     this.commit()
   }
 
-  /** 啟動還原結果；回傳是否已套用（使用者已編輯就保留目前專案與歷史）。 */
+/** Handle startup restoration; return whether it was applied (keep the current project and history if the user has edited). */
   restored(project: ProjectWithId | null): boolean {
     if (!this.boot.restored(project !== null) || !project) return false
     this.history = new History<ProjectWithId>(project)
@@ -163,7 +163,7 @@ export class ProjectSession {
     return true
   }
 
-  // ---- 編輯 ----
+// ---- Editing ----
 
   apply(next: Project): void {
     this.boot.edit()
@@ -192,7 +192,7 @@ export class ProjectSession {
     this.autosave.update(p)
   }
 
-  /** 新專案：先寫出舊專案待寫內容；空專案不落地，第一次編輯才寫。 */
+/** New project: write pending content for the old project first; do not persist an empty project until its first edit. */
   newProject(): boolean {
     if (!this.flushSync()) return false
     this.boot.edit()
@@ -207,11 +207,11 @@ export class ProjectSession {
     this.writeSeq++
   }
 
-  /** 關閉視窗：同步送出最新待寫專案（阻塞到 main 寫完）。 */
+/** On window close, synchronously send the latest pending project and wait for main to finish writing it. */
   flushSync(): boolean {
     this.autosave.cancelPending()
     if (!this.unsaved) return true
-    // 即使自動儲存關閉、設定尚未載入或非同步儲存尚未完成，也要寫出最新內容。
+// Write the latest content even when autosave is off, settings have not loaded, or an async save is still pending.
     this.writeSeq++
     try {
       this.io.saveSync(this.history.current)

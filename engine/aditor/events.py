@@ -1,11 +1,12 @@
-"""事件追蹤器：把逐格 FrameResult 聚成事件（連續橫幅切分、名字抖動容忍、觀戰區間）。
+"""Event tracker that groups per-frame FrameResult values into events, splitting continuous banners, tolerating name jitter, and tracking spectator intervals.
 
-事件單位是「橫幅第一次出現」：同一個橫幅的連續命中格（容許 1 格空白）是一個 run；run 內的類型取多數。
-切分有兩個來源：
-1. 名字指紋（只有擊倒橫幅有：敵人名字色，與語言無關）：同一 run 內名字改變，且之間有空白格或分數凹陷才切
-   （無空白、無凹陷的改變視為 HUD 遮擋／淡出的抖動）。
-2. 類型持續改變：擊倒與助攻擊倒共用同一個圖示，由名字色／第二行線索判斷；同一個 run 內類型持續改變
-   （兩側各 ≥ KIND_PERSIST 格）視為兩個接連的橫幅，短暫的閃爍併入前後。
+An event is anchored at the first appearance of a banner: consecutive hit frames from the same banner (allowing one empty frame)
+form a run; the run's type is determined by majority vote.
+There are two reasons to split a run:
+1. Name fingerprints (available only on knock banners, using language-independent enemy-name colors): split when the name changes
+   and there is an empty frame or score dip between them (a change without either is treated as HUD occlusion/fade jitter).
+2. A sustained type change: knocks and assist-knocks share an icon and are distinguished by name color/second-line cues. A type
+   change sustained within one run (>= KIND_PERSIST frames on each side) indicates two consecutive banners; brief flickers merge into the adjacent type.
 """
 from __future__ import annotations
 
@@ -17,56 +18,56 @@ from aditor.models import Event, FrameResult, NameSig, SpecInterval
 from aditor.profile import Profile
 
 STEP = 0.25
-GAP = 0.5          # 提示消失（無命中）≥ 0.5 秒 = 連續 2 格空白才算新事件
-SPEC_MIN_FRAMES = 8  # 觀戰連續 ≥ 2 秒
+GAP = 0.5          # A banner disappearance (no hit) of >= 0.5 seconds, or two consecutive empty frames, starts a new event.
+SPEC_MIN_FRAMES = 8  # Spectating must persist for >= 2 seconds.
 _EPS = 1e-6
 
-SPLIT_SCORE_DIP = 0.12   # 圖示分數凹陷（相對於 run 內的中位數）達這麼多，視為橫幅被換掉的不連續點
-KIND_PERSIST = 3         # 同一 run 內擊倒／助攻擊倒類型要持續幾格才切成兩個事件
-_MAX_SIGS = 40  # 每個 run 最多納入代表簽名計算的指紋數（橫幅最長約 10 秒 = 40 格；超過者仍參與比對但不入池）
+SPLIT_SCORE_DIP = 0.12   # A score dip this large relative to the run median marks a banner transition.
+KIND_PERSIST = 3         # Number of consecutive knock/assist-knock frames needed to split one run into two events.
+_MAX_SIGS = 40  # Maximum fingerprints per run for representative-signature calculation (banners last up to ~10s = 40 frames; later frames still match but are not added to the pool).
 _P_KINDS = frozenset({"knock", "assist_knock"})
 
 
 def _family(kind: str | None) -> str | None:
-    """同一個橫幅的家族：單人加分（擊倒／助攻擊倒，圖示相同）＝P；助攻消滅（握手）＝H。"""
+    """Banner family: solo score (knock/assist-knock, same icon) = P; assist elimination (handshake) = H."""
     if kind in _P_KINDS:
         return "P"
     return "H" if kind == "assist_elim" else None
 
 
 class _Run:
-    """同一個橫幅的連續命中；彙整整段 run 的所有命中格。
+    """Consecutive hits from the same banner; aggregates all hit frames in the run.
 
-    名字比對用「代表簽名」（run 內的 medoid／多數）而不是前一格：指紋逐格抖動時，
-    單格差異只算雜訊，不會讓整段連續命中被丟棄，也不會把同一橫幅切成兩個事件。
+    Compare names with the representative signature (the run's medoid/majority), not the previous frame. This prevents
+    frame-to-frame fingerprint jitter from treating a single-frame difference as noise that drops the whole run or splits one banner into two events.
     """
 
     def __init__(self, threshold: float, suppressed: bool):
         self.threshold = threshold
         self.suppressed = suppressed
-        self.frames: list[tuple[float, FrameResult]] = []  # 本 run 的所有命中格（含暫列格）
-        self.cont_ts: list[float] = []  # 「有加分箭頭但人形不確定」格的時間（延續 run，不算命中）
+        self.frames: list[tuple[float, FrameResult]] = []  # All hit frames in this run (including tentative frames).
+        self.cont_ts: list[float] = []  # Times of frames with a score chevron but an uncertain person icon (continue the run, but do not count as hits).
         self.event: Event | None = None
-        # 暫列格：與代表簽名不同的最新一格，需下一格也是同一個新名字才確認分裂
+        # Latest tentative frame that differs from the representative signature; the next frame must show the same new name to confirm a split.
         self.pending: tuple[float, FrameResult] | None = None
-        self.discontinuity = False  # 最後一個「與本 run 名字相符」的畫格之後，是否出現過空白格（橫幅淡出）
-        self.disc_idx: int | None = None  # 空白格之後第一格在 frames 的索引（若之後確認是新橫幅，新事件從這格起算）
-        self._sigs: list[NameSig] = []   # 已確認（非暫列）格的指紋，依時間排序
-        self._support: list[int] = []    # 與各指紋「同一人」的其他指紋數
-        self._counts: dict[str, tuple[int, int]] = {}  # 類型 → (格數, 最後出現索引)
+        self.discontinuity = False  # Whether an empty frame (banner fade) appeared after the last frame matching this run's name.
+        self.disc_idx: int | None = None  # Index of the first frame after a gap (if confirmed as a new banner, the event starts here).
+        self._sigs: list[NameSig] = []   # Fingerprints from confirmed (non-tentative) frames, sorted by timestamp.
+        self._support: list[int] = []    # Number of other fingerprints matching the same person for each fingerprint.
+        self._counts: dict[str, tuple[int, int]] = {}  # Type -> (frame count, last occurrence index).
         self._score = 0.0
         self._damage = False
-        self._times: list[float] = []  # 確認連續兩格前的有橫幅時間，依時間排序
+        self._times: list[float] = []  # Banner timestamps sorted by time before confirming two consecutive frames.
         self._has_pair = False
 
-    # --- 彙整 ---
+    # --- Aggregation ---
     @property
     def family(self) -> str | None:
         return _family(self.frames[0][1].kind)
 
     @property
     def kind(self) -> str | None:
-        """run 的類型：畫格類型的多數（同數取較晚者）。淡入時圖示線索讀不準，多數決讓整段穩定。"""
+        """Run type by majority vote across frame types (ties go to the later type). Icon cues are unreliable during fade-in, so majority vote stabilizes the run."""
         return max(self._counts, key=self._counts.__getitem__)
 
     @property
@@ -79,7 +80,7 @@ class _Run:
 
     @property
     def reach_t(self) -> float:
-        """最後一格「有橫幅跡象」的時間（含 cont 格）：判斷連續性用。"""
+        """Timestamp of the last frame with banner evidence (including cont frames), used to determine continuity."""
         return max([self.last_t, *self.cont_ts])
 
     @property
@@ -96,10 +97,10 @@ class _Run:
 
     @property
     def stable(self) -> bool:
-        """已確認格中是否有兩個指紋互為同一人（否則指紋不可靠，不據以分裂）。"""
+        """Whether any two confirmed-frame fingerprints match the same person (otherwise fingerprints are unreliable and must not trigger a split)."""
         return any(c >= 1 for c in self._support)
 
-    # --- 代表簽名 ---
+    # --- Representative signature ---
     def _register(self, sig: NameSig) -> None:
         if len(self._sigs) >= _MAX_SIGS:
             return
@@ -112,15 +113,15 @@ class _Run:
         self._support.append(sup)
 
     def representative(self) -> NameSig | None:
-        """medoid：與最多其他指紋判為同一人的指紋（多數）；同分取最早的。
-        乾淨的 run（全部互為同一人）因此回傳第一個指紋。"""
+        """Medoid: the fingerprint matching the most other fingerprints as the same person (majority); break ties by choosing the earliest.
+        For a clean run where all fingerprints match, this returns the first fingerprint."""
         if not self._sigs:
             return None
         best = max(range(len(self._sigs)), key=lambda i: (self._support[i], -i))
         return self._sigs[best]
 
     def reset(self, frames: list[tuple[float, FrameResult]], cont_ts: list[float] | None = None) -> None:
-        """以給定畫格重建本 run 的彙整狀態（分裂時把後半段移給新 run）。"""
+        """Rebuild this run's aggregate state from the supplied frames (the second half is moved to a new run when splitting)."""
         self.frames, self.pending = [], None
         self.cont_ts = []
         self._sigs, self._support = [], []
@@ -133,11 +134,11 @@ class _Run:
             if frames and t >= frames[0][0]:
                 self.add_cont(t)
 
-    # --- 變更 ---
+    # --- Updates ---
     def _add_time(self, t: float) -> None:
         if self._has_pair:
             return
-        # reset 時命中格與 cont 格分別重放，插入相鄰位置即可確認是否有連續兩格。
+        # On reset, replay hit frames and cont frames separately; inserting at adjacent positions confirms whether two consecutive frames exist.
         i = bisect_left(self._times, t)
         self._has_pair = ((i > 0 and t - self._times[i - 1] < STEP + _EPS)
                           or (i < len(self._times) and self._times[i] - t < STEP + _EPS))
@@ -163,7 +164,7 @@ class _Run:
             self._register(r.name_sig)
 
     def commit_pending(self) -> None:
-        """暫列格被新的暫列格取代：視為本 run 內的抖動，併入已確認格。"""
+        """A new tentative frame replaced the prior one: treat it as jitter within this run and merge it into confirmed frames."""
         if self.pending is not None:
             sig = self.pending[1].name_sig
             if sig is not None:
@@ -171,13 +172,13 @@ class _Run:
             self.pending = None
 
     def kind_cut(self) -> int | None:
-        """類型持續改變的切點（frames 索引）；沒有則 None。
+        """Return the frame index where a sustained type change begins, or None.
 
-        P 家族逐格為擊倒（true）或助攻擊倒（false）；同值連續段 ≥ KIND_PERSIST 格才算「穩定段」
-        （較短的段是閃爍，併入前後）；相鄰穩定段值不同 → 在後者第一格切開。"""
+        In family P, each frame is either a knock (true) or assist-knock (false). A run of the same value is stable when it has
+        >= KIND_PERSIST frames (shorter runs are flickers merged into surrounding runs); split at the first frame of adjacent stable runs with different values."""
         if self.family != "P":
             return None
-        segs: list[list] = []  # [值, 第一個 frames 索引, 格數]
+        segs: list[list] = []  # [value, first frame index, frame count]
         for i, (_, r) in enumerate(self.frames):
             v = r.kind == "knock"
             if segs and segs[-1][0] == v:
@@ -194,19 +195,19 @@ class _Run:
         return None
 
     def matches_representative(self, r: FrameResult) -> bool:
-        """只和代表簽名比：同名或殘片關係；沒有名字／run 還沒有名字不算矛盾。"""
+        """Compare only with the representative signature: same name or fragment relationship; a missing name or signature is not a conflict."""
         rep = self.representative()
         if r.name_sig is None or rep is None:
             return True
         return same_name(rep, r.name_sig, self.threshold) or fragment_related(rep, r.name_sig)
 
     def matches(self, r: FrameResult) -> bool:
-        """這格的名字是否屬於本 run：與代表簽名、或任何已確認格的簽名相符就算（沒有名字不算矛盾）。"""
+        """Whether this frame's name belongs to the run: it must match the representative signature or any confirmed-frame signature (a missing name is not a conflict)."""
         if r.name_sig is None or not self._sigs:
             return True
         if any(same_name(o, r.name_sig, self.threshold) for o in [self.representative(), *self._sigs]):
             return True
-        # 被 HUD 遮擋／淡出而變窄的殘片仍是同一個名字：不算矛盾，併入本 run
+        # A narrower fragment caused by HUD occlusion/fade is still the same name; it is not a conflict and belongs in this run.
         return any(fragment_related(o, r.name_sig) for o in self._sigs)
 
 
@@ -226,7 +227,7 @@ class EventTracker:
         self._feed_spec(t, r)
 
     def snapshot(self) -> tuple[list[Event], list[SpecInterval]]:
-        """目前進度的事件與觀戰區間複本（不結束串流；進行中且已達 2 秒的觀戰區間一併列入）。"""
+        """Return copies of current events and spectating intervals without ending the stream; include in-progress spectating intervals that have reached 2 seconds."""
         events = [Event.from_dict(e.to_dict()) for e in self._events]
         intervals = [SpecInterval(i.start, i.end) for i in self._intervals]
         if self._spec_first is not None and self._spec_n >= SPEC_MIN_FRAMES:
@@ -238,7 +239,7 @@ class EventTracker:
         self._run = None
         return self._events, self._intervals
 
-    # --- 提示橫幅 ---
+    # --- Banner events ---
     def _feed_banner(self, t: float, r: FrameResult) -> None:
         run = self._run
         if r.kind is None:
@@ -250,16 +251,17 @@ class EventTracker:
             return
         fam = _family(r.kind)
         if run is not None and t - run.reach_t - STEP < GAP - _EPS and run.family == fam:
-            # 空白格（橫幅「彈出」換場）之後的第一格只和 run 的代表簽名（或其殘片）比對：run 內遮擋／火光造成的
-            # 雜訊指紋不能把另一個敵人的新橫幅吸收進來（驗收片 test-ENG 背靠背兩個敵人）
+            # After an empty frame (banner transition), compare the first new frame only with the run's representative signature
+            # or its fragment: noisy fingerprints caused by occlusion/fire within a run must not absorb another enemy's banner
+            # (two back-to-back enemies in acceptance clip test-ENG).
             gap = t - run.reach_t > STEP + _EPS
             if gap and not run.discontinuity:
                 run.discontinuity, run.disc_idx = True, len(run.frames)
             rep_before = run.representative()
             if (run.matches_representative(r) if run.discontinuity else run.matches(r)):
                 run.add(t, r)
-                # 空白格之後要有一格「讀得到名字、且與代表簽名相符」才算確認是同一橫幅；
-                # 新橫幅的名字常要幾格才讀得到，讀不到名字的格先保持待確認
+                # After a gap, confirm the same banner only when a frame has a readable name matching the representative signature.
+                # Names on a new banner often take several frames to become readable, so keep unreadable frames tentative.
                 if r.name_sig is not None and (rep_before is None or run.matches_representative(r)):
                     run.discontinuity, run.disc_idx = False, None
             else:
@@ -270,18 +272,18 @@ class EventTracker:
                         if self._is_break(run, pend, r):
                             self._split(run, pend, t, r)
                             return
-                        # 沒有任何不連續（無空白格、分數沒凹陷）的名字改變 = HUD 遮擋／淡出造成的抖動：
-                        # 遊戲同一時間只顯示一個中央橫幅，換成另一個敵人的橫幅一定會經過淡出（空白）或分數凹陷
+                        # A name change with no discontinuity (no empty frame or score dip) is jitter caused by HUD occlusion/fade.
+                        # The game shows only one centered banner at a time; switching to another enemy's banner must include a fade (gap) or score dip.
                         run.commit_pending()
                         run.add(t, r)
                         self._emit(run)
                         return
-                    # 舊 run 從未有過穩定名字（亮／藍背景抖動）：視為同一提示，改採穩定後的名字
+                    # The old run never had a stable name (bright/blue-background jitter): treat this as the same banner and adopt the newly stable name.
                     run.commit_pending()
                     run.add(t, r)
                 else:
                     run.commit_pending()
-                    run.add(t, r, tentative=True)  # 候選分裂點；先當成本 run 的延續（連續格數照算）
+                    run.add(t, r, tentative=True)  # Candidate split point; initially continue this run (still count consecutive frames).
             cut = run.kind_cut()
             if cut is not None:
                 self._cut_kind(run, cut)
@@ -295,7 +297,7 @@ class EventTracker:
 
     @staticmethod
     def _is_break(run: _Run, pend: tuple[float, FrameResult], r: FrameResult) -> bool:
-        """舊 run 與「新名字」之間有沒有不連續：舊名字最後出現之後有空白格，或圖示分數明顯凹陷。"""
+        """Whether there is a discontinuity between the old run and the new name: an empty frame after the old name's last occurrence, or a clear icon-score dip."""
         if run.discontinuity:
             return True
         base = sorted(f.score for _, f in run.frames[:-1])
@@ -305,12 +307,12 @@ class EventTracker:
         return min(pend[1].score, r.score) < ref - SPLIT_SCORE_DIP
 
     def _move_tail(self, old: _Run, idx: int) -> _Run:
-        """把 old.frames[idx:] 移給新 run（old 只保留前半）；舊事件依剩餘畫格撤回或更新。回傳新 run（已設為目前 run）。"""
+        """Move old.frames[idx:] to a new run (old retains the first half); retract or update the old event based on its remaining frames. Return the new run, now set as current."""
         moved = old.frames[idx:]
         cont = list(old.cont_ts)
         old.reset(old.frames[:idx], cont)
         if old.event is not None and not old.has_pair:
-            self._events.remove(old.event)  # 舊 run 少了這些格後不足連續 2 格：撤回先前發出的事件
+            self._events.remove(old.event)  # The old run now has fewer than two consecutive frames, so retract the previously emitted event.
             old.event = None
         elif old.event is not None:
             self._emit(old)
@@ -319,10 +321,11 @@ class EventTracker:
         return new
 
     def _split(self, old: _Run, pend: tuple[float, FrameResult], t: float, r: FrameResult) -> None:
-        """不同名字連續 2 格才分裂。
+        """Split only after two consecutive frames show a different name.
 
-        一般情況新事件從第一個不同格（暫列格）起算；若舊 run 的名字最後出現後有空白格（橫幅換場），
-        新事件從空白格之後的第一格起算（新橫幅的名字常要幾格才讀得到，這些格不屬於舊橫幅）。"""
+        Normally the new event starts at the first differing frame (the tentative frame). If there is a gap after the old
+        run's last name (banner transition), start the new event at the first frame after the gap; the new banner's name often
+        takes several frames to become readable, and those frames do not belong to the old banner."""
         idx = old.disc_idx if (old.discontinuity and old.disc_idx is not None) else len(old.frames) - 1
         idx = min(idx, len(old.frames) - 1)
         new = self._move_tail(old, idx)
@@ -330,7 +333,7 @@ class EventTracker:
         self._emit(new)
 
     def _cut_kind(self, old: _Run, idx: int) -> None:
-        """類型持續改變：從穩定的新類型第一格切成新事件。"""
+        """For a sustained type change, split into a new event at the first frame of the new stable type."""
         new = self._move_tail(old, idx)
         self._emit(new)
 
@@ -348,7 +351,7 @@ class EventTracker:
             if rep is not None:
                 run.event.name_sig = rep.to_b64()
 
-    # --- 觀戰 ---
+    # --- Spectating ---
     def _feed_spec(self, t: float, r: FrameResult) -> None:
         if r.spectating:
             if self._spec_first is None:

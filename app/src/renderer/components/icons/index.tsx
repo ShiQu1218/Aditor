@@ -1,4 +1,4 @@
-// 圖示統一出口：品牌功能圖示與 lucide-react 共用既有介面
+// Unified icon entry point: branded feature icons and lucide-react share the existing interface.
 import React from 'react'
 import logoUrl from '../../../../resources/icon.png'
 import {
@@ -71,7 +71,7 @@ export {
 
 export { LayoutGrid, Film, Video, AnalysisQueue, Keyboard, SlidersHorizontal, Sparkles, Download } from './primary'
 
-/** 簡化版探路者品牌頭像；側欄已有導覽標籤，圖像僅作裝飾。 */
+/** Simplified Pathfinder brand avatar; the sidebar already has navigation labels, so the image is decorative. */
 export function LogoMark(props: { className?: string }): JSX.Element {
   return <img className={props.className} src={logoUrl} alt="" aria-hidden="true" draggable={false} />
 }

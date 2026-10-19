@@ -1,13 +1,13 @@
-// 焦點區（focus zone）與事件目標分類。純 DOM 輔助，不依賴 React，方便在 node 環境測試。
+// Focus zones and event-target classification. Pure DOM helpers with no React dependency, so they can be tested in Node.
 
 export type Zone = 'src' | 'hl' | 'proj' | null
 export type TargetKind = 'native' | 'text' | 'none'
 
-/** 結構上與 HTMLElement 相容的最小介面（測試可用假物件）。 */
+/** Minimal HTMLElement-compatible interface; tests may use mock objects. */
 export interface ElementLike {
   tagName: string
   parentElement?: ElementLike | null
-  /** 瀏覽器計算後（含祖先繼承）的可編輯狀態；測試假物件可省略 */
+  /** Browser-computed editability (including inherited state); optional on test mocks. */
   isContentEditable?: boolean
   getAttribute(name: string): string | null
 }
@@ -30,7 +30,7 @@ const TEXT_INPUT_TYPES = new Set(['text', 'number', 'search', 'email', 'url', 'p
 
 function isEditable(el: ElementLike): boolean {
   if (typeof el.isContentEditable === 'boolean') return el.isContentEditable
-  // 無 isContentEditable 時手動沿祖先找 contenteditable
+  // If isContentEditable is unavailable, walk ancestors to find contenteditable.
   for (let cur: ElementLike | null = el; cur; cur = cur.parentElement ?? null) {
     const v = cur.getAttribute('contenteditable')
     if (v === null) continue
@@ -41,11 +41,11 @@ function isEditable(el: ElementLike): boolean {
 }
 
 /**
- * button/select/a/role=slider|tab|menuitem|switch…/非文字 input → native；
- * 文字 input/textarea/contenteditable/role=textbox… → text；其餘（含 role=option/listbox/row/gridcell/listitem）→ none。
+ * button/select/a/role=slider|tab|menuitem|switch…/non-text input → native;
+ * text input/textarea/contenteditable/role=textbox… → text; everything else (including role=option/listbox/row/gridcell/listitem) → none.
  *
- * 清單列（hl/proj 的 role=option/listitem）不可使用 <button>，
- * 否則 Enter/Delete 區域鍵會被原生控制項規則放行（resolveKey 回傳 null）。
+ * List rows (hl/proj with role=option/listitem) must not use <button>,
+ * or Enter/Delete zone keys will be allowed by native-control rules (resolveKey returns null).
  */
 export function targetKindOf(el: ElementLike | null | undefined): TargetKind {
   if (!el || typeof el.tagName !== 'string') return 'none'
@@ -62,7 +62,7 @@ export function targetKindOf(el: ElementLike | null | undefined): TargetKind {
   return 'none'
 }
 
-/** 由元素往上找最近的 data-zone。 */
+/** Find the nearest data-zone by walking up from an element. */
 export function zoneOf(el: ElementLike | null | undefined): Zone {
   for (let cur = el ?? null; cur; cur = cur.parentElement ?? null) {
     const z = cur.getAttribute('data-zone')
@@ -71,10 +71,10 @@ export function zoneOf(el: ElementLike | null | undefined): Zone {
   return null
 }
 
-// 目前焦點區（由 FocusZoneProvider 的 focusin／focusout／mousedown 更新）。模組層級狀態：
-// 整個 renderer 只有一個視窗焦點，單一值即可。
-// 一併記住最後一次所在的元素；元素被移除（isConnected === false）後即視為過期，
-// 避免 `zoneOf(el) ?? getCurrentZone()` 在 DOM 重繪後回傳殘留的舊區域。
+// Current focus zone, updated by FocusZoneProvider's focusin/focusout/mousedown handlers. Module-level state:
+// the renderer has one window focus at a time, so a single value is sufficient.
+// Keep the last element as well; once removed (isConnected === false), its zone is stale.
+// This prevents `zoneOf(el) ?? getCurrentZone()` from returning an old zone after a DOM rerender.
 let currentZone: Zone = null
 let currentEl: ElementLike | null = null
 
@@ -93,9 +93,9 @@ export interface ZoneState {
   zone: Zone
   el: ElementLike | null
   /**
-   * 指標鎖存：剛在區域內 mousedown。點在非可聚焦元素上時，瀏覽器會讓原本聚焦的元素 blur
-   * （focusout，relatedTarget 為 null）；這次 focusout 不得把剛點到的區域清掉。
-   * 只保護緊接著的那一次 focusout，任何 focusin／區域外 mousedown 都會解除。
+   * Pointer latch: a mousedown just occurred inside a zone. Clicking a non-focusable element blurs
+   * the previously focused element (focusout with relatedTarget null); that focusout must not clear the clicked zone.
+   * Protect only the immediately following focusout; any focusin or outside mousedown releases the latch.
    */
   latched: boolean
 }
@@ -108,7 +108,7 @@ export type ZoneEvent = {
   related: ElementLike | null
 }
 
-/** 由焦點事件計算下一個焦點區狀態（純函式，供 FocusZoneProvider 與序列測試共用）。 */
+/** Compute the next focus-zone state from a focus event (pure function shared by FocusZoneProvider and sequence tests). */
 export function reduceZone(state: ZoneState, ev: ZoneEvent): ZoneState {
   switch (ev.type) {
     case 'mousedown': {
@@ -120,12 +120,12 @@ export function reduceZone(state: ZoneState, ev: ZoneEvent): ZoneState {
       return zone ? { zone, el: ev.target, latched: false } : initialZoneState
     }
     case 'focusout': {
-      // 焦點移到其他區域：記錄新區域
+      // Focus moved to another zone: record the new zone.
       const next = zoneOf(ev.related)
       if (next !== null) return { zone: next, el: ev.related, latched: false }
-      // 指標剛點在區域內（非可聚焦）造成的 blur：維持區域，鎖存用掉
+      // Blur caused by clicking a non-focusable element inside a zone: keep the zone and consume the latch.
       if (state.latched) return { ...state, latched: false }
-      // 離開到區域外 → 清除
+      // Focus left all zones: clear the current zone.
       return initialZoneState
     }
   }

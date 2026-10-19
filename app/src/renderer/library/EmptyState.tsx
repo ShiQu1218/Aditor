@@ -10,7 +10,7 @@ export interface EmptyStateProps {
   onOpenSettings: () => void
 }
 
-/** 影片庫空狀態：投放區、三步驟說明與主要動作 */
+/** Library empty state: drop zone, three-step instructions, and primary action. */
 export function EmptyState({ onImportFiles, onImportFolder, onOpenSettings }: EmptyStateProps): JSX.Element {
   return (
     <div className="lib-empty">

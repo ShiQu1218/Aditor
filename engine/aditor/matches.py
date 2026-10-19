@@ -1,4 +1,4 @@
-"""串流對局切分與離線影片入口；事件時間以影片開頭為零。"""
+"""Streaming match segmentation and offline video entry point; event times are relative to the start of the video."""
 from __future__ import annotations
 
 import math
@@ -16,16 +16,18 @@ from .probe import probe
 from .scene import SCENE_SIZE, SceneDetector, SceneFrame
 
 HUD_CONFIRM_SECONDS = 180.0
-# 錯過開局序列時，連續對局 HUD 至少持續這麼久才恢復開局。
+# If the opening sequence was missed, the in-match HUD must persist this long to restore the match start.
 HUD_RESUME_CONFIRM_SECONDS = 3.0
-# 大廳連續出現這麼久就暫定結束（時間取大廳首次出現）；回大廳後常馬上開獎勵／組合包／商店，不能要求長時間停在大廳。
-LOBBY_CONFIRM_SECONDS = 1.0  # 1 fps 下＝連續兩次取樣都是大廳
-# 暫定結束後這段時間內沒有回到對局 HUD 才確定（大廳誤判時不會把一局切成兩段）。
+# A lobby visible continuously for this long tentatively ends the match (using the first lobby timestamp).
+# Rewards, bundles, or the store often appear soon after returning to the lobby, so do not require a long lobby dwell.
+LOBBY_CONFIRM_SECONDS = 1.0  # At 1 fps, two consecutive samples must show the lobby.
+# Confirm the tentative end only if the in-match HUD does not return within this interval (avoids splitting a match after a lobby false positive).
 LOBBY_SETTLE_SECONDS = 30.0
 PRE_MATCH_REARM_SECONDS = 10.0
-# 對局中連續全黑（DDA：遊戲不在前景）這麼久就視為離開對局，結束時間取黑畫面開始。
-# 打完切出去排下一局、跳傘才切回來時，看不到大廳與開局畫面，只能靠這個分局；
-# 從陣亡到下一局跳傘通常遠超過這個時間，短暫切出去查東西則不會拆局。
+# A fully black frame during a match (DDA: game not in foreground) persisting this long means the player left the match;
+# use the start of the black interval as the end time. If the player switches away after a match and returns only for
+# the next drop, the lobby and opening sequence are not captured, so this is the only way to split matches. The time
+# between death and the next drop is usually much longer than this, while a brief app switch will not split a match.
 BLANK_END_SECONDS = 60.0
 MAX_SAMPLE_GAP_FACTOR = 2.5
 
@@ -44,11 +46,11 @@ class MatchEvent:
 
 
 class MatchTracker:
-    """feed 回傳本次確認的事件（時間可回溯）；finish 後由 matches 取得半開區間。"""
+    """feed returns events confirmed by this sample (timestamps may move backward); call matches after finish to get half-open intervals."""
 
     def __init__(self, *, sample_period: float = 1.0):
         if not math.isfinite(sample_period) or sample_period <= 0:
-            raise ValueError("取樣間隔必須為有限正數")
+            raise ValueError("Sampling interval must be a finite positive number")
         self._max_gap = MAX_SAMPLE_GAP_FACTOR * sample_period
         self._first: float | None = None
         self._last: float | None = None
@@ -91,9 +93,9 @@ class MatchTracker:
 
     def feed(self, t: float, scene: SceneFrame) -> list[MatchEvent]:
         if self._finished:
-            raise ValueError("對局串流已結束")
+            raise ValueError("Match stream has ended")
         if not math.isfinite(t) or t < 0 or (self._last is not None and t <= self._last):
-            raise ValueError("影格時間必須為有限、非負且嚴格遞增")
+            raise ValueError("Frame timestamps must be finite, non-negative, and strictly increasing")
         n = len(self._events)
         if self._first is None:
             self._first = t
@@ -114,7 +116,7 @@ class MatchTracker:
             if self._blank_first is None:
                 self._blank_first = t
             if t - self._blank_first >= BLANK_END_SECONDS:
-                # 先前已看到大廳就以大廳為準；之後回到 HUD 要重新確認，不可回溯到錄影開頭。
+                # If a lobby was already seen, use it as the boundary; a later HUD return must be reconfirmed and must not rewind to the recording start.
                 self._settle_lobby()
                 self._end(self._blank_first, "hidden")
                 self._recover_initial = False
@@ -142,7 +144,7 @@ class MatchTracker:
                     and self._end_pending is None):
                 self._end_pending = self._lobby_first
         elif scene.kind == "in_match_hud":
-            self._end_pending = None  # 回到對局：先前的大廳是誤判或短暫畫面
+            self._end_pending = None  # Back in the match: the prior lobby was a false positive or a transient frame.
             if self._pending is not None:
                 self._start(self._pending, "opening_confirmed")
                 self._pending = None
@@ -159,7 +161,7 @@ class MatchTracker:
 
     def finish(self, end: float) -> list[MatchEvent]:
         if not math.isfinite(end) or end < (self._last or 0):
-            raise ValueError("結束時間不可早於最後一格")
+            raise ValueError("End time cannot precede the last frame")
         if self._finished:
             return []
         n = len(self._events)
@@ -174,7 +176,7 @@ class MatchTracker:
 
 
 def _video_frames(path: str, fps: float, hwaccel: bool, codec: str) -> Iterator[tuple[float, np.ndarray]]:
-    """沿用既有硬體選項與回退順序；stderr 寫暫存檔，避免管線阻塞／無界記憶體。"""
+    """Reuse the existing hardware options and fallback order; write stderr to a temporary file to avoid pipe blocking and unbounded memory use."""
     w, h = SCENE_SIZE
     size = w * h
     plans = [(True, "nv12"), (True, "p010le"), (False, "nv12")] if hwaccel else [(False, "nv12")]
@@ -212,7 +214,7 @@ def _video_frames(path: str, fps: float, hwaccel: bool, codec: str) -> Iterator[
                 err.seek(max(0, err.tell() - STDERR_LIMIT))
                 tail = err.read().decode("utf-8", errors="replace")
                 if not hw:
-                    raise DecodeError(f"場景解碼失敗（{rc}，影格位元組 {got}/{size}）", tail)
+                    raise DecodeError(f"Scene decoding failed ({rc}, frame bytes {got}/{size})", tail)
             finally:
                 if proc.poll() is None:
                     proc.kill()
@@ -223,7 +225,7 @@ def _video_frames(path: str, fps: float, hwaccel: bool, codec: str) -> Iterator[
 def analyze_matches(path: str, *, fps: float = 1.0, timeline: bool = False,
                     hwaccel: bool = True) -> dict:
     if not math.isfinite(fps) or fps <= 0:
-        raise ValueError("fps 必須為有限正數")
+        raise ValueError("fps must be a finite positive number")
     info = probe(path)
     detector = SceneDetector()
     tracker = MatchTracker(sample_period=1 / fps)
