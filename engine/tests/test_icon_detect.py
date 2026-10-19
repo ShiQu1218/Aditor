@@ -130,7 +130,7 @@ def test_old_season_enemy_squad_down_is_rejected(det):
 @pytest.mark.parametrize("lang", LANGS)
 def test_spectating_detected_in_every_language_without_choosing_one(det, lang):
     """三語言所有 fixture：觀戰畫格全部命中、非觀戰畫格全部不命中
-    （跨語言誤判量測：五個樣板對另外兩個語言共 ~200 張非觀戰畫格 0 次誤報）。"""
+    （跨語言誤判量測：profile 內所有語言的樣板對其他語言的非觀戰畫格 0 次誤報）。"""
     wrong = []
     for n, v in lang_labels(lang).items():
         _, spec = load_fixture(n, lang)

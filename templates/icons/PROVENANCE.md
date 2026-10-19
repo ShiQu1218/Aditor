@@ -41,7 +41,12 @@
 | spec_en_show_flag.png、spec_en_next_mate.png | `Show Player Banner`、`Next Teammate` | English.mkv 486.25–494.5 s（同格 1.000） | 170 |
 | spec_ja_show_flag.png | `プレイヤーバナー表示` | **test_JP.mp4** t=384.0 s（訓練來源 Japanese.mkv 沒有任何觀戰畫面，屬樣本內） | 200 |
 
-簡中（SC1／SC2）沒有觀戰範本；沒有範本的語言偵測不到觀戰（觀戰中的擊倒會被計入，使用者可手動標記）。
+| spec_zh-CN_next_mate.png、spec_zh-CN_show_flag.png | `下一个队友`、`玩家旗帜`（顯示／隱藏共用部分） | SC1.mkv t=835.0 s | 200 |
+| spec_ko_next_mate.png、spec_ko_show_flag.png | `다음 팀원`、`플레이어 배너`（顯示／隱藏共用部分） | 使用者韓文錄影 Apex_2026-10-19_09-18.mp4 t=170.0 s | 200 |
+
+簡中、韓文樣板（2026-10-19 加入）以 1 fps 掃過 SC1 全片（842 格）與兩支韓文錄影全片（819＋1330 格）驗收：只在觀戰、死亡回顧與
+淘汰結算畫面命中（玩家已陣亡，與英文 `Player Banner` 的行為相同），一般遊玩 0 次誤報。韓文樣板與驗收素材同源，屬樣本內。
+沒有範本的語言偵測不到觀戰（觀戰中的擊倒會被計入，使用者可手動標記）。
 英文觀戰提示被 `spec_roi`（y=1028, h=40）切掉底部一小段，範本也是從同一個被切過的 ROI 裁的；若改 ROI 必須重裁。
 
 ### 三語言樣板互相誤判的量測
