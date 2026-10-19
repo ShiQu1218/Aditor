@@ -1,10 +1,11 @@
 // 設定畫面的列定義（資料表）：分類、卡片、標題／說明／搜尋關鍵字與控制項種類。
 // 文字一律來自 i18n/zh-TW.ts；控制項如何讀寫 Settings／IPC 由 SettingRow 與 settingsController 實作。
-import { settingsI18n } from '../i18n/zh-TW'
+import { settingsI18n, recordingI18n } from '../i18n/zh-TW'
+import type { RecordingSettings } from '../../shared/recording'
 
 const t = settingsI18n
 
-export type CategoryId = 'a' | 'b' | 'c'
+export type CategoryId = 'a' | 'b' | 'c' | 'recording'
 
 export interface CategoryDef {
   id: CategoryId
@@ -16,12 +17,14 @@ export interface CategoryDef {
 export const CATEGORIES: readonly CategoryDef[] = [
   { id: 'a', label: t.cat.a, icon: 'Film' },
   { id: 'b', label: t.cat.b, icon: 'Scissors' },
-  { id: 'c', label: t.cat.c, icon: 'Download' }
+  { id: 'c', label: t.cat.c, icon: 'Download' },
+  { id: 'recording', label: t.cat.recording, icon: 'Film' }
 ]
 
 export type BoolField = 'autoAnalyze' | 'lowPerfMode' | 'proxySuggest' | 'autoSuggestOnOpen' | 'projectAutosave'
 
 export type ControlSpec =
+  | { kind: 'recording'; field: keyof RecordingSettings }
   | { kind: 'switch'; field: BoolField }
   | { kind: 'select'; field: 'decode' | 'cacheLocation'; options: ReadonlyArray<{ value: string; label: string }> }
   | { kind: 'numberPair'; fields: readonly ['before', 'after'] }
@@ -46,6 +49,18 @@ export interface SettingRow {
   control: ControlSpec
   /** 後端尚未提供：該列的控制項停用，並以灰色文字顯示此說明 */
   disabledReason?: string
+  advanced?: boolean
+}
+
+const VIDEO_FIELDS = new Set(['height', 'bitrateKbps', 'fps', 'forceAspect', 'aspectMode', 'codec', 'encoder', 'preset', 'captureMethod'])
+const AUDIO_FIELDS = new Set(['systemAudioEnabled', 'renderDevice', 'systemGain', 'micEnabled', 'captureDevice', 'micGain', 'gameAudioOnly', 'micMono'])
+const ADVANCED_FIELDS = new Set(['forceAspect', 'aspectMode', 'codec', 'encoder', 'preset', 'captureMethod', 'gameAudioOnly', 'micMono'])
+
+export function recordingRowVisible(row: SettingRow, backend: RecordingSettings['backend']): boolean {
+  if (row.control.kind !== 'recording') return true
+  const field = row.control.field
+  if (field.startsWith('obs')) return backend === 'obs'
+  return backend !== 'obs' || field === 'captureMethod' || (!VIDEO_FIELDS.has(field) && !AUDIO_FIELDS.has(field))
 }
 
 export const SETTING_ROWS: SettingRow[] = [
@@ -214,5 +229,15 @@ export const SETTING_ROWS: SettingRow[] = [
     keywords: [...t.row.trademark.keywords],
     isNew: true,
     control: { kind: 'none' }
-  }
+  },
+  ...Object.entries(recordingI18n.rows).map(([field, text]): SettingRow => ({
+    id: `recording-${field}`,
+    category: 'recording',
+    card: VIDEO_FIELDS.has(field) ? recordingI18n.cards.video : AUDIO_FIELDS.has(field) ? recordingI18n.cards.audio : recordingI18n.cards.general,
+    advanced: ADVANCED_FIELDS.has(field),
+    title: text.title,
+    desc: text.desc,
+    keywords: ['錄影', field, ...(ADVANCED_FIELDS.has(field) ? [recordingI18n.advanced] : [])],
+    control: { kind: 'recording', field: field as keyof RecordingSettings }
+  }))
 ]

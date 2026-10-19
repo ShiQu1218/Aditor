@@ -13,7 +13,11 @@
     {"file": "spec_zh-TW_next_mate.png", "threshold": 0.75, "white": {"v_min": 200, "s_max": 60}},
     {"file": "spec_en_show_flag.png", "threshold": 0.75, "white": {"v_min": 170, "s_max": 60}},
     {"file": "spec_en_next_mate.png", "threshold": 0.75, "white": {"v_min": 170, "s_max": 60}},
-    {"file": "spec_ja_show_flag.png", "threshold": 0.75, "white": {"v_min": 200, "s_max": 60}}
+    {"file": "spec_ja_show_flag.png", "threshold": 0.75, "white": {"v_min": 200, "s_max": 60}},
+    {"file": "spec_zh-CN_next_mate.png", "threshold": 0.75, "white": {"v_min": 200, "s_max": 60}},
+    {"file": "spec_zh-CN_show_flag.png", "threshold": 0.75, "white": {"v_min": 200, "s_max": 60}},
+    {"file": "spec_ko_next_mate.png", "threshold": 0.75, "white": {"v_min": 200, "s_max": 60}},
+    {"file": "spec_ko_show_flag.png", "threshold": 0.75, "white": {"v_min": 200, "s_max": 60}}
   ],
   "name_sig_threshold": 0.32,
   "dedupe_window": 90

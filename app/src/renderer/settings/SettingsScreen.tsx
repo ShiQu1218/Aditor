@@ -2,12 +2,12 @@ import React, { useCallback, useEffect, useMemo, useRef, useState, useSyncExtern
 import { useKeymap } from '../hooks/useShortcuts'
 import { useMediaQuery } from '../hooks/useMediaQuery'
 import { useOptionalOverlay } from '../shell/OverlayHost'
-import { settingsI18n } from '../i18n/zh-TW'
+import { settingsI18n, recordingI18n } from '../i18n/zh-TW'
 import { SettingRow } from './SettingRow'
 import { SettingsNav } from './SettingsNav'
 import { SettingsSearch } from './SettingsSearch'
 import { filterRows } from './filterRows'
-import { SETTING_ROWS, type CategoryId, type SettingRow as Row } from './rows'
+import { CATEGORIES, SETTING_ROWS, recordingRowVisible, type CategoryId, type SettingRow as Row } from './rows'
 import { SettingsController, type SettingsApi } from './settingsController'
 
 const t = settingsI18n
@@ -71,8 +71,9 @@ export function SettingsScreen({ controller, initialQuery = '', initialCategory 
   )
 
   const searching = query.trim().length > 0
-  const result = useMemo(() => filterRows(SETTING_ROWS, query), [query])
-  const visible = searching ? [...result.byCategory.a, ...result.byCategory.b, ...result.byCategory.c] : result.byCategory[active]
+  const backend = state.settings?.recording.backend ?? 'builtin'
+  const result = useMemo(() => filterRows(SETTING_ROWS.filter((row) => recordingRowVisible(row, backend)), query), [query, backend])
+  const visible = searching ? CATEGORIES.flatMap((c) => result.byCategory[c.id]) : result.byCategory[active]
   const cards = useMemo(() => groupCards(visible), [visible])
 
   const select = useCallback(
@@ -132,9 +133,17 @@ export function SettingsScreen({ controller, initialQuery = '', initialCategory 
                   aria-labelledby={`set-card-${i}`}
                 >
                   <h2 id={`set-card-${i}`}>{card.title}</h2>
-                  {card.rows.map((row) => (
+                  {card.rows.filter((row) => !row.advanced).map((row) => (
                     <SettingRow key={row.id} row={row} state={state} settings={settings} controller={ctrl} />
                   ))}
+                  {card.rows.some((row) => row.advanced) && (
+                    <details className="set-advanced" open={searching || undefined}>
+                      <summary>{recordingI18n.advanced}</summary>
+                      {card.rows.filter((row) => row.advanced).map((row) => (
+                        <SettingRow key={row.id} row={row} state={state} settings={settings} controller={ctrl} />
+                      ))}
+                    </details>
+                  )}
                 </section>
               ))
             )}

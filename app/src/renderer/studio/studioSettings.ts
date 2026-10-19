@@ -8,6 +8,7 @@ export interface StudioSettings {
   /** AI 浮層與自動建議共用的預設參數 */
   autoclip: AutoClipParams
   projectTrackCollapsed: 'auto' | boolean
+  sameDayVideosCollapsed: boolean
   /** 事件 lead-in seek 的事件前秒數 */
   before: number
   /** 無硬體解碼／不可播放時是否建議代理檔 */
@@ -18,6 +19,7 @@ export const STUDIO_SETTINGS_DEFAULTS: StudioSettings = {
   autoSuggestOnOpen: DEFAULT_SETTINGS.autoSuggestOnOpen,
   autoclip: DEFAULT_SETTINGS.autoclip,
   projectTrackCollapsed: DEFAULT_SETTINGS.projectTrackCollapsed,
+  sameDayVideosCollapsed: DEFAULT_SETTINGS.sameDayVideosCollapsed,
   before: DEFAULT_SETTINGS.before,
   proxySuggest: DEFAULT_SETTINGS.proxySuggest
 }
@@ -34,6 +36,7 @@ export function toStudioSettings(raw: unknown, base: StudioSettings = STUDIO_SET
     autoSuggestOnOpen: typeof s.autoSuggestOnOpen === 'boolean' ? s.autoSuggestOnOpen : base.autoSuggestOnOpen,
     autoclip: (s.autoclip as AutoClipParams | undefined) ?? base.autoclip,
     projectTrackCollapsed: pref === true || pref === false || pref === 'auto' ? pref : base.projectTrackCollapsed,
+    sameDayVideosCollapsed: typeof s.sameDayVideosCollapsed === 'boolean' ? s.sameDayVideosCollapsed : base.sameDayVideosCollapsed,
     before: num(s.before, base.before),
     proxySuggest: typeof s.proxySuggest === 'boolean' ? s.proxySuggest : base.proxySuggest
   }

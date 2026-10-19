@@ -47,6 +47,7 @@ import { NoticeBar } from './NoticeBar'
 import { PlayerStage } from './PlayerStage'
 import { ProjectTrack } from './ProjectTrack'
 import { StudioHeader } from './StudioHeader'
+import { SameDayVideos } from './SameDayVideos'
 import { StudioBlockedView, StudioLoadErrorView, StudioLoadingView } from './StudioStates'
 import { TransportBar } from './TransportBar'
 import { chipCounts, nearCount, toggleFilter } from './chips'
@@ -69,7 +70,7 @@ export interface ProjectPlaybackRequest {
 interface StudioScreenProps {
   videoPath: string
   onBack: () => void
-  onOpenVideo: (path: string, request: ProjectPlaybackRequest) => void
+  onOpenVideo: (path: string, request?: ProjectPlaybackRequest) => void
   playbackRequest?: ProjectPlaybackRequest
   onPlaybackRequestConsumed?: () => void
   /** 測試接縫：直接給定已載入的文件（略過載入流程；SSR 冒煙測試用） */
@@ -622,7 +623,31 @@ export function StudioScreen({ videoPath, onBack, onOpenVideo, playbackRequest, 
   /** 已為某片段觸發過換段（避免 timeupdate／影格回呼／ended 對同一段重複換） */
   const advancedForRef = useRef<string | null>(null)
 
-  /** 同來源直接播放；跨來源先同步存檔，再交由 App 重新掛載並接續指定片段。 */
+  /** 同日選片與專案跨來源共用儲存及匯出保護，再交由 App 重新掛載。 */
+  const openSource = useCallback((path: string, request?: ProjectPlaybackRequest): void => {
+    if (switchingSourceRef.current || normPath(path) === normPath(videoPath)) return
+    if (exportCtl.getState().phase === 'running') {
+      videoRef.current?.pause()
+      toast({ message: i18n.export.backBlocked })
+      return
+    }
+    if (stateRef.current.dirty) {
+      try {
+        if (window.api.cache.saveSync(stateRef.current.doc) === false) throw new Error('來源儲存失敗')
+        cacheSaver.current!.cancelPending()
+      } catch {
+        videoRef.current?.pause()
+        toast({ message: i18n.studio.toast.sourceSaveFailed })
+        return
+      }
+    } else cacheSaver.current!.flushSync()
+    switchingSourceRef.current = true
+    videoRef.current?.pause()
+    loadedSrcRef.current = null
+    onOpenVideo(path, request)
+  }, [videoPath, exportCtl, toast, onOpenVideo])
+
+  /** 同來源直接播放；跨來源先同步存檔，再接續指定片段。 */
   const playProjectItem = useCallback((item: ProjectItem): void => {
     if (switchingSourceRef.current) return
     if (missingRef.current.has(item.id)) {
@@ -630,25 +655,7 @@ export function StudioScreen({ videoPath, onBack, onOpenVideo, playbackRequest, 
       return
     }
     if (normPath(item.source) !== normPath(videoPath)) {
-      if (exportCtl.getState().phase === 'running') {
-        videoRef.current?.pause()
-        toast({ message: i18n.export.backBlocked })
-        return
-      }
-      if (stateRef.current.dirty) {
-        try {
-          if (window.api.cache.saveSync(stateRef.current.doc) === false) throw new Error('cache save')
-          cacheSaver.current!.cancelPending()
-        } catch {
-          videoRef.current?.pause()
-          toast({ message: i18n.studio.toast.sourceSaveFailed })
-          return
-        }
-      } else cacheSaver.current!.flushSync()
-      switchingSourceRef.current = true
-      videoRef.current?.pause()
-      loadedSrcRef.current = null
-      onOpenVideo(item.source, { playItemId: item.id, speed: speedRef.current })
+      openSource(item.source, { playItemId: item.id, speed: speedRef.current })
       return
     }
     setSelProjId(item.id)
@@ -659,7 +666,7 @@ export function StudioScreen({ videoPath, onBack, onOpenVideo, playbackRequest, 
       setPreviewTime(item.start)
       requestSeek(item.start, sourceSrcRef.current, true)
     } else dispatchMode({ type: 'playItem', item })
-  }, [videoPath, exportCtl, toast, onOpenVideo, requestSeek])
+  }, [videoPath, toast, openSource, requestSeek])
 
   const consumedRequest = useRef(false)
   useEffect(() => {
@@ -1443,18 +1450,19 @@ export function StudioScreen({ videoPath, onBack, onOpenVideo, playbackRequest, 
 
   /* ---------------- render ---------------- */
 
-  if (loadError) {
+  if (loadError || blocked || !loaded) {
     return (
-      <StudioLoadErrorView
-        code={loadError.code}
-        onRetry={() => handleNoticeAction('resume')}
-        onCopy={() => handleNoticeAction('copyError')}
-        onBack={onBack}
-      />
+      <div className="studio">
+        <SameDayVideos videoPath={videoPath} onOpenVideo={openSource} />
+        {loadError ? <StudioLoadErrorView
+          code={loadError.code}
+          onRetry={() => handleNoticeAction('resume')}
+          onCopy={() => handleNoticeAction('copyError')}
+          onBack={onBack}
+        /> : blocked ? <StudioBlockedView onBack={onBack} /> : <StudioLoadingView />}
+      </div>
     )
   }
-  if (blocked) return <StudioBlockedView onBack={onBack} />
-  if (!loaded) return <StudioLoadingView />
 
   /** 匯出進行中不離開工作室（返回會中斷匯出的狀態顯示）：改用 Toast 提示 */
   const handleBack = requestBack
@@ -1476,6 +1484,7 @@ export function StudioScreen({ videoPath, onBack, onOpenVideo, playbackRequest, 
 
       <div className="studio-body">
         <div className="studio-main">
+          <SameDayVideos videoPath={videoPath} onOpenVideo={openSource} />
           {shownNotice && <NoticeBar notice={shownNotice} busy={proxyState === 'generating'} onAction={handleNoticeAction} />}
           <PlayerStage
             videoRef={videoRef}

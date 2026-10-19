@@ -1,4 +1,4 @@
-"""命令列入口：python -m apexhl analyze|ipc。"""
+"""命令列入口：python -m apexhl analyze|matches|ipc|live。"""
 from __future__ import annotations
 
 import argparse
@@ -29,6 +29,14 @@ def _cmd_analyze(a) -> int:
     return 0
 
 
+def _cmd_matches(a) -> int:
+    from apexhl.matches import analyze_matches
+
+    doc = analyze_matches(a.video, fps=a.fps, timeline=a.timeline, hwaccel=not a.no_hwaccel)
+    print(json.dumps(doc, ensure_ascii=False))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="apexhl")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -40,14 +48,28 @@ def main(argv: list[str] | None = None) -> int:
     an.add_argument("--no-hwaccel", action="store_true")
     an.add_argument("--jobs", type=int, default=None, help="切段平行解碼的段數（預設自動）")
     an.add_argument("--out")
+    ma = sub.add_parser("matches", help="偵測影片中的對局起訖")
+    ma.add_argument("video")
+    ma.add_argument("--fps", type=float, default=1.0)
+    ma.add_argument("--timeline", action="store_true", help="包含逐格場景時間軸")
+    ma.add_argument("--no-hwaccel", action="store_true")
     sub.add_parser("ipc", help="JSON Lines IPC 伺服器")
+    li = sub.add_parser("live", help="即時偵測（讀 apexrec 共享記憶體，stdout 輸出 JSON Lines）")
+    li.add_argument("--shm", required=True, help="共享記憶體名稱（例如 Local\\apexrec-<sessionId>）")
+    li.add_argument("--profile-dir", required=True, help="圖示範本目錄（templates/icons）")
+    li.add_argument("--scene-dir", default=None, help="場景範本目錄（預設 templates/scene）")
     for s in (sys.stdout, sys.stderr):
         s.reconfigure(encoding="utf-8")
     a = ap.parse_args(argv)
     if a.cmd == "ipc":
         from apexhl.ipc import run
         return run()
+    if a.cmd == "live":
+        from apexhl.live import run as run_live
+        return run_live(a.shm, Path(a.profile_dir), Path(a.scene_dir) if a.scene_dir else None)
     try:
+        if a.cmd == "matches":
+            return _cmd_matches(a)
         return _cmd_analyze(a)
     except Exception as e:  # noqa: BLE001
         print(f"錯誤：{e}", file=sys.stderr)

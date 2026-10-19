@@ -9,6 +9,9 @@ import { i18n } from '../i18n/zh-TW'
 import { nextTrapIndex } from '../a11y/focusTrap'
 import { rovingStep } from '../a11y/roving'
 import { AlertTriangle, ImageOff, MoreHorizontal, RefreshCw, Star, Trash2 } from '../components/icons'
+import { cardStatusText, fileName, thumbnailUrl } from './cardLogic'
+
+export { fileName } from './cardLogic'
 
 const t = i18n.library.card
 
@@ -41,10 +44,6 @@ export function proxyBadge(entry: LibraryEntry): string | null {
   const container = entry.path.split('.').pop() ?? ''
   if (!containerCodecSupported({ codec } as VideoInfo, container)) return t.proxySuggest
   return null
-}
-
-export function fileName(path: string): string {
-  return path.split(/[/\\]/).pop() || path
 }
 
 /** 卡片只在這些欄位變動時需要重繪（進度已另有 2 Hz 節流） */
@@ -82,15 +81,7 @@ function VideoCardView({ entry, onOpen, onToggleFavorite, onRemove, onRetry, onM
   // 「等待中」只看 main 的真實佇列：status 為 pending 但不在佇列的（匯入未排隊、取消後）是「尚未分析」
   const queueState = useQueueItemState(entry.path)
   const notQueued = entry.status === 'pending' && queueState === 'idle'
-  const statusText = done
-    ? ''
-    : error
-      ? t.error
-      : entry.status === 'analyzing'
-        ? t.analyzing
-        : notQueued
-          ? t.notAnalyzed
-          : t.waiting
+  const statusText = cardStatusText(entry, queueState)
   const eta = useQueueEta(entry.path)
 
   useEffect(() => {
@@ -182,7 +173,7 @@ function VideoCardView({ entry, onOpen, onToggleFavorite, onRemove, onRetry, onM
       >
         <span className="vcard-thumb">
           {entry.thumb ? (
-            <img src={`file://${encodeURI(entry.thumb.replace(/\\/g, '/')).replace(/#/g, '%23').replace(/\?/g, '%3F')}`} alt="" loading="lazy" decoding="async" />
+            <img src={thumbnailUrl(entry.thumb)} alt="" loading="lazy" decoding="async" />
           ) : (
             <span className="vcard-nothumb">
               <ImageOff className="ic lg" />

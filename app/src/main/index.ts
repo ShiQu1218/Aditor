@@ -1,6 +1,6 @@
-import { app, BrowserWindow, dialog, ipcMain } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, safeStorage } from 'electron'
 import { createQuitGuard } from './quit-guard'
-import { join, resolve } from 'path'
+import { delimiter, join, resolve } from 'path'
 import { EngineClient } from './engine'
 import { Library } from './library'
 import { AnalysisQueue } from './queue'
@@ -13,7 +13,16 @@ import { buildAnalyzeArgs } from './settings-derived'
 import { currentE2EConfig } from './e2e'
 import { applyWindowSecurity } from './window-security'
 import { sanitizeAnalyzeArgs, sanitizeAutoclipArgs, sanitizeDeriveArgs, sanitizeProbeArgs } from './ipc-guards'
-import { appDataDir, cacheDir, engineCommand, ffmpegExecutable, profileDir } from '../shared/paths'
+import { apexrecCommand, appDataDir, cacheDir, engineCommand, ffmpegExecutable, liveEngineCommand, profileDir, sceneDir } from '../shared/paths'
+import { cacheFilePath } from './cache-io'
+import { generateThumbnail } from './thumbnail'
+import { createRecordingService } from './recording'
+import { registerRecordingIpc } from './recording-ipc'
+import { createRecordingTray } from './tray'
+import { createRecordingNotifier } from './notify'
+import type { RecordingService } from '../shared/recording'
+import { obsPassword } from './settings-ipc'
+import { createDiagnosticLog } from './recording/diagnostic-log'
 
 // E2E 掛鉤（僅 APEXHL_E2E=1）：暫存 appData／userData，測試不碰使用者資料；正式執行時為 null
 const e2e = currentE2EConfig()
@@ -30,6 +39,13 @@ let settingsStore: SettingsStore | null = null
 let watchManager: WatchManager | null = null
 let closeGate: ReturnType<typeof createCloseGate> | null = null
 let cancelExport: (() => Promise<void>) | null = null
+let recordingService: RecordingService | null = null
+let tray: ReturnType<typeof createRecordingTray> | null = null
+let unregisterRecordingIpc: (() => void) | null = null
+let unsubscribeSettings: (() => void) | null = null
+let quitting = false
+let servicesReady = false
+let openRequested = !process.argv.includes('--hidden')
 /** renderer 未回應 flush 時最多等多久才關閉視窗 */
 const CLOSE_FLUSH_TIMEOUT_MS = 1500
 
@@ -54,23 +70,39 @@ function createWindow(): void {
   // 關閉前先請 renderer 立即寫入最新專案（beforeunload 的 sendSync 之外的第二道保險）；
   // 收到 flushDone 或逾時才真正關閉
   const win = mainWindow
-  closeGate = createCloseGate({
+  const rendererAlive = (): boolean => !win.isDestroyed() && !win.webContents.isDestroyed() && !win.webContents.isCrashed()
+  const shouldHide = (): boolean => !quitting && tray !== null && settingsStore?.get().recording.closeToTray === true
+  const makeCloseGate = (): ReturnType<typeof createCloseGate> => createCloseGate({
     request: () => win.webContents.send('projects:flushRequest'),
-    close: () => win.close(),
+    close: () => {
+      if (shouldHide()) {
+        win.hide()
+        // 每次縮到系統匣後重新建立握手，下次關閉仍要儲存最新專案。
+        closeGate = makeCloseGate()
+      } else win.close()
+    },
     timeoutMs: CLOSE_FLUSH_TIMEOUT_MS,
-    rendererAlive: () => !win.isDestroyed() && !win.webContents.isDestroyed() && !win.webContents.isCrashed()
+    rendererAlive
   })
+  closeGate = makeCloseGate()
   win.on('close', (e) => {
+    if (shouldHide() && !rendererAlive()) {
+      e.preventDefault()
+      win.hide()
+      return
+    }
     closeGate?.onClose(e)
   })
   win.on('closed', () => {
     closeGate = null
+    mainWindow = null
     // 視窗關閉：進行中的匯出一併取消，ffmpeg 不會變成孤兒（webContents 'destroyed' 也會觸發同一個取消）
     void cancelExport?.()
   })
 
-  mainWindow.on('ready-to-show', () => {
-    mainWindow?.show()
+  win.on('ready-to-show', () => {
+    win.show()
+    win.focus()
   })
 
   if (process.env.ELECTRON_RENDERER_URL) {
@@ -80,12 +112,23 @@ function createWindow(): void {
   }
 }
 
+function showMainWindow(): void {
+  openRequested = true
+  if (!servicesReady || quitting) return
+  if (!mainWindow || mainWindow.isDestroyed()) createWindow()
+  else {
+    if (mainWindow.isMinimized()) mainWindow.restore()
+    mainWindow.show()
+    mainWindow.focus()
+  }
+}
+
 async function initEngineAndServices(): Promise<void> {
   if (app.isPackaged) {
     const ffmpegPath = ffmpegExecutable(true)
     process.env.APEXHL_FFMPEG = ffmpegPath
     const binDir = resolve(join(ffmpegPath, '..'))
-    process.env.PATH = `${binDir}${resolve(join(__dirname, '..')) ? ';' : ''}${process.env.PATH || ''}`
+    process.env.PATH = `${binDir}${delimiter}${process.env.PATH || ''}`
   }
 
   const cmd = e2e?.fakeEngine ?? engineCommand(app.isPackaged)
@@ -123,6 +166,71 @@ async function initEngineAndServices(): Promise<void> {
   const handlers = registerIpcHandlers(library, queue, () => (mainWindow ? [mainWindow] : []), engineClient, settingsStore, watchManager, projectStore, (ok) => closeGate?.ack(ok))
   cancelExport = handlers.cancelExport
 
+  const notify = createRecordingNotifier(() => settingsStore!.get().recording)
+  const pushLibrary = (): void => {
+    const payload = queue!.payload()
+    for (const win of BrowserWindow.getAllWindows()) {
+      try {
+        if (!win.isDestroyed() && !win.webContents.isDestroyed()) win.webContents.send('library:updated', payload)
+      } catch (error) {
+        console.error('無法推送錄影媒體庫更新：', error)
+      }
+    }
+  }
+  recordingService = createRecordingService({
+    log: createDiagnosticLog(join(appDataDir(), 'recording.log')),
+    getSettings: () => settingsStore!.get().recording,
+    getObsPassword: () => obsPassword(settingsStore!.get().recording, safeStorage),
+    probeVideo: async (file) => engineClient!.request('probe', sanitizeProbeArgs(file)).promise as Promise<import('../shared/types').VideoInfo>,
+    getWatchFolders: () => settingsStore!.get().watchFolders,
+    defaultOutputDir: join(app.getPath('videos'), 'Apex Highlighter'),
+    recorderCommand: apexrecCommand(app.isPackaged),
+    ffmpegPath: ffmpegExecutable(app.isPackaged),
+    profileDir: templateProfileDir,
+    addToLibrary: (paths) => {
+      library!.add(paths)
+      pushLibrary()
+    },
+    enqueueAnalysis: (videoPath) => queue!.enqueue(videoPath),
+    notify,
+    liveEngineCommand: liveEngineCommand(app.isPackaged),
+    sceneDir: sceneDir(app.isPackaged),
+    liveCachePath: (videoPath) => cacheFilePath(videoPath, cacheDir(), settingsStore!.get().cacheLocation === 'besideVideo'),
+    // live 快取已是 done：媒體庫條目可直接開啟；若接著排完整分析，佇列會再改回等待中並在完成後覆蓋。
+    onLiveAnalysis: (videoPath, summary) => {
+      library!.update(videoPath, { status: 'done', progress: 1, counts: summary.counts, durationSec: summary.durationSec, codec: summary.codec || undefined, hl: undefined })
+      pushLibrary()
+      void generateThumbnail(videoPath, summary.durationSec).then((thumb) => {
+        if (!thumb || library!.get(videoPath)?.status !== 'done') return
+        library!.update(videoPath, { thumb })
+        pushLibrary()
+      }, (error) => console.error('無法產生錄影縮圖：', error))
+    }
+  })
+  unregisterRecordingIpc = registerRecordingIpc(recordingService, () => BrowserWindow.getAllWindows())
+  tray = createRecordingTray({
+    service: recordingService,
+    iconDir: join(app.isPackaged ? process.resourcesPath : resolve(__dirname, '../..'), 'resources'),
+    openWindow: showMainWindow,
+    quit: () => app.quit(),
+    notifyError: (message) => notify('error', message)
+  })
+  let launchAtLogin: boolean | undefined
+  const updateLoginItem = (): void => {
+    const enabled = settingsStore!.get().recording.launchAtLogin
+    if (!app.isPackaged || enabled === launchAtLogin) return
+    try {
+      app.setLoginItemSettings({ openAtLogin: enabled, args: ['--hidden'] })
+      launchAtLogin = enabled
+    } catch (error) {
+      notify('error', `無法更新開機啟動設定：${String(error)}`)
+    }
+  }
+  updateLoginItem()
+  unsubscribeSettings = settingsStore.onChange(updateLoginItem)
+  // E2E 不偵測真實 Apex，避免測試期間碰到正在執行的遊戲
+  if (!e2e) recordingService.start()
+
   ipcMain.handle('engine:probe', async (_, videoPath: unknown) => {
     return engineClient?.request('probe', sanitizeProbeArgs(videoPath)).promise
   })
@@ -149,29 +257,46 @@ async function initEngineAndServices(): Promise<void> {
   })
 }
 
-app.whenReady().then(async () => {
-  await initEngineAndServices()
-  createWindow()
-
-  app.on('activate', function () {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow()
-  })
-})
-
-// 結束前等匯出／代理檔 ffmpeg 被終止、半成品刪除、引擎停止（I7）；逾時 5 秒仍會退出
+// 結束前等錄影收尾、匯出／代理檔 ffmpeg 被終止、引擎停止（I7）；逾時 5 秒仍會退出
 const quitGuard = createQuitGuard({
   tasks: [
     () => library?.flush(),
+    async () => {
+      try { await recordingService?.stop() }
+      finally {
+        library?.flush()
+        await engineClient?.stop()
+      }
+    },
     () => cancelExport?.(),
     async () => (await import('./proxy')).cancelAllProxies(),
-    () => watchManager?.stop(),
-    () => engineClient?.stop()
+    () => watchManager?.stop()
   ],
   quit: () => app.quit(),
   timeoutMs: 5000
 })
-app.on('before-quit', (e) => quitGuard.onBeforeQuit(e))
 
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit()
-})
+if (!app.requestSingleInstanceLock()) {
+  app.quit()
+} else {
+  app.on('second-instance', showMainWindow)
+  app.whenReady().then(async () => {
+    await initEngineAndServices()
+    servicesReady = true
+    if (openRequested) showMainWindow()
+    app.on('activate', showMainWindow)
+  })
+  app.on('before-quit', (e) => {
+    quitting = true
+    quitGuard.onBeforeQuit(e)
+  })
+  app.on('will-quit', () => {
+    unsubscribeSettings?.()
+    unregisterRecordingIpc?.()
+    tray?.destroy()
+    tray = null
+  })
+  app.on('window-all-closed', () => {
+    if (process.platform !== 'darwin' && !settingsStore?.get().recording.closeToTray) app.quit()
+  })
+}

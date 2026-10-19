@@ -15,6 +15,10 @@ describe('CSP (I2)', () => {
     expect(CSP).toMatch(/media-src [^;]*file:/)
     expect(CSP).toMatch(/img-src [^;]*file:/)
   })
+  it('影片允許 blob:（錄影中觀看的 MediaSource），其他類型不允許', () => {
+    expect(CSP).toMatch(/media-src [^;]*blob:/)
+    expect(CSP.split('; ').filter((d) => d.includes('blob:'))).toEqual(["media-src 'self' file: blob:"])
+  })
   it('plugin injects the meta on build but not in the dev server', () => {
     const html = '<html><head><title>x</title></head></html>'
     const p = cspPlugin()

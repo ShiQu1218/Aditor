@@ -33,6 +33,33 @@ describe('settings store（設定儲存）', () => {
     expect(JSON.parse(fs.readFileSync(file, 'utf-8')).before).toBe(10)
   })
 
+  it('同日影片列收合偏好寫入磁碟，重載保留，無效值不覆蓋', () => {
+    const store = new SettingsStore(file)
+    expect(store.get().sameDayVideosCollapsed).toBe(false)
+    expect(store.set({ sameDayVideosCollapsed: true }).persisted).toBe(true)
+    expect(new SettingsStore(file).get().sameDayVideosCollapsed).toBe(true)
+    store.set({ sameDayVideosCollapsed: 'auto' as unknown as boolean })
+    expect(loadSettings(file).sameDayVideosCollapsed).toBe(true)
+  })
+
+  it('錄影新設定預設、舊 FPS 遷移、無效值與重新載入', () => {
+    const store = new SettingsStore(file)
+    expect(store.get().recording).toMatchObject({ preset: 'speed', forceAspect: false, aspectMode: 'fit',
+      systemAudioEnabled: true, systemGain: 1, gameAudioOnly: false, micMono: false })
+    fs.writeFileSync(file, JSON.stringify({ recording: { fps: 144, preset: 'oops', aspectMode: 'crop',
+      forceAspect: 1, systemAudioEnabled: 'yes', systemGain: 9, gameAudioOnly: null, micMono: 1 } }))
+    expect(loadSettings(file).recording).toMatchObject({ fps: 120, preset: 'speed', forceAspect: false, aspectMode: 'fit',
+      systemAudioEnabled: true, systemGain: 2, gameAudioOnly: false, micMono: false })
+    for (const fps of [10, 20, 30, 60, 90, 120] as const) {
+      store.set({ recording: { ...store.get().recording, fps, preset: 'quality', forceAspect: true,
+        aspectMode: 'stretch', systemAudioEnabled: false, systemGain: 0.25, gameAudioOnly: true, micMono: true } })
+      expect(new SettingsStore(file).get().recording).toMatchObject({ fps, preset: 'quality', forceAspect: true,
+        aspectMode: 'stretch', systemAudioEnabled: false, systemGain: 0.25, gameAudioOnly: true, micMono: true })
+    }
+    fs.writeFileSync(file, JSON.stringify({ recording: { fps: 59, systemGain: 'bad' } }))
+    expect(loadSettings(file).recording).toMatchObject({ fps: 60, systemGain: 1 })
+  })
+
   it('corrupt json is backed up to .bak and defaults returned', () => {
     fs.writeFileSync(file, '{ this is not valid json', 'utf-8')
 

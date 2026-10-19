@@ -4,6 +4,26 @@ import type { Settings, SettingsSetResult } from '../shared/settings'
 import { isSafeLocalDirPath } from './safe-path'
 import type { SettingsStore } from './settings'
 
+export interface PasswordStorage {
+  isEncryptionAvailable(): boolean
+  encryptString(value: string): Buffer
+  decryptString(value: Buffer): string
+}
+
+/** 所有設定 IPC 出口共用，密文也不跨越 renderer 邊界。 */
+export function publicSettings(settings: Settings): Settings {
+  if (!settings?.recording) return settings
+  const { obsPasswordEnc, obsPassword: _password, ...recording } = settings.recording
+  return { ...settings, recording: { ...recording, hasPassword: !!obsPasswordEnc } }
+}
+
+export function obsPassword(settings: Settings['recording'], storage: PasswordStorage): string | undefined {
+  if (!settings.obsPasswordEnc) return undefined
+  if (!storage.isEncryptionAvailable()) throw new Error('系統加密服務無法使用，無法讀取 OBS 密碼')
+  try { return storage.decryptString(Buffer.from(settings.obsPasswordEnc, 'base64')) }
+  catch { throw new Error('無法解密 OBS 密碼，請重新設定') }
+}
+
 /** ipcMain 的最小子集（方便測試注入）。 */
 export interface SettingsIpcLike {
   handle(channel: string, fn: (event: any, ...args: any[]) => unknown): void
@@ -45,25 +65,43 @@ export function validateOutDir(dir: unknown): string {
 export function registerSettingsHandlers(
   ipc: SettingsIpcLike,
   settings: SettingsStore,
-  getWindows: () => WindowLike[]
+  getWindows: () => WindowLike[],
+  storage?: PasswordStorage
 ): void {
   settings.onChange((current) => {
     for (const win of getWindows()) {
       try {
-        if (!win.isDestroyed()) win.webContents.send('settings:changed', current)
+        if (!win.isDestroyed()) win.webContents.send('settings:changed', publicSettings(current))
       } catch (err) {
         console.error('[Settings] failed to notify a window:', err)
       }
     }
   })
 
-  ipc.handle('settings:get', () => settings.get())
+  ipc.handle('settings:get', () => publicSettings(settings.get()))
 
   ipc.handle('settings:set', (_event, raw: unknown): SettingsSetResult => {
     const partial: Partial<Settings> =
       typeof raw === 'object' && raw !== null && !Array.isArray(raw) ? { ...(raw as Partial<Settings>) } : {}
     delete partial.watchFolders
     const errors: NonNullable<SettingsSetResult['errors']> = {}
+    if (partial.recording && typeof partial.recording === 'object' && !Array.isArray(partial.recording)) {
+      const recording = { ...partial.recording }
+      delete recording.obsPasswordEnc
+      delete recording.hasPassword
+      const password = recording.obsPassword
+      delete recording.obsPassword
+      if (password !== undefined) {
+        if (typeof password !== 'string' || password.length > 4096) errors.obsPassword = 'OBS 密碼格式無效或過長'
+        else if (password === '') recording.obsPasswordEnc = null
+        else if (!storage?.isEncryptionAvailable()) errors.obsPassword = '系統加密服務無法使用，無法儲存 OBS 密碼'
+        else {
+          try { recording.obsPasswordEnc = storage.encryptString(password).toString('base64') }
+          catch { errors.obsPassword = 'OBS 密碼加密失敗，未儲存密碼' }
+        }
+      }
+      partial.recording = recording
+    }
     if ('defaultOutDir' in partial && partial.defaultOutDir !== null) {
       try {
         partial.defaultOutDir = validateOutDir(partial.defaultOutDir)
@@ -72,7 +110,8 @@ export function registerSettingsHandlers(
         delete partial.defaultOutDir
       }
     }
-    const result = settings.set(partial)
-    return Object.keys(errors).length > 0 ? { ...result, errors } : result
+    const saved = settings.set(partial)
+    const result = { ...saved, settings: publicSettings(saved.settings) }
+    return Object.keys(errors).length > 0 ? { ...result, errors: { ...result.errors, ...errors } } : result
   })
 }

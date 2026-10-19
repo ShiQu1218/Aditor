@@ -1,5 +1,6 @@
 import path from 'path'
 import os from 'os'
+import fs from 'fs'
 
 export function appDataDir(): string {
   const base = process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming')
@@ -49,6 +50,43 @@ export function engineCommand(isPackaged: boolean): {
     env: {
       PYTHONPATH: path.join(root, 'engine')
     }
+  }
+}
+
+/** 對局場景範本（`templates/scene`，live 引擎 `--scene-dir`）；位置規則同 `profileDir`。 */
+export function sceneDir(isPackaged: boolean): string {
+  return path.join(path.dirname(profileDir(isPackaged)), 'scene')
+}
+
+/**
+ * live 引擎（第 3 期，`apexhl live …`）的啟動方式：與 `engineCommand` 相同的執行檔，子指令改為 `live`。
+ * 呼叫端再附加 `--shm`／`--profile-dir`／`--scene-dir`。
+ */
+export function liveEngineCommand(isPackaged: boolean): {
+  command: string
+  args: string[]
+  env?: Record<string, string>
+} {
+  const base = engineCommand(isPackaged)
+  return { ...base, args: [...base.args.slice(0, -1), 'live'] }
+}
+
+/** apexrec 與 FFmpeg DLL 同層；開發時優先使用 release，尚未建置時改找 debug。 */
+export function apexrecCommand(isPackaged: boolean): {
+  command: string
+  args: string[]
+  env?: Record<string, string>
+} {
+  if (isPackaged) {
+    const root = (process as unknown as { resourcesPath?: string }).resourcesPath || path.join(__dirname, '..', '..')
+    return { command: path.join(root, 'ffmpeg', 'bin', 'apexrec.exe'), args: [] }
+  }
+  const root = path.resolve(__dirname, '../../..')
+  const release = path.join(root, 'recorder', 'target', 'release', 'apexrec.exe')
+  return {
+    command: fs.existsSync(release) ? release : path.join(root, 'recorder', 'target', 'debug', 'apexrec.exe'),
+    args: [],
+    env: { PATH: `${path.join(root, 'build', 'ffmpeg', 'bin')}${path.delimiter}${process.env.PATH || ''}` }
   }
 }
 

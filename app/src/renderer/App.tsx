@@ -1,16 +1,18 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { LibraryScreen } from './library/LibraryScreen'
 import { StudioScreen, type ProjectPlaybackRequest } from './studio/StudioScreen'
+import { StudioLanding } from './studio/StudioLanding'
 import { LONG_FIXTURE_PATH, longFixtureRequested, lowPerfFixtureRequested, projectFixtureRequested, settingsFixtureRequested } from './dev/fixture'
 import { ProjectProvider, useProject } from './editor/ProjectProvider'
 import { FocusZoneProvider } from './input/FocusZoneProvider'
 import { AppShell } from './shell/AppShell'
 import { RailView } from './shell/Rail'
 import { SettingsScreen } from './settings/SettingsScreen'
+import { LiveScreen } from './live/LiveScreen'
 import { setLowPerf, watchLowPerfSetting } from './perf/lowPerf'
 import { LowPerfNotice } from './perf/LowPerfNotice'
 
-type View = 'library' | 'studio' | 'settings'
+type View = 'library' | 'studio' | 'settings' | 'live'
 
 export default function App(): JSX.Element {
   return (
@@ -63,10 +65,8 @@ function AppContent(): JSX.Element {
     setView('studio')
   }
 
-  // 工作室在尚未選定影片時回到影片庫
   const handleNavigate = (v: RailView) => {
-    if (v === 'studio' && !currentVideo) setView('library')
-    else setView(v)
+    setView(v)
   }
 
   let page: JSX.Element
@@ -81,6 +81,16 @@ function AppContent(): JSX.Element {
         onBack={() => { setPlaybackRequest(undefined); setView('library') }}
       />
     )
+  } else if (view === 'studio') {
+    page = <StudioLanding onOpenVideo={handleSelectVideo} onBack={() => setView('library')} />
+  } else if (view === 'live') {
+    page = (
+      <LiveScreen
+        onBack={() => setView(currentVideo ? 'studio' : 'library')}
+        onOpenVideo={(path) => handleSelectVideo(path)}
+        onOpenLibrary={() => setView('library')}
+      />
+    )
   } else if (view === 'settings') {
     page = fxReady ? (
       <SettingsScreen initialQuery={settingsFx?.q} initialCategory={settingsFx?.cat} />
@@ -92,7 +102,7 @@ function AppContent(): JSX.Element {
   }
 
   return (
-    <AppShell active={view} projectCount={project.items.length} onNavigate={handleNavigate}>
+    <AppShell active={view === 'live' ? null : view} projectCount={project.items.length} onNavigate={handleNavigate} onOpenLive={() => setView('live')}>
       <LowPerfNotice />
       {page}
     </AppShell>

@@ -1,0 +1,374 @@
+{
+  "size": [
+    640,
+    360
+  ],
+  "rois": [
+    [
+      "mode_card",
+      95,
+      15,
+      70,
+      55
+    ],
+    [
+      "loading_footer",
+      237,
+      276,
+      166,
+      28
+    ],
+    [
+      "wildcard_footer",
+      237,
+      157,
+      166,
+      28
+    ],
+    [
+      "ready_button",
+      247,
+      297,
+      148,
+      55
+    ],
+    [
+      "mode_selector",
+      0,
+      268,
+      149,
+      85
+    ],
+    [
+      "minimap",
+      7,
+      7,
+      103,
+      125
+    ],
+    [
+      "health",
+      33,
+      291,
+      122,
+      61
+    ],
+    [
+      "summary_tabs",
+      196,
+      20,
+      250,
+      34
+    ]
+  ],
+  "frames": [
+    {
+      "file": "clip0_0025.png",
+      "video": "外卡模式.mp4",
+      "t": 25,
+      "scene": "pre_match",
+      "evidence": "模式卡片、載入底板；非大廳。"
+    },
+    {
+      "file": "clip0_0039.png",
+      "video": "外卡模式.mp4",
+      "t": 39,
+      "scene": "pre_match",
+      "evidence": "等候區中央倒數面板、左上模式卡片。"
+    },
+    {
+      "file": "clip0_0052.png",
+      "video": "外卡模式.mp4",
+      "t": 52,
+      "scene": "other",
+      "evidence": "選角，底部角色格。"
+    },
+    {
+      "file": "clip0_0090.png",
+      "video": "外卡模式.mp4",
+      "t": 90,
+      "scene": "in_match_hud",
+      "evidence": "跳傘前 HUD，左上小地圖、左下隊伍框。"
+    },
+    {
+      "file": "clip0_0120.png",
+      "video": "外卡模式.mp4",
+      "t": 120,
+      "scene": "in_match_hud",
+      "evidence": "對局小地圖及血條外框。"
+    },
+    {
+      "file": "clip0_0180.png",
+      "video": "外卡模式.mp4",
+      "t": 180,
+      "scene": "in_match_hud",
+      "evidence": "上方觀戰分頁；仍有小地圖與隊伍框，不結束。"
+    },
+    {
+      "file": "clip0_0360.png",
+      "video": "外卡模式.mp4",
+      "t": 360,
+      "scene": "in_match_hud",
+      "evidence": "倒地，左下隊伍框仍在，不結束。"
+    },
+    {
+      "file": "clip0_0690.png",
+      "video": "外卡模式.mp4",
+      "t": 690,
+      "scene": "in_match_hud",
+      "evidence": "死亡後重生倒數，仍為同一局。"
+    },
+    {
+      "file": "clip0_0810.png",
+      "video": "外卡模式.mp4",
+      "t": 810,
+      "scene": "in_match_hud",
+      "evidence": "重生回到戰場。"
+    },
+    {
+      "file": "clip0_0950.png",
+      "video": "外卡模式.mp4",
+      "t": 950,
+      "scene": "other",
+      "evidence": "比賽總結三張玩家卡片；尚未離開這一局。"
+    },
+    {
+      "file": "clip1_0000.png",
+      "video": "大廳~勝利不退出直接下一場.mp4",
+      "t": 0,
+      "scene": "lobby",
+      "evidence": "頂部大廳導覽、左下模式選擇、中央下方準備按鈕。"
+    },
+    {
+      "file": "clip1_0004.png",
+      "video": "大廳~勝利不退出直接下一場.mp4",
+      "t": 4,
+      "scene": "pre_match",
+      "evidence": "左上模式卡片、底部載入面板。"
+    },
+    {
+      "file": "clip1_0016.png",
+      "video": "大廳~勝利不退出直接下一場.mp4",
+      "t": 16,
+      "scene": "pre_match",
+      "evidence": "等候區倒數。"
+    },
+    {
+      "file": "clip1_0036.png",
+      "video": "大廳~勝利不退出直接下一場.mp4",
+      "t": 36,
+      "scene": "other",
+      "evidence": "角色選擇格。"
+    },
+    {
+      "file": "clip1_0060.png",
+      "video": "大廳~勝利不退出直接下一場.mp4",
+      "t": 60,
+      "scene": "in_match_hud",
+      "evidence": "跳傘階段的小地圖及隊伍框。"
+    },
+    {
+      "file": "clip1_0120.png",
+      "video": "大廳~勝利不退出直接下一場.mp4",
+      "t": 120,
+      "scene": "in_match_hud",
+      "evidence": "戰鬥 HUD。"
+    },
+    {
+      "file": "clip1_0330.png",
+      "video": "大廳~勝利不退出直接下一場.mp4",
+      "t": 330,
+      "scene": "other",
+      "evidence": "物資箱選單遮住小地圖外框，不結束。"
+    },
+    {
+      "file": "clip1_0480.png",
+      "video": "大廳~勝利不退出直接下一場.mp4",
+      "t": 480,
+      "scene": "other",
+      "evidence": "開地圖遮住小地圖與部分 HUD，不結束。"
+    },
+    {
+      "file": "clip1_1055.png",
+      "video": "大廳~勝利不退出直接下一場.mp4",
+      "t": 1055,
+      "scene": "other",
+      "evidence": "冠軍橫幅，不作結束依據。"
+    },
+    {
+      "file": "clip1_1070.png",
+      "video": "大廳~勝利不退出直接下一場.mp4",
+      "t": 1070,
+      "scene": "other",
+      "evidence": "勝利小隊展示。"
+    },
+    {
+      "file": "clip1_1088.png",
+      "video": "大廳~勝利不退出直接下一場.mp4",
+      "t": 1088,
+      "scene": "other",
+      "evidence": "總結及右上排隊框，未回大廳。"
+    },
+    {
+      "file": "clip2_0000.png",
+      "video": "從上場不退出直接下一場~中途死掉，觀戰敵人同時排隊.mp4",
+      "t": 0,
+      "scene": "other",
+      "evidence": "上一局積分總結，頂部梯形分頁；錄影從局尾開始。"
+    },
+    {
+      "file": "clip2_0002.png",
+      "video": "從上場不退出直接下一場~中途死掉，觀戰敵人同時排隊.mp4",
+      "t": 2,
+      "scene": "pre_match",
+      "evidence": "新局載入卡片及底部面板。"
+    },
+    {
+      "file": "clip2_0012.png",
+      "video": "從上場不退出直接下一場~中途死掉，觀戰敵人同時排隊.mp4",
+      "t": 12,
+      "scene": "pre_match",
+      "evidence": "等候區倒數。"
+    },
+    {
+      "file": "clip2_0030.png",
+      "video": "從上場不退出直接下一場~中途死掉，觀戰敵人同時排隊.mp4",
+      "t": 30,
+      "scene": "other",
+      "evidence": "角色選擇格。"
+    },
+    {
+      "file": "clip2_0060.png",
+      "video": "從上場不退出直接下一場~中途死掉，觀戰敵人同時排隊.mp4",
+      "t": 60,
+      "scene": "other",
+      "evidence": "跳傘時開地圖，不結束。"
+    },
+    {
+      "file": "clip2_0090.png",
+      "video": "從上場不退出直接下一場~中途死掉，觀戰敵人同時排隊.mp4",
+      "t": 90,
+      "scene": "other",
+      "evidence": "背包遮住 HUD，不結束。"
+    },
+    {
+      "file": "clip2_0120.png",
+      "video": "從上場不退出直接下一場~中途死掉，觀戰敵人同時排隊.mp4",
+      "t": 120,
+      "scene": "in_match_hud",
+      "evidence": "戰鬥 HUD。"
+    },
+    {
+      "file": "clip2_0168.png",
+      "video": "從上場不退出直接下一場~中途死掉，觀戰敵人同時排隊.mp4",
+      "t": 168,
+      "scene": "other",
+      "evidence": "死亡切到觀戰／總結分頁，不結束。"
+    },
+    {
+      "file": "clip2_0180.png",
+      "video": "從上場不退出直接下一場~中途死掉，觀戰敵人同時排隊.mp4",
+      "t": 180,
+      "scene": "in_match_hud",
+      "evidence": "觀戰敵人、排隊框，仍可見小地圖及血條框。"
+    },
+    {
+      "file": "clip2_0193.png",
+      "video": "從上場不退出直接下一場~中途死掉，觀戰敵人同時排隊.mp4",
+      "t": 193,
+      "scene": "in_match_hud",
+      "evidence": "觀戰中持續排隊，未進入下一局。"
+    },
+    {
+      "file": "clip3_0000.png",
+      "video": "從上場不退出直接下一場~勝利退回大廳.mp4",
+      "t": 0,
+      "scene": "other",
+      "evidence": "上一局勝利小隊展示。"
+    },
+    {
+      "file": "clip3_0006.png",
+      "video": "從上場不退出直接下一場~勝利退回大廳.mp4",
+      "t": 6,
+      "scene": "other",
+      "evidence": "上一局積分總結，頂部梯形分頁。"
+    },
+    {
+      "file": "clip3_0012.png",
+      "video": "從上場不退出直接下一場~勝利退回大廳.mp4",
+      "t": 12,
+      "scene": "pre_match",
+      "evidence": "下一局模式卡片及載入底板。"
+    },
+    {
+      "file": "clip3_0020.png",
+      "video": "從上場不退出直接下一場~勝利退回大廳.mp4",
+      "t": 20,
+      "scene": "pre_match",
+      "evidence": "等候區倒數。"
+    },
+    {
+      "file": "clip3_0030.png",
+      "video": "從上場不退出直接下一場~勝利退回大廳.mp4",
+      "t": 30,
+      "scene": "other",
+      "evidence": "角色選擇格。"
+    },
+    {
+      "file": "clip3_0090.png",
+      "video": "從上場不退出直接下一場~勝利退回大廳.mp4",
+      "t": 90,
+      "scene": "in_match_hud",
+      "evidence": "跳傘，小地圖及隊伍框。"
+    },
+    {
+      "file": "clip3_0120.png",
+      "video": "從上場不退出直接下一場~勝利退回大廳.mp4",
+      "t": 120,
+      "scene": "in_match_hud",
+      "evidence": "戰鬥 HUD。"
+    },
+    {
+      "file": "clip3_0210.png",
+      "video": "從上場不退出直接下一場~勝利退回大廳.mp4",
+      "t": 210,
+      "scene": "other",
+      "evidence": "背包畫面，不結束。"
+    },
+    {
+      "file": "clip3_0630.png",
+      "video": "從上場不退出直接下一場~勝利退回大廳.mp4",
+      "t": 630,
+      "scene": "other",
+      "evidence": "背包畫面，不結束。"
+    },
+    {
+      "file": "clip3_1068.png",
+      "video": "從上場不退出直接下一場~勝利退回大廳.mp4",
+      "t": 1068,
+      "scene": "other",
+      "evidence": "本局勝利展示，不結束。"
+    },
+    {
+      "file": "clip3_1080.png",
+      "video": "從上場不退出直接下一場~勝利退回大廳.mp4",
+      "t": 1080,
+      "scene": "other",
+      "evidence": "本局總結三張卡片。"
+    },
+    {
+      "file": "clip3_1091.png",
+      "video": "從上場不退出直接下一場~勝利退回大廳.mp4",
+      "t": 1091,
+      "scene": "lobby",
+      "evidence": "完整大廳導覽、模式選擇與準備按鈕。"
+    },
+    {
+      "file": "clip3_1096.png",
+      "video": "從上場不退出直接下一場~勝利退回大廳.mp4",
+      "t": 1096,
+      "scene": "other",
+      "evidence": "開組合包動畫，沒有大廳外框。"
+    }
+  ]
+}

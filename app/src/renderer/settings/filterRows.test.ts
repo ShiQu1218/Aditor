@@ -20,8 +20,8 @@ describe('SETTING_ROWS（資料表）', () => {
     }
   })
 
-  test('exactly 3 categories with the spec names', () => {
-    expect(CATEGORIES.map((c) => c.label)).toEqual(['影片與分析', '預覽與剪輯', '匯出與關於'])
+  test('categories include recording alongside the existing categories', () => {
+    expect(CATEGORIES.map((c) => c.label)).toEqual(['影片與分析', '預覽與剪輯', '匯出與關於', '錄影'])
   })
 
   test('row ids are unique and every row has a title', () => {
@@ -90,11 +90,11 @@ describe('filterRows', () => {
   test('no match gives empty groups and empty counts', () => {
     const res = filterRows(rows, 'zzzz')
     expect(res.counts).toEqual({})
-    expect(res.byCategory).toEqual({ a: [], b: [], c: [] })
+    expect(res.byCategory).toEqual({ a: [], b: [], c: [], recording: [] })
   })
 
   test('real rows: searching finds rows across categories', () => {
     const res = filterRows(SETTING_ROWS, '資料夾')
-    expect(Object.keys(res.counts).sort()).toEqual(['a', 'c']) // 監看資料夾（a）、預設輸出資料夾（c）
+    expect(Object.keys(res.counts).sort()).toEqual(['a', 'c', 'recording'])
   })
 })
