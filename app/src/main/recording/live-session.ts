@@ -12,7 +12,7 @@ import type { LiveEvent, LiveMatch, LiveSegment, LiveState, LiveUpdate } from '.
 import { LiveEngine, type LiveMatchEvent, type LiveSnapshot, type LiveSpec } from './live-engine'
 import { pruneSegments } from './prune'
 import { initMimeType } from './mp4-codec'
-import { writeJson } from './finalize'
+import { LIVE_COMPLETE_FILE, writeJson } from './finalize'
 import type { RecorderCommand } from './index'
 
 const MAX_INIT_BYTES = 4 * 1024 * 1024
@@ -169,6 +169,10 @@ export class LiveSession extends EventEmitter {
   async stop(): Promise<void> {
     try { await this.engine?.stop() } catch (error) { console.warn('[live] 停止失敗：', error) }
     await this.flush()
+    // 全程偵測正常才標記：逐局模式收尾時，沒有對局就代表只待在大廳，不輸出整段。
+    if (!this.engine || !this.healthy || this.failed) return
+    try { await writeJson(path.join(this.options.dir, LIVE_COMPLETE_FILE), { version: 1 }) }
+    catch (error) { console.warn('[live] 無法寫入偵測完成標記：', error) }
   }
 
   async flush(): Promise<void> {

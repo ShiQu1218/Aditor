@@ -250,3 +250,33 @@ it('大廳沒有擊殺快照時，引擎有處理影格即算健康並清理；�
   expect(live.hasSegment(52)).toBe(true)
   await live.flush()
 })
+
+it('停止時即時偵測正常才標記全程偵測；未啟動、失效或重啟中不標記', async () => {
+  const marker = (dir: string) => fs.existsSync(path.join(dir, 'live-complete.json'))
+  const make = () => {
+    const dir = sessionDir(root())
+    const live = new LiveSession({ sessionId: '標記', dir, profileDir: dir, recordEvent: vi.fn(), notice: vi.fn() })
+    const engine = Object.assign(new EventEmitter(), { stop: vi.fn(async () => {}) })
+    return { dir, live, engine, internal: live as any }
+  }
+  const never = make()
+  await never.live.stop()
+  expect(marker(never.dir)).toBe(false)
+  const ok = make()
+  ok.internal.engine = ok.engine; ok.internal.listen(ok.engine)
+  ok.engine.emit('progress', 10)
+  await ok.live.stop()
+  expect(marker(ok.dir)).toBe(true)
+  const failed = make()
+  failed.internal.engine = failed.engine; failed.internal.listen(failed.engine)
+  failed.engine.emit('progress', 10)
+  failed.engine.emit('failed', new Error('壞了'))
+  await failed.live.stop()
+  expect(marker(failed.dir)).toBe(false)
+  const restarting = make()
+  restarting.internal.engine = restarting.engine; restarting.internal.listen(restarting.engine)
+  restarting.engine.emit('progress', 10)
+  restarting.engine.emit('restarting', { message: '重啟' })
+  await restarting.live.stop()
+  expect(marker(restarting.dir)).toBe(false)
+})

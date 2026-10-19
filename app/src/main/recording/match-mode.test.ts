@@ -144,6 +144,15 @@ describe('逐局剪檔與補收尾', () => {
     expect(remux.inputs).toEqual(['初始化|' + entries.map((e) => `${e.pts}|`).join('')])
   })
 
+  it('即時偵測全程正常且沒有對局（只待在大廳）時不輸出', async () => {
+    const r = rig()
+    r.saveLive({ ...r.live, matches: [] })
+    fs.writeFileSync(path.join(r.dir, 'live-complete.json'), '{"version":1}')
+    expect(await finalizeSession(r.dir, r.deps)).toEqual([])
+    expect(remux.inputs).toEqual([])
+    expect(fs.existsSync(r.dir)).toBe(false)
+  })
+
   it('已剪過一局但 live.json 遺失，仍保留整段避免遺失其餘錄影', async () => {
     const r = rig()
     r.saveLive({ ...r.live, matches: [matches[0]] })

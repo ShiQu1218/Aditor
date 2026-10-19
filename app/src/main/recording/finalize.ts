@@ -329,6 +329,9 @@ async function remux(ffmpeg: string, files: string[], output: string): Promise<v
   }
 }
 
+/** 停止時即時偵測全程正常的標記（live-session 寫入） */
+export const LIVE_COMPLETE_FILE = 'live-complete.json'
+
 /** finalized.json 先於媒體庫／分析副作用落盤，補收尾不會重複產生影片。 */
 export async function finalizeSession(dir: string, deps: RecordingDeps): Promise<string[]> {
   dir = await validateSessionDir(dir)
@@ -356,7 +359,10 @@ export async function finalizeSession(dir: string, deps: RecordingDeps): Promise
         return outputs
       }
     }
-    if (config.mode === 'match' && await readOptional(path.join(dir, 'pruned.json'))) {
+    // 大廳片段已清掉，或即時偵測全程正常卻沒看到對局（只待在大廳）：沒有可保留的內容。
+    // 偵測沒啟動或中途失效時兩個標記都不存在，退回整段輸出以免漏錄。
+    if (config.mode === 'match' && (await readOptional(path.join(dir, 'pruned.json')) ||
+      await readOptional(path.join(dir, LIVE_COMPLETE_FILE)))) {
       await fs.promises.rm(dir, { recursive: true })
       return []
     }
