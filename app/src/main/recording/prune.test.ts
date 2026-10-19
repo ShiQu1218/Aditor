@@ -33,3 +33,10 @@ it.each([
   expect(removed).not.toContain(first)
   if (matches[0]?.end === 40) expect(removed).not.toContain(23)
 })
+it('引擎落後時只清理它已分析過的部分，尚未分析的倒數不會被刪', async () => {
+  const root = tempRoot(); roots.push(root); const dir = sessionDir(root)
+  const segments = Array.from({ length: 200 }, (_, i) => ({ seq: i + 1, pts: i * 2, dur: 2 }))
+  for (const s of segments) fs.writeFileSync(path.join(dir, `seg_${String(s.seq).padStart(6, '0')}.m4s`), '片段')
+  const removed = await pruneSegments(dir, segments, [], null, 100)
+  expect(removed).toEqual(segments.slice(0, 42).map(s => s.seq))
+})

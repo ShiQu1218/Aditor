@@ -130,3 +130,15 @@ it.each(['match_pending', 'match_cancel'])('解析與驗證新對局事件：%s'
   ;(live as any).onLine(JSON.stringify({ ev, t: 1, reason: '測試' }))
   expect(listener).toHaveBeenCalledWith({ ev, t: 1, reason: '測試' })
 })
+
+it('stats 有處理影格才回報分析進度；未處理或格式錯誤略過', () => {
+  const live = engine('normal')
+  const listener = vi.fn()
+  live.on('progress', listener)
+  ;(live as any).onLine(JSON.stringify({ ev: 'stats', t: 0, frames: 0 }))
+  ;(live as any).onLine(JSON.stringify({ ev: 'stats', t: 'x', frames: 3 }))
+  ;(live as any).onLine(JSON.stringify({ ev: 'stats', t: 5, frames: '3' }))
+  expect(listener).not.toHaveBeenCalled()
+  ;(live as any).onLine(JSON.stringify({ ev: 'stats', t: 12.5, frames: 50 }))
+  expect(listener).toHaveBeenCalledWith(12.5)
+})

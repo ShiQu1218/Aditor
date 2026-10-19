@@ -77,6 +77,8 @@ export class LiveSession extends EventEmitter {
   private height: number | null = null
   private pending: number | null = null
   private healthy = false
+  /** 即時引擎已分析到的錄影時間（秒）；清理不會超過這個時間 */
+  private analyzedT = -Infinity
   private failed = false
   private pruned = false
   private restartedAt = -Infinity
@@ -99,7 +101,13 @@ export class LiveSession extends EventEmitter {
     if (this.options.sceneDir) args.push('--scene-dir', this.options.sceneDir)
     const engine = new LiveEngine({ command, args, restartBaseMs: this.options.restartBaseMs })
     this.engine = engine
+    this.listen(engine)
+    engine.start()
+  }
+
+  private listen(engine: EventEmitter): void {
     engine.on('snapshot', (snap: LiveSnapshot) => this.onSnapshot(snap))
+    engine.on('progress', (t: number) => this.onProgress(t))
     engine.on('match', (event: LiveMatchEvent) => this.onMatch(event))
     engine.on('failed', (error: Error) => { this.failed = true; this.healthy = false; this.options.notice(error.message) })
     engine.on('warning', (message: string) => console.warn('[live]', message))
@@ -109,7 +117,6 @@ export class LiveSession extends EventEmitter {
       this.restartedAt = Date.now()
       console.warn('[live] 重新啟動：', message)
     })
-    engine.start()
   }
 
   addSegment(segment: LiveSegment): void {
@@ -122,7 +129,7 @@ export class LiveSession extends EventEmitter {
     const healthy = (): boolean => !!this.engine && this.healthy && !this.failed && Date.now() - this.restartedAt >= 30_000
     if (!healthy()) return
     const beganAt = Date.now()
-    await pruneSegments(this.options.dir, this.segments, this.matches, this.pending, healthy, (sequences) => {
+    await pruneSegments(this.options.dir, this.segments, this.matches, this.pending, this.analyzedT, healthy, (sequences) => {
       if (!sequences.length) return
       this.pruned = true
       if (this.restartedAt >= beganAt) this.failed = true
@@ -174,8 +181,13 @@ export class LiveSession extends EventEmitter {
     }
   }
 
-  private onSnapshot(snap: LiveSnapshot): void {
+  private onProgress(t: number): void {
     this.healthy = true
+    this.analyzedT = Math.max(this.analyzedT, t)
+  }
+
+  private onSnapshot(snap: LiveSnapshot): void {
+    this.onProgress(snap.t)
     this.snapshot = snap
     this.scheduleWrite()
     this.emitUpdate({ events: snap.events, spectating: snap.spectating })

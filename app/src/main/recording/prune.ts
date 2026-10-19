@@ -6,9 +6,10 @@ import { MATCH_PRE_PAD_SEC, MATCH_POST_PAD_SEC, validateSessionDir, writeJson } 
 export const LOBBY_BUFFER_SEC = 15
 
 /** 呼叫端與剪檔共用序列；標記先落盤，避免中斷後誤用整段輸出。 */
-export async function pruneSegments(dir: string, segments: readonly LiveSegment[], matches: readonly LiveMatch[], pending: number | null, healthy: () => boolean = () => true,
-  onRemoved: (sequences: number[]) => void = () => {}): Promise<number[]> {
-  const latest = segments.reduce((t, s) => Math.max(t, s.pts), 0)
+/** `analyzedT`：即時引擎已分析到的錄影時間；引擎落後時，還沒看過的片段可能有倒數，不能刪。 */
+export async function pruneSegments(dir: string, segments: readonly LiveSegment[], matches: readonly LiveMatch[], pending: number | null,
+  analyzedT = Infinity, healthy: () => boolean = () => true, onRemoved: (sequences: number[]) => void = () => {}): Promise<number[]> {
+  const latest = Math.min(segments.reduce((t, s) => Math.max(t, s.pts), 0), analyzedT)
   const obsolete = segments.filter(s => s.pts + s.dur <= latest - LOBBY_BUFFER_SEC &&
     !(pending !== null && s.pts + s.dur > pending - MATCH_PRE_PAD_SEC) &&
     !matches.some(m => s.pts + s.dur > m.start - MATCH_PRE_PAD_SEC &&

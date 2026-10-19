@@ -230,6 +230,10 @@ export class LiveEngine extends EventEmitter {
         if (!finite(msg.t) || msg.t < 0) return
         this.emit('match', { ev: msg.ev, t: msg.t, reason: typeof msg.reason === 'string' ? msg.reason.slice(0, 200) : '' })
         break
+      case 'stats':
+        // 有處理影格才代表引擎在運作；大廳沒有擊殺時不會送 snapshot，只能靠這個判斷健康與分析進度
+        if (finite(msg.t) && finite(msg.frames) && msg.frames > 0) this.emit('progress', msg.t)
+        break
       case 'error':
         this.emit('warning', `即時偵測錯誤（${String(msg.code)}）：${String(msg.message)}`)
         break

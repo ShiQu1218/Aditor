@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import fs from 'fs'
 import path from 'path'
+import { EventEmitter } from 'events'
 import { applyMatchEvent, countKills, LiveSession } from './live-session'
 import { createRecordingService, type RecordingDeps } from './index'
 import type { LiveEvent, LiveUpdate, RecordingService } from '../../shared/recording'
@@ -196,7 +197,7 @@ it('倒數確認後持續保護至延遲結束；取消後解除保護', async (
   const live = new LiveSession({ sessionId: '倒數', dir, profileDir: dir, recordEvent: vi.fn(), notice: vi.fn() })
   const internal = live as any
   internal.engine = { engineVersion: () => null, quality: () => null }
-  internal.onSnapshot({ t: 0, events: [], spectating: [] })
+  internal.onSnapshot({ t: 1000, events: [], spectating: [] })
   const add = (from: number, to: number) => {
     for (let i = from; i <= to; i++) {
       fs.writeFileSync(path.join(dir, `seg_${String(i).padStart(6, '0')}.m4s`), '片段')
@@ -223,5 +224,29 @@ it('倒數確認後持續保護至延遲結束；取消後解除保護', async (
   await live.prune()
   expect(live.hasSegment(45)).toBe(false)
   expect(live.hasSegment(10)).toBe(true)
+  await live.flush()
+})
+
+it('大廳沒有擊殺快照時，引擎有處理影格即算健康並清理；只清到已分析的時間', async () => {
+  const dir = sessionDir(root())
+  const live = new LiveSession({ sessionId: '大廳', dir, profileDir: dir, recordEvent: vi.fn(), notice: vi.fn() })
+  for (let i = 1; i <= 60; i++) {
+    fs.writeFileSync(path.join(dir, `seg_${String(i).padStart(6, '0')}.m4s`), '片段')
+    live.addSegment({ seq: i, pts: (i - 1) * 2, dur: 2 })
+  }
+  const internal = live as any
+  const engine = new EventEmitter()
+  internal.engine = engine
+  internal.listen(engine)
+  await live.prune()
+  expect(live.hasSegment(1)).toBe(true)
+  engine.emit('progress', 60)
+  await live.prune()
+  expect(live.hasSegment(22)).toBe(false)
+  expect(live.hasSegment(23)).toBe(true)
+  engine.emit('progress', 120)
+  await live.prune()
+  expect(live.hasSegment(51)).toBe(false)
+  expect(live.hasSegment(52)).toBe(true)
   await live.flush()
 })
