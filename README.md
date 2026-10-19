@@ -5,7 +5,7 @@
 > **Automatic highlight recording, analysis and editing for Apex Legends**
 >
 > Record your *Apex Legends* matches locally, or analyze footage you already have. Aditor marks every knockdown and assist automatically, then lets you pick highlights on a timeline and sequence editor and export them to files.
-> Everything works from on-screen pixels only. No cloud services, and no video is ever uploaded.
+> Bring in your own game videos by dragging them into the app (or choose files), and Aditor analyzes them right on your PC. Everything works from on-screen pixels only, with no cloud services.
 
 ---
 
