@@ -1,0 +1,10 @@
+stateDiagram-v2
+    [*] --> Idle
+    Idle --> Countdown : countdown screen seen<br/>emits match_pending
+    Countdown --> Idle : lobby seen or 180 s without a match<br/>emits match_cancel
+    Countdown --> InMatch : match HUD seen<br/>emits match_start<br/>time rewound to countdown start
+    Idle --> InMatch : start missed, HUD for 3 s in a row<br/>emits match_start (hud_resume)
+    InMatch --> TentativeEnd : lobby for 1 s or more
+    TentativeEnd --> InMatch : match HUD back within 30 s<br/>treated as false alarm, cancelled
+    TentativeEnd --> Idle : 30 s without returning to the match<br/>emits match_end<br/>time rewound to first lobby frame
+    InMatch --> Countdown : queued straight into the next match, new countdown seen<br/>emits match_end (next_match)<br/>then match_pending

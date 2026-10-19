@@ -1,0 +1,11 @@
+flowchart LR
+    CAP["Capture a frame<br/>GPU texture"] --> SCALE["Scale (GPU)"]
+    SCALE --> ENC["Hardware encode<br/>NVENC / AMF / QSV"]
+    ENC --> MUX["fMP4 segment every 2 s"]
+    AUD["WASAPI system audio / microphone"] --> MIX["Mix → AAC"]
+    MIX --> MUX
+    MUX --> DISK[("Write to disk")]
+    CAP --> CROP["GPU crop + downscale"]
+    CROP --> READ["Read back to CPU<br/>banner region 4 fps<br/>scene thumbnail 1 fps"]
+    READ --> SHM[("Shared memory<br/>ring buffer")]
+    SHM --> PY["Python engine"]

@@ -1,0 +1,7 @@
+flowchart TB
+    IN["Video / live crops"] --> S1["① Sampling<br/>4 frames per second, scaled to 1080p<br/>keep only the kill-banner and spectate-hint regions"]
+    S1 --> S2["② Per-frame detection<br/>icon template matching + layout cues<br/>does this frame look like a kill / assist banner?"]
+    S2 --> S3["③ Keyword verification<br/>text templates learned from this very video<br/>rejects banners that look similar but are not kills"]
+    S3 --> S4["④ Event tracking<br/>consecutive hits merge into one event"]
+    S4 --> S5["⑤ Derivation<br/>drop events while spectating<br/>same enemy counted once within a short window"]
+    S5 --> OUT["Kill event list<br/>time, type, counted or not"]

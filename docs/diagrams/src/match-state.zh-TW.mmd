@@ -1,0 +1,10 @@
+stateDiagram-v2
+    [*] --> 待命
+    待命 --> 倒數中 : 看到倒數畫面<br/>發出 match_pending
+    倒數中 --> 待命 : 看到大廳或 180 秒沒進對局<br/>發出 match_cancel
+    倒數中 --> 對局中 : 看到對局 HUD<br/>發出 match_start<br/>時間回溯到倒數開始
+    待命 --> 對局中 : 錯過開頭，HUD 連續 3 秒<br/>發出 match_start（hud_resume）
+    對局中 --> 暫定結束 : 大廳連續 1 秒以上
+    暫定結束 --> 對局中 : 30 秒內回到對局 HUD<br/>視為誤判，取消
+    暫定結束 --> 待命 : 滿 30 秒沒回到對局<br/>發出 match_end<br/>時間回溯到大廳第一次出現
+    對局中 --> 倒數中 : 直接排下一場，看到新的倒數<br/>發出 match_end（next_match）<br/>再發出 match_pending

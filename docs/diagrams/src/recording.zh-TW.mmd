@@ -1,0 +1,11 @@
+flowchart LR
+    CAP["擷取一格<br/>GPU 紋理"] --> SCALE["縮放（GPU）"]
+    SCALE --> ENC["硬體編碼<br/>NVENC／AMF／QSV"]
+    ENC --> MUX["每 2 秒一段 fMP4"]
+    AUD["WASAPI 系統聲音／麥克風"] --> MIX["混音 → AAC"]
+    MIX --> MUX
+    MUX --> DISK[("寫入磁碟")]
+    CAP --> CROP["GPU 裁切縮小"]
+    CROP --> READ["讀回 CPU<br/>橫幅區每秒 4 格<br/>場景縮圖每秒 1 格"]
+    READ --> SHM[("共享記憶體<br/>環形緩衝")]
+    SHM --> PY["Python 引擎"]

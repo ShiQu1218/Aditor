@@ -1,0 +1,7 @@
+flowchart TB
+    APP["<b>Electron App</b>（TypeScript／React）<br/>介面、媒體庫、剪輯專案、匯出<br/>遊戲偵測、錄影狀態機、系統匣、OBS 控制"]
+    REC["<b>aditorrec</b>（Rust）<br/>擷取畫面 → GPU 編碼 → 錄影<br/>同時輸出縮小的偵測用小圖"]
+    ENG["<b>分析引擎 aditor</b>（Python）<br/>OpenCV 模板比對<br/>擊倒／助攻／對局偵測"]
+    APP <-- "JSON 行（stdin／stdout）" --> REC
+    APP <-- "JSON 行（stdin／stdout）" --> ENG
+    REC -- "小圖（共享記憶體）" --> ENG

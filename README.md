@@ -1,468 +1,429 @@
 # Aditor
 
-> **Apex 英雄自動精彩時刻錄製、分析與剪輯工具**
+**English** ｜ [繁體中文](README.zh-TW.md)
+
+> **Automatic highlight recording, analysis and editing for Apex Legends**
 >
-> 在本機錄下《Apex 英雄》對局，或分析你現有的錄影，自動標出擊倒與助攻，再用時間軸與序列編輯器挑出精彩片段、匯出成檔。
-> 全程只看畫面像素，不使用雲端服務，不需要上傳任何影片。
+> Record your *Apex Legends* matches locally, or analyze footage you already have. Aditor marks every knockdown and assist automatically, then lets you pick highlights on a timeline and sequence editor and export them to files.
+> Everything works from on-screen pixels only. No cloud services, and no video is ever uploaded.
 
 ---
 
-## 目錄
+## Table of contents
 
-1. [它能做什麼](#它能做什麼)
-2. [運作原理總覽](#運作原理總覽)
-3. [辨識原理：怎麼看出擊倒與助攻](#辨識原理怎麼看出擊倒與助攻)
-4. [對局切分原理：怎麼知道一局從哪裡開始](#對局切分原理怎麼知道一局從哪裡開始)
-5. [錄影原理](#錄影原理)
-6. [剪輯與匯出原理](#剪輯與匯出原理)
-7. [準確度與已知限制](#準確度與已知限制)
-8. [專案結構](#專案結構)
-9. [系統需求](#系統需求)
-10. [從原始碼建置](#從原始碼建置)
-11. [授權與第三方說明](#授權與第三方說明)
-12. [免責聲明](#免責聲明)
+1. [What it does](#what-it-does)
+2. [How it works: overview](#how-it-works-overview)
+3. [Detection: how kills and assists are recognized](#detection-how-kills-and-assists-are-recognized)
+4. [Match segmentation: how a match start is found](#match-segmentation-how-a-match-start-is-found)
+5. [Recording](#recording)
+6. [Editing and export](#editing-and-export)
+7. [Accuracy and known limitations](#accuracy-and-known-limitations)
+8. [Project layout](#project-layout)
+9. [System requirements](#system-requirements)
+10. [Building from source](#building-from-source)
+11. [License and third-party notices](#license-and-third-party-notices)
+12. [Disclaimer](#disclaimer)
 
 ---
 
-## 它能做什麼
+## What it does
 
-| 功能 | 說明 |
+| Feature | Description |
 |---|---|
-| 離線分析 | 丟進任何 Apex 錄影（MP4／MKV／MOV／WebM），自動標出每一次擊倒與助攻 |
-| 觀戰過濾 | 你陣亡後觀戰隊友時，隊友的擊倒不會算進你的精華 |
-| 內建錄影 | 偵測到 Apex 就自動錄影，邊錄邊偵測，可選「一局一個檔」或「從頭錄到尾」 |
-| OBS 模式 | 改由 OBS 負責錄影，本程式只做偵測與切檔 |
-| 檢視器 | 時間軸、事件分佈、手動補記、快捷鍵 |
-| AI 自動合輯 | 依擊倒密集度自動聚成多殺團戰片段 |
-| 剪輯專案 | 分割、微調、排序、無限復原，自動儲存 |
-| 匯出 | 快速無損（Stream Copy），或精準轉碼（硬體編碼） |
-| 多語言介面 | 繁體中文、簡體中文、English、日本語、한국어；設定內可選「跟隨系統」或指定語言 |
+| Offline analysis | Drop in any Apex recording (MP4 / MKV / MOV / WebM) and every knockdown and assist is marked automatically |
+| Spectate filter | While you spectate teammates after dying, their kills are not counted as your highlights |
+| Built-in recording | Starts recording as soon as Apex is detected and detects while recording; choose "one file per match" or "record start to finish" |
+| OBS mode | Let OBS do the recording; Aditor only detects and splits files |
+| Viewer | Timeline, event distribution, manual additions, keyboard shortcuts |
+| AI auto-compilation | Groups dense kills into multi-kill fight clips automatically |
+| Edit projects | Split, trim, reorder, unlimited undo, autosave |
+| Export | Fast lossless (stream copy) or precise re-encode (hardware encoders) |
+| Multilingual UI | 繁體中文, 简体中文, English, 日本語, 한국어; follow the system language or pick one in Settings |
 
 ---
 
-## 運作原理總覽
+## How it works: overview
 
-整個軟體分成三個程式，各做一件事：
+The software is made of three programs, each doing one job:
 
-```mermaid
-flowchart TB
-    APP["<b>Electron App</b>（TypeScript／React）<br/>介面、媒體庫、剪輯專案、匯出<br/>遊戲偵測、錄影狀態機、系統匣、OBS 控制"]
-    REC["<b>aditorrec</b>（Rust）<br/>擷取畫面 → GPU 編碼 → 錄影<br/>同時輸出縮小的偵測用小圖"]
-    ENG["<b>分析引擎 aditor</b>（Python）<br/>OpenCV 模板比對<br/>擊倒／助攻／對局偵測"]
-    APP <-- "JSON 行（stdin／stdout）" --> REC
-    APP <-- "JSON 行（stdin／stdout）" --> ENG
-    REC -- "小圖（共享記憶體）" --> ENG
-```
+<p align="center"><img src="docs/diagrams/architecture.en.png" alt="Architecture: Electron App, aditorrec and the analysis engine" width="720"></p>
 
-- **分析引擎（Python）**：只吃畫面，吐出「第幾秒發生了什麼事件」。離線分析與即時偵測用同一套判斷邏輯，差別只在畫面來源（影片解碼 vs. 錄影程式即時送來的小圖）。
-- **錄影程式 aditorrec（Rust）**：擷取畫面、用顯示卡編碼成影片，並順手把偵測需要的小塊畫面縮小後放進共享記憶體給引擎讀。
-- **Electron App**：把以上串起來，並提供所有操作介面。App 本身不碰影像資料。
+<sub>Diagram source: [`docs/diagrams/src/architecture.en.mmd`](docs/diagrams/src/architecture.en.mmd)</sub>
 
-兩個子程式都是獨立的 exe，用「一行一個 JSON」的文字協定溝通，所以任何一邊當掉都不會拖垮另一邊：引擎當掉，錄影照常進行，收尾後再補分析。
+- **Analysis engine (Python)**: consumes frames only and outputs "what happened at which second". Offline analysis and live detection share the same logic; only the frame source differs (decoded video vs. crops sent live by the recorder).
+- **Recorder aditorrec (Rust)**: captures the screen, encodes it on the GPU, and downsizes the small regions needed for detection into shared memory for the engine to read.
+- **Electron App**: ties everything together and provides all the UI. The app itself never touches image data.
+
+The two child programs are separate executables that talk over a line-per-JSON text protocol, so a crash on one side never takes down the other: if the engine dies, recording continues and analysis is filled in afterwards.
 
 ---
 
-## 辨識原理：怎麼看出擊倒與助攻
+## Detection: how kills and assists are recognized
 
-### 先講結論：沒有用機器學習
+### The short version: no machine learning
 
-整個辨識流程是傳統電腦視覺：**模板比對（OpenCV `matchTemplate`）、顏色遮罩、筆畫量測，加上人寫的規則與門檻**。沒有神經網路、沒有模型檔、不需要 GPU 做推論，也不需要標註資料。
+The whole pipeline is classic computer vision: **template matching (OpenCV `matchTemplate`), color masks, stroke measurement, plus hand-written rules and thresholds**. No neural network, no model file, no GPU inference, and no labeled data.
 
-好處是行為可解釋、出錯時能追到是哪一條規則；代價是依賴遊戲介面的固定外觀，遊戲改版時要重新調整樣板與門檻。
+The upside is that behavior is explainable and a wrong result can be traced to a specific rule. The cost is a dependence on the game UI's fixed appearance: when the game updates, templates and thresholds need retuning.
 
-### 流程總覽
+### Pipeline overview
 
-```mermaid
-flowchart TB
-    IN["影片／即時小圖"] --> S1["① 取樣<br/>每秒 4 格，縮到 1080p<br/>只留擊殺橫幅區與觀戰提示條區"]
-    S1 --> S2["② 逐格偵測<br/>圖示模板比對 ＋ 版面線索<br/>這格像不像擊倒／助攻橫幅"]
-    S2 --> S3["③ 關鍵字驗證<br/>用這支影片自己學到的文字樣板<br/>擋掉長得像但不是擊殺的橫幅"]
-    S3 --> S4["④ 事件追蹤<br/>連續命中的畫面合併成一個事件"]
-    S4 --> S5["⑤ 推導<br/>排除觀戰中的事件<br/>同一個敵人短時間內只算一次"]
-    S5 --> OUT["擊殺事件清單<br/>時間、類型、是否計入"]
-```
+<p align="center"><img src="docs/diagrams/pipeline.en.png" alt="Detection pipeline overview" width="720"></p>
 
-### ① 取樣：只看需要的地方
+<sub>Diagram source: [`docs/diagrams/src/pipeline.en.mmd`](docs/diagrams/src/pipeline.en.mmd)</sub>
 
-- 用 ffmpeg 解碼，**每秒取 4 格**（`FPS = 4`，事件時間精度 0.25 秒）。
-- 不論原本是 1080p、1440p 還是 4K，一律先縮成 1920×1080，這樣所有座標與樣板尺寸都能固定。
-- 只裁兩塊小區域，上下疊成一張小圖交給 Python：
-  - **擊殺橫幅區**：畫面中下方 `(560, 700)`、大小 800×180，擊倒與助攻的提示出現在這裡。
-  - **觀戰提示條區**：畫面左下角 `(60, 1028)`、大小 480×40。
-- 能用顯示卡解碼時，畫面留在顯示卡記憶體裡，抽樣之後才搬回 CPU，省下大量複製。
+### ① Sampling: look only where needed
 
-### ② 逐格偵測：圖示優先，與語言無關
+- Frames are decoded with ffmpeg at **4 frames per second** (`FPS = 4`, so event timing resolution is 0.25 s).
+- Whether the source is 1080p, 1440p or 4K, it is first scaled to 1920×1080 so all coordinates and template sizes can stay fixed.
+- Only two small regions are cropped and stacked into one small image handed to Python:
+  - **Kill-banner region**: lower middle of the screen, `(560, 700)`, size 800×180, where knockdown and assist notices appear.
+  - **Spectate-hint region**: lower left, `(60, 1028)`, size 480×40.
+- When GPU decoding is available, frames stay in GPU memory and are only copied back to the CPU after sampling, saving a lot of copying.
 
-擊殺橫幅上的**文字**會隨遊戲語言變，但**圖示不會**。所以偵測主要靠這幾個圖示與版面線索：
+### ② Per-frame detection: icons first, language independent
 
-| 線索 | 用途 |
+The **text** on kill banners changes with the game language, but the **icons** do not. Detection therefore relies mainly on these icons and layout cues:
+
+| Cue | Purpose |
 |---|---|
-| 分數右側的三層箭頭、箭頭左邊的「+」 | 所有「加分橫幅」都有；沒有這個就不是我們要的橫幅 |
-| 箭頭右邊的**單人圖示** | 個人加分：擊倒、助攻擊倒 |
-| 箭頭右邊的**三人圖示** | 小隊加分（小隊抹殺、復活等）→ 排除 |
-| 第一行左邊的**握手圖示** | 助攻消滅 |
-| 第一行左邊的**骷髏圖示** | 獨立消滅 → 排除 |
-| 第一行下方有沒有**第二行細字** | 擊倒才有「傷害」那一行 |
-| 第一行有沒有**敵人顏色的文字** | 擊倒的敵人名字是紅色（色盲模式為黃或粉紅）；助攻則是白字 |
+| Triple arrow to the right of the score, "+" to the left of the arrow | Every "score banner" has them; without them it is not a banner we want |
+| **Single-person icon** right of the arrow | Personal score: knockdown, assisted knockdown |
+| **Three-person icon** right of the arrow | Squad score (squad wipe, respawn, etc.) → excluded |
+| **Handshake icon** left of the first line | Assisted elimination |
+| **Skull icon** left of the first line | Solo elimination → excluded |
+| A **second, thinner line** under the first line | Only knockdowns have the "damage" line |
+| **Enemy-colored text** on the first line | The enemy name of a knockdown is red (yellow or pink in colorblind mode); an assist is white text |
 
-每個圖示只有一張很小的灰階樣板（總共約 4 KB）。偵測時用 `matchTemplate` 在橫幅區找最像的位置、取相似度，再依門檻判斷：
+Each icon has just one tiny grayscale template (about 4 KB in total). Detection runs `matchTemplate` over the banner region, takes the best similarity, and judges by thresholds:
 
-- 有箭頭＋「+」＋單人圖示，且第一行是敵人色名字、有第二行 → **擊倒**
-- 有箭頭＋「+」＋單人圖示，但第一行是白字 → **助攻擊倒**
-- 第一行左邊是握手 → **助攻消滅**
-- 其他（獨立消滅、小隊抹殺、復活、補給箱…）→ **視同沒有橫幅**
+- Arrow + "+" + single-person icon, enemy-colored first line, second line present → **knockdown**
+- Arrow + "+" + single-person icon, but white first line → **assisted knockdown**
+- Handshake left of the first line → **assisted elimination**
+- Anything else (solo elimination, squad wipe, respawn, supply bin, …) → **treated as no banner**
 
-```mermaid
-flowchart TD
-    A["橫幅區單格畫面"] --> B{"有三層箭頭<br/>和「+」？"}
-    B -- 否 --> N["沒有橫幅"]
-    B -- 是 --> C{"箭頭右邊是什麼圖示？"}
-    C -- 三人圖示 --> X["小隊加分<br/>→ 視同沒有橫幅"]
-    C -- 單人圖示 --> D{"第一行是敵人顏色文字<br/>且有第二行傷害行？"}
-    D -- 是 --> K["擊倒"]
-    D -- 否 --> AK["助攻擊倒"]
-    C -- "沒有人形，第一行左邊是握手" --> AE["助攻消滅"]
-    C -- "沒有人形，第一行左邊是骷髏" --> X2["獨立消滅<br/>→ 視同沒有橫幅"]
-    C -- "沒有人形，也沒有其他圖示" --> H["不確定（淡入淡出）<br/>不命中，但不中斷進行中的事件"]
-```
+<p align="center"><img src="docs/diagrams/banner-decision.en.png" alt="Banner decision diagram" width="720"></p>
 
-為了應付不同解析度造成的圖示大小差異，每支影片開頭會先**校準一次圖示尺度**（在 0.9～1.1 倍之間挑最適合的），之後都用單一尺度比對來保持速度。
+<sub>Diagram source: [`docs/diagrams/src/banner-decision.en.mmd`](docs/diagrams/src/banner-decision.en.mmd)</sub>
 
-### ③ 關鍵字驗證：樣板是影片自己「學」出來的
+To handle icon size differences between resolutions, each video starts with a **one-time icon scale calibration** (picking the best fit between 0.9× and 1.1×); after that a single scale is used for matching to stay fast.
 
-只靠圖示有一個漏洞：遊戲裡有些別的橫幅（例如「敵方小隊已消滅」）也用單人加分圖示。這時要靠**文字**區分，但不同語言的字長得完全不同，總不能每種語言都內建樣板。
+### ③ Keyword verification: templates are "learned" from the video itself
 
-做法是**從影片本身學**：
+Icons alone leave a loophole: some other banners in the game (for example "Enemy squad eliminated") also use the single-person score icon. Telling them apart takes **text**, but words look completely different across languages, and shipping templates for every language is impractical.
 
-1. 掃描影片**開頭最多 900 秒**，挑出「有把握是擊殺」的橫幅當錨點：
-   - 握手圖示分數很高的 → 助攻消滅錨點
-   - 有傷害行、且讀得到像樣敵人名字的 → 擊倒錨點
-2. 每種錨點取前 4 個橫幅，每個橫幅取 2 格，把第一行的筆畫圖（白色細筆畫的遮罩）取出。
-3. **跨橫幅取平均**：不同橫幅的背景不同，平均後背景被抹掉，只剩每次都一樣的那幾個字，這就是這支影片的「關鍵字樣板」。
-4. 之後每個候選橫幅都跟樣板比對（相似度 ≥ 0.7 才算命中）：
-   - 命中助攻前綴 → 改判為助攻擊倒
-   - 命中擊倒關鍵字 → 維持擊倒
-   - 兩者都不中、而且有對應樣板 → 丟棄，判定不是擊殺橫幅
+So Aditor **learns from the video itself**:
 
-所以韓文、日文、簡中或其他語言的介面**不需要事先內建任何文字樣板**。代價有兩個：
+1. It scans the **first 900 seconds at most** and picks banners that are clearly kills as anchors:
+   - Banners with a very high handshake score → assisted-elimination anchors
+   - Banners with a damage line and a plausibly readable enemy name → knockdown anchors
+2. For each anchor kind it takes the first 4 banners, 2 frames each, and extracts the stroke image (a mask of the thin white strokes) of the first line.
+3. **Averaging across banners**: backgrounds differ between banners, so averaging erases them and leaves only the few characters that are identical every time. That is this video's "keyword template".
+4. Every candidate banner afterwards is matched against the templates (similarity ≥ 0.7 counts as a hit):
+   - Hits the assist prefix → reclassified as assisted knockdown
+   - Hits the knockdown keyword → stays a knockdown
+   - Hits neither while a matching template exists → discarded as not a kill banner
 
-- 每種樣板至少要有 **3 個不同的橫幅**才會啟用。如果影片開頭 900 秒幾乎沒有擊殺，就學不到，整支影片退回「只看圖示」，「敵方小隊已消滅」之類的橫幅比較可能被誤算。
-- 學習只做一次，不會在 900 秒之後重學。
+So Korean, Japanese, Simplified Chinese or any other UI language **needs no text template built in beforehand**. There are two costs:
 
-即時偵測是邊錄邊學：學習期間先把格子緩衝起來，學完再補判斷，結果與離線分析一致。
+- Each template needs at least **3 distinct banners** to activate. If the first 900 seconds hold almost no kills, nothing is learned and the whole video falls back to icons only, where banners like "Enemy squad eliminated" are more likely to be counted by mistake.
+- Learning happens once and is not redone after 900 seconds.
 
-### ④ 事件追蹤：把連續命中合成一個事件
+Live detection learns while recording: frames are buffered during the learning phase and judged retroactively afterwards, giving the same result as offline analysis.
 
-同一個橫幅會在畫面上停留約 2～10 秒，所以會連續命中很多格。`EventTracker` 把它們合成**一個事件**：
+### ④ Event tracking: merging consecutive hits into one event
 
-- 連續命中的格子（容許 1 格空白）屬於同一個 *run*；空白超過 0.5 秒（連續 2 格）就視為橫幅消失，下一次出現是新事件。
-- run 的類型用**多數決**，因為橫幅淡入時圖示線索比較不準。
-- 同一個 run 裡若敵人名字真的換了人（名字指紋改變，且中間有空白或分數凹陷），就切成兩個事件；單純被 HUD 遮擋造成的抖動則不切。
-- 敵人名字用「指紋」比對：把名字區域的筆畫轉成一小張位元圖，比相似度，不做文字辨識。
+A single banner stays on screen for about 2–10 seconds, so it hits many frames in a row. `EventTracker` merges them into **one event**:
 
-### ⑤ 推導：決定哪些「算數」
+- Consecutive hit frames (tolerating a 1-frame gap) belong to the same *run*; a gap longer than 0.5 s (2 frames in a row) means the banner is gone, and the next appearance is a new event.
+- A run's type is decided by **majority vote**, because icon cues are less reliable while the banner fades in.
+- If the enemy name genuinely changes inside one run (name fingerprint changes, with a gap or a score dip in between), the run is split into two events; jitter caused merely by HUD occlusion does not split it.
+- Enemy names are compared by "fingerprint": the strokes of the name region are turned into a small bitmap and compared by similarity. No text recognition is done.
 
-對每個事件依序判斷：
+### ⑤ Derivation: deciding what "counts"
 
-1. 被使用者刪除 → 不計入。
-2. 落在**觀戰區間**內 → 不計入（見下）。
-3. **90 秒內，名字指紋相同的敵人只算第一筆**，其餘標為重複。助攻等沒有敵人名字的事件不參與去重。
-4. 其餘 → 計入。
+Each event is judged in order:
 
-使用者也可以手動覆寫任何一個事件的計入狀態，重新分析時會依「同類型、時間差 ≤ 1 秒」保留這些手動修改。
+1. Deleted by the user → not counted.
+2. Inside a **spectate interval** → not counted (see below).
+3. **Within 90 seconds, only the first event per enemy fingerprint counts**; the rest are marked duplicates. Events without an enemy name, such as assists, are not deduplicated.
+4. Everything else → counted.
 
-### 觀戰過濾
+Users can also manually override whether any event counts; on re-analysis these edits are kept by matching "same type, time difference ≤ 1 s".
 
-你陣亡後會觀戰隊友，這時畫面上隊友的擊倒也會跳出同樣的橫幅，不能算成你的。判斷方法是看**左下角的操作提示條**（「顯示玩家旗幟」「下一位隊友」之類）：
+### Spectate filter
 
-- 提示條是文字，沒有圖示可用，所以這是整套偵測**唯一與語言有關**的地方。
-- 目前內建樣板：繁中、簡中、英文、日文、韓文。**任一樣板命中就算觀戰**，不需要使用者選語言。
-- 連續出現至少 2 秒才成立，成立後整段區間內的事件都不計入。
-- 沒有樣板的語言偵測不到觀戰，觀戰中的擊倒會被算進去，只能手動取消計入。
+After you die you spectate teammates, and their kills pop up the same banners on screen; those must not count as yours. Aditor looks at the **control-hint bar at the lower left** ("Show player banners", "Next teammate" and the like):
 
-### 與遊戲語言無關
+- The hint bar is text with no icon to use, so this is the **only language-dependent part** of the whole detection.
+- Built-in templates: Traditional Chinese, Simplified Chinese, English, Japanese, Korean. **A hit on any template counts as spectating**, so the user does not have to choose a language.
+- The hint must appear for at least 2 seconds in a row to count, and then every event inside that interval is excluded.
+- Languages without a template cannot detect spectating, so kills made while spectating get counted and have to be excluded by hand.
 
-因此除了觀戰提示條之外，擊殺偵測**不需要選擇語言**。圖示樣板只用英文、日文、簡中的錄影裁切，繁中與其他語言錄影只拿來驗收（沒有拿來調參數），確保不是只對某一種語言有效。
+### Independent of the game language
+
+Apart from the spectate hint bar, kill detection therefore **does not require choosing a language**. The icon templates were cropped only from English, Japanese and Simplified Chinese recordings; Traditional Chinese and other languages were used only for acceptance testing (never for tuning), to make sure it does not work for just one language.
 
 ---
 
-## 對局切分原理：怎麼知道一局從哪裡開始
+## Match segmentation: how a match start is found
 
-「一局一個檔」「錄影中只留對局、不留大廳」都需要知道**對局的起訖**。這件事也不用機器學習，而是**場景分類 + 狀態機**。
+"One file per match" and "keep only matches, not the lobby" both need to know **where a match starts and ends**. This also uses no machine learning, just **scene classification + a state machine**.
 
-### 場景分類
+### Scene classification
 
-每秒取一張全畫面縮到 640×360 的灰階小圖，拿一組「固定介面元件」的樣板去比對，判斷現在是哪一種畫面：
+Once per second, a full-screen grayscale thumbnail at 640×360 is matched against a set of templates of "fixed UI elements" to decide what kind of screen this is:
 
-| 場景 | 判斷依據（任一組同時成立） |
+| Scene | Criteria (any one group fully satisfied) |
 |---|---|
-| `pre_match`（倒數／載入／選角） | 模式卡的箭頭 ＋ 載入頁腳（或外卡頁腳） |
-| `lobby`（大廳） | 「準備」按鈕外框 ＋ 模式選擇外框 |
-| `in_match_hud`（對局中） | 小地圖外框 ＋ 血量外框（含排位、觀戰的變形） |
-| `other` | 都不是（包含結算畫面，結算頁籤另外記錄成「對局脈絡」） |
+| `pre_match` (countdown / loading / character select) | Mode-card arrow + loading footer (or wildcard footer) |
+| `lobby` | "Ready" button frame + mode-select frame |
+| `in_match_hud` (in a match) | Minimap frame + health frame (including ranked and spectate variants) |
+| `other` | None of the above (including the results screen; the results tabs are recorded separately as "match context") |
 
-這些樣板比的是**外框與形狀**，不是文字，所以同樣與語言無關。
+These templates match **frames and shapes**, not text, so they too are language independent.
 
-### 狀態機（MatchTracker）
+### State machine (MatchTracker)
 
-分類結果一格一格餵進狀態機，由它發出四種事件：
+Classification results are fed into the state machine frame by frame, and it emits four kinds of events:
 
-```mermaid
-stateDiagram-v2
-    [*] --> 待命
-    待命 --> 倒數中 : 看到倒數畫面<br/>發出 match_pending
-    倒數中 --> 待命 : 看到大廳或 180 秒沒進對局<br/>發出 match_cancel
-    倒數中 --> 對局中 : 看到對局 HUD<br/>發出 match_start<br/>時間回溯到倒數開始
-    待命 --> 對局中 : 錯過開頭，HUD 連續 3 秒<br/>發出 match_start（hud_resume）
-    對局中 --> 暫定結束 : 大廳連續 1 秒以上
-    暫定結束 --> 對局中 : 30 秒內回到對局 HUD<br/>視為誤判，取消
-    暫定結束 --> 待命 : 滿 30 秒沒回到對局<br/>發出 match_end<br/>時間回溯到大廳第一次出現
-    對局中 --> 倒數中 : 直接排下一場，看到新的倒數<br/>發出 match_end（next_match）<br/>再發出 match_pending
-```
+<p align="center"><img src="docs/diagrams/match-state.en.png" alt="Match state machine" width="720"></p>
 
-幾個重點：
+<sub>Diagram source: [`docs/diagrams/src/match-state.en.mmd`](docs/diagrams/src/match-state.en.mmd)</sub>
 
-- **倒數階段就先發 `match_pending`**：這樣 OBS 或內建錄影器能從倒數、選角、運輸船開始保留，而不是等到落地看到 HUD 才開始。
-- **確認是延遲的，但時間會回溯**：開局要等 HUD 出現才確定，結束要等大廳持續 30 秒沒回到對局才確定，確定後事件的時間戳會倒推回實際發生的時刻。
-- **大廳不會立刻結束一局**：回到大廳常常馬上開獎勵、商店，也可能是誤判，所以給 30 秒緩衝，回到 HUD 就取消，避免一局被切成兩段。
-- **取消**：倒數後如果回了大廳（取消配對）或 180 秒都沒進對局，發出 `match_cancel`。
-- **錯過開頭**：如果錄影從對局中間開始，看到 HUD 連續 3 秒就視為對局開始（`hud_resume`）。
+Key points:
+
+- **`match_pending` is emitted already during the countdown**, so OBS or the built-in recorder can keep footage from the countdown, character select and drop ship, instead of starting only once the HUD is seen after landing.
+- **Confirmation is delayed, but timestamps are rewound**: a start is confirmed only once the HUD appears, and an end only after the lobby has persisted for 30 s without returning to the match; once confirmed, the event timestamp is moved back to the moment it actually happened.
+- **The lobby does not end a match immediately**: returning to the lobby often leads straight into rewards or the store, and may also be a false reading, so there is a 30 s buffer, and returning to the HUD cancels it so one match is not cut into two.
+- **Cancel**: if after the countdown the player returns to the lobby (matchmaking cancelled) or 180 s pass without entering a match, `match_cancel` is emitted.
+- **Missed start**: if recording begins in the middle of a match, 3 s of continuous HUD is taken as the match start (`hud_resume`).
 
 ---
 
-## 錄影原理
+## Recording
 
-### 不注入、不讀記憶體
+### No injection, no memory reading
 
-錄影用的是 Windows 公開的畫面擷取 API（與 OBS 同類），只讀取「畫面上的像素」：
+Recording uses the public Windows screen-capture APIs (the same kind OBS uses) and reads only "pixels on the screen":
 
-- 不注入遊戲程序、不掛鉤、不讀取遊戲記憶體。
-- 偵測 Apex 是否在執行只看程序名稱與視窗。
+- No injection into the game process, no hooking, no reading of game memory.
+- Detecting whether Apex is running relies only on the process name and window.
 
-這是設計原則，但本專案無法為任何第三方反作弊系統的判定背書，請自行評估風險。
+This is a design principle, but this project cannot vouch for how any third-party anti-cheat system will judge it. Please assess the risk yourself.
 
-### 兩種擷取方式
+### Two capture methods
 
-| 方式 | 特性 |
+| Method | Characteristics |
 |---|---|
-| **DDA**（預設，Desktop Duplication） | 擷取整個螢幕，延遲較低、不影響滑鼠手感。代價：Apex 不在最前景時（例如你 Alt+Tab 去看別的視窗），錄到的 Apex 畫面會是**黑畫面**，這是刻意的，避免把別的視窗誤認成遊戲畫面 |
-| **WGC**（Windows Graphics Capture） | 直接擷取 Apex 視窗，不受別的視窗遮蔽，但延遲略高 |
+| **DDA** (default, Desktop Duplication) | Captures the whole screen with lower latency and no effect on mouse feel. Cost: when Apex is not in the foreground (for example you Alt+Tab to another window), the recorded Apex picture is **black**; this is deliberate, so another window is never mistaken for game footage |
+| **WGC** (Windows Graphics Capture) | Captures the Apex window directly, unaffected by other windows covering it, but with slightly higher latency |
 
-DDA 模式下，Apex 回到前景時才會重新有畫面；對局切分靠 HUD 連續出現 3 秒來恢復，所以你中途切出去再回來，仍會正確認出對局。
+In DDA mode the picture only returns when Apex is back in the foreground; match segmentation recovers by seeing the HUD for 3 s in a row, so if you switch away mid-match and come back, the match is still recognized correctly.
 
-### 錄影管線
+### Recording pipeline
 
-```mermaid
-flowchart LR
-    CAP["擷取一格<br/>GPU 紋理"] --> SCALE["縮放（GPU）"]
-    SCALE --> ENC["硬體編碼<br/>NVENC／AMF／QSV"]
-    ENC --> MUX["每 2 秒一段 fMP4"]
-    AUD["WASAPI 系統聲音／麥克風"] --> MIX["混音 → AAC"]
-    MIX --> MUX
-    MUX --> DISK[("寫入磁碟")]
-    CAP --> CROP["GPU 裁切縮小"]
-    CROP --> READ["讀回 CPU<br/>橫幅區每秒 4 格<br/>場景縮圖每秒 1 格"]
-    READ --> SHM[("共享記憶體<br/>環形緩衝")]
-    SHM --> PY["Python 引擎"]
-```
+<p align="center"><img src="docs/diagrams/recording.en.png" alt="Recording pipeline" width="720"></p>
 
-- **影像全程留在顯示卡**：只有給偵測用的小圖會搬到 CPU，所以對遊戲效能影響小。
-- **只用硬體編碼**：依序嘗試 NVENC → AMF → QSV；**找不到硬體編碼器就不錄**，不會退回 CPU 編碼拖慢遊戲。
-- **音訊**：系統聲音可選「只錄遊戲」（程序層級的 loopback），可另外混入麥克風。
-- **共享記憶體**：16 個槽的環形緩衝，寫入端永遠不等讀取端；讀取端用前後序號檢查，撕裂的格子直接丟棄。引擎跟不上時只會跳格，不會拖慢錄影。
+<sub>Diagram source: [`docs/diagrams/src/recording.en.mmd`](docs/diagrams/src/recording.en.mmd)</sub>
 
-### 檔案存在哪裡
+- **Video stays on the GPU throughout**: only the small detection crops are moved to the CPU, so the impact on game performance is small.
+- **Hardware encoding only**: NVENC → AMF → QSV are tried in order; **if no hardware encoder is found, nothing is recorded**, rather than falling back to CPU encoding that would slow the game.
+- **Audio**: system audio can be "game only" (process-level loopback), and a microphone can be mixed in separately.
+- **Shared memory**: a 16-slot ring buffer; the writer never waits for the reader, and the reader checks sequence numbers before and after reading and drops torn frames. When the engine cannot keep up it only skips frames and never slows recording down.
 
-第一次啟動會有引導，讓你選一個根資料夾，並決定錄影模式（一局一個檔／從頭錄到尾）與錄影畫質（預設 1080p、60 fps、10000 kbps）。之後所有輸出都放在這個根資料夾底下的固定子資料夾：
+### Where files go
+
+The first launch walks you through choosing a root folder, a recording mode (one file per match / start to finish) and recording quality (default 1080p, 60 fps, 10000 kbps). All output then goes into fixed subfolders under that root:
 
 ```
-<根資料夾>/
-  Recordings/<YYYY-MM-DD>/Apex_….mp4    錄影，依日期分資料夾（一局跨午夜算開始那天）
-  Exports/Merged/…                       剪輯輸出：合併成一支
-  Exports/Clips/…                        剪輯輸出：一段一段分開輸出
+<root folder>/
+  Recordings/<YYYY-MM-DD>/Apex_….mp4    recordings, grouped by date (a match crossing midnight counts as the day it started)
+  Exports/Merged/…                       edit output: merged into one file
+  Exports/Clips/…                        edit output: one file per clip
 ```
 
-資料夾名稱固定用英文，不隨介面語言改變，所以換語言不會讓路徑改變。暫存工作（見下）放在 `Recordings/.sessions/`。
+Folder names are always English and do not change with the UI language, so switching language never changes a path. Temporary work (see below) lives in `Recordings/.sessions/`.
 
-### 為什麼切成 2 秒的片段
+### Why 2-second segments
 
-錄影不是寫成一個大檔，而是**每 2 秒一個 fMP4 片段**，每段第一格都是關鍵影格：
+Recording is not written as one big file but as **one fMP4 segment every 2 seconds**, each starting with a keyframe:
 
 ```
-<根資料夾>/Recordings/.sessions/<工作編號>/
-  init.mp4          初始化段
-  seg_000001.m4s …  每段 2 秒
-  index.jsonl       每寫完一段就追加一行，是唯一真相
-  events.jsonl      即時偵測到的事件
-  session.json      本次設定快照
+<root folder>/Recordings/.sessions/<session id>/
+  init.mp4          initialization segment
+  seg_000001.m4s …  2 seconds each
+  index.jsonl       one line appended after each segment is written; the single source of truth
+  events.jsonl      events detected live
+  session.json      snapshot of this session's settings
 ```
 
-這個設計一次解決好幾件事：
+This design solves several things at once:
 
-- **當機最多遺失 2 秒**：已寫完的片段都有效，App 下次啟動會掃描未收尾的工作並補收尾。
-- **邊錄邊看**：播放器用 MSE 依索引逐段載入，時間軸跟著長，事件即時出現。
-- **切檔不用重新編碼**：每段都從關鍵影格開始，所以挑出一堆片段直接串起來（stream copy）就是一個合法的影片。
-- **可以事後刪除**：大廳片段直接刪檔就好（見下）。
+- **A crash loses at most 2 seconds**: every finished segment is valid, and on the next launch the app scans for unfinished sessions and finalizes them.
+- **Watch while recording**: the player loads segments one by one through MSE following the index, the timeline grows along with it, and events appear live.
+- **Cutting needs no re-encode**: every segment starts at a keyframe, so picking a set of segments and concatenating them directly (stream copy) gives a valid video.
+- **Deleting afterwards is possible**: lobby segments can simply be deleted (see below).
 
-### 兩種錄影模式
+### Two recording modes
 
-**從頭錄到尾**：Apex 關閉後把所有片段串成一個 `Apex_<日期_時間>.mp4`，事件含每局起訖。
+**Start to finish**: after Apex closes, all segments are concatenated into one `Apex_<date_time>.mp4`, with events including each match's start and end.
 
-**一局一個檔**：
+**One file per match**:
 
-- 每局輸出從**倒數前 5 秒**到**結束後 5 秒**，用完整片段做 stream copy。
-- **大廳只暫存最近約 15 秒**：因為有人會掛機在大廳好幾個小時，全部存下來會塞爆磁碟。所以邊錄邊刪，只保留「最近 15 秒」、「正在進行的對局」與「倒數中的那段」。
-- 只在即時偵測**確實在運作**時才刪（判斷依據是引擎每 5 秒回報的處理進度，而且刪除不會超過引擎已經分析過的時間），偵測壞掉就一律不刪，寧可多留也不漏錄。
-- 整段錄影裡沒有任何對局，而且偵測全程正常 → 不輸出檔案（只待在大廳不會產生影片）。
+- Each match is output from **5 seconds before the countdown** to **5 seconds after the end**, using whole segments with stream copy.
+- **The lobby is only kept for roughly the last 15 seconds**: some people idle in the lobby for hours, and keeping everything would fill the disk. Segments are therefore deleted while recording, keeping only "the last 15 seconds", "the match in progress" and "the countdown portion".
+- Deletion happens only when live detection is **verifiably working** (judged from the progress the engine reports every 5 s, and deletion never goes past the time the engine has already analyzed); if detection is broken nothing is deleted, preferring to keep too much over missing a match.
+- If the whole recording has no match and detection was healthy throughout → no file is output (just sitting in the lobby produces no video).
 
-### OBS 模式
+### OBS mode
 
-如果你想用 OBS 的編碼設定，可以改由 OBS 錄影：
+If you want OBS's encoder settings, let OBS do the recording:
 
-- 透過 OBS 內建的 WebSocket（v5）控制開始與停止，只走網路，不碰遊戲。
-- `aditorrec` 仍然執行，但只擷取、輸出偵測小圖，不編碼；偵測流程與內建錄影相同。
-- 「一局一個檔」時，OBS 在看到倒數（`match_pending`）時開始錄，開局確認後沿用同一個檔；倒數被取消就停止，這個檔不加進媒體庫。
-- 如果 OBS 在你手動啟動錄影的狀態下被接管，本程式只沿用、絕不替你停止。
+- Start and stop are controlled through OBS's built-in WebSocket (v5), over the network only, without touching the game.
+- `aditorrec` still runs, but only captures and emits detection crops without encoding; the detection flow is the same as with built-in recording.
+- In "one file per match", OBS starts recording when it sees the countdown (`match_pending`) and keeps the same file once the match is confirmed; if the countdown is cancelled it stops, and that file is not added to the library.
+- If OBS is taken over while you had already started recording manually, Aditor only reuses it and never stops it for you.
 
-### 安全措施
+### Safety measures
 
-- 每次錄影前與錄影中檢查磁碟空間，低於門檻會提醒，更低時停止並收尾已錄的部分。
-- 遊戲啟動後等 20 秒才開始擷取，避開遊戲剛開啟時最容易出問題的時段。
-- 所有關鍵步驟寫入診斷日誌 `%APPDATA%\Aditor\recording.log`（每行即時寫入磁碟），萬一當機可以事後追查。
+- Disk space is checked before and during every recording; below a threshold you are warned, and below a lower one recording stops and finalizes what was recorded.
+- Capture starts 20 seconds after the game launches, avoiding the period when the game is most likely to misbehave right after opening.
+- All key steps are written to the diagnostic log `%APPDATA%\Aditor\recording.log` (each line flushed to disk immediately), so a crash can be investigated afterwards.
 
 ---
 
-## 剪輯與匯出原理
+## Editing and export
 
-### AI 自動合輯
+### AI auto-compilation
 
-用計入的事件依下列規則自動產生片段（預設值可調）：
+Clips are generated automatically from the counted events by these rules (defaults are adjustable):
 
-1. 相鄰擊殺間隔 ≤ 20 秒歸為同一群。
-2. 一群至少要有 3 個擊殺才成立。
-3. 片段範圍是 [第一殺 − 8 秒，最後一殺 + 4 秒]。
-4. 超過 90 秒就在最大的擊殺間隔處切成兩段。
-5. 重疊的片段能合併就合併，合併後太長就在重疊區中點分開。
+1. Adjacent kills ≤ 20 s apart belong to the same group.
+2. A group needs at least 3 kills.
+3. The clip range is [first kill − 8 s, last kill + 4 s].
+4. Anything over 90 s is split in two at the largest gap between kills.
+5. Overlapping clips are merged when possible; if the merged clip is too long it is split again at the midpoint of the overlap.
 
-### 剪輯專案
+### Edit projects
 
-- 序列編輯器支援分割、微調、複製、拖曳排序與完整復原／重做。
-- 專案自動儲存，下次啟動還原。
-- 錄影中就能標記片段加進專案，收尾後自動改指向輸出檔。
+- The sequence editor supports split, trim, duplicate, drag-to-reorder, and full undo / redo.
+- Projects autosave and are restored on the next launch.
+- You can mark clips and add them to a project while still recording; after finalization they are repointed to the output file automatically.
 
-### 匯出
+### Export
 
-| 模式 | 做法 | 特性 |
+| Mode | How | Characteristics |
 |---|---|---|
-| **快速無損** | 從關鍵影格開始直接複製串流 | 幾乎瞬間完成、沒有畫質損失；切點會對齊到關鍵影格 |
-| **精準轉碼** | 重新編碼，切點精準到毫秒 | 較慢；支援 NVENC、QSV、AMF 硬體編碼，以及 OpenH264 的 CPU 編碼 |
+| **Fast lossless** | Copies the stream directly starting from keyframes | Almost instant with no quality loss; cut points snap to keyframes |
+| **Precise re-encode** | Re-encodes, with millisecond-accurate cut points | Slower; supports NVENC, QSV, AMF hardware encoding, and OpenH264 CPU encoding |
 
 ---
 
-## 準確度與已知限制
+## Accuracy and known limitations
 
-- 只偵測**擊倒**與**助攻**（助攻擊倒、助攻消滅）；獨立消滅與小隊抹殺不偵測。
-- 已知誤判：舊版遊戲（約 2026-07 以前）的「敵方小隊已消滅」橫幅也用單人加分圖示；沒有學到關鍵字樣板時會被算進去。
-- 觀戰過濾只支援繁中、簡中、英文、日文、韓文的提示條。
-- 圖示判斷依賴遊戲介面的固定外觀，遊戲改版可能需要更新樣板。
-- 準確度數字與測試方式：[`docs/accuracy-report-icon.md`](docs/accuracy-report-icon.md)（圖示偵測）、[`docs/accuracy-report-matches.md`](docs/accuracy-report-matches.md)（對局切分）。
-- 樣板來源與訓練／驗收分割：[`templates/icons/PROVENANCE.md`](templates/icons/PROVENANCE.md)。
+- Only **knockdowns** and **assists** (assisted knockdown, assisted elimination) are detected; solo eliminations and squad wipes are not.
+- Known false positive: in older game versions (before about 2026-07) the "Enemy squad eliminated" banner also used the single-person score icon; when no keyword template was learned it gets counted.
+- The spectate filter only supports hint bars in Traditional Chinese, Simplified Chinese, English, Japanese and Korean.
+- Icon judgment depends on the game UI's fixed appearance, so a game update may require updated templates.
+- Accuracy figures and how they were tested: [`docs/accuracy-report-icon.md`](docs/accuracy-report-icon.md) (icon detection), [`docs/accuracy-report-matches.md`](docs/accuracy-report-matches.md) (match segmentation). These reports are written in Traditional Chinese.
+- Template provenance and the training / acceptance split: [`templates/icons/PROVENANCE.md`](templates/icons/PROVENANCE.md).
 
 ---
 
-## 專案結構
+## Project layout
 
 ```
-app/        Electron App（main：錄影狀態機、OBS、匯出、媒體庫；renderer：React 介面）
-engine/     Python 分析引擎 aditor（圖示偵測、事件追蹤、場景分類、對局狀態機、即時模式）
-recorder/   Rust 錄影程式 aditorrec（擷取、硬體編碼、音訊、共享記憶體）
-templates/  圖示樣板（icons）與場景樣板（scene）
-scripts/    建置腳本（build.ps1、fetch-ffmpeg.ps1）
-tools/      樣板擷取與準確度驗收工具
-docs/       準確度報告與設計文件
+app/        Electron app (main: recording state machine, OBS, export, library; renderer: React UI)
+engine/     Python analysis engine aditor (icon detection, event tracking, scene classification, match state machine, live mode)
+recorder/   Rust recorder aditorrec (capture, hardware encoding, audio, shared memory)
+templates/  Icon templates (icons) and scene templates (scene)
+scripts/    Build scripts (build.ps1, fetch-ffmpeg.ps1)
+tools/      Template extraction and accuracy acceptance tools
+docs/       Accuracy reports and design documents
 ```
 
 ---
 
-## 系統需求
+## System requirements
 
-- **作業系統**：Windows 10 / 11 64-bit
-- **顯示卡**：錄影功能需要支援硬體編碼的顯示卡（NVIDIA NVENC、AMD AMF 或 Intel QSV）；只做離線分析與剪輯則不需要
-- **記憶體**：建議 8 GB RAM 以上
-- **視訊解碼**：支援 H.264、HEVC、VP9、AV1（內建 dav1d 解碼器）
-- **儲存空間**：安裝約 300 MB，錄影另需空間
+- **OS**: Windows 10 / 11 64-bit
+- **GPU**: recording needs a GPU with hardware encoding (NVIDIA NVENC, AMD AMF or Intel QSV); offline analysis and editing alone do not
+- **Memory**: 8 GB RAM or more recommended
+- **Video decoding**: H.264, HEVC, VP9 and AV1 (bundled dav1d decoder)
+- **Storage**: about 300 MB for installation, plus space for recordings
 
 ---
 
-## 從原始碼建置
+## Building from source
 
-### 前置需求
+### Prerequisites
 
-- **Node.js**：v20 或以上（建議 v24 LTS）與 npm
-- **Python**：v3.11 或以上
-- **Rust**：stable toolchain（建置錄影程式用）
-- **PowerShell**：Windows 內建即可
+- **Node.js**: v20 or later (v24 LTS recommended) and npm
+- **Python**: v3.11 or later
+- **Rust**: stable toolchain (to build the recorder)
+- **PowerShell**: the one built into Windows is enough
 
-### 建置步驟
+### Build steps
 
-1. 取得原始碼：
+1. Get the source:
    ```bash
-   git clone https://github.com/ShiQu1218/Apex_highlighter.git
-   cd Apex_highlighter
+   git clone https://github.com/ShiQu1218/Aditor.git
+   cd Aditor
    ```
 
-2. 設定 Python 虛擬環境並安裝引擎相依套件：
+2. Set up the Python virtual environment and install the engine dependencies:
    ```powershell
    python -m venv engine\.venv
    .\engine\.venv\Scripts\python.exe -m pip install -e "engine[dev]" pyinstaller
    ```
 
-3. 安裝前端相依套件：
+3. Install the front-end dependencies:
    ```powershell
    cd app
    npm install
    cd ..
    ```
 
-4. 執行一鍵建置腳本：
+4. Run the one-step build script:
    ```powershell
    powershell -ExecutionPolicy Bypass -File scripts\build.ps1
    ```
-   腳本依序完成：
-   - 用 PyInstaller 建置引擎（`build\engine\aditor\`）
-   - 下載並驗證 LGPL 版 FFmpeg（`build\ffmpeg\`）
-   - 編譯 Rust 錄影程式
-   - 編譯前端並用 `electron-builder` 打包安裝檔與免安裝版（輸出到 `dist\`）
+   The script does, in order:
+   - Builds the engine with PyInstaller (`build\engine\aditor\`)
+   - Downloads and verifies the LGPL build of FFmpeg (`build\ffmpeg\`)
+   - Compiles the Rust recorder
+   - Compiles the front end and packages an installer and a portable build with `electron-builder` (output in `dist\`)
 
-   只改了 App、沒動引擎與 FFmpeg 時，可加 `-SkipEngine -SkipFfmpeg` 加快速度。
+   If you only changed the app and left the engine and FFmpeg alone, add `-SkipEngine -SkipFfmpeg` to go faster.
 
-   FFmpeg 固定為 BtbN 的具名 autobuild（版本與 SHA-256 寫在 `scripts\fetch-ffmpeg.ps1`），下載檔雜湊不符時腳本會**失敗**而不是警告；若下載到舊版壓縮檔，請先刪除再重跑。
+   FFmpeg is pinned to a named BtbN autobuild (version and SHA-256 are in `scripts\fetch-ffmpeg.ps1`); on a hash mismatch the script **fails** instead of warning. If an old archive was downloaded, delete it and re-run.
 
-### 發版前檢查清單
+### Pre-release checklist
 
-1. 先跑測試：
-   - `engine\.venv\Scripts\python.exe -m pytest -q`（設定 `ADITOR_GOLDEN_VIDEO` 才會真的執行 golden 測試）
+1. Run the tests first:
+   - `engine\.venv\Scripts\python.exe -m pytest -q` (the golden tests only really run when `ADITOR_GOLDEN_VIDEO` is set)
    - `npm --prefix app test`
    - `npm --prefix app run typecheck`
    - `npm --prefix app run test:e2e`
-2. 把舊的 `dist\`、`build\engine`、`build\pyinstaller-temp` 搬到備份位置，避免舊產物混入，再執行 `scripts\build.ps1`。
-3. 檢查產物：
-   - `dist\win-unpacked\resources\templates\icons\` 含 `profile.json`、6 張圖示與全部觀戰樣板，且內容與 git 相同。
-   - `dist\win-unpacked\resources\engine\aditor\aditor.exe ipc` 的 ready 訊息中，`engine_version` 為 `0.3.0`。
-   - `ffmpeg.exe -buildconf` 沒有 `--enable-gpl`、`--enable-nonfree`，有 `--enable-version3` 與 `--enable-libdav1d`。
-   - 安裝檔內含 `THIRD_PARTY_NOTICES.md` 與 `LICENSE`。
-4. 引擎 0.3.0 / icons@1 起改為圖示偵測；舊版（文字關鍵字法）產生的快取會自動重新分析，使用者的刪除與覆寫依「同類型、時間差 ≤ 1 秒」保留。
+2. Move the old `dist\`, `build\engine` and `build\pyinstaller-temp` to a backup location so stale artifacts don't get mixed in, then run `scripts\build.ps1`.
+3. Check the artifacts:
+   - `dist\win-unpacked\resources\templates\icons\` contains `profile.json`, the 6 icons and all spectate templates, with contents identical to git.
+   - In the ready message of `dist\win-unpacked\resources\engine\aditor\aditor.exe ipc`, `engine_version` is `0.3.0`.
+   - `ffmpeg.exe -buildconf` has neither `--enable-gpl` nor `--enable-nonfree`, and has `--enable-version3` and `--enable-libdav1d`.
+   - The installer includes `THIRD_PARTY_NOTICES.md` and `LICENSE`.
+4. Engine 0.3.0 / icons@1 switched to icon detection; caches produced by the older text-keyword method are re-analyzed automatically, and user deletions and overrides are kept by matching "same type, time difference ≤ 1 s".
 
 ---
 
-## 授權與第三方說明
+## License and third-party notices
 
-- 本專案核心原始碼依據 [MIT 授權條款](LICENSE) 開源發布。
-- 打包隨附的 FFmpeg 執行檔與動態連結函式庫為 **LGPL v3** 建置（`--enable-version3`，無 `--enable-gpl`／`--enable-nonfree`），其中的 libopenh264 為原始碼編譯，而非 Cisco 官方二進位。詳細的第三方套件與授權宣告請參閱 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+- The core source code of this project is released as open source under the [MIT License](LICENSE).
+- The bundled FFmpeg executables and dynamic libraries are an **LGPL v3** build (`--enable-version3`, without `--enable-gpl` / `--enable-nonfree`); the libopenh264 in it is compiled from source rather than Cisco's official binary. For the full list of third-party packages and license notices see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 ---
 
-## 免責聲明
+## Disclaimer
 
-《Apex 英雄》（Apex Legends）為 Electronic Arts Inc. 之註冊商標。
-Aditor 為獨立開發之開源工具，非 Electronic Arts Inc. 或 Respawn Entertainment 所官方授權、贊助或附屬之軟體。
+*Apex Legends* is a registered trademark of Electronic Arts Inc.
+Aditor is an independently developed open-source tool and is not officially licensed by, sponsored by, or affiliated with Electronic Arts Inc. or Respawn Entertainment.

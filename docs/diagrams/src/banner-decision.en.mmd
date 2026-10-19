@@ -1,0 +1,11 @@
+flowchart TD
+    A["Single frame of the banner region"] --> B{"Triple-arrow<br/>and “+” present?"}
+    B -- No --> N["No banner"]
+    B -- Yes --> C{"Which icon is right of the arrow?"}
+    C -- "Three-person icon" --> X["Squad score<br/>→ treated as no banner"]
+    C -- "Single-person icon" --> D{"First line in enemy color<br/>and a second damage line?"}
+    D -- Yes --> K["Knockdown"]
+    D -- No --> AK["Assisted knockdown"]
+    C -- "No person icon, handshake left of first line" --> AE["Assisted elimination"]
+    C -- "No person icon, skull left of first line" --> X2["Solo elimination<br/>→ treated as no banner"]
+    C -- "No person icon, no other icon" --> H["Uncertain (fade in / out)<br/>no hit, but does not break a running event"]

@@ -1,0 +1,7 @@
+flowchart TB
+    APP["<b>Electron App</b> (TypeScript / React)<br/>UI, library, edit projects, export<br/>game detection, recording state machine, tray, OBS control"]
+    REC["<b>aditorrec</b> (Rust)<br/>capture → GPU encode → record<br/>also emits downscaled detection crops"]
+    ENG["<b>Analysis engine aditor</b> (Python)<br/>OpenCV template matching<br/>kill / assist / match detection"]
+    APP <-- "JSON lines (stdin / stdout)" --> REC
+    APP <-- "JSON lines (stdin / stdout)" --> ENG
+    REC -- "crops (shared memory)" --> ENG
