@@ -85,6 +85,6 @@ powershell -ExecutionPolicy Bypass -File scripts\build.ps1
 
 ## 授權
 
-[MIT 授權](LICENSE)。隨附的 FFmpeg 為 LGPL v3 版本，詳見 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+[GNU GPL v3.0 授權](LICENSE)。隨附的 FFmpeg 為 LGPL v3 版本，詳見 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 
 *Apex Legends* 為 Electronic Arts Inc. 的註冊商標。Aditor 為獨立開發的開源工具，與 Electronic Arts Inc. 及 Respawn Entertainment 無任何關聯，亦未獲其授權或贊助。

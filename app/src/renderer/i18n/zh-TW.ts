@@ -716,8 +716,8 @@ const settingsI18n = {
     },
     about: {
       title: '版本與授權',
-      desc: 'MIT 授權。隨附 LGPL 版 ffmpeg。',
-      keywords: ['版本', '授權', '關於', 'license', 'version', 'mit', 'ffmpeg'],
+      desc: 'GPL v3 授權。隨附 LGPL 版 ffmpeg。',
+      keywords: ['版本', '授權', '關於', 'license', 'version', 'gpl', 'ffmpeg'],
       version: 'Aditor {version}',
       licenses: '第三方授權'
     },

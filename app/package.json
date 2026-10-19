@@ -4,7 +4,7 @@
   "description": "Apex Legends highlight detector and clip editor",
   "main": "./out/main/index.js",
   "author": "ShiQu1218",
-  "license": "MIT",
+  "license": "GPL-3.0-or-later",
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",

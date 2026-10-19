@@ -173,8 +173,8 @@ export const settingsI18n: Messages['settingsI18n'] = {
     },
     about: {
       title: 'Version and license',
-      desc: 'Licensed under MIT. Includes LGPL-licensed ffmpeg.',
-      keywords: ['version', 'license', 'about', 'mit', 'ffmpeg'],
+      desc: 'Licensed under GPL v3. Includes LGPL-licensed ffmpeg.',
+      keywords: ['version', 'license', 'about', 'gpl', 'ffmpeg'],
       version: 'Aditor {version}',
       licenses: 'Third-party licenses'
     },

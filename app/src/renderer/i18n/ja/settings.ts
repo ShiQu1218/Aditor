@@ -174,8 +174,8 @@ export const settingsI18n: Messages['settingsI18n'] = {
     },
     about: {
       title: 'バージョンとライセンス',
-      desc: 'MIT ライセンス。LGPL 版の ffmpeg を同梱しています。',
-      keywords: ['バージョン', 'ライセンス', '情報', 'license', 'version', 'mit', 'ffmpeg'],
+      desc: 'GPL v3 ライセンス。LGPL 版の ffmpeg を同梱しています。',
+      keywords: ['バージョン', 'ライセンス', '情報', 'license', 'version', 'gpl', 'ffmpeg'],
       version: 'Aditor {version}',
       licenses: 'サードパーティライセンス'
     },

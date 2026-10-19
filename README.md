@@ -85,6 +85,6 @@ The installer and portable build are written to `dist\`. Tests: `engine\.venv\Sc
 
 ## License
 
-[MIT License](LICENSE). The bundled FFmpeg is an LGPL v3 build; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+[GNU General Public License v3.0](LICENSE). The bundled FFmpeg is an LGPL v3 build; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 *Apex Legends* is a registered trademark of Electronic Arts Inc. Aditor is an independent open-source tool, not affiliated with or endorsed by Electronic Arts Inc. or Respawn Entertainment.
