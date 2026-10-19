@@ -13,6 +13,14 @@ export interface Settings {
   version: 1
   /** 介面語言：'auto'＝跟隨系統（Windows 顯示語言），不支援的系統語言用英文 */
   language: LanguageSetting
+  /**
+   * 儲存位置的根資料夾（見 shared/storage.ts）：錄影存 `<根>/Recordings/<日期>/`，剪輯輸出存
+   * `<根>/Exports/Merged` 與 `<根>/Exports/Clips`。null＝尚未設定。設定時 main 會同步寫入
+   * `recording.outputDir` 與 `defaultOutDir` 並建立資料夾，其餘程式照舊讀那兩個欄位。
+   */
+  storageRoot: string | null
+  /** 已完成首次啟動引導 */
+  onboardingDone: boolean
   /** 監看資料夾清單（新影片自動匯入） */
   watchFolders: string[]
   /** 監看資料夾的新影片自動排入分析佇列 */
@@ -81,6 +89,8 @@ export interface SettingsSetResult {
 export const DEFAULT_SETTINGS: Settings = {
   version: SETTINGS_VERSION,
   language: 'auto',
+  storageRoot: null,
+  onboardingDone: false,
   watchFolders: [],
   autoAnalyze: true,
   decode: 'auto',

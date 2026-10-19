@@ -13,6 +13,8 @@ const src = (rel: string): string => resolve(__dirname, '../../', rel)
 const FIELD_CONSUMERS: Record<string, Array<[string, RegExp]>> = {
   watchFolders: [['main/watch.ts', /watchFolders/]],
   language: [['main/index.ts', /resolveLocale\(/], ['renderer/i18n/index.ts', /bootLocale/]],
+  storageRoot: [['main/settings-ipc.ts', /storageRoot/]],
+  onboardingDone: [['renderer/shell/AppShell.tsx', /onboardingDone/]],
   autoAnalyze: [['main/watch.ts', /\.autoAnalyze/]],
   decode: [['main/settings-derived.ts', /\.decode/], ['main/queue.ts', /analyzeSettingArgs/], ['main/index.ts', /buildAnalyzeArgs/]],
   cacheLocation: [

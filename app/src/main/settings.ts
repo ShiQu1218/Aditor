@@ -125,6 +125,8 @@ function applySettings(base: Settings, src: unknown): Settings {
   return {
     version: SETTINGS_VERSION,
     language: pickEnum(s.language, LANGUAGE_SETTINGS, base.language),
+    storageRoot: pickStringOrNull(s.storageRoot, base.storageRoot),
+    onboardingDone: pickBool(s.onboardingDone, base.onboardingDone),
     watchFolders: pickStringArray(s.watchFolders, base.watchFolders),
     autoAnalyze: pickBool(s.autoAnalyze, base.autoAnalyze),
     decode: pickEnum(s.decode, ['auto', 'software'] as const, base.decode),
