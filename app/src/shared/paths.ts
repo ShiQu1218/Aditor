@@ -11,6 +11,14 @@ export function cacheDir(): string {
   return path.join(appDataDir(), 'cache')
 }
 
+/**
+ * Electron userData。預設＝%APPDATA%\aditor，其中 Chromium 的 `Cache` 在 Windows（不分大小寫）上
+ * 就是分析快取 `cacheDir()`，Chromium 重建 HTTP 快取時會把分析結果一起刪掉，所以必須移開。
+ */
+export function chromiumUserDataDir(): string {
+  return path.join(appDataDir(), 'electron-userdata')
+}
+
 export function proxyDir(): string {
   return path.join(appDataDir(), 'proxy')
 }

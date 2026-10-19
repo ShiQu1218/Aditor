@@ -1,7 +1,18 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import fs from 'fs'
 import path from 'path'
-import { aditorrecCommand, liveEngineCommand, sceneDir } from './paths'
+import { aditorrecCommand, cacheDir, chromiumUserDataDir, liveEngineCommand, sceneDir } from './paths'
+
+describe('chromiumUserDataDir', () => {
+  afterEach(() => vi.unstubAllEnvs())
+
+  it('Chromium 的 Cache 子資料夾不與分析快取重疊（Windows 路徑不分大小寫）', () => {
+    vi.stubEnv('APPDATA', path.resolve('roaming'))
+    const chromiumCache = path.join(chromiumUserDataDir(), 'Cache').toLowerCase()
+    expect(chromiumCache).not.toBe(cacheDir().toLowerCase())
+    expect(path.relative(chromiumCache, cacheDir().toLowerCase()).startsWith('..')).toBe(true)
+  })
+})
 
 describe('liveEngineCommand', () => {
   const root = path.resolve(__dirname, '../../..')

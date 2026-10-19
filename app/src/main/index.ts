@@ -13,7 +13,7 @@ import { buildAnalyzeArgs } from './settings-derived'
 import { currentE2EConfig } from './e2e'
 import { applyWindowSecurity } from './window-security'
 import { sanitizeAnalyzeArgs, sanitizeAutoclipArgs, sanitizeDeriveArgs, sanitizeProbeArgs } from './ipc-guards'
-import { aditorrecCommand, appDataDir, cacheDir, engineCommand, ffmpegExecutable, liveEngineCommand, profileDir, sceneDir } from '../shared/paths'
+import { aditorrecCommand, appDataDir, cacheDir, chromiumUserDataDir, engineCommand, ffmpegExecutable, liveEngineCommand, profileDir, sceneDir } from '../shared/paths'
 import { cacheFilePath } from './cache-io'
 import { generateThumbnail } from './thumbnail'
 import { createRecordingService } from './recording'
@@ -29,10 +29,9 @@ import { broadcastUpdateStatus, registerUpdateIpc } from './update-ipc'
 
 // E2E 掛鉤（僅 ADITOR_E2E=1）：暫存 appData／userData，測試不碰使用者資料；正式執行時為 null
 const e2e = currentE2EConfig()
-if (e2e?.appData) {
-  process.env.APPDATA = e2e.appData
-  app.setPath('userData', join(e2e.appData, 'electron-userdata'))
-}
+if (e2e?.appData) process.env.APPDATA = e2e.appData
+// 必須在 ready 前設定：預設 userData 的 Cache 與分析快取是同一個資料夾（見 chromiumUserDataDir）
+app.setPath('userData', chromiumUserDataDir())
 
 let mainWindow: BrowserWindow | null = null
 let engineClient: EngineClient | null = null

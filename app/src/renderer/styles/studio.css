@@ -504,6 +504,8 @@
   gap: var(--sp-3);
   color: var(--text-2);
 }
+/* 通知列的 margin-left:auto 在置中的格線裡會把按鈕推出畫面右側 */
+.studio-blocked .notice-actions { margin-left: 0; flex-wrap: wrap; justify-content: center; }
 .sr-only {
   position: absolute;
   width: 1px;
