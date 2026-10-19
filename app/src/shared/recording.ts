@@ -65,11 +65,13 @@ export interface RecordingSettings {
   diskStopGb: number
   /** 對局開始／結束是否發 Windows 通知（錯誤一律通知） */
   notifyMatch: boolean
-  /** 擷取方式：'dda'＝擷取遊戲所在的整個螢幕（DXGI Desktop Duplication，預設，遊戲延遲較低）；'wgc'＝視窗擷取 */
+  /** 擷取方式：'wgc'＝視窗擷取（預設）；'dda'＝螢幕擷取（DXGI Desktop Duplication）；'hook'＝遊戲擷取（OBS graphics-hook，選用；無法使用時自動退回 DDA） */
   captureMethod: RecordingCaptureMethod
+  /** 偵測到 Apex 關閉時自動顯示 Aditor 視窗 */
+  openOnGameExit: boolean
 }
 
-export type RecordingCaptureMethod = 'wgc' | 'dda'
+export type RecordingCaptureMethod = 'hook' | 'wgc' | 'dda'
 
 export const RECORDING_RANGES = {
   bitrateKbps: { min: 2_000, max: 150_000 },
@@ -110,7 +112,8 @@ export const DEFAULT_RECORDING_SETTINGS: RecordingSettings = {
   diskWarnGb: 10,
   diskStopGb: 2,
   notifyMatch: false,
-  captureMethod: 'dda'
+  captureMethod: 'wgc',
+  openOnGameExit: true
 }
 
 /** 錄影服務狀態（main → renderer 推播 `recording:status`，也可用 `recording:getStatus` 取）。 */

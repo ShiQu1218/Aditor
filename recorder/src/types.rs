@@ -61,13 +61,15 @@ pub enum Codec {
 }
 
 /// 擷取方式：`wgc` = Windows Graphics Capture（視窗，預設）；`dda` = DXGI Desktop
-/// Duplication（遊戲所在的整個螢幕；不需要 DWM 合成遊戲視窗，延遲較低）。
+/// Duplication（遊戲所在的整個螢幕；不需要 DWM 合成遊戲視窗，延遲較低）；`hook` = OBS
+/// graphics-hook（注入遊戲攔截 Present 共享材質；不經 DWM 合成且背景未最小化仍持續更新）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum CaptureMethod {
     #[default]
     Wgc,
     Dda,
+    Hook,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]

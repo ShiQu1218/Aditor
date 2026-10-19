@@ -11,6 +11,14 @@ export function cacheDir(): string {
   return path.join(appDataDir(), 'cache')
 }
 
+/**
+ * Electron userData。預設＝%APPDATA%\aditor，其中 Chromium 的 `Cache` 在 Windows（不分大小寫）上
+ * 就是分析快取 `cacheDir()`，Chromium 重建 HTTP 快取時會把分析結果一起刪掉，所以必須移開。
+ */
+export function chromiumUserDataDir(): string {
+  return path.join(appDataDir(), 'electron-userdata')
+}
+
 export function proxyDir(): string {
   return path.join(appDataDir(), 'proxy')
 }
@@ -88,6 +96,14 @@ export function aditorrecCommand(isPackaged: boolean): {
     args: [],
     env: { PATH: `${path.join(root, 'build', 'ffmpeg', 'bin')}${path.delimiter}${process.env.PATH || ''}` }
   }
+}
+
+/** OBS graphics-hook 檔案目錄（`hook_dir`）：開發＝repo 的 `build/obs-hook`，打包＝resources 下的 `obs-hook`。 */
+export function obsHookDir(isPackaged: boolean): string {
+  const root = isPackaged
+    ? (process as unknown as { resourcesPath?: string }).resourcesPath || path.join(__dirname, '..', '..')
+    : path.join(path.resolve(__dirname, '../../..'), 'build')
+  return path.join(root, 'obs-hook')
 }
 
 /** 隨安裝包附帶的第三方授權清單：打包＝resources 根目錄，開發＝repo 根目錄。 */

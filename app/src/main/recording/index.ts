@@ -35,6 +35,8 @@ export interface RecordingDeps {
   defaultOutputDir: string
   /** aditorrec.exe 的啟動方式（paths.ts 由任務 A3 提供） */
   recorderCommand: RecorderCommand
+  /** OBS graphics-hook 檔案目錄（`hook_dir`） */
+  obsHookDir?: string
   /** 收尾串接用的 ffmpeg.exe */
   ffmpegPath: string
   /** `templates/icons`：讀 `profile.json` 的 `banner_roi`／`spec_roi` 傳給 aditorrec */
@@ -59,6 +61,8 @@ export interface RecordingDeps {
   liveCachePath?: (videoPath: string) => string
   /** live 快取寫好後（在排完整分析之前）通知：例如把媒體庫條目標成可開啟並填入擊殺數 */
   onLiveAnalysis?: (videoPath: string, summary: LiveAnalysisSummary) => void
+  /** 偵測到 Apex 由執行中變為關閉（且設定開啟 `openOnGameExit`）時觸發一次 */
+  onGameExit?: () => void
 }
 
 export interface LiveAnalysisSummary {

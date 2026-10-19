@@ -31,6 +31,8 @@ class SceneFrame:
     # 總結仍歸 other；只用正向外框恢復「錄影從上一局局尾開始」的狀態。
     match_context: bool = False
     scores: dict[str, float] = field(default_factory=dict, compare=False)
+    # 全黑畫面：DDA 擷取時遊戲不在前景，錄影器改送黑幀，看不到遊戲狀態。
+    blank: bool = False
 
 
 # 範本的原點為 SCENE_SIZE 座標，搜尋範圍含少量座標／縮放誤差。
@@ -52,6 +54,8 @@ PRE_MATCH_THRESHOLD = 0.75
 LOBBY_THRESHOLD = 0.70
 HUD_THRESHOLD = 0.60
 SUMMARY_THRESHOLD = 0.80
+# 縮圖最亮像素不超過這個值視為全黑（容許編碼後的黑位偏移）。
+BLANK_MAX_LEVEL = 8
 
 
 class SceneDetector:
@@ -97,4 +101,5 @@ class SceneDetector:
         health = max(scores["health_border"], scores["ranked_health"], scores["spectator_health"])
         if min(minimap, health) >= HUD_THRESHOLD:
             return SceneFrame("in_match_hud", scores=scores)
-        return SceneFrame("other", scores["summary_tabs"] >= SUMMARY_THRESHOLD, scores)
+        return SceneFrame("other", scores["summary_tabs"] >= SUMMARY_THRESHOLD, scores,
+                          blank=int(gray.max()) <= BLANK_MAX_LEVEL)

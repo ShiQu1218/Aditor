@@ -30,6 +30,8 @@ export function applyMatchEvent(matches: LiveMatch[], event: LiveMatchEvent): Li
   if (event.ev === 'match_pending' || event.ev === 'match_cancel') return matches
   const last = matches.at(-1)
   if (event.ev === 'match_start') {
+    // 新引擎只看到重啟後的影格；首次恢復到 HUD／結算畫面時仍屬於目前這一局。
+    if (last?.end === null && (event.reason === 'initial_match' || event.reason === 'initial_summary')) return matches
     // 直接排下一場：上一局在新開局序列開始時結束。
     const closed = last && last.end === null ? [...matches.slice(0, -1), { start: last.start, end: Math.max(last.start, event.t) }] : matches
     return [...closed, { start: event.t, end: null }]
@@ -200,6 +202,8 @@ export class LiveSession extends EventEmitter {
   }
 
   private onMatch(event: LiveMatchEvent): void {
+    const next = applyMatchEvent(this.matches, event)
+    if (event.ev === 'match_start' && next === this.matches) return
     if (event.ev === 'match_pending') this.pending = event.t
     else if (event.ev === 'match_cancel' || event.ev === 'match_start') this.pending = null
     this.options.recordEvent({ ev: event.ev, t: event.t, reason: event.reason })
@@ -207,7 +211,6 @@ export class LiveSession extends EventEmitter {
       this.emit('match', event.ev, this.matches.length + 1, event.t)
       return
     }
-    const next = applyMatchEvent(this.matches, event)
     if (next === this.matches) return
     this.matches = next
     this.scheduleWrite()

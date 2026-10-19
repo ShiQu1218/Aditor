@@ -5,7 +5,7 @@
 import fs from 'fs'
 import path from 'path'
 import { buildJobs, concatList, resolveFreeBaseName, resolveQuality, StreamProbe } from './plan'
-import { createCutLookup, createMediaEndProbe, CutLookup, lookupCopyCuts, MediaEndProbe, measureMediaEnds } from './keyframe'
+import { AudioProbe, createAudioProbe, createCutLookup, createMediaEndProbe, CutLookup, lookupCopyCuts, MediaEndProbe, measureMediaEnds } from './keyframe'
 import { runExport, RunExportOptions, RunProgress } from './run'
 import { isSafeLocalDirPath, isSafeLocalVideoPath, fileExistsSafe } from '../safe-path'
 import { estimateOutputBytes } from '../../shared/exportEstimate'
@@ -29,6 +29,8 @@ export interface ExportServiceDeps {
   probe?: (source: string) => Promise<unknown>
   ffmpeg?: RunExportOptions['ffmpeg']
   tempDir?: string
+  /** 精準合輯的音軌查詢；無音軌來源需先補靜音。 */
+  hasAudio?: AudioProbe
   /** 快速無損切點查詢（關鍵影格與終點）；預設以 ffprobe 只讀封包查詢 */
   copyCut?: CutLookup
   /** 合輯用：量中間檔實際播放終點；預設以 ffprobe 讀封包 */
@@ -189,11 +191,18 @@ export function createExportService(deps: ExportServiceDeps = {}) {
       const free = resolveFreeBaseName(req.outputDir, req.baseName, req.mode, req.items.length, (p) => fs.existsSync(p))
       // 快速無損：先查每段起點之前的關鍵影格與乾淨的終點，切點直接對齊（見 keyframe.ts）
       let copyCuts: Awaited<ReturnType<typeof lookupCopyCuts>> | undefined
+      const silentSources = new Set<string>()
       if (resolveQuality(req.items, req, probes).quality === 'copy') {
         copyCuts = await lookupCopyCuts(req.items, deps.copyCut ?? createCutLookup(), ac.signal)
         if (ac.signal.aborted) return { ok: false, cancelled: true, outputs: [], notices: [] }
+      } else if (req.mode === 'concat') {
+        const hasAudio = deps.hasAudio ?? createAudioProbe()
+        for (const source of probes.keys()) {
+          if (await hasAudio(source, ac.signal) === false) silentSources.add(source)
+          if (ac.signal.aborted) return { ok: false, cancelled: true, outputs: [], notices: [] }
+        }
       }
-      const naming = { ...req, outDir: req.outputDir, baseName: free.baseName, copyCuts }
+      const naming = { ...req, outDir: req.outputDir, baseName: free.baseName, copyCuts, silentSources }
       const { jobs, notices, concatListContent: staticList } = buildJobs(req.items, naming, probes)
       // 合輯：中間檔都完成後量每段實際播放終點，寫進清單的 duration（量不到就用原本的清單）
       const segmentFiles = jobs.filter((j) => j.intermediate).map((j) => j.output)

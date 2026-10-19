@@ -23,6 +23,10 @@ LOBBY_CONFIRM_SECONDS = 1.0  # 1 fps 下＝連續兩次取樣都是大廳
 # 暫定結束後這段時間內沒有回到對局 HUD 才確定（大廳誤判時不會把一局切成兩段）。
 LOBBY_SETTLE_SECONDS = 30.0
 PRE_MATCH_REARM_SECONDS = 10.0
+# 對局中連續全黑（DDA：遊戲不在前景）這麼久就視為離開對局，結束時間取黑畫面開始。
+# 打完切出去排下一局、跳傘才切回來時，看不到大廳與開局畫面，只能靠這個分局；
+# 從陣亡到下一局跳傘通常遠超過這個時間，短暫切出去查東西則不會拆局。
+BLANK_END_SECONDS = 60.0
 MAX_SAMPLE_GAP_FACTOR = 2.5
 
 
@@ -53,6 +57,7 @@ class MatchTracker:
         self._pre_last: float | None = None
         self._hud_first: float | None = None
         self._lobby_first: float | None = None
+        self._blank_first: float | None = None
         self._end_pending: float | None = None
         self._recover_initial = True
         self._finished = False
@@ -98,11 +103,21 @@ class MatchTracker:
             self._lobby_first = None
         if gap or scene.kind != "in_match_hud":
             self._hud_first = None
+        if gap or not scene.blank:
+            self._blank_first = None
         if self._pending is not None and t - self._pending > HUD_CONFIRM_SECONDS:
             self._events.append(MatchEvent("match_cancel", t, "timeout"))
             self._pending = None
         if self._end_pending is not None and t - self._end_pending >= LOBBY_SETTLE_SECONDS:
             self._settle_lobby()
+        if scene.blank:
+            if self._blank_first is None:
+                self._blank_first = t
+            if t - self._blank_first >= BLANK_END_SECONDS:
+                # 先前已看到大廳就以大廳為準；之後回到 HUD 要重新確認，不可回溯到錄影開頭。
+                self._settle_lobby()
+                self._end(self._blank_first, "hidden")
+                self._recover_initial = False
 
         if scene.kind == "pre_match":
             new_sequence = self._pre_last is None or t - self._pre_last >= PRE_MATCH_REARM_SECONDS

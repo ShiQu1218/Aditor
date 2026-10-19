@@ -38,6 +38,7 @@ export const recordingI18n: Messages['recordingI18n'] = {
     diskWarnGb: { title: '磁盘提醒阈值', desc: '剩余空间低于此值时通知。' },
     diskStopGb: { title: '磁盘停止阈值', desc: '剩余空间低于此值时停止录制并收尾；不可高于提醒阈值。' },
     notifyMatch: { title: '对局通知', desc: '对局检测完成后，通知对局开始与结束；错误一律通知。' },
+    openOnGameExit: { title: '游戏结束时打开 Aditor', desc: '检测到 Apex 关闭时自动显示 Aditor 窗口。' },
     height: { title: '分辨率', desc: '原生分辨率保留游戏画面大小。' },
     bitrateKbps: { title: '码率 (kbps)', desc: '数值越高，文件越大。' },
     fps: { title: '帧率 (FPS)', desc: '每秒录制的帧数。' },
@@ -46,7 +47,7 @@ export const recordingI18n: Messages['recordingI18n'] = {
     codec: { title: '编码格式', desc: '仅使用硬件编码；没有可用编码器时不录制。' },
     encoder: { title: '录制编码器', desc: '按当前编码格式列出录制器可用的硬件编码器。' },
     preset: { title: '编码预设', desc: '质量越高，GPU 使用量越高。' },
-    captureMethod: { title: '捕获方式', desc: '屏幕捕获（DDA，默认）录下游戏所在的整个屏幕，游戏鼠标延迟较低，但盖在游戏上的其他窗口也会被录进去；窗口捕获（WGC）只录游戏窗口。下次开始录制时生效。' },
+    captureMethod: { title: '捕获方式', desc: '窗口捕获（WGC，默认）只录游戏窗口，但大厅鼠标会有延迟；屏幕捕获（DDA）不会造成鼠标延迟，但会录下整个屏幕，盖在游戏上的窗口也会被录进去，游戏不在前台时为黑画面；游戏捕获（选用，需另外确认）注入 OBS 官方的捕获组件，不会造成鼠标延迟，游戏在后台或最小化时仍可录到画面，不可用时自动改用屏幕捕获。下次开始录制时生效。' },
     systemAudioEnabled: { title: '录制系统声音', desc: '将系统声音录进视频。' },
     renderDevice: { title: '系统声音设备', desc: '捕获此输出设备播放的系统声音。' },
     systemGain: { title: '系统声音音量', desc: '100% 为原始音量，最高 200%。' },
@@ -64,8 +65,41 @@ export const recordingI18n: Messages['recordingI18n'] = {
   analysisNone: '不分析',
   analysisAfterExit: '关闭 Apex 后',
   analysisPerMatch: '每局结束后',
+  captureHook: '游戏捕获',
   captureWgc: '窗口捕获（WGC）',
-  captureDda: '屏幕捕获（DDA，延迟较低）',
+  captureDda: '屏幕捕获（DDA）',
+  captureHookWarning: {
+    title: '使用游戏捕获前请注意',
+    sections: {
+      diff: {
+        heading: '游戏捕获与窗口捕获（WGC）的差别',
+        items: [
+          '窗口捕获（WGC，默认）：使用 Windows 内置的捕获功能录下游戏窗口，不会把任何东西放进游戏进程；但游戏画面会改由 Windows 桌面合成器（DWM）处理，大厅等界面的鼠标可能出现延迟。',
+          '游戏捕获：不会造成鼠标延迟；游戏切到后台或最小化时也能持续录到画面（例如打完一局切出去排队时，仍能正确分出两局）。'
+        ]
+      },
+      how: {
+        heading: '工作原理',
+        text: '游戏捕获与 OBS Studio 的“游戏捕获”使用同一个组件：Aditor 会把 OBS 官方发行、带有 OBS Project 数字签名的捕获组件（graphics-hook）加载到 Apex Legends 的进程中，在游戏每次输出画面时复制一份给 Aditor 录制。Aditor 未修改这个组件；它只处理画面输出，不会读取角色位置、血量等游戏状态。'
+      },
+      risk: {
+        heading: '风险',
+        items: [
+          '将外部组件加载到游戏进程中，可能被 Apex Legends 的反作弊系统（EA Javelin Anticheat）视为可疑行为。',
+          'Apex Legends 官方（EA／Respawn）目前并未公开说明是否允许这类捕获方式。OBS 的游戏捕获虽被广泛使用，但由 Aditor 加载同一组件，无法保证会被同样看待；反作弊的检测规则也可能随时更新，现在可用不代表日后可用。',
+          '可能的结果包括：捕获失败（Aditor 会自动改用屏幕捕获）、游戏被反作弊中断，最严重的是账号遭到停权或封禁。',
+          '若不确定，请使用默认的窗口捕获。'
+        ]
+      },
+      disclaimer: {
+        heading: '声明',
+        text: '按下“确认”即表示你已阅读并了解上述内容，并自行承担使用游戏捕获的一切风险；若账号因此遭到停权或封禁，本程序开发者一概不负责。'
+      }
+    },
+    cancel: '取消',
+    confirm: '确认',
+    confirmCountdown: '确认（{sec}）'
+  },
   capabilitiesUnavailable: '无法获取录制器支持信息，请确认 aditorrec 已安装；目前仅提供自动编码器与默认设备。',
   capabilitiesLoading: '正在获取录制器支持信息…',
   currentUnavailable: '当前设置：{value}（未检测到）',

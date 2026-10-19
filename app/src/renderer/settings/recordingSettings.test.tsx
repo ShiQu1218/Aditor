@@ -6,7 +6,7 @@ import { SettingsController, type SettingsApi } from './settingsController'
 import { DEFAULT_SETTINGS, type Settings } from '../../shared/settings'
 import type { RecorderCapabilities } from '../../shared/recording'
 import { recordingI18n as t } from '../i18n'
-import { cleanupMounted, click, flush, installDomShims, mount } from '../../../test/dom'
+import { cleanupMounted, click, flush, installDomShims, mount, press } from '../../../test/dom'
 
 const capabilities: RecorderCapabilities = {
   version: '0.1.0', encoders: ['hevc_nvenc', 'h264_nvenc', 'av1_qsv'],
@@ -29,7 +29,7 @@ function rig(caps: RecorderCapabilities | null = capabilities) {
   return { api, controller, set, listeners, emit: (settings: Settings) => listeners.forEach((cb) => cb(settings)) }
 }
 beforeEach(() => installDomShims())
-afterEach(() => { cleanupMounted(); vi.restoreAllMocks() })
+afterEach(() => { cleanupMounted(); vi.restoreAllMocks(); vi.useRealTimers() })
 const control = <T extends HTMLElement>(field: string): T => document.getElementById(`set-recording-${field}`) as T
 const options = (field: string): string[] => Array.from(control<HTMLSelectElement>(field).options).map((o) => o.value)
 async function show(caps: RecorderCapabilities | null = capabilities) {
@@ -130,7 +130,7 @@ describe('錄影設定畫面與 controller', () => {
       'backend',
       'height', 'bitrateKbps', 'fps', 'forceAspect', 'aspectMode', 'codec', 'encoder', 'preset', 'captureMethod',
       'systemAudioEnabled', 'renderDevice', 'systemGain', 'micEnabled', 'captureDevice', 'micGain', 'gameAudioOnly', 'micMono',
-      'diskWarnGb', 'diskStopGb', 'notifyMatch'
+      'diskWarnGb', 'diskStopGb', 'notifyMatch', 'openOnGameExit'
     ]
     expect(Array.from(document.querySelectorAll<HTMLElement>('[data-row]')).map((el) => el.dataset.row))
       .toEqual(fields.map((field) => `recording-${field}`))
@@ -149,7 +149,8 @@ describe('錄影設定畫面與 controller', () => {
     expect(options('captureDevice')).toEqual(['default', 'mic'])
     expect(options('height')).toEqual(['0', '720', '1080', '1440'])
     expect(Array.from(control('fps').querySelectorAll('input')).map((el) => el.value)).toEqual(['10', '20', '30', '60', '90', '120'])
-    expect(options('captureMethod')).toEqual(['wgc', 'dda'])
+    expect(options('captureMethod')).toEqual(['hook', 'dda', 'wgc'])
+    expect(control<HTMLSelectElement>('captureMethod').querySelector('option[value="hook"]')?.textContent).toBe('遊戲擷取')
   })
 
   test('開關、格式、裝置及數值單位會送出並同步回傳結果，重新掛載保留值', async () => {
@@ -260,4 +261,140 @@ describe('錄影設定畫面與 controller', () => {
     expect(document.querySelector('details')?.open).toBe(true)
   })
 
+  test('切換至遊戲擷取跳出 5 秒警告對話框：倒數期間停用確認，5 秒後確認才套用 hook；從 hook 改回其他方式不跳出', async () => {
+    const r = await show()
+    const details = control('captureMethod').closest('details')!
+    details.open = true
+    expect(control<HTMLSelectElement>('captureMethod').value).toBe('wgc')
+
+    vi.useFakeTimers()
+    select('captureMethod', 'hook')
+
+    const dlg = document.querySelector<HTMLElement>('[role="alertdialog"]')!
+    expect(dlg).not.toBeNull()
+    expect(dlg.getAttribute('aria-modal')).toBe('true')
+    expect(document.getElementById(dlg.getAttribute('aria-labelledby')!)?.textContent).toBe('使用遊戲擷取前請注意')
+    const descEl = document.getElementById(dlg.getAttribute('aria-describedby')!)!
+    expect(descEl.classList.contains('set-dlg-body')).toBe(true)
+    expect(descEl.tabIndex).toBe(0)
+    expect(Array.from(descEl.querySelectorAll('h4')).map((el) => el.textContent)).toEqual([
+      '遊戲擷取與視窗擷取（WGC）的差別',
+      '運作原理',
+      '風險',
+      '聲明'
+    ])
+    expect(descEl.textContent).toContain('graphics-hook')
+    expect(descEl.textContent).toContain('EA Javelin Anticheat')
+    expect(r.controller.getState().settings?.recording.captureMethod).toBe('wgc')
+    expect(control<HTMLSelectElement>('captureMethod').value).toBe('wgc')
+    expect(r.set).not.toHaveBeenCalled()
+
+    const cancelBtn = document.getElementById('set-recording-captureHook-cancel') as HTMLButtonElement
+    const confirmBtn = document.getElementById('set-recording-captureHook-confirm') as HTMLButtonElement
+    expect(document.activeElement).toBe(cancelBtn)
+    expect(confirmBtn.disabled).toBe(true)
+    expect(confirmBtn.textContent).toBe('確認（5）')
+
+    // 倒數期間點擊、Enter、空白鍵均無法確認
+    click(confirmBtn)
+    act(() => {
+      confirmBtn.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+      confirmBtn.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true }))
+    })
+    expect(document.querySelector('[role="alertdialog"]')).not.toBeNull()
+    expect(r.controller.getState().settings?.recording.captureMethod).toBe('wgc')
+
+    // 逐秒倒數至第 4 秒仍停用
+    for (const expected of ['確認（4）', '確認（3）', '確認（2）', '確認（1）']) {
+      act(() => { vi.advanceTimersByTime(1000) })
+      expect(confirmBtn.disabled).toBe(true)
+      expect(confirmBtn.textContent).toBe(expected)
+    }
+    click(confirmBtn)
+    expect(r.controller.getState().settings?.recording.captureMethod).toBe('wgc')
+
+    // 滿 5 秒後啟用並顯示「確認」
+    act(() => { vi.advanceTimersByTime(1000) })
+    expect(confirmBtn.disabled).toBe(false)
+    expect(confirmBtn.textContent).toBe('確認')
+
+    vi.useRealTimers()
+    click(confirmBtn)
+    await flush()
+    expect(document.querySelector('[role="alertdialog"]')).toBeNull()
+    expect(r.controller.getState().settings?.recording.captureMethod).toBe('hook')
+    expect(control<HTMLSelectElement>('captureMethod').value).toBe('hook')
+    expect(document.activeElement).toBe(control('captureMethod'))
+
+    // 已是 hook 時重新選 hook 不跳出
+    select('captureMethod', 'hook')
+    await flush()
+    expect(document.querySelector('[role="alertdialog"]')).toBeNull()
+
+    // 從 hook 改回其他方式直接套用，不跳出對話框
+    select('captureMethod', 'dda')
+    await flush()
+    expect(document.querySelector('[role="alertdialog"]')).toBeNull()
+    expect(r.controller.getState().settings?.recording.captureMethod).toBe('dda')
+
+    // 再次從其他方式切回 hook 仍要跳出（不記住確認）
+    select('captureMethod', 'hook')
+    await flush()
+    expect(document.querySelector('[role="alertdialog"]')).not.toBeNull()
+  })
+
+  test('遊戲擷取警告對話框：取消、Esc、點外部均維持原值並將焦點還原至下拉選單，且鎖定 Tab 焦點', async () => {
+    const r = await show()
+    const selectEl = control<HTMLSelectElement>('captureMethod')
+    selectEl.closest('details')!.open = true
+    select('captureMethod', 'dda')
+    await flush()
+    r.set.mockClear()
+
+    // 1. 按下「取消」
+    select('captureMethod', 'hook')
+    await flush()
+    const cancelBtn = document.getElementById('set-recording-captureHook-cancel') as HTMLButtonElement
+    const bodyEl = document.getElementById('set-capture-hook-warn-desc') as HTMLElement
+    expect(document.activeElement).toBe(cancelBtn)
+
+    // Tab 焦點鎖在對話框內（確認按鈕 disabled 時在可捲動內文容器與取消按鈕之間循環）
+    press(cancelBtn, 'Tab')
+    expect(document.activeElement).toBe(bodyEl)
+    press(bodyEl, 'Tab')
+    expect(document.activeElement).toBe(cancelBtn)
+
+    click(cancelBtn)
+    await flush()
+    expect(document.querySelector('[role="alertdialog"]')).toBeNull()
+    expect(r.controller.getState().settings?.recording.captureMethod).toBe('dda')
+    expect(selectEl.value).toBe('dda')
+    expect(r.set).not.toHaveBeenCalled()
+    expect(document.activeElement).toBe(selectEl)
+
+    // 2. 按下 Escape
+    select('captureMethod', 'hook')
+    await flush()
+    expect(document.querySelector('[role="alertdialog"]')).not.toBeNull()
+    press(document.activeElement!, 'Escape')
+    await flush()
+    expect(document.querySelector('[role="alertdialog"]')).toBeNull()
+    expect(r.controller.getState().settings?.recording.captureMethod).toBe('dda')
+    expect(selectEl.value).toBe('dda')
+    expect(r.set).not.toHaveBeenCalled()
+    expect(document.activeElement).toBe(selectEl)
+
+    // 3. 點擊對話框外部遮罩
+    select('captureMethod', 'hook')
+    await flush()
+    const scrim = document.querySelector<HTMLElement>('.set-dlg-scrim')!
+    click(scrim)
+    await flush()
+    expect(document.querySelector('[role="alertdialog"]')).toBeNull()
+    expect(r.controller.getState().settings?.recording.captureMethod).toBe('dda')
+    expect(selectEl.value).toBe('dda')
+    expect(document.activeElement).toBe(selectEl)
+  })
+
 })
+

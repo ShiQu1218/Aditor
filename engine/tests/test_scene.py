@@ -53,7 +53,14 @@ def test_summary_is_positive_initial_match_context(detector):
 def test_flat_frames_are_other(detector, value):
     scene = detector.classify(np.full((360, 640), value, np.uint8))
     assert scene.kind == "other" and not scene.match_context
+    assert scene.blank == (value == 0)
     assert all(np.isfinite(v) for v in scene.scores.values())
+
+
+def test_dark_content_is_not_blank(detector):
+    frame = np.zeros((360, 640), np.uint8)
+    frame[100:110, 200:260] = 40
+    assert not detector.classify(frame).blank
 
 
 @pytest.mark.parametrize("frame", [np.zeros((180, 320), np.uint8),

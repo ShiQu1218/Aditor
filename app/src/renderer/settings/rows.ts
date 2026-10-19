@@ -142,7 +142,7 @@ export const SETTING_ROWS: SettingRow[] = [
   ...recordingRows(rc.recorder, ['backend', 'obsHost', 'obsPort', 'obsPassword', 'obsFallbackBuiltin']),
   ...recordingRows(rc.video, ['height', 'bitrateKbps', 'fps', 'forceAspect', 'aspectMode', 'codec', 'encoder', 'preset', 'captureMethod']),
   ...recordingRows(rc.audio, ['systemAudioEnabled', 'renderDevice', 'systemGain', 'micEnabled', 'captureDevice', 'micGain', 'gameAudioOnly', 'micMono']),
-  ...recordingRows(rc.disk, ['diskWarnGb', 'diskStopGb', 'notifyMatch']),
+  ...recordingRows(rc.disk, ['diskWarnGb', 'diskStopGb', 'notifyMatch', 'openOnGameExit']),
   // ── 匯入與分析 ──
   {
     id: 'watchFolders',

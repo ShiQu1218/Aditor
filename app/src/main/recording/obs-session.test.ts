@@ -57,6 +57,7 @@ describe('OBS 錄影生命週期', () => {
     expect(r.service.status()).toMatchObject({ phase: 'recording', backend: 'obs' })
     const start = fs.readFileSync(r.trace, 'utf8').trim().split('\n').map((s) => JSON.parse(s)).find((v) => v.cmd === 'start')
     expect(start).toMatchObject({ encode: null, audio: null, capture: 'dda' })
+    expect(start.hook_dir).toBeUndefined()
     expect(server.calls.filter((c) => c === 'StartRecord')).toHaveLength(1)
     await r.service.stopManual()
     expect(server.calls.filter((c) => c === 'StopRecord')).toHaveLength(1)

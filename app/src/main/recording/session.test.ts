@@ -90,6 +90,87 @@ describe('錄影服務狀態機', () => {
     expect(commands(value, 'stop')).toHaveLength(0)
   })
 
+  it('預設擷取方式為 wgc；選用 hook 時傳入 hook_dir，未提供 obsHookDir 時退回 dda', async () => {
+    const value = rig()
+    value.service.start()
+    await waitFor(() => value.service.status().phase === 'recording')
+    const [defaultStart] = commands(value, 'start')
+    expect(defaultStart.capture).toBe('wgc')
+    expect(defaultStart.hook_dir).toBeUndefined()
+    await value.service.stopManual()
+    value.settings.captureMethod = 'hook'
+    expect(await value.service.startManual()).toBe(true)
+    const [, first] = commands(value, 'start')
+    expect(first).toMatchObject({ capture: 'hook', hook_dir: path.join(value.root, 'obs-hook') })
+    await value.service.stopManual()
+    value.deps.obsHookDir = undefined
+    expect(await value.service.startManual()).toBe(true)
+    const [, , second] = commands(value, 'start')
+    expect(second.capture).toBe('dda')
+    expect(second.hook_dir).toBeUndefined()
+  })
+
+  it('start 回傳 hook_unavailable 時通知一次並立即改用 dda，同 PID 維持 dda，換 PID 恢復 hook', async () => {
+    const value = rig('hook-unavailable')
+    value.settings.captureMethod = 'hook'
+    value.service.start()
+    await waitFor(() => value.service.status().phase === 'recording')
+    const starts = commands(value, 'start')
+    expect(starts).toHaveLength(2)
+    expect(starts[0]).toMatchObject({ pid: 1234, capture: 'hook', hook_dir: path.join(value.root, 'obs-hook') })
+    expect(starts[1]).toMatchObject({ pid: 1234, capture: 'dda' })
+    expect(starts[1].hook_dir).toBeUndefined()
+    const warnings = vi.mocked(value.deps.notify).mock.calls.filter(([kind]) => kind === 'warning')
+    expect(warnings).toEqual([['warning', '遊戲擷取無法使用，本次改用螢幕擷取（DDA）：注入逾時']])
+
+    // 同 PID 手動停止再重新開始，仍記住使用 dda，不再重試 hook 或重複通知
+    await value.service.stopManual()
+    expect(await value.service.startManual()).toBe(true)
+    const afterManual = commands(value, 'start')
+    expect(afterManual).toHaveLength(3)
+    expect(afterManual[2]).toMatchObject({ pid: 1234, capture: 'dda' })
+    expect(vi.mocked(value.deps.notify).mock.calls.filter(([kind]) => kind === 'warning')).toHaveLength(1)
+
+    // PID 改變後清除退回記憶，恢復嘗試 hook
+    value.pid = 5678
+    await waitFor(() => commands(value, 'start').length >= 5)
+    const afterNewPid = commands(value, 'start')
+    expect(afterNewPid[3]).toMatchObject({ pid: 5678, capture: 'hook', hook_dir: path.join(value.root, 'obs-hook') })
+    expect(afterNewPid[4]).toMatchObject({ pid: 5678, capture: 'dda' })
+  })
+
+  it('hook 退回後改選 WGC，同一 PID 重新錄影會採用目前設定', async () => {
+    const value = rig('hook-unavailable')
+    value.settings.captureMethod = 'hook'
+    value.service.start()
+    await waitFor(() => value.service.status().phase === 'recording')
+    await value.service.stopManual()
+
+    value.settings.captureMethod = 'wgc'
+    expect(await value.service.startManual()).toBe(true)
+    expect(commands(value, 'start').map((start) => start.capture)).toEqual(['hook', 'dda', 'wgc'])
+    expect(value.settings.captureMethod).toBe('wgc')
+    expect(commands(value, 'start').at(-1)!.hook_dir).toBeUndefined()
+
+    await value.service.stopManual()
+    value.settings.captureMethod = 'hook'
+    expect(await value.service.startManual()).toBe(true)
+    expect(commands(value, 'start').at(-1)!.capture).toBe('dda')
+  })
+
+  it('錄影中收到 hook_unavailable 錯誤事件時通知一次並立即以 dda 重新開始', async () => {
+    const value = rig('async-hook-unavailable')
+    value.settings.captureMethod = 'hook'
+    value.service.start()
+    await waitFor(() => commands(value, 'start').length === 2 && value.service.status().phase === 'recording')
+    const starts = commands(value, 'start')
+    expect(starts[0]).toMatchObject({ capture: 'hook', hook_dir: path.join(value.root, 'obs-hook') })
+    expect(starts[1]).toMatchObject({ capture: 'dda' })
+    expect(starts[1].hook_dir).toBeUndefined()
+    const warnings = vi.mocked(value.deps.notify).mock.calls.filter(([kind]) => kind === 'warning')
+    expect(warnings).toEqual([['warning', '遊戲擷取無法使用，本次改用螢幕擷取（DDA）：遊戲材質遺失']])
+  })
+
   it('偵測到 Apex 後先等遊戲啟動穩定才開始擷取，避開啟動與反作弊載入階段', async () => {
     const value = rig()
     value.deps.gameStartDelayMs = 400
@@ -260,6 +341,39 @@ describe('錄影服務狀態機', () => {
     await waitFor(() => value.service.status().phase === 'recording')
     expect(commands(value, 'start').map((entry) => entry.pid)).toEqual([5678])
     expect(commands(value, 'stop')).toHaveLength(0)
+  })
+
+  it('Apex 結束（PID 非 null → null）且 openOnGameExit 開啟時觸發一次 onGameExit；關閉設定、啟動時未開遊戲或換 PID 不觸發', async () => {
+    const value = rig()
+    const onGameExit = vi.fn()
+    value.deps.onGameExit = onGameExit
+    value.settings.autoRecord = false
+    value.pid = null
+    value.service.start()
+    await waitFor(() => vi.mocked(value.deps.findApexPid!).mock.calls.length >= 3)
+    expect(onGameExit).not.toHaveBeenCalled()
+
+    value.pid = 1234
+    let polls = vi.mocked(value.deps.findApexPid!).mock.calls.length
+    await waitFor(() => vi.mocked(value.deps.findApexPid!).mock.calls.length >= polls + 3)
+    value.pid = 5678
+    polls = vi.mocked(value.deps.findApexPid!).mock.calls.length
+    await waitFor(() => vi.mocked(value.deps.findApexPid!).mock.calls.length >= polls + 3)
+    expect(onGameExit).not.toHaveBeenCalled()
+
+    value.pid = null
+    polls = vi.mocked(value.deps.findApexPid!).mock.calls.length
+    await waitFor(() => vi.mocked(value.deps.findApexPid!).mock.calls.length >= polls + 4)
+    expect(onGameExit).toHaveBeenCalledTimes(1)
+
+    value.settings.openOnGameExit = false
+    value.pid = 9999
+    polls = vi.mocked(value.deps.findApexPid!).mock.calls.length
+    await waitFor(() => vi.mocked(value.deps.findApexPid!).mock.calls.length >= polls + 3)
+    value.pid = null
+    polls = vi.mocked(value.deps.findApexPid!).mock.calls.length
+    await waitFor(() => vi.mocked(value.deps.findApexPid!).mock.calls.length >= polls + 3)
+    expect(onGameExit).toHaveBeenCalledTimes(1)
   })
 })
 
