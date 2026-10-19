@@ -234,3 +234,16 @@ def test_events_unsorted_input():
     assert (clips[0].start, clips[0].end) == (92.0, 114.0)
     assert clips[0].event_ids == ["e_100000", "e_105000", "e_110000"]
 
+
+def test_many_equal_gaps_do_not_exhaust_recursion_and_keep_earliest_cuts():
+    events = [make_event(float(i * 15)) for i in range(3000)]
+    clips = auto_clips(events, P, 45000.0)
+    # 同間隔仍優先取最早可保留三筆事件的切點，末段容納剩餘六筆。
+    assert len(clips) == 999
+    assert clips[0].event_ids == [e.id for e in events[:3]]
+    assert clips[-1].event_ids == [e.id for e in events[-6:]]
+    assert [eid for clip in clips for eid in clip.event_ids] == [e.id for e in events]
+    assert all(0 <= clip.start < clip.end <= 45000.0 and clip.end - clip.start <= P.max_len
+               for clip in clips)
+    assert all(a.end <= b.start for a, b in zip(clips, clips[1:]))
+

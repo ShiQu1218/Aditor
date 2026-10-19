@@ -21,7 +21,7 @@ def auto_clips(events: list[Event], params: AutoClipParams, duration: float) -> 
     1. 僅使用 is_counted 為 True 的事件，依時間排序。相鄰事件間隔 <= gap 歸為同一群。
     2. 群內事件數 >= n 才成立。
     3. 片段範圍為 [首殺 - before, 末殺 + after]，限制在影片範圍 [0, duration] 內。
-    4. 若片段超過 max_len：在群內最大事件間隔處切成兩個子群，各自遞迴；子群若事件數 < n 則不成立。
+    4. 若片段超過 max_len：在群內最大事件間隔處切成兩個子群，持續切分；子群若事件數 < n 則不成立。
        若群內事件時間完全相同無法切割，則輸出置中於群、長度為 max_len 且限制在影片範圍內的片段。
     5. 重疊片段處理：
        - 若合併後長度 <= max_len，則合併為一段（聯集 event_ids，依時間排序）。
@@ -55,44 +55,42 @@ def auto_clips(events: list[Event], params: AutoClipParams, duration: float) -> 
     if not valid_groups:
         return []
 
-    # 3 & 4. 遞迴轉換群為候選片段（若超出 max_len 則在最大相鄰間隔處切開遞迴）
+    # 3 & 4. 用索引範圍切分，避免深層遞迴與反覆複製子群；右側先入堆疊，維持由左到右輸出。
     def _split_group(grp: list[Event]) -> list[_DraftClip]:
-        if len(grp) < params.n:
-            return []
+        clips: list[_DraftClip] = []
+        pending = [(0, len(grp))]
+        while pending:
+            lo, hi = pending.pop()
+            if hi - lo < params.n:
+                continue
 
-        start = max(0.0, grp[0].t - params.before)
-        end = min(duration, grp[-1].t + params.after)
+            start = max(0.0, grp[lo].t - params.before)
+            end = min(duration, grp[hi - 1].t + params.after)
+            if end <= start:
+                continue
 
-        if end <= start:
-            return []
+            if (end - start) <= params.max_len + 1e-9:
+                clips.append(_DraftClip(start, end, [grp[i].id for i in range(lo, hi)]))
+                continue
 
-        if (end - start) <= params.max_len + 1e-9:
-            return [_DraftClip(start=start, end=end, event_ids=[e.id for e in grp])]
+            if grp[hi - 1].t == grp[lo].t:
+                # 同時間事件無法切割，沿用置中並限制於影片範圍內的規則。
+                center = (grp[lo].t + grp[hi - 1].t) / 2.0
+                c_start = max(0.0, center - params.max_len / 2.0)
+                c_end = min(duration, c_start + params.max_len)
+                if c_end - c_start < params.max_len and c_start > 0.0:
+                    c_start = max(0.0, c_end - params.max_len)
+                clips.append(_DraftClip(c_start, c_end, [grp[i].id for i in range(lo, hi)]))
+                continue
 
-        # 計算群內相鄰事件間隔
-        gaps = [grp[i + 1].t - grp[i].t for i in range(len(grp) - 1)]
-        if not gaps or max(gaps) <= 0.0:
-            # 群內事件時間完全相同無法以相鄰間隔切割時，
-            # 輸出置中於群、長度限制為 max_len 的片段（限制在影片範圍 [0, duration] 內）
-            center = (grp[0].t + grp[-1].t) / 2.0
-            c_start = max(0.0, center - params.max_len / 2.0)
-            c_end = min(duration, c_start + params.max_len)
-            if c_end - c_start < params.max_len and c_start > 0.0:
-                c_start = max(0.0, c_end - params.max_len)
-            return [_DraftClip(start=c_start, end=c_end, event_ids=[e.id for e in grp])]
-
-        # 優先在能讓兩子群皆具備 >= n 個事件的候選點中尋找最大相鄰間隔（ties: 優先取最早者）
-        valid_indices = [i for i in range(params.n - 1, len(grp) - params.n)]
-        if valid_indices:
-            best_i = max(valid_indices, key=lambda i: (grp[i + 1].t - grp[i].t))
-        else:
-            # 群事件數 < 2 * n 時無法兩邊皆 >= n，直接在所有相鄰間隔中取最大者（ties: 取最早者）；
-            # 切割後事件數 < n 的子群遞迴時會自然回傳空清單（不產生片段）。
-            best_i = max(range(len(grp) - 1), key=lambda i: (grp[i + 1].t - grp[i].t))
-
-        left = grp[: best_i + 1]
-        right = grp[best_i + 1 :]
-        return _split_group(left) + _split_group(right)
+            # 優先讓兩側皆 >= n；若無法成立則允許不足 n 的子群被捨棄。同間隔取最早切點。
+            candidates = range(lo + params.n - 1, hi - params.n)
+            if not candidates:
+                candidates = range(lo, hi - 1)
+            best_i = max(candidates, key=lambda i: grp[i + 1].t - grp[i].t)
+            pending.append((best_i + 1, hi))
+            pending.append((lo, best_i + 1))
+        return clips
 
     draft_clips: list[_DraftClip] = []
     for g in valid_groups:

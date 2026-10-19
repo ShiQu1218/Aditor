@@ -1,11 +1,22 @@
 """計數推導：依規則設定事件的 counted 與 counted_reason，並進行同敵人去重（spec §5.3）。"""
 from __future__ import annotations
 
+from collections import deque
 from dataclasses import replace
+from functools import lru_cache
 
 from apexhl.detect import same_name
 from apexhl.models import COUNTING_TYPES, Event, NameSig, SpecInterval
 from apexhl.profile import Profile
+
+
+def _decode_sig(value: str | None) -> NameSig | None:
+    if not value:
+        return None
+    try:
+        return NameSig.from_b64(value)
+    except Exception:
+        return None
 
 
 def sig_similar(a: str | None, b: str | None, threshold: float) -> bool:
@@ -13,14 +24,7 @@ def sig_similar(a: str | None, b: str | None, threshold: float) -> bool:
 
     任一為 None → False；其餘解碼後委託 detect.same_name（含寬度比差 ≥ 15% 門檻與相關係數）。
     """
-    if not a or not b:
-        return False
-    try:
-        sig_a = NameSig.from_b64(a)
-        sig_b = NameSig.from_b64(b)
-    except Exception:
-        return False
-    return same_name(sig_a, sig_b, threshold)
+    return same_name(_decode_sig(a), _decode_sig(b), threshold)
 
 
 def is_counted(e: Event) -> bool:
@@ -50,7 +54,9 @@ def derive(
     """
     sorted_events = sorted(events, key=lambda ev: ev.t)
     result: list[Event] = []
-    first_events: list[Event] = []
+    first_events: deque[tuple[float, NameSig]] = deque()
+    # 快取只存在於本次推導，並限制數量，避免長影片保留所有指紋。
+    decode_sig = lru_cache(maxsize=256)(_decode_sig)
 
     for e in sorted_events:
         if e.deleted:
@@ -63,14 +69,13 @@ def derive(
             counted = False
             counted_reason = "spectating"
         else:
-            is_dup = False
-            if e.name_sig is not None:
-                for f in first_events:
-                    if 0 <= e.t - f.t <= profile.dedupe_window and sig_similar(
-                        f.name_sig, e.name_sig, profile.name_sig_threshold
-                    ):
-                        is_dup = True
-                        break
+            while first_events and e.t - first_events[0][0] > profile.dedupe_window:
+                first_events.popleft()
+            sig = decode_sig(e.name_sig) if isinstance(e.name_sig, str) else None
+            is_dup = sig is not None and any(
+                0 <= e.t - t <= profile.dedupe_window and same_name(first_sig, sig, profile.name_sig_threshold)
+                for t, first_sig in first_events
+            )
 
             if is_dup:
                 counted = False
@@ -78,8 +83,8 @@ def derive(
             else:
                 counted = True
                 counted_reason = "first"
-                if e.name_sig is not None:
-                    first_events.append(e)
+                if sig is not None:
+                    first_events.append((e.t, sig))
 
         new_event = replace(e, counted=counted, counted_reason=counted_reason)
         result.append(new_event)

@@ -44,7 +44,7 @@ def _collect(path: str, profile: Profile, probe: IconDetector, multi: IconDetect
             scanned += 1.0 / FPS
             if probe.chev_best(banner)[0] < PROBE_MIN:
                 continue
-            f = multi.features(banner)
+            f = multi.score_features(banner)
             if f.chev >= multi.p.chev_min and f.plus >= multi.p.plus_min:
                 hits.append(f.chev_scale)
                 if len(hits) >= WANTED_HITS:

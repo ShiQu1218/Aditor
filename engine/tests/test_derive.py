@@ -196,3 +196,48 @@ def test_is_counted_deleted():
 
     e_del_no_override = make_event(deleted=True, counted=True)
     assert is_counted(e_del_no_override) is False
+
+
+def test_dedupe_window_is_inclusive_and_duplicates_do_not_extend_it(profile):
+    sig_a = make_sig(1)
+    times = [0.0, 45.0, 90.0, 90.25, 180.25, 180.5]
+    events = [make_event(id=str(i), t=t, name_sig=sig_a) for i, t in enumerate(times)]
+    result = derive(list(reversed(events)), [], profile)
+    assert [e.counted_reason for e in result] == [
+        "first", "duplicate", "duplicate", "first", "duplicate", "first",
+    ]
+
+
+def test_dedupe_matches_similar_but_different_encoded_signatures(profile):
+    sig_a = make_sig(1)
+    changed = NameSig.from_b64(sig_a)
+    changed.bits[4, 10:15] ^= 1
+    sig_b = changed.to_b64()
+    assert sig_a != sig_b
+    events = [make_event(id="a", t=0.0, name_sig=sig_a),
+              make_event(id="b", t=1.0, name_sig=sig_b),
+              make_event(id="c", t=91.0, name_sig=sig_b)]
+    assert [e.counted_reason for e in derive(events, [], profile)] == ["first", "duplicate", "first"]
+
+
+def test_invalid_signatures_do_not_dedupe_or_block_valid_events(profile):
+    signatures = [None, "", "bad", "60:AA==", [], {}, make_sig(1), make_sig(1)]
+    events = [make_event(id=str(i), t=float(i), name_sig=value) for i, value in enumerate(signatures)]
+    assert [e.counted_reason for e in derive(events, [], profile)] == ["first"] * 7 + ["duplicate"]
+
+
+def test_repeated_signatures_are_decoded_once_per_derivation(profile, monkeypatch):
+    sig_a = make_sig(1)
+    decode = NameSig.from_b64
+    calls = []
+
+    def tracked(cls, value):
+        calls.append(value)
+        return decode(value)
+
+    monkeypatch.setattr(NameSig, "from_b64", classmethod(tracked))
+    events = [make_event(id=str(i), t=i * 0.25, name_sig=sig_a) for i in range(20)]
+    for _ in range(2):
+        result = derive(events, [], profile)
+        assert [e.counted for e in result] == [True] + [False] * 19
+    assert calls == [sig_a, sig_a]

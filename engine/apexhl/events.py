@@ -9,6 +9,8 @@
 """
 from __future__ import annotations
 
+from bisect import bisect_left
+
 from apexhl.detect import fragment_of as fragment_related
 from apexhl.detect import same_name
 from apexhl.models import Event, FrameResult, NameSig, SpecInterval
@@ -51,6 +53,11 @@ class _Run:
         self.disc_idx: int | None = None  # 空白格之後第一格在 frames 的索引（若之後確認是新橫幅，新事件從這格起算）
         self._sigs: list[NameSig] = []   # 已確認（非暫列）格的指紋，依時間排序
         self._support: list[int] = []    # 與各指紋「同一人」的其他指紋數
+        self._counts: dict[str, tuple[int, int]] = {}  # 類型 → (格數, 最後出現索引)
+        self._score = 0.0
+        self._damage = False
+        self._times: list[float] = []  # 確認連續兩格前的有橫幅時間，依時間排序
+        self._has_pair = False
 
     # --- 彙整 ---
     @property
@@ -60,14 +67,7 @@ class _Run:
     @property
     def kind(self) -> str | None:
         """run 的類型：畫格類型的多數（同數取較晚者）。淡入時圖示線索讀不準，多數決讓整段穩定。"""
-        counts: dict[str, int] = {}
-        for _, r in self.frames:
-            counts[r.kind] = counts.get(r.kind, 0) + 1
-        top = max(counts.values())
-        for _, r in reversed(self.frames):
-            if counts[r.kind] == top:
-                return r.kind
-        return None
+        return max(self._counts, key=self._counts.__getitem__)
 
     @property
     def first_t(self) -> float:
@@ -84,16 +84,15 @@ class _Run:
 
     @property
     def score(self) -> float:
-        return max(r.score for _, r in self.frames)
+        return self._score
 
     @property
     def damage(self) -> bool:
-        return any(r.damage_line for _, r in self.frames)
+        return self._damage
 
     @property
     def has_pair(self) -> bool:
-        ts = sorted([t for t, _ in self.frames] + self.cont_ts)
-        return any(b - a < STEP + _EPS for a, b in zip(ts, ts[1:]))
+        return self._has_pair
 
     @property
     def stable(self) -> bool:
@@ -123,15 +122,39 @@ class _Run:
     def reset(self, frames: list[tuple[float, FrameResult]], cont_ts: list[float] | None = None) -> None:
         """以給定畫格重建本 run 的彙整狀態（分裂時把後半段移給新 run）。"""
         self.frames, self.pending = [], None
-        self.cont_ts = [t for t in (cont_ts or []) if frames and t >= frames[0][0]]
+        self.cont_ts = []
         self._sigs, self._support = [], []
+        self._counts, self._times = {}, []
+        self._score, self._damage, self._has_pair = 0.0, False, False
         self.discontinuity, self.disc_idx = False, None
         for t, r in frames:
             self.add(t, r)
+        for t in cont_ts or []:
+            if frames and t >= frames[0][0]:
+                self.add_cont(t)
 
     # --- 變更 ---
+    def _add_time(self, t: float) -> None:
+        if self._has_pair:
+            return
+        # reset 時命中格與 cont 格分別重放，插入相鄰位置即可確認是否有連續兩格。
+        i = bisect_left(self._times, t)
+        self._has_pair = ((i > 0 and t - self._times[i - 1] < STEP + _EPS)
+                          or (i < len(self._times) and self._times[i] - t < STEP + _EPS))
+        self._times.insert(i, t)
+
+    def add_cont(self, t: float) -> None:
+        self.cont_ts.append(t)
+        self._add_time(t)
+
     def add(self, t: float, r: FrameResult, *, tentative: bool = False) -> None:
+        i = len(self.frames)
         self.frames.append((t, r))
+        count, _ = self._counts.get(r.kind, (0, 0))
+        self._counts[r.kind] = (count + 1, i)
+        self._score = r.score if i == 0 else max(self._score, r.score)
+        self._damage = self._damage or r.damage_line
+        self._add_time(t)
         if tentative:
             self.pending = (t, r)
             return
@@ -222,7 +245,7 @@ class EventTracker:
             if run is None:
                 return
             if r.hint == "cont" and run.family == "P" and t - run.reach_t - STEP < GAP - _EPS:
-                run.cont_ts.append(t)
+                run.add_cont(t)
                 self._emit(run)
             return
         fam = _family(r.kind)
@@ -292,9 +315,7 @@ class EventTracker:
         elif old.event is not None:
             self._emit(old)
         new = self._run = _Run(self._threshold, False)
-        new.cont_ts = [t for t in cont if t >= moved[0][0]]
-        for mt, mr in moved:
-            new.add(mt, mr)
+        new.reset(moved, cont)
         return new
 
     def _split(self, old: _Run, pend: tuple[float, FrameResult], t: float, r: FrameResult) -> None:

@@ -25,6 +25,30 @@ def _kind(det, lang, name):
     return det.detect(b, s)
 
 
+@pytest.mark.parametrize("scales", [(1.0,), (0.9, 0.95, 1.0, 1.05, 1.1)])
+@pytest.mark.parametrize("lang,name", [("en", "knock_a002500.png"), ("en", "assist_knock_a006500.png"),
+                                      ("ja", "assist_elim_a102375.png"), ("en", None)])
+def test_scale_scores_match_full_features_without_other_icon_searches(scales, lang, name, monkeypatch):
+    if name is None:
+        banner = np.zeros((180, 800, 3), np.uint8)
+    else:
+        banner, _ = load_fixture(name, lang)
+    detector = IconDetector(ICON_DIR, scales=scales)
+    expected = detector.features(banner)
+    best = detector._best
+    searched = []
+
+    def tracked(g, key, scales=None):
+        searched.append(key)
+        return best(g, key, scales)
+
+    monkeypatch.setattr(detector, "_best", tracked)
+    actual = detector.score_features(banner)
+    for key in ("chev", "chev_x", "chev_y", "chev_scale", "plus", "plus_x", "row_h"):
+        assert getattr(actual, key) == getattr(expected, key)
+    assert set(searched) <= {"chev", "plus"}
+
+
 def test_icon_templates_are_small_pngs():
     total = 0
     for k in ICON_NAMES:

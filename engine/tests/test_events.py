@@ -95,6 +95,34 @@ def test_score_max_and_damage_any():
     assert ev[0].score == 0.95 and ev[0].damage_line is True
 
 
+def test_majority_tie_uses_latest_kind_and_updates_on_next_frame():
+    tracker = EventTracker(PROFILE)
+    for i, kind in enumerate(["knock", "knock", "assist_knock", "assist_knock"]):
+        tracker.feed(i * 0.25, fr(kind))
+    events, _ = tracker.snapshot()
+    assert len(events) == 1 and events[0].type == "assist_knock"
+    tracker.feed(1.0, fr("knock"))
+    events, _ = tracker.finish()
+    assert len(events) == 1 and events[0].type == "knock"
+
+
+def test_kind_split_rebuilds_score_and_damage_for_both_events():
+    frames = [(i * 0.25, fr("assist_knock", score=0.7)) for i in range(3)]
+    frames += [(i * 0.25, fr("knock", score=0.99, damage=True)) for i in range(3, 6)]
+    events, _ = run(frames)
+    assert [(e.t, e.type, e.score, e.damage_line) for e in events] == [
+        (0.0, "assist_knock", 0.7, False), (0.75, "knock", 0.99, True),
+    ]
+
+
+def test_continuation_can_establish_pair_without_changing_hit_statistics():
+    tracker = EventTracker(PROFILE)
+    tracker.feed(0.0, fr("knock", score=0.7))
+    tracker.feed(0.25, fr(hint="cont", score=0.99, damage=True))
+    events, _ = tracker.snapshot()
+    assert [(e.t, e.score, e.damage_line) for e in events] == [(0.0, 0.7, False)]
+
+
 def test_spectating_interval():
     frames = [(10 + i * 0.25, fr(spec=True)) for i in range(9)]
     _, sp = run(frames)

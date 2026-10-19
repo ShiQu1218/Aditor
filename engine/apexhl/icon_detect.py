@@ -141,14 +141,34 @@ class IconDetector:
                 x += 1
         return n
 
+    def _score_features(self, g: np.ndarray) -> IconFrame:
+        """共用箭頭與加號比對，讓尺度校準不必計算其他分類特徵。"""
+        f = IconFrame()
+        cs, cx, cy, sc = self._best(g, "chev")
+        f.chev, f.chev_x, f.chev_y, f.chev_scale = cs, cx, cy + ROW0, sc
+        ch = self.tpl["chev"][sc].shape
+        if cs >= self.p.chev_min:
+            near = tuple(s for s in self.scales if abs(s - sc) <= 0.051)
+            # 「+N」的加號：在箭頭左側 15–110 px、同列（數字 1–4 位）
+            px0 = max(0, cx - int(110 * sc))
+            f.plus, plx, _, _ = self._best(
+                g[max(0, cy - 4):cy + ch[0] + 4, px0:max(px0 + 1, cx - int(12 * sc))], "plus", near)
+            f.plus_x = px0 + plx
+            f.row_h = ch[0]
+        return f
+
     # ---- 對外 ----
+    def score_features(self, banner_bgr: np.ndarray) -> IconFrame:
+        """只計算尺度校準需要的箭頭、加號特徵；不分類橫幅。"""
+        g = cv2.cvtColor(np.ascontiguousarray(banner_bgr[ROW0:ROW1]), cv2.COLOR_BGR2GRAY)
+        return self._score_features(g)
+
     def features(self, banner_bgr: np.ndarray) -> IconFrame:
         p = self.p
         band = np.ascontiguousarray(banner_bgr[ROW0:ROW1])
         g = cv2.cvtColor(band, cv2.COLOR_BGR2GRAY)
-        f = IconFrame()
-        cs, cx, cy, sc = self._best(g, "chev")
-        f.chev, f.chev_x, f.chev_y, f.chev_scale = cs, cx, cy + ROW0, sc
+        f = self._score_features(g)
+        cs, cx, cy, sc = f.chev, f.chev_x, f.chev_y - ROW0, f.chev_scale
         ch = self.tpl["chev"][sc].shape
         if cs >= p.chev_min:
             # 箭頭右側：單人／三人圖示（同尺度附近）
@@ -157,12 +177,6 @@ class IconDetector:
             sub = g[y0:y0 + ch[0] + 16, x0:x0 + int(48 * sc)]
             f.person = self._best(sub, "person", near)[0]
             f.group = self._best(sub, "group", near)[0]
-            # 「+N」的加號：在箭頭左側 15–110 px、同列（數字 1–4 位）
-            px0 = max(0, cx - int(110 * sc))
-            f.plus, plx, _, _ = self._best(
-                g[max(0, cy - 4):cy + ch[0] + 4, px0:max(px0 + 1, cx - int(12 * sc))], "plus", near)
-            f.plus_x = px0 + plx
-            f.row_h = ch[0]
             # 箭頭下方一行：小隊抹殺名單的骷髏／握手個數，與第二行細筆畫比例
             l2y0, l2y1 = cy + int(0.75 * ch[0]), min(g.shape[0], cy + int(2.1 * ch[0]))
             l2 = g[l2y0:l2y1]
