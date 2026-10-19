@@ -1,9 +1,10 @@
 ﻿# 手動錄影與量測：先 cargo build --release，再設定 ADITORREC_FFMPEG_DIR 與 FFmpeg bin 的 PATH。
 # 範例：./tools/rec-cli.ps1 -TargetPid 1234 -Seconds 60 -NoMicrophone
-# 擷取方式 A/B：-Capture wgc|dda；-GpuCounters 另外取樣 aditorrec 與 dwm 的 GPU 引擎使用率（每秒一次）。
+# 擷取方式 A/B：-Capture wgc|dda|hook（hook 需 -HookDir，預設 D:\obs-studio 的 win-capture）；-GpuCounters 另外取樣 aditorrec 與 dwm 的 GPU 引擎使用率（每秒一次）。
 [CmdletBinding()]
 param(
-    [ValidateSet('wgc', 'dda')][string]$Capture = 'wgc',
+    [ValidateSet('wgc', 'dda', 'hook')][string]$Capture = 'wgc',
+    [string]$HookDir = 'D:\obs-studio\data\obs-plugins\win-capture',
     [switch]$GpuCounters,
     [Parameter(Mandatory)][ValidateRange(1, 2147483647)][int]$TargetPid,
     [ValidateRange(1, 86400)][int]$Seconds = 10,
@@ -26,6 +27,10 @@ param(
 $ErrorActionPreference = 'Stop'
 if ($Banner.Count -ne 4 -or $Spectator.Count -ne 4) { throw 'ROI 必須包含 x、y、w、h 四個整數。' }
 $executable = (Resolve-Path -LiteralPath $ExePath).Path
+# 錄影程序動態連結 FFmpeg；找不到 DLL 時會在輸出任何內容前結束。
+$ffmpegRoot = if ($env:ADITORREC_FFMPEG_DIR) { $env:ADITORREC_FFMPEG_DIR } else { Join-Path $PSScriptRoot '../../build/ffmpeg' }
+$ffmpegBin = Join-Path $ffmpegRoot 'bin'
+if (Test-Path -LiteralPath $ffmpegBin) { $env:PATH = (Resolve-Path -LiteralPath $ffmpegBin).Path + ';' + $env:PATH }
 $sessionId = (Get-Date -Format 'yyyyMMdd-HHmmss') + '-' + [guid]::NewGuid().ToString('N').Substring(0, 8)
 if (-not $OutputDir) { $OutputDir = Join-Path $PSScriptRoot "../target/recordings/$sessionId" }
 $directory = [IO.Path]::GetFullPath($OutputDir)
@@ -36,6 +41,7 @@ if (-not $NoEncode) { $video = @{ codec = $Codec; encoder = $Encoder; fps = $Fps
 $audio = $null
 if (-not $NoAudio -and -not $NoEncode) { $audio = @{ render = $RenderDevice; capture = $CaptureDevice; mic_gain = $MicGain; mic_enabled = -not $NoMicrophone } }
 $request = @{ id = 1; cmd = 'start'; pid = $TargetPid; session_dir = $directory; session_id = $sessionId; encode = $video; audio = $audio; frames = @{ banner = $Banner; spec = $Spectator; base = @(1920, 1080) }; capture = $Capture }
+if ($Capture -eq 'hook') { $request.hook_dir = (Resolve-Path -LiteralPath $HookDir).Path }
 $info = [Diagnostics.ProcessStartInfo]::new()
 $info.FileName = $executable
 $info.UseShellExecute = $false

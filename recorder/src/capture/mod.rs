@@ -5,6 +5,7 @@
 //! 介面由骨架固定，實作者不得改動簽章；需要新增的型別放在本模組內。
 
 pub mod dda;
+pub mod hook;
 pub mod small;
 
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -110,24 +111,58 @@ impl Capture {
         consumer: Box<dyn FrameConsumer>,
         notices: Sender<CaptureNotice>,
     ) -> Result<Self> {
+        if method == CaptureMethod::Hook {
+            bail!("capture_failed: 遊戲擷取需經 start_hook");
+        }
+        let gpu = gpu.clone();
+        Self::spawn_worker(
+            opts,
+            notices,
+            move |opts, notices, stopped, ready| match method {
+                CaptureMethod::Wgc => run(gpu, opts, consumer, notices, stopped, ready),
+                CaptureMethod::Dda => dda::run(gpu, opts, consumer, notices, stopped, ready),
+                CaptureMethod::Hook => {
+                    Err(anyhow::anyhow!("capture_failed: 遊戲擷取需經 start_hook"))
+                }
+            },
+        )
+    }
+
+    /// 以已準備好的 hook 開始擷取；`gpu` 必須是 `hook::prepare` 回傳的裝置。
+    pub fn start_hook(
+        prepared: hook::Prepared,
+        gpu: &Gpu,
+        opts: CaptureOptions,
+        consumer: Box<dyn FrameConsumer>,
+        notices: Sender<CaptureNotice>,
+    ) -> Result<Self> {
+        let gpu = gpu.clone();
+        Self::spawn_worker(opts, notices, move |opts, notices, stopped, ready| {
+            hook::run(prepared, gpu, opts, consumer, notices, stopped, ready)
+        })
+    }
+
+    fn spawn_worker(
+        opts: CaptureOptions,
+        notices: Sender<CaptureNotice>,
+        task: impl FnOnce(
+                CaptureOptions,
+                Sender<CaptureNotice>,
+                Receiver<()>,
+                &mpsc::SyncSender<Result<()>>,
+            ) -> Result<()>
+            + Send
+            + 'static,
+    ) -> Result<Self> {
         if opts.max_fps == 0 || opts.max_fps > TICKS_PER_SEC as u32 {
             bail!("capture_failed: max_fps 必須介於 1 與 10000000");
         }
-        let gpu = gpu.clone();
         let (stop, stopped) = mpsc::channel();
         let (ready, initialized) = mpsc::sync_channel(1);
         let worker = thread::Builder::new()
             .name("aditorrec-capture".into())
             .spawn(move || {
-                let result = match method {
-                    CaptureMethod::Wgc => {
-                        run(gpu, opts, consumer, notices.clone(), stopped, &ready)
-                    }
-                    CaptureMethod::Dda => {
-                        dda::run(gpu, opts, consumer, notices.clone(), stopped, &ready)
-                    }
-                };
-                if let Err(error) = result {
+                if let Err(error) = task(opts, notices.clone(), stopped, &ready) {
                     report_failure(error, &ready, &notices);
                 }
             })
@@ -233,7 +268,7 @@ unsafe extern "system" fn enum_window(hwnd: HWND, data: LPARAM) -> BOOL {
     true.into()
 }
 
-fn find_window(pid: u32) -> Result<HWND> {
+pub(in crate::capture) fn find_window(pid: u32) -> Result<HWND> {
     let mut search = WindowSearch {
         pid,
         best: None,
@@ -252,7 +287,7 @@ fn find_window(pid: u32) -> Result<HWND> {
         .with_context(|| format!("window_not_found: 找不到 PID {pid} 的可見視窗"))
 }
 
-fn window_matches(hwnd: HWND, pid: u32) -> bool {
+pub(in crate::capture) fn window_matches(hwnd: HWND, pid: u32) -> bool {
     let mut actual_pid = 0;
     // SAFETY: HWND 可能已失效，這些查詢會安全回報失敗；只讀取視窗資訊。
     unsafe {
@@ -693,5 +728,31 @@ mod tests {
         assert!(!streak.observe(5 * TICKS_PER_SEC, true));
         assert!(!streak.observe(9 * TICKS_PER_SEC, true));
         assert!(!streak.observe(10 * TICKS_PER_SEC, false));
+    }
+
+    struct NoopConsumer;
+    impl FrameConsumer for NoopConsumer {
+        fn on_frame(&mut self, _frame: &CapturedFrame<'_>) {}
+    }
+
+    #[test]
+    fn start_with_rejects_hook_method() {
+        let gpu = Gpu::create().unwrap();
+        let (notices, _rx) = mpsc::channel();
+        let err = match Capture::start_with(
+            CaptureMethod::Hook,
+            &gpu,
+            CaptureOptions {
+                pid: 1,
+                max_fps: 60,
+                origin_ticks: 0,
+            },
+            Box::new(NoopConsumer),
+            notices,
+        ) {
+            Ok(_) => panic!("CaptureMethod::Hook 不應由 start_with 啟動"),
+            Err(err) => err.to_string(),
+        };
+        assert_eq!(err, "capture_failed: 遊戲擷取需經 start_hook");
     }
 }

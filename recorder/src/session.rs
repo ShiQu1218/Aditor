@@ -3,7 +3,7 @@
 use crate::{
     audio::{self, AudioCapture, AudioSink},
     capture::{
-        dda,
+        dda, hook,
         small::{SmallFrameExtractor, SmallFrames},
         Capture, CaptureMethod, CaptureNotice, CaptureOptions, CapturedFrame, FrameConsumer,
     },
@@ -317,11 +317,29 @@ impl Session {
             check_disk(dir)
         };
         prepare().map_err(|e| failure(ErrorCode::Internal, e))?;
-        let gpu = match args.capture {
-            CaptureMethod::Wgc => Gpu::create(),
-            CaptureMethod::Dda => dda::gpu_for_pid(args.pid),
-        }
-        .map_err(|e| failure(ErrorCode::CaptureFailed, e))?;
+        let fps = args.encode.as_ref().map_or(60, |cfg| cfg.fps);
+        let (gpu, prepared_hook) = match args.capture {
+            CaptureMethod::Wgc => (
+                Gpu::create().map_err(|e| failure(ErrorCode::CaptureFailed, e))?,
+                None,
+            ),
+            CaptureMethod::Dda => (
+                dda::gpu_for_pid(args.pid).map_err(|e| failure(ErrorCode::CaptureFailed, e))?,
+                None,
+            ),
+            CaptureMethod::Hook => {
+                let Some(hook_dir) = args.hook_dir.as_deref().filter(|s| !s.is_empty()) else {
+                    return Err((
+                        ErrorCode::HookUnavailable,
+                        "hook_unavailable: 缺少 hook_dir".into(),
+                    ));
+                };
+                let (prepared, gpu) =
+                    hook::prepare(args.pid, Path::new(hook_dir), fps, hook::PREPARE_BUDGET)
+                        .map_err(|e| failure(ErrorCode::CaptureFailed, e))?;
+                (gpu, Some(prepared))
+            }
+        };
         let extractor = SmallFrameExtractor::new(&gpu, args.frames)
             .map_err(|e| failure(ErrorCode::BadRequest, e))?;
         let name = shm::shm_name(&args.session_id);
@@ -340,26 +358,24 @@ impl Session {
         let (first_tx, first) = mpsc::sync_channel(1);
         let pipeline = Arc::new(OnceLock::new());
         let counts = Arc::new(Counts::default());
-        let fps = args.encode.as_ref().map_or(60, |cfg| cfg.fps);
-        let capture = Capture::start_with(
-            args.capture,
-            &gpu,
-            CaptureOptions {
-                pid: args.pid,
-                max_fps: fps,
-                origin_ticks: 0,
-            },
-            Box::new(Consumer {
-                pipeline: pipeline.clone(),
-                extractor,
-                small: small_tx,
-                first: Some(first_tx),
-                origin: None,
-                small_bucket: None,
-                counts: counts.clone(),
-            }),
-            notice_tx,
-        )
+        let opts = CaptureOptions {
+            pid: args.pid,
+            max_fps: fps,
+            origin_ticks: 0,
+        };
+        let consumer = Box::new(Consumer {
+            pipeline: pipeline.clone(),
+            extractor,
+            small: small_tx,
+            first: Some(first_tx),
+            origin: None,
+            small_bucket: None,
+            counts: counts.clone(),
+        });
+        let capture = match prepared_hook {
+            Some(prepared) => Capture::start_hook(prepared, &gpu, opts, consumer, notice_tx),
+            None => Capture::start_with(args.capture, &gpu, opts, consumer, notice_tx),
+        }
         .map_err(|e| failure(ErrorCode::CaptureFailed, e))?;
         let mut session = Self {
             announced: false,
@@ -659,6 +675,8 @@ fn failure(default: ErrorCode, error: impl std::fmt::Display) -> BackendError {
         ErrorCode::NoHwEncoder
     } else if message.contains("window_not_found:") {
         ErrorCode::WindowNotFound
+    } else if message.contains("hook_unavailable:") {
+        ErrorCode::HookUnavailable
     } else if message.contains("disk_full:") {
         ErrorCode::DiskFull
     } else {
@@ -984,6 +1002,10 @@ mod tests {
             ErrorCode::WindowNotFound
         );
         assert_eq!(
+            failure(ErrorCode::CaptureFailed, "hook_unavailable: 測試").0,
+            ErrorCode::HookUnavailable
+        );
+        assert_eq!(
             failure(ErrorCode::EncodeFailed, "no_hw_encoder: 測試").0,
             ErrorCode::NoHwEncoder
         );
@@ -996,5 +1018,17 @@ mod tests {
     fn disk_reserve_stops_below_one_gib_and_accepts_the_boundary() {
         assert!(check_available(DISK_RESERVE).is_ok());
         assert!(check_available(DISK_RESERVE - 1).is_err());
+    }
+    #[test]
+    fn hook_capture_without_hook_dir_returns_hook_unavailable() {
+        let dir = std::env::temp_dir().join(format!("aditorrec-hook-nodir-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        let mut args = start_args();
+        args.session_dir = dir.to_string_lossy().into_owned();
+        args.capture = CaptureMethod::Hook;
+        args.hook_dir = None;
+        let err = Recorder.start(args, Output::default().sink()).unwrap_err();
+        assert_eq!(err.0, ErrorCode::HookUnavailable);
+        let _ = fs::remove_dir_all(&dir);
     }
 }
