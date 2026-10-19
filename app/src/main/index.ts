@@ -97,10 +97,12 @@ function createWindow(): void {
     }
     closeGate?.onClose(e)
   })
-  // 縮到系統匣時請 renderer 暫停播放，不在背景繼續出聲
-  win.on('hide', () => {
+  // 縮到系統匣或最小化時請 renderer 暫停播放，不在背景繼續出聲
+  const pausePlayback = (): void => {
     if (rendererAlive()) win.webContents.send('app:windowHidden')
-  })
+  }
+  win.on('hide', pausePlayback)
+  win.on('minimize', pausePlayback)
   win.on('closed', () => {
     closeGate = null
     mainWindow = null

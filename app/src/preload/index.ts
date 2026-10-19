@@ -114,7 +114,7 @@ const api = {
   app: {
     /** 開啟隨安裝包附帶的第三方授權清單 */
     openLicenses: () => ipcRenderer.invoke('app:openLicenses'),
-    /** main 把視窗縮到系統匣時通知 */
+    /** main 把視窗縮到系統匣或最小化時通知 */
     onWindowHidden: (callback: () => void) => {
       const handler = () => callback()
       ipcRenderer.on('app:windowHidden', handler)
