@@ -185,6 +185,7 @@ const messages: MessageTable = {
   '{message}；{fallback}': '{message}；{fallback}',
   '本次改用內建錄影器': '本次改用内置录制器',
   '本次僅執行即時偵測': '本次仅运行实时检测',
+  '遊戲擷取無法使用，本次改用螢幕擷取（DDA）：{reason}': '游戏捕获不可用，本次改用屏幕捕获（DDA）：{reason}',
   '錄影啟動已取消': '录制启动已取消',
   '無法開始錄影：{error}': '无法开始录制：{error}',
   '錄影意外停止：{reason}': '录制意外停止：{reason}',

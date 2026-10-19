@@ -152,4 +152,68 @@ describe('createCloseGate', () => {
     expect(e.preventDefault).not.toHaveBeenCalled()
     expect(request).not.toHaveBeenCalled()
   })
+
+  test('quitting 中延後關窗會取消 Electron 的 quit，完成存檔（或逾時）後必須重新觸發 quit；一般關窗／縮到系統匣不觸發 quit', () => {
+    let quitting = false
+    let closeToTray = true
+    let hidden = false
+    let closed = false
+    let appExited = false
+    const request = vi.fn()
+    let gate: ReturnType<typeof createCloseGate>
+    const shouldHide = () => !quitting && closeToTray
+    const makeGate = (): ReturnType<typeof createCloseGate> => createCloseGate({
+      request,
+      close: () => {
+        if (shouldHide()) {
+          hidden = true
+          gate = makeGate()
+        } else {
+          const e = ev()
+          gate.onClose(e)
+          if (!e.preventDefault.mock.calls.length) closed = true
+        }
+      },
+      timeoutMs: 1500,
+      isQuitting: () => quitting,
+      quit: () => {
+        const e = ev()
+        gate.onClose(e)
+        if (!e.preventDefault.mock.calls.length) appExited = true
+      }
+    })
+    gate = makeGate()
+
+    // 1. 一般關窗（closeToTray=true, quitting=false）：存檔後只縮到系統匣，不呼叫 quit
+    const hideClose = ev()
+    gate.onClose(hideClose)
+    expect(hideClose.preventDefault).toHaveBeenCalled()
+    gate.ack(true)
+    expect(hidden).toBe(true)
+    expect(closed).toBe(false)
+    expect(appExited).toBe(false)
+    expect(request).toHaveBeenCalledTimes(1)
+
+    // 2. 視窗已縮到系統匣時，系統匣按「結束」（quitting=true）：第一次 close 被擋下以存檔，ack 後關窗並繼續 quit 讓 App 真正結束
+    quitting = true
+    const quitClose = ev()
+    gate.onClose(quitClose)
+    expect(quitClose.preventDefault).toHaveBeenCalled()
+    expect(request).toHaveBeenCalledTimes(2)
+    expect(appExited).toBe(false)
+    gate.ack(true)
+    expect(closed).toBe(true)
+    expect(appExited).toBe(true)
+
+    // 3. closeToTray=false 且 quitting 中 renderer 逾時未回應：逾時後仍關窗並繼續 quit
+    closed = false
+    appExited = false
+    closeToTray = false
+    gate = makeGate()
+    gate.onClose(ev())
+    vi.advanceTimersByTime(1500)
+    expect(closed).toBe(true)
+    expect(appExited).toBe(true)
+  })
 })
+

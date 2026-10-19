@@ -66,6 +66,9 @@ export interface CloseGateOptions {
   timeoutMs: number
   /** renderer 已毀損／崩潰時直接放行。 */
   rendererAlive?: () => boolean
+  /** App 是否正在結束：延後關窗會取消 Electron 的 quit，完成 flush 後必須繼續結束。 */
+  isQuitting?: () => boolean
+  quit?: () => void
 }
 
 /**
@@ -78,13 +81,16 @@ export function createCloseGate(opts: CloseGateOptions): {
 } {
   let state: 'idle' | 'waiting' | 'done' = 'idle'
   let timer: ReturnType<typeof setTimeout> | null = null
+  let quittingOnClose = false
 
   const finish = (): void => {
     if (state !== 'waiting') return
     state = 'done'
     if (timer) clearTimeout(timer)
     timer = null
+    const shouldQuit = quittingOnClose || Boolean(opts.isQuitting?.())
     opts.close()
+    if (shouldQuit) opts.quit?.()
   }
 
   return {
@@ -92,6 +98,7 @@ export function createCloseGate(opts: CloseGateOptions): {
       if (state === 'done') return
       if (opts.rendererAlive && !opts.rendererAlive()) return
       e.preventDefault()
+      if (opts.isQuitting?.()) quittingOnClose = true
       if (state === 'waiting') return
       state = 'waiting'
       timer = setTimeout(finish, opts.timeoutMs)

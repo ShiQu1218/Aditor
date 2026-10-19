@@ -59,7 +59,11 @@ export function SelectControl(props: {
       value={props.value}
       disabled={props.disabled}
       aria-describedby={describedBy(props.ids)}
-      onChange={(e) => props.onChange(e.target.value)}
+      onChange={(e) => {
+        const next = e.target.value
+        e.target.value = props.value
+        props.onChange(next)
+      }}
     >
       {props.options.map((o) => (
         <option key={o.value} value={o.value} disabled={o.disabled}>

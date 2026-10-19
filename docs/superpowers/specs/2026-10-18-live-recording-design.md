@@ -22,7 +22,7 @@
 | R9 | 錄後完整分析可設定：不分析／關遊戲後（預設）／每局結束後低優先序 | 使用者選 D |
 | R10 | 效能第一：錄影核心用 Rust 原生程式 | 使用者選方案 3＋Rust |
 
-硬性限制：**不注入遊戲程序、不讀遊戲記憶體**（README 承諾；Apex 使用 EAC）。
+硬性限制：**不注入遊戲程序、不讀遊戲記憶體**（README 承諾；Apex 使用 EA Javelin Anticheat）。
 
 ---
 
@@ -127,7 +127,10 @@
 - 每 3 秒列舉程序，找 `r5apex.exe`／`r5apex_dx12.exe`。找到後把 PID 傳給 `aditorrec`。
 - `aditorrec` 依 PID 列舉頂層可見視窗（最大面積者）建立 WGC。視窗重建（換解析度／切全螢幕）時自動重建擷取並在 `events.jsonl` 記錄。
 - 獨佔全螢幕可能得到黑畫面：連續 3 秒全黑則改用 `CreateForMonitor`（遊戲視窗所在螢幕）。設定頁建議無邊框視窗。
-- 擷取方式預設為 DDA（DXGI Desktop Duplication，設定「擷取方式」；實機測得大廳滑鼠延遲明顯低於 WGC，WGC 保留為選項）：擷取遊戲視窗所在的整個螢幕，不要求 DWM 合成遊戲視窗，避免 WGC 視窗擷取讓全螢幕遊戲退出獨立翻轉而多一格延遲。裝置建在擁有該螢幕的顯示卡上；`AcquireNextFrame` 以 0 逾時輪詢（等待時會占住共用裝置鎖）；時間戳取 `LastPresentTime` 並以編碼器同樣的四捨五入規則對齊到 1/fps 格點。每個輸出時段僅查詢一次前景視窗 PID 與最小化狀態，只有前景屬於目標 PID 且未最小化時才輸出桌面畫面；其餘時間以重用的 GPU 黑色 texture 按設定 fps 持續供應編碼與共享記憶體小圖，音訊不變，WGC 不受影響。切換時送出 `game_hidden`／`game_visible` 事件，`pts` 為錄影起點後的秒數。限制：遊戲仍在前景時，疊在同螢幕上的其他內容仍可能被錄；旋轉螢幕維持面板原生方向；HDR 由系統轉成 SDR。
+- 擷取方式提供三種選項（設定「擷取方式」），預設為**視窗擷取（`wgc`）**，其餘為**螢幕擷取（`dda`）**與**遊戲擷取（`hook`，選用，需另外確認）**：
+  - **遊戲擷取（`hook`，選用，需另外確認）**：以反作弊相容模式注入隨附的 OBS 官方簽章 `graphics-hook64.dll`，直接從遊戲 swapchain 取得共享材質，不會造成滑鼠延遲，且遊戲在背景（未最小化）時仍持續更新畫面；最小化時比照 DDA 輸出黑畫面並送出 `game_hidden`／`game_visible` 事件。退回規則：錄影後端為 OBS 時一律改用 DDA（OBS 優先，不注入）；缺少 `hook_dir`、遊戲內已有其他程式持有 hook、或錄影器回傳 `hook_unavailable`（初始化失敗或錄影中途錯誤）時，App 記住該遊戲 PID、通知使用者一次原因，並在該 PID 存續期間自動改用 DDA（遊戲重啟換 PID 後再恢復嘗試 `hook`）。
+  - **螢幕擷取（`dda`，DXGI Desktop Duplication）**：擷取遊戲視窗所在的整個螢幕，不要求 DWM 合成遊戲視窗，避免 WGC 視窗擷取讓全螢幕遊戲退出獨立翻轉而多一格延遲。裝置建在擁有該螢幕的顯示卡上；`AcquireNextFrame` 以 0 逾時輪詢（等待時會占住共用裝置鎖）；時間戳取 `LastPresentTime` 並以編碼器同樣的四捨五入規則對齊到 1/fps 格點。每個輸出時段僅查詢一次前景視窗 PID 與最小化狀態，只有前景屬於目標 PID 且未最小化時才輸出桌面畫面；其餘時間以重用的 GPU 黑色 texture 按設定 fps 持續供應編碼與共享記憶體小圖，音訊不變，WGC 不受影響。切換時送出 `game_hidden`／`game_visible` 事件，`pts` 為錄影起點後的秒數。限制：遊戲仍在前景時，疊在同螢幕上的其他內容仍可能被錄；旋轉螢幕維持面板原生方向；HDR 由系統轉成 SDR。
+  - **視窗擷取（`wgc`，預設）**：只錄遊戲視窗，不受前景切換影響，但大廳滑鼠會有延遲。
 
 ### 3.2 狀態機
 
@@ -230,14 +233,14 @@ JSON-lines，stdin 指令、stdout 事件，stderr 為日誌。每行 ≤ 64 KB�
 
 指令：
 - `{"id":1,"cmd":"hello"}` → `{"id":1,"ok":true,"version":"0.1.0","encoders":["hevc_nvenc",…],"audio":{"render":[…],"capture":[…]}}`
-- `{"id":2,"cmd":"start","pid":1234,"session_dir":"…","session_id":"…","encode":{"codec":"hevc","encoder":"auto","fps":60,"height":0,"bitrate_kbps":40000},"audio":{"render":"default","capture":"default","mic_gain":1.0,"mic_enabled":true},"frames":{"banner":[x,y,w,h],"spec":[x,y,w,h],"base":[1920,1080]}}`（`encode` 為 `null` 時只擷取不編碼；選填 `"capture":"wgc"|"dda"`，預設 `wgc`，其他值為 `bad_request`）
+- `{"id":2,"cmd":"start","pid":1234,"session_dir":"…","session_id":"…","encode":{"codec":"hevc","encoder":"auto","fps":60,"height":0,"bitrate_kbps":40000},"audio":{"render":"default","capture":"default","mic_gain":1.0,"mic_enabled":true},"frames":{"banner":[x,y,w,h],"spec":[x,y,w,h],"base":[1920,1080]}}`（`encode` 為 `null` 時只擷取不編碼；選填 `"capture":"wgc"|"dda"|"hook"`，預設 `wgc`，為 `"hook"` 時附 `"hook_dir":"…"`，其他值為 `bad_request`）
 - `encode` 新增選填 `preset: "speed"|"balanced"|"quality"`（預設 speed）、`aspect: "native"|"fit"|"stretch"`（預設 native）；`audio` 新增選填 `render_enabled: bool`（true）、`render_gain: 0..2`（1.0）、`mic_mono: bool`（false）、`render_source: "device"|"game"`（device）。未知列舉及無效增益回覆 `bad_request`，省略欄位保留既有行為。
 - `render_source: "game"` 以 `ActivateAudioInterfaceAsync`／`AUDIOCLIENT_ACTIVATION_TYPE_PROCESS_LOOPBACK`／`PROCESS_LOOPBACK_MODE_INCLUDE_TARGET_PROCESS_TREE` 擷取錄影 PID 與子程序，請求 48 kHz float 立體聲並進入既有混音流程，不開啟程序 handle。需要 Windows 組建 20348 起的系統；啟用失敗時退回裝置 loopback，發出 `{"ev":"warning","code":"game_audio_unavailable","message":"…"}`，App 顯示非致命通知，錄影繼續。
 - `{"id":3,"cmd":"stop"}`；`{"id":4,"cmd":"ping"}`（小圖 ROI 只在 `start` 指定；要換 ROI 就 stop 再 start）
 
 事件（無 `id`）：`{"ev":"started","encoder":"hevc_nvenc","width":2560,"height":1440,"fps":60,"shm":"Local\\aditorrec-…"}`、`{"ev":"segment","seq":12,"pts":22.0,"dur":2.0}`、`{"ev":"stats","fps_in":…,"fps_enc":…,"dropped":…,"q":…}`（每 5 秒）、`{"ev":"window_lost"}`、`{"ev":"stopped","reason":"…"}`、`{"ev":"error","code":"…","message":"…"}`。
 
-錯誤碼：`no_hw_encoder`、`window_not_found`、`capture_failed`、`encode_failed`、`audio_failed`、`disk_full`、`bad_request`、`internal`。
+錯誤碼：`no_hw_encoder`、`window_not_found`、`capture_failed`、`hook_unavailable`、`encode_failed`、`audio_failed`、`disk_full`、`bad_request`、`internal`。
 
 ### 4.5 建置
 

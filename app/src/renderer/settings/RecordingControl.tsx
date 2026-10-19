@@ -1,12 +1,92 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { RECORDING_RANGES, type RecordingSettings } from '../../shared/recording'
+import { useFocusTrap } from '../a11y/useFocusTrap'
 import { recordingI18n as t } from '../i18n'
 import { GainControl, NumberField, SegmentedControl, SelectControl, SwitchControl, describedBy, type ControlIds } from './SettingControls'
 import type { SettingsController, SettingsState } from './settingsController'
 import { fillTemplate } from './settingsModel'
 import { bitrateOptions, fpsOptions, heightOptions } from './recordingOptions'
 
-const BOOL_FIELDS = ['autoRecord', 'launchAtLogin', 'closeToTray', 'micEnabled', 'notifyMatch', 'forceAspect', 'systemAudioEnabled', 'gameAudioOnly', 'micMono', 'obsFallbackBuiltin'] as const
+const BOOL_FIELDS = ['autoRecord', 'launchAtLogin', 'closeToTray', 'micEnabled', 'notifyMatch', 'openOnGameExit', 'forceAspect', 'systemAudioEnabled', 'gameAudioOnly', 'micMono', 'obsFallbackBuiltin'] as const
+const HOOK_WARN_SECONDS = 5
+
+function CaptureHookWarningDialog({ selectId, onCancel, onConfirm }: {
+  selectId: string
+  onCancel: () => void
+  onConfirm: () => void
+}): JSX.Element {
+  const w = t.captureHookWarning
+  const [remaining, setRemaining] = useState(HOOK_WARN_SECONDS)
+  const boxRef = useRef<HTMLDivElement>(null)
+  const cancelRef = useRef<HTMLButtonElement>(null)
+  const sections = [w.sections.diff, w.sections.how, w.sections.risk, w.sections.disclaimer]
+
+  useFocusTrap(boxRef, {
+    onEscape: onCancel,
+    initialFocus: () => cancelRef.current,
+    returnFocusTo: () => document.getElementById(selectId)
+  })
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setRemaining((s) => {
+        if (s <= 1) {
+          clearInterval(timer)
+          return 0
+        }
+        return s - 1
+      })
+    }, 1000)
+    return () => clearInterval(timer)
+  }, [])
+
+  return (
+    <div className="set-dlg-scrim" onClick={onCancel}>
+      <div
+        ref={boxRef}
+        className="set-dlg"
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="set-capture-hook-warn-title"
+        aria-describedby="set-capture-hook-warn-desc"
+        tabIndex={-1}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h3 id="set-capture-hook-warn-title">{w.title}</h3>
+        <div id="set-capture-hook-warn-desc" className="set-dlg-body" tabIndex={0}>
+          {sections.map((sec) => (
+            <section key={sec.heading} className="set-dlg-sec">
+              <h4>{sec.heading}</h4>
+              {'items' in sec ? (
+                <ul>
+                  {sec.items.map((item, i) => <li key={i}>{item}</li>)}
+                </ul>
+              ) : (
+                <p>{sec.text}</p>
+              )}
+            </section>
+          ))}
+        </div>
+        <div className="set-dlg-foot">
+          <button id="set-recording-captureHook-cancel" ref={cancelRef} type="button" className="set-btn ghost" onClick={onCancel}>
+            {w.cancel}
+          </button>
+          <button
+            id="set-recording-captureHook-confirm"
+            type="button"
+            className="set-btn danger"
+            disabled={remaining > 0}
+            onClick={() => {
+              if (remaining <= 0) onConfirm()
+            }}
+          >
+            {remaining > 0 ? fillTemplate(w.confirmCountdown, { sec: remaining }) : w.confirm}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
 
 function ObsTextControl({ field, ids, state, settings, controller }: {
   field: 'obsHost' | 'obsPassword'; ids: ControlIds; state: SettingsState; settings: RecordingSettings; controller: SettingsController
@@ -44,6 +124,7 @@ export function RecordingControl({ field, ids, state, settings, controller }: {
   settings: RecordingSettings
   controller: SettingsController
 }): JSX.Element | null {
+  const [hookWarnOpen, setHookWarnOpen] = useState(false)
   const set = <K extends keyof RecordingSettings>(key: K, value: RecordingSettings[K]): void => {
     void controller.setRecording(key, value)
   }
@@ -101,7 +182,7 @@ export function RecordingControl({ field, ids, state, settings, controller }: {
       options = [{ value: 'speed', label: t.speed }, { value: 'balanced', label: t.balanced }, { value: 'quality', label: t.quality }]
       break
     case 'captureMethod':
-      options = [{ value: 'wgc', label: t.captureWgc }, { value: 'dda', label: t.captureDda }]
+      options = [{ value: 'hook', label: t.captureHook }, { value: 'dda', label: t.captureDda }, { value: 'wgc', label: t.captureWgc }]
       break
     case 'postAnalysis':
       options = [{ value: 'none', label: t.analysisNone }, { value: 'afterExit', label: t.analysisAfterExit }, { value: 'perMatch', label: t.analysisPerMatch }]
@@ -123,10 +204,22 @@ export function RecordingControl({ field, ids, state, settings, controller }: {
           else if (field === 'codec') {
             set('codec', v as RecordingSettings['codec'])
             set('encoder', 'auto')
+          } else if (field === 'captureMethod' && v === 'hook') {
+            if (settings.captureMethod !== 'hook') setHookWarnOpen(true)
           } else set(field, v as RecordingSettings[typeof field])
         }} />
       {hint && <small id={`${ids.ctl}-capabilities`} className="set-desc" role="status">{hint}</small>}
       {field === 'backend' && settings.backend === 'obs' && <small className="set-desc">{t.obsHint}</small>}
+      {field === 'captureMethod' && hookWarnOpen && (
+        <CaptureHookWarningDialog
+          selectId={ids.ctl}
+          onCancel={() => setHookWarnOpen(false)}
+          onConfirm={() => {
+            setHookWarnOpen(false)
+            set('captureMethod', 'hook')
+          }}
+        />
+      )}
     </div>
   )
 }

@@ -5,7 +5,7 @@
 - WGC 視窗擷取讓遊戲改由 DWM 合成，大廳滑鼠固定延遲；最小化 WGC 程式（不處理畫面）也延遲，無法從我們這端修正。
 - DDA 沒有延遲，但只能抓螢幕：遊戲切到背景時只能送黑幀，看不到大廳／開局，兩局會合併（已用「連續全黑 60 秒結束對局」暫時處理）。
 - `recorder/examples/hook_probe.rs` 實測（Apex DX12、RTX 5080、OBS 32.1.2 的 hook 1.8.7）：
-  - 以 OBS 官方簽章的 `graphics-hook64.dll`、反作弊相容模式（`SetWindowsHookEx`）注入，EAC 沒有阻擋。
+  - 以 OBS 官方簽章的 `graphics-hook64.dll`、反作弊相容模式（`SetWindowsHookEx`）注入，EA Javelin Anticheat 沒有阻擋。
   - 大廳滑鼠**沒有延遲**。
   - 遊戲在背景（未最小化）時共享材質**持續更新**。
   - `OpenSharedResource` 可把 hook 的共享材質開進我們的 D3D11 裝置；格式為 `R8G8B8A8_UNORM`（28），3840×2160。
@@ -78,7 +78,7 @@
 
 ## 風險
 
-- 反作弊：本次實測未被阻擋，但無法保證長期；OBS 換簽章時（見 OBS「Capture Hook Certificate Update」）EAC 可能需要遊戲更新模組。附帶版本要跟隨 OBS 正式版定期更新，並保留 DDA 退回。
+- 反作弊：本次實測未被 EA Javelin Anticheat 阻擋，但無法保證長期；OBS 換簽章時（見 OBS「Capture Hook Certificate Update」，相容性表中 EA Anti-Cheat 的狀態僅供參考）反作弊／Javelin 可能需要隨遊戲或規則更新才會放行新憑證。附帶版本要跟隨 OBS 正式版定期更新，並保留 DDA 退回。
 - 32 位元遊戲：本計畫只處理 64 位元（Apex 為 64 位元）；32 位元遊戲直接退回 DDA。
 - Vulkan／OpenGL 遊戲：hook 本身支援，但格式／共享方式可能不同；超出本計畫範圍，未支援時退回 DDA。
 

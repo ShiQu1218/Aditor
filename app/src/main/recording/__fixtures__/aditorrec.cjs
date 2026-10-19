@@ -22,6 +22,9 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
   }
   if (req.cmd === 'start') {
     if (mode === 'no-hw') return send({ id: req.id, ok: false, code: 'no_hw_encoder', message: '沒有硬體編碼器' })
+    if (mode === 'hook-unavailable' && req.capture === 'hook') {
+      return send({ id: req.id, ok: false, code: 'hook_unavailable', message: 'hook_unavailable: 注入逾時' })
+    }
     if (mode === 'start-stall') return send({ id: req.id, ok: true })
     sessionDir = req.session_dir
     if (process.env.FAKE_SEGMENT_DIR) {
@@ -57,6 +60,10 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
     if (mode === 'crash') setTimeout(() => process.exit(9), 30)
     if (mode === 'async-no-hw') setTimeout(() => {
       send({ ev: 'error', code: 'no_hw_encoder', message: '沒有硬體編碼器' })
+      send({ ev: 'stopped', reason: 'error' })
+    }, 30)
+    if (mode === 'async-hook-unavailable' && req.capture === 'hook') setTimeout(() => {
+      send({ ev: 'error', code: 'hook_unavailable', message: 'hook_unavailable: 遊戲材質遺失' })
       send({ ev: 'stopped', reason: 'error' })
     }, 30)
     return

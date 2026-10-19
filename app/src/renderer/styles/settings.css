@@ -182,6 +182,17 @@
 
 .set-sr, .set-sr-live { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
+.set-dlg-scrim { position: fixed; inset: 0; z-index: 100; background: var(--bg-scrim); display: grid; place-items: center; padding: var(--sp-4); }
+.set-dlg { width: min(560px, 100%); max-height: min(80vh, 640px); display: flex; flex-direction: column; padding: var(--sp-5); background: var(--bg-popover); border: 1px solid var(--line-strong); border-radius: var(--r-md); box-shadow: var(--shadow-pop); }
+.set-dlg h3 { flex: none; font-family: var(--font-display); font-size: var(--fs-subtitle); margin-bottom: var(--sp-3); }
+.set-dlg p { color: var(--text-2); font-size: var(--fs-body); line-height: var(--lh-body); }
+.set-dlg-body { flex: 1; min-height: 0; overflow-y: auto; padding-right: var(--sp-2); display: flex; flex-direction: column; gap: var(--sp-3); border-radius: var(--r-xs); }
+.set-dlg-body:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.set-dlg-sec h4 { font-size: var(--fs-body); font-weight: var(--fw-bold); color: var(--text-1); margin-bottom: var(--sp-1); }
+.set-dlg-sec p, .set-dlg-sec li { color: var(--text-2); font-size: var(--fs-body); line-height: var(--lh-body); }
+.set-dlg-sec ul { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: var(--sp-1); }
+.set-dlg-foot { flex: none; display: flex; justify-content: flex-end; gap: var(--sp-2); margin-top: var(--sp-4); padding-top: var(--sp-3); border-top: 1px solid var(--line); }
+
 /* ---- 窄視窗（<900 px）：分類欄收合為頂部橫向分段列，選中項底部 3 px 紅線 ---- */
 @media (max-width: 899px) {
   .set-body { flex-direction: column; justify-content: flex-start; align-items: stretch; gap: 10px; padding: 12px 16px 0; }

@@ -31,7 +31,7 @@ describe('錄影設定驗證與遷移', () => {
     expect(DEFAULT_SETTINGS.recording.autoRecord).toBe(true)
   })
 
-  test.each(['autoRecord', 'launchAtLogin', 'closeToTray', 'micEnabled', 'notifyMatch', 'forceAspect', 'systemAudioEnabled', 'gameAudioOnly', 'micMono'] as const)('%s 僅接受布林值', (field) => {
+  test.each(['autoRecord', 'launchAtLogin', 'closeToTray', 'micEnabled', 'notifyMatch', 'openOnGameExit', 'forceAspect', 'systemAudioEnabled', 'gameAudioOnly', 'micMono'] as const)('%s 僅接受布林值', (field) => {
     for (const value of [false, true]) expect(migrate({ [field]: value })[field]).toBe(value)
     for (const value of [null, 0, 1, 'true', {}, []]) expect(migrate({ [field]: value })[field]).toBe(defaults[field])
   })
@@ -55,10 +55,18 @@ describe('錄影設定驗證與遷移', () => {
     ['fps', [10, 20, 30, 60, 90, 120]],
     ['height', [0, 720, 1080, 1440]],
     ['postAnalysis', ['none', 'afterExit', 'perMatch']],
-    ['captureMethod', ['wgc', 'dda']]
+    ['captureMethod', ['hook', 'wgc', 'dda']]
   ] as const)('%s 只接受允許的列舉值', (field, allowed) => {
     for (const value of allowed) expect(migrate({ [field]: value })[field]).toBe(value)
     for (const value of ['invalid', null, false, {}, [], -1, 999]) expect(migrate({ [field]: value })[field]).toBe(defaults[field])
+  })
+
+  test('擷取方式預設為 wgc，已儲存的 hook／dda 照舊保留', () => {
+    expect(defaults.captureMethod).toBe('wgc')
+    expect(migrate({}).captureMethod).toBe('wgc')
+    expect(migrate({ captureMethod: 'hook' }).captureMethod).toBe('hook')
+    expect(migrate({ captureMethod: 'dda' }).captureMethod).toBe('dda')
+    expect(migrate({ captureMethod: 'wgc' }).captureMethod).toBe('wgc')
   })
 
   test.each(['builtin', 'obs', 'invalid', null, 1])('後端 %j 保留有效值', (backend) => {

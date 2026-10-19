@@ -98,6 +98,14 @@ export function aditorrecCommand(isPackaged: boolean): {
   }
 }
 
+/** OBS graphics-hook 檔案目錄（`hook_dir`）：開發＝repo 的 `build/obs-hook`，打包＝resources 下的 `obs-hook`。 */
+export function obsHookDir(isPackaged: boolean): string {
+  const root = isPackaged
+    ? (process as unknown as { resourcesPath?: string }).resourcesPath || path.join(__dirname, '..', '..')
+    : path.join(path.resolve(__dirname, '../../..'), 'build')
+  return path.join(root, 'obs-hook')
+}
+
 /** 隨安裝包附帶的第三方授權清單：打包＝resources 根目錄，開發＝repo 根目錄。 */
 export function noticesFile(isPackaged: boolean): string {
   return bundledDocFile(isPackaged, 'THIRD_PARTY_NOTICES.md')

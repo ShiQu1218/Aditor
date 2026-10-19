@@ -14,6 +14,7 @@ import { currentE2EConfig } from './e2e'
 import { applyWindowSecurity } from './window-security'
 import { sanitizeAnalyzeArgs, sanitizeAutoclipArgs, sanitizeDeriveArgs, sanitizeProbeArgs } from './ipc-guards'
 import { aditorrecCommand, appDataDir, cacheDir, chromiumUserDataDir, engineCommand, ffmpegExecutable, liveEngineCommand, profileDir, sceneDir } from '../shared/paths'
+import { obsHookDir } from '../shared/paths'
 import { cacheFilePath } from './cache-io'
 import { generateThumbnail } from './thumbnail'
 import { createRecordingService } from './recording'
@@ -87,7 +88,9 @@ function createWindow(): void {
       } else win.close()
     },
     timeoutMs: CLOSE_FLUSH_TIMEOUT_MS,
-    rendererAlive
+    rendererAlive,
+    isQuitting: () => quitting,
+    quit: () => app.quit()
   })
   closeGate = makeCloseGate()
   win.on('close', (e) => {
@@ -213,6 +216,7 @@ async function initEngineAndServices(): Promise<void> {
     getWatchFolders: () => settingsStore!.get().watchFolders,
     defaultOutputDir: join(app.getPath('videos'), 'Aditor'),
     recorderCommand: aditorrecCommand(app.isPackaged),
+    obsHookDir: obsHookDir(app.isPackaged),
     ffmpegPath: ffmpegExecutable(app.isPackaged),
     profileDir: templateProfileDir,
     addToLibrary: (paths) => {
@@ -221,6 +225,7 @@ async function initEngineAndServices(): Promise<void> {
     },
     enqueueAnalysis: (videoPath) => queue!.enqueue(videoPath),
     notify,
+    onGameExit: () => showMainWindow(),
     liveEngineCommand: liveEngineCommand(app.isPackaged),
     sceneDir: sceneDir(app.isPackaged),
     liveCachePath: (videoPath) => cacheFilePath(videoPath, cacheDir(), settingsStore!.get().cacheLocation === 'besideVideo'),

@@ -7,7 +7,12 @@ import { activateFocusTrap, type FocusTrapOptions } from './focusTrap'
  */
 export function useFocusTrap(
   boxRef: RefObject<HTMLElement>,
-  opts: { active?: boolean; onEscape?: () => void; initialFocus?: () => HTMLElement | null | undefined } = {}
+  opts: {
+    active?: boolean
+    onEscape?: () => void
+    initialFocus?: () => HTMLElement | null | undefined
+    returnFocusTo?: () => HTMLElement | null | undefined
+  } = {}
 ): void {
   const { active = true } = opts
   const latest = useRef(opts)
@@ -17,7 +22,8 @@ export function useFocusTrap(
     if (!active || !box) return
     const o: FocusTrapOptions = {
       onEscape: latest.current.onEscape ? () => latest.current.onEscape?.() : undefined,
-      initialFocus: latest.current.initialFocus?.() ?? undefined
+      initialFocus: latest.current.initialFocus?.() ?? undefined,
+      returnFocusTo: latest.current.returnFocusTo ? latest.current.returnFocusTo() : undefined
     }
     return activateFocusTrap(box, o)
   }, [active, boxRef])
