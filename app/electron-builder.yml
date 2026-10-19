@@ -36,7 +36,11 @@ publish:
   provider: github
   owner: ShiQu1218
   repo: Aditor
+# 檔名不能有空格：GitHub 會把上傳檔名的空格換成「.」，跟 latest.yml 對不上
+portable:
+  artifactName: ${productName}-${version}-Portable.${ext}
 nsis:
+  artifactName: ${productName}-Setup-${version}.${ext}
   oneClick: false
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: true
