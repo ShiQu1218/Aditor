@@ -1,5 +1,40 @@
 import type { Messages } from '../index'
-import { zhTW } from '../zh-TW'
 
-/** 待翻譯：暫以繁體中文代替。 */
-export const liveI18n: Messages['liveI18n'] = zhTW.liveI18n
+/** 録画中の視聴（第 3 期）。 */
+export const liveI18n: Messages['liveI18n'] = {
+  obsRecording: 'OBS で録画中。録画が終わると再生できます',
+  detectionOnly: 'リアルタイム検出中。OBS が未接続のため、今回は録画されていません',
+  title: '現在の試合を視聴',
+  back: '戻る',
+  video: '試合の録画',
+  recording: '録画中',
+  match: '第 {n} 試合',
+  noMatch: 'まだ試合が検出されていません',
+  kills: '今回の試合のキル {n}',
+  play: '再生',
+  pause: '一時停止',
+  back5: '5 秒戻る',
+  forward5: '5 秒進む',
+  jumpLive: 'ライブ位置へ',
+  atLive: 'ライブ位置です',
+  time: '{cur} / {end}',
+  timeline: '録画タイムライン',
+  timelineValue: '{cur}、録画の長さ {end}',
+  matchRange: '第 {n} 試合：{start}–{end}',
+  matchOngoing: '進行中',
+  released: '30 分を超えた部分は解放されました。終了後に Studio で視聴できます',
+  events: 'リアルタイムイベント',
+  noEvents: 'イベントはまだありません。ノックダウンや撃破を検出すると、すぐに表示されます。',
+  eventItem: '{type} · {time}',
+  uncounted: '（集計対象外）',
+  newKill: '新しいイベント：{type} · {time}',
+  loading: '録画を読み込み中…',
+  notRecording: '現在進行中の録画はありません。',
+  unsupported: 'このPCでは録画のコーデック（{mime}）を再生できませんが、イベントはリアルタイムで更新されます。',
+  loadFailed: '録画セグメントを読み込めません：{message}',
+  waitingInit: '録画の書き込み開始を待っています…',
+  ended: '録画が終了し、ライブラリに追加されました。',
+  openStudio: 'Studio で開く',
+  openLibrary: 'ライブラリへ',
+  keys: 'スペースキーで再生／一時停止 · ←／→ で 5 秒前後 · End でライブ位置へ'
+}

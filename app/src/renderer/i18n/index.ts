@@ -33,4 +33,5 @@ function bootLocale(): Locale {
 
 export const currentLocale: Locale = bootLocale()
 setActiveLocale(currentLocale)
+if (typeof document !== 'undefined') document.documentElement.lang = currentLocale
 export const { i18n, shellI18n, settingsI18n, recordingI18n, liveI18n } = catalogFor(currentLocale)

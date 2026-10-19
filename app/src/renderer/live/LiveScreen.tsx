@@ -11,6 +11,7 @@ import { LiveTimeline } from './LiveTimeline'
 import { useLivePlayer } from './useLivePlayer'
 import { useLiveState } from './useLiveState'
 import '../styles/live.css'
+import { tr } from '../../shared/locale'
 
 export interface LiveScreenProps {
   onBack: () => void
@@ -88,7 +89,7 @@ export function LiveScreen({ onBack, onOpenVideo, onOpenLibrary }: LiveScreenPro
   )
   else if (sameSession && status.phase === 'error' && status.error) message = (
     <div className="live-message error" role="alert">
-      <p>{`${status.error.code}：${status.error.message}`}</p>
+      <p>{tr('{code}：{message}', { code: status.error.code, message: status.error.message })}</p>
       <div className="live-message-actions"><button type="button" className="lib-btn" onClick={onOpenLibrary}>{t.openLibrary}</button></div>
     </div>
   )

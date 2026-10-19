@@ -9,6 +9,7 @@ import { useToast } from '../shell/ToastHost'
 import { i18n } from '../i18n'
 import { subscribeStudioSettings } from './studioSettings'
 import { useStudioLibrary } from './useStudioLibrary'
+import { tr } from '../../shared/locale'
 
 const t = i18n.studio.sameDay
 const normalize = (path: string): string => path.replace(/\\/g, '/').toLowerCase()
@@ -83,7 +84,7 @@ export function SameDayVideos({ videoPath, onOpenVideo }: { videoPath: string; o
     <button type="button" className="btn-ghost" onClick={retry}>{i18n.studio.loadFailed.retry}</button>
   </div>
   if (!day) return null
-  const date = `${day.getFullYear()}年${day.getMonth() + 1}月${day.getDate()}日`
+  const date = tr('{year}年{month}月{day}日', { year: day.getFullYear(), month: day.getMonth() + 1, day: day.getDate() })
   return (
     <section className="same-day-videos" aria-label={t.label}>
       <div className="same-day-head">

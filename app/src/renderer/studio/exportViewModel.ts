@@ -1,6 +1,7 @@
 import { Project } from '../editor/project'
 import { concatCompatible, extraSecondsForCopy, StreamProbe } from '../../shared/exportCompat'
 import { i18n } from '../i18n'
+import { tr } from '../../shared/locale'
 
 /** 來源影片規格（engine:probe 的回傳）；其餘串流參數 main 端沿用預設值，因此這裡只比對這三項。 */
 export interface SourceInfo {
@@ -78,7 +79,7 @@ export function exportViewModel(project: Project, plan: ExportPlan | null, enc: 
     if (!check.ok) {
       copyAvailable = false
       if (plan.quality === 'copy') {
-        notices.push({ kind: 'warn', text: `${t.fallbackReencodeNotice}（${check.reason}）` })
+        notices.push({ kind: 'warn', text: tr('{label}（{detail}）', { label: t.fallbackReencodeNotice, detail: check.reason }) })
       }
     }
   }

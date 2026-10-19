@@ -1,5 +1,40 @@
 import type { Messages } from '../index'
-import { zhTW } from '../zh-TW'
 
-/** 待翻譯：暫以繁體中文代替。 */
-export const liveI18n: Messages['liveI18n'] = zhTW.liveI18n
+/** 한국어: 녹화 중 시청(3단계) 화면. */
+export const liveI18n: Messages['liveI18n'] = {
+  obsRecording: 'OBS 녹화 중이며, 녹화가 끝나면 재생할 수 있습니다',
+  detectionOnly: '실시간 감지 중이며 OBS가 연결되지 않아 이번에는 녹화하지 않습니다',
+  title: '이번 매치 보기',
+  back: '돌아가기',
+  video: '매치 녹화',
+  recording: '녹화 중',
+  match: '{n}번째 매치',
+  noMatch: '아직 매치가 감지되지 않았습니다',
+  kills: '이번 매치 킬 {n}',
+  play: '재생',
+  pause: '일시정지',
+  back5: '5초 뒤로',
+  forward5: '5초 앞으로',
+  jumpLive: '최신으로 이동',
+  atLive: '이미 최신입니다',
+  time: '{cur} / {end}',
+  timeline: '녹화 타임라인',
+  timelineValue: '{cur}, 녹화 길이 {end}',
+  matchRange: '{n}번째 매치: {start}–{end}',
+  matchOngoing: '진행 중',
+  released: '30분이 넘은 내용은 해제되었으며, 마무리한 뒤 Studio에서 볼 수 있습니다',
+  events: '실시간 이벤트',
+  noEvents: '아직 이벤트가 없습니다. 녹다운이나 처치가 감지되면 실시간으로 나타납니다.',
+  eventItem: '{type} · {time}',
+  uncounted: '(집계 안 함)',
+  newKill: '새 이벤트: {type} · {time}',
+  loading: '녹화를 불러오는 중…',
+  notRecording: '현재 진행 중인 녹화가 없습니다.',
+  unsupported: '이 컴퓨터는 녹화 인코딩({mime})을 재생할 수 없습니다. 이벤트는 계속 실시간으로 업데이트됩니다.',
+  loadFailed: '녹화 구간을 불러올 수 없습니다: {message}',
+  waitingInit: '녹화 기록이 시작되기를 기다리는 중…',
+  ended: '녹화가 끝나 라이브러리에 추가되었습니다.',
+  openStudio: 'Studio에서 열기',
+  openLibrary: '라이브러리로 이동',
+  keys: '스페이스바 재생／일시정지 · ←／→ 5초 앞뒤 이동 · End 최신으로 이동'
+}

@@ -3,6 +3,7 @@ import { ProjectItem } from '../../renderer/editor/project'
 import { estimateOutputBytes as estimateBytes } from '../../shared/exportEstimate'
 import { concatCompatible, StreamProbe } from '../../shared/exportCompat'
 import type { CopyCut } from './keyframe'
+import { tr } from '../../shared/locale'
 
 // 相容性判斷搬到 shared（匯出抽屜在 renderer 也要用）；此處重新匯出維持原 import 路徑
 export { concatCompatible, extraSecondsForCopy } from '../../shared/exportCompat'
@@ -146,7 +147,7 @@ export function resolveQuality(
     const probeList = [...new Set(items.map((it) => it.source))].map((src) => probes.get(src)).filter((p): p is StreamProbe => !!p)
     const check = concatCompatible(probeList)
     if (!check.ok) {
-      return { quality: 'precise', notices: [`影片規格不相容（${check.reason}），已自動切換為精準轉碼模式`] }
+      return { quality: 'precise', notices: [tr('影片規格不相容（{reason}），已自動切換為精準轉碼模式', { reason: check.reason })] }
     }
   }
   return { quality: opts.quality, notices: [] }
@@ -271,7 +272,7 @@ function buildPreciseConcat(
     // aresample async：某段沒有音訊時以靜音補上空檔，後面的聲音不會往前擠
     args: [...CONCAT_INPUT, ...STREAM_SELECT, '-c:v', 'copy', '-af', 'aresample=async=1:first_pts=0', ...AUDIO_AAC, '-y', output]
   }
-  const allNotices = normalize ? [...notices, '來源規格不同，已先將每段轉成相同規格再合併'] : notices
+  const allNotices = normalize ? [...notices, tr('來源規格不同，已先將每段轉成相同規格再合併')] : notices
   return { jobs: [...segments, final], notices: allNotices, concatListContent: listOf(segments) }
 }
 

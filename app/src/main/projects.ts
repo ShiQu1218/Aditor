@@ -1,6 +1,7 @@
 import fs from 'fs'
 import path from 'path'
 import { ProjectItem, projectShapeError } from '../renderer/editor/project'
+import { tr } from '../shared/locale'
 
 /** 磁碟上的專案：renderer 的 Project 加上檔案 id。 */
 export interface StoredProject {
@@ -59,7 +60,7 @@ export class ProjectStore {
 
   private filePath(id: string): string {
     if (!isValidId(id)) {
-      throw new Error(`無效的專案 id：${String(id)}`)
+      throw new Error(tr('無效的專案 id：{id}', { id: String(id) }))
     }
     return path.join(this.dir, `${id}.json`)
   }
@@ -68,10 +69,10 @@ export class ProjectStore {
   saveSync(p: StoredProject): void {
     let tmp = ''
     try {
-      if (!p || typeof p !== 'object') throw new Error('專案資料無效')
+      if (!p || typeof p !== 'object') throw new Error(tr('專案資料無效'))
       const file = this.filePath(p.id)
       const shape = projectShapeError(p)
-      if (shape) throw new Error(`專案資料無效：${shape.message}`)
+      if (shape) throw new Error(tr('專案資料無效：{message}', { message: shape.message }))
       tmp = `${file}.tmp`
       fs.mkdirSync(this.dir, { recursive: true })
       const fd = fs.openSync(tmp, 'w')
@@ -84,7 +85,7 @@ export class ProjectStore {
       fs.renameSync(tmp, file)
       this.clearError()
     } catch (err) {
-      this.setError('save', `儲存專案失敗：${(err as Error).message}`)
+      this.setError('save', tr('儲存專案失敗：{message}', { message: (err as Error).message }))
       if (tmp) {
         try {
           fs.unlinkSync(tmp)
@@ -106,7 +107,7 @@ export class ProjectStore {
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code === 'ENOENT') return null
       // 暫時性錯誤（檔案被占用／權限）：不改名、不刪除，下次再試
-      this.setError('transient', `暫時無法讀取專案檔（${id}.json）：${(err as Error).message}`)
+      this.setError('transient', tr('暫時無法讀取專案檔（{id}.json）：{message}', { id, message: (err as Error).message }))
       return null
     }
     let data: unknown
@@ -118,7 +119,7 @@ export class ProjectStore {
     }
     const shape = projectShapeError(data)
     if (shape?.kind === 'unsupported') {
-      this.setError('unsupported', `專案檔 ${id}.json：${shape.message}`)
+      this.setError('unsupported', tr('專案檔 {id}.json：{message}', { id, message: shape.message }))
       return null
     }
     if (shape) {
@@ -130,7 +131,7 @@ export class ProjectStore {
 
   /** 損毀檔案改名為不重複的備份名，並只保留最新 MAX_BACKUPS 份。 */
   private quarantine(id: string, file: string, reason: string): void {
-    this.setError('corrupt', `專案檔損毀（${id}.json）：${reason}`)
+    this.setError('corrupt', tr('專案檔損毀（{id}.json）：{reason}', { id, reason }))
     try {
       let ts = Date.now()
       let dest = path.join(this.dir, `${id}.bak.${ts}.json`)
@@ -178,13 +179,13 @@ export class ProjectStore {
         const data = JSON.parse(fs.readFileSync(file, 'utf-8'))
         const shape = projectShapeError(data)
         if (shape) {
-          this.setError(shape.kind === 'unsupported' ? 'unsupported' : 'corrupt', `專案檔 ${name}：${shape.message}`)
+          this.setError(shape.kind === 'unsupported' ? 'unsupported' : 'corrupt', tr('專案檔 {name}：{message}', { name, message: shape.message }))
           continue
         }
         entries.push({ id, name: data.name, updatedAt: stat.mtimeMs, items: data.items.length })
       } catch (err) {
         // 損毀檔案留給 load() 備份；清單只記錄錯誤
-        this.setError('corrupt', `專案檔損毀（${name}）：${(err as Error).message}`)
+        this.setError('corrupt', tr('專案檔損毀（{name}）：{message}', { name, message: (err as Error).message }))
       }
     }
     entries.sort((a, b) => b.updatedAt - a.updatedAt)

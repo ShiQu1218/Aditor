@@ -1,6 +1,7 @@
 // 鍵盤分派：spec §3.2.7「鍵 × 聚焦區」矩陣的純函式實作。
 import { shellI18n } from '../i18n'
 import type { TargetKind, Zone } from './focusZone'
+import { tr } from '../../shared/locale'
 
 export type { TargetKind, Zone }
 
@@ -262,8 +263,8 @@ export const KEY_TABLE: KeyRow[] = [
   row('nextEvent', 'Ctrl+→', S.studio),
   row('seekBack', '←', S.source),
   row('seekFwd', '→', S.source),
-  row('zoomIn', 'Ctrl+= ／ 滾輪', S.studio),
-  row('zoomOut', 'Ctrl+- ／ 滾輪', S.studio),
+  row('zoomIn', `Ctrl+= ／ ${tr('滾輪')}`, S.studio),
+  row('zoomOut', `Ctrl+- ／ ${tr('滾輪')}`, S.studio),
   row('zoomReset', 'Ctrl+0', S.studio),
   row('blade', 'B', S.studio),
   row('quickOrSplit', 'Ctrl+Q', S.studio),
@@ -286,7 +287,7 @@ export const KEY_TABLE: KeyRow[] = [
   row('closeOverlay', 'Esc', S.global),
   row('showShortcuts', '?', S.global),
   row('focusToast', 'Alt+T', S.global),
-  row('focusSearch', 'Ctrl+F', `${S.library}／${S.settings}`),
+  row('focusSearch', 'Ctrl+F', tr('{library}／{settings}', { library: S.library, settings: S.settings })),
   row('toggleFavoriteFilter', 'Ctrl+D', S.library),
   row('selectPrevItem', '←', S.proj),
   row('selectNextItem', '→', S.proj),

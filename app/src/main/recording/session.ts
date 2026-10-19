@@ -17,6 +17,7 @@ import { ObsClient } from './obs-client'
 import { finalizeObsMatches } from './obs-finalize'
 import { ObsRecording } from './obs-session'
 import type { RecordingDeps, RecordingNoticeKind } from './index'
+import { tr } from '../../shared/locale'
 
 interface ActiveSession {
   pid: number
@@ -63,7 +64,7 @@ async function readFrames(profileDir: string): Promise<object> {
   const roi = (value: unknown): value is number[] => Array.isArray(value) && value.length === 4 &&
     value.every((n) => Number.isInteger(n) && n >= 0) && value[2] > 0 && value[3] > 0 &&
     value[0] + value[2] <= 1920 && value[1] + value[3] <= 1080
-  if (!roi(profile.banner_roi) || !roi(profile.spec_roi)) throw new RecorderError('profile_invalid', '錄影範本的 ROI 無效')
+  if (!roi(profile.banner_roi) || !roi(profile.spec_roi)) throw new RecorderError('profile_invalid', tr('錄影範本的 ROI 無效'))
   return { banner: profile.banner_roi, spec: profile.spec_roi, base: [1920, 1080] }
 }
 
@@ -113,7 +114,7 @@ export class RecordingSessionService implements RecordingService {
           if (this.canAutoStart() && this.gameSettled()) await this.begin(this.gamePid!)
         })
       }, (error) => {
-        if (!this.pollWarning) this.notice('error', `無法偵測 Apex 程序：${String(error)}`)
+        if (!this.pollWarning) this.notice('error', tr('無法偵測 Apex 程序：{error}', { error: String(error) }))
         this.pollWarning = true
       })
   }
@@ -123,7 +124,7 @@ export class RecordingSessionService implements RecordingService {
     this.running = true
     this.recovery = this.serialize(() => recoverSessions(this.deps,
       (paths) => this.finalized(paths),
-      (error) => this.fail('recovery_failed', `錄影補收尾失敗：${String(error)}`),
+      (error) => this.fail('recovery_failed', tr('錄影補收尾失敗：{error}', { error: String(error) })),
       () => !this.running))
     this.watcher.start()
   }
@@ -228,7 +229,7 @@ export class RecordingSessionService implements RecordingService {
 
   /** 只允許目前（含收尾中、工作目錄尚未刪除）的錄影工作。 */
   private liveFor(sessionId: string): LiveSession {
-    if (!this.active || this.active.id !== sessionId) throw new Error('錄影工作不存在或已收尾')
+    if (!this.active || this.active.id !== sessionId) throw new Error(tr('錄影工作不存在或已收尾'))
     return this.active.live
   }
 
@@ -245,8 +246,8 @@ export class RecordingSessionService implements RecordingService {
     })
     live.on('match', (ev: 'match_start' | 'match_end' | 'match_pending' | 'match_cancel', index: number, time: number) => {
       if (this.active?.live !== live) return
-      if (ev === 'match_start') this.notice('matchStart', `第 ${index} 局開始`)
-      else if (ev === 'match_end') this.notice('matchEnd', `第 ${index} 局結束（計入擊殺 ${live.kills()}）`)
+      if (ev === 'match_start') this.notice('matchStart', tr('第 {index} 局開始', { index }))
+      else if (ev === 'match_end') this.notice('matchEnd', tr('第 {index} 局結束（計入擊殺 {kills}）', { index, kills: live.kills() }))
       const session = this.active
       if (session.obs?.perMatch && !session.ending && !session.obsFailed) {
         if (session.obsTimer) clearTimeout(session.obsTimer)
@@ -265,7 +266,7 @@ export class RecordingSessionService implements RecordingService {
             try { await session.obs!.startMatch(index, ev === 'match_start'); this.update({ obsRecording: true }) }
             catch (error) {
               session.obsFailed = true
-              this.notice('warning', `OBS 無法開始逐局錄影：${String(error)}`)
+              this.notice('warning', tr('OBS 無法開始逐局錄影：{error}', { error: String(error) }))
               // 重新建立擷取工作，讓內建編碼器從新的時間軸開始。
               const fallback = this.deps.getSettings().obsFallbackBuiltin
               if (fallback) {
@@ -291,7 +292,7 @@ export class RecordingSessionService implements RecordingService {
             current.cancelled = true
             await session.obs!.save()
             await this.stopObsMatch(session)
-            this.notice('matchCancel', '倒數後未開局，已停止 OBS 錄影（檔案保留於 OBS 資料夾）')
+            this.notice('matchCancel', tr('倒數後未開局，已停止 OBS 錄影（檔案保留於 OBS 資料夾）'))
           })
         } else {
           const delay = Math.max(0, session.obs.meta.captureStartedAt + time * 1000 + (this.deps.obsMatchPostPadMs ?? MATCH_POST_PAD_SEC * 1000) - Date.now())
@@ -347,16 +348,16 @@ export class RecordingSessionService implements RecordingService {
     this.update({ ...IDLE_RECORDING_STATUS, paused: this.state.paused, phase: 'starting' })
     let session: ActiveSession | null = null
     try {
-      if (!isSafeLocalDirPath(outputDir)) throw new RecorderError('output_invalid', '錄影資料夾必須是本機絕對路徑')
+      if (!isSafeLocalDirPath(outputDir)) throw new RecorderError('output_invalid', tr('錄影資料夾必須是本機絕對路徑'))
       await fs.promises.mkdir(outputDir, { recursive: true })
       const free = await diskFreeBytes(outputDir)
       this.update({ diskFreeBytes: free })
-      if (diskLevel(free, settings) === 'stop') throw new RecorderError('disk_full', '磁碟剩餘空間低於停止門檻，無法開始錄影')
+      if (diskLevel(free, settings) === 'stop') throw new RecorderError('disk_full', tr('磁碟剩餘空間低於停止門檻，無法開始錄影'))
       const frames = await readFrames(this.deps.profileDir)
       const id = sessionId()
       const root = path.join(outputDir, '.sessions')
       await fs.promises.mkdir(root, { recursive: true })
-      if ((await fs.promises.lstat(root)).isSymbolicLink()) throw new RecorderError('output_invalid', '錄影工作目錄不可使用連結')
+      if ((await fs.promises.lstat(root)).isSymbolicLink()) throw new RecorderError('output_invalid', tr('錄影工作目錄不可使用連結'))
       const dir = path.join(root, id)
       await fs.promises.mkdir(dir)
       await validateSessionDir(dir)
@@ -395,7 +396,7 @@ export class RecordingSessionService implements RecordingService {
         } catch (error) {
           await current.obs?.close()
           current.obs = null
-          this.notice('warning', `${(error as Error).message}；${settings.obsFallbackBuiltin ? '本次改用內建錄影器' : '本次僅執行即時偵測'}`)
+          this.notice('warning', tr('{message}；{fallback}', { message: (error as Error).message, fallback: settings.obsFallbackBuiltin ? tr('本次改用內建錄影器') : tr('本次僅執行即時偵測') }))
           if (settings.obsFallbackBuiltin) current.backend = 'builtin'
           else await writeJson(path.join(dir, 'obs.json'), { recordStartedAt: startedAt, captureStartedAt: startedAt, adopted: false })
           this.update({ backend: current.backend, detectionOnly: !settings.obsFallbackBuiltin })
@@ -403,7 +404,7 @@ export class RecordingSessionService implements RecordingService {
         }
       }
       await client.hello()
-      if (!this.running || this.manualStopped || this.gamePid !== pid) throw new RecorderError('cancelled', '錄影啟動已取消')
+      if (!this.running || this.manualStopped || this.gamePid !== pid) throw new RecorderError('cancelled', tr('錄影啟動已取消'))
       await client.startRecording({ pid, session_dir: dir, session_id: id,
         encode: current.backend === 'obs' ? null : { codec: settings.codec, encoder: settings.encoder, fps: settings.fps, height: settings.height, bitrate_kbps: settings.bitrateKbps,
           preset: settings.preset, aspect: settings.forceAspect ? settings.aspectMode : 'native' },
@@ -430,7 +431,7 @@ export class RecordingSessionService implements RecordingService {
       }
       const code = error instanceof RecorderError ? error.code : 'recording_start_failed'
       if (!this.running || this.manualStopped || code === 'cancelled') { this.idle(); return false }
-      this.fail(code, `無法開始錄影：${String(error)}`)
+      this.fail(code, tr('無法開始錄影：{error}', { error: String(error) }))
       if (code === 'no_hw_encoder' || code === 'disk_full' || code === 'profile_invalid' || code === 'output_invalid') this.blocked = true
       else this.scheduleRestart()
       return false
@@ -486,7 +487,7 @@ export class RecordingSessionService implements RecordingService {
         break
       case 'stopped':
         if (!session.ending) void this.serialize(() => this.crashed(session,
-          new RecorderError('recorder_stopped', `錄影意外停止：${String(event.reason)}`)))
+          new RecorderError('recorder_stopped', tr('錄影意外停止：{reason}', { reason: String(event.reason) }))))
         break
     }
   }
@@ -498,7 +499,7 @@ export class RecordingSessionService implements RecordingService {
     if (session.cutting) return
     session.cutting = true
     const onError = (error: unknown): void => {
-      this.notice('error', `逐局剪檔失敗，錄影繼續，收尾時將重試：${String(error)}`)
+      this.notice('error', tr('逐局剪檔失敗，錄影繼續，收尾時將重試：{error}', { error: String(error) }))
     }
     session.cuts = (async () => {
       while (session.cutPending && !session.ending) {
@@ -514,7 +515,7 @@ export class RecordingSessionService implements RecordingService {
 
   private queueObs(session: ActiveSession, action: () => Promise<void>): void {
     session.obsWork = session.obsWork.then(action).catch((error) => {
-      this.notice('error', `OBS 逐局錄影處理失敗，已保留工作：${String(error)}`)
+      this.notice('error', tr('OBS 逐局錄影處理失敗，已保留工作：{error}', { error: String(error) }))
     })
   }
 
@@ -523,7 +524,7 @@ export class RecordingSessionService implements RecordingService {
     if (!obs?.perMatch || !obs.recording) return
     const current = obs.matches.at(-1)
     if (current?.confirmed === false) { current.cancelled = true; await obs.save() }
-    if (!await obs.stop()) throw new Error('OBS 尚未停止錄影')
+    if (!await obs.stop()) throw new Error(tr('OBS 尚未停止錄影'))
     this.update({ obsRecording: false })
     await this.completeObsMatches(session)
   }
@@ -536,7 +537,7 @@ export class RecordingSessionService implements RecordingService {
     session.cuts = session.cuts.then(async () => {
       const paths = await finalizeObsMatches(session.dir, this.deps, config, obs.matches, false, () => obs.save(), obs.meta)
       if (paths.length) this.finalized(paths)
-    }).catch((error) => this.notice('error', `OBS 逐局影片入庫失敗，收尾時將重試：${String(error)}`))
+    }).catch((error) => this.notice('error', tr('OBS 逐局影片入庫失敗，收尾時將重試：{error}', { error: String(error) })))
   }
 
   private async crashed(session: ActiveSession, error: Error): Promise<void> {
@@ -557,7 +558,7 @@ export class RecordingSessionService implements RecordingService {
     this.restartTimes = this.restartTimes.filter((time) => now - time < 600000)
     if (this.restartTimes.length >= 5) {
       this.blocked = true
-      this.fail('restart_limit', '錄影程序在 10 分鐘內已重啟 5 次，已停止重試')
+      this.fail('restart_limit', tr('錄影程序在 10 分鐘內已重啟 5 次，已停止重試'))
       return
     }
     const delay = 1000 * 2 ** this.restartTimes.length
@@ -579,14 +580,14 @@ export class RecordingSessionService implements RecordingService {
       const level = diskLevel(bytes, this.deps.getSettings())
       if (level === 'stop') {
         this.blocked = true
-        if (await this.finish()) this.fail('disk_full', '磁碟剩餘空間低於停止門檻，已停止錄影並收尾')
+        if (await this.finish()) this.fail('disk_full', tr('磁碟剩餘空間低於停止門檻，已停止錄影並收尾'))
       } else if (level === 'warn' && !session.warned) {
         session.warned = true
-        this.notice('diskWarn', `錄影磁碟剩餘 ${(bytes / 1024 ** 3).toFixed(1)} GB`)
+        this.notice('diskWarn', tr('錄影磁碟剩餘 {gb} GB', { gb: (bytes / 1024 ** 3).toFixed(1) }))
       }
     } catch (error) {
       this.blocked = true
-      if (await this.finish()) this.fail('disk_check_failed', `無法檢查錄影磁碟，已停止錄影：${String(error)}`)
+      if (await this.finish()) this.fail('disk_check_failed', tr('無法檢查錄影磁碟，已停止錄影：{error}', { error: String(error) }))
     }
   }
 
@@ -599,7 +600,7 @@ export class RecordingSessionService implements RecordingService {
     await session.obsWork
     this.clearDiskTimer()
     try { await session.client.stop() }
-    catch (error) { this.notice('error', `錄影程序停止失敗，將收尾已完成段落：${String(error)}`) }
+    catch (error) { this.notice('error', tr('錄影程序停止失敗，將收尾已完成段落：{error}', { error: String(error) })) }
     this.update({ phase: 'finalizing' })
     // 等 live 引擎送出最終 snapshot 並寫入 live.json，收尾才能轉成分析快取。
     await session.live.stop()
@@ -630,7 +631,7 @@ export class RecordingSessionService implements RecordingService {
       if (session.obs) {
         const ready = await session.obs.stop()
         if (!session.obs.meta.adopted) this.obsStoppedAt = Date.now()
-        if (!ready && session.obs.perMatch) throw new Error('OBS 逐局錄影尚未停止，已保留工作')
+        if (!ready && session.obs.perMatch) throw new Error(tr('OBS 逐局錄影尚未停止，已保留工作'))
         if (!ready) {
           this.pendingObs.set(session.id, session)
           this.active = null
@@ -648,10 +649,10 @@ export class RecordingSessionService implements RecordingService {
     } catch (error) {
       // 即使事件寫入或剪檔失敗，也解除 OBS 連線並停止本次自行開始的錄影。
       try { await session.obs?.stop(); await session.obs?.close() }
-      catch { this.notice('warning', 'OBS 收尾連線未完成，請在 OBS 確認錄影狀態') }
+      catch { this.notice('warning', tr('OBS 收尾連線未完成，請在 OBS 確認錄影狀態')) }
       this.active = null
       this.blocked = true
-      this.fail('finalize_failed', `錄影收尾失敗，已保留段落供下次重試：${String(error)}`)
+      this.fail('finalize_failed', tr('錄影收尾失敗，已保留段落供下次重試：{error}', { error: String(error) }))
       return false
     }
   }
@@ -663,7 +664,7 @@ export class RecordingSessionService implements RecordingService {
       const paths = await finalizeSession(session.dir, this.deps)
       this.events.emit('live', { sessionId: session.id, finalized: [...paths] } satisfies LiveUpdate)
       if (paths.length) this.finalized(paths)
-    } catch (error) { this.notice('error', `OBS 錄影收尾失敗，已保留工作供下次重試：${String(error)}`) }
+    } catch (error) { this.notice('error', tr('OBS 錄影收尾失敗，已保留工作供下次重試：{error}', { error: String(error) })) }
   }
 
   private recordEvent(session: ActiveSession, event: RecorderEvent): void {
@@ -675,7 +676,7 @@ export class RecordingSessionService implements RecordingService {
 
   private finalized(paths: string[]): void {
     this.events.emit('finalized', [...paths])
-    this.notice('finalized', `已儲存：${paths.map((p) => path.basename(p)).join('、')}`)
+    this.notice('finalized', tr('已儲存：{paths}', { paths: paths.map((p) => path.basename(p)).join('、') }))
   }
 
   private update(patch: Partial<RecordingStatus>, publish = true): void {

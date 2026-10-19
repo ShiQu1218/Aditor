@@ -12,6 +12,7 @@ const src = (rel: string): string => resolve(__dirname, '../../', rel)
 /** 設定欄位 → 消費端（相對 src/）與在該檔必須出現的識別字 */
 const FIELD_CONSUMERS: Record<string, Array<[string, RegExp]>> = {
   watchFolders: [['main/watch.ts', /watchFolders/]],
+  language: [['main/index.ts', /resolveLocale\(/], ['renderer/i18n/index.ts', /bootLocale/]],
   autoAnalyze: [['main/watch.ts', /\.autoAnalyze/]],
   decode: [['main/settings-derived.ts', /\.decode/], ['main/queue.ts', /analyzeSettingArgs/], ['main/index.ts', /buildAnalyzeArgs/]],
   cacheLocation: [
@@ -38,6 +39,7 @@ const FIELD_CONSUMERS: Record<string, Array<[string, RegExp]>> = {
 
 /** 設定畫面的列 → 它控制的欄位，或（非設定欄位的列）真實後端／IPC 消費端 */
 const ROW_TARGETS: Record<string, { fields?: string[]; consumers?: Array<[string, RegExp]> }> = {
+  language: { fields: ['language'] },
   watchFolders: { fields: ['watchFolders'] },
   autoAnalyze: { fields: ['autoAnalyze'] },
   decode: { fields: ['decode'] },

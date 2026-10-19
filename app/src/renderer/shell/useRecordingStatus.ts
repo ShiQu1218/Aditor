@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { IDLE_RECORDING_STATUS, type RecordingStatus } from '../../shared/recording'
 import { recordingI18n } from '../i18n'
+import { tr } from '../../shared/locale'
 
 /** 先訂閱再讀快照，避免較慢的初始回覆蓋過新推播。 */
 export function useRecordingStatus(): { status: RecordingStatus; error: string | null; refresh: () => Promise<void> } {
@@ -12,7 +13,7 @@ export function useRecordingStatus(): { status: RecordingStatus; error: string |
     const version = ++revision.current
     try {
       const api = window.api?.recording
-      if (!api) throw new Error('錄影服務未連接')
+      if (!api) throw new Error(tr('錄影服務未連接'))
       const next = await api.getStatus()
       if (active.current && revision.current === version) {
         setStatus(next)

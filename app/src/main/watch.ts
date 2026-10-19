@@ -5,6 +5,7 @@ import type { FSWatcher } from 'chokidar'
 import { Library, SUPPORTED_EXTS, watchFolder } from './library'
 import type { AnalysisQueue } from './queue'
 import type { SettingsStore } from './settings'
+import { tr } from '../shared/locale'
 
 /** 檔案大小需穩定的預設毫秒數與輪詢間隔（`WatchManagerOptions` 未指定時採用） */
 export const DEFAULT_STABILITY_MS = 2000
@@ -49,17 +50,17 @@ export class WatchDirError extends Error {
  */
 export function validateWatchDir(dir: unknown): string {
   if (typeof dir !== 'string' || !path.isAbsolute(dir)) {
-    throw new WatchDirError('relative', `監看資料夾必須是絕對路徑：${String(dir)}`)
+    throw new WatchDirError('relative', tr('監看資料夾必須是絕對路徑：{dir}', { dir: String(dir) }))
   }
   const resolved = path.resolve(dir)
   let stat: fs.Stats
   try {
     stat = fs.statSync(resolved)
   } catch {
-    throw new WatchDirError('missing', `資料夾不存在：${resolved}`)
+    throw new WatchDirError('missing', tr('資料夾不存在：{resolved}', { resolved }))
   }
   if (!stat.isDirectory()) {
-    throw new WatchDirError('not-directory', `路徑不是資料夾：${resolved}`)
+    throw new WatchDirError('not-directory', tr('路徑不是資料夾：{resolved}', { resolved }))
   }
   return resolved
 }

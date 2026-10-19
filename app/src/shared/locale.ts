@@ -45,7 +45,7 @@ let active: Locale = DEFAULT_LOCALE
 export function setActiveLocale(locale: Locale): void { active = locale }
 export function getActiveLocale(): Locale { return active }
 
-export function tr(text: string, vars?: Readonly<Record<string, string | number>>): string {
+export function tr(text: string, vars?: Readonly<Record<string, string | number | null | undefined>>): string {
   const template = TABLES[active]?.[text] ?? text
   return vars ? template.replace(/\{(\w+)\}/g, (whole, name: string) => (name in vars ? String(vars[name]) : whole)) : template
 }

@@ -1,6 +1,6 @@
 // 設定畫面的列定義（資料表）：分類、卡片、標題／說明／搜尋關鍵字與控制項種類。
 // 文字一律來自 i18n/zh-TW.ts；控制項如何讀寫 Settings／IPC 由 SettingRow 與 settingsController 實作。
-import { settingsI18n, recordingI18n } from '../i18n'
+import { settingsI18n, recordingI18n, LOCALES, LOCALE_NAMES } from '../i18n'
 import type { RecordingSettings } from '../../shared/recording'
 
 const t = settingsI18n
@@ -26,7 +26,7 @@ export type BoolField = 'autoAnalyze' | 'lowPerfMode' | 'proxySuggest' | 'autoSu
 export type ControlSpec =
   | { kind: 'recording'; field: keyof RecordingSettings }
   | { kind: 'switch'; field: BoolField }
-  | { kind: 'select'; field: 'decode' | 'cacheLocation'; options: ReadonlyArray<{ value: string; label: string }> }
+  | { kind: 'select'; field: 'decode' | 'cacheLocation' | 'language'; options: ReadonlyArray<{ value: string; label: string }> }
   | { kind: 'numberPair'; fields: readonly ['before', 'after'] }
   | { kind: 'autoclip' }
   | { kind: 'watchFolders' }
@@ -65,6 +65,23 @@ export function recordingRowVisible(row: SettingRow, backend: RecordingSettings[
 
 export const SETTING_ROWS: SettingRow[] = [
   // ── 影片與分析 ──
+  {
+    id: 'language',
+    category: 'a',
+    card: t.card.general,
+    title: t.row.language.title,
+    desc: t.row.language.desc,
+    keywords: [...t.row.language.keywords],
+    isNew: true,
+    control: {
+      kind: 'select',
+      field: 'language',
+      options: [
+        { value: 'auto', label: t.row.language.auto },
+        ...LOCALES.map((code) => ({ value: code, label: LOCALE_NAMES[code] }))
+      ]
+    }
+  },
   {
     id: 'watchFolders',
     category: 'a',

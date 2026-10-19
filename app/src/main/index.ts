@@ -19,6 +19,7 @@ import { generateThumbnail } from './thumbnail'
 import { createRecordingService } from './recording'
 import { registerRecordingIpc } from './recording-ipc'
 import { createRecordingTray } from './tray'
+import { resolveLocale, setActiveLocale, tr, type Locale } from '../shared/locale'
 import { createRecordingNotifier } from './notify'
 import type { RecordingService } from '../shared/recording'
 import { obsPassword } from './settings-ipc'
@@ -44,6 +45,8 @@ let tray: ReturnType<typeof createRecordingTray> | null = null
 let unregisterRecordingIpc: (() => void) | null = null
 let unsubscribeSettings: (() => void) | null = null
 let quitting = false
+/** 目前生效的介面語言（設定 `language`，auto 時依 Windows 顯示語言） */
+let locale: Locale = 'zh-TW'
 let servicesReady = false
 let openRequested = !process.argv.includes('--hidden')
 /** renderer 未回應 flush 時最多等多久才關閉視窗 */
@@ -105,11 +108,27 @@ function createWindow(): void {
     win.focus()
   })
 
+  loadRenderer(mainWindow)
+}
+
+/** renderer 啟動時從網址的 `lang` 取得語言；換語言就用新的語言重新載入（未存檔的專案由 beforeunload 先寫入）。 */
+function loadRenderer(win: BrowserWindow): void {
   if (process.env.ELECTRON_RENDERER_URL) {
-    mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL)
+    const url = new URL(process.env.ELECTRON_RENDERER_URL)
+    url.searchParams.set('lang', locale)
+    void win.loadURL(url.toString())
   } else {
-    mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
+    void win.loadFile(join(__dirname, '../renderer/index.html'), { query: { lang: locale } })
   }
+}
+
+/** 依設定重新決定介面語言；回傳語言是否有變。 */
+function syncLocale(): boolean {
+  const next = resolveLocale(settingsStore?.get().language, app.getLocale())
+  if (next === locale) return false
+  locale = next
+  setActiveLocale(next)
+  return true
 }
 
 function showMainWindow(): void {
@@ -149,6 +168,7 @@ async function initEngineAndServices(): Promise<void> {
   // 上次執行中斷遺留的「分析中」條目沒有佇列在處理，重設為閒置
   library.resetStaleAnalyzing()
   settingsStore = new SettingsStore(join(appDataDir(), 'settings.json'))
+  syncLocale()
   queue = new AnalysisQueue(engineClient, library, {
     profileDir: templateProfileDir,
     cacheDir: cacheDir(),
@@ -223,11 +243,17 @@ async function initEngineAndServices(): Promise<void> {
       app.setLoginItemSettings({ openAtLogin: enabled, args: ['--hidden'] })
       launchAtLogin = enabled
     } catch (error) {
-      notify('error', `無法更新開機啟動設定：${String(error)}`)
+      notify('error', tr('無法更新開機啟動設定：{error}', { error: String(error) }))
     }
   }
   updateLoginItem()
-  unsubscribeSettings = settingsStore.onChange(updateLoginItem)
+  const unsubscribeLogin = settingsStore.onChange(updateLoginItem)
+  const unsubscribeLanguage = settingsStore.onChange(() => {
+    if (!syncLocale()) return
+    tray?.refresh()
+    if (mainWindow && !mainWindow.isDestroyed()) loadRenderer(mainWindow)
+  })
+  unsubscribeSettings = () => { unsubscribeLogin(); unsubscribeLanguage() }
   // E2E 不偵測真實 Apex，避免測試期間碰到正在執行的遊戲
   if (!e2e) recordingService.start()
 

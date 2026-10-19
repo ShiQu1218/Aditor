@@ -1,5 +1,6 @@
 import { OBSWebSocket } from 'obs-websocket-js'
 import { EventEmitter } from 'events'
+import { tr } from '../../shared/locale'
 
 /** OBS v5 的小型介面：所有等候都有逾時，錯誤不包含密碼或伺服器回傳文字。 */
 export class ObsClient extends EventEmitter {
@@ -25,7 +26,7 @@ export class ObsClient extends EventEmitter {
       this.connected = true
     } catch (error) {
       await this.close()
-      throw new Error((error as { code?: number }).code === 4009 ? 'OBS 密碼驗證失敗，請檢查密碼' : '無法連線 OBS，請確認 WebSocket 伺服器與主機、連接埠設定')
+      throw new Error((error as { code?: number }).code === 4009 ? tr('OBS 密碼驗證失敗，請檢查密碼') : tr('無法連線 OBS，請確認 WebSocket 伺服器與主機、連接埠設定'))
     }
   }
 
@@ -33,14 +34,14 @@ export class ObsClient extends EventEmitter {
     let timer!: ReturnType<typeof setTimeout>
     try {
       return await Promise.race([promise, new Promise<never>((_resolve, reject) => {
-        timer = setTimeout(() => reject(new Error('OBS 回應逾時')), this.timeoutMs)
+        timer = setTimeout(() => reject(new Error(tr('OBS 回應逾時'))), this.timeoutMs)
       })])
     } finally { clearTimeout(timer) }
   }
 
   private async call<T>(request: Promise<T>): Promise<T> {
     try { return await this.deadline(request) }
-    catch { throw new Error('OBS 指令失敗或回應逾時，請檢查 OBS 連線') }
+    catch { throw new Error(tr('OBS 指令失敗或回應逾時，請檢查 OBS 連線')) }
   }
 
   async version(): Promise<{ obsVersion: string; obsWebSocketVersion: string }> {

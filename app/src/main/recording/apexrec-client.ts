@@ -3,6 +3,7 @@ import { EventEmitter } from 'events'
 import { StringDecoder } from 'string_decoder'
 import type { RecorderCapabilities } from '../../shared/recording'
 import type { RecorderCommand } from './index'
+import { tr } from '../../shared/locale'
 
 const MAX_BYTES = 64 * 1024
 export type RecorderEvent = Record<string, unknown> & { ev: string }
@@ -41,7 +42,7 @@ export class ApexrecClient extends EventEmitter {
     if (typeof reply.version !== 'string' || !Array.isArray(reply.encoders) ||
         !reply.encoders.every((e) => typeof e === 'string') || !audio ||
         !validDevices(audio.render) || !validDevices(audio.capture)) {
-      throw new RecorderError('bad_reply', '錄影程序的能力回覆格式錯誤')
+      throw new RecorderError('bad_reply', tr('錄影程序的能力回覆格式錯誤'))
     }
     return { version: reply.version, encoders: reply.encoders, audio }
   }
@@ -54,7 +55,7 @@ export class ApexrecClient extends EventEmitter {
     this.closed = new Promise((resolve) => {
       proc.once('close', (code, signal) => {
         this.proc = null
-        const error = this.error('recorder_crashed', `錄影程序已結束（${code ?? signal}）`)
+        const error = this.error('recorder_crashed', tr('錄影程序已結束（{code}）', { code: code ?? signal }))
         this.rejectAll(error)
         if (!this.closing) this.emit('crash', error)
         resolve()
@@ -70,14 +71,14 @@ export class ApexrecClient extends EventEmitter {
 
   request(cmd: string, args: object = {}, timeoutMs = 30000): Promise<Record<string, unknown>> {
     const proc = this.proc
-    if (!proc || this.closing) return Promise.reject(this.error('recorder_closed', '錄影程序未執行'))
+    if (!proc || this.closing) return Promise.reject(this.error('recorder_closed', tr('錄影程序未執行')))
     const id = ++this.seq
     const line = JSON.stringify({ ...args, id, cmd }) + '\n'
-    if (Buffer.byteLength(line) > MAX_BYTES) return Promise.reject(this.error('bad_request', '錄影指令超過 64 KB'))
+    if (Buffer.byteLength(line) > MAX_BYTES) return Promise.reject(this.error('bad_request', tr('錄影指令超過 64 KB')))
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(id)
-        reject(this.error('recorder_timeout', `等待錄影指令 ${cmd} 回覆逾時`))
+        reject(this.error('recorder_timeout', tr('等待錄影指令 {cmd} 回覆逾時', { cmd })))
       }, timeoutMs)
       this.pending.set(id, { resolve, reject, timer })
       proc.stdin.write(line, (error) => {
@@ -101,7 +102,7 @@ export class ApexrecClient extends EventEmitter {
       this.on('event', onEvent)
       this.on('crash', onCrash)
       this.on('closed', onCrash)
-      timer = setTimeout(() => reject(this.error('recorder_timeout', '等待錄影開始事件逾時')), 30000)
+      timer = setTimeout(() => reject(this.error('recorder_timeout', tr('等待錄影開始事件逾時'))), 30000)
     })
     try {
       await Promise.all([started, this.request('start', args)])
@@ -126,8 +127,8 @@ export class ApexrecClient extends EventEmitter {
 
   async close(): Promise<void> {
     this.closing = true
-    this.emit('closed', this.error('recorder_closed', '錄影程序已停止'))
-    this.rejectAll(this.error('recorder_closed', '錄影程序已停止'))
+    this.emit('closed', this.error('recorder_closed', tr('錄影程序已停止')))
+    this.rejectAll(this.error('recorder_closed', tr('錄影程序已停止')))
     const proc = this.proc
     if (!proc) return
     proc.stdin.end()
@@ -149,7 +150,7 @@ export class ApexrecClient extends EventEmitter {
         if (typeof msg.id === 'number') {
           this.settle(msg.id, msg.ok === true ? msg : this.error(
             typeof msg.code === 'string' ? msg.code : 'bad_reply',
-            typeof msg.message === 'string' ? msg.message : '錄影指令失敗'))
+            typeof msg.message === 'string' ? msg.message : tr('錄影指令失敗')))
         } else if (typeof msg.ev === 'string') this.emit('event', msg)
         else throw new Error()
       } catch { this.protocolError(); return }
@@ -158,7 +159,7 @@ export class ApexrecClient extends EventEmitter {
   }
 
   private protocolError(): void {
-    this.rejectAll(this.error('bad_reply', '錄影程序輸出的 JSON-lines 格式錯誤'))
+    this.rejectAll(this.error('bad_reply', tr('錄影程序輸出的 JSON-lines 格式錯誤')))
     this.proc?.kill()
   }
 

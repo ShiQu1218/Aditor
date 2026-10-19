@@ -1,5 +1,39 @@
 import type { Messages } from '../index'
-import { zhTW } from '../zh-TW'
 
-/** 待翻譯：暫以繁體中文代替。 */
-export const liveI18n: Messages['liveI18n'] = zhTW.liveI18n
+export const liveI18n: Messages['liveI18n'] = {
+  obsRecording: 'OBS is recording. You can play it once recording ends.',
+  detectionOnly: 'Live detection is running, but OBS is not connected, so this match is not being recorded.',
+  title: 'Watch this match',
+  back: 'Back',
+  video: 'Match recording',
+  recording: 'Recording',
+  match: 'Match {n}',
+  noMatch: 'No match detected yet',
+  kills: 'Kills this match: {n}',
+  play: 'Play',
+  pause: 'Pause',
+  back5: 'Back 5 seconds',
+  forward5: 'Forward 5 seconds',
+  jumpLive: 'Jump to latest',
+  atLive: 'Already at latest',
+  time: '{cur} / {end}',
+  timeline: 'Recording timeline',
+  timelineValue: '{cur} of a recording {end} long',
+  matchRange: 'Match {n}: {start}–{end}',
+  matchOngoing: 'In progress',
+  released: 'Content older than 30 minutes has been released. It can be watched in the Studio after wrap-up.',
+  events: 'Live events',
+  noEvents: 'No events yet. Knockdowns and eliminations will appear here as they are detected.',
+  eventItem: '{type} · {time}',
+  uncounted: ' (not counted)',
+  newKill: 'New event: {type} · {time}',
+  loading: 'Loading recording…',
+  notRecording: 'No recording is in progress.',
+  unsupported: 'This computer cannot play the recording codec ({mime}). Events will still update live.',
+  loadFailed: 'Unable to load recording segments: {message}',
+  waitingInit: 'Waiting for the recording to start writing…',
+  ended: 'Recording has ended and was added to the library.',
+  openStudio: 'Open in Studio',
+  openLibrary: 'Go to library',
+  keys: 'Space: play / pause · ← / →: back or forward 5 seconds · End: jump to latest'
+}

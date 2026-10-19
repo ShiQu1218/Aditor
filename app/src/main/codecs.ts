@@ -6,6 +6,7 @@ import { spawn } from 'child_process'
 import { Readable } from 'stream'
 import { codecsDir } from '../shared/paths'
 import { decompressBz2File } from './bz2'
+import { tr } from '../shared/locale'
 
 const OPENH264_HOST = 'ciscobinary.openh264.org'
 const OPENH264_FILE = 'openh264-2.3.1-win64.dll.bz2'
@@ -57,11 +58,11 @@ function httpsFetch(url: string): Promise<FetchedStream> {
     const req = https.get(url, (res) => {
       if (res.statusCode !== 200) {
         res.resume()
-        return reject(new Error(`下載 OpenH264 失敗: HTTP ${res.statusCode}`))
+        return reject(new Error(tr('下載 OpenH264 失敗: HTTP {statusCode}', { statusCode: res.statusCode })))
       }
       resolve({ stream: res, contentLength: parseInt(res.headers['content-length'] || '0', 10) })
     })
-    req.setTimeout(30_000, () => req.destroy(new Error('下載 OpenH264 逾時')))
+    req.setTimeout(30_000, () => req.destroy(new Error(tr('下載 OpenH264 逾時'))))
     req.on('error', reject)
   })
 }
@@ -79,7 +80,7 @@ export interface DownloadOptions {
 /** 下載官方 OpenH264：白名單網址 → 串流寫入暫存檔 → 驗證大小與 SHA-256 → 解壓縮；失敗一律清掉半成品。 */
 export async function downloadOpenH264(opts: DownloadOptions = {}): Promise<string> {
   const url = opts.url ?? openh264Url()
-  if (!isAllowedOpenH264Url(url)) throw new Error('OpenH264 下載網址不在允許清單內')
+  if (!isAllowedOpenH264Url(url)) throw new Error(tr('OpenH264 下載網址不在允許清單內'))
   const dir = opts.dir ?? codecsDir()
   const expected = opts.expected ?? { size: OPENH264_BZ2_SIZE, sha256: OPENH264_BZ2_SHA256 }
   fs.mkdirSync(dir, { recursive: true })
@@ -93,7 +94,7 @@ export async function downloadOpenH264(opts: DownloadOptions = {}): Promise<stri
   }
   try {
     const { stream, contentLength } = await (opts.fetchStream ?? httpsFetch)(url)
-    if (contentLength > 0 && contentLength !== expected.size) throw new Error('OpenH264 檔案大小與預期不符')
+    if (contentLength > 0 && contentLength !== expected.size) throw new Error(tr('OpenH264 檔案大小與預期不符'))
     const hash = createHash('sha256')
     let downloaded = 0
     const ws = fs.createWriteStream(bz2Path)
@@ -102,7 +103,7 @@ export async function downloadOpenH264(opts: DownloadOptions = {}): Promise<stri
       stream.on('data', (chunk: Buffer) => {
         downloaded += chunk.length
         if (downloaded > expected.size) {
-          stream.destroy(new Error('OpenH264 檔案大小超過預期'))
+          stream.destroy(new Error(tr('OpenH264 檔案大小超過預期')))
           return
         }
         hash.update(chunk)
@@ -113,8 +114,8 @@ export async function downloadOpenH264(opts: DownloadOptions = {}): Promise<stri
       ws.on('finish', () => resolve())
       stream.pipe(ws)
     })
-    if (downloaded !== expected.size) throw new Error('OpenH264 檔案大小與預期不符')
-    if (hash.digest('hex') !== expected.sha256) throw new Error('OpenH264 檔案雜湊校驗失敗，已拒絕使用')
+    if (downloaded !== expected.size) throw new Error(tr('OpenH264 檔案大小與預期不符'))
+    if (hash.digest('hex') !== expected.sha256) throw new Error(tr('OpenH264 檔案雜湊校驗失敗，已拒絕使用'))
     await (opts.decompress ?? decompressBz2File)(bz2Path, dllTmp)
     fs.renameSync(dllTmp, dllPath)
     fs.rmSync(bz2Path, { force: true })

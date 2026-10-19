@@ -1,3 +1,4 @@
+import { tr } from '../../shared/locale'
 export interface ProjectItem {
   id: string
   source: string
@@ -150,12 +151,12 @@ export type ProjectShapeError = { kind: 'unsupported' | 'format'; message: strin
 
 /** 檢查任意資料是否為合法專案（版本、name、items 逐項形狀）；合法回 null。 */
 export function projectShapeError(data: unknown): ProjectShapeError | null {
-  if (!data || typeof data !== 'object' || Array.isArray(data)) return { kind: 'format', message: '不是專案物件' }
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return { kind: 'format', message: tr('不是專案物件') }
   const d = data as Record<string, unknown>
   if (typeof d.version === 'number' && d.version > 1) {
-    return { kind: 'unsupported', message: `不支援的專案版本 ${d.version}（unsupported version）` }
+    return { kind: 'unsupported', message: tr('不支援的專案版本 {version}（unsupported version）', { version: d.version }) }
   }
-  if (d.version !== 1) return { kind: 'format', message: '版本欄位無效' }
+  if (d.version !== 1) return { kind: 'format', message: tr('版本欄位無效') }
   if (typeof d.name !== 'string') return { kind: 'format', message: 'name 必須是字串' }
   if (!Array.isArray(d.items)) return { kind: 'format', message: 'items 必須是陣列' }
   for (const [i, it] of d.items.entries()) {
@@ -171,7 +172,7 @@ export function projectShapeError(data: unknown): ProjectShapeError | null {
       Number.isFinite(x.start) &&
       typeof x.end === 'number' &&
       Number.isFinite(x.end)
-    if (!ok) return { kind: 'format', message: `items[${i}] 格式不符` }
+    if (!ok) return { kind: 'format', message: tr('items[{i}] 格式不符', { i }) }
   }
   return null
 }

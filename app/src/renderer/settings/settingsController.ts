@@ -207,7 +207,7 @@ export class SettingsController {
     }
   }
 
-  setEnum(field: 'decode' | 'cacheLocation', value: string): Promise<void> {
+  setEnum(field: 'decode' | 'cacheLocation' | 'language', value: string): Promise<void> {
     return this.commit(field, { [field]: value } as Partial<Settings>)
   }
 

@@ -61,6 +61,7 @@ import { navReference, type NavAnchor } from './eventNav'
 import { isAnyOverlayOpen, OverlayState, topOverlay } from './overlays'
 import { fileUrl, onVideoError, planSeek, routeTimeUpdate } from './seekPlan'
 import { loadStudioDoc } from './studioLoader'
+import { tr } from '../../shared/locale'
 
 export interface ProjectPlaybackRequest {
   playItemId: string
@@ -633,7 +634,7 @@ export function StudioScreen({ videoPath, onBack, onOpenVideo, playbackRequest, 
     }
     if (stateRef.current.dirty) {
       try {
-        if (window.api.cache.saveSync(stateRef.current.doc) === false) throw new Error('來源儲存失敗')
+        if (window.api.cache.saveSync(stateRef.current.doc) === false) throw new Error(tr('來源儲存失敗'))
         cacheSaver.current!.cancelPending()
       } catch {
         videoRef.current?.pause()

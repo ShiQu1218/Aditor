@@ -1,0 +1,17 @@
+/* 依介面語言換 CJK 字型，避免日文／簡中套到繁中字形。<html lang> 由 i18n/index.ts 在啟動時設定。
+   tokens.css 必須與設計稿 mock 逐位元相同，所以語言專用的字型變數放這裡。 */
+:root[lang='zh-CN'] {
+  --font-display: 'Montserrat', 'Noto Sans SC', 'Microsoft YaHei UI', 'Segoe UI', sans-serif;
+  --font-ui: 'Lato', 'Noto Sans SC', 'Microsoft YaHei UI', 'Segoe UI', sans-serif;
+  --font-mono: 'Cascadia Mono', 'Consolas', 'Microsoft YaHei UI', monospace;
+}
+:root[lang='ja'] {
+  --font-display: 'Montserrat', 'Noto Sans JP', 'Yu Gothic UI', 'Meiryo UI', 'Segoe UI', sans-serif;
+  --font-ui: 'Lato', 'Noto Sans JP', 'Yu Gothic UI', 'Meiryo UI', 'Segoe UI', sans-serif;
+  --font-mono: 'Cascadia Mono', 'Consolas', 'Yu Gothic UI', monospace;
+}
+:root[lang='ko'] {
+  --font-display: 'Montserrat', 'Noto Sans KR', 'Malgun Gothic', 'Segoe UI', sans-serif;
+  --font-ui: 'Lato', 'Noto Sans KR', 'Malgun Gothic', 'Segoe UI', sans-serif;
+  --font-mono: 'Cascadia Mono', 'Consolas', 'Malgun Gothic', monospace;
+}

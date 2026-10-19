@@ -1,8 +1,9 @@
 import { cacheFilePath } from './cache-io'
 import { isSafeLocalVideoPath } from './safe-path'
+import { tr } from '../shared/locale'
 
 function requireVideoPath(p: unknown): string {
-  if (!isSafeLocalVideoPath(p)) throw new Error('影片路徑不正確')
+  if (!isSafeLocalVideoPath(p)) throw new Error(tr('影片路徑不正確'))
   return p
 }
 

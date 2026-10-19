@@ -2,6 +2,7 @@ import type { EngineEvent } from '../../shared/types'
 import { isCounted } from '../../shared/types'
 import { formatTime } from '../../shared/time'
 import { i18n } from '../i18n'
+import { tr } from '../../shared/locale'
 
 /**
  * 事件原因小字（spec §3.2.3）：軟刪除 → 強制（override）→ counted_reason；
@@ -20,6 +21,6 @@ export function eventReason(e: EngineEvent): string {
 export function eventAriaLabel(e: EngineEvent): string {
   const types = i18n.timeline.types as Record<string, string>
   const type = types[e.type] ?? e.type
-  const state = isCounted(e) ? i18n.timeline.counted : `${i18n.timeline.uncounted}：${eventReason(e)}`
+  const state = isCounted(e) ? i18n.timeline.counted : tr('{label}：{detail}', { label: i18n.timeline.uncounted, detail: eventReason(e) })
   return `${type} ${formatTime(e.t)} ${state}`
 }

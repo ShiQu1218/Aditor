@@ -3,6 +3,7 @@ import { KEY_TABLE, type KeyRow } from '../input/keymap'
 import { useFocusTrap } from '../a11y/useFocusTrap'
 import { X } from '../components/icons'
 import { shellI18n } from '../i18n'
+import { tr } from '../../shared/locale'
 
 /** 說明中分組的顯示順序（其餘 scope 依 KEY_TABLE 出現順序接在後面）。 */
 const SCOPE_ORDER = [
@@ -12,7 +13,7 @@ const SCOPE_ORDER = [
   shellI18n.keymap.scope.hl,
   shellI18n.keymap.scope.proj,
   shellI18n.keymap.scope.library,
-  `${shellI18n.keymap.scope.library}／${shellI18n.keymap.scope.settings}`
+  tr('{library}／{settings}', { library: shellI18n.keymap.scope.library, settings: shellI18n.keymap.scope.settings })
 ]
 
 export interface KeyGroup {
