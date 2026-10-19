@@ -43,6 +43,8 @@ export interface Settings {
   autoSuggestOnOpen: boolean
   /** 專案自動儲存（關閉後恢復「未儲存變更」提示行為） */
   projectAutosave: boolean
+  /** 自動檢查 GitHub 新版本並在背景下載（只有安裝版有效；手動檢查不受影響） */
+  autoUpdate: boolean
   /** 匯出預設資料夾（null＝每次詢問） */
   defaultOutDir: string | null
   /** 專案軌預設收合：'auto' 依視窗高度（≤800px 收合），或固定布林 */
@@ -102,6 +104,7 @@ export const DEFAULT_SETTINGS: Settings = {
   autoclip: { n: 3, gap: 20, before: 8, after: 4, max_len: 90 },
   autoSuggestOnOpen: true,
   projectAutosave: true,
+  autoUpdate: true,
   defaultOutDir: null,
   projectTrackCollapsed: 'auto',
   sameDayVideosCollapsed: false,

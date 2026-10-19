@@ -8,6 +8,7 @@ import type { SettingsController, SettingsState } from './settingsController'
 import type { SettingRow } from './rows'
 import { RecordingControl } from './RecordingControl'
 import { StoragePreview } from './StoragePreview'
+import { UpdateControl } from './UpdateControl'
 
 const t = settingsI18n.row
 
@@ -493,6 +494,8 @@ export function SettingControl(props: ControlProps): JSX.Element | null {
           </button>
         </div>
       )
+    case 'update':
+      return <UpdateControl ids={ids} status={state.update} controller={controller} />
     case 'none':
       return null
   }

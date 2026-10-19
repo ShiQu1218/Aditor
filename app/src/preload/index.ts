@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import { RECORDING_CHANNELS, type LiveState, type LiveUpdate, type RecordingStatus, type RecorderCapabilities } from '../shared/recording'
+import { UPDATE_CHANNELS, type UpdateStatus } from '../shared/update'
 
 const api = {
   recording: {
@@ -121,6 +122,19 @@ const api = {
       return () => {
         ipcRenderer.removeListener('app:windowHidden', handler)
       }
+    }
+  },
+  update: {
+    getStatus: (): Promise<UpdateStatus> => ipcRenderer.invoke(UPDATE_CHANNELS.getStatus),
+    check: (): Promise<UpdateStatus> => ipcRenderer.invoke(UPDATE_CHANNELS.check),
+    /** 已下載新版時立即結束並安裝 */
+    install: (): Promise<boolean> => ipcRenderer.invoke(UPDATE_CHANNELS.install),
+    /** 用瀏覽器開啟 GitHub Releases（免安裝版手動下載） */
+    openReleases: (): Promise<boolean> => ipcRenderer.invoke(UPDATE_CHANNELS.openReleases),
+    onStatus: (callback: (status: UpdateStatus) => void): (() => void) => {
+      const handler = (_: unknown, status: UpdateStatus) => callback(status)
+      ipcRenderer.on(UPDATE_CHANNELS.status, handler)
+      return () => ipcRenderer.removeListener(UPDATE_CHANNELS.status, handler)
     }
   },
   settings: {

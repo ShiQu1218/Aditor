@@ -2,8 +2,9 @@ import React from 'react'
 import { renderToString } from 'react-dom/server'
 import fs from 'fs'
 import path from 'path'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 import { DEFAULT_SETTINGS, type Settings, type SettingsSetResult } from '../../shared/settings'
+import type { UpdateStatus } from '../../shared/update'
 import { SettingsScreen } from './SettingsScreen'
 import { SettingsController, type SettingsApi } from './settingsController'
 import { settingsI18n } from '../i18n'
@@ -98,10 +99,38 @@ describe('SettingsScreen markup（renderToString + fake window.api 資料）', (
     expect(html).not.toContain('data-row="defaultOutDir"')
   })
 
-  test('category about: version/licenses and trademark text (2 rows)', async () => {
+  test('category about: version, update, auto-update switch and trademark (4 rows)', async () => {
     const html = await render({ initialCategory: 'about' })
-    expect(rowIds(html)).toEqual(['about', 'trademark'])
+    expect(rowIds(html)).toEqual(['about', 'updateStatus', 'autoUpdate', 'trademark'])
     expect(html).toContain('Apex Legends 為 Electronic Arts／Respawn 之商標')
+    expect(html).toMatch(/id="set-autoUpdate"[^>]*checked/)
+    // 沒有更新 API（舊 preload／開發）：顯示不支援並提供下載頁
+    expect(html).toContain('免安裝版與開發版不支援自動更新')
+    expect(html).toContain('開啟下載頁面')
+  })
+
+  test('update row follows the status pushed by main: downloading → downloaded offers restart-and-update', async () => {
+    let push: (s: UpdateStatus) => void = () => undefined
+    const install = vi.fn(async () => true)
+    const api = fakeApi()
+    api.update = {
+      getStatus: async () => ({ state: 'latest' }),
+      check: async () => ({ state: 'latest' }),
+      install,
+      openReleases: async () => true,
+      onStatus: (cb) => { push = cb; return () => undefined }
+    }
+    expect(await render({ initialCategory: 'about' }, api)).toContain('已是最新版本')
+    const downloading = await render({ initialCategory: 'about' }, api, async () => push({ state: 'downloading', version: '0.2.0', percent: 40 }))
+    expect(downloading).toContain('正在下載 0.2.0（40%）')
+    expect(downloading).toMatch(/<button[^>]*id="set-updateStatus"[^>]*disabled/)
+    const done = await render({ initialCategory: 'about' }, api, async (c) => {
+      push({ state: 'downloaded', version: '0.2.0' })
+      await c.installUpdate()
+    })
+    expect(done).toContain('0.2.0 已下載，結束 Aditor 時安裝')
+    expect(done).toContain('立即重新啟動並更新')
+    expect(install).toHaveBeenCalledTimes(1)
   })
 
   const storageRowHtml = (html: string): string => html.slice(html.indexOf('data-row="storageRoot"'))

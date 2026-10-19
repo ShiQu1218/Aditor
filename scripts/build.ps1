@@ -81,7 +81,7 @@ Write-Host "✓ electron-vite build succeeded."
 
 # 5. Package with electron-builder
 Write-Host "`n[5/5] Packaging installer and portable with electron-builder..."
-npx electron-builder --win
+npx electron-builder --win --publish never
 if ($LASTEXITCODE -ne 0) {
     throw "electron-builder packaging failed"
 }

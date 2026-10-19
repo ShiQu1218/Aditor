@@ -29,7 +29,7 @@ export const settingsI18n: Messages['settingsI18n'] = {
     analysis: '영상을 라이브러리로 가져오는 방법과 하이라이트를 분석하는 방식.',
     editing: '스튜디오의 미리보기 재생과 편집 기본값.',
     export: '영상을 내보낼 때 사용하는 인코더.',
-    about: '버전, 라이선스, 상표 고지.'
+    about: '버전, 업데이트, 라이선스, 상표 고지.'
   },
   card: {
     ui: '인터페이스',
@@ -178,6 +178,26 @@ export const settingsI18n: Messages['settingsI18n'] = {
       keywords: ['버전', '라이선스', '정보', 'license', 'version', 'mit', 'ffmpeg'],
       version: 'Aditor {version}',
       licenses: '서드파티 라이선스'
+    },
+    updateStatus: {
+      title: '소프트웨어 업데이트',
+      desc: '새 버전을 GitHub에서 내려받아 Aditor를 종료할 때 자동으로 설치합니다. 바로 다시 시작해 설치할 수도 있습니다.',
+      keywords: ['업데이트', '새 버전', '버전', 'update', 'github', '다운로드'],
+      unsupported: '포터블 버전과 개발 버전은 자동 업데이트를 지원하지 않습니다',
+      idle: '아직 확인하지 않음',
+      checking: '확인 중…',
+      latest: '최신 버전입니다',
+      downloading: '{version} 다운로드 중 ({pct}%)',
+      downloaded: '{version} 다운로드 완료, Aditor 종료 시 설치',
+      error: '업데이트 확인 실패: {msg}',
+      check: '업데이트 확인',
+      install: '지금 다시 시작하고 업데이트',
+      openReleases: '다운로드 페이지 열기'
+    },
+    autoUpdate: {
+      title: '업데이트 자동 확인',
+      desc: '시작할 때와 6시간마다 확인하고, 새 버전이 있으면 백그라운드에서 내려받습니다.',
+      keywords: ['업데이트', '자동', 'update', 'github']
     },
     trademark: {
       title: '상표 고지',

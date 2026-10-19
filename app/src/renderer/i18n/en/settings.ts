@@ -28,7 +28,7 @@ export const settingsI18n: Messages['settingsI18n'] = {
     analysis: 'How videos get into the library and how highlights are analyzed.',
     editing: 'Preview playback and editing defaults in the studio.',
     export: 'Encoders used when exporting videos.',
-    about: 'Version, licenses, and trademark notice.'
+    about: 'Version, updates, licenses, and trademark notice.'
   },
   card: {
     ui: 'Interface',
@@ -177,6 +177,26 @@ export const settingsI18n: Messages['settingsI18n'] = {
       keywords: ['version', 'license', 'about', 'mit', 'ffmpeg'],
       version: 'Aditor {version}',
       licenses: 'Third-party licenses'
+    },
+    updateStatus: {
+      title: 'Software update',
+      desc: 'New versions are downloaded from GitHub and installed when you exit Aditor. You can also restart and install right away.',
+      keywords: ['update', 'new version', 'version', 'github', 'download'],
+      unsupported: 'Automatic updates are not available in the portable or development build',
+      idle: 'Not checked yet',
+      checking: 'Checking…',
+      latest: 'You have the latest version',
+      downloading: 'Downloading {version} ({pct}%)',
+      downloaded: '{version} downloaded; installs when you exit Aditor',
+      error: 'Update check failed: {msg}',
+      check: 'Check for updates',
+      install: 'Restart and update now',
+      openReleases: 'Open download page'
+    },
+    autoUpdate: {
+      title: 'Check for updates automatically',
+      desc: 'Checks at startup and every 6 hours, and downloads new versions in the background.',
+      keywords: ['update', 'automatic', 'github']
     },
     trademark: {
       title: 'Trademark notice',

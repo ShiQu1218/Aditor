@@ -12,6 +12,7 @@ import { clampToRange } from './settingsModel'
 import type { BoolField } from './rows'
 import type { RecordingSettings, RecorderCapabilities, ObsTestResult } from '../../shared/recording'
 import { tr } from '../../shared/locale'
+import type { UpdateStatus } from '../../shared/update'
 
 interface WatchStatus {
   ok?: boolean
@@ -49,6 +50,13 @@ export interface SettingsApi {
     downloadOpenH264?(): Promise<string>
     onOpenH264Progress?(cb: (ratio: number) => void): () => void
   }
+  update?: {
+    getStatus(): Promise<UpdateStatus>
+    check(): Promise<UpdateStatus>
+    install(): Promise<boolean>
+    openReleases(): Promise<boolean>
+    onStatus(cb: (status: UpdateStatus) => void): () => void
+  }
 }
 
 /** 設定頁的 OpenH264 下載流程：idle → consent（授權說明）→ downloading → idle／error。 */
@@ -76,6 +84,8 @@ export interface SettingsState {
   /** null＝未知 */
   openh264: boolean | null
   openh264Download: OpenH264DownloadState
+  /** 自動更新狀態；舊版 preload 沒有更新 API 時為 unsupported */
+  update: UpdateStatus
 }
 
 export const INITIAL_SETTINGS_STATE: SettingsState = {
@@ -90,7 +100,8 @@ export const INITIAL_SETTINGS_STATE: SettingsState = {
   obsConnection: { testing: false, result: null },
   suggestedStorageRoot: null,
   openh264: null,
-  openh264Download: { step: 'idle', ratio: 0, error: null }
+  openh264Download: { step: 'idle', ratio: 0, error: null },
+  update: { state: 'unsupported' }
 }
 
 /** 會顯示 main 路徑／密碼驗證錯誤的設定列 → `SettingsSetResult.errors` 的鍵。 */
@@ -107,6 +118,7 @@ export class SettingsController {
   private state: SettingsState
   private listeners = new Set<() => void>()
   private unsubscribe: (() => void) | null = null
+  private unsubscribeUpdate: (() => void) | null = null
   private recordingWrites: Promise<void> = Promise.resolve()
 
   constructor(
@@ -141,12 +153,52 @@ export class SettingsController {
     this.unsubscribe = this.api.settings.onChanged((s) => {
       this.patch({ settings: s })
     })
-    await Promise.all([this.loadSettings(), this.refreshWatch(), this.refreshProxy(), this.refreshEncoders(), this.refreshRecordingCapabilities(), this.refreshStorageSuggestion()])
+    this.unsubscribeUpdate?.()
+    this.unsubscribeUpdate = this.api.update?.onStatus((update) => this.patch({ update })) ?? null
+    await Promise.all([this.loadSettings(), this.refreshWatch(), this.refreshProxy(), this.refreshEncoders(), this.refreshRecordingCapabilities(), this.refreshStorageSuggestion(), this.refreshUpdate()])
   }
 
   stop(): void {
     this.unsubscribe?.()
     this.unsubscribe = null
+    this.unsubscribeUpdate?.()
+    this.unsubscribeUpdate = null
+  }
+
+  // ── 自動更新（狀態以 main 推送為準） ──
+  async refreshUpdate(): Promise<void> {
+    try {
+      const status = await this.api.update?.getStatus()
+      if (status) this.patch({ update: status })
+    } catch {
+      // 讀不到狀態時維持目前顯示
+    }
+  }
+
+  async checkUpdate(): Promise<void> {
+    if (!this.api.update) return
+    this.patch({ update: { state: 'checking' } })
+    try {
+      this.patch({ update: await this.api.update.check() })
+    } catch (e) {
+      this.patch({ update: { state: 'error', error: e instanceof Error ? e.message : String(e) } })
+    }
+  }
+
+  async installUpdate(): Promise<void> {
+    try {
+      await this.api.update?.install()
+    } catch {
+      // 安裝程式啟動失敗時 main 會推送錯誤狀態
+    }
+  }
+
+  async openReleases(): Promise<void> {
+    try {
+      await this.api.update?.openReleases()
+    } catch {
+      // 開不了瀏覽器不影響設定
+    }
   }
 
   private async loadSettings(): Promise<void> {

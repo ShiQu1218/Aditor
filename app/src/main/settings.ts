@@ -138,6 +138,7 @@ function applySettings(base: Settings, src: unknown): Settings {
     autoclip: pickAutoClip(s.autoclip, base.autoclip),
     autoSuggestOnOpen: pickBool(s.autoSuggestOnOpen, base.autoSuggestOnOpen),
     projectAutosave: pickBool(s.projectAutosave, base.projectAutosave),
+    autoUpdate: pickBool(s.autoUpdate, base.autoUpdate),
     defaultOutDir: pickStringOrNull(s.defaultOutDir, base.defaultOutDir),
     projectTrackCollapsed: pickProjectTrackCollapsed(s.projectTrackCollapsed, base.projectTrackCollapsed),
     sameDayVideosCollapsed: pickBool(s.sameDayVideosCollapsed, base.sameDayVideosCollapsed),

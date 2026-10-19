@@ -31,6 +31,11 @@ win:
     - target: portable
       arch:
         - x64
+# 自動更新來源：每次 Release 必須上傳安裝檔、.blockmap 與 latest.yml（build.ps1 只產生、不上傳）
+publish:
+  provider: github
+  owner: ShiQu1218
+  repo: Aditor
 nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true

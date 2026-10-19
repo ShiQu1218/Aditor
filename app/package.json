@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "chokidar": "^4.0.3",
+    "electron-updater": "6.3.9",
     "lucide-react": "^1.57.0",
     "obs-websocket-js": "5.0.6"
   },

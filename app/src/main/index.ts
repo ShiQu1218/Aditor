@@ -24,6 +24,8 @@ import { createRecordingNotifier } from './notify'
 import type { RecordingService } from '../shared/recording'
 import { obsPassword } from './settings-ipc'
 import { createDiagnosticLog } from './recording/diagnostic-log'
+import { canAutoUpdate, createAppUpdater } from './updater'
+import { broadcastUpdateStatus, registerUpdateIpc } from './update-ipc'
 
 // E2E 掛鉤（僅 ADITOR_E2E=1）：暫存 appData／userData，測試不碰使用者資料；正式執行時為 null
 const e2e = currentE2EConfig()
@@ -255,12 +257,26 @@ async function initEngineAndServices(): Promise<void> {
   }
   updateLoginItem()
   const unsubscribeLogin = settingsStore.onChange(updateLoginItem)
+  // 自動更新：只有安裝版；E2E 不連 GitHub
+  const updater = createAppUpdater({
+    updater: !e2e && canAutoUpdate(app.isPackaged) ? (await import('electron-updater')).autoUpdater : null,
+    isEnabled: () => settingsStore!.get().autoUpdate,
+    notifyDownloaded: (version) => notify('finalized', tr('Aditor {version} 已下載完成，結束 Aditor 時會自動安裝。', { version })),
+    broadcast: broadcastUpdateStatus
+  })
+  const unregisterUpdateIpc = registerUpdateIpc(updater)
+  updater.start()
   const unsubscribeLanguage = settingsStore.onChange(() => {
     if (!syncLocale()) return
     tray?.refresh()
     if (mainWindow && !mainWindow.isDestroyed()) loadRenderer(mainWindow)
   })
-  unsubscribeSettings = () => { unsubscribeLogin(); unsubscribeLanguage() }
+  unsubscribeSettings = () => {
+    unsubscribeLogin()
+    unsubscribeLanguage()
+    updater.stop()
+    unregisterUpdateIpc()
+  }
   // E2E 不偵測真實 Apex，避免測試期間碰到正在執行的遊戲
   if (!e2e) recordingService.start()
 

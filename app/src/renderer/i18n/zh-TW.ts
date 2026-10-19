@@ -571,7 +571,7 @@ const settingsI18n = {
     analysis: '影片怎麼進到影片庫，以及分析精彩片段的方式。',
     editing: '剪輯工作室的預覽播放與剪輯預設值。',
     export: '輸出影片時使用的編碼器。',
-    about: '版本、授權與商標聲明。'
+    about: '版本、更新、授權與商標聲明。'
   },
   card: {
     ui: '介面',
@@ -720,6 +720,26 @@ const settingsI18n = {
       keywords: ['版本', '授權', '關於', 'license', 'version', 'mit', 'ffmpeg'],
       version: 'Aditor {version}',
       licenses: '第三方授權'
+    },
+    updateStatus: {
+      title: '軟體更新',
+      desc: '從 GitHub 下載新版本，結束 Aditor 時自動安裝；也可以立即重新啟動安裝。',
+      keywords: ['更新', '新版本', '版本', 'update', 'github', '下載'],
+      unsupported: '免安裝版與開發版不支援自動更新',
+      idle: '尚未檢查',
+      checking: '正在檢查…',
+      latest: '已是最新版本',
+      downloading: '正在下載 {version}（{pct}%）',
+      downloaded: '{version} 已下載，結束 Aditor 時安裝',
+      error: '檢查更新失敗：{msg}',
+      check: '檢查更新',
+      install: '立即重新啟動並更新',
+      openReleases: '開啟下載頁面'
+    },
+    autoUpdate: {
+      title: '自動檢查更新',
+      desc: '啟動後與每 6 小時檢查一次，有新版本就在背景下載。',
+      keywords: ['更新', '自動', 'update', 'github']
     },
     trademark: {
       title: '商標聲明',

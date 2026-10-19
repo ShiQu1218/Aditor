@@ -29,7 +29,7 @@ export const settingsI18n: Messages['settingsI18n'] = {
     analysis: '视频如何进入视频库，以及分析精彩片段的方式。',
     editing: '剪辑工作室的预览播放与剪辑默认值。',
     export: '导出视频时使用的编码器。',
-    about: '版本、许可与商标声明。'
+    about: '版本、更新、许可与商标声明。'
   },
   card: {
     ui: '界面',
@@ -178,6 +178,26 @@ export const settingsI18n: Messages['settingsI18n'] = {
       keywords: ['版本', '授权', '许可证', '关于', 'license', 'version', 'mit', 'ffmpeg'],
       version: 'Aditor {version}',
       licenses: '第三方许可'
+    },
+    updateStatus: {
+      title: '软件更新',
+      desc: '从 GitHub 下载新版本，退出 Aditor 时自动安装；也可以立即重启安装。',
+      keywords: ['更新', '新版本', '版本', 'update', 'github', '下载'],
+      unsupported: '便携版与开发版不支持自动更新',
+      idle: '尚未检查',
+      checking: '正在检查…',
+      latest: '已是最新版本',
+      downloading: '正在下载 {version}（{pct}%）',
+      downloaded: '{version} 已下载，退出 Aditor 时安装',
+      error: '检查更新失败：{msg}',
+      check: '检查更新',
+      install: '立即重启并更新',
+      openReleases: '打开下载页面'
+    },
+    autoUpdate: {
+      title: '自动检查更新',
+      desc: '启动后及每 6 小时检查一次，有新版本就在后台下载。',
+      keywords: ['更新', '自动', 'update', 'github']
     },
     trademark: {
       title: '商标声明',

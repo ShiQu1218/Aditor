@@ -27,7 +27,7 @@ export const CATEGORIES: readonly CategoryDef[] = [
   { id: 'about', label: t.cat.about, desc: t.catDesc.about, icon: 'Info' }
 ]
 
-export type BoolField = 'autoAnalyze' | 'lowPerfMode' | 'proxySuggest' | 'autoSuggestOnOpen' | 'projectAutosave'
+export type BoolField = 'autoAnalyze' | 'lowPerfMode' | 'proxySuggest' | 'autoSuggestOnOpen' | 'projectAutosave' | 'autoUpdate'
 
 export type ControlSpec =
   | { kind: 'recording'; field: keyof RecordingSettings }
@@ -41,6 +41,7 @@ export type ControlSpec =
   | { kind: 'encoders' }
   | { kind: 'openh264' }
   | { kind: 'about' }
+  | { kind: 'update' }
   | { kind: 'none' }
 
 export interface SettingRow {
@@ -279,6 +280,26 @@ export const SETTING_ROWS: SettingRow[] = [
     desc: t.row.about.desc,
     keywords: [...t.row.about.keywords],
     control: { kind: 'about' }
+  },
+  {
+    id: 'updateStatus',
+    category: 'about',
+    card: t.card.about,
+    title: t.row.updateStatus.title,
+    desc: t.row.updateStatus.desc,
+    keywords: [...t.row.updateStatus.keywords],
+    isNew: true,
+    control: { kind: 'update' }
+  },
+  {
+    id: 'autoUpdate',
+    category: 'about',
+    card: t.card.about,
+    title: t.row.autoUpdate.title,
+    desc: t.row.autoUpdate.desc,
+    keywords: [...t.row.autoUpdate.keywords],
+    isNew: true,
+    control: { kind: 'switch', field: 'autoUpdate' }
   },
   {
     id: 'trademark',
