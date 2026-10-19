@@ -56,7 +56,7 @@ describe('錄影服務狀態機', () => {
     expect(snapshot.sessionId).toMatch(/^\d{8}-\d{6}-[0-9a-f]{4}$/)
     const [start] = commands(value, 'start')
     expect(start.frames).toEqual({ banner: [560, 700, 800, 180], spec: [60, 1028, 480, 40], base: [1920, 1080] })
-    expect(start.encode).toMatchObject({ height: 1080, codec: 'hevc', bitrate_kbps: 40000, preset: 'speed', aspect: 'native' })
+    expect(start.encode).toMatchObject({ height: 1080, codec: 'hevc', bitrate_kbps: 10000, preset: 'speed', aspect: 'native' })
     expect(start.audio).toEqual({ render: 'speaker', capture: 'mic', mic_enabled: false, mic_gain: 0.4,
       render_enabled: true, render_gain: 1, render_source: 'device', mic_mono: false })
     expect(start.capture).toBe('dda')
