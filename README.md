@@ -107,8 +107,6 @@ powershell -ExecutionPolicy Bypass -File scripts\build.ps1
 
 The installer and portable build are written to `dist\`. Tests: `engine\.venv\Scripts\python.exe -m pytest -q` and `npm --prefix app test`.
 
-To monitor recording resource usage, start Aditor and run `powershell -ExecutionPolicy Bypass -File scripts\monitor-resources.ps1 -GpuCounters`. Press Ctrl+C to stop; per-process and aggregate CSV files are saved under `out/resource-monitor/`. See [monitor options and metric definitions](scripts/monitor-resources.md).
-
 ---
 
 ## License
