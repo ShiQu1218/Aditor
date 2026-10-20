@@ -1,7 +1,7 @@
 /**
- * 錄影 IPC（第 2 期任務 A2）：把 `RecordingService` 掛到 `RECORDING_CHANNELS`，
- * 並把狀態變化推播給所有視窗（`recording:status`）。回傳解除註冊函式。
- * 第 3 期附加錄影中觀看：`recording:getLive`／`readInit`／`readSegment` 與推播 `recording:live`。
+ * Recording IPC (Phase 2, Task A2): connect `RecordingService` to `RECORDING_CHANNELS`
+ * and broadcast status changes to every window (`recording:status`). Return an unregister function.
+ * Phase 3 adds live recording views: `recording:getLive`/`readInit`/`readSegment` and the `recording:live` broadcast.
  */
 import { ipcMain, type BrowserWindow } from 'electron'
 import { RECORDING_CHANNELS, type RecordingService } from '../shared/recording'
@@ -9,7 +9,7 @@ import { tr } from '../shared/locale'
 
 const SESSION_ID = /^\d{8}-\d{6}-[0-9a-f]{4}$/
 
-/** 錄影工作 ID 只接受 `YYYYMMDD-HHMMSS-xxxx`（不可能含路徑分隔字元）。 */
+/** Recording job IDs must match `YYYYMMDD-HHMMSS-xxxx` (cannot contain path separators). */
 export function requireSessionId(value: unknown): string {
   if (typeof value !== 'string' || !SESSION_ID.test(value)) throw new Error('錄影工作 ID 無效')
   return value

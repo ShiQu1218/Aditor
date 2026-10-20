@@ -46,7 +46,7 @@ function SameDayCard({ entry, current, activeRef, onOpenVideo }: {
   )
 }
 
-/** 播放器上方的同日錄影列；偏好沿用工作室設定，切片交回原有的來源切換流程。 */
+/** Same-day recordings above the player; reuse studio preferences and delegate clip selection to the existing source-switch flow. */
 export function SameDayVideos({ videoPath, onOpenVideo }: { videoPath: string; onOpenVideo: (path: string) => void }): JSX.Element | null {
   const { entries, failed, retry } = useStudioLibrary()
   const [collapsed, setCollapsed] = useState<boolean | null>(null)
@@ -70,7 +70,7 @@ export function SameDayVideos({ videoPath, onOpenVideo }: { videoPath: string; o
     setSaving(true)
     try {
       const result = await window.api.settings.set({ sameDayVideosCollapsed: next })
-      if (!result?.settings || typeof result.settings.sameDayVideosCollapsed !== 'boolean') throw new Error('設定資料無效')
+      if (!result?.settings || typeof result.settings.sameDayVideosCollapsed !== 'boolean') throw new Error('Invalid settings payload')
       setCollapsed(result.settings.sameDayVideosCollapsed)
       if (!result.persisted) toast({ message: t.saveFailed })
     } catch {

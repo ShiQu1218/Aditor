@@ -8,21 +8,21 @@ import { findFfmpeg } from './makeFixtures'
 const APP_DIR = path.resolve(__dirname, '../..')
 
 export interface LaunchOpts {
-  /** 重啟：沿用既有 appData 根目錄（settings、library、projects、cache 都在裡面） */
+  /** Restart using the existing appData root (settings, library, projects, and cache are stored there). */
   root?: string
-  /** 傳入既有 root 時，是否由 fixture 在測試結束刪除（預設：只有自己建立的才刪） */
+  /** When reusing a root, whether the fixture should delete it after tests (defaults to deleting only roots it created). */
   ownRoot?: boolean
-  /** 預先寫入 settings.json 的欄位（與測試預設合併） */
+  /** Fields to prepopulate in settings.json (merged with test defaults). */
   settings?: Record<string, unknown>
-  /** 額外環境變數（例如 FAKE_ENGINE_EVENTS、FAKE_ENGINE_GATE_DIR） */
+  /** Additional environment variables (for example, FAKE_ENGINE_EVENTS and FAKE_ENGINE_GATE_DIR). */
   env?: Record<string, string>
-  /** 匯出改用假 ffmpeg（app/test/fake-ffmpeg.mjs，真實子程序） */
+  /** Use the fake ffmpeg (app/test/fake-ffmpeg.mjs, a real child process) for exports. */
   fakeExport?: boolean
-  /** 視窗內容大小 */
+  /** Window content size. */
   size?: { width: number; height: number }
 }
 
-/** 測試預設設定：已問過低效能（不彈通知）、事件前後 1 秒、AI 剪輯 gap=5 讓合成影片產生多段建議。 */
+/** Test defaults: low-performance prompt already answered (no notification), one second before/after events, and AI clip gap=5 to generate multiple suggestions from synthetic videos. */
 export const TEST_SETTINGS = {
   onboardingDone: true,
   version: 1,
@@ -35,18 +35,18 @@ export const TEST_SETTINGS = {
 export interface AppHandle {
   electronApp: ElectronApplication
   page: Page
-  /** appData 根（相當於 %APPDATA%）；Aditor 資料夾在其下 */
+  /** appData root (equivalent to %APPDATA%); the Aditor folder is inside it. */
   root: string
   dataDir: string
   settingsPath: string
   projectsDir: string
   cacheDir: string
   pid: number
-  /** 此 appData 根是本次啟動建立的（測試結束由 fixture 刪除） */
+  /** This appData root was created for this launch (the fixture deletes it after tests). */
   ownsRoot: boolean
-  /** 透過視窗 close（走 flush 握手）正常結束並等待程序結束 */
+  /** Close normally through the window (using the flush handshake) and wait for the process to exit. */
   closeWindow(): Promise<void>
-  /** 結束並清理（寫入 root 的資料保留給 relaunch；ownsRoot 時一併刪除） */
+  /** Stop and clean up (preserve data in root for relaunch; delete it when ownsRoot is true). */
   dispose(): Promise<void>
 }
 
@@ -58,7 +58,7 @@ function killTree(pid: number): void {
     try {
       process.kill(pid, 'SIGKILL')
     } catch {
-      /* 已結束 */
+      /* Already exited. */
     }
   }
 }
@@ -101,7 +101,7 @@ export async function launchApp(opts: LaunchOpts = {}): Promise<AppHandle> {
   live.add(pid)
   const page = await electronApp.firstWindow()
   await page.waitForSelector('.app', { timeout: 30_000 })
-  const size = opts.size ?? { width: 1440, height: 1000 } // 預設較高，專案軌不會因 ≤800px 自動收合
+  const size = opts.size ?? { width: 1440, height: 1000 } // Use a taller default so the project track does not auto-collapse at <=800px.
   await electronApp.evaluate(({ BrowserWindow }, s) => BrowserWindow.getAllWindows()[0].setContentSize(s.width, s.height), size)
 
   const waitExit = async (ms: number): Promise<boolean> => {
@@ -139,7 +139,7 @@ export async function launchApp(opts: LaunchOpts = {}): Promise<AppHandle> {
   return handle
 }
 
-/** 取得 renderer 的 window.api 呼叫（IPC）。 */
+/** Get the renderer's window.api bridge (IPC). */
 export async function api<T>(page: Page, expr: string, arg?: unknown): Promise<T> {
   return page.evaluate(
     ({ expr, arg }) => {

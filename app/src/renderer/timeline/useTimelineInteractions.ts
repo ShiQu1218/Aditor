@@ -14,11 +14,11 @@ import { bladeReducer, initialBlade, type BladeAction, type BladeState } from '.
 import type { ProjectItem } from '../editor/project'
 import { tr } from '../../shared/locale'
 
-/** 拖曳超過此距離（px，水平）才視為拖曳播放頭 */
+/** Horizontal drag distance in px required to count as dragging the playhead. */
 export const DRAG_THRESHOLD_PX = 4
-/** 片段把手命中區 ±7 px */
+/** Clip-handle hit area: ±7 px. */
 export const HANDLE_HIT_PX = 7
-/** 事件／群集命中區（水平）與垂直範圍 */
+/** Horizontal event/cluster hit area and vertical range. */
 export const ITEM_HIT_PX = 13
 export const ITEM_HIT_Y: [number, number] = [28, 100]
 
@@ -45,8 +45,8 @@ export type IOutcome = 'click' | 'scrub' | 'pan' | 'handle' | null
 export const initialInteraction: IState = { phase: 'idle', x0: 0, y0: 0, shift: false }
 
 /**
- * 滑鼠互動狀態機（純函式）。優先序：中鍵平移 > 播放頭 > 片段把手 > 一般按下（click 或 scrub）。
- * 拖曳門檻：水平位移 >4 px；一旦開始 scrub 就不退回 click。
+ * Mouse interaction state machine (pure function). Priority: middle-button pan > playhead > clip handle > regular press (click or scrub).
+ * Drag threshold: horizontal movement >4 px; once scrubbing starts, it never reverts to a click.
  */
 export function interactionReducer(s: IState, a: IAction): { state: IState; outcome: IOutcome } {
   switch (a.type) {
@@ -76,22 +76,22 @@ export function interactionReducer(s: IState, a: IAction): { state: IState; outc
 
 export type CancelEvent = { type: 'move'; buttons: number } | { type: 'blur' } | { type: 'escape' }
 
-/** 手勢是否應被取消：視窗失焦、Esc、或 move 時已沒有按下任何滑鼠鍵（mouseup 發生在視窗外而遺失；正常 mouseup 的 buttons 本就為 0，故不在 up 判斷） */
+/** Whether to cancel a gesture: window blur, Esc, or move with no mouse buttons held (mouseup may have been lost outside the window; normal mouseup has buttons=0, so it is not checked on up). */
 export function shouldCancel(phase: IState['phase'], ev: CancelEvent): boolean {
   if (phase === 'idle') return false
   if (ev.type === 'blur' || ev.type === 'escape') return true
   return ev.buttons === 0
 }
 
-/** Esc 取消了進行中的手勢時，該次 Esc 不得再傳給全域快捷鍵（否則會一併離開專案模式／清除選取） */
+/** When Esc cancels an active gesture, do not pass it to global shortcuts (which could also exit project mode or clear the selection). */
 export function swallowEscape(phase: IState['phase']): boolean {
   return phase !== 'idle'
 }
 
 /**
- * 以捕獲階段監聽 Esc：僅在確實有手勢可取消時才 preventDefault＋stopPropagation，
- * 其餘情況原樣放行。輸入法組字中的 Escape（isComposing／keyCode 229）不取消手勢、不攔截。
- * 回傳解除函式。
+ * Listen for Esc during capture: call preventDefault and stopPropagation only when there is an active gesture to cancel;
+ * otherwise let the event pass through. Escape during IME composition (isComposing/keyCode 229) neither cancels nor gets intercepted.
+ * Returns a cleanup function.
  */
 export function attachGestureEscape(
   target: Pick<Window, 'addEventListener' | 'removeEventListener'>,
@@ -109,18 +109,18 @@ export function attachGestureEscape(
   return () => target.removeEventListener('keydown', onKey as EventListener, true)
 }
 
-/** 取消時需還原的片段（把手拖曳中途取消＝片段維持原樣） */
+/** Clip state to restore on cancellation (canceling a handle drag keeps the clip unchanged). */
 export function cancelRestore(s: IState, original: Clip | null): Clip | null {
   return s.phase === 'handle' && original ? original : null
 }
 
-/** 指標座標→軌內 x（容許元素被 CSS 縮放：rect.width 與邏輯寬 view.width 不同時換算） */
+/** Convert pointer coordinates to timeline x (account for CSS scaling when rect.width differs from logical view.width). */
 export function pointerToX(clientX: number, rectLeft: number, rectWidth: number, viewWidth: number): number {
   const scale = rectWidth > 0 ? viewWidth / rectWidth : 1
   return (clientX - rectLeft) * scale
 }
 
-/** tooltip 狀態是否需要更新（文字或取整後位置改變才更新，避免 60 Hz 重繪） */
+/** Whether tooltip state needs updating (update only when text or rounded position changes to avoid 60 Hz rerenders). */
 export function tipChanged(
   a: { x: number; y: number; text: string } | null,
   b: { x: number; y: number; text: string } | null
@@ -130,9 +130,9 @@ export function tipChanged(
   return a.text !== b.text || Math.round(a.x) !== Math.round(b.x) || Math.round(a.y) !== Math.round(b.y)
 }
 
-/* ---------------- 命中測試（純函式） ---------------- */
+/* ---------------- Hit testing (pure functions) ---------------- */
 
-/** 片段把手：邊緣 ±7 px、y 位於框區內；多個命中取最近者 */
+/** Clip handle: ±7 px from the edge and y within the box; if several match, choose the nearest. */
 export function handleAt(clips: Clip[], view: View, mx: number, my: number, height: number): HandleRef | null {
   if (my < EVENT_TOP - 2 || my > height - 4) return null
   let best: HandleRef | null = null
@@ -200,7 +200,7 @@ export function tooltipAt(layout: TimelineLayout, mx: number, my: number): strin
 
 /* ---------------- Hook ---------------- */
 
-/** 靠近兩端時以視窗跨度決定捲動速度；全覽不捲動。 */
+/** Near either edge, derive scroll speed from the viewport span; do not scroll in overview mode. */
 export function scrubAutoPan(view: View, x: number, elapsed = 16): View {
   if (view.width <= 0 || view.span >= view.duration) return view
   const margin = Math.min(36, view.width / 4)
@@ -365,7 +365,7 @@ export function useTimelineInteractions(opts: InteractionOptions): InteractionRe
     setTip(null)
   }, [apply, applyBlade, beginScrub, local, seekFrame])
 
-  // 拖曳掛在 window；離開軌道後持續更新，Esc／失焦則還原。
+  // Attach dragging to window so it continues outside the timeline; Esc/blur restores the original state.
   useEffect(() => {
     const updateHandle = (x: number, phase: 'preview' | 'commit'): void => {
       const cur = o.current
@@ -496,7 +496,7 @@ export function useTimelineInteractions(opts: InteractionOptions): InteractionRe
     }
   }, [opts.bladeMode, opts.disabled, applyBlade, stopFrame])
 
-  // 滾輪：縮放（onZoom 以播放頭為中心；Ctrl 亦同）；Shift＋滾輪或觸控板橫向滑動＝平移（已放大時）。
+  // Wheel: zoom (onZoom centers on the playhead; Ctrl does the same); Shift+wheel or horizontal trackpad scroll pans when zoomed in.
   useEffect(() => {
     const el = opts.wrapRef.current
     if (!el) return

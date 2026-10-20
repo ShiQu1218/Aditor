@@ -1,4 +1,4 @@
-//! 實際 WASAPI 裝置驗證；需要啟用中的預設播放與麥克風裝置。
+//! Validate against real WASAPI devices; requires enabled default playback and microphone devices.
 #![allow(dead_code)]
 
 #[path = "../src/audio/mod.rs"]
@@ -83,16 +83,16 @@ struct Com;
 
 impl Drop for Com {
     fn drop(&mut self) {
-        // SAFETY: 與此測試執行緒成功的初始化配對，所有介面已先釋放。
+        // SAFETY: Balance successful initialization on this test thread after all interfaces have been released.
         unsafe { CoUninitialize() };
     }
 }
 
 fn play_tone(stop: &AtomicBool, ready: &mpsc::SyncSender<Result<(), String>>) -> Result<()> {
-    // SAFETY: 此測試專用執行緒尚未初始化 COM，結束時以 Com guard 配對。
+    // SAFETY: This dedicated test thread has not initialized COM; the Com guard balances initialization at exit.
     unsafe { CoInitializeEx(None, COINIT_MULTITHREADED) }.ok()?;
     let _com = Com;
-    // SAFETY: COM 已初始化，僅開啟預設播放端點，不操作其他程序。
+    // SAFETY: COM is initialized; only open the default playback endpoint without accessing other processes.
     let client: IAudioClient = unsafe {
         let enumerator: IMMDeviceEnumerator =
             CoCreateInstance(&MMDeviceEnumerator, None, CLSCTX_ALL)?;
@@ -109,7 +109,7 @@ fn play_tone(stop: &AtomicBool, ready: &mpsc::SyncSender<Result<(), String>>) ->
         wBitsPerSample: 32,
         cbSize: 0,
     };
-    // SAFETY: 有效的 float32 立體聲格式，讓 Windows 音訊引擎轉換至實際裝置格式。
+    // SAFETY: Valid float32 stereo format, converted by the Windows audio engine to the device format.
     let (render, capacity): (IAudioRenderClient, u32) = unsafe {
         client.Initialize(
             AUDCLNT_SHAREMODE_SHARED,
@@ -121,19 +121,19 @@ fn play_tone(stop: &AtomicBool, ready: &mpsc::SyncSender<Result<(), String>>) ->
         )?;
         (client.GetService()?, client.GetBufferSize()?)
     };
-    // SAFETY: 音訊 client 已成功初始化。
+    // SAFETY: The audio client is initialized.
     unsafe { client.Start() }?;
     ready
         .send(Ok(()))
-        .map_err(|_| anyhow::anyhow!("測試啟動通道已關閉"))?;
+        .map_err(|_| anyhow::anyhow!("Test startup channel is closed"))?;
     let mut phase = 0u64;
     while !stop.load(Ordering::Acquire) {
-        // SAFETY: client 只在此執行緒操作，padding 不超過 buffer capacity。
+        // SAFETY: client is used only on this thread; padding does not exceed buffer capacity.
         let available = capacity - unsafe { client.GetCurrentPadding() }?;
         if available > 0 {
-            // SAFETY: 取得可寫入 available 個 frame 的 buffer，釋放前保持有效。
+            // SAFETY: Obtain a buffer for available writable frames, valid until released.
             let data = unsafe { render.GetBuffer(available) }?;
-            // SAFETY: 格式固定為交錯 float32 立體聲，長度為 available * 2 個樣本。
+            // SAFETY: The format is interleaved float32 stereo with available * 2 samples.
             let samples = unsafe {
                 std::slice::from_raw_parts_mut(data.cast::<f32>(), available as usize * 2)
             };
@@ -142,13 +142,13 @@ fn play_tone(stop: &AtomicBool, ready: &mpsc::SyncSender<Result<(), String>>) ->
                 pair.copy_from_slice(&[value, value]);
                 phase += 1;
             }
-            // SAFETY: 所有取得的 frame 都已填入資料，與上方 GetBuffer 成對。
+            // SAFETY: All obtained frames are populated; balance GetBuffer above.
             unsafe { render.ReleaseBuffer(available, 0) }?;
         }
         thread::sleep(Duration::from_millis(3));
     }
-    // SAFETY: 有效且已啟動的 client，停止後才釋放介面。
-    unsafe { client.Stop() }.context("停止測試音源失敗")?;
+    // SAFETY: client is valid and started; release the interface after stopping.
+    unsafe { client.Stop() }.context("Failed to stop test audio source")?;
     Ok(())
 }
 
@@ -173,7 +173,7 @@ fn verify(recording: &Recording) {
     let samples = recording.samples.len();
     assert!(
         (182_400..=201_600).contains(&samples),
-        "兩秒應約 192000 個樣本，實得 {samples}"
+        "Expected about 192000 samples over two seconds, got {samples}"
     );
     assert!(recording.blocks.len() >= 190);
     assert!(recording
@@ -184,13 +184,13 @@ fn verify(recording: &Recording) {
         let expected = pair[0].0 + pair[0].1 as i64 * clock::TICKS_PER_SEC / 48_000;
         assert!(
             (pair[1].0 - expected).abs() <= 1,
-            "音訊 PTS 不連續：{pair:?}"
+            "Audio PTS is discontinuous: {pair:?}"
         );
         assert_eq!(pair[0].1, 480);
     }
     assert!(recording.blocks[0].0 >= 0);
     eprintln!(
-        "實際裝置：{samples} 個交錯樣本，{} 塊，PTS 連續",
+        "Physical device: {samples} interleaved samples in {} blocks, with continuous PTS",
         recording.blocks.len()
     );
 }
@@ -202,12 +202,12 @@ fn actual_default_loopback_and_microphone_capture_for_two_seconds() {
         .render
         .iter()
         .find(|device| device.default)
-        .expect("需要預設播放裝置");
+        .expect("Default playback device required");
     let mic = devices
         .capture
         .iter()
         .find(|device| device.default)
-        .expect("需要預設麥克風裝置");
+        .expect("Default microphone device required");
     assert!(devices
         .render
         .iter()
@@ -230,7 +230,7 @@ fn actual_default_loopback_and_microphone_capture_for_two_seconds() {
         .sum::<f32>()
         / loopback.samples.len() as f32)
         .sqrt();
-    assert!(rms > 0.005, "loopback 未擷取到已播放的測試音，RMS={rms}");
+    assert!(rms > 0.005, "Loopback did not capture the test tone, RMS={rms}");
     drop(tone);
     cfg.render.clone_from(&render.id);
     cfg.capture = "不存在的麥克風端點".into();
@@ -241,7 +241,7 @@ fn actual_default_loopback_and_microphone_capture_for_two_seconds() {
         Box::new(Sink(Arc::new(Mutex::new(Recording::default())))),
     )
     .err()
-    .expect("麥克風啟動失敗時應回傳錯誤並關閉 loopback")
+    .expect("Microphone startup failure must return an error and close loopback")
     .to_string()
     .starts_with("audio_failed:"));
     cfg.capture.clone_from(&mic.id);
@@ -264,7 +264,7 @@ fn invalid_configuration_and_endpoint_return_audio_failed() {
             Box::new(Sink(Arc::new(Mutex::new(Recording::default())))),
         )
         .err()
-        .expect("應回傳錯誤")
+        .expect("Expected an error")
         .to_string()
     };
     assert!(start(&cfg).starts_with("audio_failed:"));
@@ -296,18 +296,18 @@ fn unavailable_process_loopback_warns_and_falls_back_to_device() {
         render_source: types::RenderSource::Game,
         ..Default::default()
     };
-    // 舊介面未傳 PID，必定觸發回退，與作業系統是否支援此 API 無關。
+    // The legacy interface supplies no PID, so fallback is guaranteed regardless of OS API support.
     let mut capture =
         audio::AudioCapture::start(&cfg, clock::now_ticks(), Box::new(Sink(recording.clone())))
             .unwrap();
-    assert!(capture.take_warning().unwrap().contains("已改錄系統聲音"));
+    assert!(capture.take_warning().unwrap().contains("switched to system audio"));
     thread::sleep(Duration::from_secs(2));
     capture.stop();
     verify(&recording.lock().unwrap());
 }
 
 #[test]
-#[ignore = "需要支援程序 loopback 的 Windows 與實際播放裝置；只擷取測試程序自己的聲音"]
+#[ignore = "Requires Windows process loopback support and a physical playback device; captures only the test process audio"]
 fn process_loopback_captures_own_audio_and_ignores_render_device() {
     let _tone = Tone::start();
     let cfg = types::AudioConfig {
@@ -326,7 +326,7 @@ fn process_loopback_captures_own_audio_and_ignores_render_device() {
     .unwrap();
     assert!(
         capture.take_warning().is_none(),
-        "此測試必須實際啟用程序音訊"
+        "This test must actually enable process audio"
     );
     thread::sleep(Duration::from_secs(2));
     capture.stop();

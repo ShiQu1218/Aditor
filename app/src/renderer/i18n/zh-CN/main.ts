@@ -12,7 +12,7 @@ export const i18n: Messages['i18n'] = {
     viewer: '查看器',
     editor: '剪辑项目'
   },
-  /** main 进程的原生对话框（标题与文件类型过滤） */
+  /** Main-process native dialogs (titles and file type filters) */
   dialog: {
     selectFilesTitle: '选择 Apex Legends 录像文件',
     videoFilter: '视频文件',
@@ -37,7 +37,7 @@ export const i18n: Messages['i18n'] = {
     date: {
       today: '今天',
       yesterday: '昨天',
-      /** 其他日期：2026 年 10 月 13 日 */
+      /** Other dates: October 13, 2026 */
       header: '{y} 年 {m} 月 {d} 日'
     },
     videoCount: '{n} 个视频',

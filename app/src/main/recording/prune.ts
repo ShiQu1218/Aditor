@@ -6,8 +6,8 @@ import { tr } from '../../shared/locale'
 
 export const LOBBY_BUFFER_SEC = 15
 
-/** 呼叫端與剪檔共用序列；標記先落盤，避免中斷後誤用整段輸出。 */
-/** `analyzedT`：即時引擎已分析到的錄影時間；引擎落後時，還沒看過的片段可能有倒數，不能刪。 */
+/** The caller and clipper share a serial queue; persist the marker first to avoid using the full output after interruption. */
+/** `analyzedT` is the recording time processed by the live engine. Unseen segments may contain a countdown if the engine is behind, so keep them. */
 export async function pruneSegments(dir: string, segments: readonly LiveSegment[], matches: readonly LiveMatch[], pending: number | null,
   analyzedT = Infinity, healthy: () => boolean = () => true, onRemoved: (sequences: number[]) => void = () => {}): Promise<number[]> {
   const latest = Math.min(segments.reduce((t, s) => Math.max(t, s.pts), 0), analyzedT)

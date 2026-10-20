@@ -7,7 +7,7 @@ import { registerSettingsHandlers, STORAGE_SUGGEST_CHANNEL } from './settings-ip
 
 type Fn = (...a: any[]) => any
 
-describe('settings:set 的 storageRoot', () => {
+describe('settings:set storageRoot', () => {
   let dir: string
   let videos: string
   let store: SettingsStore
@@ -23,7 +23,7 @@ describe('settings:set 的 storageRoot', () => {
   })
   afterEach(() => { fs.rmSync(dir, { recursive: true, force: true }) })
 
-  test('字串根：建立資料夾並同步寫入 recording.outputDir、defaultOutDir、storageRoot', () => {
+  test('a string root creates directories and synchronizes recording.outputDir, defaultOutDir, and storageRoot', () => {
     const root = path.join(dir, 'Apex')
     const res = call('settings:set', { storageRoot: root })
     expect(res.errors).toBeUndefined()
@@ -35,7 +35,7 @@ describe('settings:set 的 storageRoot', () => {
     expect(store.get().storageRoot).toBe(root)
   })
 
-  test('同時送出的 recording 欄位照常套用，outputDir 以根為準', () => {
+  test('applies recording fields sent in the same request and uses the root for outputDir', () => {
     const root = path.join(dir, 'Apex')
     const res = call('settings:set', { storageRoot: root, onboardingDone: true, recording: { fps: 30, outputDir: path.join(dir, 'x') } })
     expect(res.settings.recording.fps).toBe(30)
@@ -43,7 +43,7 @@ describe('settings:set 的 storageRoot', () => {
     expect(res.settings.onboardingDone).toBe(true)
   })
 
-  test('錯誤路徑：回傳 errors.storageRoot，三個欄位都不套用，其他欄位照常', () => {
+  test('an invalid path returns errors.storageRoot, applies none of the three fields, and applies other fields normally', () => {
     for (const bad of ['relative/dir', 42, '']) {
       const res = call('settings:set', { storageRoot: bad, before: 5 })
       expect(res.errors?.storageRoot, String(bad)).toBeTruthy()
@@ -54,7 +54,7 @@ describe('settings:set 的 storageRoot', () => {
     }
   })
 
-  test('無法建立（根路徑是檔案）：errors.storageRoot', () => {
+  test('returns errors.storageRoot when it cannot be created (root path is a file)', () => {
     const file = path.join(dir, 'f.txt')
     fs.writeFileSync(file, 'x')
     const res = call('settings:set', { storageRoot: file })
@@ -62,7 +62,7 @@ describe('settings:set 的 storageRoot', () => {
     expect(res.settings.storageRoot).toBeNull()
   })
 
-  test('null：只清除 storageRoot，不動 outputDir／defaultOutDir', () => {
+  test('null clears only storageRoot and leaves outputDir/defaultOutDir unchanged', () => {
     const root = path.join(dir, 'Apex')
     call('settings:set', { storageRoot: root })
     const res = call('settings:set', { storageRoot: null })
@@ -72,7 +72,7 @@ describe('settings:set 的 storageRoot', () => {
     expect(res.settings.defaultOutDir).toBe(path.join(root, 'Exports'))
   })
 
-  test('建議值 IPC：未設定時回影片資料夾\Aditor，已設定過則沿用上一層', () => {
+  test('suggestion IPC returns Videos/Aditor when unset and reuses the parent of the configured root', () => {
     expect(call(STORAGE_SUGGEST_CHANNEL)).toBe(path.join(videos, 'Aditor'))
     const root = path.join(dir, 'Mine')
     call('settings:set', { storageRoot: root })

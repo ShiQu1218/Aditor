@@ -1,13 +1,13 @@
-"""共用分析：載入特徵、離線分類、聚 run、與基準事件比對。"""
+"""Shared analysis helpers: load features, classify offline, group runs, and compare with baseline events."""
 import sys, os, json
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from fr import *
 from aditor.icon_detect import IconDetector, IconParams, IconFrame
 
-# 現行引擎在驗收片的事件 JSON（<LAB>_j1.json）：環境變數 ICON_EXP_BASELINE
+# Event JSON from the current engine on acceptance videos (<LAB>_j1.json): ICON_EXP_BASELINE environment variable
 FIX = Path(os.environ.get("ICON_EXP_BASELINE", "after3"))
 TPL = Path(ENGINE).parent / "templates" / "icons"
-GROUP = {"knock": "K", "assist_knock": "A", "assist_elim": "A"}  # 產品範圍：擊倒 K、助攻 A
+GROUP = {"knock": "K", "assist_knock": "A", "assist_elim": "A"}  # Product scope: knock (K) and assist (A).
 
 
 def feats(lab, tag="diag"):
@@ -51,8 +51,8 @@ def text(lab, lang):
 
 
 def runs_of(cls, min_len=2, gap=1):
-    """cls：逐格類別（K/A/...，空字串＝無）。同類連續格（容許 gap 格中斷）聚成 run。
-    回傳 [(start_t, end_t, cls, n)]。"""
+    """cls is the per-frame class (K/A/...; empty string means none). Group consecutive frames of the same class into runs, allowing gap frames.
+    Return [(start_t, end_t, cls, n)]."""
     out = []
     n = len(cls)
     i = 0
@@ -74,7 +74,7 @@ def runs_of(cls, min_len=2, gap=1):
 
 
 def runs_any(cls, min_len=2, gap=1):
-    """任何非空類別的連續格（容許 gap 格中斷）聚成一個 run，類型取多數。"""
+    """Group consecutive frames of any non-empty class into runs, allowing gap frames; use the majority class."""
     b = np.array([bool(c) for c in cls])
     out = []
     for s, e, _, n in runs_of(np.where(b, "X", ""), min_len, gap):
@@ -90,7 +90,7 @@ def gt(lab):
 
 
 def match(runs, events, tol=1.5):
-    """一對一貪婪比對（同組類別、起點差 ≤ tol）。回傳 (matched pairs, unmatched runs, missed events)。"""
+    """Greedy one-to-one matching (same group, start-time difference <= tol). Return matched pairs, unmatched runs, and missed events."""
     pairs, used = [], set()
     for ei, (t, ty) in enumerate(events):
         best = None

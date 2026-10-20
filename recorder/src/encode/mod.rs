@@ -1,8 +1,8 @@
-//! 硬體編碼＋fMP4 段落（任務 B1）。透過 `ffi`（預先產生的 ffmpeg 綁定）使用專案內建的
-//! LGPL ffmpeg DLL：D3D11 hwframe → `*_nvenc`／`*_amf`／`*_qsv`；音訊 AAC；
-//! 封裝為 `init.mp4` ＋ 每 2 秒一個 `seg_NNNNNN.m4s`（GOP 2 秒強制對齊，規格 §2.1）。
+//! Hardware encoding and fMP4 segments (task B1). Uses the bundled LGPL FFmpeg DLL through generated ffi bindings:
+//! D3D11 hwframes with NVENC/AMF/QSV, AAC audio, and an init.mp4 plus two-second seg_NNNNNN.m4s segments (GOP-aligned per spec §2.1).
+//! Packages output as init.mp4 and a seg_NNNNNN.m4s every two seconds (GOP aligned per spec 2.1).
 //!
-//! 介面由骨架固定，實作者不得改動簽章。
+//! The interface is fixed by the scaffold; implementations must not change its signatures.
 
 mod aac;
 pub mod ffi;
@@ -46,19 +46,19 @@ const POOL_SIZE: usize = 12;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct VideoParams {
-    /// 輸出尺寸（偶數）。來源尺寸不同時在 GPU 縮放。
+    /// Output dimensions (must be even).Scale on the GPU when source dimensions differ.
     pub width: u32,
     pub height: u32,
     pub fps: u32,
     pub codec: Codec,
-    /// `"auto"` 或明確編碼器名稱。
+    /// The value auto or an explicit encoder name.
     pub encoder: String,
     pub bitrate_kbps: u32,
     pub preset: EncodePreset,
     pub aspect: EncodeAspect,
 }
 
-/// 一個段落寫完（已 flush＋fsync）後送出。
+/// Sent after a segment is written, flushed, and fsynced.
 #[derive(Debug, Clone, PartialEq)]
 pub struct SegmentInfo {
     pub seq: u64,
@@ -78,7 +78,7 @@ pub struct EncodeStats {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PushResult {
     Queued,
-    /// 佇列滿，本格丟棄（計入 `dropped`）。
+    /// Queue full; drop this frame (counted in dropped).
     Dropped,
 }
 
@@ -115,7 +115,7 @@ impl Counts {
 struct Surface {
     frame: Frame,
 }
-// SAFETY: 基礎 AVFrame 的欄位不再修改，worker 只複製參照；producer 在確認沒有其他參照時才重用 texture。
+// SAFETY: The base AVFrame fields are immutable; the worker only clones references, and the producer reuses a texture only when unreferenced.
 unsafe impl Sync for Surface {}
 struct Producer {
     copier: Copier,
@@ -181,7 +181,7 @@ fn probe(gpu: &Gpu, name: &str) -> Result<ffi::AVPixelFormat> {
             let hardware = Hardware::new(gpu, &params, format)?;
             let encoder = hardware.encoder(name, &params)?;
             let frame = hardware.surface()?;
-            // SAFETY: 影格在本執行緒獨佔，設定首次編碼的時間戳。
+            // SAFETY: This thread exclusively owns the frame and sets its initial encoding timestamp.
             unsafe {
                 (*frame.0).pts = 0;
             }
@@ -189,7 +189,7 @@ fn probe(gpu: &Gpu, name: &str) -> Result<ffi::AVPixelFormat> {
             let tail = encoder.send(None)?;
             ensure!(
                 !packets.is_empty() || !tail.is_empty(),
-                "試編碼沒有輸出封包"
+                "Trial encoding produced no packets"
             );
             Ok(())
         };
@@ -198,11 +198,11 @@ fn probe(gpu: &Gpu, name: &str) -> Result<ffi::AVPixelFormat> {
             Err(error) => failure = format!("{error:#}"),
         }
     }
-    bail!("{name} 試編碼失敗：{failure}")
+    bail!("{name} trial encoding failed: {failure}")
 }
 
 impl SegmentWriter {
-    /// 依序嘗試開啟各硬體編碼器（小尺寸試編一格），回傳可用者名稱，例如 `["hevc_nvenc","h264_nvenc"]`。
+    /// Tries each hardware encoder with a small test frame and returns available names, such as hevc_nvenc and h264_nvenc.
     pub fn probe_encoders(gpu: &Gpu) -> Vec<String> {
         ENCODERS
             .iter()
@@ -211,8 +211,8 @@ impl SegmentWriter {
             .collect()
     }
 
-    /// 開啟編碼器與 muxer，寫出 `init.mp4`。`audio = true` 時建立 48 kHz 立體聲 AAC 軌。
-    /// 沒有可用硬體編碼器時回傳錯誤（訊息含 `no_hw_encoder`）。
+    /// Opens the encoder and muxer and writes init.mp4. When audio is true, creates a 48 kHz stereo AAC track.
+    /// Returns an error if no hardware encoder is available (message contains no_hw_encoder).
     pub fn open(
         gpu: &Gpu,
         dir: &Path,
@@ -228,11 +228,11 @@ impl SegmentWriter {
                 && video.height <= 16_384
                 && video.width.is_multiple_of(2)
                 && video.height.is_multiple_of(2),
-            "輸出尺寸必須是 2–16384 的偶數"
+            "Output dimensions must be even and between 2 and 16384"
         );
         ensure!(
             (1..=144).contains(&video.fps) && (1..=1_000_000).contains(&video.bitrate_kbps),
-            "FPS 或位元率超出支援範圍"
+            "FPS or bitrate is outside the supported range"
         );
         let mut selected = None;
         let mut failures = Vec::new();
@@ -253,7 +253,7 @@ impl SegmentWriter {
         }
         let Some((name, hardware, encoder)) = selected else {
             bail!(
-                "no_hw_encoder: 沒有可用的硬體編碼器；{}",
+                "no_hw_encoder: No hardware encoder is available; {}",
                 failures.join("；")
             );
         };
@@ -290,7 +290,7 @@ impl SegmentWriter {
                     )
                 })
             })
-            .context("建立編碼執行緒失敗")?;
+            .context("Failed to create encoder thread")?;
         Ok(Self {
             name,
             producer: Mutex::new(Producer {
@@ -306,12 +306,12 @@ impl SegmentWriter {
         })
     }
 
-    /// 實際使用的編碼器名稱。
+    /// Name of the encoder actually used.
     pub fn encoder_name(&self) -> &str {
         &self.name
     }
 
-    /// 擷取執行緒呼叫：GPU 複製進內部 pool 後立即返回，不得阻塞。
+    /// Called by the capture thread: returns immediately after queuing a GPU copy into the internal pool; must not block.
     pub fn push_video(
         &self,
         texture: &ID3D11Texture2D,
@@ -325,7 +325,7 @@ impl SegmentWriter {
                 Ok(producer) => producer,
                 Err(TryLockError::WouldBlock) => return None,
                 Err(TryLockError::Poisoned(_)) => {
-                    self.counts.fail("GPU 表面池鎖已損毀");
+                    self.counts.fail("GPU surface pool lock is poisoned");
                     return None;
                 }
             };
@@ -346,7 +346,7 @@ impl SegmentWriter {
                     if Arc::strong_count(surface) != 1 {
                         return false;
                     }
-                    // SAFETY: 基礎影格持續有效；AVBuffer 參照計數是原子讀取，避免重用編碼器尚持有的表面。
+                    // SAFETY: The base frame remains valid; atomically read AVBuffer reference counts to avoid reusing a surface still held by the encoder.
                     unsafe { ffi::av_buffer_get_ref_count((*surface.frame.0).buf[0]) == 1 }
                 })?
                 .clone();
@@ -354,7 +354,7 @@ impl SegmentWriter {
                 .copier
                 .copy(texture, (src_w, src_h), &surface.frame)
             {
-                self.counts.fail(format!("GPU 影格複製失敗：{error:#}"));
+                self.counts.fail(format!("GPU frame copy failed: {error:#}"));
                 return None;
             }
             self.counts.queue.fetch_add(1, Ordering::Relaxed);
@@ -363,7 +363,7 @@ impl SegmentWriter {
                 Err(error) => {
                     self.counts.queue.fetch_sub(1, Ordering::Relaxed);
                     if matches!(error, TrySendError::Disconnected(_)) {
-                        self.counts.fail("編碼執行緒已結束");
+                        self.counts.fail("Encoder thread has exited");
                     }
                     return None;
                 }
@@ -379,12 +379,12 @@ impl SegmentWriter {
         }
     }
 
-    /// 音訊執行緒呼叫：48 kHz 立體聲交錯 f32；`pts` 為第一個樣本的 tick。
+    /// Called by the audio thread with 48 kHz interleaved stereo f32; pts is the first sample tick.
     pub fn push_audio(&self, interleaved: &[f32], pts: i64) {
         if self.counts.error.get().is_some() {
             return;
         }
-        // 每塊最多一秒，限制異常呼叫的複製量；音訊缺口由下一個 QPC 時戳補靜音。
+        // Each chunk is limited to one second to bound copies from abnormal calls; audio gaps are filled with silence based on the next QPC timestamp.
         if interleaved.is_empty()
             || !interleaved.len().is_multiple_of(2)
             || interleaved.len() > 96_000
@@ -418,12 +418,12 @@ impl SegmentWriter {
         }
     }
 
-    /// 致命錯誤保留第一個原因，管理執行緒可隨時檢查，不必等下一格或統計週期。
+    /// Retains the first fatal error so the management thread can check at any time without waiting for another frame or stats interval.
     pub fn check_error(&self) -> Result<()> {
         self.counts.check_error()
     }
 
-    /// flush 編碼器、寫出最後一段並關閉。
+    /// Flush the encoder, write the final segment, and close.
     pub fn finish(mut self) -> Result<()> {
         self.close()?;
         self.check_error()
@@ -435,11 +435,11 @@ impl SegmentWriter {
         if let Some(worker) = self.worker.take() {
             worker
                 .join()
-                .map_err(|_| anyhow::anyhow!("encode_failed: 編碼執行緒異常結束"))??;
+                .map_err(|_| anyhow::anyhow!("encode_failed: Encoder thread terminated unexpectedly"))??;
         }
         let audio_dropped = self.counts.audio_dropped.swap(0, Ordering::Relaxed);
         if audio_dropped > 0 {
-            eprintln!("音訊輸入丟棄 {audio_dropped} 塊，缺口已依時間戳補靜音");
+            eprintln!("Dropped {audio_dropped} audio input blocks; gaps were filled with silence based on timestamps");
         }
         Ok(())
     }
@@ -467,7 +467,7 @@ fn encode_frame(
     let frame = source.duplicate()?;
     let pts = frame_tick(slot, fps);
     let duration = frame_tick(slot + 1, fps) - pts;
-    // SAFETY: 複製影格的 metadata 在此函式獨佔；GPU buffer 只讀取。
+    // SAFETY: This function exclusively owns the copied frame metadata; the GPU buffer is read-only.
     unsafe {
         (*frame.0).pts = pts;
         (*frame.0).duration = duration;
@@ -478,7 +478,7 @@ fn encode_frame(
         };
     }
     let packets = encoder.send(Some(&frame))?;
-    // SAFETY: 封包是尚未移交 muxer 的獨佔輸出；部分編碼器沒有填 duration。
+    // SAFETY: This packet is exclusively owned and not yet handed to the muxer; some encoders do not set duration.
     unsafe {
         for p in &packets {
             if (*p.0).duration == 0 {
@@ -493,7 +493,7 @@ fn encode_frame(
 
 fn monitor_worker(counts: &Counts, run: impl FnOnce() -> Result<()>) -> Result<()> {
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(run))
-        .unwrap_or_else(|_| Err(anyhow::anyhow!("編碼執行緒異常結束")));
+        .unwrap_or_else(|_| Err(anyhow::anyhow!("Encoder thread terminated unexpectedly")));
     if let Err(error) = &result {
         counts.fail(error);
     }
@@ -548,7 +548,7 @@ fn run_worker(
         };
         let closing = video_closed && audio_closed;
         counts.check_error()?;
-        // WGC 在靜止畫面可能完全停送；等待 200 ms 後才用最後一格補 CFR，避免一般擷取抖動造成搶先補格。
+        // WGC may stop sending frames for a static image; wait 200 ms before using the last frame to fill CFR, avoiding premature fills during normal capture jitter.
         if job.is_none() && last_arrival.elapsed() > Duration::from_millis(200) {
             if let (Some((started, slot)), Some(surface)) = (anchor, &previous) {
                 let end = slot + (started.elapsed().as_secs_f64() * fps as f64) as i64
@@ -593,7 +593,7 @@ fn run_worker(
         }
     }
     let tail = encoder.send(None)?;
-    // SAFETY: flush 回傳的封包由此執行緒獨佔；尾格同樣需要 duration 才不會在切段時被排除。
+    // SAFETY: The flush packet is exclusively owned by this thread; the final frame also needs a duration to remain included when splitting segments.
     unsafe {
         for packet in &tail {
             if (*packet.0).duration == 0 {
@@ -617,7 +617,7 @@ fn advance_audio(
     fps: u32,
 ) -> Result<()> {
     if let Some(audio) = audio {
-        // 音訊落後超過 200 ms 時補靜音；長時間擷取中斷也逐格前進，維持分段及記憶體上限。
+        // When audio falls more than 200 ms behind, fill with silence; advance one frame at a time during long capture interruptions to maintain segment and memory limits.
         let safe = (frame_tick(next_slot, fps) as i128 * 48_000 / 10_000_000 - 9_600).max(0) as i64;
         muxer.push(audio.advance(safe)?, false)?;
     }

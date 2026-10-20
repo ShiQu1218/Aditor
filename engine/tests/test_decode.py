@@ -37,7 +37,7 @@ def test_hwaccel_fallback(tmp_path, profile, monkeypatch):
 
 @pytest.mark.timeout(60)
 def test_stderr_flood_no_deadlock(tmp_path, profile, monkeypatch):
-    monkeypatch.setattr(decode, "LOGLEVEL", "debug")  # 大量 stderr
+    monkeypatch.setattr(decode, "LOGLEVEL", "debug")  # Lots of stderr output.
     v = make_video(tmp_path, "d.mp4", 10.0)
     fs = FrameStream(str(v), profile)
     assert len(list(fs)) == 40
@@ -64,7 +64,7 @@ GPU = ["-hwaccel", "d3d11va", "-hwaccel_output_format", "d3d11"]
 
 
 def test_build_input_args_av1_uses_native_decoder_with_d3d11va():
-    # 解碼器選項必須在 -i 之前；-ss 也在 -i 之前，且位於 hwaccel 之後
+    # Decoder options must precede -i; -ss must also precede -i and follow hwaccel.
     assert decode.build_input_args("av1", True, 2.5) == GPU + ["-c:v", "av1", "-ss", "2.500"]
 
 
@@ -110,13 +110,13 @@ def test_build_input_args_av1_hwaccel_before_ss_when_start_positive():
 
 
 def _av1_clip(tmp_path, seconds=1.0):
-    """以 libsvtav1 編一段 AV1 測試影片；沒有 AV1 編碼器時跳過測試。"""
+    """Encode an AV1 test video with libsvtav1; skip the test if no AV1 encoder is available."""
     import subprocess
     from aditor import ffbin
     ff = ffbin.ffmpeg()
     enc = subprocess.run([ff, "-hide_banner", "-encoders"], capture_output=True).stdout.decode(errors="replace")
     if "libsvtav1" not in enc:
-        pytest.skip("ffmpeg 沒有 libsvtav1 編碼器，無法產生 AV1 測試影片")
+        pytest.skip("ffmpeg does not have the libsvtav1 encoder; cannot create an AV1 test video")
     out = tmp_path / "av1.mp4"
     subprocess.run([ff, "-v", "error", "-y", "-f", "lavfi", "-i",
                     f"testsrc2=size=640x360:rate=60:duration={seconds}",
@@ -137,7 +137,7 @@ def test_av1_fallback_drops_c_v_av1(tmp_path, profile, monkeypatch):
     monkeypatch.setattr(decode.subprocess, "Popen", spy)
     fs = FrameStream(str(v), profile, codec="av1")
     assert len(list(fs)) == 4 and fs.used_hwaccel is False
-    # 硬體 nv12 → 硬體 p010le（10-bit 像素格式重試，第一格前失敗才會）→ 軟體
+    # Hardware nv12 → hardware p010le (retry with 10-bit pixel format only if failure occurs before the first frame) → software.
     assert len(cmds) == 3
     fc = lambda c: c[c.index("-filter_complex") + 1]  # noqa: E731
     assert "nonexistent_accel" in cmds[0] and "-c:v" in cmds[0] and "format=nv12" in fc(cmds[0])
@@ -153,7 +153,7 @@ def test_av1_decode_with_codec_yields_frames(tmp_path, profile):
 
 
 def test_hw_failure_mid_stream_continues_in_software_on_the_same_time_grid(tmp_path, profile, monkeypatch):
-    """I7：硬體解碼在已產出幾格之後才失敗 → 從下一格改用軟體繼續，不遺漏、不重複、時間格線不變。"""
+    """I7: if hardware decoding fails after producing frames, continue in software from the next frame without omissions or duplicates and with the same timestamp grid."""
     import sys
     import subprocess
     v = make_video(tmp_path, "h.mp4", 3.0)
@@ -177,9 +177,9 @@ def test_hw_failure_mid_stream_continues_in_software_on_the_same_time_grid(tmp_p
     fs = FrameStream(str(v), profile, codec="h264")
     ts = [t for t, _, _ in fs]
     assert fs.used_hwaccel is False
-    assert calls[0][0] is True and calls[1] == (False, pytest.approx(0.75))  # 中途失敗不重試 p010le
+    assert calls[0][0] is True and calls[1] == (False, pytest.approx(0.75))  # Do not retry p010le after a mid-stream failure.
     assert ts == pytest.approx([i * 0.25 for i in range(12)])
-    # 失敗的硬體行程被軟體行程取代後，它的 stdout 管線已關閉（不洩漏控制代碼）
+    # The failed hardware process's stdout pipe is closed after software replaces it (no handle leak).
     assert hw_procs and hw_procs[0].stdout.closed
 
 
@@ -194,11 +194,11 @@ def _nvenc_10bit(tmp_path):
 
 
 def test_ten_bit_hevc_uses_hardware_path(tmp_path, profile):
-    """M1：10-bit（p010）硬體表面也要能下載，而不是每次先失敗再退回軟體。需要 NVENC 才能產生測試檔。"""
+    """M1: 10-bit (p010) hardware surfaces must also be downloadable instead of always failing and falling back to software. Requires NVENC to create the test file."""
     v = _nvenc_10bit(tmp_path)
     if v is None:
-        pytest.skip("沒有 hevc_nvenc，無法產生 10-bit HEVC")
+        pytest.skip("hevc_nvenc is unavailable; cannot create 10-bit HEVC")
     fs = FrameStream(str(v), profile, codec="hevc")
     assert len(list(fs)) == 8
     if not fs.used_hwaccel:
-        pytest.skip("這台機器沒有 D3D11VA 硬體解碼")
+        pytest.skip("D3D11VA hardware decoding is unavailable on this machine")

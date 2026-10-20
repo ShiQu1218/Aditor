@@ -1,6 +1,6 @@
 import type { Messages } from '../index'
 
-/** 設定画面：カテゴリ、カード、各行のテキストとコントロールのラベル。 */
+/** Settings screen: categories, cards, row text, and control labels. */
 export const settingsI18n: Messages['settingsI18n'] = {
   title: '設定',
   searchPlaceholder: '設定を検索',

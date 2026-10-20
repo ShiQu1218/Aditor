@@ -69,7 +69,7 @@ function player(time = 10) {
   return { video, play, pause }
 }
 
-describe('來源片軌播放器接線', () => {
+describe('Source timeline player wiring', () => {
   test.each([true, false])('scrub restores the original playing=%s state and seeks the precise release time', async (playing) => {
     studio = await mountStudio({ doc, clips: [] })
     const { video, play, pause } = player()
@@ -185,7 +185,7 @@ describe('來源片軌播放器接線', () => {
     studio = await mountStudio({ doc, clips: [], items: [{ id: 'p', source: STUDIO_VIDEO, start: 10, end: 30 }] })
     const { video } = player()
     click(q('.pclip'))
-    // 專案預覽中，播放列按鈕仍是「快速剪輯」，不是「分割」
+    // During project preview, the transport-bar button is still Quick Clip, not Split.
     expect(quick()).toBeTruthy()
     expect(q('.transport').textContent).not.toContain('分割')
     act(() => { video.currentTime = 20 })
@@ -193,7 +193,7 @@ describe('來源片軌播放器接線', () => {
     else click(quick())
     expect(q('.mode-pill').textContent).toContain(i18n.studio.mode.source)
     expect(quick().getAttribute('aria-pressed')).toBe('true')
-    expect(document.querySelectorAll('.pclip')).toHaveLength(1) // 沒有被分割
+    expect(document.querySelectorAll('.pclip')).toHaveLength(1) // It was not split.
     point(40)
     point(55)
     expect(storedProject().items.map(({ start, end }) => [start, end])).toEqual([[10, 30], [40, 55]])
@@ -214,7 +214,7 @@ describe('來源片軌播放器接線', () => {
   })
 })
 
-describe('來源片軌的專案裁切', () => {
+describe('Project trimming on the source timeline', () => {
   const item = { id: 'p', source: STUDIO_VIDEO, start: 100, end: 200 }
 
   test('draft updates project length live; release persists once, Undo/Redo restore the full gesture and remount keeps it', async () => {

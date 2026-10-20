@@ -1,6 +1,6 @@
 import type { Messages } from '../index'
 
-/** 录制中观看（第 3 期）。 */
+/** Playback during recording (phase 3). */
 export const liveI18n: Messages['liveI18n'] = {
   obsRecording: 'OBS 录制中，录制结束后即可播放',
   detectionOnly: '实时检测中，OBS 未连接，本次未录制',

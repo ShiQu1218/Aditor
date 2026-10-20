@@ -10,14 +10,14 @@ import { generateThumbnail } from './thumbnail'
 export interface AnalysisQueueOptions {
   profileDir: string
   cacheDir: string
-  /** 每次分析前讀取（設定變更免重啟）：decode → hwaccel、cacheLocation → beside */
+  /** Read before each analysis (setting changes take effect without a restart): decode → hwaccel, cacheLocation → beside. */
   getSettings?: () => AnalyzeSettings | undefined
 }
 
 interface CurrentRun {
   path: string
   reqId: string | null
-  /** 使用者已取消：對外視為閒置，但引擎真正停下前不啟動下一支 */
+  /** Cancelled by the user: report idle externally, but do not start the next item until the engine actually stops. */
   cancelled: boolean
 }
 
@@ -36,9 +36,9 @@ export class AnalysisQueue extends EventEmitter {
   }
 
   /**
-   * 佇列的真實狀態：正在分析的影片與排隊中的影片。
-   * 注意 Library 的 `status === 'pending'` 只代表「尚未分析」，不代表在佇列中
-   * （autoAnalyze 關閉、手動匯入、取消後都是 pending 但沒有排隊）。
+   * Actual queue state: the video being analyzed and the videos waiting in the queue.
+   * Note that Library `status === 'pending'` means only "not yet analyzed," not "queued"
+   * (autoAnalyze off, manual imports, and cancelled items are pending but not queued).
    */
   snapshot(): QueueSnapshot {
     return {
@@ -47,7 +47,7 @@ export class AnalysisQueue extends EventEmitter {
     }
   }
 
-  /** `library:updated`／`queue:getState` 的內容：佇列快照＋正在分析項目的進度與開始時間。 */
+  /** `library:updated`/`queue:getState` payload: queue snapshot plus progress and start time for the item being analyzed. */
   payload(): QueuePayload {
     const queue = this.snapshot()
     const entry = queue.analyzing ? this.library.get(queue.analyzing) : undefined
@@ -78,7 +78,7 @@ export class AnalysisQueue extends EventEmitter {
       if (this.current.reqId) {
         this.engine.cancel(this.current.reqId)
       }
-      // 立刻可見為閒置；引擎停止後 _run 的收尾不會把它改成 error
+      // Show as idle immediately; _run cleanup must not change it to error after the engine stops.
       this.library.update(videoPath, { status: 'pending', progress: 0, analyzingSince: undefined })
       this.emit('update')
       return
@@ -110,7 +110,7 @@ export class AnalysisQueue extends EventEmitter {
     this.emit('update')
 
     try {
-      // 重新分析前先唯讀擷取既有快取的片段（引擎會覆寫快取且只保留手動片段）
+      // Read existing cached clips before reanalysis (the engine overwrites the cache and keeps manual clips only).
       const settings = this.opts.getSettings?.()
       const extra = analyzeSettingArgs(settings)
       const prior = capturePriorCache(videoPath, this.opts.cacheDir, extra.beside)
@@ -139,7 +139,7 @@ export class AnalysisQueue extends EventEmitter {
       }
       const doc = await req.promise
 
-      // 只有成功完成才改寫快取（取消／失敗不碰舊快取）
+      // Rewrite the cache only after success (cancellation/failure leaves the old cache untouched).
       try {
         preserveClipsAfterReanalysis(prior, doc, videoPath, this.opts.cacheDir, extra.beside)
       } catch (err) {
@@ -169,12 +169,12 @@ export class AnalysisQueue extends EventEmitter {
         durationSec: duration,
         thumb,
         codec: doc.video?.codec,
-        // 重新分析完成：舊的 N 精華作廢，交給惰性計算重算
+        // Reanalysis completed: invalidate the old N highlights count and let lazy computation recalculate it.
         hl: undefined
       })
     } catch (err) {
       if (run.cancelled) {
-        // 使用者取消：維持閒置（cancel() 已更新），不是錯誤
+        // User cancelled: keep idle (already updated by cancel()), not an error.
         this.library.update(videoPath, { status: 'pending', progress: 0, error: undefined, analyzingSince: undefined })
       } else {
         const msg = err instanceof Error ? err.message : String(err)

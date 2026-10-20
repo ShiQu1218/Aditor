@@ -1,4 +1,4 @@
-/* 錄影中觀看（第 3 期）：影片＋控制列＋時間軸＋即時事件清單。顏色一律取自 tokens.css。 */
+/* Live recording view (phase 3): video, controls, timeline, and live event list. All colors come from tokens.css. */
 .live-screen {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 300px;

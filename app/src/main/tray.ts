@@ -24,7 +24,7 @@ interface RecordingTrayOptions {
   notifyError: (message: string) => void
 }
 
-/** 文字在每次更新時才取值，語言切換後立即反映。 */
+/** Resolve text on each update so language changes take effect immediately. */
 function phaseLabel(phase: RecordingStatus['phase']): string {
   switch (phase) {
     case 'idle': return tr('待命')
@@ -60,7 +60,7 @@ export function createRecordingTray(opts: RecordingTrayOptions, deps: TrayDepend
     if (disposed) return
     const image = icon(status)
     if (image !== shownImage) {
-      // 圖示檔遺失（例如免安裝版的暫存目錄被清掉）不能讓狀態推播變成未捕捉例外；提示與選單照常更新。
+      // A missing icon file (for example, the portable build's temporary directory was removed) must not turn a status update into an uncaught exception; still update notifications and the menu.
       try { tray.setImage(image) }
       catch (error) { if (!imageFailed) console.error('[tray] 無法載入圖示：', error); imageFailed = true }
     }
@@ -68,7 +68,7 @@ export function createRecordingTray(opts: RecordingTrayOptions, deps: TrayDepend
     const label = statusLabel(status)
     tray.setToolTip(`Aditor — ${label}`)
     const active = status.phase === 'starting' || status.phase === 'recording'
-    // 錄影中狀態每幾秒推播一次；選單開著時被換掉，點選就不會觸發，所以內容沒變就不重建。
+    // Recording status is broadcast every few seconds; replacing an open menu prevents clicks from firing, so do not rebuild it when its contents have not changed.
     const menuKey = `${getActiveLocale()}|${active}|${status.phase === 'finalizing'}|${status.paused}`
     if (menuKey === shownMenu) return
     shownMenu = menuKey
@@ -97,7 +97,7 @@ export function createRecordingTray(opts: RecordingTrayOptions, deps: TrayDepend
   const unsubscribe = opts.service.onStatus(update)
   update(opts.service.status())
   return {
-    /** 語言切換後重新套用提示文字與選單。 */
+    /** Reapply notification text and menu after the language changes. */
     refresh() { update(opts.service.status()) },
     destroy() {
       if (disposed) return

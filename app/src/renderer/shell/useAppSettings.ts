@@ -7,8 +7,8 @@ interface SettingsApiLike {
 }
 
 /**
- * 殼層用的設定快照：啟動時讀一次並訂閱 `settings:changed`。
- * 尚未讀到（或 IPC 不可用，例如單獨掛載的畫面）時回傳 null。
+ * Settings snapshot for the shell: read once at startup and subscribe to `settings:changed`.
+ * Return null until loaded or when IPC is unavailable (for example, in an individually mounted screen).
  */
 export function useAppSettings(): Settings | null {
   const [settings, setSettings] = useState<Settings | null>(null)

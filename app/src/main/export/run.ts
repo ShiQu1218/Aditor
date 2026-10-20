@@ -18,11 +18,11 @@ export interface RunExportOptions {
   totalEstimatedSeconds: number
   outDir: string
   estimatedBytes: number
-  /** concat 清單內容；給函式時在執行到用清單的 job 才呼叫（前面的中間檔都已完成，可量測實際長度） */
+  /** Concat list contents; when a function is provided, call it only when the list-using job runs (preceding intermediate files are ready and can be measured). */
   concatListContent?: string | (() => Promise<string>)
-  /** ffmpeg 可執行檔與前置參數；預設 `ADITOR_FFMPEG` 或 PATH 上的 `ffmpeg`。測試用假 ffmpeg 時 bin=node、prefixArgs=[腳本]。 */
+  /** ffmpeg executable and prefix arguments; defaults to `ADITOR_FFMPEG` or `ffmpeg` on PATH. For fake ffmpeg tests, use bin=node and prefixArgs=[script]. */
   ffmpeg?: { bin: string; prefixArgs?: string[] }
-  /** concat 清單暫存目錄，預設 `%APPDATA%\Aditor\temp` */
+  /** Temporary directory for concat lists; defaults to `%APPDATA%\Aditor\temp`. */
   tempDir?: string
 }
 
@@ -54,12 +54,12 @@ export async function checkDiskSpace(outDir: string, estimatedBytes: number): Pr
     if (err instanceof InsufficientDiskSpaceError) {
       throw err
     }
-    // 檔案系統不支援 statfs 時略過檢查
+    // Skip the check when the filesystem does not support statfs.
     console.warn('Could not check disk space:', err)
   }
 }
 
-/** `<dir>/<name>.mp4` → `<dir>/<name>.partial.mp4`（保留 .mp4 副檔名，ffmpeg 才能由副檔名判斷容器格式） */
+/** Convert `<dir>/<name>.mp4` to `<dir>/<name>.partial.mp4` (keep the .mp4 extension so ffmpeg can infer the container format). */
 export function partialPathFor(output: string): string {
   const ext = path.extname(output)
   return path.join(path.dirname(output), path.basename(output, ext) + '.partial' + ext)
@@ -67,7 +67,7 @@ export function partialPathFor(output: string): string {
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
 
-/** 刪檔；Windows 上剛被殺掉的程序可能還短暫鎖著檔案，EBUSY/EPERM 時重試。 */
+/** Delete a file; on Windows, a recently killed process may hold a temporary lock, so retry on EBUSY/EPERM. */
 async function removeFile(p: string): Promise<void> {
   for (let attempt = 0; attempt < 8; attempt++) {
     try {
@@ -83,7 +83,7 @@ async function removeFile(p: string): Promise<void> {
 
 class JobFailure extends Error {}
 
-/** 目標已存在就改成 `<name> (2).mp4`、`<name> (3).mp4`…；不存在則原樣回傳。 */
+/** If the target exists, use `<name> (2).mp4`, `<name> (3).mp4`…; otherwise return it unchanged. */
 export function freeOutputPath(target: string): string {
   if (!fs.existsSync(target)) return target
   const ext = path.extname(target)
@@ -96,9 +96,9 @@ export function freeOutputPath(target: string): string {
 }
 
 /**
- * 依序執行 ffmpeg jobs。每個輸出先寫到 `<name>.partial.mp4`，成功後 rename 成正式檔名。
- * 中止（signal）：殺掉 ffmpeg 及其子孫程序、刪除目前 job 的 partial 檔、保留已完成的輸出，
- * 回傳 `{ ok:false, cancelled:true, outputs }`。失敗（非 0 結束碼等）同樣刪除 partial 並回傳 stderr 最後 4 KB。
+ * Run ffmpeg jobs in order. Write each output to `<name>.partial.mp4` first, then rename it to the final filename on success.
+ * On cancellation (signal), kill ffmpeg and its descendants, remove the current job's partial file, keep completed outputs,
+ * and return `{ ok:false, cancelled:true, outputs }`. On failure (non-zero exit code, etc.), also remove the partial and return the last 4 KB of stderr.
  */
 export async function runExport(opts: RunExportOptions, control: RunExportControl = {}): Promise<RunExportResult> {
   const { signal, onProgress } = control
@@ -109,7 +109,7 @@ export async function runExport(opts: RunExportOptions, control: RunExportContro
   if (signal?.aborted) return { ok: false, cancelled: true, outputs: completed }
 
   try {
-    // 合輯先寫每段中間檔、再寫成品，中間檔到最後才刪：尖峰約需兩倍空間
+    // Concatenation writes intermediate segments before the final output and deletes them only at the end, requiring about twice the space at peak.
     const peakFactor = jobs.some((j) => j.intermediate) ? 2 : 1
     await checkDiskSpace(opts.outDir, opts.estimatedBytes * peakFactor)
   } catch (err) {
@@ -131,7 +131,7 @@ export async function runExport(opts: RunExportOptions, control: RunExportContro
       const job = jobs[i]
       const partial = partialPathFor(job.output)
       if (job.intermediate) tempFilesToClean.push(job.output)
-      // 輸出參數（最後一個 `-y <output>`）改寫到 partial 路徑
+      // Rewrite the output argument (the final `-y <output>`) to the partial path.
       let args = job.args.map((a) => (a === job.output ? partial : a))
 
       if (args.includes('LIST_FILE_PLACEHOLDER') && opts.concatListContent) {
@@ -150,7 +150,7 @@ export async function runExport(opts: RunExportOptions, control: RunExportContro
           env: { ...process.env, ...extraEnv },
           stdio: ['ignore', 'pipe', 'pipe'],
           windowsHide: true,
-          // 非 Windows：自成程序群組，killTree 才能用 process.kill(-pid) 一次殺掉整棵樹
+          // On non-Windows, create a process group so killTree can terminate the entire tree with process.kill(-pid).
           detached: process.platform !== 'win32'
         })
 
@@ -162,7 +162,7 @@ export async function runExport(opts: RunExportOptions, control: RunExportContro
           void killTree(proc)
         }
         signal?.addEventListener('abort', onAbort, { once: true })
-        // 監聽器掛上前就已中止的競態
+        // Handle cancellation that happened before the listener was attached.
         if (signal?.aborted) onAbort()
         const cleanup = (): void => signal?.removeEventListener('abort', onAbort)
 
@@ -181,7 +181,7 @@ export async function runExport(opts: RunExportOptions, control: RunExportContro
             try {
               onProgress?.({ jobIndex: i, totalJobs: jobs.length, percent, outTimeSeconds: outSec })
             } catch {
-              // 進度回呼出錯不能影響匯出
+              // A progress callback error must not affect the export.
             }
           }
         })
@@ -195,7 +195,7 @@ export async function runExport(opts: RunExportOptions, control: RunExportContro
 
         proc.on('error', (err) => {
           spawnError = err
-          // 根本沒啟動（ENOENT 等）不保證會有 close 事件，直接結束這個 job（Promise 重複 settle 無害）
+          // A process that never started (ENOENT, etc.) may not emit close; finish this job directly (settling the Promise twice is harmless).
           if (proc.pid === undefined) {
             cleanup()
             reject(new JobFailure(tr('無法啟動 ffmpeg：{message}', { message: err.message })))
@@ -224,7 +224,7 @@ export async function runExport(opts: RunExportOptions, control: RunExportContro
         return { ok: false, cancelled: true, outputs: completed }
       }
 
-      // 中間檔留在原處，最後一併刪除；成品若遇到同名檔案（匯出期間才出現的）絕不覆蓋，改用「 (2)」之類的名稱（I6）
+      // Keep intermediate files until final cleanup; never overwrite a final file that appeared during export, and use a name such as " (2)" instead (I6).
       const finalPath = job.intermediate ? job.output : freeOutputPath(job.output)
       try {
         await fs.promises.rename(partial, finalPath)

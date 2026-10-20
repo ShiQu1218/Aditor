@@ -102,8 +102,8 @@ describe('export plan', () => {
     const iIndex = args.indexOf('-i')
     expect(ssIndex).toBeGreaterThan(-1)
     expect(iIndex).toBeGreaterThan(-1)
-    expect(ssIndex).toBeLessThan(iIndex) // -ss before -i：轉碼時仍是精準 seek，且不必從頭解碼
-    expect(args.indexOf('-t')).toBeGreaterThan(iIndex) // -t 是輸出選項，放在 -i 之後
+    expect(ssIndex).toBeLessThan(iIndex) // -ss before -i: still precise when transcoding and avoids decoding from the start.
+    expect(args.indexOf('-t')).toBeGreaterThan(iIndex) // -t is an output option, so it follows -i.
     expect(args[ssIndex + 1]).toBe('10.000')
     expect(args).toContain('-c:v')
     expect(args).toContain('h264_nvenc')
@@ -190,7 +190,7 @@ describe('export plan: unknown stream info and mixed sources (I9)', () => {
       new Map([['C:/a.mp4', unknown()]])
     )
     expect(notices).toEqual([])
-    // 每段先 stream copy 成中間檔，最後一個 job 用 concat demuxer copy 接起來
+    // Stream-copy each segment to an intermediate file, then join them with concat demuxer copy in the final job.
     expect(jobs).toHaveLength(3)
     expect(jobs.slice(0, 2).every((j) => j.intermediate)).toBe(true)
     for (const j of jobs) expect(j.args).toContain('copy')
@@ -209,13 +209,13 @@ describe('export plan: unknown stream info and mixed sources (I9)', () => {
     expect(last.intermediate).toBeFalsy()
     expect(last.args).toContain('concat')
     expect(last.args).toContain('LIST_FILE_PLACEHOLDER')
-    // 視訊直接 copy，音訊（中間檔是 PCM）整條一次編成 AAC
+    // Copy video directly and encode the complete audio stream (intermediate files use PCM) to AAC once.
     expect(last.args[last.args.indexOf('-c:v') + 1]).toBe('copy')
     expect(last.args[last.args.indexOf('-c:a') + 1]).toBe('aac')
-    // 清單只含中間檔，不再用 inpoint/outpoint 直接讀來源
+    // The list contains only intermediate files; it no longer reads sources directly with inpoint/outpoint.
     expect(res.concatListContent).not.toContain('inpoint')
     for (const s of segs) expect(res.concatListContent).toContain(s.output.replace(/\\/g, '/'))
-    // 每段都正規化：scale/fps/pix_fmt 與音訊取樣率／聲道，-ss 在 -i 之前
+    // Normalize every segment (scale/fps/pix_fmt and audio sample rate/channels); -ss comes before -i.
     const a = segs[0].args
     expect(a.join(' ')).toMatch(/scale=1920:1080/)
     expect(a.join(' ')).toMatch(/fps=/)
@@ -265,26 +265,26 @@ describe('export plan: clip boundaries play cleanly (no pre-roll, no overlapping
     expect(Number(valueAfter(args, '-itsoffset'))).toBeCloseTo(pad, 6)
     expect(args.indexOf('-ss')).toBeLessThan(args.indexOf('-i'))
     expect(args.indexOf('-itsoffset')).toBeLessThan(args.indexOf('-i'))
-    // 從關鍵影格一路到修正後的終點（多出的開頭就是介面提示的「多出約 X 秒」）
+    // From the keyframe through the adjusted end (the extra lead-in is the "may add about X seconds" shown in the UI).
     expect(Number(valueAfter(args, '-t'))).toBeCloseTo(21.708 - 12, 6)
     expect(valueAfter(args, '-c')).toBe('copy')
-    // 音訊不早於關鍵影格；不靠 edit list 藏畫面
+    // Audio does not start before the keyframe; no edit list is used to hide frames.
     expect(valueAfter(args, '-copypriorss:a')).toBe('0')
     expect(args).not.toContain('-avoid_negative_ts')
     expect(args.slice(-2)).toEqual(['-y', 'C:/out/a.mp4'])
-    // open GOP 的 leading B 幀（顯示時間早於關鍵影格）丟掉
+    // Drop open-GOP leading B-frames (display time is before the keyframe).
     expect(valueAfter(args, '-bsf:v')).toBe('noise=drop=lt(pts\\,startpts)')
   })
 
   it('a separate video cut keeps audio running until the last video frame has been shown', () => {
     const args = copyCutArgs(clipItems[0], { keyframe: 12, end: 21.74, videoCut: 21.708 }, 'C:/out/a.mp4')
     expect(Number(valueAfter(args, '-t'))).toBeCloseTo(9.74, 6)
-    // 視訊封包 DTS（相對輸出 0 點）≥ 9.708 的丟掉
+    // Drop video packets whose DTS (relative to output time 0) is >= 9.708.
     expect(valueAfter(args, '-bsf:v')).toBe('noise=drop=lt(pts\\,startpts)+gte(dts*tb\\,9.708000)')
   })
 
   it('copy cut without keyframe info falls back to seeking the clip start and shifting everything to zero', () => {
-    const bad = [null, undefined, { keyframe: Number.NaN, end: 21.7 }, { keyframe: 14, end: 21.7 } /* 晚於起點：不可信 */, { keyframe: 12, end: 11 }]
+    const bad = [null, undefined, { keyframe: Number.NaN, end: 21.7 }, { keyframe: 14, end: 21.7 } /* After the start: untrusted. */, { keyframe: 12, end: 11 }]
     for (const kf of bad) {
       const args = copyCutArgs(clipItems[0], kf, 'C:/out/a.mp4')
       expect(valueAfter(args, '-ss')).toBe('13.400')
@@ -336,7 +336,7 @@ describe('export plan: clip boundaries play cleanly (no pre-roll, no overlapping
     expect(s1.args.indexOf('-ss')).toBeLessThan(s1.args.indexOf('-i'))
     expect(valueAfter(s1.args, '-c:v')).toBe('h264_nvenc')
     expect(valueAfter(s1.args, '-c:a')).toBe('pcm_s16le')
-    // 同一來源：不改解析度與幀率，也沒有「規格不同」提示
+    // Same source: do not change resolution or frame rate, and show no "different specs" notice.
     expect(s1.args).not.toContain('-vf')
     expect(res.notices).toEqual([])
     expect(valueAfter(final.args, '-c:v')).toBe('copy')

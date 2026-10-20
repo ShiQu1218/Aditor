@@ -1,4 +1,4 @@
-/* Mock 資料：事件字樣影像取自 engine/tests/fixtures/zh-TW（縮小裁切），其餘為示意內容 */
+/* Mock data: event text images come from engine/tests/fixtures/zh-TW (scaled and cropped); the rest is illustrative */
 const ICONS = {
   play: 'M7 4l13 8-13 8z',
   pause: 'M7 4h4v16H7z M13 4h4v16h-4z',
@@ -32,7 +32,7 @@ const ICONS = {
   flag: 'M5 21V4 M5 4h12l-2 4 2 4H5',
   link: 'M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1 M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1',
   swap: 'M7 4l-4 4 4 4 M3 8h14 M17 20l4-4-4-4 M21 16H7',
-  // 事件字形（時間軸 canvas 與 DOM 共用）
+  // Event glyphs (shared by timeline canvas and DOM)
   g_knock: 'M17 12a5 5 0 1 1-10 0a5 5 0 0 1 10 0z M12 3v4 M12 17v4 M3 12h4 M17 12h4',
   g_assist: 'M12 5v14 M5 12h14',
   g_x: 'M7 7l10 10 M17 7L7 17',
@@ -49,7 +49,7 @@ const TYPES = {
 const REASONS = { first: '首次', duplicate: '重複敵人', spectating: '觀戰中', not_counting_type: '小隊抹殺不計', manual: '手動' };
 const BANNER = { knock: 'knock_a005000', assist_knock: 'assist_knock_a007150', assist_elim: 'assist_elim_a007400', elim: 'elim_a005375', squad_wipe: 'squad_wipe_a066500' };
 
-/* 影片庫 */
+/* Library */
 const LIBRARY = [
   { id: 'v1', name: 'Apex Legends_07-13-2026_17-17-13-950.mp4', date: '2026-07-13', time: '17:17', dur: 822, res: '1916×1080', status: 'done', knock: 12, assist: 4, hl: 3, fav: true, scene: 's1', banner: 'knock_a005000' },
   { id: 'v2', name: 'Apex Legends_07-13-2026_17-33-52-100.mp4', date: '2026-07-13', time: '17:33', dur: 738, res: '1916×1080', status: 'done', knock: 7, assist: 3, hl: 1, fav: false, scene: 's2', banner: 'squad_wipe_a066500' },
@@ -61,7 +61,7 @@ const LIBRARY = [
   { id: 'v7', name: 'Apex Legends_10-14-2026_19-02-44-310.mp4', date: '2026-10-14', time: '19:02', dur: 0, res: '', status: 'error', err: '無法讀取影片：ffprobe 回報檔案損壞（moov atom not found）', scene: 's2' }
 ];
 
-/* 工作室：單支影片 17-17-13（822 秒） */
+/* Studio: video 17-17-13 (822 seconds) */
 let VIDEO = { id: 'v1', name: LIBRARY[0].name, duration: 822, codec: 'H.264', res: '1916×1080' };
 let EVENTS = [
   { id: 'e1', t: 50.0, type: 'knock', score: 0.93, dmg: true, counted: true, reason: 'first', ov: null, src: 'auto' },
@@ -96,7 +96,7 @@ const QUEUE = [
   { name: 'Apex Legends_07-13-2026_18-3-35-350.mp4', p: 0, eta: '', state: '等待' }
 ];
 
-/* 2 小時長片驗收資料集：約 300 個事件（確定性偽隨機） */
+/* Two-hour acceptance dataset: about 300 events (deterministic pseudorandom) */
 function genLong() {
   let seed = 7;
   const r = () => (seed = (seed * 1664525 + 1013904223) % 4294967296) / 4294967296;

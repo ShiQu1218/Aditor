@@ -30,8 +30,8 @@ function button(text: string): HTMLButtonElement {
   return Array.from(document.querySelectorAll('button')).find((el) => el.textContent === text)!
 }
 
-describe('錄影側欄與面板', () => {
-  test('AppShell 接收狀態推播、開啟面板，關閉後保留側欄訂閱', async () => {
+describe('Recording rail and panel', () => {
+  test('AppShell receives status updates and opens the panel; closing it keeps the rail subscription', async () => {
     window.api = createFakeApi() as unknown as Window['api']
     const r = rig()
     mount(<Providers><div /></Providers>)
@@ -52,7 +52,7 @@ describe('錄影側欄與面板', () => {
     expect(r.listeners.size).toBe(0)
   })
 
-  test.each(['idle', 'recording', 'error'] as const)('%s 的側欄名稱、狀態點與開啟動作', (phase) => {
+  test.each(['idle', 'recording', 'error'] as const)('sidebar name, status dot, and open action for %s', (phase) => {
     const onRecording = vi.fn()
     mount(<Rail active="library" projectCount={0} onNavigate={() => undefined} recordingPhase={phase} onRecording={onRecording} />)
     const label = phase === 'idle' ? t.title : t.phases[phase]
@@ -66,7 +66,7 @@ describe('錄影側欄與面板', () => {
     expect(onRecording).toHaveBeenCalledOnce()
   })
 
-  test('狀態、即時計時、編碼資訊、段落、丟格與空間會更新，卸載清除訂閱及計時器', async () => {
+  test('Status, elapsed time, encoder info, segments, dropped frames, and disk space update; unmount clears subscriptions and timers', async () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-10-18T00:01:05Z'))
     const r = rig({ phase: 'recording', startedAt: Date.now() - 65000, encoder: 'hevc_nvenc', width: 2560, height: 1440, segments: 30, droppedFrames: 4, diskFreeBytes: 10 * 1024 ** 3 })
@@ -86,7 +86,7 @@ describe('錄影側欄與面板', () => {
     expect(vi.getTimerCount()).toBe(0)
   })
 
-  test('手動開始／停止與暫停，操作失敗與服務錯誤可見', async () => {
+  test('Manual start/stop and pause; operation failures and service errors are visible', async () => {
     const r = rig()
     mount(<RecordingPanel onClose={() => undefined} />)
     await flush()
@@ -118,7 +118,7 @@ describe('錄影側欄與面板', () => {
     expect(document.querySelector('[role="alert"]')?.textContent).toContain('沒有硬體編碼器')
   })
 
-  test('具名稱的對話框限制焦點，Esc 關閉後回到觸發鈕', async () => {
+  test('Named dialog traps focus and returns it to the trigger button after Esc closes it', async () => {
     rig()
     const trigger = document.createElement('button')
     document.body.appendChild(trigger)
@@ -137,7 +137,7 @@ describe('錄影側欄與面板', () => {
     expect(document.activeElement).toBe(trigger)
   })
 
-  test('服務未註冊時顯示錯誤並停用控制項', async () => {
+  test('Shows an error and disables controls when the service is not registered', async () => {
     rig().api.getStatus = async () => { throw new Error('missing handler') }
     mount(<RecordingPanel onClose={() => undefined} />)
     await flush()
@@ -145,7 +145,7 @@ describe('錄影側欄與面板', () => {
     expect(button(t.start).disabled).toBe(true)
   })
 
-  test('初始快照延遲時不可蓋過較新推播，卸載後不再訂閱', async () => {
+  test('A delayed initial snapshot cannot overwrite newer updates; unmount unsubscribes', async () => {
     const r = rig()
     let resolve!: (s: RecordingStatus) => void
     r.api.getStatus = () => new Promise((done) => { resolve = done })

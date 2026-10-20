@@ -11,7 +11,7 @@ import type { ProjectItem } from '../editor/project'
 
 export type Ctx2D = CanvasRenderingContext2D
 
-/** 垂直版面（spec §3.2.2）：尺標 0–21、標籤列 22–38、事件／框區 38–底 */
+/** Vertical layout (spec §3.2.2): ruler 0–21, label row 22–38, event/box area 38–bottom. */
 export const RULER_H = 21
 export const CLIP_LABEL_ROW = { y: 24, h: 14 }
 export const EVENT_TOP = 40
@@ -31,12 +31,12 @@ export interface Theme {
   text2: string
   text3: string
   popover: string
-  /** 實心圖示上的字形顏色（深色） */
+  /** Glyph color on a solid icon (dark). */
   onShape: string
   spectatingFill: string
   spectatingHatch: string
   unanalyzed: string
-  /** 'r, g, b'，搭配 alpha 組成 rgba() */
+  /** 'r, g, b', combined with alpha to form rgba(). */
   heatRgb: string
   clipSuggestLine: string
   clipSuggestFill: string
@@ -58,23 +58,23 @@ export interface DrawModel {
   spectating: SpecInterval[]
   clips: Clip[]
   selected: Set<string>
-  /** 目前播放位置所在的事件（畫外環） */
+  /** Event containing the current playhead (drawn with an outer ring). */
   currentId?: string
-  /** v1 不使用（不做部分分析檢視）；有值時才畫 */
+  /** Unused in v1 (no partial-analysis view); drawn only when set. */
   unanalyzed?: SpecInterval[]
   hoverClipId?: string | null
   activeClipId?: string | null
   projectItem?: ProjectItem | null
   blade?: BladeState
-  /** 低效能模式：熱度條降為 HEAT_BINS_LOWPERF 格 */
+  /** Low-performance mode: reduce the heat bar to HEAT_BINS_LOWPERF bins. */
   lowPerf?: boolean
 }
 
-/* ---------------- Theme：由 CSS 變數讀出一次並快取 ---------------- */
+/* ---------------- Theme: read CSS variables once and cache them ---------------- */
 
 let cachedTheme: Theme | null = null
 
-/** 主題切換與測試時使色票快取失效。 */
+/** Invalidate the palette cache when the theme changes and in tests. */
 export function resetThemeCache(): void {
   cachedTheme = null
 }
@@ -114,7 +114,7 @@ export function readTheme(getVar: (name: string) => string = defaultGetVar): The
   return cachedTheme
 }
 
-/* ---------------- 重繪排程：多次 invalidate 合併為一個 rAF ---------------- */
+/* ---------------- Redraw scheduling: merge multiple invalidations into one rAF ---------------- */
 
 export function createRedrawScheduler(
   draw: () => void,
@@ -137,7 +137,7 @@ export function createRedrawScheduler(
   }
 }
 
-/* ---------------- 繪製 ---------------- */
+/* ---------------- Drawing ---------------- */
 
 function drawRuler(g: Ctx2D, m: DrawModel, th: Theme): void {
   const { view, width } = m
@@ -206,7 +206,7 @@ function drawHeat(g: Ctx2D, m: DrawModel, th: Theme, bot: number): void {
   const density = m.layout.mode === 'density'
   const nb = heatBinCount(m.width, density, Boolean(m.lowPerf))
   if (nb <= 0) return
-  // 一般模式每格固定 4／6 px；低效能模式把整個寬度均分成 60 格
+  // Normal mode uses fixed 4/6 px bins; low-performance mode divides the full width into 60 bins.
   const binPx = m.lowPerf ? m.width / nb : density ? 4 : 6
   const counts = new Float32Array(nb)
   let max = 0
@@ -242,7 +242,7 @@ function drawClips(g: Ctx2D, m: DrawModel, th: Theme, bot: number): void {
     const emphasised = m.hoverClipId === c.id || m.activeClipId === c.id
     const w = x1 - x0
     if (w < NARROW_CLIP_PX) {
-      // 縮小檢視：實心窄條，不畫虛線框（避免雜訊）
+      // Zoomed out: draw a solid narrow bar without a dashed outline to reduce noise.
       g.globalAlpha = suggested ? 0.4 : 0.8
       g.fillStyle = suggested ? th.clipSuggestLine : th.clipLine
       g.fillRect(x0, EVENT_TOP, Math.max(3, w), boxH)
@@ -261,7 +261,7 @@ function drawClips(g: Ctx2D, m: DrawModel, th: Theme, bot: number): void {
       g.fillRect(x0 - 2, EVENT_TOP + 6, HANDLE_W, boxH - 12)
       g.fillRect(x1 - 4, EVENT_TOP + 6, HANDLE_W, boxH - 12)
     }
-    // 標籤獨立一行（在框上緣之上），寬度不足則省略
+    // Put the label on its own line above the box; omit it if there is not enough width.
     const label =
       (suggested ? '' : '✓ ') + (c.origin === 'ai' ? i18n.timeline.clipAi + ' ' : '') + formatTime(c.end - c.start)
     const lw = g.measureText(label).width + 8
@@ -340,7 +340,7 @@ function drawSingle(g: Ctx2D, e: EngineEvent, x: number, m: DrawModel, th: Theme
   const color = th.events[e.type as EventType] ?? th.events.knock
   const on = isCounted(e)
   const y = ICON_Y
-  // 垂直引線
+  // Vertical guide line.
   g.strokeStyle = th.lineStrong
   g.lineWidth = 1
   g.beginPath()
@@ -354,7 +354,7 @@ function drawSingle(g: Ctx2D, e: EngineEvent, x: number, m: DrawModel, th: Theme
     g.fillStyle = color
     g.fill()
   } else {
-    // 不計入：14% 淡底＋65% 不透明＋2px 同色描邊
+    // Excluded: 14% tinted fill + 65% opacity + 2px outline in the same color.
     g.globalAlpha = 0.65 * 0.14
     g.fillStyle = color
     g.fill()
@@ -388,7 +388,7 @@ function drawCluster(g: Ctx2D, events: EngineEvent[], x: number, m: DrawModel, t
   const label = '×' + n
   const w = g.measureText(label).width + 16
   const y = ICON_Y
-  // 依各類型的事件數分段上色；未知類型沿用單一事件的擊倒色
+  // Color segments based on event counts by type; unknown types use the single-event knock color.
   const segments = new Map<string, { count: number; counted: number }>()
   for (const e of events) {
     const color = th.events[e.type as EventType] ?? th.events.knock
@@ -420,7 +420,7 @@ function drawCluster(g: Ctx2D, events: EngineEvent[], x: number, m: DrawModel, t
   g.textBaseline = 'middle'
   g.fillText(label, x - w / 2 + 8, y + 1)
   g.textBaseline = 'top'
-  // 計入比例小條
+  // Included-ratio indicator.
   left = x - w / 2 + 4
   for (const [color, segment] of segments) {
     const width = (w - 8) * segment.counted / n
@@ -445,7 +445,7 @@ function drawIconEvents(g: Ctx2D, m: DrawModel, th: Theme, bot: number): void {
   }
 }
 
-/** 靜態層繪製（播放頭是 DOM 元素，不在此畫）。呼叫端須先設好 DPR transform。 */
+/** Draw the static layer (the playhead is a DOM element and is not drawn here). The caller must set the DPR transform first. */
 export function drawTimeline(g: Ctx2D, m: DrawModel, th: Theme): void {
   const { width, height } = m
   const bot = height - BOTTOM_PAD

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-// axe-core（jsdom）：影片庫、工作室、設定、匯出抽屜（四種狀態＋同意對話框）、快捷鍵說明各掃一次，不得有 serious／critical 違規。
+// Run axe-core (jsdom) once for the library, studio, settings, all four export drawer states plus the consent dialog, and shortcut help; no serious or critical violations are allowed.
 import React from 'react'
 import fs from 'fs'
 import path from 'path'
@@ -18,7 +18,7 @@ import { DISABLED_RULES, formatFindings, runAxe } from '../../../test/axe'
 import { buttonByText, cleanupMounted, click, flush, installDomShims, mount, press } from '../../../test/dom'
 
 beforeAll(() => {
-  // 與 index.html 一致的文件層級屬性（lang、title）：由檔案讀取，避免測試與實際頁面各說各話
+  // Read document-level attributes (lang, title) from index.html so the test and page use the same values.
   const html = fs.readFileSync(path.resolve(__dirname, '..', 'index.html'), 'utf-8')
   const lang = /<html[^>]*\blang="([^"]+)"/.exec(html)?.[1]
   const title = /<title>([^<]+)<\/title>/.exec(html)?.[1]
@@ -64,7 +64,7 @@ describe('axe-core (jsdom) — no serious/critical violations', () => {
       expect(document.querySelectorAll('.vcard.err').length).toBeGreaterThan(0)
       expect(document.querySelectorAll('.vcard.busy').length).toBeGreaterThan(0)
       await expectNoSeriousViolations('library')
-      // 卡片 ⋯ 選單與空狀態也掃
+      // Also scan the card menu and empty state.
       click(document.querySelector('.vcard-more')!)
       await expectNoSeriousViolations('library with card menu open')
     } finally {
@@ -97,7 +97,7 @@ describe('axe-core (jsdom) — no serious/critical violations', () => {
     try {
       expect(document.querySelectorAll('.hl-card').length).toBeGreaterThan(0)
       await expectNoSeriousViolations('studio / highlights tab')
-      // 對話框狀態：新增事件、AI 浮層
+      // Dialog states: add event and AI popover.
       press(document.body, 'm')
       expect(document.querySelector('.add-event')).not.toBeNull()
       await expectNoSeriousViolations('studio / add-event dialog')
@@ -107,7 +107,7 @@ describe('axe-core (jsdom) — no serious/critical violations', () => {
       expect(document.querySelector('.autoclip-pop')).not.toBeNull()
       await expectNoSeriousViolations('studio / AI popover')
       press(document.activeElement ?? document.body, 'Escape')
-      // 快捷鍵說明
+      // Shortcut help.
       press(document.body, '?', { shiftKey: true })
       expect(document.querySelector('.sc-dialog')).not.toBeNull()
       await expectNoSeriousViolations('studio / shortcuts dialog')

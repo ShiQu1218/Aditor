@@ -1,4 +1,4 @@
-"""zoom.py LAB t x0 y0 x1 y1 out [k]：放大裁切區，畫 10px 格線方便讀座標。"""
+"""zoom.py LAB t x0 y0 x1 y1 out [k]: enlarge a crop and draw a 10 px grid for reading coordinates."""
 import sys
 from fr import *
 lab, t, x0, y0, x1, y1, out = sys.argv[1], float(sys.argv[2]), *map(int, sys.argv[3:7]), sys.argv[7]

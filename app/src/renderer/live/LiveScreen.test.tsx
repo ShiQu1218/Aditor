@@ -16,7 +16,7 @@ const ev = (id: string, time: number, type = 'knock', counted = true): EngineEve
   name_sig: null, counted, counted_reason: counted ? 'first' : 'duplicate', counted_override: null, source: 'auto' })
 const segs = (n: number) => Array.from({ length: n }, (_, i) => ({ seq: i + 1, pts: i * 2, dur: 2 }))
 
-/** 假 MediaSource／SourceBuffer：sourceopen 在 `video.src` 設定後非同步觸發；append 立即完成。 */
+/** Fake MediaSource/SourceBuffer: sourceopen fires asynchronously after setting `video.src`; append completes immediately. */
 class FakeSourceBuffer extends EventTarget {
   mode = 'sequence'
   updating = false
@@ -80,12 +80,12 @@ function screen(onOpenVideo = vi.fn(), onBack = vi.fn(), onOpenLibrary = vi.fn()
   mount(<LiveScreen onBack={onBack} onOpenVideo={onOpenVideo} onOpenLibrary={onOpenLibrary} />)
   return { onOpenVideo, onBack, onOpenLibrary }
 }
-/** live 快照 → 渲染 → MediaSource sourceopen → 取檔／append 各需一輪計時器。 */
+/** One timer cycle each for live snapshot -> render -> MediaSource sourceopen -> fetch/append. */
 async function settle(): Promise<void> { for (let i = 0; i < 4; i++) await flush(5) }
 const timeText = (): string => document.querySelector('.live-time')!.textContent!
 
 describe('liveModel', () => {
-  test('套用推播：段落去重、整份事件、對局依序號；其他工作忽略', () => {
+  test('Applies updates: deduplicates segments, replaces the full event list, orders matches by sequence, and ignores other jobs', () => {
     let s = applyLiveUpdate(LIVE, { sessionId: ID, segment: { seq: 11, pts: 20, dur: 2 } })
     s = applyLiveUpdate(s, { sessionId: ID, segment: { seq: 11, pts: 20, dur: 2 } })
     expect(s.segments).toHaveLength(11)
@@ -100,8 +100,8 @@ describe('liveModel', () => {
   })
 })
 
-describe('RecordingPanel 觀看當局', () => {
-  test('OBS 顯示錄影結束後播放提示，仍保留事件與對局且不讀取段落', async () => {
+describe('RecordingPanel live match view', () => {
+  test('OBS shows a playback prompt after recording ends, keeps events and matches, and does not read segments', async () => {
     const r = rig({ ...RECORDING, backend: 'obs', obsRecording: true }, { ...LIVE, mime: null, segments: [] })
     screen()
     await settle()
@@ -113,14 +113,14 @@ describe('RecordingPanel 觀看當局', () => {
     expect(r.api.readSegment).not.toHaveBeenCalled()
     expect(document.querySelector('[role="alert"]')).toBeNull()
   })
-  test('OBS 大廳待命保留偵測狀態', async () => {
+  test('OBS lobby standby preserves detection status', async () => {
     rig({ ...RECORDING, backend: 'obs', obsRecording: false }, { ...LIVE, mime: null, segments: [] })
     screen()
     await settle()
     expect(document.body.textContent).toContain('待命（OBS，等待對局）')
     expect(document.body.textContent).not.toContain('錄影中（OBS）')
   })
-  test('只有錄影中可用，點擊開啟錄影中觀看', async () => {
+  test('Available only while recording; clicking opens the live recording view', async () => {
     const r = rig()
     const onWatch = vi.fn()
     mount(<RecordingPanel onClose={() => undefined} onWatchLive={onWatch} />)
@@ -136,14 +136,14 @@ describe('RecordingPanel 觀看當局', () => {
 })
 
 describe('LiveScreen', () => {
-  test('MSE：依 MIME 建立 SourceBuffer，先 init 再抓最新附近的段落；新段落推播後繼續抓', async () => {
+  test('MSE creates SourceBuffer from MIME, appends init before fetching recent segments, and keeps fetching after new segment updates', async () => {
     const r = rig(RECORDING, LIVE)
     screen()
     await settle()
     expect(media.types).toEqual([LIVE.mime])
     expect(media.sb!.mode).toBe('segments')
     expect(r.api.readInit).toHaveBeenCalledWith(ID)
-    // 開啟時停在最新（20 秒 − 3 秒）附近：抓 17 秒前後的段落，不從頭抓
+    // On open, stay near the latest point (20 seconds - 3 seconds): fetch around 17 seconds, not from the beginning.
     const seqs = vi.mocked(r.api.readSegment!).mock.calls.map(([, seq]) => seq)
     expect(seqs).toContain(9)
     expect(seqs).not.toContain(1)
@@ -154,7 +154,7 @@ describe('LiveScreen', () => {
     expect(timeText()).toContain('0:22')
   })
 
-  test('狀態列、事件清單（新的在上）、點事件跳到事件前 3 秒、新計入事件以 aria-live 宣告', async () => {
+  test('Status bar, newest-first event list, seek to 3 seconds before an event, and aria-live announcement for newly counted events', async () => {
     const r = rig(RECORDING, LIVE)
     screen()
     await settle()
@@ -175,7 +175,7 @@ describe('LiveScreen', () => {
     expect(live.textContent).toBe(fill(t.newKill, { type: '擊倒', time: '0:18' }))
   })
 
-  test('鍵盤：空白鍵播放、方向鍵 ±5 秒、End 跳到最新；時間軸 slider 自己處理方向鍵', async () => {
+  test('Keyboard: Space toggles playback, arrows seek ±5 seconds, End jumps to live; the timeline slider handles its own arrows', async () => {
     rig(RECORDING, LIVE)
     const play = vi.spyOn(HTMLMediaElement.prototype, 'play')
     screen()
@@ -201,7 +201,7 @@ describe('LiveScreen', () => {
     expect(buttonByText(document.body, t.atLive)!.disabled).toBe(true)
   })
 
-  test('錄影結束：顯示已加入媒體庫並可在工作室開啟輸出檔', async () => {
+  test('After recording ends, confirms the file was added to the library and opens it in the studio', async () => {
     const r = rig(RECORDING, LIVE)
     const { onOpenVideo } = screen()
     await settle()
@@ -214,7 +214,7 @@ describe('LiveScreen', () => {
     expect(onOpenVideo).toHaveBeenCalledWith('D:\\videos\\Apex_2026-10-18_12-34.mp4')
   })
 
-  test('狀態離開本次錄影但沒收到輸出檔時改為前往媒體庫', async () => {
+  test('When the current recording ends without an output file, offers navigation to the library', async () => {
     const r = rig(RECORDING, LIVE)
     const { onOpenLibrary } = screen()
     await settle()
@@ -223,7 +223,7 @@ describe('LiveScreen', () => {
     expect(onOpenLibrary).toHaveBeenCalledOnce()
   })
 
-  test('沒有錄影、不支援的編碼與 init 尚未寫出', async () => {
+  test('No recording, unsupported codec, and init segment not yet written', async () => {
     rig()
     const { onBack } = screen()
     await flush()
@@ -252,7 +252,7 @@ describe('LiveScreen', () => {
     expect(r.api.readInit).toHaveBeenCalled()
   })
 
-  test('無 serious／critical axe 違規', async () => {
+  test('No serious or critical axe violations', async () => {
     rig(RECORDING, LIVE)
     screen()
     await settle()

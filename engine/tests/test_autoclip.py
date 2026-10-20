@@ -51,7 +51,7 @@ def test_below_n():
 
 
 def test_gap_breaks_group():
-    # [100, 105, 126, 130, 135] → 只有 [126, 130, 135] → [(118, 139)]
+    # [100, 105, 126, 130, 135] → only [126, 130, 135] → [(118, 139)]
     events = [
         make_event(100.0),
         make_event(105.0),
@@ -79,7 +79,7 @@ def test_clamped_to_video():
 
 
 def test_max_len_split():
-    # 時間 0, 15, ..., 180（每 15 秒一殺，13 殺）→ 每段長度 ≤ 90，且所有事件都被某段涵蓋
+    # Times 0, 15, ..., 180 (one kill every 15 seconds, 13 kills) → each clip is ≤ 90 seconds and covers every event.
     ts = [float(i * 15) for i in range(13)]  # 0, 15, ..., 180
     events = [make_event(t) for t in ts]
     clips = auto_clips(events, P, 300.0)
@@ -100,7 +100,7 @@ def test_max_len_split():
 
 
 def test_overlap_merge():
-    # 兩群合併後 ≤ 90 → 合為一段
+    # The two groups total ≤ 90 after merging, so they form one clip.
     # params: gap=10, before=8, after=4, max_len=90
     params = AutoClipParams(gap=10.0, n=3, before=8.0, after=4.0, max_len=90.0)
     # Group 1: [10, 12, 14] -> clip [2, 18]
@@ -124,7 +124,7 @@ def test_overlap_merge():
 
 
 def test_overlap_no_merge_midpoint():
-    # 合併後 > 90 → 前段 end == 後段 start == 重疊區中點
+    # The merged span exceeds 90, so the first end and second start both equal the overlap midpoint.
     params = AutoClipParams(gap=10.0, n=3, before=8.0, after=4.0, max_len=90.0)
     # Group 1: [10, 20, 30, 40, 50, 60, 70, 80] -> clip [2, 84]
     # Group 2: [91, 100, 110, 120, 130, 140, 150, 160] -> clip [83, 164]
@@ -147,7 +147,7 @@ def test_overlap_no_merge_midpoint():
 
 
 def test_uses_final_counted():
-    # counted_override=False 的事件不計入；counted_override=True 或 deleted 等狀態正常反映
+    # Events with counted_override=False are excluded; counted_override=True and deleted states are reflected normally.
     events = [
         make_event(100.0, counted=True, counted_override=None),
         make_event(105.0, counted=True, counted_override=False),  # override to not counted
@@ -193,11 +193,11 @@ def test_identical_time_exceeds_max_len():
 
 
 def test_subgroup_below_n_dropped_when_split():
-    # 當 len(grp) < 2 * n 且長度超出 max_len 時，切開後 < n 的子群不產生片段
+    # When len(grp) < 2 * n and the span exceeds max_len, splitting must not produce a clip from a subgroup smaller than n.
     params = AutoClipParams(gap=20.0, n=3, before=8.0, after=4.0, max_len=30.0)
     # 5 events: [10, 15, 20, 25, 35]. Span = (35 + 4) - (10 - 8) = 39 - 2 = 37 > 30.
-    # 最大間隔在 25 到 35 之間（間隔 10）。
-    # 切開為 [10, 15, 20, 25] (len 4 >= 3, span 29 - 2 = 27 <= 30) 與 [35] (len 1 < 3 -> 丟棄)
+    # The largest gap is between 25 and 35 (gap 10).
+    # Split into [10, 15, 20, 25] (len 4 >= 3, span 29 - 2 = 27 <= 30) and [35] (len 1 < 3 -> discard).
     events = [make_event(10.0), make_event(15.0), make_event(20.0), make_event(25.0), make_event(35.0)]
     clips = auto_clips(events, params, 100.0)
     assert len(clips) == 1
@@ -210,7 +210,7 @@ def test_subgroup_below_n_dropped_when_split():
 
 
 def test_cascade_merge():
-    # 連鎖合併：多個群連續重疊且總長 <= max_len，連續合併為一段
+    # Chained merge: multiple groups overlap successively and their total span is <= max_len, so merge them into one clip.
     params = AutoClipParams(gap=10.0, n=3, before=8.0, after=4.0, max_len=90.0)
     # Group 1: [10, 12, 14] -> [2, 18]
     # Group 2: [25, 27, 29] -> [17, 33] (overlap at 17-18)
@@ -227,7 +227,7 @@ def test_cascade_merge():
 
 
 def test_events_unsorted_input():
-    # 輸入未排序事件，auto_clips 仍可正確分群與排序輸出
+    # auto_clips should group and sort output correctly even when input events are unsorted.
     events = [make_event(110.0), make_event(100.0), make_event(105.0)]
     clips = auto_clips(events, P, 200.0)
     assert len(clips) == 1
@@ -238,7 +238,7 @@ def test_events_unsorted_input():
 def test_many_equal_gaps_do_not_exhaust_recursion_and_keep_earliest_cuts():
     events = [make_event(float(i * 15)) for i in range(3000)]
     clips = auto_clips(events, P, 45000.0)
-    # 同間隔仍優先取最早可保留三筆事件的切點，末段容納剩餘六筆。
+    # For equal gaps, prefer the earliest split that retains three events; the final group holds the remaining six.
     assert len(clips) == 999
     assert clips[0].event_ids == [e.id for e in events[:3]]
     assert clips[-1].event_ids == [e.id for e in events[-6:]]

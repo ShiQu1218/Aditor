@@ -1,11 +1,10 @@
-//! WGC 擷取（任務 B2）。依 PID 找 Apex 的頂層視窗建立 `GraphicsCaptureItem`；
-//! 視窗重建時自動重接；連續 3 秒全黑改用 `CreateForMonitor`（規格 §3.1）。
-//! 另一種擷取方式 DDA（整個螢幕、延遲較低）見 `dda`，由 `Capture::start_with` 選擇。
+//! WGC capture (task B2). Find the Apex top-level window by PID and create a `GraphicsCaptureItem`;
+//! reconnect when the window is recreated; switch to `CreateForMonitor` after 3 consecutive seconds of black frames (spec §3.1).
+//! See `dda` for lower-latency full-display capture, selected by `Capture::start_with`.
 //!
-//! 介面由骨架固定，實作者不得改動簽章；需要新增的型別放在本模組內。
+//! The scaffold defines the interface; implementations must preserve signatures and add new types in this module.
 
 pub mod dda;
-pub mod hook;
 pub mod small;
 
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -42,17 +41,17 @@ use crate::gpu::Gpu;
 pub use crate::types::CaptureMethod;
 use small::LumaProbe;
 
-/// 一格擷取畫面。`texture` 只在 `on_frame` 呼叫期間有效（屬於 WGC frame pool 或 DDA 桌面影像），
-/// 消費者若要保留必須在呼叫內以 GPU 複製（`CopyResource`／`CopySubresourceRegion`）。
+/// Captured frame. `texture` is valid only during `on_frame` (owned by the WGC frame pool or DDA desktop image);
+/// consumers must copy it on the GPU during the call to retain it (`CopyResource`/`CopySubresourceRegion`).
 pub struct CapturedFrame<'a> {
     pub texture: &'a ID3D11Texture2D,
     pub width: u32,
     pub height: u32,
-    /// 100 ns tick，session 起點為 0（見 `clock`）。
+    /// 100 ns ticks, with 0 at session start (see `clock`).
     pub pts: i64,
 }
 
-/// 在擷取執行緒上被呼叫；**不得阻塞**（只做 GPU 複製與丟進佇列）。
+/// Called on the capture thread; **must not block** (only copy on the GPU and enqueue).
 pub trait FrameConsumer: Send {
     fn on_frame(&mut self, frame: &CapturedFrame<'_>);
 }
@@ -79,9 +78,9 @@ pub enum CaptureNotice {
 #[derive(Debug, Clone)]
 pub struct CaptureOptions {
     pub pid: u32,
-    /// 送給消費者的最高 fps（超過就丟格，依 pts 節流）。
+    /// Maximum fps delivered to the consumer (drop excess frames, throttled by pts).
     pub max_fps: u32,
-    /// 第一格的 QPC tick（`clock::now_ticks()`）；pts = 該格系統時間 − origin。
+    /// QPC tick of the first frame (`clock::now_ticks()`); pts = frame system time − origin.
     pub origin_ticks: i64,
 }
 
@@ -91,8 +90,8 @@ pub struct Capture {
 }
 
 impl Capture {
-    /// 開始 WGC 擷取。找不到視窗時回傳錯誤（訊息含 `window_not_found`）。
-    #[allow(dead_code)] // 整合測試以 #[path] 引入本檔；正式程式一律經 start_with。
+    /// Start WGC capture. Return an error containing `window_not_found` if no window is found.
+    #[allow(dead_code)] // Integration tests include this file with #[path]; production always uses start_with.
     pub fn start(
         gpu: &Gpu,
         opts: CaptureOptions,
@@ -102,8 +101,8 @@ impl Capture {
         Self::start_with(CaptureMethod::Wgc, gpu, opts, consumer, notices)
     }
 
-    /// 以指定方式開始擷取。DDA 的 `gpu` 必須建立在擁有遊戲所在螢幕的轉接器上
-    /// （見 `dda::gpu_for_pid`），否則回傳 `capture_failed`。
+    /// Start capture using the selected method. For DDA, `gpu` must be created on the adapter owning the game's display
+    /// (see `dda::gpu_for_pid`), otherwise return `capture_failed`.
     pub fn start_with(
         method: CaptureMethod,
         gpu: &Gpu,
@@ -111,9 +110,6 @@ impl Capture {
         consumer: Box<dyn FrameConsumer>,
         notices: Sender<CaptureNotice>,
     ) -> Result<Self> {
-        if method == CaptureMethod::Hook {
-            bail!("capture_failed: 遊戲擷取需經 start_hook");
-        }
         let gpu = gpu.clone();
         Self::spawn_worker(
             opts,
@@ -121,25 +117,8 @@ impl Capture {
             move |opts, notices, stopped, ready| match method {
                 CaptureMethod::Wgc => run(gpu, opts, consumer, notices, stopped, ready),
                 CaptureMethod::Dda => dda::run(gpu, opts, consumer, notices, stopped, ready),
-                CaptureMethod::Hook => {
-                    Err(anyhow::anyhow!("capture_failed: 遊戲擷取需經 start_hook"))
-                }
             },
         )
-    }
-
-    /// 以已準備好的 hook 開始擷取；`gpu` 必須是 `hook::prepare` 回傳的裝置。
-    pub fn start_hook(
-        prepared: hook::Prepared,
-        gpu: &Gpu,
-        opts: CaptureOptions,
-        consumer: Box<dyn FrameConsumer>,
-        notices: Sender<CaptureNotice>,
-    ) -> Result<Self> {
-        let gpu = gpu.clone();
-        Self::spawn_worker(opts, notices, move |opts, notices, stopped, ready| {
-            hook::run(prepared, gpu, opts, consumer, notices, stopped, ready)
-        })
     }
 
     fn spawn_worker(
@@ -155,7 +134,7 @@ impl Capture {
             + 'static,
     ) -> Result<Self> {
         if opts.max_fps == 0 || opts.max_fps > TICKS_PER_SEC as u32 {
-            bail!("capture_failed: max_fps 必須介於 1 與 10000000");
+            bail!("capture_failed: max_fps must be between 1 and 10000000");
         }
         let (stop, stopped) = mpsc::channel();
         let (ready, initialized) = mpsc::sync_channel(1);
@@ -166,14 +145,14 @@ impl Capture {
                     report_failure(error, &ready, &notices);
                 }
             })
-            .context("capture_failed: 無法建立擷取執行緒")?;
+            .context("capture_failed: Failed to create capture thread")?;
         let mut capture = Self {
             stop,
             worker: Some(worker),
         };
         match initialized
             .recv()
-            .context("capture_failed: 擷取初始化中斷")?
+            .context("capture_failed: Capture initialization interrupted")?
         {
             Ok(()) => Ok(capture),
             Err(error) => {
@@ -183,7 +162,7 @@ impl Capture {
         }
     }
 
-    /// 停止擷取並等待擷取執行緒結束。
+    /// Stop capture and wait for the capture thread to exit.
     pub fn stop(mut self) {
         self.shutdown();
     }
@@ -192,7 +171,7 @@ impl Capture {
         let _ = self.stop.send(());
         if let Some(worker) = self.worker.take() {
             if worker.join().is_err() {
-                eprintln!("擷取執行緒非預期結束");
+                eprintln!("Capture thread exited unexpectedly");
             }
         }
     }
@@ -204,12 +183,12 @@ fn report_failure(
     notices: &Sender<CaptureNotice>,
 ) {
     let message = format!("{error:#}");
-    // 初始化後 ready 的接收端可能已釋放或尚未取走成功通知；終止原因一律另走 notices。
+    // After initialization, the ready receiver may be dropped or the success notification unread; always report termination through notices separately.
     let _ = notices.send(CaptureNotice::Failed {
         message: message.clone(),
     });
     let _ = ready.try_send(Err(error));
-    eprintln!("擷取執行緒結束：{message}");
+    eprintln!("Capture thread exited: {message}");
 }
 
 impl Drop for Capture {
@@ -222,9 +201,9 @@ struct Apartment;
 
 impl Apartment {
     fn new() -> Result<Self> {
-        // SAFETY: 專屬新執行緒以 MTA 初始化，成功後由 Drop 在同執行緒配對解除。
+        // SAFETY: Initialize the dedicated thread as MTA; Drop balances successful initialization on the same thread.
         unsafe {
-            RoInitialize(RO_INIT_MULTITHREADED).context("capture_failed: 初始化 WinRT 失敗")?
+            RoInitialize(RO_INIT_MULTITHREADED).context("capture_failed: Failed to initialize WinRT")?
         };
         Ok(Self)
     }
@@ -232,7 +211,7 @@ impl Apartment {
 
 impl Drop for Apartment {
     fn drop(&mut self) {
-        // SAFETY: 與本執行緒成功的 RoInitialize 一對一配對；WinRT 物件已先釋放。
+        // SAFETY: Balance this thread's successful RoInitialize exactly once; WinRT objects have already been released.
         unsafe { RoUninitialize() };
     }
 }
@@ -244,11 +223,11 @@ struct WindowSearch {
 }
 
 unsafe extern "system" fn enum_window(hwnd: HWND, data: LPARAM) -> BOOL {
-    // SAFETY: EnumWindows 同步呼叫；data 在整段列舉期間指向唯一可變的 WindowSearch。
+    // SAFETY: EnumWindows is synchronous; data points to the uniquely mutable WindowSearch throughout enumeration.
     let search = unsafe { &mut *(data.0 as *mut WindowSearch) };
     let mut pid = 0;
     let mut rect = RECT::default();
-    // SAFETY: 只查詢列舉提供的 HWND 與 PID，不開啟目標程序；輸出指標均有效。
+    // SAFETY: Only query the enumerated HWND and PID without opening the target process; all output pointers are valid.
     unsafe {
         GetWindowThreadProcessId(hwnd, Some(&mut pid));
         if pid == search.pid
@@ -274,29 +253,29 @@ pub(in crate::capture) fn find_window(pid: u32) -> Result<HWND> {
         best: None,
         area: 0,
     };
-    // SAFETY: 回呼同步執行且不保留 search 的指標；所有路徑都繼續列舉。
+    // SAFETY: The callback runs synchronously without retaining search pointers; all paths continue enumeration.
     unsafe {
         EnumWindows(
             Some(enum_window),
             LPARAM((&mut search as *mut WindowSearch) as isize),
         )
     }
-    .context("capture_failed: 列舉視窗失敗")?;
+    .context("capture_failed: Failed to enumerate windows")?;
     search
         .best
-        .with_context(|| format!("window_not_found: 找不到 PID {pid} 的可見視窗"))
+        .with_context(|| format!("window_not_found: No visible window found for PID {pid}"))
 }
 
 pub(in crate::capture) fn window_matches(hwnd: HWND, pid: u32) -> bool {
     let mut actual_pid = 0;
-    // SAFETY: HWND 可能已失效，這些查詢會安全回報失敗；只讀取視窗資訊。
+    // SAFETY: HWND may be stale; these queries safely report failure and only read window information.
     unsafe {
         GetWindowThreadProcessId(hwnd, Some(&mut actual_pid));
         actual_pid == pid && IsWindow(Some(hwnd)).as_bool() && IsWindowVisible(hwnd).as_bool()
     }
 }
 
-/// 用 QPC 時間桶限制平均幀率，避免 60 Hz 時戳的微小抖動讓逐格間隔比較降成 30 fps。
+/// Limit average frame rate using QPC time buckets so slight 60 Hz timestamp jitter does not reduce frame-interval comparisons to 30 fps.
 struct FrameGate {
     fps: u32,
     last_bucket: Option<i64>,
@@ -336,7 +315,7 @@ impl BlackStreak {
             self.last = None;
             return false;
         }
-        // 沒有畫面不算連續全黑；讀回中斷超過兩個 thumb 週期就重新計時。
+        // Missing frames do not count as consecutive black frames; restart timing after a readback gap longer than two thumbnail intervals.
         if self
             .last
             .is_some_and(|last| pts <= last || pts - last > 2 * TICKS_PER_SEC)
@@ -359,8 +338,8 @@ struct CallbackState {
     notices: Sender<CaptureNotice>,
 }
 
-// SAFETY: device 是 D3D11 的 agile WinRT wrapper；probe 使用已開啟 multithread 保護的
-// 共用裝置，consumer 保證 Send；所有狀態另以 Mutex 串行存取。
+// SAFETY: device is an agile WinRT wrapper for D3D11; probe uses the shared device with multithread protection
+// enabled, and consumer guarantees Send; all state access is additionally serialized with a Mutex.
 unsafe impl Send for CallbackState {}
 
 struct Signals {
@@ -395,7 +374,7 @@ impl ActiveCapture {
     ) -> Result<Self> {
         let interop: IGraphicsCaptureItemInterop =
             factory::<GraphicsCaptureItem, IGraphicsCaptureItemInterop>()?;
-        // SAFETY: HWND 來自本 PID 的可見頂層視窗；螢幕擷取使用其所在的有效 HMONITOR。
+        // SAFETY: HWND is a visible top-level window for this PID; display capture uses its valid HMONITOR.
         let item: GraphicsCaptureItem = unsafe {
             if monitor {
                 interop.CreateForMonitor(MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST))?
@@ -405,12 +384,12 @@ impl ActiveCapture {
         };
         let size = item.Size()?;
         if size.Width <= 0 || size.Height <= 0 {
-            bail!("capture_failed: 擷取目標尺寸無效");
+            bail!("capture_failed: Invalid capture target dimensions");
         }
         let device = {
             let mut state = shared
                 .lock()
-                .map_err(|_| anyhow::anyhow!("capture_failed: 擷取狀態已損壞"))?;
+                .map_err(|_| anyhow::anyhow!("capture_failed: Capture state is poisoned"))?;
             state.black = BlackStreak::default();
             state.probe.reset();
             state.device.clone()
@@ -423,7 +402,7 @@ impl ActiveCapture {
         )?;
         let session = pool.CreateCaptureSession(&item)?;
         session.SetIsCursorCaptureEnabled(false)?;
-        // 舊版 Windows 沒有這兩個介面；不支援時仍可擷取。
+        // Older Windows versions lack these two interfaces; capture still works without them.
         let _ = session.SetIsBorderRequired(false);
         let _ = session.SetMinUpdateInterval(TimeSpan {
             Duration: TICKS_PER_SEC / opts.max_fps as i64,
@@ -465,7 +444,7 @@ impl ActiveCapture {
             let Some(pool) = pool.as_ref() else {
                 return Ok(());
             };
-            // try_lock 不等待前一個回呼；pool 固定兩格，落後就丟格並計數。
+            // try_lock never waits for the previous callback; the pool holds two frames, so count and drop frames when behind.
             let Ok(mut state) = state.try_lock() else {
                 signals.dropped.fetch_add(1, Ordering::Relaxed);
                 return Ok(());
@@ -474,7 +453,7 @@ impl ActiveCapture {
                 return Ok(());
             }
             if let Err(error) = state.frame(pool, monitor, &signals) {
-                eprintln!("擷取回呼失敗：{error:#}");
+                eprintln!("Capture callback failed: {error:#}");
                 signals.closed.store(true, Ordering::Release);
             }
             Ok(())
@@ -531,10 +510,10 @@ impl CallbackState {
         let resized = signals.size.load(Ordering::Acquire) != pack_size(size);
         if self.gate.accept(pts) {
             let access: IDirect3DDxgiInterfaceAccess = frame.0.Surface()?.cast()?;
-            // SAFETY: WGC Surface 實作 IDirect3DDxgiInterfaceAccess，取得同裝置的 D3D11 texture。
+            // SAFETY: WGC Surface implements IDirect3DDxgiInterfaceAccess to obtain the D3D11 texture on the same device.
             let texture: ID3D11Texture2D = unsafe { access.GetInterface()? };
             let mut desc = D3D11_TEXTURE2D_DESC::default();
-            // SAFETY: texture 在 Frame guard 存活期間有效；desc 是可寫入的描述結構。
+            // SAFETY: texture is valid while the Frame guard lives; desc is a writable descriptor.
             unsafe { texture.GetDesc(&mut desc) };
             if desc.Width >= size.Width as u32 && desc.Height >= size.Height as u32 {
                 self.consumer.on_frame(&CapturedFrame {
@@ -558,7 +537,7 @@ impl CallbackState {
         } else {
             signals.dropped.fetch_add(1, Ordering::Relaxed);
         }
-        // 必須先歸還舊 frame，才能重建 pool；放大時不把舊 texture 當成新尺寸傳給消費者。
+        // Return the old frame before recreating the pool; when growing, do not pass an old texture to consumers with new dimensions.
         drop(frame);
         if resized {
             pool.Recreate(
@@ -589,9 +568,9 @@ fn run(
     let _apartment = Apartment::new()?;
     let hwnd = find_window(opts.pid)?;
     let dxgi: IDXGIDevice = gpu.device.cast()?;
-    // SAFETY: dxgi 是共用 D3D11 裝置，回傳 WinRT wrapper 保持相同的 GPU 裝置身分。
+    // SAFETY: dxgi is the shared D3D11 device; the returned WinRT wrapper preserves GPU device identity.
     let device = unsafe { CreateDirect3D11DeviceFromDXGIDevice(&dxgi)? }.cast()?;
-    let probe = LumaProbe::new(&gpu).context("capture_failed: 建立黑畫面探測器失敗")?;
+    let probe = LumaProbe::new(&gpu).context("capture_failed: Failed to create black-frame detector")?;
     let shared = Arc::new(Mutex::new(CallbackState {
         device,
         consumer,
@@ -603,7 +582,7 @@ fn run(
     }));
     let mut active = Some(
         ActiveCapture::new(hwnd, false, &opts, &shared)
-            .context("capture_failed: 建立 WGC 擷取失敗")?,
+            .context("capture_failed: Failed to create WGC capture")?,
     );
     if let Some(capture) = &active {
         capture.announce(&notices);
@@ -625,7 +604,7 @@ fn run(
                         active = Some(capture);
                     }
                     Err(error) => {
-                        eprintln!("切換螢幕擷取失敗：{error:#}");
+                        eprintln!("Failed to switch to display capture: {error:#}");
                         let _ = notices.send(CaptureNotice::WindowLost);
                     }
                 }
@@ -649,11 +628,11 @@ fn run(
                         capture.announce(&notices);
                         active = Some(capture);
                     }
-                    Err(error) => eprintln!("重建視窗擷取失敗：{error:#}"),
+                    Err(error) => eprintln!("Failed to recreate window capture: {error:#}"),
                 }
             }
         } else if let Some(capture) = &active {
-            // 無新 frame 時仍每秒查詢目標尺寸；重建由下一個 FrameArrived 歸還 frame 後執行。
+            // Query target dimensions every second even without new frames; recreate after the next FrameArrived returns the frame.
             if let Ok(size) = capture.item.Size() {
                 if size.Width <= 0 || size.Height <= 0 {
                     capture.signals.closed.store(true, Ordering::Release);
@@ -661,13 +640,13 @@ fn run(
             }
         }
     }
-    // 先關回呼與 pool，再釋放消費者與 WinRT apartment。
+    // Close callbacks and the pool before releasing the consumer and WinRT apartment.
     drop(active);
-    // 關閉前已開始的回呼也必須完成；等待只發生在擷取管理執行緒，回呼仍使用 try_lock。
+    // Callbacks started before closing must finish; only the capture management thread waits, while callbacks still use try_lock.
     drop(
         shared
             .lock()
-            .map_err(|_| anyhow::anyhow!("capture_failed: 擷取狀態已損壞"))?,
+            .map_err(|_| anyhow::anyhow!("capture_failed: Capture state is poisoned"))?,
     );
     drop(shared);
     Ok(())
@@ -685,11 +664,11 @@ mod tests {
             if initialized {
                 ready.send(Ok(())).unwrap();
             }
-            report_failure(anyhow::anyhow!("測試擷取失敗"), &ready, &notices);
+            report_failure(anyhow::anyhow!("Test capture failed"), &ready, &notices);
             assert_eq!(
                 received.recv().unwrap(),
                 CaptureNotice::Failed {
-                    message: "測試擷取失敗".into()
+                    message: "Test capture failed".into()
                 }
             );
             assert_eq!(receiver.recv().unwrap().is_ok(), initialized);
@@ -697,7 +676,7 @@ mod tests {
         let (ready, receiver) = mpsc::sync_channel(1);
         drop(receiver);
         let (notices, received) = mpsc::channel();
-        report_failure(anyhow::anyhow!("初始化後擷取失敗"), &ready, &notices);
+        report_failure(anyhow::anyhow!("Capture failed after initialization"), &ready, &notices);
         assert!(matches!(
             received.recv().unwrap(),
             CaptureNotice::Failed { .. }
@@ -728,31 +707,5 @@ mod tests {
         assert!(!streak.observe(5 * TICKS_PER_SEC, true));
         assert!(!streak.observe(9 * TICKS_PER_SEC, true));
         assert!(!streak.observe(10 * TICKS_PER_SEC, false));
-    }
-
-    struct NoopConsumer;
-    impl FrameConsumer for NoopConsumer {
-        fn on_frame(&mut self, _frame: &CapturedFrame<'_>) {}
-    }
-
-    #[test]
-    fn start_with_rejects_hook_method() {
-        let gpu = Gpu::create().unwrap();
-        let (notices, _rx) = mpsc::channel();
-        let err = match Capture::start_with(
-            CaptureMethod::Hook,
-            &gpu,
-            CaptureOptions {
-                pid: 1,
-                max_fps: 60,
-                origin_ticks: 0,
-            },
-            Box::new(NoopConsumer),
-            notices,
-        ) {
-            Ok(_) => panic!("CaptureMethod::Hook 不應由 start_with 啟動"),
-            Err(err) => err.to_string(),
-        };
-        assert_eq!(err, "capture_failed: 遊戲擷取需經 start_hook");
     }
 }

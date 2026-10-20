@@ -1,15 +1,15 @@
-//! DXGI Desktop Duplication 擷取（DDA）。擷取 Apex 視窗所在的**整個螢幕**：
-//! 推測 WGC 視窗擷取會讓全螢幕遊戲退出獨立翻轉（independent flip）改由 DWM 合成，多一格延遲；
-//! DDA 讀的是整個輸出的桌面影像，不針對遊戲視窗要求合成（實際延遲差異需實機 A/B 驗證）。
-//! 與 WGC 一樣是 Windows 官方 API，不注入、不碰遊戲程序。
+//! DXGI Desktop Duplication capture (DDA). Captures the entire monitor containing the Apex window:
+//! WGC window capture may make a fullscreen game leave independent flip and be composited by DWM, adding one frame of latency;
+//! DDA reads the entire output desktop and does not request composition for a game window (latency differences require an on-device A/B test).
+//! Like WGC, this is an official Windows API and does not inject into or access the game process.
 //!
-//! - 影格：DDA 桌面 texture 直接交給消費者（消費者只排入 GPU 複製，見 `CapturedFrame`），
-//!   呼叫結束後才 `ReleaseFrame`，省掉一次全畫面複製。
-//! - 游標：DDA 的桌面影像本來就不含游標（游標另以 pointer shape 提供），這裡不合成，與 WGC 一致。
-//! - 前景視窗不屬於目標 PID 或已最小化時，持續送出 GPU 黑幀，避免錄到其他程式。
-//! - `DXGI_ERROR_ACCESS_LOST`（換解析度、切全螢幕、UAC 安全桌面）：丟掉 duplication 後重建。
-//! - 限制：螢幕旋轉（90°／180°／270°）時桌面影像是面板原生方向，目前原樣錄下並在 stderr 警告；
-//!   HDR 螢幕由 `DuplicateOutput1` 要求 BGRA，系統轉成 SDR（顏色可能偏淡）。
+//! - Frames: pass the DDA desktop texture directly to the consumer, then release it after the consumer returns to avoid a full-frame copy.
+//!   Calls ReleaseFrame after the consumer returns, avoiding one full-frame copy.
+//! - Cursor: DDA desktop images do not include the cursor; as with WGC, it is not composited here.
+//! - When the foreground window does not belong to the target PID or is minimized, continuously sends GPU black frames to avoid recording another app.
+//! - DXGI_ERROR_ACCESS_LOST (resolution change, fullscreen transition, UAC secure desktop): discard and recreate duplication.
+//! - Limitation: rotated monitors are recorded in the panel native orientation with a warning; HDR monitors request BGRA and are converted to SDR.
+//!   HDR monitors request BGRA through DuplicateOutput1; the system converts to SDR and colors may appear washed out.
 
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread;
@@ -46,29 +46,29 @@ use super::{
 use crate::clock;
 use crate::gpu::Gpu;
 
-/// 輪詢間隔上下限。`AcquireNextFrame` 等待期間會占住共用裝置的 multithread 鎖，
-/// 擋住編碼與小圖（實測音訊佇列因此滿出），所以一律以 0 逾時輪詢、在鎖外休眠。
+/// Poll interval bounds. AcquireNextFrame holds the shared device multithread lock while waiting, so poll with a 0 timeout and sleep outside the lock.
+/// blocking encoding and thumbnails (the audio queue has filled as a result), so always poll with a 0 timeout and sleep outside the lock.
 const POLL_MIN: Duration = Duration::from_millis(1);
 const POLL_MAX: Duration = Duration::from_millis(8);
-/// duplication 失效後的重建間隔（UAC 桌面、切模式期間會持續失敗）。
+/// Recreation interval after duplication becomes invalid (continues failing on the UAC desktop or during mode changes).
 const RETRY_INTERVAL: Duration = Duration::from_millis(250);
-/// 重建持續失敗超過此時間才通知 `WindowLost`，避免切全螢幕的短暫中斷也發通知。
+/// Notify with WindowLost only after recreation has failed for this long, avoiding notifications during brief fullscreen transitions.
 const LOST_AFTER: Duration = Duration::from_secs(3);
-/// 檢查遊戲視窗是否仍在、是否移到別的螢幕的間隔。
+/// Interval for checking whether the game window still exists and moved to another monitor.
 const WINDOW_CHECK: Duration = Duration::from_secs(1);
-/// `LastPresentTime` 比現在舊超過此值（100 ms）就視為過期，改用現在。
+/// `LastPresentTime` older than this value (100 ms) is treated as stale and replaced with the current time.
 const MAX_PRESENT_AGE: i64 = clock::TICKS_PER_SEC / 10;
 
-/// 依 PID 找遊戲視窗所在螢幕，在擁有該螢幕的轉接器上建立共用裝置。
-/// DDA 只能由輸出所屬轉接器上的裝置複製（雙顯卡筆電常見內顯接螢幕）。
+/// Finds the game window monitor by PID and creates a shared device on its adapter.
+/// DDA can only copy from a device on the output adapter (common on dual-GPU laptops where the monitor is connected to the integrated GPU).
 pub fn gpu_for_pid(pid: u32) -> Result<Gpu> {
     let monitor = monitor_of(find_window(pid)?);
-    // SAFETY: 建立 DXGI factory 不需要額外前置條件；回傳的 COM 物件由 windows crate 管理。
+    // SAFETY: Creating a DXGI factory has no additional preconditions; the windows crate manages the returned COM object.
     let factory: IDXGIFactory1 =
-        unsafe { CreateDXGIFactory1() }.context("capture_failed: 建立 DXGI factory 失敗")?;
+        unsafe { CreateDXGIFactory1() }.context("capture_failed: Failed to create DXGI factory")?;
     let mut adapters = Vec::new();
     for index in 0.. {
-        // SAFETY: 依序列舉，序號超出範圍時回傳 DXGI_ERROR_NOT_FOUND。
+        // SAFETY: Enumerate in order; an out-of-range index returns DXGI_ERROR_NOT_FOUND.
         match unsafe { factory.EnumAdapters1(index) } {
             Ok(adapter) => {
                 let adapter: IDXGIAdapter = adapter.cast()?;
@@ -79,18 +79,18 @@ pub fn gpu_for_pid(pid: u32) -> Result<Gpu> {
                 adapters.push((adapter, monitors));
             }
             Err(error) if error.code() == DXGI_ERROR_NOT_FOUND => break,
-            Err(error) => return Err(error).context("capture_failed: 列舉顯示卡失敗"),
+            Err(error) => return Err(error).context("capture_failed: Failed to enumerate adapters"),
         }
     }
     let monitors: Vec<Vec<isize>> = adapters.iter().map(|(_, m)| m.clone()).collect();
     let (adapter, _) = locate(&monitors, monitor.0 as isize)
-        .context("capture_failed: 找不到遊戲所在螢幕對應的 DXGI 輸出")?;
+        .context("capture_failed: Could not find the DXGI output for the game monitor")?;
     Gpu::create_on(&adapters[adapter].0)
-        .context("capture_failed: 無法在遊戲螢幕所屬的顯示卡上建立 D3D11 裝置")
+        .context("capture_failed: Could not create a D3D11 device on the adapter driving the game monitor")
 }
 
-/// 在「每張轉接器的輸出 HMONITOR 清單」中找目標螢幕，回傳（轉接器序號, 輸出序號）。
-/// 同一個螢幕只會出現在一張轉接器上；萬一重複，取列舉順序第一個。
+/// Finds the target monitor in each adapter output HMONITOR list and returns (adapter index, output index).
+/// A monitor appears on only one adapter; if duplicated, use the first in enumeration order.
 fn locate(adapters: &[Vec<isize>], monitor: isize) -> Option<(usize, usize)> {
     adapters.iter().enumerate().find_map(|(adapter, outputs)| {
         outputs
@@ -100,43 +100,43 @@ fn locate(adapters: &[Vec<isize>], monitor: isize) -> Option<(usize, usize)> {
     })
 }
 
-/// 列舉轉接器的所有輸出與其 HMONITOR（未接上桌面的輸出 HMONITOR 為 0）。
+/// Enumerates all adapter outputs and their HMONITOR values (outputs not connected to the desktop have HMONITOR 0).
 fn output_monitors(adapter: &IDXGIAdapter) -> Result<Vec<(IDXGIOutput, isize)>> {
     let mut outputs = Vec::new();
     for index in 0.. {
-        // SAFETY: 依序列舉，序號超出範圍時回傳 DXGI_ERROR_NOT_FOUND。
+        // SAFETY: Enumerate in order; an out-of-range index returns DXGI_ERROR_NOT_FOUND.
         match unsafe { adapter.EnumOutputs(index) } {
             Ok(output) => {
-                // SAFETY: output 是剛列舉到的有效 COM 物件。
+                // SAFETY: output is a valid COM object just enumerated.
                 let desc =
-                    unsafe { output.GetDesc() }.context("capture_failed: 讀取輸出資訊失敗")?;
+                    unsafe { output.GetDesc() }.context("capture_failed: Failed to read output information")?;
                 outputs.push((output, desc.Monitor.0 as isize));
             }
             Err(error) if error.code() == DXGI_ERROR_NOT_FOUND => break,
-            Err(error) => return Err(error).context("capture_failed: 列舉螢幕輸出失敗"),
+            Err(error) => return Err(error).context("capture_failed: Failed to enumerate display outputs"),
         }
     }
     Ok(outputs)
 }
 
 fn monitor_of(hwnd: HWND) -> HMONITOR {
-    // SAFETY: HWND 可能已失效；MONITOR_DEFAULTTONEAREST 一律回傳有效螢幕。
+    // SAFETY: HWND is used only for queries; if the window disappears, PID remains zero and no process handle is acquired.
     unsafe { MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST) }
 }
 
 fn qpc_frequency() -> i64 {
     let mut freq = 0i64;
-    // SAFETY: 只寫入提供的 i64；Windows XP 以後永不失敗。
+    // SAFETY: Writes only to the provided i64; this has not failed since Windows XP.
     unsafe {
         let _ = QueryPerformanceFrequency(&mut freq);
     }
     freq.max(1)
 }
 
-/// 影格時間戳（100 ns tick，相對 origin）。`accumulated == 0` 表示只有游標更新、
-/// 桌面影像沒變，回傳 `None`（不送重複畫面）。`last_present` 是 QPC count；為 0、在未來、
-/// 或比現在舊超過 `MAX_PRESENT_AGE`（例：剛建立 duplication 時靜止桌面的第一格）時改用現在，
-/// 避免第一格時間戳落在數秒前而讓影音起點錯開。
+/// Frame timestamp in 100 ns ticks relative to origin. If no desktop image changed, returns None; stale or invalid QPC timestamps use the current time.
+/// The desktop image did not change, so returns None. A zero, future, or stale QPC timestamp uses the current time,
+/// including the first frame from a static desktop after duplication starts, to avoid desynchronized audio/video.
+/// to prevent the first timestamp from being seconds old and desynchronizing audio and video.
 fn frame_pts(last_present: i64, accumulated: u32, now: i64, freq: i64, origin: i64) -> Option<i64> {
     if accumulated == 0 {
         return None;
@@ -150,13 +150,13 @@ fn frame_pts(last_present: i64, accumulated: u32, now: i64, freq: i64, origin: i
     Some(ticks - origin)
 }
 
-/// DDA 選格與時間戳對齊。
+/// DDA frame selection and timestamp alignment.
 ///
-/// WGC 有 `MinUpdateInterval`，送來的影格間隔至少一格；DDA 則緊貼螢幕更新（例：240 Hz 下
-/// 時間戳以 4.17 ms 為單位跳動）。若沿用 `FrameGate`（向下取整的時間桶），相鄰兩格可能不到
-/// 一格間隔，被編碼器「四捨五入到 1/fps 格、同格丟棄」的規則判成丟格（實測 4K 20 秒丟 167 格）。
-/// 這裡改用與編碼器相同的四捨五入選格，並把 pts 對齊到格點（誤差 ≤ 半格），
-/// 編碼器不論以哪一格為起點，換算出的格號都是整數、不會再撞格。
+/// WGC spaces incoming frames at least one frame apart, while DDA follows monitor refreshes closely. Round frame selection and align PTS to prevent collisions.
+/// timestamps advance in 4.17 ms steps). If using `FrameGate`（which floors time buckets），adjacent frames may be less than
+/// one frame apart and be dropped by the encoder rule that rounds to 1/fps frames and drops duplicates (167 frames dropped in a 20-second 4K test).
+/// Use the encoder rounded frame selection and align PTS to frame boundaries (error ≤ half a frame),
+/// so frame indices remain integers and cannot collide regardless of the starting frame.
 struct SlotGate {
     fps: i128,
     origin: Option<i64>,
@@ -172,7 +172,7 @@ impl SlotGate {
         }
     }
 
-    /// 查詢下一格但不消耗，讓靜止桌面可先檢查前景，再決定是否補黑幀。
+    /// Peek at the next frame without consuming it, so a static desktop can check the foreground before deciding whether to add a black frame.
     fn candidate(&mut self, pts: i64) -> Option<(i64, i64)> {
         if pts < 0 {
             return None;
@@ -187,7 +187,7 @@ impl SlotGate {
         Some((slot, origin + (slot as i128 * ticks / self.fps) as i64))
     }
 
-    /// 回傳對齊後的 pts；同一格已送過、或時間倒退時回傳 `None`。
+    /// Returns aligned PTS, or None if this frame was already sent or time moved backwards.
     fn accept(&mut self, pts: i64) -> Option<i64> {
         let (slot, pts) = self.candidate(pts)?;
         self.last = Some(slot);
@@ -195,9 +195,9 @@ impl SlotGate {
     }
 }
 
-/// 僅查詢視窗管理員，不開啟目標程序；查詢失敗或沒有前景視窗時一律視為隱藏。
+/// Queries only the window manager and never opens the target process; a failed query or missing foreground window is treated as hidden.
 fn foreground_state() -> (Option<u32>, bool) {
-    // SAFETY: HWND 僅用於查詢；視窗消失時 PID 會維持 0，不會取得程序控制代碼。
+    // SAFETY: HWND is used only for queries; if the window disappears, PID remains zero and no process handle is acquired.
     unsafe {
         let hwnd = GetForegroundWindow();
         let mut pid = 0;
@@ -210,7 +210,7 @@ fn game_visible(pid: u32, foreground_pid: Option<u32>, iconic: bool) -> bool {
     foreground_pid == Some(pid) && !iconic
 }
 
-/// 每個輸出時段最多查詢一次；靜止桌面也要輪詢，才能在沒有新 DDA 影格時切成黑畫面。
+/// Query at most once per output interval; also poll static desktops to switch to black frames when no new DDA frame arrives.
 struct Visibility {
     checked: Option<i64>,
     visible: bool,
@@ -248,7 +248,7 @@ impl Visibility {
     }
 }
 
-/// 只在初始化或尺寸改變時配置，清成不透明黑色後重複使用；不讀回 CPU。
+/// Allocates only at initialization or size changes, clears to opaque black, then reuses the texture without reading back to the CPU.
 struct BlackFrame {
     texture: ID3D11Texture2D,
     size: (u32, u32),
@@ -272,14 +272,14 @@ impl BlackFrame {
         };
         let mut texture = None;
         let mut view = None;
-        // SAFETY: 同裝置、單層單取樣 BGRA texture；清除只寫入本物件擁有的資源。
+        // SAFETY: Same-device, single-mip, single-sample BGRA texture; clearing writes only to this owned resource.
         let texture = unsafe {
             gpu.device
                 .CreateTexture2D(&desc, None, Some(&mut texture))?;
-            let texture = texture.context("capture_failed: 缺少 DDA 黑幀 texture")?;
+            let texture = texture.context("capture_failed: Missing DDA black-frame texture")?;
             gpu.device
                 .CreateRenderTargetView(&texture, None, Some(&mut view))?;
-            let view = view.context("capture_failed: 缺少 DDA 黑幀 render target")?;
+            let view = view.context("capture_failed: Missing DDA black-frame render target")?;
             gpu.context
                 .ClearRenderTargetView(&view, &[0.0, 0.0, 0.0, 1.0]);
             texture
@@ -297,7 +297,7 @@ impl BlackFrame {
     }
 }
 
-/// 新桌面影格與逾時補黑幀共用時段及前景快取，避免同格重複查詢或重複輸出。
+/// New desktop frames and timeout-generated black frames share the interval and foreground cache to avoid duplicate queries or output in one slot.
 struct Output {
     pid: u32,
     gate: SlotGate,
@@ -308,7 +308,7 @@ struct Output {
 
 impl Output {
     fn visible(&mut self, pts: i64) -> bool {
-        // AcquireNextFrame 已返回，這裡沒有持有 GPU 或消費者的鎖。
+        // AcquireNextFrame has returned; no GPU or consumer lock is held here.
         if let Some(notice) = self.visibility.update(self.pid, pts, foreground_state) {
             let _ = self.notices.send(notice);
         }
@@ -326,24 +326,24 @@ impl Output {
     }
 }
 
-/// 沒有新影格時的休眠時間：目標幀距的一半，夾在 1–8 ms。時間戳取自 `LastPresentTime`，
-/// 輪詢延遲不影響 pts。
+/// Sleep for half the target frame interval when no new frame arrives, clamped to 1–8 ms; polling latency does not affect PTS.
+/// Polling latency does not affect PTS.
 fn poll_interval(max_fps: u32) -> Duration {
     (Duration::from_secs(1) / (2 * max_fps.max(1))).clamp(POLL_MIN, POLL_MAX)
 }
 
-/// 旋轉螢幕時 DDA 給的是面板原生方向的影像（尚未處理）。
+/// DDA provides images in the panel native orientation for rotated displays (rotation is not handled yet).
 fn rotation_unhandled(rotation: DXGI_MODE_ROTATION) -> bool {
     rotation != DXGI_MODE_ROTATION_IDENTITY && rotation != DXGI_MODE_ROTATION_UNSPECIFIED
 }
 
 #[derive(Debug, PartialEq, Eq)]
 enum AcquireError {
-    /// duplication 已失效，需要重建。
+    /// Duplication is invalid and must be recreated.
     Lost,
-    /// 裝置已失效，必須終止整個錄影工作。
+    /// The device was removed; the entire recording job must stop.
     DeviceLost(HRESULT),
-    /// 其他錯誤；同樣重建，但記錄原因。
+    /// Other errors also trigger recreation, with the reason logged.
     Failed(HRESULT),
 }
 
@@ -360,8 +360,8 @@ fn classify(code: HRESULT) -> Option<AcquireError> {
 }
 
 fn check_device(gpu: &Gpu) -> Result<()> {
-    // SAFETY: 只查詢共用裝置是否失效，不改動裝置或 context。
-    unsafe { gpu.device.GetDeviceRemovedReason() }.context("capture_failed: D3D11 裝置已失效")
+    // SAFETY: Only checks whether the shared device was removed; does not modify the device or context.
+    unsafe { gpu.device.GetDeviceRemovedReason() }.context("capture_failed: D3D11 device was removed")
 }
 
 struct Duplication {
@@ -369,7 +369,7 @@ struct Duplication {
     size: (u32, u32),
 }
 
-/// 已取得的 DDA 影格；離開作用域時 `ReleaseFrame`。
+/// Acquired DDA frame; calls ReleaseFrame when it leaves scope.
 struct Acquired<'a> {
     dup: &'a IDXGIOutputDuplication,
     info: DXGI_OUTDUPL_FRAME_INFO,
@@ -378,36 +378,36 @@ struct Acquired<'a> {
 
 impl Drop for Acquired<'_> {
     fn drop(&mut self) {
-        // SAFETY: 只在 AcquireNextFrame 成功後建立，與該次取得一對一配對。
+        // SAFETY: Created only after AcquireNextFrame succeeds and paired with that acquisition exactly once.
         let _ = unsafe { self.dup.ReleaseFrame() };
     }
 }
 
 impl Duplication {
-    /// 在 `gpu` 的轉接器上找 `monitor` 的輸出並建立 duplication。
+    /// Finds the monitor output on the GPU adapter and creates duplication.
     fn open(gpu: &Gpu, monitor: HMONITOR) -> Result<Self> {
         let dxgi: IDXGIDevice = gpu.device.cast()?;
-        // SAFETY: 共用裝置的 DXGI 介面；只讀取所屬轉接器。
-        let adapter = unsafe { dxgi.GetAdapter() }.context("capture_failed: 取得顯示卡失敗")?;
+        // SAFETY: DXGI interface from the shared device; reads only its adapter.
+        let adapter = unsafe { dxgi.GetAdapter() }.context("capture_failed: Failed to get adapter")?;
         let Some((output, _)) = output_monitors(&adapter)?
             .into_iter()
             .find(|(_, m)| *m == monitor.0 as isize)
         else {
             bail!(
-                "capture_failed: 遊戲所在螢幕不是由錄影使用的顯示卡輸出，DDA 無法擷取（請改用視窗擷取）"
+                "capture_failed: The game monitor is not driven by the recording adapter; DDA cannot capture it (use window capture)"
             );
         };
         let dup = duplicate(&output, gpu)?;
-        // SAFETY: dup 是剛建立的有效 duplication。
+        // SAFETY: dup was just created and is valid.
         let desc = unsafe { dup.GetDesc() };
         if desc.DesktopImageInSystemMemory.as_bool() {
             bail!(
-                "capture_failed: 此顯示驅動把桌面影像放在系統記憶體，DDA 不支援（請改用視窗擷取）"
+                "capture_failed: This display driver stores desktop images in system memory, which DDA does not support (use window capture)"
             );
         }
         if rotation_unhandled(desc.Rotation) {
             eprintln!(
-                "DDA：螢幕已旋轉（{}），錄影畫面將維持面板原生方向",
+                "DDA: The display is rotated ({}); the recording will keep the panel's native orientation",
                 desc.Rotation.0
             );
         }
@@ -417,11 +417,11 @@ impl Duplication {
         })
     }
 
-    /// 等下一格；逾時回傳 `Ok(None)`。
+    /// Waits for the next frame; timeout returns Ok(None).
     fn next(&self, timeout_ms: u32) -> Result<Option<Acquired<'_>>, AcquireError> {
         let mut info = DXGI_OUTDUPL_FRAME_INFO::default();
         let mut resource = None;
-        // SAFETY: 輸出指標指向本函式的區域變數；成功時由 Acquired guard 配對 ReleaseFrame。
+        // SAFETY: Output pointers reference local variables; the Acquired guard pairs success with ReleaseFrame.
         match unsafe {
             self.dup
                 .AcquireNextFrame(timeout_ms, &mut info, &mut resource)
@@ -440,32 +440,32 @@ impl Duplication {
 }
 
 fn duplicate(output: &IDXGIOutput, gpu: &Gpu) -> Result<IDXGIOutputDuplication> {
-    // 優先用 DuplicateOutput1 指定 BGRA（HDR／FP16 桌面由系統轉換）；舊系統退回 DuplicateOutput。
+    // Prefer DuplicateOutput1 to request BGRA (the system converts HDR/FP16 desktops); fall back to DuplicateOutput on older systems.
     if let Ok(output5) = output.cast::<IDXGIOutput5>() {
-        // SAFETY: 裝置屬於此輸出的轉接器；格式陣列在呼叫期間有效。
+        // SAFETY: The device belongs to this output adapter; the format array remains valid for the call.
         match unsafe { output5.DuplicateOutput1(&gpu.device, 0, &[DXGI_FORMAT_B8G8R8A8_UNORM]) } {
             Ok(dup) => return Ok(dup),
-            Err(error) => eprintln!("DDA：DuplicateOutput1 失敗（{error}），改用 DuplicateOutput"),
+            Err(error) => eprintln!("DDA: DuplicateOutput1 failed ({error}); falling back to DuplicateOutput"),
         }
     }
     let output1: IDXGIOutput1 = output
         .cast()
-        .context("capture_failed: 系統不支援 Desktop Duplication")?;
-    // SAFETY: 裝置屬於此輸出的轉接器。
+        .context("capture_failed: Desktop Duplication is not supported by the system")?;
+    // SAFETY: The device belongs to this output adapter.
     unsafe { output1.DuplicateOutput(&gpu.device) }
-        .context("capture_failed: 建立 Desktop Duplication 失敗")
+        .context("capture_failed: Failed to create Desktop Duplication")
 }
 
-/// 擷取管理狀態：目前追蹤的視窗、螢幕與 duplication。
+/// Capture tracking state: the current window, monitor, and duplication.
 struct Tracker {
     pid: u32,
     hwnd: Option<HWND>,
     monitor: HMONITOR,
     dup: Option<Duplication>,
-    /// 最近一次通知的尺寸；`None` 表示下次建立成功時必須通知。
+    /// Most recently announced dimensions; None means a notification is required after the next successful creation.
     announced: Option<(u32, u32)>,
     retry_at: Instant,
-    /// 這次中斷開始的時間（重建失敗中）。
+    /// When this interruption began while recreation was failing.
     failing_since: Option<Instant>,
     lost_reported: bool,
     notices: Sender<CaptureNotice>,
@@ -494,14 +494,14 @@ impl Tracker {
         }
     }
 
-    /// 每秒一次：視窗消失、重新出現或換螢幕。
+    /// Once per second, checks whether the window disappeared, reappeared, or moved to another monitor.
     fn check_window(&mut self) {
         match self.hwnd {
             Some(hwnd) if !window_matches(hwnd, self.pid) => self.lose_window(),
             Some(hwnd) => {
                 let monitor = monitor_of(hwnd);
                 if monitor != self.monitor {
-                    // 遊戲移到別的螢幕：重建到新螢幕（尺寸可能不同，必定重新通知）。
+                    // The game moved to another monitor: recreate capture there (the size may differ, so always notify again).
                     self.monitor = monitor;
                     self.dup = None;
                     self.announced = None;
@@ -519,7 +519,7 @@ impl Tracker {
         }
     }
 
-    /// duplication 失效時依間隔重建。
+    /// Recreates duplication at the configured interval after it becomes invalid.
     fn reopen(&mut self, gpu: &Gpu) -> Result<()> {
         if self.hwnd.is_none() || Instant::now() < self.retry_at {
             return Ok(());
@@ -536,7 +536,7 @@ impl Tracker {
             Err(error) => {
                 check_device(gpu)?;
                 let since = *self.failing_since.get_or_insert_with(|| {
-                    eprintln!("DDA 重建失敗，持續重試：{error:#}");
+                    eprintln!("DDA recreation failed; continuing to retry: {error:#}");
                     Instant::now()
                 });
                 if since.elapsed() >= LOST_AFTER && !self.lost_reported {
@@ -551,7 +551,7 @@ impl Tracker {
     }
 }
 
-/// 取得的影格交給消費者；回傳 `Err` 表示影格格式不符（只記錄一次）。
+/// Passes the acquired frame to the consumer; returns `Err` if the frame format does not match (logged only once).
 fn deliver(
     frame: &Acquired<'_>,
     consumer: &mut dyn FrameConsumer,
@@ -574,12 +574,12 @@ fn deliver(
     let Some(pts) = output.gate.accept(pts) else {
         return Ok(None);
     };
-    let texture: ID3D11Texture2D = resource.cast().context("DDA 影格不是 D3D11 texture")?;
+    let texture: ID3D11Texture2D = resource.cast().context("DDA frame is not a D3D11 texture")?;
     let mut desc = D3D11_TEXTURE2D_DESC::default();
-    // SAFETY: texture 在 Acquired guard 存活期間有效；desc 是可寫入的描述結構。
+    // SAFETY: texture remains valid while the Acquired guard lives; desc is writable.
     unsafe { texture.GetDesc(&mut desc) };
     if desc.Format != DXGI_FORMAT_B8G8R8A8_UNORM || desc.SampleDesc.Count != 1 {
-        bail!("DDA 桌面影像格式 {} 不是 BGRA，略過", desc.Format.0);
+        bail!("DDA desktop image format {} is not BGRA; skipping", desc.Format.0);
     }
     if output.visible(pts) {
         consumer.on_frame(&CapturedFrame {
@@ -602,19 +602,19 @@ pub(super) fn run(
     stopped: Receiver<()>,
     ready: &mpsc::SyncSender<Result<()>>,
 ) -> Result<()> {
-    // SAFETY: 只設定本擷取執行緒的 DPI 模式；DuplicateOutput1 需要 per-monitor DPI aware。
+    // SAFETY: Only sets this capture thread DPI mode; DuplicateOutput1 requires per-monitor DPI awareness.
     unsafe {
         let _ = SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
     }
     let freq = qpc_frequency();
     let hwnd = find_window(opts.pid)?;
     let monitor = monitor_of(hwnd);
-    let dup = Duplication::open(&gpu, monitor).context("capture_failed: 建立 DDA 擷取失敗")?;
+    let dup = Duplication::open(&gpu, monitor).context("capture_failed: Failed to initialize DDA capture")?;
     let mut output = Output {
         pid: opts.pid,
         gate: SlotGate::new(opts.max_fps),
         visibility: Visibility::new(),
-        black: BlackFrame::new(&gpu, dup.size).context("capture_failed: 建立 DDA 黑幀失敗")?,
+        black: BlackFrame::new(&gpu, dup.size).context("capture_failed: Failed to create DDA black frame")?,
         notices: notices.clone(),
     };
     let mut tracker = Tracker {
@@ -649,7 +649,7 @@ pub(super) fn run(
         if let Some(dup) = &tracker.dup {
             if output.black.size != dup.size {
                 output.black = BlackFrame::new(&gpu, dup.size)
-                    .context("capture_failed: 調整 DDA 黑幀尺寸失敗")?;
+                    .context("capture_failed: Failed to resize DDA black frame")?;
             }
         }
         let Some(dup) = &tracker.dup else {
@@ -659,7 +659,7 @@ pub(super) fn run(
                 Err(mpsc::RecvTimeoutError::Timeout) => continue,
             }
         };
-        // 先在借用 duplication 的範圍內處理影格（frame drop → ReleaseFrame），再更新狀態。
+        // Process the frame within the borrowed duplication scope (frame drop -> ReleaseFrame), then update state.
         let outcome = match dup.next(0) {
             Ok(None) => Ok(None),
             Ok(Some(frame)) => Ok(
@@ -695,17 +695,17 @@ pub(super) fn run(
             }
             Err(AcquireError::Failed(code)) => {
                 check_device(&gpu)?;
-                eprintln!("DDA 取得影格失敗（{code}），重建擷取");
+                eprintln!("DDA frame acquisition failed ({code}); recreating capture");
                 tracker.dup = None;
                 tracker.retry_at = Instant::now() + RETRY_INTERVAL;
             }
             Err(AcquireError::DeviceLost(code)) => {
                 check_device(&gpu)?;
-                bail!("capture_failed: DDA 裝置已失效（{code}）");
+                bail!("capture_failed: DDA device was removed ({code})");
             }
         }
     }
-    // 先釋放 duplication，再釋放消費者。
+    // Release duplication before releasing the consumer.
     drop(tracker);
     drop(consumer);
     Ok(())
@@ -764,7 +764,7 @@ mod tests {
                 }),
                 expected
             );
-            assert_eq!(visibility.update(42, pts, || panic!("同格重複查詢")), None);
+            assert_eq!(visibility.update(42, pts, || panic!("duplicate query in the same slot")), None);
         }
         assert_eq!(queries, 5);
         let mut initially_hidden = Visibility::new();
@@ -845,7 +845,7 @@ mod tests {
                 let pts = slot * TICKS_PER_SEC / 4;
                 output.idle(&mut consumer, pts);
                 output.idle(&mut consumer, pts + 1);
-                // SAFETY: 只提交測試裝置的命令，讓非同步小圖讀回在下次取樣前完成。
+                // SAFETY: Submits only commands to the test device so asynchronous thumbnail readback completes before the next sample.
                 unsafe { gpu.context.Flush() };
                 thread::sleep(Duration::from_millis(100));
             }
@@ -876,7 +876,7 @@ mod tests {
         assert_eq!(locate(&adapters, 0x30), Some((2, 0)));
         assert_eq!(locate(&adapters, 0x40), None);
         assert_eq!(locate(&[], 0x10), None);
-        // 重複時取列舉順序第一個（預設轉接器優先）。
+        // On duplicates, take the first in enumeration order (default adapter first).
         assert_eq!(locate(&[vec![0x10], vec![0x10]], 0x10), Some((0, 0)));
     }
 
@@ -884,16 +884,16 @@ mod tests {
     fn frame_pts_prefers_present_time_and_skips_pointer_only_updates() {
         let freq = 10_000_000;
         assert_eq!(frame_pts(5_000, 1, 9_999, freq, 1_000), Some(4_000));
-        // 只有游標移動：沒有新桌面影像。
+        // Cursor-only movement: no new desktop image.
         assert_eq!(frame_pts(5_000, 0, 9_999, freq, 1_000), None);
-        // LastPresentTime 為 0 時用現在。
+        // Use the current time when LastPresentTime is 0.
         assert_eq!(frame_pts(0, 2, 9_999, freq, 1_000), Some(8_999));
-        // 非 10 MHz 的 QPC 頻率要換算成 100 ns tick。
+        // Convert QPC frequencies other than 10 MHz to 100 ns ticks.
         assert_eq!(
             frame_pts(3_000_000, 1, TICKS_PER_SEC + 10, 3_000_000, 0),
             Some(TICKS_PER_SEC)
         );
-        // 過期（靜止桌面的第一格）或在未來的 present 時間改用現在。
+        // Use the current time for stale (first frame of a static desktop) or future present times.
         let now = 100 * TICKS_PER_SEC;
         assert_eq!(
             frame_pts(now - MAX_PRESENT_AGE, 1, now, freq, 0),
@@ -906,8 +906,8 @@ mod tests {
         assert_eq!(frame_pts(now + 1, 1, now, freq, 0), Some(now));
     }
 
-    /// 模擬編碼器的選格規則（`encode::SegmentWriter::push_video`）：以第一個收到的 pts 為起點，
-    /// 四捨五入到 1/fps 格，格號不前進就丟格。
+    /// Simulates the encoder frame-selection rule using the first received PTS as the origin,
+    /// rounds to 1/fps frames, and drops frames when the index does not advance.
     fn encoder_drops(pts: &[i64], fps: i64) -> usize {
         let origin = pts[0];
         let mut last = None;
@@ -928,15 +928,15 @@ mod tests {
         let mut gate = SlotGate::new(60);
         assert_eq!(gate.accept(-1), None);
         assert_eq!(gate.accept(1_000), Some(1_000));
-        // 不到半格：同一格，丟。
+        // Less than half a frame: same slot, drop.
         assert_eq!(gate.accept(1_000 + 83_333), None);
-        // 超過半格：下一格，對齊到格點（1/60 s = 166_666 tick）。
+        // More than half a frame: next slot, aligned to a frame boundary (1/60 s = 166,666 ticks).
         assert_eq!(gate.accept(1_000 + 83_334), Some(1_000 + 166_666));
         assert_eq!(
             gate.accept(1_000 + 2 * 166_667 + 40_000),
             Some(1_000 + 333_333)
         );
-        // 時間倒退：丟。
+        // Time moved backwards: drop.
         assert_eq!(gate.accept(500), None);
         assert_eq!(
             gate.accept(1_000 + 10 * TICKS_PER_SEC),
@@ -946,7 +946,7 @@ mod tests {
 
     #[test]
     fn slot_gate_output_never_collides_in_the_encoder_whatever_its_origin() {
-        // 240 Hz 螢幕上約 64 Hz 更新的視窗：present 時間落在 4.17 ms 格線上（實測的丟格情境）。
+        // A 240 Hz monitor with a window updating near 64 Hz; present times fall on 4.17 ms boundaries, reproducing dropped frames.
         let vsync = TICKS_PER_SEC / 240;
         let presents: Vec<i64> = (0..2_000)
             .map(|i| {
@@ -962,11 +962,11 @@ mod tests {
                 assert_eq!(
                     encoder_drops(&out[skip..], fps as i64),
                     0,
-                    "fps {fps} 起點 {skip}"
+                    "fps {fps}, origin {skip}"
                 );
             }
         }
-        // 對照：直接把 present 時間送進編碼器規則會撞格。
+        // Comparison: passing present times directly to the encoder rule causes frame-index collisions.
         assert!(encoder_drops(&presents, 60) > 0);
     }
 

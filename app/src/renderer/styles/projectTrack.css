@@ -1,8 +1,9 @@
-/* 專案軌（spec §3.2、§3.7；Task 13）：lane 標籤＋軌頭＋片段卡＋新專案對話框。
-   顏色一律來自 tokens.css；無 backdrop-filter、無大面積陰影。 */
+/* Project track (spec §3.2, §3.7; Task 13): lane labels, track header, segment cards, and new-project dialog.
+   All colors come from tokens.css; no backdrop-filter or large-area shadows. */
 
 :root {
-  /* 專案片段來源色點（依來源順序指派，6 色循環；取自 mock 的 SRC_COLOR；tokens.css 維持與 mock 一致，故定義於此） */
+  /* Project-segment source color dot (assigned in source order, cycling through 6 colors); taken from SRC_COLOR in the mock.
+     Defined here so tokens.css stays consistent with the mock. */
   --src-1: #9fb4d6;
   --src-2: #d6c39f;
   --src-3: #a8d6a0;
@@ -37,7 +38,7 @@
 
 .plane { display: flex; flex-direction: column; min-width: 0; }
 
-/* ---- 軌頭 ---- */
+/* ---- Track header ---- */
 .plane-head {
   min-height: 34px;
   flex: none;
@@ -84,18 +85,18 @@
 .sub-save.saving i { background: var(--warning); }
 .sub-save.error i { background: var(--danger); }
 
-/* ---- 選取片段檢視器（±0.5 秒步進） ---- */
+/* ---- Selected segment viewer (0.5-second steps) ---- */
 .insp { display: flex; gap: 6px; align-items: center; }
 .stepper { display: inline-flex; align-items: center; border: 1px solid var(--line-strong); border-radius: var(--r-xs); overflow: hidden; }
 .stepper button { width: 24px; height: 24px; border: 0; background: var(--bg-hover); color: var(--text-2); padding: 0; line-height: 1; }
 .stepper button:hover { background: var(--bg-active); color: var(--text-1); }
 .stepper span { padding: 0 6px; font-family: var(--font-mono); font-size: var(--fs-small); color: var(--text-1); }
 
-/* ---- 收合：只留軌頭 ---- */
+/* ---- Collapsed: show only the track header ---- */
 .project-lane.collapsed .track,
 .project-lane.collapsed .insp { display: none; }
 
-/* ---- 片段卡列 ---- */
+/* ---- Segment card row ---- */
 .track {
   position: relative;
   flex: 1;
@@ -211,7 +212,7 @@
 .track-list { display: contents; }
 .track-empty { align-self: center; font-size: var(--fs-small); padding: 0 8px; }
 
-/* ---- 新專案對話框（spec §3.7） ---- */
+/* ---- New-project dialog (spec §3.7) ---- */
 .np-host {
   position: fixed;
   inset: 0;
@@ -232,7 +233,7 @@
 .np-dlg .sub { color: var(--text-2); font-size: var(--fs-small); line-height: var(--lh-body); }
 .np-dlg .foot { display: flex; justify-content: flex-end; gap: var(--sp-2); margin-top: var(--sp-4); }
 
-/* ---- 窄視窗：隱藏次要文字（spec §3.2） ---- */
+/* ---- Narrow windows: hide secondary text (spec §3.2) ---- */
 @media (max-width: 1500px) {
   .proj-info .xtra { display: none; }
   .plane-head input.pname { width: 110px; }

@@ -28,15 +28,17 @@ async function localFile(file: unknown): Promise<boolean> {
 }
 
 /**
- * 只讀 OBS 來源；剪出的暫存檔由 reserveOutput 獨占預留。回傳實際起點（來源秒數）。
- * stream copy 只能從關鍵影格開始：直接用剪點 `-ss` 時，影像會從前一個關鍵影格開始、聲音從剪點開始，
- * 靠 MP4 edit list 隱藏差距，Chromium 播放時影音會差到一個關鍵影格間隔。所以先找到關鍵影格，從它開剪（同匯出的作法）。
+ * Read the OBS source without modifying it; reserve the output temporary file exclusively with
+ * reserveOutput. Return the actual source start time in seconds. Stream copy must start at a keyframe:
+ * using `-ss` at the cut point starts video at the previous keyframe while audio starts at the cut,
+ * and the MP4 edit list hides the gap. Chromium playback can then drift by one keyframe interval,
+ * so find the keyframe first and cut from there, as the export path does.
  */
 async function copyMatch(ffmpeg: string, source: string, part: string, start: number, end: number): Promise<number> {
   const cut = await createCutLookup(ffprobePath(ffmpeg))({ source, start, end })
   const aligned = cut && Number.isFinite(cut.keyframe) && cut.keyframe <= start && cut.keyframe >= 0 ? cut.keyframe : null
   const args = copyCutArgs({ source, start, end } as ProjectItem, cut, part)
-    // OBS 可能有多條音軌，全部保留；MP4 索引放檔頭，邊下載邊播放／工作室開啟較快。
+    // Preserve all OBS audio tracks; move the MP4 index to the front for faster playback during download and faster studio opening.
     .map((arg) => (arg === '0:a:0?' ? '0:a?' : arg))
   args.splice(args.lastIndexOf('-y'), 0, '-movflags', '+faststart')
   await new Promise<void>((resolve, reject) => {
@@ -54,11 +56,11 @@ function ffprobePath(ffmpeg: string): string {
   return path.join(path.dirname(ffmpeg), `ffprobe${process.platform === 'win32' ? '.exe' : ''}`)
 }
 
-/** OBS 停止後仍在寫檔尾（mkv 的總長度最後才寫入標頭），最多等這麼久。 */
+/** Maximum wait after OBS stops while it finishes writing the file (MKV writes total duration to the header last). */
 const OBS_FILE_SETTLE_TOTAL_MS = 60_000
 const OBS_FILE_SETTLE_STEP_MS = 1000
 
-/** 等長度可讀且檔案大小連續兩次不變，才視為 OBS 已寫完。 */
+/** Treat OBS as finished only when duration is readable and file size is unchanged twice in a row. */
 async function settledProbe<T extends { duration?: number | null }>(file: string, probe: () => Promise<T>, stepMs: number): Promise<T> {
   let lastSize = -1
   let last: T | null = null
@@ -76,7 +78,7 @@ async function settledProbe<T extends { duration?: number | null }>(file: string
   }
 }
 
-/** obs.json 是復原依據；零段落不代表沒有 OBS 影片。 */
+/** obs.json is the recovery source of truth; having zero segments does not mean there is no OBS video. */
 export async function finalizeObsSession(dir: string, deps: RecordingDeps, config: SessionSnapshot): Promise<string[]> {
   const recordedMatches = await readOptional<ObsMatch[]>(path.join(dir, 'obs-matches.json'))
   if (recordedMatches) return finalizeObsMatches(dir, deps, config, recordedMatches, true)
@@ -119,7 +121,7 @@ export async function finalizeObsSession(dir: string, deps: RecordingDeps, confi
         await writeJson(path.join(dir, 'match-part.json'), { output, part })
         const actualStart = await copyMatch(deps.ffmpegPath, meta.outputPath, part, start, end)
         if (fs.existsSync(output)) throw new Error(tr('逐局輸出路徑已存在'))
-        // 以實際長度限制快取；stream copy 切點會落在附近關鍵影格。
+        // Limit the cache to the actual duration; stream-copy cuts land on a nearby keyframe.
         const cutDuration = await probe(part)
         if (!cutDuration) throw new Error(tr('無法取得逐局影片長度'))
         marker.cuts.push({ index, outputPath: output, offset: offset + actualStart, duration: cutDuration, ...video,
@@ -137,7 +139,7 @@ export async function finalizeObsSession(dir: string, deps: RecordingDeps, confi
       }
     }
   }
-  // 對局不在來源時間範圍內時也保留整段，避免遺失錄影。
+  // Preserve the full recording when a match falls outside the source time range to avoid losing footage.
   if (!marker.cuts.length) {
     marker.cuts.push({ index: 0, outputPath: meta.outputPath, offset, duration, ...video,
       analysisQueued: false, liveCached: false, liveTrusted: false })
@@ -151,7 +153,7 @@ export async function finalizeObsSession(dir: string, deps: RecordingDeps, confi
       try {
         const summary = await writeLiveCache(dir, cut.outputPath, deps, cut)
         if (summary) { deps.onLiveAnalysis?.(cut.outputPath, summary); cut.liveTrusted = summary.trusted }
-      } catch (error) { console.error('[recording] 無法寫入 OBS 即時事件快取：', error) }
+      } catch (error) { console.error('[recording] Failed to write OBS live event cache:', error) }
       cut.liveCached = true
       await writeJson(markerFile, marker)
     }
@@ -167,7 +169,7 @@ export async function finalizeObsSession(dir: string, deps: RecordingDeps, confi
 
 export class ObsRecoveryPending extends Error {}
 
-/** 逐局原檔直接入庫；保留 marker 直到整個工作成功收尾。 */
+/** Add per-match source files to the library directly; keep the marker until the entire session finalizes successfully. */
 export async function finalizeObsMatches(dir: string, deps: RecordingDeps, config: SessionSnapshot,
   matches: ObsMatch[], finishing: boolean, save?: () => Promise<void>, metadata?: ObsMetadata): Promise<string[]> {
   if (!Array.isArray(matches) || matches.some((match) => !match || !Number.isSafeInteger(match.index) || !Number.isFinite(match.recordStartedAt))) {
@@ -183,7 +185,7 @@ export async function finalizeObsMatches(dir: string, deps: RecordingDeps, confi
       const settings = deps.getSettings()
       await client.connect(settings.obsHost, settings.obsPort, deps.getObsPassword?.())
       const status = await client.status()
-      // OBS v5 狀態不含路徑；用目前錄影時間核對起點，避免停止後來由使用者開始的錄影。
+      // OBS v5 status has no path; compare the current recording duration with the start time to avoid stopping a user-started recording.
       if (status.outputActive) {
         if (!Number.isFinite(status.outputDuration) || Math.abs(Date.now() - status.outputDuration - match.recordStartedAt) > 3000) {
           throw new Error(tr('無法確認 OBS 錄影歸屬，請在 OBS 確認並停止錄影'))

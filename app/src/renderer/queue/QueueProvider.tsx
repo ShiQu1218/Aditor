@@ -3,14 +3,14 @@ import { createQueueStore, type QueueStore } from './queueStore'
 import type { QueueItemState, QueuePayload, QueueSummary } from '../../shared/queueState'
 import { library500Requested } from '../dev/libraryFixtureFlag'
 
-/** Provider 之外（例如單獨掛載的元件）使用的空 store：永遠是「沒有佇列」 */
+/** Empty store for use outside the Provider (for example, in a separately mounted component); always reports no queue. */
 const fallbackStore = createQueueStore()
 const QueueContext = createContext<QueueStore>(fallbackStore)
 
 /**
- * 全域分析佇列 Context（App 只掛一個）：訂閱 main 的 `library:updated`（夾帶佇列狀態，已節流）
- * 並在掛載時以 `queue:getState` 補初始值；Context 值是穩定的 store，
- * 進度更新不會讓 Provider 的子樹重新渲染（各元件用 selector 訂閱）。
+ * Global analysis-queue Context (mounted once by App): subscribe to main's throttled `library:updated` events, which include queue state,
+ * and load the initial value with `queue:getState` on mount. The Context value is a stable store,
+ * so progress updates do not rerender the Provider subtree (components subscribe through selectors).
  */
 export function QueueProvider({ children }: { children: React.ReactNode }): JSX.Element {
   const store = useMemo(() => createQueueStore(), [])
@@ -34,7 +34,7 @@ export function QueueProvider({ children }: { children: React.ReactNode }): JSX.
       }
     })
     void Promise.resolve(window.api?.queue?.getState?.()).then((payload: QueuePayload | undefined) => {
-      // 事件已先到的話，不用較舊的初始值覆蓋
+      // If an event arrived first, do not overwrite it with the older initial value.
       if (alive && !received && payload && payload.queue) store.set(payload)
     })
     return () => {
@@ -50,19 +50,19 @@ export function useQueueStore(): QueueStore {
   return useContext(QueueContext)
 }
 
-/** 佇列摘要（佇列條、浮層用；每次佇列更新都會重繪使用它的元件） */
+/** Queue summary (for the queue strip and popover; queue updates rerender components using it). */
 export function useQueueSummary(): QueueSummary {
   const store = useQueueStore()
   return useSyncExternalStore(store.subscribe, store.getSummary, store.getSummary)
 }
 
-/** 單一影片的佇列狀態（原始值：只有自己的狀態改變時才重繪） */
+/** Queue state for one video (a primitive value; rerender only when this video's state changes). */
 export function useQueueItemState(path: string): QueueItemState {
   const store = useQueueStore()
   return useSyncExternalStore(store.subscribe, () => store.stateOf(path), () => store.stateOf(path))
 }
 
-/** 單一影片的 ETA（與佇列條、浮層同一個來源，數字一致） */
+/** ETA for one video, sourced from the same store as the queue strip and popover. */
 export function useQueueEta(path: string): number | null {
   const store = useQueueStore()
   return useSyncExternalStore(store.subscribe, () => store.etaOf(path), () => store.etaOf(path))

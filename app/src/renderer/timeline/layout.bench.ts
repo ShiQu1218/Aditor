@@ -1,5 +1,5 @@
-// 效能基準（vitest bench；不是 CI 失敗門檻，數字記入 docs/superpowers/plans/EXECUTION-NOTES.md）。
-// 執行：npm --prefix app run bench
+// Performance benchmark (vitest bench; not a CI failure threshold; results are recorded in docs/superpowers/plans/EXECUTION-NOTES.md).
+// Run with: npm --prefix app run bench
 import { bench, describe } from 'vitest'
 import type { EventType } from '../../shared/types'
 import { genLong } from '../../../test/fixtures/genEvents'

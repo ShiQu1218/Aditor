@@ -13,7 +13,7 @@ import { SettingsController, type SettingsApi } from './settingsController'
 const t = settingsI18n
 
 interface SettingsScreenProps {
-  /** 測試／DEV 注入；預設以 window.api 建立 */
+  /** Test/DEV injection; defaults to an instance created from window.api. */
   controller?: SettingsController
   initialQuery?: string
   initialCategory?: CategoryId
@@ -31,7 +31,7 @@ function defaultController(): SettingsController {
   return new SettingsController(api?.settings ? api : missing)
 }
 
-/** 把連續同卡片（同分類）的列併成一張卡片。 */
+/** Merge consecutive rows from the same card and category into one card. */
 function groupCards(rows: Row[]): Array<{ key: string; category: CategoryId; title: string; rows: Row[] }> {
   const cards: Array<{ key: string; category: CategoryId; title: string; rows: Row[] }> = []
   for (const r of rows) {
@@ -57,7 +57,7 @@ export function SettingsScreen({ controller, initialQuery = '', initialCategory 
     return () => ctrl.stop()
   }, [ctrl])
 
-  // Ctrl+F 聚焦搜尋；Esc 清除搜尋字串（兩者都走 keymap：已排除 IME 組字與原生下拉）
+  // Ctrl+F focuses search; Esc clears it. Both use keymap, which excludes IME composition and native selects.
   useKeymap(
     {
       focusSearch: () => {
@@ -80,7 +80,7 @@ export function SettingsScreen({ controller, initialQuery = '', initialCategory 
     (id: CategoryId) => {
       setActive(id)
       if (searching) {
-        // 搜尋中：所有命中分類同時顯示，切換分類＝捲到該分類的第一張卡片
+        // While searching, show all matching categories; switching categories scrolls to its first card.
         panelRef.current?.querySelector(`[data-cat="${id}"]`)?.scrollIntoView?.({ block: 'start' })
       } else if (panelRef.current) {
         panelRef.current.scrollTop = 0

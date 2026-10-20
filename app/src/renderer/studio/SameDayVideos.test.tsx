@@ -21,8 +21,8 @@ function show(path = A, onOpenVideo = vi.fn()) {
   return mount(<Providers active="studio"><SameDayVideos videoPath={path} onOpenVideo={onOpenVideo} /></Providers>)
 }
 
-describe('同日影片列', () => {
-  test('依本地日曆日期分組、錄影時間遞減，顯示標題、統計、長度、狀態與目前項目', async () => {
+describe('Same-day video list', () => {
+  test('Groups by local calendar date, sorts by recording time descending, and shows title, stats, duration, status, and current item', async () => {
     fake.setEntries([entry(A, { thumb: 'D:/縮圖/a #1.jpg', counts: { knock: 3, assist: 2 }, durationSec: 65 }),
       entry(B, { status: 'analyzing' }), entry('D:/午夜前.mp4', { addedAt: new Date(2026, 9, 17, 23, 59).getTime() }),
       entry('D:/一般影片.mkv', { addedAt: new Date(2026, 9, 18, 12).getTime(), status: 'error' })])
@@ -46,7 +46,7 @@ describe('同日影片列', () => {
     expect(await runAxe(document.querySelector('.same-day-videos')!)).toEqual([])
   })
 
-  test('僅有目前影片仍顯示；更新事件加入新影片，點選經由 onOpenVideo，卸載取消訂閱', async () => {
+  test('Keeps the current video visible, adds new videos from updates, opens selections through onOpenVideo, and unsubscribes on unmount', async () => {
     fake.setEntries([entry(A)])
     const onOpenVideo = vi.fn()
     show(A, onOpenVideo)
@@ -66,7 +66,7 @@ describe('同日影片列', () => {
     expect(fake.api.library.getEntries).not.toHaveBeenCalled()
   })
 
-  test('收合偏好經由設定儲存，重新掛載仍保留且不回寫預設', async () => {
+  test('Collapsed preference is saved through settings, persists on remount, and does not write back the default', async () => {
     fake.setEntries([entry(A)])
     show()
     await flush()
@@ -85,7 +85,7 @@ describe('同日影片列', () => {
     expect(cards()).toHaveLength(1)
   })
 
-  test.each(['未寫入', '拒絕'] as const)('收合偏好儲存失敗會提示：%s', async (failure) => {
+  test.each(['未寫入', '拒絕'] as const)('reports failure to save the collapse preference: %s', async (failure) => {
     fake = createFakeApi({ entries: [entry(A)], overrides: { settings: { set: async () => {
       if (failure === '拒絕') throw new Error('寫入失敗')
       return { settings: { sameDayVideosCollapsed: true }, persisted: false }
@@ -97,7 +97,7 @@ describe('同日影片列', () => {
     expect(document.querySelector('.toast')?.textContent).toContain('儲存失敗')
   })
 
-  test('設定讀取較慢時不可回寫預設，也不可蓋過新的設定推播', async () => {
+  test('A slow settings read does not write back the default or overwrite a newer settings update', async () => {
     fake.setEntries([entry(A)])
     const resolves: Array<(settings: ReturnType<typeof fake.getSettings>) => void> = []
     fake.api.settings.get.mockImplementation(() => new Promise((done) => { resolves.push(done) }))
@@ -111,7 +111,7 @@ describe('同日影片列', () => {
     expect(fake.api.settings.set).not.toHaveBeenCalled()
   })
 
-  test('較慢的舊影片庫回應不覆蓋即時更新', async () => {
+  test('A slower old library response does not overwrite a live update', async () => {
     let resolve!: (entries: LibraryEntry[]) => void
     fake.api.library.getEntries.mockImplementationOnce(() => new Promise((done) => { resolve = done }))
     fake.setEntries([entry(A), entry(B)])

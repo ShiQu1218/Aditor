@@ -14,7 +14,7 @@ export function hitItem<T extends { x: number }>(items: T[], x: number, tolPx = 
   return best
 }
 
-/** items 依 x 遞增排序（layoutTimeline 的輸出）：以二分搜尋找起點，只掃描 ±tol 內的項目 */
+/** Items are sorted by ascending x (output of layoutTimeline): binary-search the start and scan only items within ±tol. */
 export function hitDensity(items: LayoutItem[], x: number, tolPx = 6): EngineEvent[] {
   let lo = 0
   let hi = items.length

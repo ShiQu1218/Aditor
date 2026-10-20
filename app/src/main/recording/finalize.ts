@@ -21,9 +21,9 @@ interface Finalized {
   outputPath: string
   postAnalysis: PostRecordAnalysis
   analysisQueued: boolean
-  /** live.json 已嘗試轉成分析快取（第 3 期；舊 marker 缺省＝未轉） */
+  /** Whether live.json has been converted to an analysis cache (phase 3; absent in older markers means not converted). */
   liveCached?: boolean
-  /** 即時結果等同離線分析，不排完整分析 */
+  /** Live results are equivalent to offline analysis, so do not enqueue a full analysis. */
   liveTrusted?: boolean
 }
 
@@ -37,7 +37,7 @@ export async function writeJson(file: string, value: unknown): Promise<void> {
   await fs.promises.rename(temp, file)
 }
 
-/** 僅能刪除 .sessions 的直接子目錄，拒絕 junction／符號連結。 */
+/** Delete only direct children of .sessions; reject junctions and symbolic links. */
 export async function validateSessionDir(dir: string): Promise<string> {
   const resolved = path.resolve(dir)
   const parent = path.dirname(resolved)
@@ -95,7 +95,7 @@ async function snapshot(dir: string, fallback: PostRecordAnalysis): Promise<Sess
 export const MATCH_PRE_PAD_SEC = 5
 export const MATCH_POST_PAD_SEC = 5
 
-/** 以完整段落保留對局前後五秒，只選取與範圍相交的已錄段落。 */
+/** Keep complete segments covering five seconds before and after a match; select only recorded segments intersecting the range. */
 export function selectMatchEntries(entries: readonly IndexEntry[], start: number, end: number): IndexEntry[] {
   return entries.filter((entry) => entry.pts + entry.dur > start - MATCH_PRE_PAD_SEC && entry.pts < end + MATCH_POST_PAD_SEC)
 }
@@ -135,7 +135,7 @@ export async function readOptional<T>(file: string): Promise<T | null> {
   }
 }
 
-/** 輸出檔須直接在 outputDir（舊版）或 outputDir/<YYYY-MM-DD>/ 內。 */
+/** The output file must be directly under outputDir (legacy) or outputDir/<YYYY-MM-DD>/. */
 export function inOutputDir(outputPath: unknown, outputDir: string): boolean {
   if (typeof outputPath !== 'string') return false
   const parent = path.dirname(path.resolve(outputPath))
@@ -154,7 +154,7 @@ async function validateCut(cut: MatchCut, outputDir: string): Promise<void> {
   }
 }
 
-/** 預留檔記在工作目錄，補收尾只清除此工作的暫存檔，不碰其他錄影。 */
+/** The reserved file is recorded in the work directory; recovery removes only this session's temporary file. */
 export async function resumeMatchPart(dir: string, marker: { cuts: { outputPath: string }[] }): Promise<void> {
   const file = path.join(dir, 'match-part.json')
   const pending = await readOptional<{ output: string; part: string }>(file)
@@ -189,7 +189,7 @@ async function remuxMatch(dir: string, deps: RecordingDeps, config: SessionSnaps
     if (fs.existsSync(output)) throw new Error(tr('輸出影片已存在：{output}', { output }))
     const cut: MatchCut = { index, ...match, firstSeq: entries[0].seq, lastSeq: entries.at(-1)!.seq,
       outputPath: output, analysisQueued: false, liveCached: false, liveTrusted: false }
-    // marker 先落盤才改名；中斷後可續用暫存檔，不會留下沒有登記的正式影片。
+    // Persist the marker before renaming so recovery can reuse the temporary file without leaving an unregistered final video.
     await writeJson(path.join(dir, 'matches.json'), { cuts: [...marker.cuts, cut] })
     marker.cuts.push(cut)
     recorded = true
@@ -221,7 +221,7 @@ async function completeCut(dir: string, deps: RecordingDeps, config: SessionSnap
       })
       if (summary) deps.onLiveAnalysis?.(cut.outputPath, summary)
     } catch (error) {
-      console.error('[recording] 無法把逐局即時事件轉成分析快取：', error)
+      console.error('[recording] Failed to convert per-match live events into an analysis cache:', error)
     }
     cut.liveCached = true
   }
@@ -241,7 +241,7 @@ export function liveMatches(live: LiveFile | null): LiveMatch[] {
     (match.end === null || (Number.isFinite(match.end) && match.end >= match.start)))
 }
 
-/** 呼叫端須序列化；錄影中的失敗留待收尾重試，不影響擷取或即時播放。 */
+/** Callers must serialize this operation. Failures during recording are retried at finalization and do not affect capture or live playback. */
 export async function cutMatches(dir: string, deps: RecordingDeps, options: MatchCutOptions = {}): Promise<string[]> {
   const finishing = options.finishing === true
   dir = await validateSessionDir(dir)
@@ -283,7 +283,7 @@ export async function cutMatches(dir: string, deps: RecordingDeps, options: Matc
       options.onCut?.(cut.outputPath)
     } catch (error) {
       cutError(index, error, options)
-      // 已登記但改名失敗時須先恢復暫存檔，避免下一局覆蓋本工作的預留紀錄。
+      // If the marker was written but rename failed, restore the temporary file before the next match can overwrite this reservation.
       await resumeMatchPart(dir, marker)
     }
   }
@@ -296,7 +296,7 @@ export function outputBase(startedAt: number): string {
   return `Apex_${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}_${pad(date.getHours())}-${pad(date.getMinutes())}`
 }
 
-/** 輸出放在 `<outputDir>/<起點本機日期>/`，同名 `_2`、`_3` 只在該日期資料夾內判斷。 */
+/** Place output in `<outputDir>/<local start date>/`; check `_2`, `_3`, and similar collisions within that date folder. */
 export async function reserveOutput(outputDir: string, base: string, startedAt: number): Promise<{ output: string; part: string }> {
   const dayDir = path.join(outputDir, dayFolderName(startedAt))
   await fs.promises.mkdir(dayDir, { recursive: true })
@@ -342,10 +342,10 @@ async function remux(ffmpeg: string, files: string[], output: string): Promise<v
   }
 }
 
-/** 停止時即時偵測全程正常的標記（live-session 寫入） */
+/** Marker indicating live detection stayed healthy until stop (written by live-session). */
 export const LIVE_COMPLETE_FILE = 'live-complete.json'
 
-/** finalized.json 先於媒體庫／分析副作用落盤，補收尾不會重複產生影片。 */
+/** Persist finalized.json before library/analysis side effects so recovery does not generate the video twice. */
 export async function finalizeSession(dir: string, deps: RecordingDeps): Promise<string[]> {
   dir = await validateSessionDir(dir)
   const recording = await readOptional<{ backend?: unknown }>(path.join(dir, 'recording.json'))
@@ -372,8 +372,8 @@ export async function finalizeSession(dir: string, deps: RecordingDeps): Promise
         return outputs
       }
     }
-    // 大廳片段已清掉，或即時偵測全程正常卻沒看到對局（只待在大廳）：沒有可保留的內容。
-    // 偵測沒啟動或中途失效時兩個標記都不存在，退回整段輸出以免漏錄。
+    // Nothing remains when lobby segments were pruned or healthy live detection saw no match (the user stayed in the lobby).
+    // If detection never started or failed partway through, neither marker exists; fall back to the full output to avoid losing footage.
     if (config.mode === 'match' && (await readOptional(path.join(dir, 'pruned.json')) ||
       await readOptional(path.join(dir, LIVE_COMPLETE_FILE)))) {
       await fs.promises.rm(dir, { recursive: true })
@@ -397,19 +397,19 @@ export async function finalizeSession(dir: string, deps: RecordingDeps): Promise
   if (!inOutputDir(marker.outputPath, outputDir) ||
       path.extname(marker.outputPath).toLowerCase() !== '.mp4' ||
       !(await fs.promises.lstat(marker.outputPath)).isFile()) throw new Error(tr('已收尾的影片路徑無效或檔案遺失'))
-  // 舊 marker 只存輸出路徑時，依合約只補加媒體庫，不重排分析。
+  // Legacy markers store only the output path; recovery adds the file to the library without re-enqueuing analysis.
   if (marker.postAnalysis === undefined) marker.postAnalysis = 'none'
   if (!['none', 'afterExit', 'perMatch'].includes(marker.postAnalysis)) throw new Error(tr('已收尾的分析設定無效'))
   deps.addToLibrary([marker.outputPath])
   if (!marker.liveCached) {
-    // 即時事件只是加分項：轉換失敗不阻擋收尾（完整分析或之後手動分析會補上）。
+      // Live events are best-effort: conversion failure does not block finalization; full or manual analysis can fill them in later.
     try {
       const summary = await writeLiveCache(dir, marker.outputPath, deps)
       if (summary) deps.onLiveAnalysis?.(marker.outputPath, summary)
-      // 即時結果等同離線分析：不再排完整分析（使用者仍可手動重新分析）。
+      // Live results are equivalent to offline analysis, so do not enqueue a full analysis (the user can still reanalyze manually).
       if (summary?.trusted) marker.liveTrusted = true
     } catch (error) {
-      console.error('[recording] 無法把即時事件轉成分析快取：', error)
+      console.error('[recording] Failed to convert live events into an analysis cache:', error)
     }
     marker.liveCached = true
     await writeJson(markerPath, marker)

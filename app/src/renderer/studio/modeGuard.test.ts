@@ -26,8 +26,8 @@ describe('toast actions in StudioScreen', () => {
     const runs = [...src.matchAll(/\brun:\s*([^\n]*)/g)].map((m) => m[1].trim())
     expect(runs.length).toBeGreaterThan(5)
     const unguarded = runs.filter((r) => !r.startsWith('guarded('))
-    // 專案軌刪除片段的〔復原〕只動專案（undo），不碰來源文件
-    // 匯出完成 Toast 的〔查看〕只開啟匯出抽屜（唯讀，不改來源文件）
+  // Undoing a clip deletion in the project timeline modifies only the project, not the source document.
+  // View in the export-complete toast only opens the export drawer (read-only; does not modify the source document).
     expect(unguarded.every((r) => /^undo\b/.test(r) || r.startsWith('() => setExportOpen(true)'))).toBe(true)
   })
 })

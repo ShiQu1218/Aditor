@@ -1,4 +1,4 @@
-"""分析流程：probe → 快取判斷 → 校準 → 解碼／偵測／事件追蹤（同一趟邊解碼邊學關鍵字）→ keyframes → 推導 → 存檔（spec §4.2、§5.5）。"""
+"""Analysis pipeline: probe → cache check → calibration → decode/detect/track events (learn keywords while decoding) → keyframes → derive → save (spec §4.2, §5.5)."""
 from __future__ import annotations
 
 import os
@@ -23,25 +23,27 @@ from .models import Clip, Event, FrameResult, SpecInterval
 from .probe import keyframes, probe
 from .profile import Profile
 
-PARTIAL_EVERY = 30.0   # 每隔多少「影片秒」寫一次 partial
-# 學習範圍內樣板學不齊時延伸到影片結尾繼續學（見 _Learner）。延伸學習期間不寫段進度（中途取消會從頭重學），
-# 測試接續機制本身時可以關掉
+PARTIAL_EVERY = 30.0   # Write a partial every this many video seconds.
+# When templates cannot be fully learned within the learning window, continue through the end of the video (see _Learner).
+# Do not save segment progress during extended learning (cancellation restarts learning); this can be disabled to test resuming itself.
 EXTEND_LEARNING = True
-RESUME_BACK = 12.0     # 接續時，擁有範圍回退秒數（> 單一橫幅最長約 10 秒：此時間之前開始的橫幅一定已完整結束並存入）
-PROGRESS_INTERVAL = 0.25  # on_progress 至多每 0.25 秒（實際時間）一次
-# 切段解碼的「擁有權」合併（C1）：每段只輸出 first_t 落在 [start, end) 的事件；為了讓追蹤器在段起點
-# 擁有與單段分析相同的上下文，每段另外從 start - SEGMENT_PREROLL 起解碼（只餵追蹤器、不輸出事件）。
-# 追蹤器的狀態只有「進行中的橫幅 run」（沒有跨橫幅連結），上下文只需涵蓋單一橫幅最長約 10 秒＋一段空白；
-# 取 20 秒，讓段起點的追蹤器狀態與單段分析相同（run 之間只要有 ≥2 格空白就互相獨立）。
+RESUME_BACK = 12.0     # On resume, move the ownership boundary back this many seconds (> the ~10-second maximum banner duration, so earlier banners are fully closed and stored).
+PROGRESS_INTERVAL = 0.25  # Call on_progress at most once every 0.25 seconds of wall-clock time.
+# Ownership-based merging for segmented decoding (C1): each segment emits only events whose first_t is in [start, end).
+# To give the tracker the same context at the segment start as single-pass analysis, decode from start - SEGMENT_PREROLL
+# as well (feed the tracker only; do not emit events). The tracker state contains only the in-progress banner run
+# (there are no links across banners), so context needs to cover at most one ~10-second banner plus a gap. Use 20 seconds
+# so tracker state at the segment start matches single-pass analysis (runs are independent when separated by >= 2 empty frames).
 SEGMENT_PREROLL = 20.0
-# 段尾往後多解碼的秒數，讓「在段內開始、跨過段界」的橫幅完整收尾（類型多數決、名字指紋、分裂判定）。
+# Decode this many seconds beyond the segment end so banners that start within a segment and cross its boundary can finish
+# (type majority vote, name fingerprint, and split detection).
 SEGMENT_POSTROLL = 12.0
-AUTO_MIN_SEGMENT = 30.0  # 自動 jobs 時每段至少多長（秒）
-EXPLICIT_MIN_SEGMENT = 5.0  # 明確指定 jobs 時每段至少多長（秒）
+AUTO_MIN_SEGMENT = 30.0  # Minimum segment length (seconds) when jobs is automatic.
+EXPLICIT_MIN_SEGMENT = 5.0  # Minimum segment length (seconds) when jobs is explicitly specified.
 GRID = 0.25
 
 
-Cancelled = Cancelled  # 重新匯出：aditor.analyze.Cancelled
+Cancelled = Cancelled  # Re-export as aditor.analyze.Cancelled.
 
 
 def _noop(t: float, duration: float) -> None:
@@ -59,7 +61,7 @@ def _merge_intervals(items: list[SpecInterval]) -> list[SpecInterval]:
 
 
 def _clip_intervals(items: list[SpecInterval], lo: float, hi: float) -> list[SpecInterval]:
-    """只留 [lo, hi) 內的部分。"""
+    """Keep only the portion within [lo, hi)."""
     out = []
     for i in items:
         a, b = max(i.start, lo), min(i.end, hi)
@@ -69,7 +71,7 @@ def _clip_intervals(items: list[SpecInterval], lo: float, hi: float) -> list[Spe
 
 
 def _cut_intervals(items: list[SpecInterval], lo: float, hi: float) -> list[SpecInterval]:
-    """挖掉 [lo, hi) 範圍（保留其餘部分）。"""
+    """Remove the [lo, hi) range (keeping the rest)."""
     out = []
     for i in items:
         if i.end <= lo or i.start >= hi:
@@ -83,10 +85,10 @@ def _cut_intervals(items: list[SpecInterval], lo: float, hi: float) -> list[Spec
 
 
 def plan_segments(duration: float, jobs: int, *, min_len: float = AUTO_MIN_SEGMENT) -> list[tuple[float, float]]:
-    """把 [0, duration] 平均切成最多 jobs 段（每段至少 min_len 秒），邊界對齊 0.25 秒格線。
+    """Split [0, duration] evenly into at most jobs segments (each at least min_len seconds), aligning boundaries to a 0.25-second grid.
 
-    回傳 [(start, end)]；每段的事件擁有範圍為 [start, end)，解碼範圍為
-    [start - SEGMENT_PREROLL, end + SEGMENT_POSTROLL]（第一段從 0 起、最後一段到片尾）。
+    Return [(start, end)]; each segment owns events in [start, end) and decodes the range
+    [start - SEGMENT_PREROLL, end + SEGMENT_POSTROLL] (the first segment starts at 0 and the last ends at EOF).
     """
     n = max(1, min(int(jobs), int(duration // min_len) if min_len > 0 else int(jobs)))
     bounds = [0.0]
@@ -97,7 +99,7 @@ def plan_segments(duration: float, jobs: int, *, min_len: float = AUTO_MIN_SEGME
 
 
 def auto_jobs(gpu_path: bool) -> int:
-    """自動 jobs：硬體路徑 min(4, max(1, cpu // 4))；軟體路徑（dav1d 已多執行緒）為 1。"""
+    """Automatic jobs: min(4, max(1, cpu // 4)) for the hardware path; 1 for the software path (dav1d is already multithreaded)."""
     if not gpu_path:
         return 1
     return min(4, max(1, (os.cpu_count() or 4) // 4))
@@ -106,14 +108,14 @@ def auto_jobs(gpu_path: bool) -> int:
 @dataclass
 class _Seg:
     start: float
-    end: float          # 名目結尾（擁有範圍 [start, end)；不含後延解碼）
+    end: float          # Nominal end (ownership range [start, end); excludes post-roll decoding).
     last: bool
     duration: float
-    progress_t: float = 0.0   # 顯示／完成判斷用進度（單調不減；接續重播上下文時不倒退）
-    snap_progress: float = 0.0  # 與 snap_events/snap_spec 對應的追蹤器游標（寫入 partial 用）
+    progress_t: float = 0.0   # Progress for display/completion checks (monotonic; does not move backward when replaying context on resume).
+    snap_progress: float = 0.0  # Tracker cursor corresponding to snap_events/snap_spec (for writing partials).
     snap_events: list = field(default_factory=list)
     snap_spec: list = field(default_factory=list)
-    own_from: float = 0.0     # 本次執行開始擁有輸出權的時間（接續時 > start）
+    own_from: float = 0.0     # Time when this run begins owning output (greater than start on resume).
 
     @property
     def dec_end(self) -> float | None:
@@ -128,8 +130,8 @@ class _Seg:
         return self.progress_t >= self.target - 1e-6
 
     def resume_plan(self) -> tuple[float, float]:
-        """(擁有輸出權的起點, 解碼起點)。新段（或游標還在前置上下文內）從 start 擁有、解碼自 start - PREROLL；
-        接續則回退 RESUME_BACK 後重新擁有，並同樣往前補足 PREROLL 上下文。"""
+        """Return (ownership start, decode start). A new segment (or a cursor still in preroll context) owns from start
+        and decodes from start - PREROLL. On resume, ownership moves back by RESUME_BACK, with PREROLL context added before it."""
         if self.snap_progress <= self.start + 1e-6:
             own = self.start
         else:
@@ -147,7 +149,7 @@ class _Seg:
 
 
 def _segments_from_doc(raw, duration: float) -> list[_Seg] | None:
-    """驗證並還原 partial 內的 segments；格式不符回傳 None。"""
+    """Validate and restore segments from a partial; return None if the format is invalid."""
     try:
         segs = [_Seg(float(d["start"]), float(d["end"]), False, duration,
                      float(d["progress_t"]), float(d["progress_t"])) for d in raw]
@@ -164,7 +166,7 @@ def _segments_from_doc(raw, duration: float) -> list[_Seg] | None:
 def _make_doc(info, profile: Profile, status: str, progress_t: float, h_scale: float | None,
               events: list[Event], spectating: list[SpecInterval], clips: list[Clip],
               segments: list[dict] | None = None, keywords: Keywords | None = None) -> dict:
-    """h_scale＝本支影片校準出的圖示尺度（欄位名沿用舊版，None＝尚未校準）。"""
+    """h_scale is the icon scale calibrated for this video (field name retained from an older version; None means not calibrated)."""
     doc = {
         "version": 1,
         "video": info.to_dict(),
@@ -178,7 +180,7 @@ def _make_doc(info, profile: Profile, status: str, progress_t: float, h_scale: f
     if segments:
         doc["analysis"]["segments"] = segments
     if keywords is not None:
-        doc["analysis"]["keywords"] = keywords.to_dict()  # 這支影片學到的擊殺關鍵字樣板（接續分析沿用）
+        doc["analysis"]["keywords"] = keywords.to_dict()  # Keyword templates learned from this video (reused when resuming analysis).
     return doc
 
 
@@ -203,15 +205,18 @@ def _resumable(old: dict | None, info, profile: Profile) -> bool:
 
 
 class _Learner:
-    """邊解碼邊學關鍵字樣板（取代先前另外解碼影片開頭一次的 calibrate.learn_keywords，省下一整趟解碼）。
+    """Learn keyword templates while decoding (replaces the separate decode pass at the start of the video in calibrate.learn_keywords).
 
-    學習範圍與 learn_keywords 相同：影片開頭 [0, LEARN_SCAN_SECONDS)。每段只在自己擁有的範圍 [start, end)
-    與學習範圍的交集內蒐集錨點（不含前置／後延解碼的上下文），各段收集器依時間順序合併（build_keywords），
-    因此樣板與 learn_keywords 相同。全部段蒐集完成前，各段把需要關鍵字驗證的格子先緩衝（Pending），學完再定案。
+    The learning window matches learn_keywords: [0, LEARN_SCAN_SECONDS) at the start of the video. Each segment collects
+    anchors only in the intersection of its ownership range [start, end) and the learning window (excluding preroll/postroll context).
+    Merge collectors in time order (build_keywords), producing the same templates as learn_keywords. Until all segments finish
+    collecting, buffer frames that require keyword validation (Pending) and finalize them after learning completes.
 
-    延伸學習：學習範圍內樣板學不齊（開頭幾乎沒有擊殺）時，各段繼續在 [學習範圍, 段尾) 蒐集錨點（late_spans），
-    全部段跑完後補上缺的樣板（finalize／extend_keywords），各段再用逐格紀錄重新定案，不必重新解碼。
-    各段在學習範圍學完之前不知道是否需要延伸，所以一律蒐集並保留紀錄，確定不需要時才丟掉。"""
+    Extended learning: if the templates are incomplete within the learning window (few kills near the start), each segment
+    continues collecting anchors in [learning window, segment end) (late_spans). After all segments finish, fill missing
+    templates (finalize/extend_keywords), then finalize each segment again from its per-frame log without decoding again.
+    Segments cannot know whether extension is needed until the learning window is complete, so collect and retain these logs
+    in all cases and discard them only when extension is unnecessary."""
 
     def __init__(self, segs: list[_Seg], limit: float, duration: float):
         self.spans = [(sg.start, limit if sg.last else min(sg.end, limit)) for sg in segs]
@@ -222,7 +227,7 @@ class _Learner:
         self._lock = threading.Lock()
         self.ready = threading.Event()
         self.keywords: Keywords | None = None
-        self.final: Keywords | None = None  # finalize 之後的最終樣板（含延伸學習）
+        self.final: Keywords | None = None  # Final templates after finalize, including extended learning.
         if not self._waiting:
             self._build()
 
@@ -241,12 +246,12 @@ class _Learner:
 
     @property
     def late(self) -> bool:
-        """學習範圍已學完、樣板不齊，且學習範圍之後還有影片：需要延伸學習（學完之前一律 False）。"""
+        """Whether extended learning is needed: the learning window is complete, templates are incomplete, and video remains (always False before learning completes)."""
         return (EXTEND_LEARNING and self.ready.is_set() and not keywords_complete(self.keywords)
                 and any(b > a for a, b in self.late_spans))
 
     def finalize(self) -> bool:
-        """所有段跑完後決定最終樣板；回傳是否因延伸學習而改變（各段需要用逐格紀錄重新定案）。"""
+        """Choose the final templates after all segments finish; return whether extended learning changed them (segments must then be re-finalized from their per-frame logs)."""
         if not self.late:
             self.final = self.keywords
             return False
@@ -268,7 +273,7 @@ class _Learner:
 
 
 def _replay(sg: _Seg, log: list, own_from: float, hi: float, det: Detector, profile: Profile) -> None:
-    """用最終樣板把段的逐格紀錄重新定案（延伸學習補上樣板後；不重新解碼）。"""
+    """Re-finalize a segment from its per-frame log using the final templates after extended learning, without decoding again."""
     tracker = EventTracker(profile)
     for t, r in log:
         tracker.feed(t, det.resolve(r))
@@ -296,22 +301,22 @@ def analyze(path: str, profile: Profile, *, cache_dir: Path, beside: bool = Fals
         raw_segs = old["analysis"].get("segments")
         if raw_segs:
             segs = _segments_from_doc(raw_segs, info.duration)
-            resuming = segs is not None  # 格式不符就當作沒有可接續的 partial
+            resuming = segs is not None  # Invalid format means there is no resumable partial.
     if resuming:
         h_scale = float(old["analysis"].get("h_scale", 1.0))
         kw_doc = old["analysis"].get("keywords")
         try:
             keywords = Keywords.from_dict(kw_doc) if kw_doc is not None else None
         except ValueError:
-            keywords = None  # partial 裡的樣板損毀：重新學習（並重新規劃各段，等同從頭分析）
+            keywords = None  # Corrupt templates in the partial: relearn and replan all segments, effectively restarting analysis.
         done_events = [Event.from_dict(e) for e in old.get("events", [])]
         done_spec = [SpecInterval.from_dict(s) for s in old.get("spectating", [])]
-        base_raw = old.get("base_events")  # 重新分析前的舊事件（含使用者狀態），完成時合併
-        if segs is None:  # 沒有 segments 的舊 partial：視為單一段，從 progress_t 接續
+        base_raw = old.get("base_events")  # Events from before reanalysis, including user state; merge them on completion.
+        if segs is None:  # Legacy partial without segments: treat as one segment and resume from progress_t.
             p = float(old["analysis"].get("progress_t", 0.0))
             segs = [_Seg(0.0, info.duration, True, info.duration, p, p)]
     else:
-        h_scale = None  # 於 base_events 備妥後校準（可被取消）
+        h_scale = None  # Calibrate after base_events is ready (this can be cancelled).
         keywords = None
         done_events, done_spec = [], []
         base_raw = None
@@ -326,7 +331,7 @@ def analyze(path: str, profile: Profile, *, cache_dir: Path, beside: bool = Fals
             if h_scale is None:
                 h_scale = calibrate(path, info, profile, cancel=cancel, hwaccel=hwaccel)
         except Cancelled:
-            doc = _make_doc(info, profile, "partial", 0.0, None, [], [], manual_clips)  # h_scale=None：尚未校準
+            doc = _make_doc(info, profile, "partial", 0.0, None, [], [], manual_clips)  # h_scale=None means not calibrated yet.
             if base_events:
                 doc["base_events"] = [e.to_dict() for e in base_events]
             _save(cp, doc, cache_dir)
@@ -339,8 +344,9 @@ def analyze(path: str, profile: Profile, *, cache_dir: Path, beside: bool = Fals
         segs = [_Seg(a, b, i == len(plan) - 1, info.duration, a, a) for i, (a, b) in enumerate(plan)]
         learner = _Learner(segs, min(info.duration, LEARN_SCAN_SECONDS), info.duration)
 
-    # 擁有權：每段只輸出 own_from（新段＝start；接續＝游標回退 RESUME_BACK）之後、段尾之前開始的事件。
-    # 已存入 partial 的舊事件只保留「已完成段」與「各未完成段 own_from 之前」的部分，其餘由重新播放產生。
+    # Ownership: each segment emits only events starting at or after own_from (start for a new segment, or the resumed
+    # cursor moved back by RESUME_BACK) and before its end. Keep stored partial events only for completed segments and
+    # for timestamps before own_from in unfinished segments; regenerate the rest during replay.
     for sg in segs:
         sg.own_from = sg.end if sg.done else sg.resume_plan()[0]
 
@@ -357,14 +363,14 @@ def analyze(path: str, profile: Profile, *, cache_dir: Path, beside: bool = Fals
             kept_spec = _cut_intervals(kept_spec, sg.own_from, float("inf") if sg.last else sg.end)
 
     lock = threading.Lock()
-    abort = threading.Event()  # 某段失敗時通知其他段停止
+    abort = threading.Event()  # Signal other segments to stop if one fails.
     state = {"last_emit": -1e9}
 
     def stopped() -> bool:
         return abort.is_set() or (cancel is not None and cancel.is_set())
 
     def combined():
-        # 擁有權合併：各段輸出範圍互不重疊，不需要（也不做）指紋去重
+        # Ownership-based merging gives each segment a disjoint output range, so fingerprint deduplication is unnecessary and not performed.
         evs = list(kept_events)
         spec = list(kept_spec)
         for sg in segs:
@@ -373,19 +379,19 @@ def analyze(path: str, profile: Profile, *, cache_dir: Path, beside: bool = Fals
         return sorted(evs, key=lambda e: e.t), _merge_intervals(spec)
 
     def learned() -> Keywords | None:
-        """已定案的樣板；學習範圍未學完或延伸學習進行中為 None（partial 不寫入未定案的樣板，接續時重新學）。"""
+        """Finalized templates; None while the learning window is incomplete or extended learning is in progress (partials omit unfinalized templates and relearn them on resume)."""
         if learner is None:
             return keywords
         if learner.final is not None:
             return learner.final
         return learner.keywords if learner.ready.is_set() and not learner.late else None
 
-    replays: dict[int, tuple[list, float, float]] = {}  # 延伸學習用：段 → (逐格紀錄, own_from, hi)
+    replays: dict[int, tuple[list, float, float]] = {}  # For extended learning: segment -> (per-frame log, own_from, hi).
 
     def partial_doc() -> dict:
         kw = learned()
         if kw is None:
-            # 關鍵字還沒學完：緩衝中的格子無法定案，只存校準結果（接續時重新規劃各段、從頭邊解碼邊學）
+            # Keywords are not ready, so buffered frames cannot be finalized. Save only calibration results; resume replans segments and relearns while decoding from the start.
             doc = _make_doc(info, profile, "partial", 0.0, h_scale, [], [], manual_clips)
         else:
             evs, spec = combined()
@@ -410,8 +416,8 @@ def analyze(path: str, profile: Profile, *, cache_dir: Path, beside: bool = Fals
         detector = Detector(profile, h_scale, keywords=keywords)
         tracker = EventTracker(profile)
         col = learn_lo = learn_hi = late_col = late_lo = late_hi = None
-        buf: list[tuple[float, FrameResult | Pending]] | None = None  # 關鍵字學完前的緩衝（None＝已可直接定案）
-        log: list[tuple[float, FrameResult | Pending]] | None = None  # 延伸學習的逐格紀錄（None＝確定不需要）
+        buf: list[tuple[float, FrameResult | Pending]] | None = None  # Buffer before keywords finish learning (None means frames can be finalized immediately).
+        log: list[tuple[float, FrameResult | Pending]] | None = None  # Per-frame log for extended learning (None when extension is unnecessary).
         if learner is not None:
             col = learner.collector(i, profile, detector)
             learn_lo, learn_hi = learner.spans[i]
@@ -421,7 +427,7 @@ def analyze(path: str, profile: Profile, *, cache_dir: Path, beside: bool = Fals
             buf, log = [], []
 
         def flush() -> bool:
-            """關鍵字已學完 → 定案緩衝並改為直接定案；回傳是否已可直接定案。"""
+            """After keyword learning completes, finalize the buffer and switch to direct finalization; return whether direct finalization is ready."""
             nonlocal buf
             if buf is None:
                 return True
@@ -447,7 +453,7 @@ def analyze(path: str, profile: Profile, *, cache_dir: Path, beside: bool = Fals
         try:
             for t, banner, spec in stream:
                 if stopped():
-                    if flush():  # 關鍵字未學完時不存段進度（partial 只存校準結果）
+                    if flush():  # Do not save segment progress before keyword learning completes (partials store calibration results only).
                         with lock:
                             snap(cursor)
                     return
@@ -460,7 +466,7 @@ def analyze(path: str, profile: Profile, *, cache_dir: Path, beside: bool = Fals
                         learner.finish(i)
                 if log is not None:
                     if learner.ready.is_set() and not learner.late:
-                        log = late_col = None  # 學習範圍已學齊：不需要延伸學習
+                        log = late_col = None  # Learning window is complete: no extended learning is needed.
                     else:
                         log.append((t, r))
                         if late_col is not None and late_lo - 1e-6 <= t < late_hi - 1e-6:
@@ -481,19 +487,19 @@ def analyze(path: str, profile: Profile, *, cache_dir: Path, beside: bool = Fals
                         snap(t)
                         _save(cp, partial_doc(), cache_dir)
             if learner is not None:
-                learner.finish(i)  # 串流在學習範圍結束前就到底（片尾）
-                while not flush():  # 等其他段把學習範圍掃完
+                learner.finish(i)  # The stream reached EOF before the learning window ended.
+                while not flush():  # Wait for other segments to finish scanning the learning window.
                     if not learner.ready.wait(0.1) and stopped():
                         return
             if log is not None and learner.late:
-                replays[i] = (log, own_from, hi)  # 全部段跑完、決定最終樣板後再重新定案（_replay）
+                replays[i] = (log, own_from, hi)  # Re-finalize in _replay after all segments finish and final templates are chosen.
             events, intervals = tracker.finish()
             with lock:
                 sg.snap_events = [e for e in events if sg.owns(e.t)]
                 sg.snap_spec = _clip_intervals(intervals, own_from, hi)
                 sg.snap_progress = sg.progress_t = sg.target
         except BaseException:
-            abort.set()  # 其他段立刻停止（I7），不必等到它們跑完
+            abort.set()  # Stop other segments immediately (I7); do not wait for them to finish.
             raise
         finally:
             stream.close()
@@ -516,7 +522,7 @@ def analyze(path: str, profile: Profile, *, cache_dir: Path, beside: bool = Fals
                     abort.set()
                     errors.append(e)
     if errors:
-        # 段失敗：先保留已完成的進度（下次可接續），再把第一個錯誤交給呼叫者
+        # Segment failed: preserve completed progress for the next resume, then pass the first error to the caller.
         try:
             with lock:
                 _save(cp, partial_doc(), cache_dir)
@@ -525,7 +531,7 @@ def analyze(path: str, profile: Profile, *, cache_dir: Path, beside: bool = Fals
         raise errors[0]
 
     if not all(sg.done for sg in segs):
-        # 取消：寫入 partial（含各段進度）後離開；所有 FrameStream 已在各段工作內關閉
+        # Cancelled: write a partial with each segment's progress and return; each FrameStream has already been closed by its segment worker.
         _save(cp, partial_doc(), cache_dir)
         raise Cancelled()
     if learner is not None and learner.finalize():

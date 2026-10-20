@@ -1,12 +1,12 @@
-"""驗收腳本：用完整引擎（analyze）跑影片，jobs=1／4 各一次，比對事件逐筆相同、與真值計分、報倍速。
+"""Acceptance script: analyze videos with the full engine, compare per-event results across jobs=1/4, score against ground truth, and report speed.
 
-用法：
-  python tools/icon_accept.py --out DIR [--jobs 1 4] LAB=影片路徑 ...
-真值（只用來評分，不用來調參）：
-  TC／ENG／JP：舊文字引擎 after3 事件（ICON_ACCEPT_BASELINE 資料夾內 <LAB>_j1.json）＋ tools/icon_exp/truth_aug.json 的目視修正
-  SC1：實驗報告的目視標註；SC2：實驗報告 §4.6 目視的 3 個事件
-  H771／H950：沒有真值，只列事件數與舊文字引擎（ICON_ACCEPT_BASELINE 內 <LAB>_j1.json，若有）的對照
-不寫入影片所在資料夾（快取在 --out 底下）。"""
+Usage:
+  python tools/icon_accept.py --out DIR [--jobs 1 4] LAB=video_path ...
+Ground truth (used only for scoring, not parameter tuning):
+  TC/ENG/JP: old text engine after3 events (the <LAB>_j1.json file in ICON_ACCEPT_BASELINE) plus visual corrections in tools/icon_exp/truth_aug.json
+  SC1: visual annotations from the experiment report; SC2: the 3 events visually identified in experiment report §4.6
+  H771/H950: no ground truth; show event counts and compare with the old text engine, if <LAB>_j1.json exists in ICON_ACCEPT_BASELINE
+Does not write to the video directory (cache is stored under --out)."""
 from __future__ import annotations
 
 import argparse
@@ -63,7 +63,7 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", required=True)
     ap.add_argument("--jobs", type=int, nargs="+", default=[1, 4])
-    ap.add_argument("videos", nargs="+", help="LAB=路徑")
+    ap.add_argument("videos", nargs="+", help="LAB=path")
     a = ap.parse_args()
     from aditor.analyze import analyze
     from aditor.probe import probe
@@ -82,30 +82,30 @@ def main() -> int:
             el = time.time() - t0
             docs[j] = doc
             (out / f"{lab}_j{j}.json").write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
-            print(f"{lab} jobs={j}: {len(doc['events'])} 事件，h_scale={doc['analysis']['h_scale']}，"
-                  f"{el:.1f} 秒（影片 {dur:.0f} 秒，{dur / el:.1f}x 倍速）", flush=True)
+            print(f"{lab} jobs={j}: {len(doc['events'])} events, h_scale={doc['analysis']['h_scale']}, "
+                  f"{el:.1f} s (video {dur:.0f} s, {dur / el:.1f}x realtime)", flush=True)
         view = {j: [(e["id"], e["t"], e["type"], e["name_sig"], e["counted"], e["counted_reason"]) for e in d["events"]]
                 for j, d in docs.items()}
         first = a.jobs[0]
         for j in a.jobs[1:]:
-            print(f"{lab} jobs={first} 與 jobs={j} 事件逐筆{'相同' if view[first] == view[j] else '不同！'}")
+            print(f"{lab} jobs={first} vs. jobs={j}: events are {'identical' if view[first] == view[j] else 'different!'}")
         pred = product(docs[first]["events"])
         tru = truth(lab, base)
         if tru is None:
             old = None
             if base and (base / f"{lab}_j1.json").exists():
                 old = product(json.loads((base / f"{lab}_j1.json").read_text(encoding="utf-8"))["events"])
-            print(f"{lab}: 圖示 K/A 事件 {len(pred)} 個（無真值）" + (f"；舊文字引擎 {len(old)} 個" if old is not None else ""))
+            print(f"{lab}: {len(pred)} icon K/A events (no ground truth)" + (f"; {len(old)} old text-engine events" if old is not None else ""))
             continue
         pairs, extra, missed = match(pred, tru)
         p2, extra2, missed2 = match([(t, "X") for t, _ in pred], [(t, "X") for t, _ in tru])
         kn = sum(1 for e in tru if e[1] == "K"), sum(1 for ei, _ in pairs if tru[ei][1] == "K")
         an = sum(1 for e in tru if e[1] == "A"), sum(1 for ei, _ in pairs if tru[ei][1] == "A")
-        print(f"{lab}: 真值 {len(tru)}（K {kn[0]}／A {an[0]}）引擎 {len(pred)}；類型正確召回 {len(pairs)}/{len(tru)}="
-              f"{len(pairs) / len(tru):.3f}（K {kn[1]}/{kn[0]}、A {an[1]}/{an[0]}）；不分類型召回 {len(p2)}/{len(tru)}="
-              f"{len(p2) / len(tru):.3f}；精確度 類型正確 {len(pairs) / max(1, len(pred)):.3f} 不分類型 {len(p2) / max(1, len(pred)):.3f}")
-        print(f"   漏報：{missed}")
-        print(f"   多報：{extra}")
+        print(f"{lab}: {len(tru)} ground-truth events (K {kn[0]}/A {an[0]}), {len(pred)} engine events; typed recall {len(pairs)}/{len(tru)}="
+              f"{len(pairs) / len(tru):.3f} (K {kn[1]}/{kn[0]}, A {an[1]}/{an[0]}); untyped recall {len(p2)}/{len(tru)}="
+              f"{len(p2) / len(tru):.3f}; precision typed {len(pairs) / max(1, len(pred)):.3f}, untyped {len(p2) / max(1, len(pred)):.3f}")
+        print(f"   Missed: {missed}")
+        print(f"   Extra: {extra}")
     return 0
 
 

@@ -5,7 +5,7 @@ import { StudioLoadingView } from './StudioStates'
 import { useStudioLibrary } from './useStudioLibrary'
 import '../styles/studio.css'
 
-/** 尚未選片時，直接進入最新錄影；空影片庫保留在工作室。 */
+/** When no video is selected, open the latest recording directly; keep an empty library in the studio. */
 export function StudioLanding({ onOpenVideo, onBack }: { onOpenVideo: (path: string) => void; onBack: () => void }): JSX.Element {
   const { entries, failed, retry } = useStudioLibrary()
   const newest = entries?.reduce<(typeof entries)[number] | undefined>((best, entry) =>

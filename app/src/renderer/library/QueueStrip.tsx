@@ -10,8 +10,8 @@ import { i18n } from '../i18n'
 const t = i18n.queue
 
 /**
- * 影片庫頂的佇列條：只在 main 的真實佇列有「分析中／排隊中」項目時顯示
- * （匯入但尚未排隊的影片不算）。顯示目前檔名、百分比、ETA；點擊開啟佇列浮層（貼在條的下方）。
+ * Queue strip at the top of the library, shown only when main's real queue has processing/queued items
+ * (imported videos that have not been queued do not count). Shows the current filename, percentage, and ETA; click to open the queue popover below the strip.
  */
 export function QueueStrip(): JSX.Element | null {
   const summary = useQueueSummary()

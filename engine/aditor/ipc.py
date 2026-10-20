@@ -1,4 +1,4 @@
-"""JSON Lines IPC 伺服器（stdin/stdout，每行一個 UTF-8 JSON）。供 Electron 主程序驅動。"""
+"""JSON Lines IPC server (one UTF-8 JSON value per stdin/stdout line), driven by the Electron main process."""
 from __future__ import annotations
 
 import json
@@ -40,7 +40,7 @@ def _code(exc: Exception) -> str:
 
 def _arg(args: dict, key: str):
     if key not in args:
-        raise BadRequest(f"缺少參數：{key}")
+        raise BadRequest(f"Missing parameter: {key}")
     return args[key]
 
 
@@ -48,7 +48,7 @@ def _jobs(v):
     if v is None:
         return None
     if isinstance(v, bool) or not isinstance(v, int) or v < 1:
-        raise BadRequest("jobs 必須是正整數")
+        raise BadRequest("jobs must be a positive integer")
     return v
 
 
@@ -58,10 +58,10 @@ class Server:
         self._out = out
         self._wlock = threading.Lock()
         self._state = threading.Lock()
-        self._current: tuple[str, threading.Event] | None = None  # 執行中的 analyze
+        self._current: tuple[str, threading.Event] | None = None  # Running analysis
         self._threads: list[threading.Thread] = []
 
-    # --- 輸出 ---
+    # --- Output ---
     def send(self, obj: dict) -> None:
         line = (json.dumps(obj, ensure_ascii=False) + "\n").encode("utf-8")
         with self._wlock:
@@ -71,7 +71,7 @@ class Server:
     def _error(self, rid, exc: Exception, code: str | None = None) -> None:
         self.send({"id": rid, "type": "error", "code": code or _code(exc), "message": str(exc)})
 
-    # --- 主迴圈 ---
+    # --- Main loop ---
     def serve(self) -> None:
         self.send({"type": "ready", "engine_version": ENGINE_VERSION})
         for raw in self._in:
@@ -79,7 +79,7 @@ class Server:
             if not raw:
                 continue
             self._dispatch(raw)
-        # stdin EOF：取消執行中的分析並等待工作緒收尾
+        # On stdin EOF, cancel the running analysis and wait for the worker thread to finish.
         with self._state:
             if self._current is not None:
                 self._current[1].set()
@@ -92,30 +92,30 @@ class Server:
             try:
                 req = json.loads(raw)
             except ValueError as e:
-                raise BadRequest(f"JSON 格式錯誤：{e}") from e
+                raise BadRequest(f"Invalid JSON: {e}") from e
             if not isinstance(req, dict):
-                raise BadRequest("請求必須是 JSON 物件")
+                raise BadRequest("Request must be a JSON object")
             rid = req.get("id")
             cmd = req.get("cmd")
             args = req.get("args", {})
             if not isinstance(rid, str) or not isinstance(args, dict):
-                raise BadRequest("id 必須是字串、args 必須是物件")
+                raise BadRequest("id must be a string and args must be an object")
             if cmd == "cancel":
                 self._cancel(rid, args)
                 return
             handler = {"probe": self._probe, "analyze": self._analyze,
                        "derive": self._derive, "autoclip": self._autoclip}.get(cmd)
             if handler is None:
-                raise BadRequest(f"未知指令：{cmd!r}")
+                raise BadRequest(f"Unknown command: {cmd!r}")
             cancel = None
             if cmd == "analyze":
                 with self._state:
                     if self._current is not None:
-                        raise _Busy("已有分析進行中")
+                        raise _Busy("An analysis is already running")
                     cancel = threading.Event()
                     self._current = (rid, cancel)
             th = threading.Thread(target=self._run, args=(rid, handler, args, cancel), daemon=True)
-            # 只保留仍在執行的工作緒（長時間執行的 IPC 工作階段不累積已結束的 Thread 物件）
+            # Keep only active threads so long-running IPC sessions do not accumulate completed Thread objects.
             self._threads = [t for t in self._threads if t.is_alive()]
             self._threads.append(th)
             th.start()
@@ -125,7 +125,7 @@ class Server:
             self._error(rid, e)
 
     def _run(self, rid, handler, args, cancel) -> None:
-        # 先釋放 busy 狀態再送終結訊息，避免客戶端立刻重送時誤判 busy
+        # Clear the busy state before sending the terminal message to avoid reporting busy if the client immediately retries.
         try:
             data = handler(rid, args, cancel)
             self._release(cancel)
@@ -140,7 +140,7 @@ class Server:
                 if self._current is not None and self._current[1] is cancel:
                     self._current = None
 
-    # --- 指令 ---
+    # --- Commands ---
     def _cancel(self, rid, args: dict) -> None:
         target = _arg(args, "target")
         with self._state:
@@ -170,7 +170,7 @@ class Server:
             events = [Event.from_dict(e) for e in _arg(args, "events")]
             spec = [SpecInterval.from_dict(s) for s in _arg(args, "spectating")]
         except (KeyError, TypeError) as e:
-            raise BadRequest(f"參數格式錯誤：{e!r}") from e
+            raise BadRequest(f"Invalid arguments: {e!r}") from e
         profile = load_profile(Path(_arg(args, "profile_dir")))
         return {"events": [e.to_dict() for e in derive(events, spec, profile)]}
 
@@ -180,7 +180,7 @@ class Server:
             params = AutoClipParams.from_dict(_arg(args, "params"))
             duration = float(_arg(args, "duration"))
         except (KeyError, TypeError, ValueError) as e:
-            raise BadRequest(f"參數格式錯誤：{e!r}") from e
+            raise BadRequest(f"Invalid arguments: {e!r}") from e
         return {"clips": [c.to_dict() for c in auto_clips(events, params, duration)]}
 
 

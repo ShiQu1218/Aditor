@@ -28,17 +28,17 @@ describe('computeGrid', () => {
 
     const res = computeGrid({ ...base, width: 1200, groups, scrollTop: 1000, viewHeight: 600 })
 
-    // 只渲染可視列＋上下 overscan，遠少於全部
+    // Render only visible rows plus overscan, far fewer than the total.
     expect(res.rows.length).toBeGreaterThan(0)
     expect(res.rows.length).toBeLessThan(totalRows / 2)
-    // 第一組的表頭已捲出畫面（不含在渲染列中），第二組尚未進入
+    // The first group's header has scrolled out (not in rendered rows); the second group has not entered yet.
     expect(res.rows.some((r) => r.type === 'header' && r.group === 0)).toBe(false)
     expect(res.rows.some((r) => r.group === 1)).toBe(false)
-    // 可視範圍回報第 0 組
+    // The visible range reports group 0.
     expect(res.visible[0]).toBe(0)
     expect(res.visible[1]).toBe(0)
 
-    // 捲到第二組的表頭附近時，表頭與其列出現（前一組尾列仍在 overscan 內，順序照檔案順序）
+    // Near the second group's header, its header and rows appear (the previous group's last row remains in overscan, in file order).
     const res2 = computeGrid({ ...base, width: 1200, groups, scrollTop: group0Height + 10, viewHeight: 300 })
     expect(res2.rows.some((r) => r.type === 'header' && r.group === 1)).toBe(true)
     expect(res2.rows.some((r) => r.type === 'row' && r.group === 1 && r.from === 0)).toBe(true)
@@ -57,9 +57,9 @@ describe('computeGrid', () => {
   test('computeGrid row ranges clamp from/to to the group size', () => {
     const res = computeGrid({ ...base, width: 1200, groups: [6], scrollTop: 0, viewHeight: 800 })
     const row = res.rows.find((r) => r.type === 'row')
-    expect(row).toEqual({ type: 'row', group: 0, from: 0, to: 3 }) // 一列 4 張
+    expect(row).toEqual({ type: 'row', group: 0, from: 0, to: 3 }) // Four cards per row.
     const last = res.rows.filter((r) => r.type === 'row').pop()
-    expect(last).toEqual({ type: 'row', group: 0, from: 4, to: 5 }) // 尾列不足 4 張
+    expect(last).toEqual({ type: 'row', group: 0, from: 4, to: 5 }) // The last row has fewer than four cards.
   })
 
   test('computeGrid clamps scroll beyond the end and handles empty groups', () => {
@@ -67,7 +67,7 @@ describe('computeGrid', () => {
     const cols = gridColumns(1200, 280, 16)
     const total = base.headerHeight + Math.ceil(8 / cols) * base.rowHeight
 
-    // 捲動位置被夾在內容尾端：仍渲染最後一列，不會空白
+    // Scroll position is clamped to the content end; the last row still renders without a blank area.
     const beyond = computeGrid({ ...base, width: 1200, groups, scrollTop: total + 200, viewHeight: 400 })
     const lastRow = beyond.rows.filter((r) => r.type === 'row').pop()
     expect(lastRow).toEqual({ type: 'row', group: 0, from: 4, to: 7 })
@@ -107,7 +107,7 @@ describe('card geometry (single source of truth)', () => {
     expect(cardGeomStyle()).toMatchObject({ '--card-body-h': `${CARD.bodyH}px`, '--card-gap': `${CARD.gap}px` })
   })
   test('error card content fits the body (name + reason + 26px actions)', () => {
-    // 10 上內距 + 名稱 20 + 4 + 原因 18 + 6 + 按鈕 26 + 10 下內距
+    // 10 top padding + 20 name + 4 gap + 18 reason + 6 gap + 26 button + 10 bottom padding.
     expect(CARD.bodyH).toBeGreaterThanOrEqual(10 + 20 + 4 + 18 + 6 + 26 + 10)
   })
 })

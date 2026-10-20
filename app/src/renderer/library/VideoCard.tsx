@@ -17,26 +17,26 @@ const t = i18n.library.card
 
 export interface VideoCardProps {
   entry: LibraryEntry
-  /** 任何點擊／Enter 都回報；由呼叫端決定開啟或顯示 Toast */
+  /** Report any click/Enter; the caller decides whether to open or show a toast. */
   onOpen: (entry: LibraryEntry) => void
   onToggleFavorite: (path: string) => void
   onRemove: (path: string) => void
   onRetry: (path: string) => void
-  /** 卡片選單開／關時通報（開啟時帶關閉函式）：Esc 由 keymap 依「選單 → 搜尋」分層處理 */
+  /** Report when the card menu opens/closes (include a close function when opening); keymap handles Esc in menu-then-search order. */
   onMenuChange?: (path: string, close: (() => void) | null) => void
-  /** 設定「建議代理檔」：false 時不顯示「建議代理檔」徽章（預設 true） */
+  /** Proxy suggestion setting: hide the proxy-suggestion badge when false (defaults to true). */
   proxySuggest?: boolean
   /**
-   * roving tabindex：網格中只有游標卡片的控制項在 Tab 順序內（其餘 tabIndex=-1，仍可用滑鼠／方向鍵到達）。
-   * 單獨使用（沒有網格）時預設 true。
+   * Roving tabindex: only controls in the cursor card participate in the grid's Tab order (others use tabIndex=-1 but remain reachable by mouse/arrow keys).
+   * Defaults to true when used without a grid.
    */
   active?: boolean
 }
 
-/**
- * 左上角「建議代理檔」徽章：AV1 一律提示（硬體解碼支援罕見）；
- * 容器或編碼非 Chromium 可播放者亦提示（正式的可播放／硬體解碼判定在工作室 notice）。
- */
+  /**
+   * Top-left proxy-suggestion badge: always show for AV1 (hardware decoding is uncommon);
+   * also show for containers/codecs Chromium cannot play. The studio notice performs the definitive playback/hardware-decoding check.
+   */
 export function proxyBadge(entry: LibraryEntry): string | null {
   const codec = (entry.codec ?? '').toLowerCase()
   if (!codec) return null
@@ -46,7 +46,7 @@ export function proxyBadge(entry: LibraryEntry): string | null {
   return null
 }
 
-/** 卡片只在這些欄位變動時需要重繪（進度已另有 2 Hz 節流） */
+  /** Fields that trigger a card rerender (progress is separately throttled to 2 Hz). */
 export function sameCardEntry(a: LibraryEntry, b: LibraryEntry): boolean {
   return (
     a.path === b.path &&
@@ -69,7 +69,7 @@ function VideoCardView({ entry, onOpen, onToggleFavorite, onRemove, onRetry, onM
   const rootRef = useRef<HTMLElement>(null)
   const moreRef = useRef<HTMLButtonElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
-  /** 選單開啟期間焦點是否在選單內：關閉時才知道要不要把焦點還給 ⋯ 按鈕 */
+  /** Whether focus is inside the menu while open; used on close to decide whether to return focus to the ⋯ button. */
   const menuHadFocus = useRef(false)
   const moreId = useId()
   const tab = active ? 0 : -1
@@ -78,7 +78,7 @@ function VideoCardView({ entry, onOpen, onToggleFavorite, onRemove, onRetry, onM
   const badge = proxySuggest ? proxyBadge(entry) : null
   const done = entry.status === 'done'
   const error = entry.status === 'error'
-  // 「等待中」只看 main 的真實佇列：status 為 pending 但不在佇列的（匯入未排隊、取消後）是「尚未分析」
+  // Waiting refers only to main's real queue; pending items not in the queue (imported but not queued, or canceled) are not analyzed yet.
   const queueState = useQueueItemState(entry.path)
   const notQueued = entry.status === 'pending' && queueState === 'idle'
   const statusText = cardStatusText(entry, queueState)
@@ -97,7 +97,7 @@ function VideoCardView({ entry, onOpen, onToggleFavorite, onRemove, onRetry, onM
     }
   }, [menuOpen, entry.path, onMenuChange])
 
-  // 選單開啟：焦點移到第一個選項；關閉：焦點若在選單內，回到 ⋯ 觸發按鈕
+  // On open, move focus to the first option; on close, return focus to the ⋯ trigger if focus was inside the menu.
   useEffect(() => {
     if (!menuOpen) return
     const first = menuRef.current?.querySelector<HTMLElement>('[role="menuitem"]')
@@ -121,17 +121,17 @@ function VideoCardView({ entry, onOpen, onToggleFavorite, onRemove, onRetry, onM
       if (i !== null) items[i]?.focus()
     } else if (e.key === 'Escape') {
       e.preventDefault()
-      e.stopPropagation() // 只關選單，不讓影片庫的 Esc（清除搜尋）一起處理
+      e.stopPropagation() // Close only the menu; do not also let the library's Esc handler clear search.
       setMenuOpen(false)
     } else if (e.key === 'Tab') {
-      // 選單不攔截 Tab：關閉並讓焦點從 ⋯ 按鈕接著往下走
+      // Do not intercept Tab in the menu: close it and let focus continue from the ⋯ button.
       menuHadFocus.current = false
       moreRef.current?.focus()
       setMenuOpen(false)
     }
   }
 
-  // 惰性「N 精華」（spec §7.4）：卡片首次進入視窗、分析完成且尚無記錄時，請主程序以預設參數計算
+  // Lazy "N highlights" (spec §7.4): when a card first enters the viewport after analysis and has no record, ask main to calculate with default parameters.
   const wantHl = done && entry.hl === undefined
   useEffect(() => {
     if (!wantHl) return
@@ -159,8 +159,8 @@ function VideoCardView({ entry, onOpen, onToggleFavorite, onRemove, onRetry, onM
 
   const label = statusText ? `${title} · ${statusText}` : title
 
-  // 結構：<article>（無 role、無鍵盤處理）裡只有一個主要按鈕 .vcard-open（縮圖＋文字，負責開啟），
-  // 其餘互動元件（收藏、⋯、分析、重試、移除）都是它的「兄弟」，不巢狀；Enter／Space 由原生 <button> 處理。
+// Structure: the <article> (no role or keyboard handling) contains one main .vcard-open button (thumbnail and text, used to open),
+// with all other controls (favorite, ⋯, analyze, retry, remove) as siblings, never nested; native <button> handles Enter/Space.
   return (
     <article ref={rootRef} className={`vcard${error ? ' err' : ''}${done ? '' : ' busy'}`} data-vcard-path={entry.path}>
       <button

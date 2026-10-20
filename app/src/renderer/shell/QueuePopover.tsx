@@ -11,15 +11,15 @@ const t = i18n.queue
 export interface QueuePopoverProps {
   open: boolean
   onClose: () => void
-  /** 'rail'＝固定於圖示欄旁；'strip'＝由佇列條容器定位（貼在下方） */
+  /** 'rail' = fixed next to the icon rail; 'strip' = positioned by the queue-bar container (below it). */
   variant?: 'rail' | 'strip'
-  /** 觸發按鈕；點擊它不算「點擊外部」（開關交給呼叫端切換） */
+  /** Trigger button; clicks on it do not count as outside clicks (the caller toggles the popover). */
   anchorRef?: React.RefObject<HTMLElement>
 }
 
 /**
- * 分析佇列浮層：列出分析中／排隊中（取自 main 的真實佇列）、百分比、ETA 與〔取消〕（`queue.cancel`）。
- * Esc 或點擊外部關閉。關閉時不掛載內容（不訂閱佇列、不註冊監聽）。
+ * Analysis queue popover: list analyzing/queued jobs (from main's live queue), percentages, ETA, and cancel action (`queue.cancel`).
+ * Close on Escape or outside click. Do not mount its contents when closed (no queue subscription or event listeners).
  */
 export function QueuePopover({ open, ...rest }: QueuePopoverProps): JSX.Element | null {
   return open ? <QueuePopoverBody {...rest} /> : null
@@ -30,7 +30,7 @@ function QueuePopoverBody({ onClose, variant = 'rail', anchorRef }: Omit<QueuePo
   const popRef = useRef<HTMLDivElement>(null)
 
   const titleId = useId()
-  // Esc 關閉＋焦點陷阱＋關閉後焦點回到圖示欄的佇列按鈕
+  // Escape closes the popover; trap focus and return focus to the queue button in the icon rail after closing.
   useFocusTrap(popRef, { onEscape: onClose })
 
   useEffect(() => {

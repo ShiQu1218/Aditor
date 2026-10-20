@@ -38,12 +38,12 @@ describe('visible focus (spec §3.8, Task 12 review)', () => {
   })
 
   test.each(hiding.map((r) => [`${r.file}: ${r.selector}`, r] as const))('%s has a visible :focus-visible replacement', (_name, r) => {
-    // 規則本身就是 :focus-visible（同時畫出焦點環）
+    // The rule itself is :focus-visible (and draws the focus ring).
     if (/:focus-visible/.test(r.selector)) {
       expect(showsFocus(r), 'the :focus-visible rule hides the outline but draws nothing').toBe(true)
       return
     }
-    // 其他（含 :focus）：必須另有同元素的 :focus-visible 規則畫出焦點
+    // Other states, including :focus, must have a :focus-visible rule on the same element to draw the focus indicator.
     const bases = r.selector.split(',').map((x) => x.trim().replace(/:focus(-within)?$/, ''))
     for (const b of bases) {
       const replacement = all.find((x) => x.selector.split(',').map((y) => y.trim()).includes(`${b}:focus-visible`) && showsFocus(x))

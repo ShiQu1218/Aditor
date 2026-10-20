@@ -1,9 +1,9 @@
-//! 小圖擷取（任務 B2）：在 GPU 上裁切 banner／spec ROI、縮出 320×180 灰階 thumb，
-//! 以 4 fps 讀回 CPU（規格 §3.3）。
+//! Small-image capture (task B2): crop banner/spec ROIs and scale to a 320×180 grayscale thumbnail on the GPU,
+//! reading back to the CPU at 4 fps (spec §3.3).
 //!
-//! 讀回必須非同步：本格 `CopySubresourceRegion` 到 staging，**下一次**取樣時才 `Map` 上一次的
-//! staging（雙緩衝），避免 GPU 管線停頓。輸出尺寸固定為 ROI 在基準解析度下的寬高，
-//! 實際畫面非 1920×1080 時在 GPU 縮放（與離線分析「先縮到 1920×1080 再裁」一致）。
+//! Readback must be asynchronous: `CopySubresourceRegion` into staging for this frame, then `Map` the previous
+//! staging buffer at the **next** sample (double buffering) to avoid stalling the GPU pipeline. Output dimensions match the ROI at reference resolution;
+//! scale on the GPU when the actual frame is not 1920×1080 (matching offline scaling to 1920×1080 before cropping).
 
 use std::mem::ManuallyDrop;
 
@@ -24,7 +24,7 @@ use crate::types::{FramesSpec, Rect, SMALL_FPS, THUMB_EVERY, THUMB_H, THUMB_W};
 mod luma;
 pub(super) use luma::LumaProbe;
 
-/// 一組讀回的小圖。banner／spec 為 BGR24（列緊密排列，無 padding）；thumb 為 GRAY8。
+/// A set of read-back thumbnails. banner/spec use tightly packed BGR24 rows (no padding); thumb uses GRAY8.
 #[derive(Debug, Clone, PartialEq)]
 pub struct SmallFrames {
     pub pts: i64,
@@ -46,7 +46,7 @@ pub struct SmallFrameExtractor {
     last_error: Option<String>,
 }
 
-// SAFETY: 所有 D3D11 物件都來自 Gpu 的 multithread 保護裝置；extractor 的可變狀態只經 &mut 存取。
+// SAFETY: All D3D11 objects come from Gpu's multithread-protected device; mutable extractor state is accessed only through &mut.
 unsafe impl Send for SmallFrameExtractor {}
 
 impl SmallFrameExtractor {
@@ -66,7 +66,7 @@ impl SmallFrameExtractor {
         })
     }
 
-    /// banner／spec 的輸出寬高（基準座標）。
+    /// banner/spec output dimensions in reference coordinates.
     pub fn banner_size(&self) -> (u32, u32) {
         (self.frames.banner[2], self.frames.banner[3])
     }
@@ -75,7 +75,7 @@ impl SmallFrameExtractor {
         (self.frames.spec[2], self.frames.spec[3])
     }
 
-    /// 每格擷取都呼叫；內部依 pts 節流到 `SMALL_FPS`。回傳「上一次取樣」已讀回的結果（若有）。
+    /// Called for every captured frame; throttled internally to `SMALL_FPS` using pts. Returns the previous sample's readback, if available.
     pub fn on_frame(
         &mut self,
         texture: &ID3D11Texture2D,
@@ -95,7 +95,7 @@ impl SmallFrameExtractor {
                 self.dropped += 1;
                 let message = format!("{error:#}");
                 if self.last_error.as_ref() != Some(&message) {
-                    eprintln!("小圖讀回失敗：{message}");
+                    eprintln!("Thumbnail readback failed: {message}");
                     self.last_error = Some(message);
                 }
                 None
@@ -111,14 +111,14 @@ impl SmallFrameExtractor {
         pts: i64,
     ) -> Result<Option<SmallFrames>> {
         let mut desc = D3D11_TEXTURE2D_DESC::default();
-        // SAFETY: texture 是呼叫期間有效的 COM 物件，desc 是可寫入的描述結構。
+        // SAFETY: texture is a valid COM object for the duration of this call; desc is a writable description structure.
         unsafe { texture.GetDesc(&mut desc) };
         if desc.Format != DXGI_FORMAT_B8G8R8A8_UNORM
             || desc.Width < width
             || desc.Height < height
             || desc.SampleDesc.Count != 1
         {
-            bail!("小圖來源必須是尺寸足夠的單取樣 BGRA texture");
+            bail!("Thumbnail source must be a sufficiently large, single-sample BGRA texture");
         }
 
         let previous = 1 - self.next_slot;
@@ -128,7 +128,7 @@ impl SmallFrameExtractor {
             if self.scaler.as_ref().map(|s| s.input_size) != Some((width, height)) {
                 self.scaler = Some(Scaler::new(&self.gpu, (width, height), (1920, 1080))?);
             }
-            let scaler = self.scaler.as_ref().context("缺少基準解析度縮放器")?;
+            let scaler = self.scaler.as_ref().context("Missing reference-resolution scaler")?;
             scaler.scale(&self.gpu, texture)?;
             &scaler.output
         };
@@ -136,7 +136,7 @@ impl SmallFrameExtractor {
         if with_thumb {
             self.thumb_scaler.scale(&self.gpu, normalized)?;
         }
-        // 所有縮放成功後才取走上一組結果，避免後續錯誤遺失已完成的讀回。
+        // Retrieve the previous result only after all scaling succeeds, so later errors do not discard completed readbacks.
         let result = self.slots[previous].read(&self.gpu)?;
         let slot = &mut self.slots[self.next_slot];
         if slot.pending.is_some() {
@@ -145,7 +145,7 @@ impl SmallFrameExtractor {
         copy_roi(&self.gpu, normalized, &slot.banner, self.frames.banner);
         copy_roi(&self.gpu, normalized, &slot.spec, self.frames.spec);
         if with_thumb {
-            // SAFETY: 來源與目的都是同尺寸、同格式且未映射的 texture。
+            // SAFETY: Source and destination are unmapped textures with matching dimensions and formats.
             unsafe {
                 self.gpu
                     .context
@@ -153,10 +153,10 @@ impl SmallFrameExtractor {
             }
         }
         slot.pending = Some((pts, with_thumb));
-        // SAFETY: event query 僅追蹤此槽的 GPU 複製工作，不在回呼中等待結果。
+        // SAFETY: The event query tracks only this slot's GPU copy and does not wait for completion in the callback.
         unsafe { self.gpu.context.End(&slot.ready) };
-        // 此裝置沒有 Present；主動提交 GPU 工作，Flush 不等待 GPU 完成。
-        // SAFETY: 共用 context 已開啟 multithread 保護，只提交目前的命令緩衝。
+        // This device has no Present call; submit GPU work explicitly. Flush does not wait for the GPU to finish.
+        // SAFETY: The shared context has multithread protection enabled; this only submits the current command buffer.
         unsafe { self.gpu.context.Flush() };
         self.samples += 1;
         self.next_slot = previous;
@@ -166,12 +166,12 @@ impl SmallFrameExtractor {
 
 fn validate_spec(frames: FramesSpec) -> Result<()> {
     if frames.base != [1920, 1080] {
-        bail!("小圖基準解析度必須是 1920×1080");
+        bail!("Thumbnail reference resolution must be 1920×1080");
     }
     for roi in [frames.banner, frames.spec] {
         let [x, y, w, h] = roi;
         if w == 0 || h == 0 || x as u64 + w as u64 > 1920 || y as u64 + h as u64 > 1080 {
-            bail!("小圖 ROI 必須完整位於基準畫面內且寬高大於零");
+            bail!("Thumbnail ROI must fit within the reference frame and have nonzero width and height");
         }
     }
     Ok(())
@@ -188,7 +188,7 @@ struct Readback {
 impl Readback {
     fn new(gpu: &Gpu, frames: FramesSpec) -> Result<Self> {
         let mut ready = None;
-        // SAFETY: 只建立 GPU 完成事件；query 的輸出由 windows crate 管理。
+        // SAFETY: Creates only a GPU completion event; the windows crate manages the query output.
         unsafe {
             gpu.device.CreateQuery(
                 &D3D11_QUERY_DESC {
@@ -203,7 +203,7 @@ impl Readback {
             spec: texture(gpu, (frames.spec[2], frames.spec[3]), true)?,
             thumb: texture(gpu, (THUMB_W, THUMB_H), true)?,
             pending: None,
-            ready: ready.context("缺少小圖完成事件")?,
+            ready: ready.context("Missing thumbnail completion event")?,
         })
     }
 
@@ -212,7 +212,7 @@ impl Readback {
             return Ok(None);
         };
         let mut complete = windows::core::BOOL::default();
-        // SAFETY: 以 BOOL 讀取 event query，DONOTFLUSH 只查詢狀態，不會等待 GPU。
+        // SAFETY: Read the event query as BOOL; DONOTFLUSH only queries status without waiting for the GPU.
         unsafe {
             gpu.context.GetData(
                 &self.ready,
@@ -224,7 +224,7 @@ impl Readback {
         if !complete.as_bool() {
             return Ok(None);
         }
-        // 先確認整組 staging 都就緒；任何一張尚未完成就不等待，也不輸出半組資料。
+        // Check that every staging texture is ready first; do not wait or return a partial set if any texture is still pending.
         let Some(banner) = Mapped::try_new(gpu, &self.banner)? else {
             return Ok(None);
         };
@@ -261,7 +261,7 @@ impl<'a> Mapped<'a> {
     fn try_new(gpu: &'a Gpu, texture: &'a ID3D11Texture2D) -> Result<Option<Self>> {
         let mut data = D3D11_MAPPED_SUBRESOURCE::default();
         let mut desc = D3D11_TEXTURE2D_DESC::default();
-        // SAFETY: staging 只由本 extractor 使用；DO_NOT_WAIT 保證 GPU 未完成時立即返回。
+        // SAFETY: staging is used only by this extractor; DO_NOT_WAIT returns immediately if the GPU is not finished.
         unsafe {
             texture.GetDesc(&mut desc);
             match gpu.context.Map(
@@ -278,7 +278,7 @@ impl<'a> Mapped<'a> {
                     size: (desc.Width, desc.Height),
                 })),
                 Err(error) if error.code() == DXGI_ERROR_WAS_STILL_DRAWING => Ok(None),
-                Err(error) => Err(error).context("映射小圖 staging 失敗"),
+                Err(error) => Err(error).context("Failed to map thumbnail staging texture"),
             }
         }
     }
@@ -287,7 +287,7 @@ impl<'a> Mapped<'a> {
         let channels = if gray { 1 } else { 3 };
         let mut output = Vec::with_capacity(self.size.0 as usize * self.size.1 as usize * channels);
         for y in 0..self.size.1 as usize {
-            // SAFETY: Map 成功後每列至少有 width * 4 bytes；只讀有效像素並跳過 RowPitch padding。
+            // SAFETY: After Map succeeds, each row has at least width * 4 bytes; read valid pixels only and skip RowPitch padding.
             let row = unsafe {
                 std::slice::from_raw_parts(
                     self.data
@@ -305,7 +305,7 @@ impl<'a> Mapped<'a> {
 
 impl Drop for Mapped<'_> {
     fn drop(&mut self) {
-        // SAFETY: 每次成功 Map 都恰好由此 guard 解除映射，texture 在 guard 期間保持存活。
+        // SAFETY: This guard unmaps each successful Map exactly once; texture remains alive while the guard exists.
         unsafe { self.gpu.context.Unmap(self.texture, 0) };
     }
 }
@@ -351,9 +351,9 @@ fn texture(gpu: &Gpu, size: (u32, u32), staging: bool) -> Result<ID3D11Texture2D
         ..Default::default()
     };
     let mut result = None;
-    // SAFETY: desc 完整描述單層 BGRA texture，輸出由 windows crate 管理。
+    // SAFETY: desc fully describes a single-layer BGRA texture; the windows crate manages the output.
     unsafe { gpu.device.CreateTexture2D(&desc, None, Some(&mut result))? };
-    result.context("建立小圖 texture 沒有回傳物件")
+    result.context("Creating thumbnail texture returned no object")
 }
 
 fn copy_roi(gpu: &Gpu, source: &ID3D11Texture2D, target: &ID3D11Texture2D, roi: [u32; 4]) {
@@ -366,14 +366,14 @@ fn copy_roi(gpu: &Gpu, source: &ID3D11Texture2D, target: &ID3D11Texture2D, roi: 
         bottom: r.y + r.h,
         back: 1,
     };
-    // SAFETY: ROI 已驗證在 1920×1080 基準 texture 內，目的 staging 與 ROI 同尺寸、同格式。
+    // SAFETY: ROI is validated within the 1920×1080 reference texture; destination staging matches its dimensions and format.
     unsafe {
         gpu.context
             .CopySubresourceRegion(target, 0, 0, 0, 0, source, 0, Some(&region))
     };
 }
 
-/// 每個縮放器有自己的 processor 與 views，避免改動編碼端的 D3D11 繪圖狀態。
+/// Each scaler has its own processor and views to avoid changing the encoder's D3D11 drawing state.
 struct Scaler {
     input_size: (u32, u32),
     input: ID3D11Texture2D,
@@ -416,12 +416,12 @@ impl Scaler {
         };
         let mut input_view = None;
         let mut output_view = None;
-        // SAFETY: processor 與 views 全都屬於同一裝置；輸入輸出為單層 BGRA texture。
+        // SAFETY: The processor and views all belong to the same device; input and output are single-layer BGRA textures.
         let processor = unsafe {
             let enumerator = device.CreateVideoProcessorEnumerator(&desc)?;
             let support = enumerator.CheckVideoProcessorFormat(DXGI_FORMAT_B8G8R8A8_UNORM)?;
             if support & 3 != 3 {
-                bail!("GPU VideoProcessor 不支援 BGRA 縮放");
+                bail!("GPU VideoProcessor does not support BGRA scaling");
             }
             let processor = device.CreateVideoProcessor(&enumerator, 0)?;
             device.CreateVideoProcessorInputView(
@@ -457,7 +457,7 @@ impl Scaler {
             context.VideoProcessorSetStreamSourceRect(&processor, 0, true, Some(&source));
             context.VideoProcessorSetStreamDestRect(&processor, 0, true, Some(&target));
             context.VideoProcessorSetOutputTargetRect(&processor, true, Some(&target));
-            // RGB 全範圍，關閉驅動自動增強，保留偵測圖示的原始顏色。
+            // Use full-range RGB and disable driver auto-enhancement to preserve the original icon colors for detection.
             let color = D3D11_VIDEO_PROCESSOR_COLOR_SPACE::default();
             context.VideoProcessorSetStreamColorSpace(&processor, 0, &color);
             context.VideoProcessorSetOutputColorSpace(&processor, &color);
@@ -467,8 +467,8 @@ impl Scaler {
             input_size,
             input,
             output,
-            input_view: input_view.context("缺少 VideoProcessor 輸入 view")?,
-            output_view: output_view.context("缺少 VideoProcessor 輸出 view")?,
+            input_view: input_view.context("Missing VideoProcessor input view")?,
+            output_view: output_view.context("Missing VideoProcessor output view")?,
             processor,
             context,
         })
@@ -486,7 +486,7 @@ impl Scaler {
             pInputSurface: ManuallyDrop::new(Some(self.input_view.clone())),
             ..Default::default()
         };
-        // SAFETY: 複製範圍是已驗證的畫面尺寸，views 在 Blt 期間有效；不用過去或未來影格。
+        // SAFETY: The copy region uses validated frame dimensions; views remain valid during Blt, with no past or future frames used.
         let result = unsafe {
             gpu.context
                 .CopySubresourceRegion(&self.input, 0, 0, 0, 0, source, 0, Some(&region));
@@ -497,9 +497,9 @@ impl Scaler {
                 std::slice::from_ref(&stream),
             )
         };
-        // SAFETY: stream 的 COM 欄位是 ManuallyDrop，恰好釋放本次 clone 的一份參照。
+        // SAFETY: The COM field in stream is ManuallyDrop; release exactly the reference cloned for this call.
         unsafe { ManuallyDrop::drop(&mut stream.pInputSurface) };
-        result.context("GPU 小圖縮放失敗")
+        result.context("GPU thumbnail scaling failed")
     }
 }
 

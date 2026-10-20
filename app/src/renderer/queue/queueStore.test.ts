@@ -24,7 +24,7 @@ describe('queue store (one shared source for ring, strip, popover and every card
     expect(store.stateOf('D:/v/a.mp4')).toBe('analyzing')
     expect(store.stateOf('D:/v/b.mp4')).toBe('queued')
     expect(store.stateOf('D:/v/other.mp4')).toBe('idle')
-    // 摘要（條／浮層）與卡片的 ETA 來源相同
+    // The strip/popover summary and card use the same ETA source.
     expect(s.analyzing?.etaMs).toBeCloseTo(60000)
     expect(store.etaOf('D:/v/a.mp4')).toBe(s.analyzing?.etaMs)
     expect(store.etaOf('D:/v/b.mp4')).toBeNull()

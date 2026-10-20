@@ -2,7 +2,7 @@ import { OBSWebSocket } from 'obs-websocket-js'
 import { EventEmitter } from 'events'
 import { tr } from '../../shared/locale'
 
-/** OBS v5 的小型介面：所有等候都有逾時，錯誤不包含密碼或伺服器回傳文字。 */
+/** Minimal OBS v5 client: every wait has a timeout, and errors never include the password or server response text. */
 export class ObsClient extends EventEmitter {
   private socket: OBSWebSocket | null = null
   connected = false

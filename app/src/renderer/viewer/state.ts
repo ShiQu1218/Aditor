@@ -98,9 +98,9 @@ export function viewerReducer(state: ViewerState, action: ViewerAction): ViewerS
       const status: ClipStatus =
         action.type === 'acceptClip' ? 'accepted' : action.type === 'skipClip' ? 'skipped' : 'suggested'
       const target = state.clips.find((c) => c.id === action.id)
-      // 不存在的 id 或已是目標狀態：原 state（不標 dirty）
+      // Unknown id or already in the target state: return the original state (do not mark dirty).
       if (!target || (target.status ?? 'accepted') === status) return state
-      // 略過／復原只作用於 AI 建議；手動片段不受影響
+      // Skip/restore applies only to AI suggestions; manual clips are unaffected.
       if (action.type !== 'acceptClip' && target.origin !== 'ai') return state
       const clips = state.clips.map((c) => (c.id === action.id ? { ...c, status } : c))
       return { ...state, clips, doc: { ...state.doc, clips }, dirty: true }
@@ -112,15 +112,15 @@ export function viewerReducer(state: ViewerState, action: ViewerAction): ViewerS
     }
 
     case 'applyClips': {
-      // 浮層「套用」：以合併後結果取代片段並標 dirty；使用者已自行決定建議，待重算旗標一併清除
+      // Popover Apply: replace clips with the merged result and mark dirty; the user has decided on the suggestions, so clear the pending-recalculation flag too.
       const clips = normalizeClips(action.clips)
       const app = state.doc.app ? { ...state.doc.app, suggestionsPending: false } : state.doc.app
       return { ...state, clips, doc: { ...state.doc, clips, app }, dirty: true }
     }
 
     case 'applySuggestions': {
-      // 載入時的建議合併（place／merge）：套用結果並清除「重新分析後建議待重算」旗標，
-      // 存檔後同一次重新分析不會再合併（也不會蓋掉使用者之後的略過）
+      // Merge suggestions on load (place/merge): apply the result and clear the "recalculate suggestions after reanalysis" flag.
+      // After saving, the same reanalysis will not merge again or overwrite later user skips.
       const clips = normalizeClips(action.clips)
       const app = state.doc.app ? { ...state.doc.app, suggestionsPending: false } : state.doc.app
       return { ...state, clips, doc: { ...state.doc, clips, app }, dirty: true }
@@ -161,8 +161,8 @@ export function viewerReducer(state: ViewerState, action: ViewerAction): ViewerS
       })
 
       const mergedEvents = [...updatedFreshEvents, ...manualEvents].sort((a, b) => a.t - b.t)
-      // 載入（狀態尚無片段）＝直接採用文件的片段（保留已存的 status）；
-      // 重新分析＝mergeOnReanalyze：accepted 保留並標 stale、suggested／skipped 被新結果取代（spec §4.2）
+      // Load (state has no clips yet): use the document's clips directly, preserving saved status.
+      // Reanalysis uses mergeOnReanalyze: keep accepted clips and mark stale; replace suggested/skipped with new results (spec §4.2).
       const freshAi = (freshDoc.clips || []).filter((c) => c.origin === 'ai')
       const mergedClips =
         state.clips.length === 0 ? normalizeClips(freshDoc.clips) : mergeOnReanalyze(state.clips, freshAi)

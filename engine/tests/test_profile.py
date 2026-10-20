@@ -1,4 +1,4 @@
-"""templates/icons/profile.json 載入與驗證（單一、與語言無關的設定檔）。"""
+"""Load and validate templates/icons/profile.json, a single language-independent profile."""
 import json
 import shutil
 
@@ -44,15 +44,15 @@ def test_spectating_templates_cover_the_three_shipped_languages():
 
 
 def test_profile_yellow_pink_rules_match_icon_detector_mask():
-    """名字指紋的黃／粉紅規則與圖示偵測的 enemy_color_mask 是同一組數值（紅規則刻意較寬：
-    指紋要盡量讀到完整字形；圖示線索只需要有無敵人色）。"""
+    """Yellow/pink name-signature rules use the same values as the icon detector's enemy_color_mask.
+    The red rule is intentionally wider: signatures should capture full glyphs, while icon cues only need to detect enemy color."""
     import numpy as np
     from aditor.detect import red_mask
     p = load_profile(ICON_DIR)
     rng = np.random.default_rng(0)
     px = rng.integers(0, 256, (1, 20000, 3), dtype=np.uint8)
     wide = red_mask(px, p, pink=True) > 0
-    assert (wide | enemy_color_mask(px) == wide).all()  # 指紋遮罩涵蓋圖示線索遮罩
+    assert (wide | enemy_color_mask(px) == wide).all()  # The signature mask covers the icon-cue mask.
 
 
 def test_missing_spectating_template_file(tmp_path):

@@ -6,7 +6,7 @@ import { finalizeSession } from './finalize'
 import type { RecordingDeps } from './index'
 import { tr } from '../../shared/locale'
 
-/** 啟動掃描與新錄影串行，避免把目前仍在寫入的工作當作崩潰殘留。 */
+/** Serialize startup recovery with new recordings so an active write is not mistaken for a crash remnant. */
 export async function recoverSessions(
   deps: RecordingDeps,
   finalized: (paths: string[]) => void,

@@ -24,14 +24,14 @@ def test_probe_bad_file(tmp_path):
 
 
 def test_keyframes_relative(tmp_path):
-    v = make_video(tmp_path, "k.mp4", 6.0, start_time=5.0)  # make_video 用 -g 60
+    v = make_video(tmp_path, "k.mp4", 6.0, start_time=5.0)  # make_video uses -g 60.
     kf = keyframes(str(v))
     assert kf[0] == pytest.approx(0.0, abs=0.05) and kf[1] == pytest.approx(1.0, abs=0.05)
 
 
 def test_keyframes_use_container_time_base_when_video_starts_late(tmp_path):
-    """M3：視訊比音訊晚 0.5 秒開始的 mkv。事件時間以容器起點計（ffmpeg 解碼的時間軸），
-    關鍵影格也必須是同一個基準（第一個關鍵影格在 0.5，而不是 0）。"""
+    """M3: an MKV whose video starts 0.5 seconds after the audio. Event timestamps use the container start (the ffmpeg decode timeline),
+    and keyframes must use the same base (the first keyframe is at 0.5, not 0)."""
     import subprocess
     from aditor import ffbin
     out = tmp_path / "late.mkv"

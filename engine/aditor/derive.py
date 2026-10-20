@@ -1,4 +1,4 @@
-"""計數推導：依規則設定事件的 counted 與 counted_reason，並進行同敵人去重（spec §5.3）。"""
+"""Derive counted and counted_reason fields from events and deduplicate events for the same enemy (spec §5.3)."""
 from __future__ import annotations
 
 from collections import deque
@@ -20,17 +20,18 @@ def _decode_sig(value: str | None) -> NameSig | None:
 
 
 def sig_similar(a: str | None, b: str | None, threshold: float) -> bool:
-    """比對兩個 base64 名字指紋是否屬於同一敵人。
+    """Compare two base64 name signatures to determine whether they belong to the same enemy.
 
-    任一為 None → False；其餘解碼後委託 detect.same_name（含寬度比差 ≥ 15% 門檻與相關係數）。
+    Either value being None returns False; otherwise decode both and delegate to detect.same_name
+    (including its >= 15% width-ratio difference threshold and correlation check).
     """
     return same_name(_decode_sig(a), _decode_sig(b), threshold)
 
 
 def is_counted(e: Event) -> bool:
-    """判斷事件最終是否計入。
+    """Determine whether an event is counted.
 
-    若 deleted 為 True 則一律 False；否則優先採用 counted_override，未設定時採用 counted。
+    Always return False when deleted is True; otherwise prefer counted_override and fall back to counted when unset.
     """
     if e.deleted:
         return False
@@ -42,20 +43,22 @@ def derive(
     spectating: list[SpecInterval],
     profile: Profile,
 ) -> list[Event]:
-    """推導整份事件清單的 counted 與 counted_reason。
+    """Derive counted and counted_reason for an entire event list.
 
-    回傳新 Event 物件清單（依 t 排序）。不修改 counted_override。
-    規則（spec §5.3）：
-    1. deleted 事件：counted=False, counted_reason="deleted"，不參與去重。
-    2. 非計數類型（如 squad_wipe；引擎已不輸出，保留給舊專案檔）：counted=False, counted_reason="not_counting_type"，不作為去重首筆。
-    3. 位於 spectating 區間內（start <= t < end）：counted=False, counted_reason="spectating"。
-    4. 去重：dedupe_window 秒內名字指紋相似的計數類型事件，第一筆 counted=True（first），其餘 counted=False（duplicate）。
-       若 name_sig 為 None（如手動事件），則為 first 且不與任何人去重。
+    Return a new list of Event objects sorted by t. Do not modify counted_override.
+    Rules (spec §5.3):
+    1. Deleted events: counted=False, counted_reason="deleted"; exclude them from deduplication.
+    2. Non-counting types (such as squad_wipe; no longer emitted by the engine but retained for old project files):
+       counted=False, counted_reason="not_counting_type"; do not use them as the first event in a deduplication group.
+    3. Events inside a spectating interval (start <= t < end): counted=False, counted_reason="spectating".
+    4. Deduplicate countable events with similar name fingerprints within dedupe_window seconds. The first event is
+       counted=True (first); the rest are counted=False (duplicate). If name_sig is None (for example, for a manual
+       event), treat it as first and do not deduplicate it against any other event.
     """
     sorted_events = sorted(events, key=lambda ev: ev.t)
     result: list[Event] = []
     first_events: deque[tuple[float, NameSig]] = deque()
-    # 快取只存在於本次推導，並限制數量，避免長影片保留所有指紋。
+    # Keep this cache local to the current derivation and bound its size to avoid retaining every fingerprint for long videos.
     decode_sig = lru_cache(maxsize=256)(_decode_sig)
 
     for e in sorted_events:

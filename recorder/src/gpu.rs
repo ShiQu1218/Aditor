@@ -1,4 +1,4 @@
-//! 共用的 D3D11 裝置。擷取、小圖裁切與硬體編碼都用同一個裝置，影格才能零複製傳遞。
+//! Shared D3D11 device used for capture, small-image cropping, and hardware encoding to pass frames without copies.
 
 use anyhow::{Context, Result};
 use windows::core::Interface;
@@ -18,26 +18,26 @@ pub struct Gpu {
     pub context: ID3D11DeviceContext,
 }
 
-// SAFETY: 建立時已開啟 ID3D11Multithread 保護，immediate context 可跨執行緒使用。
+// SAFETY: ID3D11Multithread protection is enabled at creation, allowing the immediate context to be used across threads.
 unsafe impl Send for Gpu {}
 unsafe impl Sync for Gpu {}
 
 impl Gpu {
-    /// 在預設硬體轉接器上建立裝置（BGRA＋video 支援，並開啟 multithread 保護）。
+    /// Create a device on the default hardware adapter with BGRA/video support and multithread protection.
     pub fn create() -> Result<Self> {
         Self::create_with(None, D3D_DRIVER_TYPE_HARDWARE)
     }
 
-    /// 在指定轉接器上建立裝置（DDA 必須使用擁有目標螢幕的轉接器）。
+    /// Create a device on the specified adapter (DDA must use the adapter owning the target display).
     pub fn create_on(adapter: &IDXGIAdapter) -> Result<Self> {
-        // 指定轉接器時 driver type 必須是 UNKNOWN。
+        // The driver type must be UNKNOWN when specifying an adapter.
         Self::create_with(Some(adapter), D3D_DRIVER_TYPE_UNKNOWN)
     }
 
     fn create_with(adapter: Option<&IDXGIAdapter>, driver: D3D_DRIVER_TYPE) -> Result<Self> {
         let mut device = None;
         let mut context = None;
-        // SAFETY: 標準 D3D11CreateDevice 呼叫；輸出參數由 windows crate 管理。
+        // SAFETY: Standard D3D11CreateDevice call; output parameters are managed by the windows crate.
         unsafe {
             D3D11CreateDevice(
                 adapter,
@@ -50,12 +50,12 @@ impl Gpu {
                 None,
                 Some(&mut context),
             )
-            .context("D3D11CreateDevice 失敗")?;
+            .context("D3D11CreateDevice failed")?;
         }
-        let device: ID3D11Device = device.context("D3D11CreateDevice 沒有回傳裝置")?;
-        let context: ID3D11DeviceContext = context.context("D3D11CreateDevice 沒有回傳 context")?;
-        let mt: ID3D11Multithread = context.cast().context("取得 ID3D11Multithread 失敗")?;
-        // SAFETY: 純旗標設定。
+        let device: ID3D11Device = device.context("D3D11CreateDevice returned no device")?;
+        let context: ID3D11DeviceContext = context.context("D3D11CreateDevice returned no context")?;
+        let mt: ID3D11Multithread = context.cast().context("Failed to obtain ID3D11Multithread")?;
+        // SAFETY: Only sets a flag.
         unsafe {
             let _ = mt.SetMultithreadProtected(true);
         }

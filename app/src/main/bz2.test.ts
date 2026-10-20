@@ -5,7 +5,7 @@ import { bunzip2 } from './bz2'
 
 const fx = (n: string): Buffer => fs.readFileSync(path.join(__dirname, '__fixtures__', n))
 
-/** 與產生 multi.bz2 的 Python 程式相同的決定性資料（350000 bytes，含長游程，跨多個 100k 區塊）。 */
+/** Deterministic data matching the Python generator for multi.bz2 (350000 bytes, including long runs across multiple 100k blocks). */
 export function genData(n: number): Buffer {
   const b: number[] = []
   let x = 12345

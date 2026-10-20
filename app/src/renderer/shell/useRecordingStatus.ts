@@ -3,7 +3,7 @@ import { IDLE_RECORDING_STATUS, type RecordingStatus } from '../../shared/record
 import { recordingI18n } from '../i18n'
 import { tr } from '../../shared/locale'
 
-/** 先訂閱再讀快照，避免較慢的初始回覆蓋過新推播。 */
+/** Subscribe before reading the snapshot so a slower initial response cannot overwrite a newer push. */
 export function useRecordingStatus(): { status: RecordingStatus; error: string | null; refresh: () => Promise<void> } {
   const [status, setStatus] = useState<RecordingStatus>(IDLE_RECORDING_STATUS)
   const [error, setError] = useState<string | null>(null)

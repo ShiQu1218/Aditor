@@ -56,7 +56,7 @@ describe('VideoCard keyboard/pointer activation', () => {
   test('the only "open" control is .vcard-open; secondary buttons are siblings, never nested inside it', () => {
     for (const c of Array.from(document.querySelectorAll('.vcard'))) {
       const open = c.querySelector('.vcard-open')!
-      expect(open.querySelector('button, a, input')).toBeNull() // 沒有巢狀互動元件
+      expect(open.querySelector('button, a, input')).toBeNull() // No nested interactive elements.
       for (const b of Array.from(c.querySelectorAll('button')).filter((x) => x !== open)) expect(open.contains(b)).toBe(false)
     }
   })
@@ -64,13 +64,13 @@ describe('VideoCard keyboard/pointer activation', () => {
   test('activating a secondary button (favorite / ⋯ / retry / remove) never opens the video', () => {
     const done = card('done-card')
     focusEl(done.querySelector('.vcard-fav') as HTMLElement)
-    press(document.activeElement as Element, 'Enter') // keydown 本身不開啟
+    press(document.activeElement as Element, 'Enter') // keydown alone does not open it.
     press(document.activeElement as Element, ' ')
     click(done.querySelector('.vcard-fav')!)
     expect(fake.api.library.toggleFavorite).toHaveBeenCalledWith(done.dataset.vcardPath)
     click(done.querySelector('.vcard-more')!)
     expect(onSelect).not.toHaveBeenCalled()
-    press(document.activeElement as Element, 'Escape') // 關選單
+    press(document.activeElement as Element, 'Escape') // Close the menu.
     const err = card('err-card')
     click(Array.from(err.querySelectorAll('button')).find((b) => b.textContent === '重試')!)
     expect(fake.api.queue.enqueue).toHaveBeenCalledWith(err.dataset.vcardPath)

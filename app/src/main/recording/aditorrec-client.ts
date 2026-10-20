@@ -89,7 +89,7 @@ export class AditorrecClient extends EventEmitter {
   }
 
   async startRecording(args: object): Promise<void> {
-    // started 可能比 start 的回覆早到；兩者都收到才算完成啟動。
+    // `started` may arrive before the `start` response; startup completes only after both arrive.
     let onEvent!: (event: RecorderEvent) => void
     let onCrash!: (error: Error) => void
     let timer!: ReturnType<typeof setTimeout>

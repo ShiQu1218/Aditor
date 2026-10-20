@@ -30,7 +30,7 @@ describe('resolveLibraryEscape', () => {
   })
 })
 
-/** 以最小的假 window 驗證 keymap 層：Esc → closeOverlay → resolveLibraryEscape 的整條路徑 */
+/** Verify the full keymap path with a minimal mock window: Esc → closeOverlay → resolveLibraryEscape. */
 function harness(menuOpen: boolean, query: string) {
   const log: string[] = []
   let listener: ((e: KeyboardEvent) => void) | null = null

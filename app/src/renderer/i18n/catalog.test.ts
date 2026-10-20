@@ -19,37 +19,37 @@ function leaves(node: unknown, path = ''): Leaf[] {
 const source = leaves(catalogFor('zh-TW'))
 const sourceByPath = new Map(source.map((leaf) => [leaf.path, leaf.value]))
 
-describe.each(LOCALES.filter((l): l is Exclude<Locale, 'zh-TW'> => l !== 'zh-TW'))('語言包 %s', (locale) => {
+describe.each(LOCALES.filter((l): l is Exclude<Locale, 'zh-TW'> => l !== 'zh-TW'))('Locale catalog %s', (locale) => {
   const target = leaves(catalogFor(locale))
   const targetByPath = new Map(target.map((leaf) => [leaf.path, leaf.value]))
 
-  it('鍵與繁中完全相同', () => {
+it('Keys exactly match zh-TW', () => {
     expect([...targetByPath.keys()]).toEqual([...sourceByPath.keys()])
   })
 
-  it('每個字串的佔位符與繁中一致、且不是空字串', () => {
+it('Every string has the same placeholders as zh-TW and is non-empty', () => {
     const bad: string[] = []
     for (const [path, original] of sourceByPath) {
       const translated = targetByPath.get(path)
       if (typeof original === 'string') {
         const t = translated as string
-        if (typeof t !== 'string' || t.trim() === '') bad.push(`${path}: 空白`)
-        else if (placeholders(original).join() !== placeholders(t).join()) bad.push(`${path}: 佔位符 ${placeholders(original)} → ${placeholders(t)}`)
+        if (typeof t !== 'string' || t.trim() === '') bad.push(`${path}: empty value`)
+        else if (placeholders(original).join() !== placeholders(t).join()) bad.push(`${path}: placeholders ${placeholders(original)} → ${placeholders(t)}`)
       } else {
-        // 搜尋關鍵字：筆數可與繁中不同，但每一筆都要有內容
-        for (const t of translated as string[]) if (typeof t !== 'string' || t.trim() === '') bad.push(`${path}: 關鍵字空白`)
+        // Search keywords may differ in count from Traditional Chinese, but every entry must have a value.
+        for (const t of translated as string[]) if (typeof t !== 'string' || t.trim() === '') bad.push(`${path}: empty search keyword`)
       }
     }
     expect(bad).toEqual([])
   })
 
-  it('搜尋關鍵字陣列都有內容', () => {
+it('Search keyword arrays are non-empty', () => {
     for (const leaf of target) if (Array.isArray(leaf.value)) expect(leaf.value.length, leaf.path).toBeGreaterThan(0)
   })
 
   if (locale === 'en' || locale === 'ko') {
-    it('沒有殘留中文字', () => {
-      // 語言名稱（日本語、한국어）本來就要能用原文搜尋
+it('Contains no untranslated Chinese characters', () => {
+      // Language names (日本語 and 한국어) must be searchable in their original form.
       const stray = target.filter((leaf) => !leaf.path.endsWith('language.keywords'))
         .flatMap((leaf) => (Array.isArray(leaf.value) ? leaf.value : [leaf.value]).filter((v) => HAN.test(v)).map((v) => `${leaf.path}: ${v}`))
       expect(stray).toEqual([])
@@ -57,7 +57,7 @@ describe.each(LOCALES.filter((l): l is Exclude<Locale, 'zh-TW'> => l !== 'zh-TW'
   }
 
   if (locale === 'zh-CN') {
-    it('沒有殘留繁體專用字', () => {
+it('Contains no Traditional Chinese-only characters', () => {
       const stray = target.flatMap((leaf) => (Array.isArray(leaf.value) ? leaf.value : [leaf.value]).filter((v) => HAN_TRADITIONAL_ONLY.test(v)).map((v) => `${leaf.path}: ${v}`))
       expect(stray).toEqual([])
     })

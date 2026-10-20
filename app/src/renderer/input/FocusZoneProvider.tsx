@@ -2,9 +2,9 @@ import { useEffect, type ReactNode } from 'react'
 import { initialZoneState, reduceZone, setCurrentZone, type ZoneEvent, type ZoneState } from './focusZone'
 
 /**
- * 以 focusin／focusout／mousedown 與 data-zone 屬性記錄目前焦點區。
- * 點在區域外（無 data-zone）即清為 null；焦點離開到區域外也清除，
- * 避免工作室重新掛載或清單切換後殘留過期的區域。
+ * Track the current focus zone using focusin/focusout/mousedown and the data-zone attribute.
+ * Clicking outside a zone (no data-zone) clears it to null; focus leaving all zones also clears it,
+ * preventing a stale zone after the studio remounts or the list changes.
  */
 export function FocusZoneProvider({ children }: { children: ReactNode }) {
   useEffect(() => {

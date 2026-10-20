@@ -29,7 +29,7 @@ describe('editor lock', () => {
     expect(isEditorLocked()).toBe(false)
     setEditorLocked(true)
     expect(isEditorLocked()).toBe(true)
-    setEditorLocked(true) // 重複設定不通知
+    setEditorLocked(true) // Repeating the same value does not notify.
     expect(n).toBe(1)
     off()
     setEditorLocked(false)

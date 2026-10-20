@@ -1,4 +1,4 @@
-// 假 ffmpeg（縮圖測試用）：FAKE_LOG 附加 argv；FAKE_EXIT 為結束碼；輸出檔是最後一個引數，先寫半成品再結束。
+// Fake ffmpeg for thumbnail tests: append argv to FAKE_LOG; FAKE_EXIT sets the exit code; write a partial output before exiting (the output file is the last argument).
 import fs from 'fs'
 
 const args = process.argv.slice(2)

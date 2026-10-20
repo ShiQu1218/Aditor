@@ -1,11 +1,11 @@
-"""準確率評估（spec §8）：以真值與快取預測計算各類型召回率／精確率與漏抓、誤抓清單。
+"""Accuracy evaluation (spec §8): compare ground truth with cached predictions to calculate per-type recall/precision and missed/false detections.
 
-用法：python tools/evaluate.py --truth truth.json --pred cache.json [--tolerance 1.5] [--types knock]
+Usage: python tools/evaluate.py --truth truth.json --pred cache.json [--tolerance 1.5] [--types knock]
 
-流程：以「同類型最近配對」的時間差中位數估計系統性偏移並從預測扣除，再以貪婪最近配對
-（時間差 <= tolerance）計算 TP／FP／FN。預測只取「最終計入」的事件（counted_override ?? counted，
-排除 deleted）。真值類型對應：knock -> knock、assist -> assist（預測的 assist_knock／assist_elim 皆視為
-assist）、kill -> elim。
+Process: Estimate systematic offset from the median time difference of nearest same-type matches and subtract it from predictions, then use greedy nearest matching
+(time difference <= tolerance) to calculate TP/FP/FN. Only final-counted predictions are included (counted_override ?? counted,
+excluding deleted). Ground-truth type mapping: knock -> knock, assist -> assist (predicted assist_knock/assist_elim both count as
+assist), kill -> elim.
 """
 from __future__ import annotations
 
@@ -16,8 +16,8 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
-MAX_OFFSET = 2.0     # 系統性偏移補償上限（秒）：超過者不補償，直接反映成漏抓／誤抓（M8）
-OFFSET_WINDOW = 5.0  # 估計偏移時，只看此範圍內的最近配對（秒）
+MAX_OFFSET = 2.0     # Maximum systematic offset compensation in seconds; larger offsets are left as missed/false detections (M8).
+OFFSET_WINDOW = 5.0  # Consider nearest matches within this time window when estimating the offset, in seconds.
 
 TRUTH_TYPE_MAP = {"knock": "knock", "assist": "assist", "kill": "elim",
                   "knockdown": "knock", "elim": "elim"}
@@ -31,10 +31,10 @@ class TypeStats:
     truth: int = 0
     pred: int = 0
     tp: int = 0
-    offset: float = 0.0       # 實際扣除的偏移
-    raw_offset: float = 0.0   # 估計出的原始偏移（可能超過上限而未扣除）
-    missed: list[float] = field(default_factory=list)   # 真值時間（未偵測到）
-    false: list[float] = field(default_factory=list)    # 預測原始時間（無對應真值）
+    offset: float = 0.0       # Offset actually subtracted.
+    raw_offset: float = 0.0   # Estimated raw offset (may exceed the limit and remain unapplied).
+    missed: list[float] = field(default_factory=list)   # Ground-truth times that were not detected.
+    false: list[float] = field(default_factory=list)    # Raw prediction times with no matching ground truth.
 
     @property
     def recall(self) -> float:
@@ -79,7 +79,7 @@ def _match(truth: list[float], pred: list[float], tolerance: float) -> list[tupl
 
 def evaluate(truth: list[tuple[float, str]], pred: list[tuple[float, str]],
              tolerance: float = 1.5, max_offset: float = MAX_OFFSET) -> Report:
-    """truth／pred 皆為 (時間秒, 類型)。"""
+    """Both truth and pred contain (time in seconds, type) pairs."""
     names = sorted({k for _, k in truth} | {k for _, k in pred})
     types: dict[str, TypeStats] = {}
     all_diffs: list[float] = []
@@ -87,7 +87,7 @@ def evaluate(truth: list[tuple[float, str]], pred: list[tuple[float, str]],
         tt = sorted(t for t, k in truth if k == name)
         pp = sorted(t for t, k in pred if k == name)
         raw = _estimate_offset(tt, pp)
-        off = raw if abs(raw) <= max_offset else 0.0  # 偏移過大是 bug 不是校正對象
+        off = raw if abs(raw) <= max_offset else 0.0  # An excessive offset indicates a bug, not something to correct.
         shifted = [p - off for p in pp]
         pairs = _match(tt, shifted, tolerance)
         st = TypeStats(name, truth=len(tt), pred=len(pp), tp=len(pairs), offset=off, raw_offset=raw)
@@ -126,7 +126,7 @@ def load_pred(path: Path) -> list[tuple[float, str]]:
 
 def spectating_filtered_matches(truth_path: Path, pred_path: Path, tolerance: float,
                                 offset: float) -> list[tuple[float, str]]:
-    """被觀戰過濾（counted=false, spectating）但其實對得上真值的事件：觀戰過濾的錯殺。"""
+    """Return events filtered as spectating (counted=false) that actually match ground truth."""
     truth = load_truth(truth_path)
     doc = json.loads(Path(pred_path).read_text(encoding="utf-8"))
     out = []
@@ -140,22 +140,22 @@ def spectating_filtered_matches(truth_path: Path, pred_path: Path, tolerance: fl
 
 
 def format_report(rep: Report, types: list[str] | None) -> str:
-    lines = [f"估計系統性偏移（預測 - 真值，中位數）：{rep.offset:+.2f} 秒"]
+    lines = [f"Estimated systematic offset (prediction - truth, median): {rep.offset:+.2f} s"]
     for name, st in rep.types.items():
         if types and name not in types:
             continue
-        lines.append(f"[{name}] 真值 {st.truth} 預測 {st.pred} 命中 {st.tp} "
-                     f"召回率 {st.recall:.1%} 精確率 {st.precision:.1%} 偏移 {st.raw_offset:+.2f}s"
-                     + ("（超過上限，未補償）" if st.raw_offset != st.offset else ""))
+        lines.append(f"[{name}] truth {st.truth} predictions {st.pred} matches {st.tp} "
+                     f"recall {st.recall:.1%} precision {st.precision:.1%} offset {st.raw_offset:+.2f}s"
+                     + (" (over limit; not applied)" if st.raw_offset != st.offset else ""))
         if st.missed:
-            lines.append("  漏抓：" + " ".join(hms(t) for t in st.missed))
+            lines.append("  Missed: " + " ".join(hms(t) for t in st.missed))
         if st.false:
-            lines.append("  誤抓：" + " ".join(hms(t) for t in st.false))
+            lines.append("  False detections: " + " ".join(hms(t) for t in st.false))
     return "\n".join(lines)
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description="評估偵測準確率")
+    ap = argparse.ArgumentParser(description="Evaluate detection accuracy")
     ap.add_argument("--truth", required=True)
     ap.add_argument("--pred", required=True)
     ap.add_argument("--tolerance", type=float, default=1.5)
@@ -168,7 +168,7 @@ def main(argv: list[str] | None = None) -> int:
     print(format_report(rep, a.types))
     wrong = spectating_filtered_matches(Path(a.truth), Path(a.pred), a.tolerance, rep.offset)
     if wrong:
-        print("觀戰過濾錯殺（對得上真值卻被標為觀戰）：" + " ".join(f"{hms(t)}({k})" for t, k in wrong))
+        print("Incorrectly filtered as spectating (matches ground truth): " + " ".join(f"{hms(t)}({k})" for t, k in wrong))
     return 0
 
 

@@ -9,7 +9,7 @@ import { createSegments, ffmpeg, makeDeps, sessionDir, tempRoot } from './test-s
 
 const roots: string[] = []
 afterEach(() => { vi.restoreAllMocks(); for (const root of roots.splice(0)) fs.rmSync(root, { recursive: true, force: true }) })
-/** videos 底下各日期資料夾內的 mp4（不含 outputDir 根）。 */
+/** MP4 files in each date folder under videos (excluding the outputDir root). */
 const datedMp4 = (root: string): string[] => fs.readdirSync(path.join(root, 'videos'), { withFileTypes: true })
   .filter((d) => d.isDirectory() && DAY_FOLDER_PATTERN.test(d.name))
   .flatMap((d) => fs.readdirSync(path.join(root, 'videos', d.name)).filter((f) => f.endsWith('.mp4')))
@@ -31,8 +31,8 @@ async function rig(mode = 'session', trusted = false) {
   deps.liveCachePath = (file) => file + '.aditor.json'
   return { root, dir, deps, outputPath, original }
 }
-describe.skipIf(!ffmpeg)('OBS 收尾與復原（真實 ffmpeg）', () => {
-  it.each([false, true])('無段落仍匯入原檔、平移快取並遵守可信分析規則：%s', async (trusted) => {
+describe.skipIf(!ffmpeg)('OBS finalization and recovery (real ffmpeg)', () => {
+  it.each([false, true])('Without segments, still import the original, shift the cache, and follow trusted-analysis rules: %s', async (trusted) => {
     const r = await rig('session', trusted)
     expect(await finalizeSession(r.dir, r.deps)).toEqual([r.outputPath])
     expect(r.deps.addToLibrary).toHaveBeenCalledWith([r.outputPath])
@@ -41,7 +41,7 @@ describe.skipIf(!ffmpeg)('OBS 收尾與復原（真實 ffmpeg）', () => {
     expect(r.deps.enqueueAnalysis).toHaveBeenCalledTimes(trusted ? 0 : 1)
     expect(fs.readFileSync(r.outputPath)).toEqual(r.original)
   })
-  it('OBS 剛停止、mkv 長度尚未寫入時等候檔案完成再剪', async () => {
+  it('waits for OBS to finish writing the file before clipping when MKV duration is not yet available after stop', async () => {
     const r = await rig('match')
     const real = await import('../export/keyframe')
     const ffprobe = path.join(path.dirname(ffmpeg!), `ffprobe${process.platform === 'win32' ? '.exe' : ''}`)
@@ -57,11 +57,11 @@ describe.skipIf(!ffmpeg)('OBS 收尾與復原（真實 ffmpeg）', () => {
     expect(path.basename(cut)).toMatch(/^Apex_.*\.mp4$/)
     expect(fs.existsSync(r.dir)).toBe(false)
   })
-  it('逐局串流複製保留原檔、不把原檔加入媒體庫', async () => {
+  it('preserves the original file during per-match stream copy and does not add it to the library', async () => {
     const r = await rig('match')
     const [cut] = await finalizeSession(r.dir, r.deps)
     expect(path.basename(cut)).toMatch(/^Apex_.*\.mp4$/)
-    // 逐局輸出放進起點日期資料夾（資料夾名等於檔名的日期），outputDir 根不留 mp4
+    // Put per-match output in the folder for its start date (the folder name matches the filename date); leave no MP4 files in the outputDir root.
     expect(path.dirname(cut)).toBe(path.join(r.root, 'videos', path.basename(cut).slice(5, 15)))
     expect(DAY_FOLDER_PATTERN.test(path.basename(path.dirname(cut)))).toBe(true)
     expect(fs.readdirSync(path.join(r.root, 'videos')).filter((f) => f.endsWith('.mp4'))).toEqual([])
@@ -71,7 +71,7 @@ describe.skipIf(!ffmpeg)('OBS 收尾與復原（真實 ffmpeg）', () => {
     expect(fs.readFileSync(r.outputPath)).toEqual(r.original)
     expect(spawnSync(ffmpeg!, ['-v', 'error', '-i', cut, '-f', 'null', '-'], { windowsHide: true }).status).toBe(0)
   })
-  it('沒有對局保留整段；復原讀取 obs.json 而不依賴段落', async () => {
+  it('preserves the full recording when there are no matches and recovers from obs.json without relying on segments', async () => {
     const r = await rig('match')
     await writeJson(path.join(r.dir, 'live.json'), { events: [] })
     const failed = vi.fn(); const done = vi.fn()
@@ -80,7 +80,7 @@ describe.skipIf(!ffmpeg)('OBS 收尾與復原（真實 ffmpeg）', () => {
     expect(done).toHaveBeenCalledWith([r.outputPath])
     expect(fs.readFileSync(r.outputPath)).toEqual(r.original)
   })
-  it('逐局從剪點前的關鍵影格開始（影音同起點）、前後各留五秒、平移事件；副作用失敗後復原不重剪', async () => {
+  it('starts per-match clips at the preceding keyframe with aligned audio/video, keeps five seconds on each side, shifts events, and avoids reclipping during recovery after a side-effect failure', async () => {
     const r = await rig('match')
     const generated = spawnSync(ffmpeg!, ['-v', 'error', '-y', '-f', 'lavfi', '-i', 'testsrc2=size=160x90:rate=10:duration=26',
       '-f', 'lavfi', '-i', 'sine=frequency=440:sample_rate=48000:duration=26',
@@ -92,7 +92,7 @@ describe.skipIf(!ffmpeg)('OBS 收尾與復原（真實 ffmpeg）', () => {
     r.deps.addToLibrary = vi.fn().mockImplementationOnce(() => { throw new Error('媒體庫寫入失敗') })
     await expect(finalizeSession(r.dir, r.deps)).rejects.toThrow('媒體庫')
     const marker = JSON.parse(fs.readFileSync(path.join(r.dir, 'matches.json'), 'utf8'))
-    // 來源剪點 4、13 秒對齊到每 2 秒一個的關鍵影格（4、12），再加上 -1 秒的擷取時間差
+    // Align source cuts at 4 and 13 seconds to keyframes every 2 seconds (4 and 12), then apply the -1 second capture offset.
     expect(marker.cuts.map((cut: any) => cut.offset)).toEqual([3, 11])
     const outputs = await finalizeSession(r.dir, r.deps)
     expect(outputs).toEqual(marker.cuts.map((cut: any) => cut.outputPath))
@@ -101,13 +101,13 @@ describe.skipIf(!ffmpeg)('OBS 收尾與復原（真實 ffmpeg）', () => {
     const firstPts = (stream: string): number => Number(spawnSync(path.join(path.dirname(ffmpeg!), `ffprobe${process.platform === 'win32' ? '.exe' : ''}`),
       ['-v', 'error', '-select_streams', stream, '-show_entries', 'packet=pts_time', '-of', 'csv=p=0', '-read_intervals', '%+#1', outputs[1]],
       { windowsHide: true, encoding: 'utf8' }).stdout.trim().split(/\r?\n/)[0])
-    // 影像與聲音都從 0 開始，不靠 MP4 edit list 隱藏多出的畫面（Chromium 播放時會不同步）
+    // Start both audio and video at 0; do not rely on an MP4 edit list to hide extra frames (Chromium playback would desynchronize).
     expect(firstPts('v:0')).toBeCloseTo(0, 2)
     expect(Math.abs(firstPts('a:0'))).toBeLessThan(0.05)
     expect(datedMp4(r.root)).toHaveLength(2)
     expect(fs.readFileSync(r.outputPath)).toEqual(original)
   })
-  it('遠端路徑通知後結束，不修改媒體庫', async () => {
+  it('notifies and exits for a remote path without changing the library', async () => {
     const r = await rig()
     await writeJson(path.join(r.dir, 'obs.json'), { outputPath: '\\\\remote\\OBS\\recording.mkv',
       recordStartedAt: 1, captureStartedAt: 2, adopted: false })
@@ -116,7 +116,7 @@ describe.skipIf(!ffmpeg)('OBS 收尾與復原（真實 ffmpeg）', () => {
     expect(r.deps.notify).toHaveBeenCalled()
     expect(r.deps.addToLibrary).not.toHaveBeenCalled()
   })
-  it('marker 落盤後改名失敗，復原沿用同一個預留檔', async () => {
+  it('reuses the same reserved file during recovery when rename fails after the marker is persisted', async () => {
     const r = await rig('match')
     const rename = fs.promises.rename.bind(fs.promises)
     let interrupted = false
@@ -131,7 +131,7 @@ describe.skipIf(!ffmpeg)('OBS 收尾與復原（真實 ffmpeg）', () => {
     expect(datedMp4(r.root)).toHaveLength(1)
     expect(fs.readFileSync(r.outputPath)).toEqual(r.original)
   })
-  it('原檔在工作目錄內時保留整個目錄，不執行刪除', async () => {
+  it('preserves the entire directory and skips deletion when the source file is inside the session directory', async () => {
     const r = await rig()
     const source = path.join(r.dir, 'OBS.mp4')
     fs.copyFileSync(r.outputPath, source)

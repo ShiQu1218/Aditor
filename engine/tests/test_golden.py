@@ -1,10 +1,10 @@
-"""黃金短片（舊版遊戲 2026-07 錄影的 226 秒片段，不進 git）：以 ADITOR_GOLDEN_VIDEO 指定才執行。
+"""Golden video (a 226-second clip from a 2026-07 recording of the old game, not checked into git); runs only when ADITOR_GOLDEN_VIDEO is set.
 
-expected.json 是人工逐一目視核對的事件（文字法時代建立，含 elim／squad_wipe）。產品範圍現在只有
-knock 與助攻，所以只比對 expected 中的 knock／assist_*：每一筆都必須被找到（類型相同、時間 ±0.5 秒）。
-圖示法在這支舊版錄影上有已知的額外事件（舊版「敵方小隊已消滅」「小隊抹殺」用單人加分圖示，見準確度報告），
-列在 KNOWN_EXTRA；額外事件只能是清單內的（每支影片自學的擊殺關鍵字驗證目前把它們全部擋掉，所以通常沒有額外事件），
-出現清單以外的額外事件會失敗。"""
+expected.json contains events manually reviewed frame by frame (created during the text-based detector era, including elim/squad_wipe). The product now supports only
+knock and assists, so compare only knock/assist_* entries in expected: every entry must be found with the same type and within ±0.5 seconds.
+Icon detection has known extra events on this old recording (the old-game banners "敵方小隊已消滅" and "小隊抹殺" use the solo bonus icon; see the accuracy report).
+They are listed in KNOWN_EXTRA; extra events must come from that list (per-video kill-keyword validation currently blocks all of them, so usually there are no extras).
+Any extra event outside the list fails the test."""
 import json
 import os
 from pathlib import Path
@@ -13,7 +13,7 @@ import pytest
 
 EXPECTED = Path(__file__).parent / "golden" / "expected.json"
 PRODUCT = {"knock", "assist_knock", "assist_elim"}
-# 舊版遊戲橫幅的已知誤報（t 為事件第一次出現，±0.5 秒）：39.0／98.25／166.5 敵方小隊已消滅，138.5 小隊抹殺
+# Known false positives from old-game banners (t is the first event timestamp, ±0.5 seconds): 39.0/98.25/166.5 "敵方小隊已消滅", 138.5 "小隊抹殺".
 KNOWN_EXTRA = [39.0, 98.25, 138.5, 166.5]
 
 
@@ -21,7 +21,7 @@ KNOWN_EXTRA = [39.0, 98.25, 138.5, 166.5]
 def test_golden(tmp_path, profile, jobs):
     video = os.environ.get("ADITOR_GOLDEN_VIDEO")
     if not video or not Path(video).exists():
-        pytest.skip("未設定 ADITOR_GOLDEN_VIDEO")
+        pytest.skip("ADITOR_GOLDEN_VIDEO is not set")
     from aditor.analyze import analyze
     doc = analyze(video, profile, cache_dir=tmp_path, jobs=jobs)
     got = [(e["type"], e["t"]) for e in doc["events"]]

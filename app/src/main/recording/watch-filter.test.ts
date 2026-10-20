@@ -19,7 +19,7 @@ afterEach(() => {
   if (root) fs.rmSync(root, { recursive: true, force: true })
 })
 
-it('監看匯入入口忽略 .sessions 與 *.part.mp4，仍匯入完成影片', async () => {
+it('ignores .sessions and *.part.mp4 in the watched-folder import path while importing completed videos', async () => {
   root = tempRoot()
   library = new Library(path.join(root, 'library.json'))
   settings = new SettingsStore(path.join(root, 'settings.json'))

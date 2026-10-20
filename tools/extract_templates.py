@@ -1,6 +1,6 @@
-"""範本擷取工具：dump（逐格輸出正規化 ROI）、crop（裁切）、sheet（總覽圖）。
+"""Template extraction utility: dump (export normalized ROI frames), crop, and sheet (contact sheet).
 
-用法：
+Usage:
   python tools/extract_templates.py dump <video> --start S --end E [--fps 4] [--roi x,y,w,h] --out DIR
   python tools/extract_templates.py crop <png> --rect x,y,w,h --out FILE
   python tools/extract_templates.py sheet <dir> --out FILE [--cols 4]
@@ -35,7 +35,7 @@ def parse_rect(s):
 
 
 def dump(video, start, end, fps, roi, out, scale_to=None):
-    """逐格存成 t{秒數:08.2f}.png；fps 可為小數（如 1、0.5、4）。"""
+    """Save each frame as t{seconds:08.2f}.png; fps may be fractional (for example, 1, 0.5, or 4)."""
     out = Path(out)
     out.mkdir(parents=True, exist_ok=True)
     vf = f"fps={fps},scale=1920:1080"
@@ -63,7 +63,7 @@ def dump(video, start, end, fps, roi, out, scale_to=None):
 def crop(png, rect, out, mask=False, v_min=200, s_max=60):
     x, y, w, h = rect
     img = imread(png)[y:y + h, x:x + w]
-    if mask:  # 輸出白字二值圖（與引擎 white_mask 相同定義），用來當範本
+    if mask:  # Export a binary white-text mask using the engine's white_mask definition for use as a template.
         hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
         img = (((hsv[..., 2] >= v_min) & (hsv[..., 1] <= s_max)).astype(np.uint8) * 255)
     imwrite(out, img)
@@ -79,7 +79,7 @@ def sheet(d, out, cols=4, label=True):
             cv2.putText(im, f.stem, (4, 18), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
         imgs.append(im)
     if not imgs:
-        raise SystemExit("沒有 PNG")
+        raise SystemExit("No PNG files found")
     h = max(i.shape[0] for i in imgs)
     w = max(i.shape[1] for i in imgs)
     rows = (len(imgs) + cols - 1) // cols
@@ -99,13 +99,13 @@ def main():
     d.add_argument("--end", type=float, required=True)
     d.add_argument("--fps", default="4")
     d.add_argument("--roi", default=None)
-    d.add_argument("--scale", default=None, help="額外縮放，如 480:270（只給目視用）")
+    d.add_argument("--scale", default=None, help="Additional scaling, such as 480:270 (for visual inspection only)")
     d.add_argument("--out", required=True)
     c = sub.add_parser("crop")
     c.add_argument("png")
     c.add_argument("--rect", required=True)
     c.add_argument("--out", required=True)
-    c.add_argument("--mask", action="store_true", help="輸出白字二值遮罩（範本用）")
+    c.add_argument("--mask", action="store_true", help="Export a binary white-text mask for use as a template")
     s = sub.add_parser("sheet")
     s.add_argument("dir")
     s.add_argument("--out", required=True)

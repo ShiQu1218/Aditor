@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-// 工作室鍵盤路徑的整合測試：真的掛載 StudioScreen（假 api），以真實 keydown 事件驅動。
+// Integration tests for studio keyboard paths: mount StudioScreen with a fake API and dispatch real keydown events.
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { act } from 'react'
 import { cleanupMounted, click, flush, focusEl, installDomShims, press } from '../../../test/dom'
@@ -59,7 +59,7 @@ describe('highlights list (roving tabindex)', () => {
     expect(qa('.hl-card')[2].classList.contains('active')).toBe(true)
   })
 
-  test('〔加入〕 adds the clip to the project track and shows a Toast whose 〔復原〕 reverts both', async () => {
+  test('Add puts the clip on the project track and shows a Toast whose Undo action reverts both', async () => {
     s = await mountStudio()
     expect(qa('.pclip').length).toBe(0)
     const first = qa('.hl-card')[0]
@@ -70,7 +70,7 @@ describe('highlights list (roving tabindex)', () => {
     expect(undo.textContent).toBe('復原')
     click(undo)
     expect(qa('.pclip').length).toBe(0)
-    expect(qa('.hl-card')[0].querySelector('.hl-accept')).not.toBeNull() // 回到建議
+    expect(qa('.hl-card')[0].querySelector('.hl-accept')).not.toBeNull() // Return to suggestions.
     expect(q('.toast')).toBeNull()
   })
 })
@@ -109,7 +109,7 @@ describe('project track (roving tabindex + keyboard editing)', () => {
   test('Alt+ArrowRight moves the chip one step later (order changes, focus stays on the moved chip)', async () => {
     s = await mountStudio({ items })
     focusEl(chips()[0])
-    press(chips()[0], 'ArrowRight') // 選 i2
+    press(chips()[0], 'ArrowRight') // Select i2.
     press(document.activeElement as Element, 'ArrowRight', { altKey: true })
     expect(chips().map((c) => c.getAttribute('data-item-id'))).toEqual(['i1', 'i3', 'i2'])
     expect((document.activeElement as HTMLElement).getAttribute('data-item-id')).toBe('i2')
@@ -117,7 +117,7 @@ describe('project track (roving tabindex + keyboard editing)', () => {
     expect(chips().map((c) => c.getAttribute('data-item-id'))).toEqual(['i1', 'i2', 'i3'])
   })
 
-  test('Delete removes the selected chip with a Toast; 〔復原〕 puts it back', async () => {
+  test('Delete removes the selected chip with a Toast; Undo puts it back', async () => {
     s = await mountStudio({ items })
     focusEl(chips()[1])
     press(chips()[1], 'Delete')
@@ -128,11 +128,11 @@ describe('project track (roving tabindex + keyboard editing)', () => {
     expect(chips().map((c) => c.getAttribute('data-item-id'))).toEqual(['i1', 'i2', 'i3'])
   })
 
-  test('Delete in the highlights list skips the suggestion and offers 〔復原〕 (zone keys do not leak across lists)', async () => {
+  test('Delete in the highlights list skips the suggestion and offers Undo (zone keys do not leak across lists)', async () => {
     s = await mountStudio({ items })
     focusEl(q('.hl-card.active')!)
     press(document.activeElement as Element, 'Delete')
-    expect(chips().length).toBe(3) // 專案軌不受影響
+    expect(chips().length).toBe(3) // The project timeline is unaffected.
     expect(q('.toast button')?.textContent).toBe('復原')
   })
 })
@@ -150,7 +150,7 @@ describe('keyboard announcements (aria-live)', () => {
     await flush()
     expect(live()).toBe(`${eventAriaLabel(events[0])}`)
     expect(live()).toContain('計入')
-    // 限速：第二則在間隔後補送，且包含「不計入」與原因
+  // Throttle: send the second announcement after the interval, including the excluded state and reason.
     press(document.body, 'ArrowRight', { ctrlKey: true })
     await flush(900)
     expect(live()).toBe(eventAriaLabel(events[1]))
@@ -169,7 +169,7 @@ describe('shortcuts help + dialogs inside the studio', () => {
     press(card, '?', { shiftKey: true })
     const d = q('[role="dialog"][aria-labelledby="sc-title"]')
     expect(d).not.toBeNull()
-    // 開啟期間底下的工作室快捷鍵暫停（Space 不播放、Delete 不略過）
+  // While open, studio shortcuts underneath are paused (Space does not play; Delete does not skip).
     press(document.activeElement as Element, 'Delete')
     expect(q('.toast')).toBeNull()
     press(document.body, 'Escape')
@@ -191,14 +191,14 @@ describe('shortcuts help + dialogs inside the studio', () => {
 })
 
 
-describe('工作室 Space 仲裁', () => {
+describe('Studio Space-key arbitration', () => {
   const release = (target: Element): KeyboardEvent => {
     const event = new KeyboardEvent('keyup', { key: ' ', code: 'Space', bubbles: true, cancelable: true })
     act(() => { target.dispatchEvent(event) })
     return event
   }
 
-  test('分割或複製後 Space 只播放，不再次操作片段', async () => {
+  test('After split or duplicate, Space only toggles playback and does not operate on the clip again', async () => {
     s = await mountStudio({ items: [{ id: 'i1', source: STUDIO_VIDEO, start: 10, end: 20 }] })
     click(q('.pclip')!)
     act(() => { q<HTMLVideoElement>('video')!.currentTime = 15 })
@@ -218,7 +218,7 @@ describe('工作室 Space 仲裁', () => {
     expect(qa('.pclip')).toHaveLength(3)
   })
 
-  test('所有工作室按鈕都阻止 Space 的原生 click，長按不重複切換播放', async () => {
+  test('All studio buttons prevent Space’s native click; holding Space does not toggle playback repeatedly', async () => {
     s = await mountStudio()
     const play = vi.spyOn(HTMLMediaElement.prototype, 'play')
     const pause = vi.spyOn(HTMLMediaElement.prototype, 'pause')
@@ -235,7 +235,7 @@ describe('工作室 Space 仲裁', () => {
     pause.mockRestore()
   })
 
-  test('重新命名欄位與組字保留空白輸入', async () => {
+  test('Rename fields and IME composition preserve space input', async () => {
     s = await mountStudio()
     const input = q<HTMLInputElement>('.pname')!
     focusEl(input)

@@ -1,6 +1,6 @@
 import { createHash } from 'crypto'
 
-// 測試只使用既有依賴樹的 ws 與 MessagePack，沒有新增正式依賴。
+// Tests use ws and MessagePack from the existing dependency tree; no production dependencies are added.
 const { WebSocketServer } = require('ws')
 const { encode, decode } = require('@msgpack/msgpack')
 const hash = (value: string): string => createHash('sha256').update(value).digest('base64')

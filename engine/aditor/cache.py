@@ -1,4 +1,4 @@
-"""快取儲存與重新分析合併（spec §4.2）。"""
+"""Cache persistence and merge behavior for reanalysis (spec §4.2)."""
 from __future__ import annotations
 
 import hashlib
@@ -56,7 +56,7 @@ def save_cache(p: Path, doc: dict, fallback_dir: Path | None = None) -> Path:
 
 
 def needs_reanalysis(doc: dict | None, info: VideoInfo, templates_version: str) -> bool:
-    """快取是否需要重新分析：未完成、影片變了、引擎版本或樣板版本不同（舊版文字關鍵字法的快取因此失效）。"""
+    """Whether a cache needs reanalysis: it is incomplete, the video changed, or the engine/template version differs (invalidating caches from the old text-keyword method)."""
     if not doc:
         return True
     analysis = doc.get("analysis") or {}
@@ -77,7 +77,7 @@ def _has_state(e: Event) -> bool:
 
 
 def _family(t: str) -> str:
-    """配對用的類型家族：助攻擊倒／助攻消滅互通（引擎改版後助攻子類型常改判，使用者狀態不應因此遺失）。"""
+    """Event type families used for matching: assist_knock and assist_elim are interchangeable because engine updates may reclassify assist subtypes, and must not discard user state."""
     return "assist" if t in ("assist_knock", "assist_elim") else t
 
 

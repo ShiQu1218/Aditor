@@ -1,6 +1,6 @@
 /**
- * 編輯鎖定（匯出進行中）：資料層旗標（ProjectProvider 的 apply／undo／redo／新專案會檢查）
- * ＋ 介面層 `inert`（專案軌與來源時間軸標 `data-editor-lock`，不可點擊、不可聚焦）。
+ * Editing lock during export: a data-layer flag checked by ProjectProvider's apply/undo/redo/new-project operations,
+ * plus interface-layer `inert` (the project track and source timeline get `data-editor-lock` and cannot be clicked or focused).
  */
 export const LOCK_SELECTOR = '[data-editor-lock]'
 

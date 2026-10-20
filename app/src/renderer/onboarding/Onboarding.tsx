@@ -25,7 +25,7 @@ const t = shellI18n.onboarding
 const STEP_COUNT = ONBOARDING_STEPS.length
 const STORAGE_STEP = ONBOARDING_STEPS.indexOf('storage')
 
-/** 錄影模式的呈現順序（卡片）：一局一個檔在前，預設選中的是 DEFAULT_RECORDING_SETTINGS.mode。 */
+/** Display order for recording mode cards; match-per-file comes first, and the default comes from DEFAULT_RECORDING_SETTINGS.mode. */
 const MODE_CARDS: ReadonlyArray<{ value: RecordingSettings['mode']; title: string; desc: string }> = [
   { value: 'match', title: recordingI18n.match, desc: t.recording.modeMatchDesc },
   { value: 'session', title: recordingI18n.session, desc: t.recording.modeSessionDesc }
@@ -144,22 +144,22 @@ function DoneStep({ draft }: { draft: OnboardingDraft }): JSX.Element {
 const STEP_TITLES: readonly string[] = [t.welcome.title, t.storage.title, t.recording.title, t.done.title]
 
 export interface OnboardingProps {
-  /** 預設用 window.api；測試可注入 */
+  /** Defaults to window.api; tests can inject a value. */
   api?: OnboardingApi
-  /** 目前的 settings.language（語言下拉的起始值） */
+  /** Current settings.language (initial value for the language selector). */
   language: LanguageSetting
-  /** 測試用：從第幾步（0 起算）開始 */
+  /** Test-only: step index to start from (zero-based). */
   initialStep?: number
-  /** 測試用：覆蓋草稿的起始值 */
+  /** Test-only: override the initial draft values. */
   initialDraft?: Partial<OnboardingDraft>
-  /** 完成或略過（設定已寫入）後呼叫 */
+  /** Called after completion or skipping, once settings have been written. */
   onClose?: () => void
 }
 
 /**
- * 首次啟動引導（疊在整個 app 上的 modal 對話框）。
- * 完成時一次寫入 `storageRoot`、`onboardingDone` 與四個錄影欄位；任何一步「稍後再說」（或 Esc）只寫 `onboardingDone`。
- * 換語言會重新載入視窗，引導會在新語言下從第 1 步重新顯示。
+ * First-run onboarding, shown as a modal over the entire app.
+ * On completion, write `storageRoot`, `onboardingDone`, and four recording fields at once; "Maybe later" (or Esc) only writes `onboardingDone`.
+ * Changing language reloads the window, and onboarding restarts from step 1 in the new language.
  */
 export function Onboarding({ api, language, initialStep = 0, initialDraft, onClose }: OnboardingProps): JSX.Element {
   const [step, setStep] = useState(initialStep)
@@ -192,7 +192,7 @@ export function Onboarding({ api, language, initialStep = 0, initialDraft, onClo
 
   useFocusTrap(boxRef, { onEscape: skip, initialFocus: () => titleRef.current })
 
-  // 取得建議的儲存位置（只在使用者還沒選之前填入）
+  // Load the suggested storage location only until the user makes a selection.
   useEffect(() => {
     let alive = true
     void Promise.resolve(resolveApi().settings.suggestStorageRoot?.())
@@ -202,7 +202,7 @@ export function Onboarding({ api, language, initialStep = 0, initialDraft, onClo
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // 換步驟時把焦點移到標題，讓讀屏軟體念出新的步驟
+  // Move focus to the heading when the step changes so screen readers announce the new step.
   useEffect(() => {
     if (mounted.current) titleRef.current?.focus()
     mounted.current = true
@@ -269,8 +269,8 @@ export function Onboarding({ api, language, initialStep = 0, initialDraft, onClo
 }
 
 /**
- * AppShell 用：設定載入完成且 `onboardingDone === false` 才顯示引導；
- * 關閉後本地先隱藏，設定的廣播（settings:changed）也會把 `onboardingDone` 帶成 true。
+ * Used by AppShell: show onboarding only after settings load and while `onboardingDone === false`.
+ * Hide it locally after dismissal; the settings broadcast (`settings:changed`) also updates `onboardingDone` to true.
  */
 export function OnboardingHost({ settings, api }: { settings: Settings | null; api?: OnboardingApi }): JSX.Element | null {
   const [closed, setClosed] = useState(false)

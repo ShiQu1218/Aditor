@@ -50,7 +50,7 @@ async function render(
 
 const rowIds = (html: string): string[] => [...html.matchAll(/data-row="([^"]+)"/g)].map((m) => m[1])
 
-describe('SettingsScreen markup（renderToString + fake window.api 資料）', () => {
+describe('SettingsScreen markup (renderToString + fake window.api data)', () => {
   test('loading state before settings arrive', () => {
     const html = renderToString(
       React.createElement(SettingsScreen, { controller: new SettingsController(fakeApi()) })
@@ -70,7 +70,7 @@ describe('SettingsScreen markup（renderToString + fake window.api 資料）', (
     expect(rowIds(html)).toEqual(['watchFolders', 'autoAnalyze', 'decode', 'cacheLocation'])
     expect(html).toContain('影片來源')
     expect(html).toContain('分析效能')
-    // 監看資料夾來自 getWatchFolders，缺失者有標記，每個都有可命名的移除按鈕
+    // Watch folders come from getWatchFolders; missing folders are marked and each has a named remove button.
     expect(html).toContain('D:\\Outplayed\\Apex Legends')
     expect(html).toContain('找不到此資料夾')
     expect(html).toContain('aria-label="移除監看資料夾 D:\\Outplayed\\Apex Legends"')
@@ -82,7 +82,7 @@ describe('SettingsScreen markup（renderToString + fake window.api 資料）', (
     expect(rowIds(html)).toEqual(['proxySuggest', 'proxyUsage', 'beforeAfter', 'autoclip', 'autoSuggestOnOpen', 'projectAutosave'])
     expect(html).toContain('2.4 GB（3 個檔案）')
     expect(html).toContain('刪除全部代理檔')
-    // 數字框：min／max 來自 shared 範圍
+    // Number input min/max values come from shared ranges.
     expect(html).toMatch(/id="set-beforeAfter-before"[^>]*min="0"[^>]*max="30"/)
     expect(html).toMatch(/id="set-autoclip-max_len"[^>]*min="15"[^>]*max="300"/)
     expect(html).toMatch(/id="set-autoclip-gap"[^>]*min="5"[^>]*max="60"/)
@@ -104,7 +104,7 @@ describe('SettingsScreen markup（renderToString + fake window.api 資料）', (
     expect(rowIds(html)).toEqual(['about', 'updateStatus', 'autoUpdate', 'trademark'])
     expect(html).toContain('Apex Legends 為 Electronic Arts／Respawn 之商標')
     expect(html).toMatch(/id="set-autoUpdate"[^>]*checked/)
-    // 沒有更新 API（舊 preload／開發）：顯示不支援並提供下載頁
+    // Without an update API (old preload or development), show the unsupported state and provide the download page.
     expect(html).toContain('免安裝版與開發版不支援自動更新')
     expect(html).toContain('開啟下載頁面')
   })
@@ -170,7 +170,7 @@ describe('SettingsScreen markup（renderToString + fake window.api 資料）', (
     expect(html).toMatch(/id="set-autoAnalyze"[^>]*aria-describedby="set-autoAnalyze-desc"/)
     expect(html).toMatch(/<label[^>]*for="set-decode"/)
     expect(html).toMatch(/<select[^>]*id="set-decode"/)
-    expect(html).not.toMatch(/role="switch"[^>]*aria-checked/) // 原生 checked，不重複宣告
+    expect(html).not.toMatch(/role="switch"[^>]*aria-checked/) // Native checked state should not be declared twice.
   })
 
   test('switch and select reflect the settings (checked / selected)', async () => {
@@ -190,7 +190,7 @@ describe('SettingsScreen markup（renderToString + fake window.api 資料）', (
     expect(tabs[0]).toContain('tabindex="-1"')
     expect(tabs[1]).toContain('aria-selected="true"')
     expect(tabs[1]).toContain('tabindex="0"')
-    expect(tabs[1]).toContain('class="set-cat active"') // 紅色指示條由 .active::before 繪製
+    expect(tabs[1]).toContain('class="set-cat active"') // The red indicator is drawn by .active::before.
     expect(tabs[2]).toContain('tabindex="-1"')
     expect(html).toContain('role="tabpanel"')
     expect(html).toContain('aria-labelledby="set-tab-recording"')
@@ -205,16 +205,16 @@ describe('SettingsScreen markup（renderToString + fake window.api 資料）', (
 
   test('search results: rows from ALL categories, grouped by card, with per-category hit counts', async () => {
     const html = await render({ initialQuery: '資料夾' })
-    // 儲存位置（一般）與監看資料夾（匯入與分析）
+    // Storage location (General) and watch folders (Import and analysis).
     expect(rowIds(html)).toEqual(['storageRoot', 'watchFolders'])
     expect(html).toContain('role="region"')
     expect(html).toContain('aria-label="搜尋結果"')
     expect(html).not.toContain('role="tabpanel"')
     expect(html).not.toContain('class="set-cat-desc"')
-    // 只顯示命中的列（同卡片的其他列被濾掉）
+    // Show only matching rows; other rows in the same card are filtered out.
     expect(html).not.toContain('data-row="autoAnalyze"')
-    expect(html).toContain('影片來源') // 卡片標題保留
-    // 各分類命中數（一般與匯入與分析各 1）
+    expect(html).toContain('影片來源') // Keep the card title.
+    // One match in each category: General and Import and analysis.
     const tabs = [...html.matchAll(/<button[^>]*role="tab"[^>]*>.*?<\/button>/g)].map((m) => m[0])
     expect(tabs[0]).toMatch(/aria-label="1 項符合">1</)
     expect(tabs[1]).not.toContain('set-hit')
@@ -227,7 +227,7 @@ describe('SettingsScreen markup（renderToString + fake window.api 資料）', (
     expect(rowIds(html)).toEqual(['encoders'])
   })
 
-  test('search with no match shows 沒有符合的設定 and no rows', async () => {
+  test('Search with no match shows “No matching settings” and no rows', async () => {
     const html = await render({ initialQuery: 'zzzz-not-a-setting' })
     expect(html).toContain('沒有符合的設定')
     expect(rowIds(html)).toEqual([])
@@ -236,29 +236,29 @@ describe('SettingsScreen markup（renderToString + fake window.api 資料）', (
 
   test('no setting row is left hard-disabled; OpenH264 download is actionable', async () => {
     const html = (await render({ initialCategory: 'about' })) + (await render({ initialCategory: 'export' }))
-    // 第三方授權（I11）：已可使用，不再是停用列
+    // Third-party licenses (I11) is active rather than disabled.
     expect(html).not.toMatch(/<button[^>]*id="set-about"[^>]*disabled/)
     expect(html).not.toContain('授權清單頁面將在後續更新提供。')
-    // OpenH264 下載按鈕不再被硬性停用：設定頁可直接下載（點擊後先出現授權說明）
+    // The OpenH264 download button is enabled; settings can start the download after showing the license notice.
     expect(html).not.toMatch(/<button[^>]*id="set-openh264"[^>]*disabled/)
     expect(html).not.toContain('下載需在匯出面板同意授權後進行。')
   })
 
-  test('the developer note 需新增 IPC never appears in any category or search markup', async () => {
+  test('The developer note “IPC needs to be added” never appears in category or search markup', async () => {
     for (const cat of ['general', 'recording', 'analysis', 'editing', 'export', 'about'] as const) {
       expect(await render({ initialCategory: cat })).not.toContain('需新增 IPC')
     }
     expect(await render({ initialQuery: '設定' })).not.toContain('需新增 IPC')
   })
 
-  test('new settings carry the 新 tag (low-perf, auto suggest, autosave)', async () => {
+  test('New settings carry the “New” tag (low-performance, auto-suggest, autosave)', async () => {
     const b = await render({ initialCategory: 'editing' })
     expect((b.match(/class="set-newtag"/g) ?? []).length).toBe(2)
   })
 })
 
 describe('save-failed notice and state sync', () => {
-  test('persisted:false → 儲存失敗 notice in an aria-live region; control shows the RETURNED value', async () => {
+  test('persisted:false → save-failure notice in an aria-live region; control shows the returned value', async () => {
     const html = await render({ initialCategory: 'general' }, fakeApi({ persisted: false }), async (c) => {
       await c.setBool('lowPerfMode', true)
     })
@@ -272,7 +272,7 @@ describe('save-failed notice and state sync', () => {
       await c.setBool('lowPerfMode', true)
     })
     expect(html).not.toContain('儲存失敗')
-    // live region 容器仍存在（內容為空），之後插入的訊息才會被朗讀
+    // Keep the live region container present and empty so later inserted messages are announced.
     expect(html).toContain('set-notice-host')
   })
 

@@ -7,7 +7,7 @@ import { WatchManager } from './watch'
 import { SettingsStore } from './settings'
 import type { AnalysisQueue } from './queue'
 
-/** 測試用較小的穩定視窗（正式預設 2000 ms） */
+/** Shorter stability window for tests (production default is 2000 ms). */
 const STABILITY_MS = 600
 
 interface Rig {
@@ -61,7 +61,7 @@ afterEach(() => {
     try {
       fs.rmSync(rig.root, { recursive: true, force: true })
     } catch {
-      // 忽略清理失敗（Windows 檔案鎖）
+      // Ignore cleanup failures (Windows file lock).
     }
   }
 })
@@ -88,7 +88,7 @@ describe('WatchManager', () => {
     fs.writeFileSync(file, 'x')
     await expect(rig.managers[0].add(file)).rejects.toThrow('不是資料夾')
 
-    // 失敗的 add 不得寫入設定
+    // A failed add must not write to settings.
     expect(rig.settings.get().watchFolders).toEqual([])
   })
 
@@ -105,7 +105,7 @@ describe('WatchManager', () => {
     await delay(120)
     fs.appendFileSync(file, Buffer.alloc(64, 3))
 
-    // 最後一次寫入剛發生：尚未達穩定視窗，不得匯入
+    // The last write just occurred: the stability window has not elapsed, so do not import yet.
     expect(rig.library.getEntries()).toHaveLength(0)
 
     await waitFor(() => rig.library.getEntries().length === 1)
@@ -155,7 +155,7 @@ describe('WatchManager', () => {
     fs.rmSync(rig.watchDir, { recursive: true, force: true })
     await delay(300)
 
-    // 不丟錯；清單保留該資料夾並標記缺失
+    // Do not throw; keep the folder in the list and mark it missing.
     expect(wm.list()).toContain(rig.watchDir)
     expect(wm.missing()).toContain(rig.watchDir)
     expect(rig.settings.get().watchFolders).toContain(rig.watchDir)
@@ -175,7 +175,7 @@ describe('WatchManager', () => {
     await wm.add(rig.watchDir)
     wm.stop()
 
-    // 新的 manager 僅憑設定恢復監看
+    // A new manager restores watching from settings alone.
     const wm2 = makeManager(rig)
     rig.managers.push(wm2)
     wm2.start()

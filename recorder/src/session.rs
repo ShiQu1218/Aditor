@@ -1,9 +1,9 @@
-//! 錄影整合：回呼僅提交 GPU 影格／有界小圖佇列，管理執行緒負責 IPC、索引與收尾。
+//! Recording integration: callbacks only submit GPU frames/bounded small-image queues; the management thread handles IPC, indexing, and finalization.
 
 use crate::{
     audio::{self, AudioCapture, AudioSink},
     capture::{
-        dda, hook,
+        dda,
         small::{SmallFrameExtractor, SmallFrames},
         Capture, CaptureMethod, CaptureNotice, CaptureOptions, CapturedFrame, FrameConsumer,
     },
@@ -45,7 +45,7 @@ use windows::{
 const DISK_RESERVE: u64 = 1024 * 1024 * 1024;
 const STATS_INTERVAL: Duration = Duration::from_secs(5);
 
-// 保留骨架的 unit struct 建構介面；每個 IPC 控制執行緒只擁有一個錄影工作。
+// Preserve the scaffold's unit struct constructor; each IPC control thread owns only one recording job.
 thread_local! {
     static RUNNING: RefCell<Option<Running>> = const { RefCell::new(None) };
     static CALLBACK_PRIORITY: Cell<bool> = const { Cell::new(false) };
@@ -66,9 +66,9 @@ impl Running {
         let result = self
             .worker
             .join()
-            .map_err(|_| (ErrorCode::Internal, "錄影管理執行緒異常結束".into()))
+            .map_err(|_| (ErrorCode::Internal, "Recording management thread exited unexpectedly".into()))
             .and_then(|result| result);
-        // 已自行停止的錯誤已由事件送出，後續 stop 只等待資源釋放。
+        // Errors from automatic stops have already been emitted; subsequent stop calls only wait for resource release.
         if was_active {
             result
         } else {
@@ -106,7 +106,7 @@ impl WorkerGuard {
 impl Drop for WorkerGuard {
     fn drop(&mut self) {
         if self.announced {
-            self.complete(&Err((ErrorCode::Internal, "錄影管理執行緒異常結束".into())));
+            self.complete(&Err((ErrorCode::Internal, "Recording management thread exited unexpectedly".into())));
         } else {
             self.active.store(false, Ordering::Release);
         }
@@ -129,7 +129,7 @@ impl Backend for Recorder {
                 .as_ref()
                 .is_some_and(|r| r.active.load(Ordering::Acquire))
             {
-                return Err((ErrorCode::Busy, "已有錄影工作執行中".into()));
+                return Err((ErrorCode::Busy, "A recording is already running".into()));
             }
             if let Some(old) = running.take() {
                 let _ = old.worker.join();
@@ -175,7 +175,7 @@ impl Backend for Recorder {
                 result => {
                     let _ = worker.join();
                     result.unwrap_or_else(|_| {
-                        Err((ErrorCode::Internal, "錄影初始化執行緒中斷".into()))
+                        Err((ErrorCode::Internal, "Recording initialization thread interrupted".into()))
                     })
                 }
             }
@@ -200,7 +200,7 @@ impl Backend for Recorder {
 impl Drop for Recorder {
     fn drop(&mut self) {
         if let Err((_, message)) = self.stop() {
-            eprintln!("錄影收尾失敗：{message}");
+            eprintln!("Recording shutdown failed: {message}");
         }
     }
 }
@@ -225,7 +225,7 @@ impl FrameConsumer for Consumer {
     fn on_frame(&mut self, frame: &CapturedFrame<'_>) {
         CALLBACK_PRIORITY.with(|set| {
             if !set.replace(true) {
-                // SAFETY: 僅調整目前 WGC 回呼執行緒；below-normal 基準 6 加 2 回到一般基準 8。
+                // SAFETY: Adjust only the current WGC callback thread; below-normal base 6 plus 2 restores normal base 8.
                 unsafe {
                     let _ = SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_HIGHEST);
                 }
@@ -238,7 +238,7 @@ impl FrameConsumer for Consumer {
         let pts = frame.pts - origin;
         self.counts.input.fetch_add(1, Ordering::Relaxed);
         if let Some(writer) = writer {
-            // 致命錯誤由 writer 保留，管理執行緒每輪檢查；一般佇列滿仍可丟格。
+            // The writer retains fatal errors for the management thread to check each iteration; ordinary queue overflow may still drop frames.
             writer.push_video(frame.texture, frame.width, frame.height, pts);
         }
         let bucket = (pts as i128 * 4 / TICKS_PER_SEC as i128) as i64;
@@ -290,10 +290,10 @@ struct Session {
     last_stats: Instant,
     previous: EncodeStats,
 }
-/// 目錄裡是否已有 aditorrec 寫出的檔案（init、索引、session.json 或段落）。
+/// Whether the directory contains aditorrec output (init, index, session.json, or segments).
 fn has_recorder_output(dir: &Path) -> Result<bool> {
-    for entry in fs::read_dir(dir).context("讀取錄影目錄失敗")? {
-        let name = entry.context("讀取錄影目錄失敗")?.file_name();
+    for entry in fs::read_dir(dir).context("Failed to read recording directory")? {
+        let name = entry.context("Failed to read recording directory")?.file_name();
         let name = name.to_string_lossy();
         if matches!(name.as_ref(), "init.mp4" | "index.jsonl" | "session.json")
             || (name.starts_with("seg_") && name.ends_with(".m4s"))
@@ -308,38 +308,21 @@ impl Session {
     fn open(args: &StartArgs, events: EventSink) -> Result<Self, BackendError> {
         let dir = Path::new(&args.session_dir);
         let prepare = || -> Result<()> {
-            fs::create_dir_all(dir).context("建立錄影目錄失敗")?;
-            // 主程序會先寫自己的 recording.json；只拒絕已有本程式輸出的目錄，避免覆寫既有錄影。
+            fs::create_dir_all(dir).context("Failed to create recording directory")?;
+            // The main process writes recording.json first; reject only directories containing our output to avoid overwriting recordings.
             ensure!(
                 !has_recorder_output(dir)?,
-                "錄影目錄已有錄影輸出，避免覆寫既有工作"
+                "Recording directory already contains output; refusing to overwrite an existing job"
             );
             check_disk(dir)
         };
         prepare().map_err(|e| failure(ErrorCode::Internal, e))?;
         let fps = args.encode.as_ref().map_or(60, |cfg| cfg.fps);
-        let (gpu, prepared_hook) = match args.capture {
-            CaptureMethod::Wgc => (
-                Gpu::create().map_err(|e| failure(ErrorCode::CaptureFailed, e))?,
-                None,
-            ),
-            CaptureMethod::Dda => (
-                dda::gpu_for_pid(args.pid).map_err(|e| failure(ErrorCode::CaptureFailed, e))?,
-                None,
-            ),
-            CaptureMethod::Hook => {
-                let Some(hook_dir) = args.hook_dir.as_deref().filter(|s| !s.is_empty()) else {
-                    return Err((
-                        ErrorCode::HookUnavailable,
-                        "hook_unavailable: 缺少 hook_dir".into(),
-                    ));
-                };
-                let (prepared, gpu) =
-                    hook::prepare(args.pid, Path::new(hook_dir), fps, hook::PREPARE_BUDGET)
-                        .map_err(|e| failure(ErrorCode::CaptureFailed, e))?;
-                (gpu, Some(prepared))
-            }
-        };
+        let gpu = match args.capture {
+            CaptureMethod::Wgc => Gpu::create(),
+            CaptureMethod::Dda => dda::gpu_for_pid(args.pid),
+        }
+        .map_err(|e| failure(ErrorCode::CaptureFailed, e))?;
         let extractor = SmallFrameExtractor::new(&gpu, args.frames)
             .map_err(|e| failure(ErrorCode::BadRequest, e))?;
         let name = shm::shm_name(&args.session_id);
@@ -372,11 +355,8 @@ impl Session {
             small_bucket: None,
             counts: counts.clone(),
         });
-        let capture = match prepared_hook {
-            Some(prepared) => Capture::start_hook(prepared, &gpu, opts, consumer, notice_tx),
-            None => Capture::start_with(args.capture, &gpu, opts, consumer, notice_tx),
-        }
-        .map_err(|e| failure(ErrorCode::CaptureFailed, e))?;
+        let capture = Capture::start_with(args.capture, &gpu, opts, consumer, notice_tx)
+            .map_err(|e| failure(ErrorCode::CaptureFailed, e))?;
         let mut session = Self {
             announced: false,
             capture_origin: 0,
@@ -397,7 +377,7 @@ impl Session {
         };
         let (source_w, source_h) = match session.notices.recv_timeout(Duration::from_secs(5)) {
             Ok(CaptureNotice::WindowFound { width, height, .. }) => (width, height),
-            _ => return Err((ErrorCode::CaptureFailed, "未取得擷取視窗尺寸".into())),
+            _ => return Err((ErrorCode::CaptureFailed, "Capture window dimensions unavailable".into())),
         };
         let (width, height) = if let Some(cfg) = &args.encode {
             output_size(source_w, source_h, cfg.height, cfg.aspect)
@@ -434,7 +414,7 @@ impl Session {
         let origin = first.recv_timeout(Duration::from_secs(5)).map_err(|e| {
             failure(
                 ErrorCode::CaptureFailed,
-                anyhow::anyhow!("等待第一格逾時：{e}"),
+                anyhow::anyhow!("Timed out waiting for the first frame: {e}"),
             )
         })?;
         session.capture_origin = origin;
@@ -508,7 +488,7 @@ impl Session {
                         clock::now_ticks() - self.counts.last_audio.load(Ordering::Relaxed),
                     ) > 5.0
                 {
-                    return Err((ErrorCode::AudioFailed, "音訊擷取已超過五秒沒有輸出".into()));
+                    return Err((ErrorCode::AudioFailed, "Audio capture has produced no output for over five seconds".into()));
                 }
             }
             if disk_checked.elapsed() >= Duration::from_secs(30) {
@@ -572,7 +552,7 @@ impl Session {
                 }),
                 Err(mpsc::TryRecvError::Empty) => break,
                 Err(mpsc::TryRecvError::Disconnected) if self.capture.is_some() => {
-                    return Err((ErrorCode::CaptureFailed, "擷取管理執行緒已結束".into()))
+                    return Err((ErrorCode::CaptureFailed, "Capture management thread has exited".into()))
                 }
                 Err(mpsc::TryRecvError::Disconnected) => break,
             }
@@ -619,7 +599,7 @@ impl Session {
         if stalled {
             return Err((
                 ErrorCode::EncodeFailed,
-                "編碼器已超過五秒沒有處理影格".into(),
+                "Encoder has processed no frames for over five seconds".into(),
             ));
         }
         Ok(())
@@ -634,7 +614,7 @@ impl Session {
         let stats = self.stats();
         let finish = if let Some(writer) = self.writer.take() {
             Arc::try_unwrap(writer)
-                .map_err(|_| (ErrorCode::Internal, "停止後仍有編碼器參照".into()))
+                .map_err(|_| (ErrorCode::Internal, "Encoder references remain after stop".into()))
                 .and_then(|writer| {
                     writer
                         .finish()
@@ -656,7 +636,7 @@ impl Session {
                     .iter()
                     .any(|entry| entry.dur > f64::from(SEGMENT_SECS) + 0.1)
             {
-                return Err((ErrorCode::Internal, "段落索引與已公布事件不一致".into()));
+                return Err((ErrorCode::Internal, "Segment index differs from published events".into()));
             }
         }
         Ok(())
@@ -675,8 +655,6 @@ fn failure(default: ErrorCode, error: impl std::fmt::Display) -> BackendError {
         ErrorCode::NoHwEncoder
     } else if message.contains("window_not_found:") {
         ErrorCode::WindowNotFound
-    } else if message.contains("hook_unavailable:") {
-        ErrorCode::HookUnavailable
     } else if message.contains("disk_full:") {
         ErrorCode::DiskFull
     } else {
@@ -685,17 +663,17 @@ fn failure(default: ErrorCode, error: impl std::fmt::Display) -> BackendError {
     (code, message)
 }
 fn validate(args: &StartArgs) -> Result<()> {
-    ensure!(args.pid != 0, "PID 必須大於零");
+    ensure!(args.pid != 0, "PID must be greater than zero");
     ensure!(
         !args.session_dir.is_empty() && !args.session_dir.contains('\0'),
-        "錄影目錄不可為空或含 NUL"
+        "Recording directory must not be empty or contain NUL"
     );
     let path = Path::new(&args.session_dir);
     ensure!(
         path.is_absolute()
             && matches!(path.components().next(), Some(Component::Prefix(prefix)) if matches!(prefix.kind(), Prefix::Disk(_)))
             && !path.components().any(|part| part == Component::ParentDir),
-        "錄影目錄必須是不含 .. 的本機磁碟絕對路徑"
+        "Recording directory must be an absolute local drive path without .."
     );
     ensure!(
         !args.session_id.is_empty()
@@ -704,14 +682,14 @@ fn validate(args: &StartArgs) -> Result<()> {
                 .session_id
                 .bytes()
                 .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_'),
-        "工作識別碼只接受 1–80 個英數字、連字號與底線"
+        "Session ID must contain 1–80 alphanumeric characters, hyphens, or underscores"
     );
-    ensure!(args.frames.base == [1920, 1080], "小圖基準必須是 1920×1080");
+    ensure!(args.frames.base == [1920, 1080], "Thumbnail reference resolution must be 1920×1080");
     for roi in [args.frames.banner, args.frames.spec] {
         let rect = Rect::from_array(roi);
         ensure!(
             rect == rect.scaled((1920, 1080), (1920, 1080)),
-            "小圖 ROI 超出基準畫面"
+            "Small-image ROI exceeds reference frame bounds"
         );
     }
     if let Some(cfg) = &args.encode {
@@ -720,7 +698,7 @@ fn validate(args: &StartArgs) -> Result<()> {
                 && (1..=1_000_000).contains(&cfg.bitrate_kbps)
                 && (cfg.height == 0
                     || (2..=16_384).contains(&cfg.height) && cfg.height.is_multiple_of(2)),
-            "FPS、輸出高度或位元率超出範圍"
+            "FPS, output height, or bitrate is out of range"
         );
     }
     if let Some(cfg) = &args.audio {
@@ -734,7 +712,7 @@ fn output_size(
     requested: u32,
     aspect: EncodeAspect,
 ) -> Result<(u32, u32)> {
-    ensure!(width >= 2 && height >= 2, "擷取尺寸太小");
+    ensure!(width >= 2 && height >= 2, "Capture dimensions are too small");
     let h = if requested == 0 {
         height & !1
     } else {
@@ -743,26 +721,26 @@ fn output_size(
     let w = if aspect == EncodeAspect::Native {
         ((u64::from(width) * u64::from(h) / u64::from(height)) & !1) as u32
     } else {
-        // 四捨五入到最接近的偶數。
+        // Round to the nearest even number.
         ((u64::from(h) * 16 + 9) / 18 * 2) as u32
     };
     ensure!(
         (2..=16_384).contains(&w) && (2..=16_384).contains(&h),
-        "輸出尺寸超出硬體編碼範圍"
+        "Output dimensions exceed hardware encoding limits"
     );
     Ok((w, h))
 }
 fn check_disk(dir: &Path) -> Result<()> {
     let path: Vec<u16> = dir.as_os_str().encode_wide().chain(Some(0)).collect();
     let mut available = 0;
-    // SAFETY: 路徑以 NUL 結尾，輸出指向有效 u64；只查詢目前工作可用空間。
+    // SAFETY: The path is NUL-terminated and output points to a valid u64; only query free space for the current job.
     unsafe { GetDiskFreeSpaceExW(PCWSTR(path.as_ptr()), Some(&mut available), None, None) }
-        .context("查詢磁碟空間失敗")?;
+        .context("Failed to query disk space")?;
     check_available(available)
 }
 fn check_available(available: u64) -> Result<()> {
     if available < DISK_RESERVE {
-        bail!("disk_full: 可用空間不足 1 GiB");
+        bail!("disk_full: Less than 1 GiB of free space");
     }
     Ok(())
 }
@@ -774,8 +752,8 @@ fn timestamp() -> Result<String> {
         dwHighDateTime: (ticks >> 32) as u32,
     };
     let mut utc = SYSTEMTIME::default();
-    // SAFETY: FILETIME 為目前 UTC 時間；utc 為有效輸出結構。
-    unsafe { FileTimeToSystemTime(&filetime, &mut utc) }.context("轉換錄影開始時間失敗")?;
+    // SAFETY: FILETIME is the current UTC time; utc is a valid output structure.
+    unsafe { FileTimeToSystemTime(&filetime, &mut utc) }.context("Failed to convert recording start time")?;
     Ok(format!(
         "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}.{:03}Z",
         utc.wYear, utc.wMonth, utc.wDay, utc.wHour, utc.wMinute, utc.wSecond, utc.wMilliseconds
@@ -898,7 +876,7 @@ mod tests {
         };
         assert!(thread::spawn(move || {
             let _guard = guard;
-            panic!("測試 session panic");
+            panic!("test session panic");
         })
         .join()
         .is_err());
@@ -927,7 +905,7 @@ mod tests {
             let (stop, _stopped) = mpsc::channel();
             let (done, finished) = mpsc::channel();
             let worker = thread::spawn(move || {
-                let result = Err((code, "測試非同步失敗".into()));
+                let result = Err((code, "Test asynchronous failure".into()));
                 guard.complete(&result);
                 done.send(()).unwrap();
                 result
@@ -1002,10 +980,6 @@ mod tests {
             ErrorCode::WindowNotFound
         );
         assert_eq!(
-            failure(ErrorCode::CaptureFailed, "hook_unavailable: 測試").0,
-            ErrorCode::HookUnavailable
-        );
-        assert_eq!(
             failure(ErrorCode::EncodeFailed, "no_hw_encoder: 測試").0,
             ErrorCode::NoHwEncoder
         );
@@ -1018,17 +992,5 @@ mod tests {
     fn disk_reserve_stops_below_one_gib_and_accepts_the_boundary() {
         assert!(check_available(DISK_RESERVE).is_ok());
         assert!(check_available(DISK_RESERVE - 1).is_err());
-    }
-    #[test]
-    fn hook_capture_without_hook_dir_returns_hook_unavailable() {
-        let dir = std::env::temp_dir().join(format!("aditorrec-hook-nodir-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&dir);
-        let mut args = start_args();
-        args.session_dir = dir.to_string_lossy().into_owned();
-        args.capture = CaptureMethod::Hook;
-        args.hook_dir = None;
-        let err = Recorder.start(args, Output::default().sink()).unwrap_err();
-        assert_eq!(err.0, ErrorCode::HookUnavailable);
-        let _ = fs::remove_dir_all(&dir);
     }
 }

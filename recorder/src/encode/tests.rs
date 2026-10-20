@@ -18,20 +18,20 @@ fn worker_failures_are_latched_without_further_frames() {
     let counts = Counts::default();
     monitor_worker(&counts, || Ok(())).unwrap();
     assert!(counts.check_error().is_ok());
-    assert!(monitor_worker(&counts, || bail!("測試封裝失敗")).is_err());
-    counts.fail("後續錯誤");
-    assert_eq!(counts.error.get().unwrap(), "測試封裝失敗");
+    assert!(monitor_worker(&counts, || bail!("Test mux failure")).is_err());
+    counts.fail("subsequent error");
+    assert_eq!(counts.error.get().unwrap(), "Test mux failure");
     assert!(counts
         .check_error()
         .unwrap_err()
         .to_string()
-        .contains("測試封裝失敗"));
+        .contains("Test mux failure"));
 }
 
 #[test]
 fn worker_panics_are_latched_as_encode_errors() {
     let counts = Counts::default();
-    assert!(monitor_worker(&counts, || panic!("測試編碼 panic")).is_err());
+    assert!(monitor_worker(&counts, || panic!("test encoder panic")).is_err());
     assert!(counts
         .check_error()
         .unwrap_err()
@@ -107,7 +107,7 @@ fn texture(gpu: &Gpu, size: (u32, u32)) -> (ID3D11Texture2D, ID3D11RenderTargetV
     };
     let mut texture = None;
     let mut view = None;
-    // SAFETY: 有效裝置、單層 BGRA 描述及由 windows crate 管理的輸出參照。
+    // SAFETY: Valid device, single-mip BGRA description, and output reference managed by the windows crate.
     unsafe {
         gpu.device
             .CreateTexture2D(&desc, None, Some(&mut texture))
@@ -166,13 +166,13 @@ fn cfr_ticks_do_not_accumulate_rounding_error() {
 fn aac_fifo_aligns_gaps_overlaps_and_partial_frames() {
     let mut audio = aac::Audio::new().unwrap();
     let mut packets = audio.push(&vec![0.1; 960], 100_000).unwrap();
-    packets.extend(audio.push(&vec![0.1; 960], 100_000).unwrap()); // 重複塊應丟棄。
-    packets.extend(audio.push(&vec![0.2; 960], 300_000).unwrap()); // 中間 10 ms 靜音。
+    packets.extend(audio.push(&vec![0.1; 960], 100_000).unwrap()); // Duplicate chunks should be discarded.
+    packets.extend(audio.push(&vec![0.2; 960], 300_000).unwrap()); // 10 ms of silence in the gap.
     packets.extend(audio.finish(400_000).unwrap());
     let times: Vec<_> = packets
         .iter()
         .map(|p| {
-            // SAFETY: 測試持有有效封包，僅讀取時間戳。
+            // SAFETY: The test owns a valid packet and only reads its timestamp.
             unsafe { (*p.0).pts }
         })
         .collect();
@@ -216,7 +216,7 @@ fn record(
             } else {
                 [0.1, (slot % 128) as f32 / 255., 0.8, 1.]
             };
-            // SAFETY: RTV 與來源 texture 同裝置；D3D11 context 已啟用 multithread 保護。
+            // SAFETY: The RTV and source texture use the same device; the D3D11 context has multithread protection enabled.
             unsafe {
                 gpu.context.ClearRenderTargetView(&view, &color);
             }
@@ -246,7 +246,7 @@ fn record(
     writer.finish().unwrap();
     segments.extend(rx.try_iter());
     if frame_count >= 240 {
-        assert!(delivered_live, "必須在 finish 前送出完整段落");
+        assert!(delivered_live, "A complete segment must be delivered before finish");
     }
     let expected_segments = (frame_count + 119) / 120;
     assert_eq!(segments.len() as i64, expected_segments);
@@ -272,7 +272,7 @@ fn record(
             .filter(|p| p["stream_index"] == 0)
             .map(|p| p["duration_time"].as_str().unwrap().parse::<f64>().unwrap())
             .sum();
-        assert!((duration - expected).abs() < 0.05, "實際段長={duration}");
+        assert!((duration - expected).abs() < 0.05, "Actual segment duration={duration}");
     }
     let combined = dir.join("combined.mp4");
     concatenate(&dir, &segments, &combined);
@@ -307,9 +307,9 @@ fn record(
             .filter(|s| s[0] <= 0. && s[1] > 0.)
             .count();
         let frequency = crossings as f64 / (interval.len() as f64 / 48_000.);
-        assert!((frequency - 440.).abs() < 3., "AAC 解碼頻率={frequency}");
+        assert!((frequency - 440.).abs() < 3., "AAC decoded frequency={frequency}");
         let rms = (interval.iter().map(|s| s * s).sum::<f32>() / interval.len() as f32).sqrt();
-        assert!((rms - 0.2 / 2f32.sqrt()).abs() < 0.02, "AAC 解碼振幅={rms}");
+        assert!((rms - 0.2 / 2f32.sqrt()).abs() < 0.02, "AAC decoded amplitude={rms}");
     }
     let duration = json["format"]["duration"]
         .as_str()
@@ -318,7 +318,7 @@ fn record(
         .unwrap();
     assert!(
         (duration - frame_count as f64 / 60.).abs() < 0.2,
-        "總時長={duration}"
+        "Total duration={duration}"
     );
     let packets: Vec<_> = json["packets"]
         .as_array()
@@ -342,7 +342,7 @@ fn record(
         "{}",
         String::from_utf8_lossy(&decode.stderr)
     );
-    // 真正解碼前後色塊，驗證 GPU 複製／縮放不是黑畫面或使用已覆寫的表面。
+    // Decode the color blocks at the beginning and end to verify GPU copying/scaling did not produce black frames or use an overwritten surface.
     let pixels = Command::new(executable("ffmpeg"))
         .args(["-v", "error", "-i"])
         .arg(&combined)
@@ -366,25 +366,25 @@ fn record(
     );
     assert!(
         pixels.stdout[0] > pixels.stdout[2] + 80,
-        "首格必須是紅色：{:?}",
+        "First frame must be red: {:?}",
         pixels.stdout
     );
     for (&actual, expected) in pixels.stdout[..3].iter().zip([204u8, 0, 26]) {
         assert!(
             actual.abs_diff(expected) <= 8,
-            "首格色彩應保留：{:?}",
+            "First-frame color should be preserved: {:?}",
             pixels.stdout
         );
     }
     if frame_count > 120 {
         assert!(
             pixels.stdout[5] > pixels.stdout[3] + 80,
-            "第二段必須是藍色：{:?}",
+            "Second segment must be blue: {:?}",
             pixels.stdout
         );
     }
     eprintln!(
-        "{name}：來源 {source_size:?}，{} 段，{duration:.3} 秒，解碼成功",
+        "{name}: source {source_size:?}, {} segments, {duration:.3} seconds, decode succeeded",
         segments.len()
     );
     fs::remove_dir_all(&dir).unwrap();
@@ -395,10 +395,10 @@ fn gpu_recording_and_scaling_have_independent_keyframe_segments() {
     let _guard = GPU_TEST.lock().unwrap();
     let gpu = Gpu::create().unwrap();
     let names = SegmentWriter::probe_encoders(&gpu);
-    eprintln!("實際試編碼可用編碼器：{names:?}");
+    eprintln!("Available encoders from the actual probe: {names:?}");
     assert!(
         names.iter().any(|name| name == "hevc_nvenc"),
-        "本機 RTX 5080 應可使用 HEVC NVENC"
+        "Local RTX 5080 should support HEVC NVENC"
     );
     record(&gpu, (1280, 720), "hevc_nvenc", true, 300, false);
     record(&gpu, (1920, 1080), "hevc_nvenc", true, 300, true);
@@ -417,7 +417,7 @@ fn gpu_nv12_conversion_and_error_propagation() {
     let encoder = hardware.encoder("hevc_nvenc", &video).unwrap();
     let frame = hardware.surface().unwrap();
     let (source, view) = texture(&gpu, (1920, 1080));
-    // SAFETY: 有效的同裝置 RTV。
+    // SAFETY: A valid RTV on the same device.
     unsafe {
         gpu.context
             .ClearRenderTargetView(&view, &[0.8, 0.1, 0.1, 1.]);
@@ -425,7 +425,7 @@ fn gpu_nv12_conversion_and_error_propagation() {
     Copier::new(&gpu, &video, hardware.format)
         .copy(&source, (1920, 1080), &frame)
         .unwrap();
-    // SAFETY: 本測試獨佔影格 metadata。
+    // SAFETY: This test exclusively owns the frame metadata.
     unsafe {
         (*frame.0).pts = 0;
         (*frame.0).duration = 166_667;
@@ -436,7 +436,7 @@ fn gpu_nv12_conversion_and_error_propagation() {
     let mut packets = encoder.send(Some(&frame)).unwrap();
     packets.extend(encoder.send(None).unwrap());
     assert!(!packets.is_empty());
-    // SAFETY: 封包在測試中獨佔，為單格錄影補上明確長度。
+    // SAFETY: The test exclusively owns the packet and assigns an explicit duration to this single-frame recording.
     unsafe {
         for packet in &packets {
             (*packet.0).duration = 166_667;
@@ -469,19 +469,19 @@ fn gpu_nv12_conversion_and_error_propagation() {
     assert_eq!(pixels.stdout.len(), 3);
     assert!(
         pixels.stdout[0] > pixels.stdout[2] + 80,
-        "NV12 轉換顏色錯誤：{:?}",
+        "NV12 conversion color mismatch: {:?}",
         pixels.stdout
     );
     for (&actual, expected) in pixels.stdout.iter().zip([204u8, 26, 26]) {
         assert!(
             actual.abs_diff(expected) <= 8,
-            "NV12 色彩應保留：{:?}",
+            "NV12 colors should be preserved: {:?}",
             pixels.stdout
         );
     }
     fs::remove_dir_all(dir).unwrap();
 
-    // 模擬編碼執行緒停滯，確認 8 格滿載後呼叫仍立即回傳。
+    // Simulate a stalled encoder thread and verify calls still return immediately when all 8 slots are full.
     let (tx, rx) = mpsc::sync_channel(QUEUE_SIZE);
     let pool = (0..POOL_SIZE)
         .map(|_| {
@@ -561,7 +561,7 @@ fn gpu_nv12_conversion_and_error_propagation() {
     }
     assert!(
         writer.worker.as_ref().unwrap().is_finished(),
-        "複製失敗後必須停止 CFR 補格"
+        "CFR frame duplication must stop after a copy failure"
     );
     assert!(writer.finish().unwrap_err().to_string().contains("GPU"));
     fs::remove_dir_all(dir).unwrap();
@@ -598,18 +598,18 @@ fn gpu_static_capture_keeps_cfr_and_silent_audio_running() {
     let (tx, rx) = mpsc::channel();
     let writer = SegmentWriter::open(&gpu, &dir, video, true, tx).unwrap();
     let (source, view) = texture(&gpu, (1280, 720));
-    // SAFETY: 同裝置的有效 RTV，只在測試中設定已知色塊。
+    // SAFETY: A valid same-device RTV; only used to set known color blocks in this test.
     unsafe {
         gpu.context
             .ClearRenderTargetView(&view, &[0.8, 0.1, 0.1, 1.]);
     }
     assert_eq!(writer.push_video(&source, 1280, 720, 0), PushResult::Queued);
-    // 模擬 WGC 靜止畫面不再送格，且 WASAPI 沒有音訊塊。
+    // Simulate WGC stopping frame delivery for a static image while WASAPI has no audio chunks.
     thread::sleep(Duration::from_millis(2600));
     assert_eq!(writer.stats().frames_in, 1);
     assert!(writer.stats().frames_encoded >= 120);
     let mut segments: Vec<_> = rx.try_iter().collect();
-    assert!(!segments.is_empty(), "靜止畫面也必須在錄影期間完成段落");
+    assert!(!segments.is_empty(), "Segments should still finish while recording a static image");
     writer.finish().unwrap();
     segments.extend(rx.try_iter());
     assert_eq!(segments.len(), 2);
@@ -622,7 +622,7 @@ fn gpu_static_capture_keeps_cfr_and_silent_audio_running() {
         .unwrap()
         .parse::<f64>()
         .unwrap();
-    assert!((duration - 2.6).abs() < 0.1, "靜止畫面錄影時長={duration}");
+    assert!((duration - 2.6).abs() < 0.1, "Static-image recording duration={duration}");
     let silence = Command::new(executable("ffmpeg"))
         .args(["-v", "error", "-i"])
         .arg(&combined)

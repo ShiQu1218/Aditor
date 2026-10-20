@@ -1,6 +1,6 @@
 /**
- * 匯出相關 IPC 的處理本體（不依賴 electron，可用假 ipcMain／webContents 測試）。
- * 頻道：`export:start`、`export:cancel`、`export:diskSpace`、`export:checkOutDir`；進度經 `export:progress` 只送給發出請求的視窗。
+ * Core IPC handlers for exports (no Electron dependency; testable with fake ipcMain/webContents).
+ * Channels: `export:start`, `export:cancel`, `export:diskSpace`, `export:checkOutDir`; `export:progress` is sent only to the requesting window.
  */
 import fs from 'fs'
 import path from 'path'
@@ -15,7 +15,7 @@ import { exportSubDirName } from '../../shared/storage'
 export interface ExportSender {
   isDestroyed(): boolean
   send(channel: string, data: RunProgress): void
-  /** webContents 的 'destroyed' 事件（視窗關閉）；缺少時由呼叫端另行呼叫 cancel */
+  /** webContents 'destroyed' event (window closed); caller invokes cancel separately when unavailable. */
   once?(event: 'destroyed', listener: () => void): unknown
   removeListener?(event: 'destroyed', listener: () => void): unknown
 }
@@ -25,15 +25,15 @@ export interface IpcMainLike {
 }
 
 export interface ExportServiceDeps {
-  /** 取得來源影片資訊（引擎 probe）；失敗或缺少時採預設值 */
+  /** Get source video metadata (engine probe); use defaults on failure or when unavailable. */
   probe?: (source: string) => Promise<unknown>
   ffmpeg?: RunExportOptions['ffmpeg']
   tempDir?: string
-  /** 精準合輯的音軌查詢；無音軌來源需先補靜音。 */
+  /** Audio-track query for precise concatenation; add silence first when a source has no audio track. */
   hasAudio?: AudioProbe
-  /** 快速無損切點查詢（關鍵影格與終點）；預設以 ffprobe 只讀封包查詢 */
+  /** Query fast stream-copy cut points (keyframes and end); defaults to a packet-only ffprobe query. */
   copyCut?: CutLookup
-  /** 合輯用：量中間檔實際播放終點；預設以 ffprobe 讀封包 */
+  /** For concatenation: measure the actual playback end of an intermediate file; defaults to reading packets with ffprobe. */
   mediaEnd?: MediaEndProbe
 }
 
@@ -42,9 +42,9 @@ export interface ValidatedRequest {
   mode: 'separate' | 'concat'
   quality: 'copy' | 'precise'
   encoder?: string
-  /** 使用者選的輸出資料夾（已驗證存在且可寫） */
+  /** User-selected output directory (validated to exist and be writable). */
   outDir: string
-  /** 實際寫入的資料夾：`outDir` 底下依模式分的子資料夾（合併 → Merged、分開 → Clips），已建立且可寫 */
+  /** Actual output directory: the mode-specific subdirectory under `outDir` (Merged or Clips), created and writable. */
   outputDir: string
   baseName: string
 }
@@ -55,7 +55,7 @@ const MAX_ITEMS = 2000
 const MAX_BASENAME = 100
 const RESERVED = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i
 
-/** 檔名主體清理：去掉路徑分隔與 Windows 非法字元、結尾點／空白、保留字，限制長度；空字串→`export`。 */
+/** Sanitize a filename stem: remove path separators, Windows-invalid characters, trailing dots/spaces, and reserved names; limit its length; use `export` when empty. */
 export function sanitizeBaseName(name: string): string {
   let s = name.replace(/[\x00-\x1f<>:"/\\|?*]/g, '_')
   s = s.replace(/[. ]+$/g, '').replace(/^\s+/, '')
@@ -111,7 +111,7 @@ export async function validateExportRequest(raw: unknown): Promise<ValidatedRequ
   const outDir = path.resolve(r.outDir)
   await assertWritableDir(outDir)
   if (typeof r.baseName !== 'string') throw new RequestError(tr('檔名不正確'))
-  // 其餘欄位都通過才建立子資料夾，避免無效請求在使用者的資料夾留下空目錄
+  // Create the subdirectory only after all other fields pass validation, so invalid requests do not leave empty folders behind.
   const outputDir = path.join(outDir, exportSubDirName(r.mode))
   try {
     await fs.promises.mkdir(outputDir, { recursive: true })
@@ -122,7 +122,7 @@ export async function validateExportRequest(raw: unknown): Promise<ValidatedRequ
   return { items, mode: r.mode, quality: r.quality, encoder, outDir, outputDir, baseName: sanitizeBaseName(r.baseName) }
 }
 
-/** 取不到資訊時的預設：編碼／解析度採常見值，幀率、像素格式、音訊規格標為未知（0／空字串），相容性判斷會保守處理。 */
+/** Defaults when metadata is unavailable: use common codec/resolution values and mark frame rate, pixel format, and audio specs as unknown (0/empty); compatibility checks then remain conservative. */
 const DEFAULT_PROBE: StreamProbe = {
   vcodec: 'h264',
   width: 1920,
@@ -143,7 +143,7 @@ export type ExportStartResult =
   | { ok: false; cancelled?: false; code?: 'busy'; error: string; outputs: string[]; notices?: string[] }
 
 export function createExportService(deps: ExportServiceDeps = {}) {
-  /** 同一時間只允許一個匯出；在任何 await 之前就設定，避免同一 tick 的兩個 start 都通過檢查 */
+  /** Allow one export at a time; set this before any await so two starts in the same tick cannot both pass the check. */
   let current: { ac: AbortController; done: Promise<unknown> } | null = null
 
   async function start(sender: ExportSender, raw: unknown): Promise<ExportStartResult> {
@@ -167,7 +167,7 @@ export function createExportService(deps: ExportServiceDeps = {}) {
           try {
             const p = (await deps.probe(item.source)) as Record<string, unknown> | null
             if (p) {
-              // 引擎目前只提供 codec／解析度；有提供的其他欄位才採用，否則維持未知
+              // The engine currently provides only codec/resolution; use any other fields it provides, otherwise keep them unknown.
               info = {
                 vcodec: str(p.codec) || 'h264',
                 width: posNum(p.width) || 1920,
@@ -180,16 +180,16 @@ export function createExportService(deps: ExportServiceDeps = {}) {
               }
             }
           } catch {
-            // 取不到資訊就用預設值
+            // Use defaults when metadata is unavailable.
           }
         }
         probes.set(item.source, info)
       }
       if (ac.signal.aborted) return { ok: false, cancelled: true, outputs: [], notices: [] }
 
-      // 不覆蓋既有檔案：同名就改成「<名稱> (2)」（I6）
+      // Do not overwrite existing files: append " (2)" to a duplicate name (I6).
       const free = resolveFreeBaseName(req.outputDir, req.baseName, req.mode, req.items.length, (p) => fs.existsSync(p))
-      // 快速無損：先查每段起點之前的關鍵影格與乾淨的終點，切點直接對齊（見 keyframe.ts）
+      // Fast stream copy: find the keyframe before each segment start and a clean end, then align cuts to them (see keyframe.ts).
       let copyCuts: Awaited<ReturnType<typeof lookupCopyCuts>> | undefined
       const silentSources = new Set<string>()
       if (resolveQuality(req.items, req, probes).quality === 'copy') {
@@ -204,7 +204,7 @@ export function createExportService(deps: ExportServiceDeps = {}) {
       }
       const naming = { ...req, outDir: req.outputDir, baseName: free.baseName, copyCuts, silentSources }
       const { jobs, notices, concatListContent: staticList } = buildJobs(req.items, naming, probes)
-      // 合輯：中間檔都完成後量每段實際播放終點，寫進清單的 duration（量不到就用原本的清單）
+      // Concatenation: after all intermediate files are ready, measure each actual playback end for the list duration (keep the original duration if measurement fails).
       const segmentFiles = jobs.filter((j) => j.intermediate).map((j) => j.output)
       const measure = deps.mediaEnd ?? createMediaEndProbe()
       const concatListContent =
@@ -212,7 +212,7 @@ export function createExportService(deps: ExportServiceDeps = {}) {
           ? async (): Promise<string> => concatList(segmentFiles, await measureMediaEnds(segmentFiles, measure, ac.signal))
           : staticList
       if (free.renamed) notices.push(tr('輸出資料夾已有同名檔案，已改用「{baseName}」，不會覆蓋原有檔案', { baseName: free.baseName }))
-      // 防禦：輸出檔必須直接位於實際輸出目錄（outDir/<子資料夾>）內
+      // Defense in depth: output files must be directly inside the actual output directory (outDir/<subdirectory>).
       for (const j of jobs) {
         if (path.dirname(path.resolve(j.output)) !== req.outputDir) throw new RequestError(tr('輸出路徑不正確'))
       }
@@ -235,7 +235,7 @@ export function createExportService(deps: ExportServiceDeps = {}) {
             try {
               sender.send('export:progress', progress)
             } catch {
-              // 視窗在送出瞬間被銷毀
+              // The window was destroyed while sending.
             }
           }
         }
@@ -250,14 +250,14 @@ export function createExportService(deps: ExportServiceDeps = {}) {
     }
   }
 
-  /** 中止進行中的匯出；沒有進行中、或已經在中止中＝no-op（回傳 cancelled:false） */
+  /** Cancel an active export; no-op when none is active or cancellation is already underway (returns cancelled:false). */
   function cancel(): { cancelled: boolean } {
     if (!current || current.ac.signal.aborted) return { cancelled: false }
     current.ac.abort()
     return { cancelled: true }
   }
 
-  /** 中止並等到 ffmpeg 已結束、partial 已清除（視窗關閉／App 結束時用） */
+  /** Cancel and wait until ffmpeg exits and partial files are removed (used on window close/app exit). */
   async function cancelAndWait(): Promise<void> {
     const c = current
     if (!c) return
@@ -266,8 +266,8 @@ export function createExportService(deps: ExportServiceDeps = {}) {
   }
 
   /**
-   * 開始前檢查輸出資料夾（存在、是資料夾、可寫入）；與 `export:start` 共用同一個 assertWritableDir，
-   * 讓壞資料夾在設定頁就成為阻擋條件，而不是按下開始後才出現失敗頁。回傳結果而非丟錯（錯誤訊息才不會被 IPC 加前綴）。
+   * Check the output directory before starting (exists, is a directory, and is writable); share assertWritableDir with `export:start`
+   * so invalid directories block on the settings page instead of failing after start. Return a result instead of throwing (so IPC does not prefix the error message).
    */
   async function checkOutDir(dir: unknown): Promise<{ ok: true } | { ok: false; reason: string }> {
     if (!isSafeLocalDirPath(dir)) return { ok: false, reason: tr('輸出資料夾路徑不正確') }

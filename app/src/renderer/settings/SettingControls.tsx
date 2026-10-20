@@ -12,7 +12,7 @@ import { UpdateControl } from './UpdateControl'
 
 const t = settingsI18n.row
 
-/** 控制項共用的 aria 對應：id（label for）、說明與原因（aria-describedby）。 */
+/** Shared ARIA wiring for controls: id (label for), description, and reason (aria-describedby). */
 export interface ControlIds {
   ctl: string
   title: string
@@ -24,7 +24,7 @@ export interface ControlIds {
 export const describedBy = (ids: ControlIds, extra?: string): string | undefined =>
   [ids.desc, ids.reason, ids.err, extra].filter(Boolean).join(' ') || undefined
 
-/** 真正的 checkbox（role=switch）：由 <label for> 命名，樣式為開關。 */
+/** Native checkbox (role=switch), named by <label for> and styled as a toggle. */
 export function SwitchControl(props: {
   ids: ControlIds
   checked: boolean
@@ -121,14 +121,14 @@ export function GainControl(props: {
 }
 
 /**
- * 數字框＋−／＋按鈕：輸入中保留使用者鍵入的草稿，失焦／Enter／按鈕時才夾限並送出；
- * 送出後草稿一律回到「main 回傳的值」（syncKey 變動＝收到新的設定）。
+ * Number input with −/+ buttons: preserve the user's draft while typing, and clamp/submit on blur, Enter, or button click.
+ * After submission, reset the draft to the value returned by main (a changed syncKey means new settings arrived).
  */
 export function NumberField(props: {
   id: string
   value: number
   range: SettingsRange
-  /** 收到新的設定時變動（用來把草稿還原成真實值） */
+  /** Changes when new settings arrive, resetting the draft to the actual value. */
   syncKey: unknown
   ariaLabel?: string
   labelledBy?: string
@@ -145,7 +145,7 @@ export function NumberField(props: {
     const n = raw.trim() === '' ? Number.NaN : Number(raw)
     const v = clampToRange(range, n)
     if (v === null) {
-      setDraft(String(value)) // 無法解析：還原
+      setDraft(String(value)) // Unparseable: reset.
       return
     }
     setDraft(String(v))

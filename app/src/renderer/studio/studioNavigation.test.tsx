@@ -27,8 +27,8 @@ async function start(entries: LibraryEntry[]) {
 }
 const navigate = (view: 'studio' | 'library' | 'settings') => click(document.querySelector(`[aria-label="${view === 'studio' ? shellI18n.rail.studioLabel : shellI18n.rail[view]}"]`)!)
 
-describe('工作室導覽', () => {
-  test('未開影片時開啟錄影時間最新的項目，回到工作室保留原影片', async () => {
+describe('Studio navigation', () => {
+  test('When no video is open, opens the most recently recorded item; returning to the studio keeps the current video', async () => {
     await start([entry(A, Date.now()), entry(B), entry('D:/舊影片.mp4', new Date(2026, 9, 17).getTime())])
     navigate('studio'); await flush()
     expect(document.querySelector('.studio-file')?.textContent).toBe('Apex_2026-10-18_23-00_2.mp4')
@@ -37,12 +37,12 @@ describe('工作室導覽', () => {
     navigate('studio'); await flush()
     expect(document.querySelector('.studio-file')?.textContent).toBe('Apex_2026-10-18_23-00_2.mp4')
   })
-  test('非錄影檔以 addedAt 決定最新影片', async () => {
+  test('Uses addedAt to determine the newest non-recording video', async () => {
     await start([entry(A), entry('D:/最新匯入.mp4', new Date(2026, 9, 19).getTime())])
     navigate('studio'); await flush()
     expect(document.querySelector('.studio-file')?.textContent).toBe('最新匯入.mp4')
   })
-  test('最新影片尚在分析仍進入工作室，可由同日影片列切到已完成的影片', async () => {
+  test('Opens the studio while the newest video is still analyzing; the same-day list can switch to a completed video', async () => {
     await start([entry(A), { ...entry(B), status: 'analyzing' }])
     navigate('studio'); await flush()
     expect(document.querySelector('.studio-blocked')?.textContent).toContain(i18n.studio.openBlocked)
@@ -51,7 +51,7 @@ describe('工作室導覽', () => {
     await flush()
     expect(document.querySelector('.studio-file')?.textContent).toBe('Apex_2026-10-18_01-00.mp4')
   })
-  test('空影片庫停在工作室空狀態，按鈕返回影片庫', async () => {
+  test('Empty library stays in the studio empty state with a button back to the library', async () => {
     await start([])
     navigate('studio'); await flush()
     expect(document.querySelector('.studio-blocked')?.textContent).toContain('尚未有影片')
@@ -60,7 +60,7 @@ describe('工作室導覽', () => {
     await flush()
     expect(document.querySelector('.lib-screen')).not.toBeNull()
   })
-  test('影片庫讀取失敗顯示可重試錯誤；離開後延遲回應不會切回工作室', async () => {
+  test('Library load failure shows a retryable error; a late response after leaving does not reopen the studio', async () => {
     await start([])
     fake.api.library.getEntries.mockRejectedValueOnce(new Error('讀取失敗'))
     navigate('studio'); await flush()
@@ -72,7 +72,7 @@ describe('工作室導覽', () => {
     resolve([entry(B)]); await flush()
     expect(document.querySelector('.lib-screen')).not.toBeNull()
   })
-  test('同日切片同步儲存來源編輯，失敗時保留原影片並提示，重試後才開啟', async () => {
+  test('Same-day navigation synchronously saves source edits; on failure, keeps the current video and shows a notice until retry succeeds', async () => {
     const onOpenVideo = vi.fn()
     studio = await mountStudio({ onOpenVideo, api: { entries: [entry(STUDIO_VIDEO), entry('D:/另一場.mp4')] } })
     click(document.querySelector('.hl-accept')!)

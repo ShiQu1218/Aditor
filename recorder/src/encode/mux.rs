@@ -1,4 +1,4 @@
-//! MP4 自訂 AVIO，每次 frag_custom flush 對應一個已同步至磁碟的 m4s。
+//! Custom MP4 AVIO; each frag_custom flush writes one m4s file and syncs it to disk.
 //! https://ffmpeg.org/ffmpeg-formats.html#mov_002c-mp4_002c-ismv
 use std::{
     ffi::c_void,
@@ -21,9 +21,9 @@ struct Output {
     file: File,
     error: Option<std::io::Error>,
 }
-// SAFETY: opaque 是 Muxer 持有的 Box<Output>，僅在單一編碼執行緒同步呼叫。
+// SAFETY: opaque points to the Box<Output> owned by Muxer and is accessed synchronously by one encoding thread.
 unsafe extern "C" fn write_output(opaque: *mut c_void, data: *const u8, size: i32) -> i32 {
-    // SAFETY: AVIO 保證 data 有 size bytes，opaque 在 AVIO 釋放前持續有效。
+    // SAFETY: AVIO guarantees data has size bytes; opaque remains valid until AVIO is released.
     let (output, bytes) = unsafe {
         (
             &mut *opaque.cast::<Output>(),
@@ -58,7 +58,7 @@ pub(super) struct Muxer {
     end: i64,
     seq: u64,
 }
-// SAFETY: AVFormatContext、AVIO 及 Output 只會在單一編碼執行緒使用。
+// SAFETY: AVFormatContext, AVIO, and Output are used only by one encoding thread.
 unsafe impl Send for Muxer {}
 impl Muxer {
     pub fn new(
@@ -67,7 +67,7 @@ impl Muxer {
         audio: Option<&Encoder>,
         sender: Sender<SegmentInfo>,
     ) -> Result<Self> {
-        fs::create_dir_all(dir).context("建立錄影目錄失敗")?;
+        fs::create_dir_all(dir).context("Failed to create recording directory")?;
         let file = create_file(&dir.join("init.mp4"))?;
         let mut muxer = Self {
             context: ptr::null_mut(),
@@ -83,7 +83,7 @@ impl Muxer {
             end: 0,
             seq: 0,
         };
-        // SAFETY: 所有輸出指標初始化為 null；資源由 muxer 的 Drop 收回。AVIO opaque 指向穩定 Box。
+        // SAFETY: All media packets are complete; skip_trailer avoids indexes and absolute offsets across files.
         unsafe {
             check(
                 avformat_alloc_output_context2(
@@ -92,11 +92,11 @@ impl Muxer {
                     c"mp4".as_ptr(),
                     ptr::null(),
                 ),
-                "建立 MP4 muxer",
+                "Create MP4 muxer",
             )?;
-            ensure!(!muxer.context.is_null(), "MP4 muxer 沒有回傳 context");
+            ensure!(!muxer.context.is_null(), "MP4 muxer returned no context");
             let buffer = av_malloc(32_768).cast::<u8>();
-            ensure!(!buffer.is_null(), "配置 AVIO 緩衝區失敗");
+            ensure!(!buffer.is_null(), "Failed to allocate AVIO buffer");
             muxer.io = avio_alloc_context(
                 buffer,
                 32_768,
@@ -108,7 +108,7 @@ impl Muxer {
             );
             if muxer.io.is_null() {
                 av_free(buffer.cast());
-                anyhow::bail!("配置 AVIO context 失敗");
+                anyhow::bail!("Failed to allocate AVIO context");
             }
             (*muxer.context).pb = muxer.io;
             (*muxer.context).flags |= AVFMT_FLAG_CUSTOM_IO as i32;
@@ -116,18 +116,18 @@ impl Muxer {
                 std::iter::once((video, TICK_BASE)).chain(audio.map(|a| (a, AUDIO_BASE)))
             {
                 let stream = avformat_new_stream(muxer.context, ptr::null());
-                ensure!(!stream.is_null(), "配置 MP4 軌道失敗");
+                ensure!(!stream.is_null(), "Failed to allocate MP4 stream");
                 check(
                     avcodec_parameters_from_context((*stream).codecpar, encoder.0),
-                    "複製軌道參數",
+                    "Copy stream parameters",
                 )?;
-                // 參數集在 hvcC（全域標頭）裡，用 hvc1 標籤；Chromium MSE 與多數播放器對 hvc1 相容性最好。
+                // Parameter sets are in hvcC (global header); the hvc1 tag has the best compatibility with Chromium MSE and most players.
                 if (*(*stream).codecpar).codec_id == AV_CODEC_ID_HEVC {
                     (*(*stream).codecpar).codec_tag = u32::from_le_bytes(*b"hvc1");
                 }
                 (*stream).time_base = base;
             }
-            // 自行按視訊關鍵影格切段，避免 AAC 排序或自動 flush 把邊界移動。
+            // Split segments at video keyframes to prevent AAC ordering or automatic flushes from moving boundaries.
             let mut options = ptr::null_mut();
             let option_result = av_dict_set(
                 &mut options,
@@ -141,7 +141,7 @@ impl Muxer {
                 avformat_write_header(muxer.context, &mut options)
             };
             av_dict_free(&mut options);
-            check(result, "寫入 MP4 初始化段")?;
+            check(result, "Write MP4 initialization segment")?;
         }
         muxer.sync()?;
         muxer.output.file = create_file(&dir.join("seg_000001.m4s"))?;
@@ -149,13 +149,13 @@ impl Muxer {
     }
     pub fn push(&mut self, packets: Vec<Packet>, video: bool) -> Result<()> {
         for packet in packets {
-            // SAFETY: 新封包與 stream 都屬於本 muxer，stream time_base 已由 write_header 確定。
+            // SAFETY: The packet and stream belong to this muxer; write_header established the stream time_base.
             unsafe {
                 let p = &mut *packet.0;
-                ensure!(p.pts != AV_NOPTS_VALUE, "編碼封包缺少有效的 PTS 時間戳");
+                ensure!(p.pts != AV_NOPTS_VALUE, "Encoded packet is missing a valid PTS timestamp");
                 if !video && p.pts < 0 {
                     continue;
-                } // AAC 的編碼預滾不在錄影時間軸內。
+                } // AAC encoder preroll is outside the recording timeline.
                 let base = if video { TICK_BASE } else { AUDIO_BASE };
                 let ticks =
                     ((p.pts as i128 * base.num as i128 * 10_000_000) / base.den as i128) as i64;
@@ -182,7 +182,7 @@ impl Muxer {
         }
         ensure!(
             self.pending.len() <= 2048,
-            "影音時間差過大，停止封裝以限制記憶體用量"
+            "Audio/video timestamp gap is too large; stop muxing to limit memory usage"
         );
         self.progress(false)
     }
@@ -197,7 +197,7 @@ impl Muxer {
         Ok(())
     }
     fn flush_segment(&mut self, end: i64) -> Result<()> {
-        let start = self.start.context("缺少視訊起點")?;
+        let start = self.start.context("Missing video start time")?;
         if self.seq > 0 {
             self.output.file = create_file(&self.dir.join(format!("seg_{:06}.m4s", self.seq + 1)))?;
         }
@@ -205,22 +205,22 @@ impl Muxer {
             self.pending.drain(..).partition(|p| p.ticks < end);
         self.pending = future;
         current.sort_by_key(|p| (p.ticks, !p.video));
-        ensure!(current.iter().any(|p| p.video), "段落沒有視訊影格");
-        // SAFETY: 每個封包有正確的 stream_index；frag_custom 以 null 封包完成一個 fragment。
+        ensure!(current.iter().any(|p| p.video), "Segment contains no video frames");
+        // SAFETY: Each packet has a valid stream_index; frag_custom completes a fragment with a null packet.
         unsafe {
             for p in current {
-                check(av_write_frame(self.context, p.packet.0), "寫入媒體封包")?;
+                check(av_write_frame(self.context, p.packet.0), "Write media packet")?;
             }
             check(
                 av_write_frame(self.context, ptr::null_mut()),
-                "完成 MP4 段落",
+                "Finish MP4 segment",
             )?;
         }
         self.sync()?;
         self.seq += 1;
         let bytes = self.output.file.metadata()?.len();
-        ensure!(bytes > 0, "MP4 段落為空");
-        // 接收端已關閉不應阻止錄影核心完成既有檔案。
+        ensure!(bytes > 0, "MP4 segment is empty");
+        // A closed receiver must not prevent the recording core from finishing the current file.
         let _ = self.sender.send(SegmentInfo {
             seq: self.seq,
             pts_secs: start as f64 / 10_000_000.,
@@ -231,24 +231,24 @@ impl Muxer {
         Ok(())
     }
     fn sync(&mut self) -> Result<()> {
-        // SAFETY: AVIO 已初始化；flush 將 buffer 寫入目前的 file。
+        // SAFETY: AVIO is initialized; flush writes the buffer to the current file.
         unsafe {
             avio_flush(self.io);
-            check((*self.io).error, "寫入錄影檔")?;
+            check((*self.io).error, "Write recording file")?;
         }
         if let Some(error) = self.output.error.take() {
-            return Err(error).context("寫入錄影檔失敗");
+            return Err(error).context("Failed to write recording file");
         }
-        self.output.file.sync_data().context("同步錄影檔失敗")
+        self.output.file.sync_data().context("Failed to sync recording file")
     }
     pub fn finish(&mut self) -> Result<()> {
         self.progress(true)?;
         if self.start.is_some_and(|start| self.end > start) {
             self.flush_segment(self.end)?;
         }
-        // SAFETY: 所有媒體封包已完成，skip_trailer 避免跨檔案的索引與絕對 offset。
+        // SAFETY: All media packets are complete; skip_trailer avoids indexes and absolute offsets across files.
         unsafe {
-            check(av_write_trailer(self.context), "完成 MP4")?;
+            check(av_write_trailer(self.context), "Finish MP4")?;
         }
         self.sync()
     }
@@ -258,11 +258,11 @@ fn create_file(path: &Path) -> Result<File> {
         .write(true)
         .create_new(true)
         .open(path)
-        .with_context(|| format!("建立錄影檔失敗：{}", path.display()))
+        .with_context(|| format!("Failed to create recording file: {}", path.display()))
 }
 impl Drop for Muxer {
     fn drop(&mut self) {
-        // SAFETY: custom IO 不由 format context 釋放；AVIO buffer 可能被 FFmpeg 替換，必須釋放目前的 buffer。
+        // SAFETY: The format context does not free custom IO; FFmpeg may replace the AVIO buffer, so free the current buffer.
         unsafe {
             if !self.context.is_null() {
                 avformat_free_context(self.context);
@@ -303,7 +303,7 @@ mod tests {
         };
         for video in [true, false] {
             let packet = Packet::new().unwrap();
-            // SAFETY: 封包由測試獨佔，模擬編碼器回傳缺少時間戳的封包。
+            // SAFETY: The test exclusively owns the packet and simulates an encoder packet with no timestamp.
             unsafe {
                 (*packet.0).pts = AV_NOPTS_VALUE;
             }

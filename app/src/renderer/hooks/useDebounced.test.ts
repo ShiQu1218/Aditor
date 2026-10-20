@@ -16,7 +16,7 @@ describe('DebouncedEmitter', () => {
     d.update(1)
     vi.advanceTimersByTime(100)
     d.update(2)
-    vi.advanceTimersByTime(249) // 距最後一次更新僅 249ms → 尚未發出
+    vi.advanceTimersByTime(249) // Only 249 ms have elapsed since the last update; nothing has been emitted yet.
     expect(emit).not.toHaveBeenCalled()
 
     vi.advanceTimersByTime(1)
@@ -32,14 +32,14 @@ describe('DebouncedEmitter', () => {
     d.flush()
     expect(emit).toHaveBeenCalledWith('a')
     vi.advanceTimersByTime(1000)
-    expect(emit).toHaveBeenCalledTimes(1) // 不重複發出
+    expect(emit).toHaveBeenCalledTimes(1) // Do not emit duplicates.
 
     d.update('b')
     d.dispose()
     vi.advanceTimersByTime(1000)
     expect(emit).toHaveBeenCalledTimes(1)
 
-    d.flush() // 沒有 pending 時不發出
+    d.flush() // Emit nothing when there is no pending value.
     expect(emit).toHaveBeenCalledTimes(1)
   })
 })

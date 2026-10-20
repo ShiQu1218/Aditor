@@ -8,27 +8,27 @@ import { tr } from '../../shared/locale'
 
 export interface HighlightCardProps {
   clip: Clip
-  /** 目前影片事件（供標題計數與字形列） */
+  /** Events in the current video (used for the title count and glyph row). */
   events: EngineEvent[]
-  /** 大圖模式（16:9 縮圖卡） */
+  /** Large-card mode (16:9 thumbnail card). */
   big: boolean
-  /** 作用中卡片（roving tabindex） */
+  /** Active card (roving tabindex). */
   active: boolean
-  /** 點卡片＝預覽並設為作用中 */
+  /** Clicking a card previews it and makes it active. */
   onSelect: (clip: Clip) => void
   onPreview: (clip: Clip) => void
   onAccept: (clip: Clip) => void
   onSkip: (clip: Clip) => void
   onRestore: (clip: Clip) => void
   onRemove: (clip: Clip) => void
-  /** 焦點進入卡片（含內部按鈕）時設為作用中（不預覽、不 seek） */
+  /** Make the card active when focus enters it (including an inner button); do not preview or seek. */
   onFocusCard: (clip: Clip) => void
 }
 
-/**
- * 精華卡片（spec §3.2.3）：精簡＝128×84 縮圖＋文字；大圖＝16:9。
- * 列表列本身不可用 `<button>`（keymap 規則）——以 div＋roving tabindex 實作。
- */
+  /**
+   * Highlight card (spec §3.2.3): compact mode uses a 128×84 thumbnail and text; large mode uses 16:9.
+   * The list row itself must not be a `<button>` (keymap rule), so it uses a div with roving tabindex.
+   */
 export const HighlightCard = forwardRef<HTMLDivElement, HighlightCardProps>(function HighlightCard(
   { clip, events, big, active, onSelect, onPreview, onAccept, onSkip, onRestore, onRemove, onFocusCard },
   ref
@@ -41,7 +41,7 @@ export const HighlightCard = forwardRef<HTMLDivElement, HighlightCardProps>(func
   const badge =
     clip.origin === 'manual' ? t.badgeManual : status === 'suggested' ? t.badgeSuggested : t.badgeAccepted
   const timeLabel = `${formatTime(clip.start)}–${formatTime(clip.end)}`
-  // roving tabindex：只有作用中卡片的內部按鈕在 Tab 順序內（其餘仍可用滑鼠點擊）
+  // Roving tabindex: only buttons in the active card are in the Tab order (others remain clickable by mouse).
   const inner = active ? 0 : -1
 
   return (

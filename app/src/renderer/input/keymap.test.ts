@@ -25,7 +25,7 @@ const ctx = (o: Partial<KeyCtx> = {}): KeyCtx => ({
   ...o
 })
 
-describe('resolveKey 矩陣', () => {
+describe('resolveKey matrix', () => {
   test('Enter on native button is not handled (null)', () => {
     for (const zone of ['src', 'hl', 'proj', null] as const) {
       expect(resolveKey(k('Enter'), ctx({ zone, target: 'native' }))).toBeNull()
@@ -46,7 +46,7 @@ describe('resolveKey 矩陣', () => {
     expect(resolveKey(k('Delete'), ctx({ zone: 'hl', target: 'text' }))).toBeNull()
   })
 
-  test('Shift 組合先於無 Shift：redo / openExport', () => {
+test('Shift combinations take precedence over unshifted keys: redo / openExport', () => {
     expect(resolveKey(k('z', { ctrlKey: true, shiftKey: true }), ctx())).toBe('redo')
     expect(resolveKey(k('Z', { ctrlKey: true, shiftKey: true }), ctx())).toBe('redo')
     expect(resolveKey(k('z', { ctrlKey: true }), ctx())).toBe('undo')
@@ -118,7 +118,7 @@ describe('resolveKey 矩陣', () => {
     expect(
       resolveKey(k('Escape'), ctx({ mode: 'project', target: 'native', overlayOpen: true }))
     ).toBe('closeOverlay')
-    expect(resolveKey(k('Escape'), ctx({ mode: 'source' }))).toBe('closeOverlay') // 清除選取
+    expect(resolveKey(k('Escape'), ctx({ mode: 'source' }))).toBe('closeOverlay') // Clear the selection.
   })
 
   test('library screen: Ctrl+F → focusSearch, Ctrl+D → toggleFavoriteFilter', () => {
@@ -134,7 +134,7 @@ describe('resolveKey 矩陣', () => {
   test('library screen: Esc clears the search via closeOverlay', () => {
     const lib = ctx({ screen: 'library' })
     expect(resolveKey(k('Escape'), lib)).toBe('closeOverlay')
-    // 輸入框聚焦（搜尋框）時也要能清除；組字中不處理
+    // Clear the selection when an input (such as search) is focused; do not handle while composing text.
     expect(resolveKey(k('Escape'), { ...lib, target: 'text' })).toBe('closeOverlay')
     expect(resolveKey(k('Escape', { isComposing: true }), lib)).toBeNull()
   })
@@ -145,11 +145,11 @@ describe('resolveKey 矩陣', () => {
     expect(resolveKey(k('Escape'), { ...set, target: 'text' })).toBe('closeOverlay')
     expect(resolveKey(k('Escape', { isComposing: true }), { ...set, target: 'text' })).toBeNull()
     expect(resolveKey(k('Escape', { keyCode: 229 }), { ...set, target: 'text' })).toBeNull()
-    // 下拉選單等原生控制項：Esc 保留給它自己（關閉選單）
+    // Let native controls such as dropdowns handle Escape themselves (to close the menu).
     expect(resolveKey(k('Escape'), { ...set, target: 'native' })).toBeNull()
   })
 
-  test('其餘格子', () => {
+test('Remaining key mappings', () => {
     expect(resolveKey(k('s'), ctx())).toBe('speed')
     expect(resolveKey(k('m'), ctx({ target: 'native' }))).toBe('addEvent')
     expect(resolveKey(k('['), ctx())).toBe('setStart')
@@ -177,7 +177,7 @@ describe('resolveKey 矩陣', () => {
     expect(resolveKey(k('x', { ctrlKey: true }), ctx())).toBeNull()
   })
 
-  test('長按（repeat）不重複觸發切換類指令，但方向鍵可連續', () => {
+test('Holding a key (repeat) does not retrigger toggle commands, but arrow keys repeat', () => {
     expect(resolveKey(k(' ', { repeat: true }), ctx())).toBeNull()
     expect(resolveKey(k('m', { repeat: true }), ctx())).toBeNull()
     expect(resolveKey(k('Enter', { repeat: true }), ctx({ zone: 'hl' }))).toBeNull()
@@ -185,7 +185,7 @@ describe('resolveKey 矩陣', () => {
   })
 })
 
-describe('focusToast（Alt+T：鍵盤直達最新 Toast 的〔復原〕）', () => {
+describe('focusToast (Alt+T focuses the latest Toast action)', () => {
   test('works on every screen and inside text inputs (Alt chords are never plain typing)', () => {
     for (const screen of ['library', 'studio', 'settings'] as const) {
       expect(resolveKey(k('t', { altKey: true }), ctx({ screen }))).toBe('focusToast')
@@ -203,7 +203,7 @@ describe('focusToast（Alt+T：鍵盤直達最新 Toast 的〔復原〕）', () 
   })
 })
 
-describe('overlayOpen 阻擋底下的工作室', () => {
+describe('overlayOpen blocks the studio underneath', () => {
   const open = (o: Partial<KeyCtx> = {}): KeyCtx => ctx({ overlayOpen: true, ...o })
   test('studio: nothing but Esc resolves while an overlay is open', () => {
     expect(resolveKey(k(' '), open())).toBeNull()
@@ -222,7 +222,7 @@ describe('overlayOpen 阻擋底下的工作室', () => {
 })
 
 describe('IME / AltGr / Esc / Alt / repeat', () => {
-  test('組字中一律 null', () => {
+test('Returns null during IME composition', () => {
     const c = ctx({ zone: 'src', mode: 'project' })
     expect(resolveKey(k('Escape', { isComposing: true }), c)).toBeNull()
     expect(resolveKey(k(' ', { isComposing: true }), c)).toBeNull()
@@ -232,7 +232,7 @@ describe('IME / AltGr / Esc / Alt / repeat', () => {
     expect(resolveKey(k('s', { keyCode: 229 }), c)).toBeNull()
     expect(resolveKey(k('s', { keyCode: 83 }), c)).toBe('speed')
   })
-  test('Esc 在輸入框／原生控制項不返回來源，僅浮層時關閉', () => {
+test('Esc does not return to source from an input or native control; it only closes an overlay', () => {
     for (const target of ['text', 'native'] as const) {
       expect(resolveKey(k('Escape'), ctx({ mode: 'project', target }))).toBeNull()
       expect(resolveKey(k('Escape'), ctx({ mode: 'source', target }))).toBeNull()
@@ -241,7 +241,7 @@ describe('IME / AltGr / Esc / Alt / repeat', () => {
       )
     }
   })
-  test('AltGr (ctrl+alt) 不觸發 Ctrl 或括號快捷鍵', () => {
+test('AltGr (ctrl+alt) does not trigger Ctrl or bracket shortcuts', () => {
     const c = ctx({ zone: 'proj' })
     const ag = { ctrlKey: true, altKey: true }
     expect(resolveKey(k('q', ag), c)).toBeNull()
@@ -251,14 +251,14 @@ describe('IME / AltGr / Esc / Alt / repeat', () => {
     expect(resolveKey(k('s', { altKey: true }), c)).toBeNull()
     expect(resolveKey(k('[', { altKey: true }), c)).toBeNull()
   })
-  test('Alt+←/→ 在 proj 區於文字框／原生控制項也作用', () => {
+test('Alt+←/→ works in the project zone even in text fields and native controls', () => {
     for (const target of ['text', 'native', 'none'] as const) {
       expect(resolveKey(k('ArrowLeft', { altKey: true }), ctx({ zone: 'proj', target }))).toBe('moveItemLeft')
       expect(resolveKey(k('ArrowRight', { altKey: true }), ctx({ zone: 'proj', target }))).toBe('moveItemRight')
     }
     expect(resolveKey(k('ArrowLeft', { altKey: true }), ctx({ zone: 'hl', target: 'text' }))).toBeNull()
   })
-  test('repeat 僅連續類指令可通過', () => {
+test('Only repeatable commands pass through on key repeat', () => {
     const r = { repeat: true }
     expect(resolveKey(k('z', { ctrlKey: true, ...r }), ctx())).toBe('undo')
     expect(resolveKey(k('ArrowLeft', { ctrlKey: true, ...r }), ctx())).toBe('prevEvent')
@@ -287,7 +287,7 @@ describe('KEY_TABLE', () => {
   const parse = (keys: string): KeyInput | null => {
     const one = keys.split(' ／ ')[0].trim()
     if (one.includes('滾輪')) return null
-    const idx = one.lastIndexOf('+', one.length - 2) // 最後一段可能就是 '+'
+    const idx = one.lastIndexOf('+', one.length - 2) // The final segment may be '+'.
     const mods = idx >= 0 ? one.slice(0, idx).split('+') : []
     const key = idx >= 0 ? one.slice(idx + 1) : one
     return k(KEYMAP[key] ?? key, {
@@ -303,7 +303,7 @@ describe('KEY_TABLE', () => {
     if (scope.includes('專案軌')) return 'proj'
     return null
   }
-  test('KEY_TABLE keys 與 resolveKey 一致（每列第一組按鍵）', () => {
+test('KEY_TABLE keys match resolveKey (the first key combination in each row)', () => {
     for (const r of KEY_TABLE) {
       const input = parse(r.keys)
       if (!input) continue
@@ -317,7 +317,7 @@ describe('KEY_TABLE', () => {
       expect([r.command, r.keys, got]).toEqual([r.command, r.keys, r.command])
     }
   })
-  test('KEY_TABLE 另一組按鍵（redo 的 Ctrl+Shift+Z）', () => {
+test('KEY_TABLE alternate key combination (Ctrl+Shift+Z for redo)', () => {
     const redo = KEY_TABLE.find((r) => r.command === 'redo')!
     expect(redo.keys).toContain('Ctrl+Shift+Z')
     expect(resolveKey(k('z', { ctrlKey: true, shiftKey: true }), ctx())).toBe('redo')
@@ -334,7 +334,7 @@ describe('KEY_TABLE', () => {
   })
 })
 
-describe('useKeymap 核心（createKeyDownHandler / attachKeymap）', () => {
+describe('useKeymap core (createKeyDownHandler / attachKeymap)', () => {
   const evt = (key: string, extra: Record<string, unknown> = {}) => {
     const e = {
       ...k(key),
@@ -354,21 +354,21 @@ describe('useKeymap 核心（createKeyDownHandler / attachKeymap）', () => {
     overlayOpen: false
   })
 
-  test('有指令且有 handler 才 preventDefault', () => {
+test('Calls preventDefault only when a command and handler are present', () => {
     const play = vi.fn()
     const h = createKeyDownHandler(() => state({ play }))
     const e1 = evt(' ')
     h(e1)
     expect(play).toHaveBeenCalledTimes(1)
     expect(e1.preventDefault).toHaveBeenCalled()
-    const e2 = evt('s') // speed 無 handler
+    const e2 = evt('s') // No handler for speed.
     h(e2)
     expect(e2.preventDefault).not.toHaveBeenCalled()
-    const e3 = evt('x') // 無指令
+    const e3 = evt('x') // No command.
     h(e3)
     expect(e3.preventDefault).not.toHaveBeenCalled()
   })
-  test('已 defaultPrevented 或 IME 組字時直接略過', () => {
+test('Skips events that are already defaultPrevented or during IME composition', () => {
     const play = vi.fn()
     const h = createKeyDownHandler(() => state({ play }))
     h(evt(' ', { defaultPrevented: true }))
@@ -376,7 +376,7 @@ describe('useKeymap 核心（createKeyDownHandler / attachKeymap）', () => {
     h(evt(' ', { keyCode: 229 }))
     expect(play).not.toHaveBeenCalled()
   })
-  test('attachKeymap 解除後不再觸發，且使用最新 handlers', () => {
+test('attachKeymap stops triggering after cleanup and uses the latest handlers', () => {
     const listeners = new Set<(e: KeyboardEvent) => void>()
     const fakeWin = {
       addEventListener: (_: string, fn: (e: KeyboardEvent) => void) => listeners.add(fn),
@@ -416,7 +416,7 @@ describe('focusZone helpers', () => {
     expect(targetKindOf(el('DIV'))).toBe('none')
     expect(targetKindOf(null)).toBe('none')
   })
-  test('targetKindOf: contenteditable 與 ARIA 角色', () => {
+test('targetKindOf: contenteditable and ARIA roles', () => {
     expect(targetKindOf(el('DIV', { contenteditable: 'true' }))).toBe('text')
     expect(targetKindOf(el('DIV', { contenteditable: '' }))).toBe('text')
     expect(targetKindOf(el('DIV', { contenteditable: 'plaintext-only' }))).toBe('text')

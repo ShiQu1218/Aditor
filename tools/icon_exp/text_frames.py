@@ -1,4 +1,4 @@
-"""以現行文字偵測器（Detector.detect）對 dump 的每一格做逐格偵測，存 kind/score。用法：text_frames.py LAB:LANG ..."""
+"""Run the current text detector (Detector.detect) on every dumped frame and save kind/score. Usage: text_frames.py LAB:LANG ..."""
 import sys, time, json
 from fr import *
 from aditor.detect import Detector

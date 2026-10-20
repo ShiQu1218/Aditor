@@ -1,4 +1,4 @@
-"""速度：ENG 前 2000 格（單執行緒、不含解碼）。"""
+"""Speed benchmark: first 2,000 ENG frames (single-threaded, excluding decoding)."""
 import sys, os, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from ana import *

@@ -1,6 +1,6 @@
-// 低效能模式的單一狀態來源：<html data-lowperf>（CSS 用）＋ 訂閱者（canvas 等需要 JS 判斷的地方）。
+// Single source of truth for low-performance mode: <html data-lowperf> for CSS and subscribers for canvas or other JS consumers.
 
-/** 低效能模式的時間軸熱度條固定格數 */
+/** Fixed number of timeline heat-bar bins in low-performance mode. */
 export const HEAT_BINS_LOWPERF = 60
 
 interface AttrTarget {
@@ -12,7 +12,7 @@ let root: AttrTarget | null = typeof document !== 'undefined' ? document.documen
 let on = false
 const listeners = new Set<(v: boolean) => void>()
 
-/** 綁定要寫 data-lowperf 的根元素（預設 document.documentElement；測試可傳假物件）。 */
+/** Bind the root element that receives data-lowperf (defaults to document.documentElement; tests can pass a fake object). */
 export function bindLowPerfRoot(r: AttrTarget | null): void {
   root = r
   apply()
@@ -43,7 +43,7 @@ export function subscribeLowPerf(cb: (v: boolean) => void): () => void {
   return () => listeners.delete(cb)
 }
 
-/** 熱度條格數：一般模式依像素寬度（密度模式 4 px、事件模式 6 px 一格）；低效能固定 60 格。 */
+/** Heat-bar bins: normal mode uses pixel width (4 px per bin in density mode, 6 px in event mode); low-performance mode always uses 60. */
 export function heatBinCount(width: number, density: boolean, lowPerf: boolean): number {
   if (width <= 0) return 0
   return lowPerf ? HEAT_BINS_LOWPERF : Math.ceil(width / (density ? 4 : 6))
@@ -61,7 +61,7 @@ const flagOf = (s: unknown): boolean | undefined => {
   return typeof v === 'boolean' ? v : undefined
 }
 
-/** 啟動時讀取 settings.lowPerfMode，並隨 settings:changed 即時切換 data-lowperf。回傳解除訂閱。 */
+/** Read settings.lowPerfMode on startup and update data-lowperf immediately on settings:changed; return an unsubscribe function. */
 export function watchLowPerfSetting(api: SettingsApi | undefined): () => void {
   if (!api?.settings) return () => {}
   let alive = true
@@ -77,7 +77,7 @@ export function watchLowPerfSetting(api: SettingsApi | undefined): () => void {
       const v = flagOf(await api.settings!.get?.())
       if (alive && !changed && v !== undefined) setLowPerf(v)
     } catch {
-      /* 讀不到設定＝維持目前狀態 */
+      /* If settings cannot be read, keep the current state. */
     }
   })()
   return () => {

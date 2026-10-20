@@ -26,7 +26,7 @@ describe('groupByDate', () => {
 
     expect(groups.map((g) => g.label)).toEqual(['今天', '昨天', '2026 年 10 月 13 日'])
     expect(groups.map((g) => g.key)).toEqual(['2026-10-16', '2026-10-15', '2026-10-13'])
-    // 組內新到舊
+    // Newest to oldest within a group.
     expect(groups[0].entries.map((e) => e.path)).toEqual(['a', 'd'])
     expect(groups[1].entries.map((e) => e.path)).toEqual(['c'])
   })
@@ -38,7 +38,7 @@ describe('groupByDate', () => {
 
     const groups = groupByDate([entry('late', beforeMidnight), entry('early', afterMidnight)], now)
 
-    // 本地午夜前後分屬不同組（不是以 UTC 日期切）
+    // Items on either side of local midnight belong to different groups (not grouped by UTC date).
     expect(groups.map((g) => g.label)).toEqual(['今天', '昨天'])
     expect(groups[0].key).toBe('2026-10-16')
     expect(groups[1].key).toBe('2026-10-15')
@@ -49,7 +49,7 @@ describe('groupByDate', () => {
   })
 })
 
-// 以 TZ 切換證明是「本地日」而非 UTC 日：同一個本地午夜前後各一支，在偏離 UTC 很大的時區仍須分屬兩天
+// Switching TZ confirms grouping by local day, not UTC: two items around local midnight must remain on separate days even in a time zone far from UTC.
 describe('groupByDate local-day split is independent of UTC', () => {
   const originalTz = process.env.TZ
   afterAll(() => {
@@ -59,11 +59,11 @@ describe('groupByDate local-day split is independent of UTC', () => {
 
   test.each([
     ['Asia/Taipei', -480],
-    ['America/Los_Angeles', 420], // 2026-10 為 PDT（UTC-7）
+    ['America/Los_Angeles', 420], // October 2026 is PDT (UTC-7).
     ['Pacific/Kiritimati', -840] // UTC+14
   ])('%s: 23:59 and 00:10 around local midnight land in different labelled days', (tz, expectedOffset) => {
     process.env.TZ = tz
-    // 若執行環境不支援動態切換 TZ，這行會明確失敗，而不是讓測試空過
+    // If the runtime cannot switch TZ dynamically, fail explicitly instead of silently skipping the assertion.
     expect(new Date(2026, 9, 16, 12).getTimezoneOffset()).toBe(expectedOffset)
 
     const now = new Date(2026, 9, 16, 0, 30).getTime()

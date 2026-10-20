@@ -1,12 +1,12 @@
 import type { SettingsRange } from '../../shared/settings'
 
-/** 夾限到合法範圍並四捨五入為整數；非有限數字回 null（呼叫端不應送出）。 */
+/** Clamp to the valid range and round to an integer; return null for non-finite numbers (callers must not submit them). */
 export function clampToRange(range: SettingsRange, value: number): number | null {
   if (typeof value !== 'number' || !Number.isFinite(value)) return null
   return Math.min(range.max, Math.max(range.min, Math.round(value)))
 }
 
-/** tablist 的鍵盤導覽：方向鍵循環、Home／End；其他按鍵回 null（不處理）。 */
+/** Keyboard navigation for tablists: arrow keys wrap, Home/End jump; return null for other keys. */
 export function nextTabIndex(key: string, index: number, count: number): number | null {
   if (count <= 0) return null
   switch (key) {
@@ -37,7 +37,7 @@ export function formatBytes(bytes: number): string {
   return i === 0 ? `${Math.round(v)} B` : `${v.toFixed(1)} ${units[i]}`
 }
 
-/** 取代 `{name}` 佔位符。 */
+/** Replace `{name}` placeholders. */
 export function fillTemplate(tpl: string, vars: Record<string, string | number>): string {
   return tpl.replace(/\{(\w+)\}/g, (m, k: string) => (k in vars ? String(vars[k]) : m))
 }

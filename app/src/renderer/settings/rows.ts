@@ -1,20 +1,20 @@
-// 設定畫面的列定義（資料表）：分類、卡片、標題／說明／搜尋關鍵字與控制項種類。
-// 文字一律來自 i18n/zh-TW.ts；控制項如何讀寫 Settings／IPC 由 SettingRow 與 settingsController 實作。
-// 陣列順序就是畫面順序；同分類、同卡片的連續列會併成一張卡片。
+// Settings row definitions (a data table): category, card, title/description/search keywords, and control type.
+// All copy comes from i18n/zh-TW.ts; SettingRow and settingsController handle Settings/IPC reads and writes.
+// Array order determines display order; consecutive rows in the same category and card form one card.
 import { settingsI18n, recordingI18n, LOCALES, LOCALE_NAMES } from '../i18n'
 import type { RecordingSettings } from '../../shared/recording'
 
 const t = settingsI18n
 
-// 分類依「使用者想做的事」排列：整個 App 的偏好 → 錄影 → 匯入與分析 → 剪輯 → 匯出 → 關於
+// Categories follow user goals: app-wide preferences, recording, import and analysis, editing, export, and about.
 export type CategoryId = 'general' | 'recording' | 'analysis' | 'editing' | 'export' | 'about'
 
 export interface CategoryDef {
   id: CategoryId
   label: string
-  /** 分類頂端的一句說明（不搜尋時顯示） */
+  /** Description shown at the top of a category when not searching. */
   desc: string
-  /** 分類欄圖示（components/icons 的元件名稱） */
+  /** Category sidebar icon (component name from components/icons). */
   icon: 'SlidersHorizontal' | 'Video' | 'AnalysisQueue' | 'Scissors' | 'Download' | 'Info'
 }
 
@@ -51,12 +51,12 @@ export interface SettingRow {
   title: string
   desc?: string
   keywords?: string[]
-  /** 相對舊版新增的設定（顯示「新」標籤） */
+  /** Setting added since the previous version (shows a "New" badge). */
   isNew?: boolean
-  /** 標題前的小圖示（幫助使用者在看不懂的語言下也找得到這一列） */
+  /** Small icon before the title, helping users find the row even when they do not understand the language. */
   icon?: 'Globe'
   control: ControlSpec
-  /** 後端尚未提供：該列的控制項停用，並以灰色文字顯示此說明 */
+  /** Backend support is unavailable: disable the control and show this explanation in gray. */
   disabledReason?: string
   advanced?: boolean
 }
@@ -74,7 +74,7 @@ export function recordingRowVisible(row: SettingRow, backend: RecordingSettings[
   return backend !== 'obs' || field === 'captureMethod' || (!VIDEO_FIELDS.has(field) && !AUDIO_FIELDS.has(field))
 }
 
-/** 錄影設定（RecordingSettings 欄位）的列；文字來自 recordingI18n.rows。 */
+/** Rows for RecordingSettings fields; copy comes from recordingI18n.rows. */
 function recordingRow(field: RecordingField, category: CategoryId, card: string): SettingRow {
   const advanced = ADVANCED_FIELDS.has(field)
   const text = recordingI18n.rows[field]
@@ -96,7 +96,7 @@ const recordingRows = (card: string, fields: readonly RecordingField[]): Setting
 const rc = recordingI18n.cards
 
 export const SETTING_ROWS: SettingRow[] = [
-  // ── 一般：整個 App 的偏好 ──
+  // ── General: app-wide preferences ──
   {
     id: 'language',
     category: 'general',
@@ -137,13 +137,13 @@ export const SETTING_ROWS: SettingRow[] = [
     isNew: true,
     control: { kind: 'storageRoot' }
   },
-  // ── 錄影 ──
+  // ── Recording ──
   ...recordingRows(rc.basics, ['autoRecord', 'mode', 'postAnalysis']),
   ...recordingRows(rc.recorder, ['backend', 'obsHost', 'obsPort', 'obsPassword', 'obsFallbackBuiltin']),
   ...recordingRows(rc.video, ['height', 'bitrateKbps', 'fps', 'forceAspect', 'aspectMode', 'codec', 'encoder', 'preset', 'captureMethod']),
   ...recordingRows(rc.audio, ['systemAudioEnabled', 'renderDevice', 'systemGain', 'micEnabled', 'captureDevice', 'micGain', 'gameAudioOnly', 'micMono']),
   ...recordingRows(rc.disk, ['diskWarnGb', 'diskStopGb', 'notifyMatch', 'openOnGameExit']),
-  // ── 匯入與分析 ──
+  // ── Import and analysis ──
   {
     id: 'watchFolders',
     category: 'analysis',
@@ -194,7 +194,7 @@ export const SETTING_ROWS: SettingRow[] = [
       ]
     }
   },
-  // ── 剪輯 ──
+  // ── Editing ──
   {
     id: 'proxySuggest',
     category: 'editing',
@@ -251,7 +251,7 @@ export const SETTING_ROWS: SettingRow[] = [
     isNew: true,
     control: { kind: 'switch', field: 'projectAutosave' }
   },
-  // ── 匯出 ──
+  // ── Export ──
   {
     id: 'encoders',
     category: 'export',
@@ -271,7 +271,7 @@ export const SETTING_ROWS: SettingRow[] = [
     isNew: true,
     control: { kind: 'openh264' }
   },
-  // ── 關於 ──
+  // ── About ──
   {
     id: 'about',
     category: 'about',

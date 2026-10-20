@@ -15,14 +15,14 @@ import { tr } from '../../shared/locale'
 
 export interface LiveScreenProps {
   onBack: () => void
-  /** 錄影收尾後在工作室開啟輸出檔 */
+/** Open the output file in the studio after recording ends. */
   onOpenVideo: (path: string) => void
   onOpenLibrary: () => void
 }
 
 const typeName = (type: string): string => (i18n.timeline.types as Record<string, string>)[type] ?? type
 
-/** 全域快捷鍵不處理：輸入框、可編輯區、以及按鈕上的空白／Enter（交給按鈕本身）。 */
+/** Global shortcuts do not handle inputs, editable regions, or Space/Enter on buttons (the button handles those itself). */
 function ignoreKey(e: KeyboardEvent): boolean {
   if (e.defaultPrevented || e.ctrlKey || e.altKey || e.metaKey) return true
   const target = e.target instanceof Element ? e.target : null
@@ -31,8 +31,8 @@ function ignoreKey(e: KeyboardEvent): boolean {
 }
 
 /**
- * 錄影中觀看（計畫 7）：MSE 邊錄邊播、即時事件清單、時間軸（事件標記＋對局區段）。
- * 不重用 StudioScreen（它假設影片長度固定）；收尾後從媒體庫照常在工作室開啟。
+ * Watch an active recording (plan 7): play while recording via MSE, with a live event list and timeline (event markers and match segments).
+ * StudioScreen is not reused because it assumes a fixed video duration; after recording ends, open the video in the studio from the library as usual.
  */
 export function LiveScreen({ onBack, onOpenVideo, onOpenLibrary }: LiveScreenProps): JSX.Element {
   const live = useLiveState()
@@ -53,7 +53,7 @@ export function LiveScreen({ onBack, onOpenVideo, onOpenLibrary }: LiveScreenPro
   }, [live.onSegment, addSegment, obs])
 
   const sameSession = state !== null && status.sessionId === state.sessionId
-  // 狀態快照可能比 live 快照晚到：看過同一個錄影工作的狀態之後，它離開才算錄影結束。
+  // The status snapshot may arrive after the live snapshot; recording ends only after this job's status has been observed and then removed.
   const [seen, setSeen] = useState(false)
   useEffect(() => { if (sameSession) setSeen(true) }, [sameSession])
   const ended = live.finalized !== null || (seen && !sameSession)

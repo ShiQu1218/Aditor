@@ -2,11 +2,11 @@ import type { CategoryId, SettingRow } from './rows'
 
 export interface FilterResult {
   byCategory: Record<CategoryId, SettingRow[]>
-  /** 各分類的命中數；沒有命中的分類不出現 */
+  /** Number of matches per category; categories without matches are omitted. */
   counts: Partial<Record<CategoryId, number>>
 }
 
-/** 空白分隔的每個詞都必須命中（標題／說明／關鍵字／卡片名任一欄位）；大小寫不敏感。 */
+/** Every whitespace-separated term must match a title, description, keyword, or card name, case-insensitively. */
 function matches(row: SettingRow, terms: string[]): boolean {
   const hay = [row.title, row.desc ?? '', row.card, ...(row.keywords ?? [])].join('\n').toLowerCase()
   return terms.every((term) => hay.includes(term))

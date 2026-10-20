@@ -1,4 +1,4 @@
-// Toast 佇列：最多同時顯示 max 則，超過丟最舊；支援暫停／續算計時
+// Toast queue: show at most max items at once and drop the oldest on overflow; support pausing/resuming timers.
 export type Toast = {
   id: string
   message: string

@@ -1,4 +1,4 @@
-// 放在 A2 擁有的設定測試目錄；使用暫存資料夾驗證 main 的實際持久化流程。
+// Keep this in A2's settings test directory; use a temporary folder to verify main's persistence flow.
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
@@ -22,8 +22,8 @@ afterEach(() => {
 const migrate = (recording: unknown): RecordingSettings => migrateSettings({ recording }).recording
 const patch = (recording: unknown): Partial<Settings> => ({ recording } as Partial<Settings>)
 
-describe('錄影設定驗證與遷移', () => {
-  test.each([undefined, null, [], false, 'invalid'])('舊設定或無效 recording=%j 補上獨立預設值', (raw) => {
+describe('Recording settings validation and migration', () => {
+  test.each([undefined, null, [], false, 'invalid'])('legacy or invalid recording=%j receives independent defaults', (raw) => {
     const settings = raw === undefined ? migrateSettings({ before: 12 }) : migrateSettings({ recording: raw })
     expect(settings.recording).toEqual(defaults)
     settings.recording.autoRecord = false
@@ -31,12 +31,12 @@ describe('錄影設定驗證與遷移', () => {
     expect(DEFAULT_SETTINGS.recording.autoRecord).toBe(true)
   })
 
-  test.each(['autoRecord', 'launchAtLogin', 'closeToTray', 'micEnabled', 'notifyMatch', 'openOnGameExit', 'forceAspect', 'systemAudioEnabled', 'gameAudioOnly', 'micMono'] as const)('%s 僅接受布林值', (field) => {
+  test.each(['autoRecord', 'launchAtLogin', 'closeToTray', 'micEnabled', 'notifyMatch', 'openOnGameExit', 'forceAspect', 'systemAudioEnabled', 'gameAudioOnly', 'micMono'] as const)('%s accepts boolean values only', (field) => {
     for (const value of [false, true]) expect(migrate({ [field]: value })[field]).toBe(value)
     for (const value of [null, 0, 1, 'true', {}, []]) expect(migrate({ [field]: value })[field]).toBe(defaults[field])
   })
 
-  test.each(Object.entries(RECORDING_RANGES))('%s 的邊界、夾限與非法型別', (field, range) => {
+  test.each(Object.entries(RECORDING_RANGES))('%s bounds, clamping, and invalid types', (field, range) => {
     const key = field as keyof typeof RECORDING_RANGES
     const extra = key === 'diskStopGb' ? { diskWarnGb: 500 } : {}
     for (const value of [range.min, range.max]) expect(migrate({ ...extra, [field]: value })[key]).toBe(value)
@@ -55,25 +55,35 @@ describe('錄影設定驗證與遷移', () => {
     ['fps', [10, 20, 30, 60, 90, 120]],
     ['height', [0, 720, 1080, 1440]],
     ['postAnalysis', ['none', 'afterExit', 'perMatch']],
-    ['captureMethod', ['hook', 'wgc', 'dda']]
-  ] as const)('%s 只接受允許的列舉值', (field, allowed) => {
+    ['captureMethod', ['wgc', 'dda']]
+  ] as const)('%s accepts only allowed enum values', (field, allowed) => {
     for (const value of allowed) expect(migrate({ [field]: value })[field]).toBe(value)
     for (const value of ['invalid', null, false, {}, [], -1, 999]) expect(migrate({ [field]: value })[field]).toBe(defaults[field])
   })
 
-  test('擷取方式預設為 wgc，已儲存的 hook／dda 照舊保留', () => {
+  test('Capture defaults to wgc; removed capture settings migrate safely and remain valid after saving and reloading', () => {
     expect(defaults.captureMethod).toBe('wgc')
     expect(migrate({}).captureMethod).toBe('wgc')
-    expect(migrate({ captureMethod: 'hook' }).captureMethod).toBe('hook')
+    expect(migrate({ captureMethod: 'hook' }).captureMethod).toBe('wgc')
     expect(migrate({ captureMethod: 'dda' }).captureMethod).toBe('dda')
     expect(migrate({ captureMethod: 'wgc' }).captureMethod).toBe('wgc')
+    fs.writeFileSync(file, JSON.stringify({ recording: { captureMethod: 'hook', bitrateKbps: 23456 } }))
+    const store = new SettingsStore(file)
+    expect(store.get().recording).toMatchObject({ captureMethod: 'wgc', bitrateKbps: 23456 })
+    expect(store.set(patch({ fps: 30 })).persisted).toBe(true)
+    expect(JSON.parse(fs.readFileSync(file, 'utf8')).recording.captureMethod).toBe('wgc')
+    const reloaded = new SettingsStore(file)
+    expect(reloaded.get().recording).toMatchObject({ captureMethod: 'wgc', bitrateKbps: 23456, fps: 30 })
+    expect(reloaded.set(patch({ captureMethod: 'dda' })).persisted).toBe(true)
+    expect(reloaded.set(patch({ captureMethod: 'hook' })).settings.recording.captureMethod).toBe('dda')
+    expect(new SettingsStore(file).get().recording.captureMethod).toBe('dda')
   })
 
-  test.each(['builtin', 'obs', 'invalid', null, 1])('後端 %j 保留有效值', (backend) => {
+  test.each(['builtin', 'obs', 'invalid', null, 1])('backend %j preserves valid values', (backend) => {
     expect(migrate({ backend }).backend).toBe(backend === 'obs' ? 'obs' : 'builtin')
   })
 
-  test('編碼器限硬體編碼且必須符合格式；換格式回到自動', () => {
+  test('Encoder must be hardware-based and match the format; changing format resets it to automatic', () => {
     for (const codec of ['hevc', 'h264', 'av1']) {
       for (const vendor of ['nvenc', 'amf', 'qsv']) {
         const encoder = `${codec}_${vendor}`
@@ -86,19 +96,19 @@ describe('錄影設定驗證與遷移', () => {
     expect(store.set(patch({ codec: 'av1' })).settings.recording.encoder).toBe('auto')
   })
 
-  test.each(['renderDevice', 'captureDevice'] as const)('%s 保留有效裝置 ID、拒絕空白及非法值', (field) => {
+  test.each(['renderDevice', 'captureDevice'] as const)('%s preserves valid device IDs and rejects blanks or invalid values', (field) => {
     for (const value of ['default', '{device-id}']) expect(migrate({ [field]: value })[field]).toBe(value)
     for (const value of ['', '  ', '\0', 'x'.repeat(4097), null, 2, {}]) expect(migrate({ [field]: value })[field]).toBe('default')
   })
 
-  test('磁碟停止門檻同步夾到提醒門檻', () => {
+  test('Disk stop threshold is clamped to the warning threshold', () => {
     expect(migrate({ diskStopGb: 50, diskWarnGb: 5 })).toMatchObject({ diskStopGb: 5, diskWarnGb: 5 })
     const store = new SettingsStore(file)
     store.set(patch({ diskStopGb: 8 }))
     expect(store.set(patch({ diskWarnGb: 1 })).settings.recording.diskStopGb).toBe(1)
   })
 
-  test('路徑驗證拒絕相對路徑、檔案、不存在、網路路徑及錯誤型別；其他欄位仍生效', () => {
+  test('Path validation rejects relative paths, files, missing paths, network paths, and wrong types while other fields still apply', () => {
     fs.writeFileSync(path.join(dir, 'file.txt'), '')
     const store = new SettingsStore(file)
     store.set(patch({ outputDir: dir }))
@@ -113,7 +123,7 @@ describe('錄影設定驗證與遷移', () => {
     expect(migrate({ outputDir: dir }).outputDir).toBe(dir)
   })
 
-  test('settings IPC 回傳路徑錯誤並持久化所有合法欄位；重讀及其他設定變更不覆蓋錄影值', () => {
+  test('Settings IPC returns path errors and persists valid fields; reloads and other setting changes do not overwrite recording values', () => {
     const handlers = new Map<string, (...args: any[]) => any>()
     const store = new SettingsStore(file)
     registerSettingsHandlers({ handle: (ch, cb) => void handlers.set(ch, cb) }, store, () => [])
@@ -128,7 +138,7 @@ describe('錄影設定驗證與遷移', () => {
     expect(new SettingsStore(file).get().recording).toEqual(complete)
   })
 
-  test('快照與 listener 不得修改內部或其他 listener 的 recording', () => {
+  test('Snapshots and listeners cannot mutate internal recording state or another listener’s state', () => {
     const store = new SettingsStore(file)
     store.get().recording.autoRecord = false
     store.onChange((s) => { s.recording.fps = 120 })
@@ -140,7 +150,7 @@ describe('錄影設定驗證與遷移', () => {
     expect(store.get().recording.fps).toBe(30)
   })
 
-  test('寫入失敗回報 persisted=false，重試後磁碟與記憶體一致', () => {
+  test('Write failure reports persisted=false; a retry brings disk and memory back in sync', () => {
     const store = new SettingsStore(file)
     vi.spyOn(console, 'error').mockImplementation(() => undefined)
     const rename = vi.spyOn(fs, 'renameSync').mockImplementation(() => { throw new Error('EPERM') })

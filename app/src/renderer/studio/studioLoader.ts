@@ -1,15 +1,15 @@
 import type { CacheDoc, VideoInfo } from '../../shared/types'
 
 /**
- * 工作室載入流程（純邏輯，依賴以參數注入，方便測試）：
- * 1. 先查影片庫條目狀態——不是 'done' 一律擋下，**不呼叫任何引擎／快取 IPC**；
- * 2. 以無副作用的 cache:load 取文件；
- * 3. 只有「條目 done 但沒有快取文件」才呼叫 analyze 補齊；
- * 4. 任何失敗＝錯誤結果，絕不回傳預設的假文件。
- * 專案切換可略過分析限制：沒有快取時以實際影片規格建立空白片軌，不另啟動分析。
+ * Studio loading flow (pure logic with injected dependencies for testing):
+ * 1. Check the library entry status first; reject anything other than 'done' without calling engine/cache IPC.
+ * 2. Load the document with cache:load, which has no side effects.
+ * 3. Call analyze only when the entry is done but has no cached document.
+ * 4. Return an error for any failure; never return a fabricated default document.
+ * Project switching may bypass the analysis restriction: if there is no cache, create a blank track from the actual video metadata without starting analysis.
  */
 export interface LoaderDeps {
-  /** 影片庫條目狀態；找不到條目回 null */
+/** Library entry status; null when no entry is found. */
   getStatus: (path: string) => Promise<string | null>
   cacheLoad: (path: string) => Promise<CacheDoc | null>
   analyze: (args: { path: string }) => Promise<CacheDoc | null>

@@ -1,6 +1,6 @@
-// 假 ffmpeg（代理檔測試用）：只有 FAKE_OK_ENCODERS（逗號分隔）內的 -c:v 編碼器會成功，其餘結束碼 1。
-// FAKE_LOG 指向的檔案會附加每次呼叫的 JSON（argv、PATH），讓測試驗證編碼器嘗試順序與 PATH。
-// FAKE_SLEEP_MS 讓程序多睡一會兒（取消測試）。輸出檔是最後一個引數。
+// Fake ffmpeg for proxy tests: only -c:v encoders listed in FAKE_OK_ENCODERS (comma-separated) succeed; others exit with code 1.
+// Append each call's JSON (argv, PATH) to the file named by FAKE_LOG so tests can verify encoder order and PATH.
+// FAKE_SLEEP_MS makes the process sleep longer (for cancellation tests). The output file is the last argument.
 import fs from 'fs'
 
 const args = process.argv.slice(2)

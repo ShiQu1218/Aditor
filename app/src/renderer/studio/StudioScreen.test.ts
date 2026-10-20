@@ -8,7 +8,7 @@ import { ToastProvider } from '../shell/ToastHost'
 import { StudioScreen } from './StudioScreen'
 import { StudioBlockedView, StudioLoadErrorView, StudioLoadingView } from './StudioStates'
 
-/** renderToString 不跑 effect：這裡只驗證首次渲染的結構與接線（不需要 jsdom）。 */
+/** renderToString does not run effects; verify only the initial render structure and wiring (jsdom is not needed). */
 const calls: string[] = []
 const fakeApi = new Proxy(
   {},
@@ -74,12 +74,12 @@ describe('StudioScreen SSR smoke', () => {
   test('loaded: source mode shell, zones, video bound to the source file', () => {
     const out = render({ preloadedDoc: doc })
     expect(out).toContain('class="studio"')
-    expect(out).toContain('data-zone="src"') // 來源時間軸
-    expect(out).toContain('data-zone="proj"') // 專案軌
+    expect(out).toContain('data-zone="src"') // Source timeline.
+    expect(out).toContain('data-zone="proj"') // Project timeline.
     expect(out).toContain('src="file://C:/v/a.mp4"')
-    expect(out).toContain('來源 · a.mp4') // 模式膠囊
-    expect(out).not.toContain('role="alert"') // 沒有 blocked／錯誤畫面
-    expect(out).toContain('2 個事件') // 來自載入的文件，而非預設假文件
+    expect(out).toContain('來源 · a.mp4') // Mode pill.
+    expect(out).not.toContain('role="alert"') // No blocked/error screen.
+    expect(out).toContain('2 個事件') // Comes from the loaded document, not a fabricated default.
   })
 
   test('not loaded yet: shows the loading view, never the fake default doc (1920×1080 / 100s)', () => {
@@ -102,7 +102,7 @@ describe('StudioStates', () => {
   const noop = (): void => undefined
   const html = (el: React.ReactElement): string => renderToString(el)
 
-  test('error view carries the code and the 返回影片庫 / retry actions', () => {
+  test('Error view carries the code and Back to Library/retry actions', () => {
     const out = html(React.createElement(StudioLoadErrorView, { code: 3, onRetry: noop, onCopy: noop, onBack: noop }))
     expect(out).toContain('role="alert"')
     expect(out).toContain('代碼 3')

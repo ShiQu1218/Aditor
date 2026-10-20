@@ -64,7 +64,7 @@ describe('layoutTimeline', () => {
   })
 
   test('cluster x is the mean and items sorted by x', () => {
-    const events = [ev('c', 400), ev('a', 100), ev('b', 110)] // 未排序輸入
+    const events = [ev('c', 400), ev('a', 100), ev('b', 110)] // Unsorted input.
     const r = layoutTimeline(events, view(), ALL)
     expect(r.items.map((i) => i.x)).toEqual([105, 400])
   })

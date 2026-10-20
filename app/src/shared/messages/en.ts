@@ -1,6 +1,6 @@
 import type { MessageTable } from '../locale'
 
-/** 程式內零散訊息（通知、錯誤）的譯文；鍵是繁體中文原文，由 tr() 查表。 */
+/** Translations for scattered in-app messages (notifications and errors); keys are Traditional Chinese source strings looked up by tr(). */
 const messages: MessageTable = {
   '下載 OpenH264 失敗: HTTP {statusCode}': 'Failed to download OpenH264: HTTP {statusCode}',
   '下載 OpenH264 逾時': 'OpenH264 download timed out.',
@@ -185,7 +185,6 @@ const messages: MessageTable = {
   '{message}；{fallback}': '{message}; {fallback}',
   '本次改用內建錄影器': 'The built-in recorder will be used for this session.',
   '本次僅執行即時偵測': 'Only live detection will run for this session.',
-  '遊戲擷取無法使用，本次改用螢幕擷取（DDA）：{reason}': 'Game capture is unavailable, so screen capture (DDA) will be used for this session: {reason}',
   '錄影啟動已取消': 'Recording start was canceled.',
   '無法開始錄影：{error}': 'Could not start recording: {error}',
   '錄影意外停止：{reason}': 'Recording stopped unexpectedly: {reason}',

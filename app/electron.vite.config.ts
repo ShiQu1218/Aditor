@@ -30,7 +30,7 @@ export default defineConfig({
         '@shared': resolve('src/shared')
       }
     },
-    // 設定頁「版本」列使用；測試環境未定義時該列只顯示名稱
+    // Used by the version row in Settings; when undefined in tests, the row shows only the name.
     define: { __APP_VERSION__: JSON.stringify(pkg.version) },
     plugins: [react(), cspPlugin()]
   }

@@ -27,20 +27,20 @@ export function makeDeps(root: string): RecordingDeps {
   return {
     getSettings: () => ({ ...DEFAULT_RECORDING_SETTINGS, postAnalysis: 'none' }),
     getWatchFolders: () => [], defaultOutputDir: path.join(root, 'videos'),
-    recorderCommand: fakeCommand(), ffmpegPath: 'missing-ffmpeg', profileDir: root, obsHookDir: path.join(root, 'obs-hook'),
+    recorderCommand: fakeCommand(), ffmpegPath: 'missing-ffmpeg', profileDir: root,
     addToLibrary: () => {}, enqueueAnalysis: () => {}, notify: () => {},
     findApexPid: async () => 1234, pollMs: 20, gameStartDelayMs: 0
   }
 }
 
 export async function waitFor(condition: () => boolean, timeout = 10000): Promise<void> {
-  // 使用真實時間，fake timers 的測試也能等待實際子程序的 I/O。
+  // Use real time so tests with fake timers can still wait for actual child-process I/O.
   const deadline = performance.now() + timeout
   while (performance.now() < deadline) {
     if (condition()) return
     await delay(10)
   }
-  throw new Error('等待測試條件逾時')
+  throw new Error('Timed out waiting for test condition')
 }
 
 const exe = process.platform === 'win32' ? '.exe' : ''
@@ -63,11 +63,11 @@ export function createSegments(root: string): string {
   const starts: number[] = []
   for (let offset = 0; offset < bytes.length;) {
     const size = bytes.readUInt32BE(offset)
-    if (size < 8) throw new Error('測試 MP4 box 大小無效')
+    if (size < 8) throw new Error('Test MP4 box size is invalid')
     if (bytes.toString('ascii', offset + 4, offset + 8) === 'moof') starts.push(offset)
     offset += size
   }
-  if (starts.length < 2) throw new Error('測試來源未產生多個 fMP4 段落')
+  if (starts.length < 2) throw new Error('Test source did not produce multiple fMP4 segments')
   fs.writeFileSync(path.join(dir, 'init.mp4'), bytes.subarray(0, starts[0]))
   const index = starts.map((start, i) => {
     const fragment = bytes.subarray(start, starts[i + 1] ?? bytes.length)

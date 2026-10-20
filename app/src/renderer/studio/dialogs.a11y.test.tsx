@@ -67,7 +67,7 @@ describe('AddEventDialog', () => {
     focusEl(cancel)
     const e = press(cancel, 'Enter')
     expect(onConfirm).not.toHaveBeenCalled()
-    expect(e.defaultPrevented).toBe(false) // 不攔截 → 原生按鈕行為（觸發取消）照常發生
+    expect(e.defaultPrevented).toBe(false) // Not intercepted: native button behavior (triggering cancel) proceeds as usual.
   })
 
   test('Enter on the dialog itself confirms the selected type', () => {
@@ -143,7 +143,7 @@ describe('new-project dialog (ProjectTrack)', () => {
     }
   }
 
-  test('opens as a labelled modal dialog, traps Tab, closes on Esc, returns focus to the 新專案 button', () => {
+  test('Opens as a labelled modal dialog, traps Tab, closes on Esc, and returns focus to the New Project button', () => {
     const m = mount(<ProjectTrack {...trackProps()} />)
     const trigger = buttonByText(m.container, '新專案') as HTMLButtonElement
     focusEl(trigger)
@@ -233,14 +233,14 @@ describe('export drawer', () => {
       expect(d.contains(document.activeElement)).toBe(true)
       tabAround(d, 6)
 
-      // 同意對話框
+      // Consent dialog.
       await act(async () => {
         await ctl.setQuality('precise')
       })
       const consent = expectModalDialog(m.container.querySelector('.xd-consent'))
       expect(consent.contains(document.activeElement)).toBe(true)
       tabAround(consent, 5)
-      press(document.activeElement as Element, 'Escape') // 拒絕同意，不關抽屜
+      press(document.activeElement as Element, 'Escape') // Decline consent without closing the drawer.
       expect(m.container.querySelector('.xd-consent')).toBeNull()
       expect(onClose).not.toHaveBeenCalled()
 
@@ -278,7 +278,7 @@ describe('card ⋯ menu', () => {
       press(items[0], 'ArrowDown')
       expect(document.activeElement).toBe(items[1])
       press(items[1], 'ArrowDown')
-      expect(document.activeElement).toBe(items[0]) // 環繞
+      expect(document.activeElement).toBe(items[0]) // Wrap around.
       press(items[0], 'ArrowUp')
       expect(document.activeElement).toBe(items[1])
       press(items[1], 'Home')

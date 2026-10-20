@@ -1,10 +1,10 @@
-//! 主程序 ⇄ aditorrec 的 JSON-lines 協定（規格 §4.4）。stdin 指令、stdout 事件、stderr 日誌。
+//! Main process ⇄ aditorrec JSON-lines protocol (spec §4.4): commands on stdin, events on stdout, logs on stderr.
 
 use serde::{Deserialize, Serialize};
 
 use crate::types::{AudioConfig, CaptureMethod, EncodeConfig, FramesSpec};
 
-/// 單行上限（超過視為 bad_request）。
+/// Maximum line length (exceeding it produces bad_request).
 pub const MAX_LINE_BYTES: usize = 64 * 1024;
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -29,19 +29,16 @@ pub struct StartArgs {
     pub pid: u32,
     pub session_dir: String,
     pub session_id: String,
-    /// `None` = 只擷取＋小圖（OBS 模式），不編碼也不錄音。
+    /// `None` = capture and small images only (OBS mode), without encoding or audio recording.
     pub encode: Option<EncodeConfig>,
     pub audio: Option<AudioConfig>,
     pub frames: FramesSpec,
-    /// 擷取方式；省略時為 `wgc`，未知值視為 bad_request。
+    /// Capture method; defaults to `wgc`, with unknown values treated as bad_request.
     #[serde(default)]
     pub capture: CaptureMethod,
-    /// hook 檔目錄，`capture = "hook"` 時必填。
-    #[serde(default)]
-    pub hook_dir: Option<String>,
 }
 
-/// 回覆（帶 `id`）。
+/// Response (with `id`).
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Reply {
     pub id: u64,
@@ -78,7 +75,7 @@ pub struct AudioDevice {
     pub default: bool,
 }
 
-/// 非同步事件（無 `id`）。
+/// Asynchronous event (without `id`).
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(tag = "ev", rename_all = "snake_case")]
 pub enum Event {
@@ -103,11 +100,11 @@ pub enum Event {
         queue: u32,
     },
     WindowLost,
-    /// DDA（離開前景或最小化）或 Hook（最小化）時，錄影與小圖改送黑幀；pts 為錄影起點後的秒數。
+    /// DDA (background or minimized) sends black recording and small-image frames; pts is seconds since recording started.
     GameHidden {
         pts: f64,
     },
-    /// 遊戲恢復可見（DDA 回到未最小化前景、Hook 解除最小化）；pts 為錄影起點後的秒數。
+    /// Game becomes visible again (DDA foreground and restored); pts is seconds since recording started.
     GameVisible {
         pts: f64,
     },
@@ -134,7 +131,6 @@ pub enum Event {
 pub enum ErrorCode {
     NoHwEncoder,
     WindowNotFound,
-    HookUnavailable,
     CaptureFailed,
     EncodeFailed,
     AudioFailed,
@@ -149,7 +145,6 @@ impl ErrorCode {
         match self {
             Self::NoHwEncoder => "no_hw_encoder",
             Self::WindowNotFound => "window_not_found",
-            Self::HookUnavailable => "hook_unavailable",
             Self::CaptureFailed => "capture_failed",
             Self::EncodeFailed => "encode_failed",
             Self::AudioFailed => "audio_failed",
@@ -161,10 +156,10 @@ impl ErrorCode {
     }
 }
 
-/// 解析一行指令；失敗時回傳可以直接放進錯誤回覆的訊息（以及能讀到的 id）。
+/// Parse a command line; on failure return a message suitable for an error response and the id, if readable.
 pub fn parse_request(line: &str) -> Result<Request, (Option<u64>, String)> {
     if line.len() > MAX_LINE_BYTES {
-        return Err((None, format!("指令超過 {MAX_LINE_BYTES} bytes")));
+        return Err((None, format!("Command exceeds {MAX_LINE_BYTES} bytes")));
     }
     serde_json::from_str::<Request>(line).map_err(|e| {
         let id = serde_json::from_str::<serde_json::Value>(line)
@@ -184,7 +179,6 @@ mod tests {
         for code in [
             ErrorCode::NoHwEncoder,
             ErrorCode::WindowNotFound,
-            ErrorCode::HookUnavailable,
             ErrorCode::CaptureFailed,
             ErrorCode::EncodeFailed,
             ErrorCode::AudioFailed,
@@ -195,7 +189,6 @@ mod tests {
         ] {
             assert_eq!(serde_json::to_value(code).unwrap(), code.as_str());
         }
-        assert_eq!(ErrorCode::HookUnavailable.as_str(), "hook_unavailable");
     }
 
     #[test]
@@ -216,7 +209,6 @@ mod tests {
         };
         assert!(args.encode.is_none());
         assert_eq!(args.capture, CaptureMethod::Wgc);
-        assert_eq!(args.hook_dir, None);
     }
 
     #[test]
@@ -225,33 +217,21 @@ mod tests {
         for (value, expected) in [
             ("wgc", CaptureMethod::Wgc),
             ("dda", CaptureMethod::Dda),
-            ("hook", CaptureMethod::Hook),
         ] {
             let line = format!(r#"{base},"capture":"{value}"}}"#);
             let Command::Start(args) = parse_request(&line).unwrap().cmd else {
                 panic!("not start")
             };
             assert_eq!(args.capture, expected);
-            assert_eq!(args.hook_dir, None);
         }
-        let with_hook_dir =
-            format!(r#"{base},"capture":"hook","hook_dir":"D:\\Aditor\\resources\\obs-hook"}}"#);
-        let Command::Start(args) = parse_request(&with_hook_dir).unwrap().cmd else {
-            panic!("not start")
-        };
-        assert_eq!(args.capture, CaptureMethod::Hook);
-        assert_eq!(
-            args.hook_dir.as_deref(),
-            Some(r"D:\Aditor\resources\obs-hook")
-        );
-
-        let null_hook_dir = format!(r#"{base},"capture":"wgc","hook_dir":null}}"#);
-        let Command::Start(args) = parse_request(&null_hook_dir).unwrap().cmd else {
-            panic!("not start")
-        };
-        assert_eq!(args.hook_dir, None);
-
-        for bad in [r#""nvfbc""#, r#""DDA""#, r#""HOOK""#, "1", "null"] {
+        for bad in [
+            r#""hook""#,
+            r#""nvfbc""#,
+            r#""DDA""#,
+            r#""HOOK""#,
+            "1",
+            "null",
+        ] {
             let line = format!(r#"{base},"capture":{bad}}}"#);
             assert_eq!(parse_request(&line).unwrap_err().0, Some(4), "{bad}");
         }
@@ -320,11 +300,11 @@ mod tests {
         }
         let warning = Event::Warning {
             code: "game_audio_unavailable".into(),
-            message: "改錄系統聲音".into(),
+            message: "Switching to system audio recording".into(),
         };
         assert_eq!(
             serde_json::to_value(warning).unwrap(),
-            serde_json::json!({"ev":"warning","code":"game_audio_unavailable","message":"改錄系統聲音"})
+            serde_json::json!({"ev":"warning","code":"game_audio_unavailable","message":"Switching to system audio recording"})
         );
         let ev = Event::Segment {
             seq: 3,

@@ -1,6 +1,6 @@
 import type { Command } from '../input/keymap'
 
-/** 會改動「來源文件」（事件、精華片段）的指令；專案模式下一律忽略。 */
+/** Commands that modify the source document (events and highlights); always ignore them in project mode. */
 export const SOURCE_EDIT_COMMANDS = ['addEvent', 'editClips'] as const
 export type SourceEditCommand = (typeof SOURCE_EDIT_COMMANDS)[number]
 

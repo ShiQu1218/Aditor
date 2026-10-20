@@ -9,7 +9,7 @@ const T = i18n.studio
 test('smoke: app launches, library empty state visible, rail navigable by keyboard', async ({ launch }) => {
   const { page } = await launch()
   await expect(page.locator('.lib-empty')).toBeVisible()
-  // 品牌資產需在正式建置與 CSP 下成功載入。
+  // Brand assets must load in a production build with CSP enabled.
   await expect(page.locator('.rail img.logo')).toBeVisible()
   await expect.poll(() => page.locator('.rail img.logo').evaluate(
     (img: HTMLImageElement) => img.complete && img.naturalWidth > 0
@@ -18,7 +18,7 @@ test('smoke: app launches, library empty state visible, rail navigable by keyboa
   await expect(page.locator('.rail .queue-progress')).toBeHidden()
   await shot(page, 'smoke-empty')
   const rail = shellI18n.rail
-  // 純鍵盤：聚焦圖示欄按鈕 → Enter 切換頁面
+  // Keyboard only: focus a rail button and press Enter to switch pages.
   await page.getByRole('button', { name: rail.settings, exact: true }).focus()
   await page.keyboard.press('Enter')
   await expect(page.locator('.set-screen')).toBeVisible()
@@ -26,7 +26,7 @@ test('smoke: app launches, library empty state visible, rail navigable by keyboa
   await page.getByRole('button', { name: rail.library, exact: true }).focus()
   await page.keyboard.press('Enter')
   await expect(page.locator('.lib-screen')).toBeVisible()
-  // 尚未選擇影片時「工作室」回到影片庫
+  // When no video is selected, Studio returns to the library.
   await page.getByRole('button', { name: rail.studioLabel, exact: true }).focus()
   await page.keyboard.press('Enter')
   await expect(page.locator('.lib-screen')).toBeVisible()
@@ -40,7 +40,7 @@ test('import fixtures via IPC → cards appear → analysis (fake engine) comple
     videos.videos.map((v) => v.title)
   )
   await expect(page.locator('.vcard')).toHaveCount(3)
-  // 引擎形狀的結果：擊倒／助攻徽章與惰性 N 精華
+  // Engine-shaped result: elimination/assist badges and a lazy N-highlight count.
   const a = card(page, 'E2E clip A')
   await expect(a.locator('.vbadge.knock')).toBeVisible()
   await expect(a.locator('.vbadge.assist')).toBeVisible()
@@ -61,7 +61,7 @@ test('analyzing card click shows toast and does not open studio', async ({ launc
     await page.evaluate((p) => (window as unknown as { api: { library: { add: (x: string[]) => Promise<unknown> } } }).api.library.add(p), [v.path])
     const c = card(page, v.title)
     await expect(c.locator('.vcard-progress')).toBeVisible()
-    // 分析中的主按鈕是 aria-disabled（非原生 disabled）：真實使用者仍可點擊，要求只顯示 Toast
+    // The primary button uses aria-disabled during analysis (not native disabled), so a real user can still click it; expect only a toast.
     await c.locator('.vcard-open').click({ force: true })
     await expect(page.locator('.toast', { hasText: i18n.library.card.openBlocked })).toBeVisible()
     await expect(page.locator('.studio')).toHaveCount(0)
@@ -76,7 +76,7 @@ test('open studio → suggestions auto-placed → Enter accepts → project trac
   const { page } = await launch()
   await importAndAnalyze(page, [videos.videos[0].path], ['E2E clip A'])
   await openStudio(page, 'E2E clip A')
-  // 引擎文件只有手動片段：這 3 張建議由 autoclip 自動放置
+  // The engine document has only manual clips; autoclip automatically places these three suggestions.
   await expect(page.locator('.hl-card')).toHaveCount(3)
   await expect(page.locator('.hl-card .hl-badge.suggested')).toHaveCount(3)
   await expect(page.locator('.hl-card.active')).toBeFocused()
@@ -97,10 +97,10 @@ test('keyboard matrix: Enter on a focused button does not accept suggestion', as
   const preview = page.locator('.hl-card.active .hl-preview')
   await preview.focus()
   await expect(preview).toBeFocused()
-  await page.keyboard.press('Enter') // 原生按鈕：預覽（seek），不是「加入」
+  await page.keyboard.press('Enter') // Native button: preview (seek), not add.
   await expect(page.locator('.pclip')).toHaveCount(0)
   await expect(page.locator('.hl-card .hl-badge.suggested')).toHaveCount(3)
-  // 頂欄按鈕同理：Enter 只做按鈕本身的事（收起側欄）
+  // Same for the top-bar button: Enter performs its own action (collapse the sidebar).
   await page.getByRole('button', { name: T.asideToggle }).focus()
   await page.keyboard.press('Enter')
   await expect(page.locator('.studio-aside')).toHaveCount(0)
@@ -112,7 +112,7 @@ test('Ctrl+Q in project mode splits; in source mode adds a quick clip with undo 
   const { page } = await launch()
   await importAndAnalyze(page, [videos.videos[0].path], ['E2E clip A'])
   await openStudio(page, 'E2E clip A')
-  // 來源模式：快速剪輯＋〔復原〕
+  // Source mode: quick clip plus undo.
   await page.keyboard.press('Control+q')
   await expect(page.locator('.pclip')).toHaveCount(1)
   await expect(page.locator('.hl-card')).toHaveCount(4)
@@ -121,11 +121,11 @@ test('Ctrl+Q in project mode splits; in source mode adds a quick clip with undo 
   await t.getByRole('button', { name: T.toast.undo }).click()
   await expect(page.locator('.pclip')).toHaveCount(0)
   await expect(page.locator('.hl-card')).toHaveCount(3)
-  // 專案模式：先加入一段並預覽，再分割
+  // Project mode: add and preview a clip, then split it.
   await page.locator('.hl-card.active').focus()
   await page.keyboard.press('Enter')
   await expect(page.locator('.pclip')).toHaveCount(1)
-  // 以鍵盤進入專案模式（Toast 暫時蓋住專案軌左下角，滑鼠點擊會被攔截）
+  // Enter project mode by keyboard (the toast temporarily covers the project track's lower-left corner and intercepts mouse clicks).
   await page.locator('.pclip').focus()
   await page.keyboard.press('Enter')
   await expect(page.locator('.mode-pill.is-project')).toBeVisible()
@@ -151,7 +151,7 @@ test('project autosave: item added, app restarted, project restored', async ({ l
   await expect.poll(() => readSettings(app).lastProjectId).toBe(saved.id)
   await app.closeWindow()
   const app2 = await launch({ root: app.root })
-  await expect(app2.page.locator('.rail-btn .badge')).toHaveText('1') // 工作室圖示上的專案片段數
+  await expect(app2.page.locator('.rail-btn .badge')).toHaveText('1') // Number of project clips on the Studio icon.
   await openStudio(app2.page, 'E2E clip A')
   await expect(app2.page.locator('.pclip')).toHaveCount(1)
 })
@@ -177,7 +177,7 @@ test('export drawer: start export with fake ffmpeg, cancel, partial file removed
     await expect(start).toBeEnabled()
     await start.click()
     await expect(drawer).toHaveAttribute('data-phase', 'running')
-    // 假 ffmpeg 已啟動並寫出半成品
+    // The fake ffmpeg has started and written a partial output.
     await expect.poll(() => fs.readdirSync(outDir).some((n) => n.endsWith('.partial.mp4'))).toBe(true)
     await drawer.getByRole('button', { name: i18n.export.cancelExport }).click()
     await expect(drawer).toHaveAttribute('data-phase', 'done')
@@ -198,7 +198,7 @@ test('settings: change low-perf mode, restart, value persisted; search filters r
   await sw.check()
   await expect(page.locator('html')).toHaveAttribute('data-lowperf', /.*/)
   await expect.poll(() => readSettings(app).lowPerfMode).toBe(true)
-  // 搜尋過濾
+  // Search filtering.
   const rows = page.locator('.set-row')
   await page.locator('#set-search').fill('低效能')
   await expect(page.locator('.set-row[data-row="lowPerfMode"]')).toBeVisible()
@@ -209,7 +209,7 @@ test('settings: change low-perf mode, restart, value persisted; search filters r
   await expect(rows).toHaveCount(0)
   await expect(page.getByText(settingsI18n.noResults)).toBeVisible()
   await page.locator('#set-search').fill('')
-  // 重啟後仍為開啟
+  // Remains open after restart.
   await app.closeWindow()
   const app2 = await launch({ root: app.root })
   await expect(app2.page.locator('html')).toHaveAttribute('data-lowperf', /.*/)

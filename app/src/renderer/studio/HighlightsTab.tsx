@@ -10,7 +10,7 @@ import { HighlightCard } from './HighlightCard'
 export interface HighlightsTabProps {
   clips: Clip[]
   events: EngineEvent[]
-  /** 作用中卡片（keymap Enter／Delete／↑↓ 的目標） */
+  /** Active card (target of keymap Enter/Delete/↑↓). */
   activeId: string | null
   onActiveChange: (id: string | null) => void
   onPreview: (clip: Clip) => void
@@ -18,16 +18,16 @@ export interface HighlightsTabProps {
   onSkip: (clip: Clip) => void
   onRestore: (clip: Clip) => void
   onRemove: (clip: Clip) => void
-  /** 空狀態的〔調整 AI 參數〕 */
+  /** Adjust AI settings action in the empty state. */
   onTuneParams: () => void
   project: Project
   onAddAll: () => void
 }
 
-/**
- * 精華分頁（spec §3.2.3）：精簡／大圖切換、卡片清單（role=list、roving tabindex）、
- * 底欄「專案已有 N 段 · 總長」＋〔全部加入 Ctrl E〕。
- */
+  /**
+   * Highlights tab (spec §3.2.3): compact/large toggle, card list (role=list, roving tabindex),
+   * and footer with project clip count/duration plus Add All (Ctrl+E).
+   */
 export function HighlightsTab({
   clips,
   events,
@@ -46,19 +46,19 @@ export function HighlightsTab({
   const [big, setBig] = useState(false)
   const cardRefs = useRef(new Map<string, HTMLDivElement>())
 
-  // 作用中卡片變更時移動焦點：只在焦點原本就落在清單內、或尚未聚焦（body）時，
-  // 避免 ↑↓ 移動或首張自動對焦時搶走時間軸／播放器的焦點。
+// Move focus when the active card changes only if focus was already in the list or nowhere (body),
+// so arrow navigation or initial focus on the first card does not steal focus from the timeline/player.
   useEffect(() => {
     if (!activeId) return
     const el = cardRefs.current.get(activeId)
     if (!el) return
     const focused = document.activeElement as HTMLElement | null
-    if (focused && el.contains(focused)) return // 焦點已在這張卡片內（例如剛按了內部按鈕）：不搶
+    if (focused && el.contains(focused)) return // Focus is already inside this card (e.g. an inner button was just pressed); do not steal it.
     const inHl = typeof focused?.closest === 'function' && focused.closest('[data-zone="hl"]') !== null
     if (inHl || focused === document.body || focused === null) el.focus()
   }, [activeId])
 
-  // Home／End：焦點在卡片本身時跳到第一／最後一張（↑↓ 由 keymap 的 listPrev／listNext 處理，只走建議）
+// Home/End: when the card itself is focused, jump to the first/last card (↑↓ are handled by keymap's listPrev/listNext and stay within suggestions).
   const onListKeyDown = (e: React.KeyboardEvent<HTMLDivElement>): void => {
     if ((e.key !== 'Home' && e.key !== 'End') || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey || e.nativeEvent.isComposing) return
     const card = (e.target as HTMLElement).closest<HTMLElement>('[data-clip-id]')

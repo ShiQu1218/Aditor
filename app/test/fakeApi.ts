@@ -1,5 +1,5 @@
-// 元件測試用的 window.api 假實作（與 preload/index.ts 的形狀一致）。
-// 所有方法都是 vi.fn：測試可檢查呼叫，也可用 overrides 逐項取代；on* 訂閱可由 emit 觸發。
+// Fake window.api implementation for component tests (matches the shape in preload/index.ts).
+// Every method is a vi.fn: tests can inspect calls or replace individual methods with overrides; on* subscriptions can be triggered with emit.
 import { vi } from 'vitest'
 import { DEFAULT_SETTINGS, type Settings } from '../src/shared/settings'
 import type { LibraryEntry } from '../src/main/library'
@@ -9,7 +9,7 @@ type Listener = (payload?: unknown) => void
 export interface FakeApiOptions {
   entries?: LibraryEntry[]
   settings?: Partial<Settings>
-  /** 其餘欄位的覆寫（淺層合併到各命名空間） */
+  /** Overrides for other fields (shallow-merged into each namespace). */
   overrides?: Record<string, Record<string, unknown>>
 }
 
@@ -24,7 +24,7 @@ export function createFakeApi(opts: FakeApiOptions = {}) {
         set.delete(cb)
       }
     })
-  // 預設視為已完成首次啟動引導，避免引導對話框蓋住受測畫面
+  // Assume first-run setup is complete by default so its dialog does not cover the screen under test.
   let settings: Settings = { ...DEFAULT_SETTINGS, onboardingDone: true, ...opts.settings }
   let entries = opts.entries ?? []
 
@@ -107,7 +107,7 @@ export function createFakeApi(opts: FakeApiOptions = {}) {
 
   return {
     api: ns,
-    /** 觸發某個頻道的訂閱者（例如 library:updated） */
+    /** Trigger subscribers for a channel (for example, library:updated). */
     emit(channel: string, payload?: unknown): void {
       for (const cb of [...(listeners.get(channel) ?? [])]) cb(payload)
     },
@@ -120,7 +120,7 @@ export function createFakeApi(opts: FakeApiOptions = {}) {
 
 export type FakeApi = ReturnType<typeof createFakeApi>
 
-/** 把假 api 掛到 window（回傳還原函式）。 */
+/** Attach the fake API to window (return a restore function). */
 export function installFakeApi(fake: FakeApi): () => void {
   const w = window as unknown as { api?: unknown }
   const prev = w.api

@@ -1,4 +1,4 @@
-"""對 dump 的每一格跑 IconDetector（diag 模式，低門檻 gate）存特徵。用法：feat_run.py LAB [tag] [scales]"""
+"""Run IconDetector on each dumped frame (diag mode, low gate threshold) and save features. Usage: feat_run.py LAB [tag] [scales]"""
 import sys, time, os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from fr import *

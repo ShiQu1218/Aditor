@@ -9,12 +9,12 @@ const ICONS = { SlidersHorizontal, Video, AnalysisQueue, Scissors, Download, Inf
 interface SettingsNavProps {
   active: CategoryId
   onSelect: (id: CategoryId) => void
-  /** 搜尋中各分類的命中數；undefined＝沒有搜尋 */
+  /** Number of matches per category while searching; undefined means no search is active. */
   counts?: Partial<Record<CategoryId, number>>
   orientation: 'vertical' | 'horizontal'
 }
 
-/** 分類欄：role=tablist、roving tabindex、方向鍵／Home／End 切換並選取。 */
+/** Category sidebar: role=tablist, roving tabindex, and arrow/Home/End navigation and selection. */
 export function SettingsNav({ active, onSelect, counts, orientation }: SettingsNavProps): JSX.Element {
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([])
 

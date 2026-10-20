@@ -21,14 +21,14 @@ function el(tag: string, attrs: Record<string, string> = {}, parent?: ElementLik
 }
 
 describe('focus zone state', () => {
-  test('getCurrentZone 回傳最近一次 set 的區域', () => {
+test('getCurrentZone returns the most recently set zone', () => {
     setCurrentZone('hl', el('DIV', { 'data-zone': 'hl' }))
     expect(getCurrentZone()).toBe('hl')
     setCurrentZone(null)
     expect(getCurrentZone()).toBeNull()
   })
 
-  test('記錄的元素被移除（isConnected=false）後不再回傳過期區域', () => {
+test('Does not return a stale zone after its recorded element is removed (isConnected=false)', () => {
     const node = el('DIV', { 'data-zone': 'hl' })
     setCurrentZone('hl', node)
     expect(getCurrentZone()).toBe('hl')
@@ -36,20 +36,20 @@ describe('focus zone state', () => {
     expect(getCurrentZone()).toBeNull()
   })
 
-  test('reduceZone：focusin 進入區域時記錄元素', () => {
+test('reduceZone records the element when focusin enters a zone', () => {
     const target = el('DIV', { 'data-zone': 'src' })
     const next = reduceZone(initialZoneState, { type: 'focusin', target, related: null })
     expect(next.zone).toBe('src')
     expect(next.el).toBe(target)
   })
 
-  test('reduceZone：mousedown 在區域外清除記錄', () => {
+test('reduceZone clears the record when mousedown occurs outside a zone', () => {
     const inZone = reduceZone(initialZoneState, { type: 'focusin', target: el('DIV', { 'data-zone': 'src' }), related: null })
     const next = reduceZone(inZone, { type: 'mousedown', target: el('BUTTON'), related: null })
     expect(next.zone).toBeNull()
   })
 
-  test('reduceZone：焦點在區域之間移動時記錄新區域', () => {
+test('reduceZone records the new zone when focus moves between zones', () => {
     const from = reduceZone(initialZoneState, { type: 'focusin', target: el('DIV', { 'data-zone': 'hl' }), related: null })
     const to = el('LI', { 'data-zone': 'proj' })
     const next = reduceZone(from, { type: 'focusout', target: el('DIV', { 'data-zone': 'hl' }), related: to })
@@ -58,16 +58,16 @@ describe('focus zone state', () => {
     expect(zoneOf(to)).toBe('proj')
   })
 
-  test('鍵盤把焦點移出區域（focusout，relatedTarget 為 null）會清除，避免殘留', () => {
+test('Keyboard focus leaving a zone (focusout with null relatedTarget) clears it to prevent stale state', () => {
     const inZone = reduceZone(initialZoneState, { type: 'focusin', target: el('DIV', { 'data-zone': 'proj' }), related: null })
     const next = reduceZone(inZone, { type: 'focusout', target: el('DIV', { 'data-zone': 'proj' }), related: null })
     expect(next.zone).toBeNull()
   })
 })
 
-describe('指標鎖存（點在區域內的非可聚焦元素）', () => {
+describe('Pointer latch (clicking a non-focusable element inside a zone)', () => {
   const zoneRoot = el('DIV', { 'data-zone': 'hl' })
-  const card = el('DIV', {}, zoneRoot) // 非可聚焦的卡片內容
+  const card = el('DIV', {}, zoneRoot) // Non-focusable card content.
   const previouslyFocused = el('LI', {}, zoneRoot)
   const outside = el('MAIN')
 
@@ -75,7 +75,7 @@ describe('指標鎖存（點在區域內的非可聚焦元素）', () => {
     return evs.reduce(reduceZone, initialZoneState)
   }
 
-  test('mousedown(區域內非可聚焦) → focusout(null) → 沒有 focusin：維持該區域', () => {
+test('mousedown on non-focusable zone content → focusout(null) → no focusin: keep the zone', () => {
     const s = seq(
       { type: 'focusin', target: el('DIV', { 'data-zone': 'hl' }), related: null },
       { type: 'mousedown', target: card, related: null },
@@ -84,7 +84,7 @@ describe('指標鎖存（點在區域內的非可聚焦元素）', () => {
     expect(s.zone).toBe('hl')
   })
 
-  test('之後 focusin 落在所有區域之外：清除', () => {
+test('A later focusin outside all zones clears the zone', () => {
     const s = seq(
       { type: 'mousedown', target: card, related: null },
       { type: 'focusout', target: previouslyFocused, related: null },
@@ -93,7 +93,7 @@ describe('指標鎖存（點在區域內的非可聚焦元素）', () => {
     expect(s.zone).toBeNull()
   })
 
-  test('鎖存只保護緊接著的那一次 focusout；之後的鍵盤離開區域仍會清除', () => {
+test('The latch protects only the next focusout; a later keyboard exit still clears the zone', () => {
     const s = seq(
       { type: 'mousedown', target: card, related: null },
       { type: 'focusout', target: previouslyFocused, related: null },
@@ -103,7 +103,7 @@ describe('指標鎖存（點在區域內的非可聚焦元素）', () => {
     expect(s.zone).toBeNull()
   })
 
-  test('mousedown 在區域外：清除，且 focusout 不會復活', () => {
+test('mousedown outside a zone clears it and focusout does not restore it', () => {
     const s = seq(
       { type: 'mousedown', target: card, related: null },
       { type: 'mousedown', target: outside, related: null },

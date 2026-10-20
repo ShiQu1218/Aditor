@@ -11,7 +11,7 @@ function walk(dir: string): string[] {
   )
 }
 
-/** 去掉註解與字串以外的雜訊前先移除註解（註解可以提到色碼）。 */
+/** Remove comments before stripping string literals and other noise (comments may contain color values). */
 function stripComments(src: string): string {
   return src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:\'"`])\/\/.*$/gm, '$1')
 }
@@ -24,8 +24,8 @@ export function rawColorsIn(src: string): string[] {
   return [...(code.match(HEX) ?? []), ...(code.match(FUNC) ?? [])]
 }
 
-describe('rawColorsIn（掃描器本身）', () => {
-  test('抓得到 hex 與 rgb()/rgba()/hsl() 字面值，忽略註解與模板插值', () => {
+describe('rawColorsIn (the scanner itself)', () => {
+  test('Finds hex and rgb()/rgba()/hsl() literals while ignoring comments and template expressions', () => {
     expect(rawColorsIn("const a = '#ff00aa'")).toHaveLength(1)
     expect(rawColorsIn("const a = '#fff'")).toHaveLength(1)
     expect(rawColorsIn('const a = `rgba(0, 0, 0, .5)`')).toHaveLength(1)
@@ -36,15 +36,15 @@ describe('rawColorsIn（掃描器本身）', () => {
   })
 })
 
-describe('TS／TSX 不得有色碼字面值（顏色一律來自 tokens.css）', () => {
+describe('TS/TSX must not contain color literals (colors come from tokens.css)', () => {
   const files = walk(root)
   const allowed = new Set(RAW_COLOR_ALLOWLIST.map((e) => e.file))
 
-  test('有掃到檔案', () => {
+  test('Scans at least one file', () => {
     expect(files.length).toBeGreaterThan(50)
   })
 
-  test('沒有未登記的色碼字面值', () => {
+  test('Contains no unregistered color literals', () => {
     const offenders: string[] = []
     for (const f of files) {
       const rel = relative(root, f).split(sep).join('/')
@@ -55,7 +55,7 @@ describe('TS／TSX 不得有色碼字面值（顏色一律來自 tokens.css）',
     expect(offenders).toEqual([])
   })
 
-  test('允許清單沒有過期條目（每個條目都確實含有色碼並附原因）', () => {
+  test('Allowlist has no stale entries (each entry contains a color literal and a reason)', () => {
     for (const e of RAW_COLOR_ALLOWLIST) {
       expect(e.reason.length).toBeGreaterThan(5)
       expect(rawColorsIn(readFileSync(resolve(root, e.file), 'utf-8')).length, e.file).toBeGreaterThan(0)

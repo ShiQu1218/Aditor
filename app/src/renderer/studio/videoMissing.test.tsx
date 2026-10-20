@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-// I13：來源影片無法播放時顯示 notice（重新連結／返回影片庫），按鈕要真的有作用；無法判斷語言的 notice 的「返回」也一樣。
+// I13: show a notice when the source video cannot play (Relink/Back to Library) and make the buttons work; the Back action must also work for a notice with unknown language.
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { buttonByText, cleanupMounted, click, flush } from '../../../test/dom'
 import { mountStudio, type StudioMount } from '../../../test/studioHarness'
@@ -14,7 +14,7 @@ afterEach(() => {
 const N = i18n.studio.notices
 
 describe('video missing notice (I13)', () => {
-  test('a source-mode <video> error shows the notice; 〔返回影片庫〕 calls onBack', async () => {
+  test('A source-mode <video> error shows the notice; Back to Library calls onBack', async () => {
     const onBack = vi.fn()
     s = await mountStudio({ onBack })
     expect(document.querySelector('.notice')?.textContent ?? '').not.toContain(N.videoMissingTitle)
@@ -26,7 +26,7 @@ describe('video missing notice (I13)', () => {
     expect(onBack).toHaveBeenCalledTimes(1)
   })
 
-  test('〔重新連結檔案〕 goes back to the library with an explanatory toast', async () => {
+  test('Relink File returns to the library with an explanatory toast', async () => {
     const onBack = vi.fn()
     s = await mountStudio({ onBack })
     document.querySelector('video')!.dispatchEvent(new Event('error'))

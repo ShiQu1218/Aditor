@@ -1,4 +1,4 @@
-/** 匯出大小粗估（純函式，供匯出抽屜與 main 的磁碟空間檢查共用）。 */
+/** Rough export-size estimate (pure function shared by the export drawer and main disk-space check). */
 export type ExportQuality = 'copy' | 'precise'
 
 export interface EstimateItem {
@@ -6,7 +6,7 @@ export interface EstimateItem {
   end: number
 }
 
-/** 位元率假設：複製＝保留原畫質（約 30 Mbps）；精準轉碼＝約 12 Mbps。 */
+/** Assumed bitrates: copy preserves original quality (about 30 Mbps); precise transcoding uses about 12 Mbps. */
 export const COPY_BYTES_PER_SECOND = (30 * 1024 * 1024) / 8
 export const PRECISE_BYTES_PER_SECOND = (12 * 1024 * 1024) / 8
 

@@ -1,4 +1,4 @@
-/* 匯出抽屜（spec §3.2.5）：與側欄同寬、只覆蓋側欄；頂欄、播放器、時間軸與專案軌保持可見。tokens only。 */
+/* Export drawer (spec §3.2.5): same width as and overlays only the sidebar; keep the top bar, player, timeline, and project track visible. Tokens only. */
 
 .xd {
   position: absolute;
@@ -161,7 +161,7 @@
 }
 .btn-danger:hover { background: var(--bg-hover); }
 
-/* 頂欄「匯出」按鈕的進度徽章（進行中縮小抽屜後仍可見） */
+/* Progress badge on the top-bar export button (remains visible when the drawer is collapsed during export). */
 .xd-badge {
   display: inline-flex;
   align-items: center;
@@ -174,7 +174,7 @@
   font-weight: var(--fw-bold);
 }
 
-/* OpenH264 同意對話框（頁內；半透明遮罩，不做背景模糊） */
+/* OpenH264 consent dialog (in-page; translucent overlay without background blur). */
 .xd-scrim {
   position: fixed;
   inset: 0;

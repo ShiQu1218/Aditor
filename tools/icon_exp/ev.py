@@ -1,7 +1,7 @@
-"""事件級評估（產品範圍：K＝knock、A＝assist_knock＋assist_elim）。
-用法：ev.py LAB... [--p=key=val,...] [--list]
-近似真值：訓練片（EN/JA）＝文字偵測器逐格結果聚成的 run；驗收片（TC/ENG/JP）＝after3 引擎事件。
-另算：文字法逐格 run（無追蹤器）、圖示 OR 文字、圖示 AND 文字。"""
+"""Event-level evaluation (product scope: K=knock, A=assist_knock+assist_elim).
+Usage: ev.py LAB... [--p=key=val,...] [--list]
+Approximate truth: training clips (EN/JA) use runs grouped from per-frame text detector results; acceptance clips (TC/ENG/JP) use after3 engine events.
+Also evaluate per-frame text runs (without a tracker), icon OR text, and icon AND text."""
 import sys, os, json
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from ana import *
@@ -30,7 +30,7 @@ def text_runs(lab):
     return runs_any(np.array([MAP.get(k, "") for k in text(lab, LANG[lab])]))
 
 
-# SC1（訓練、簡中、黃名）：沒有文字偵測器，以接觸表目視標註（scratchpad rs_sc1_*.png）
+# SC1 (training, Simplified Chinese, yellow names): no text detector; visually annotated from contact sheets (scratchpad rs_sc1_*.png).
 SC1_TRUTH = [(312.25, "K"), (315.0, "K"), (334.0, "K"), (354.5, "K"), (577.75, "K"), (672.75, "K"), (685.25, "K"),
              (296.75, "A"), (357.25, "A"), (364.25, "A")]
 

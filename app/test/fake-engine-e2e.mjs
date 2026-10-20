@@ -1,6 +1,6 @@
-// E2E 用假引擎的實作（由 fake-engine.mjs 在 FAKE_ENGINE_MODE=e2e 時載入）。
-// 協定鏡像 engine/aditor/ipc.py：probe / analyze（progress、cancel、busy、快取命中）/ derive / autoclip / cancel。
-// 影片資訊來自真的 ffprobe；事件為依影片長度決定性產生的合成資料（預設 300 筆）。
+// E2E fake-engine implementation (loaded by fake-engine.mjs when FAKE_ENGINE_MODE=e2e).
+// Mirrors the engine/aditor/ipc.py protocol: probe / analyze (progress, cancel, busy, cache hit) / derive / autoclip / cancel.
+// Video metadata comes from the real ffprobe; events are synthetic and generated deterministically from video duration (300 by default).
 import fs from 'fs'
 import path from 'path'
 import crypto from 'crypto'
@@ -8,7 +8,7 @@ import { execFile } from 'child_process'
 
 const ENGINE_VERSION = '0.1.0'
 const COUNTING = new Set(['knock', 'assist_knock', 'assist_elim', 'elim'])
-// 引擎只輸出擊倒與助攻（elim/squad_wipe 不再產生）
+// The engine emits only eliminations and assists (elim/squad_wipe are no longer generated).
 const TYPES = ['knock', 'assist_knock', 'assist_elim']
 
 function ffprobeBin() {
@@ -32,7 +32,7 @@ function runProbe(file) {
         try {
           const doc = JSON.parse(stdout)
           const s = (doc.streams || [])[0]
-          if (!s) throw new Error('找不到影像串流')
+        if (!s) throw new Error('No video stream found')
           const st = fs.statSync(file)
           resolve({
             path: file,
@@ -79,7 +79,7 @@ function loadDoc(p) {
 
 const DEFAULT_TEMPLATES_VERSION = 'icons@1'
 
-/** 鏡像引擎 profile.load_profile：profile_dir 內的 profile.json 只提供樣板版本（與語言無關，單一設定檔）。 */
+/** Mirrors engine profile.load_profile: profile.json in profile_dir provides only the template version (language-independent, single configuration file). */
 export function resolveProfile(profileDir) {
   try {
     const p = JSON.parse(fs.readFileSync(path.join(profileDir, 'profile.json'), 'utf-8'))
@@ -89,7 +89,7 @@ export function resolveProfile(profileDir) {
   }
 }
 
-/** 鏡像 engine/aditor/cache.needs_reanalysis（取反）：完成、影片未變、引擎與樣板版本相同才算新。 */
+/** Mirrors the inverse of engine/aditor/cache.needs_reanalysis: fresh means complete, video unchanged, and engine/template versions matching. */
 export function isCacheFresh(old, info, prof) {
   const a = old?.analysis
   if (!a || a.status !== 'done') return false
@@ -98,7 +98,7 @@ export function isCacheFresh(old, info, prof) {
   return a.templates_version === prof.templatesVersion
 }
 
-/** 合成事件：3 場戰鬥（約 12%／50%／88%），每場均分 N/3 筆；每 7 筆與前一筆同名（重複敵人）。 */
+/** Synthetic events: 3 fights (around 12%/50%/88%), each with N/3 events; every 7th event repeats the previous name (duplicate enemy). */
 export function synthEvents(duration, count) {
   const n = Math.max(1, count)
   const centers = [0.12, 0.5, 0.88].map((f) => duration * f)
@@ -156,7 +156,7 @@ export function derive(events, spectating) {
 
 const isCounted = (e) => (e.deleted ? false : e.counted_override !== null && e.counted_override !== undefined ? e.counted_override : e.counted)
 
-/** engine/aditor/autoclip.py 的移植。 */
+/** Port of engine/aditor/autoclip.py. */
 export function autoClips(events, params, duration) {
   const p = { gap: 20, n: 3, before: 8, after: 4, max_len: 90, ...params }
   const counted = events.filter(isCounted).sort((a, b) => a.t - b.t)
@@ -260,7 +260,7 @@ export function createE2EHandler(send) {
   let current = null // { id, cancel }
 
   async function analyze(id, args) {
-    if (current) return send({ id, type: 'error', code: 'busy', message: '已有分析進行中' })
+    if (current) return send({ id, type: 'error', code: 'busy', message: 'An analysis is already in progress' })
     const run = { id, cancel: false }
     current = run
     try {
@@ -298,7 +298,7 @@ export function createE2EHandler(send) {
       for (let k = 1; k <= steps; k++) {
         await sleep(stepMs)
         if (gate && k === Math.ceil(steps / 2)) {
-          // 停在中途直到 hold 檔被移除（測試以此決定性地製造「分析中」）
+          // Pause midway until the hold file is removed (a deterministic way for tests to produce an "analyzing" state).
           while (fs.existsSync(gate) && !run.cancel) await sleep(20)
         }
         if (run.cancel) {
@@ -337,7 +337,7 @@ export function createE2EHandler(send) {
       if (cmd === 'analyze') return void analyze(id, args)
       if (cmd === 'derive') return send({ id, type: 'result', data: { events: derive(args.events, args.spectating || []) } })
       if (cmd === 'autoclip') return send({ id, type: 'result', data: { clips: autoClips(args.events, args.params, Number(args.duration)) } })
-      return send({ id, type: 'error', code: 'bad_request', message: `未知指令：${cmd}` })
+      return send({ id, type: 'error', code: 'bad_request', message: `Unknown command: ${cmd}` })
     } catch (e) {
       send({ id, type: 'error', code: e.code || 'internal', message: String(e.message || e) })
     }

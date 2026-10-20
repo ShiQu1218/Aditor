@@ -8,7 +8,7 @@ export interface OpenH264DialogProps {
   onAccept: () => void
 }
 
-/** OpenH264 同意對話框（頁內，不用 window.confirm）：同意後才由呼叫端下載。 */
+/** OpenH264 consent dialog (in-page, not window.confirm); the caller downloads only after consent. */
 export function OpenH264Dialog({ state, onDecline, onAccept }: OpenH264DialogProps): JSX.Element {
   const t = i18n.export
   const downloading = state.step === 'downloading'

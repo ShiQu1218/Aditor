@@ -8,7 +8,7 @@ interface SettingsSearchProps {
   inputRef: React.RefObject<HTMLInputElement>
 }
 
-/** 搜尋框（內容欄頂端）。Ctrl+F 聚焦與 Esc 清除都走 keymap，這裡不另外處理按鍵（IME 組字安全）。 */
+/** Search box at the top of the content column. Ctrl+F focus and Esc clearing use keymap for IME-safe handling. */
 export function SettingsSearch({ query, onChange, inputRef }: SettingsSearchProps): JSX.Element {
   return (
     <div className="set-search">

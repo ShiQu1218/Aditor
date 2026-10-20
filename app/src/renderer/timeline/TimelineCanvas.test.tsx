@@ -253,7 +253,7 @@ describe('source timeline zoom controls', () => {
     expect(scrollbar().getAttribute('aria-controls')).toBe(q('.tl-wrap').id)
     expect(scrollbar().getAttribute('aria-disabled')).toBe('true')
     expect(q('.tl-scrollbar-thumb').style.width).toBe('1000px')
-    // 全覽時 Shift+滾輪沒有可平移的範圍：不攔截
+    // Shift+wheel has no panning range in overview, so do not intercept it.
     expect(wheel(100, false, true).defaultPrevented).toBe(false)
     press(scrollbar(), 'End')
     expectMode('full')
@@ -318,12 +318,12 @@ describe('source timeline zoom controls', () => {
 
   test('plain wheel zooms centred on the playhead (not the pointer); Shift+wheel pans', () => {
     mount(<TimelineCanvas {...props} />)
-    // 游標在 x=400（t=240），播放頭在 300：放大後播放頭置中
+    // Cursor at x=400 (t=240), playhead at 300: center the playhead after zooming.
     expect(wheel(-100).defaultPrevented).toBe(true)
     expectMode('custom')
-    expect(start()).toBeCloseTo(90) // span 420，以 300 為中心
+    expect(start()).toBeCloseTo(90) // Span 420, centered on 300.
     expect(q('.tl-scrollbar-thumb').style.width).toBe('700px')
-    expect(wheel(-100, true).defaultPrevented).toBe(true) // Ctrl+滾輪同樣縮放
+    expect(wheel(-100, true).defaultPrevented).toBe(true) // Ctrl+wheel also zooms.
     expect(start()).toBeCloseTo(153)
     const before = start()
     expect(wheel(100, false, true).defaultPrevented).toBe(true)
@@ -333,7 +333,7 @@ describe('source timeline zoom controls', () => {
   test('zoom buttons and the custom slider centre on the playhead', () => {
     const ref = createRef<TimelineHandle>()
     mount(<TimelineCanvas {...props} ref={ref} currentTime={250} />)
-    act(() => ref.current!.zoomIn()) // span 420，以 250 為中心
+    act(() => ref.current!.zoomIn()) // Span 420, centered on 250.
     expect(start()).toBeCloseTo(40)
     setRange(3) // 8×：span 75
     expect(start()).toBeCloseTo(212.5)

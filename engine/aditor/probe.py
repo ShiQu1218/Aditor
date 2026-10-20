@@ -25,18 +25,19 @@ def _run(args: list[str]) -> dict:
     except FileNotFoundError as e:
         raise ProbeError(str(e)) from e
     except subprocess.TimeoutExpired as e:
-        raise ProbeError("ffprobe 逾時") from e
+        raise ProbeError("ffprobe timed out") from e
     if r.returncode != 0:
-        raise ProbeError(r.stderr.decode("utf-8", errors="replace")[-500:] or "ffprobe 失敗")
+        raise ProbeError(r.stderr.decode("utf-8", errors="replace")[-500:] or "ffprobe failed")
     try:
         return json.loads(r.stdout.decode("utf-8"))
     except json.JSONDecodeError as e:
-        raise ProbeError("ffprobe 輸出無法解析") from e
+        raise ProbeError("Could not parse ffprobe output") from e
 
 
 def _start_time(path: str) -> float:
-    """容器起點（format start_time）。ffmpeg 解碼出的時間軸以容器起點為 0，事件時間因此以它為基準；
-    關鍵影格必須用同一個基準（視訊串流比音訊晚開始時，兩者才不會差一個偏移）。"""
+    """Container start time (format start_time). FFmpeg's decoded timeline starts at zero relative to the container,
+    so event timestamps use this as their reference. Keyframes must use the same reference to avoid an offset
+    when the video stream starts later than the audio stream."""
     doc = _run(["-show_entries", "format=start_time", path])
     try:
         return float((doc.get("format") or {}).get("start_time") or 0.0)
@@ -49,7 +50,7 @@ def probe(path: str) -> VideoInfo:
                 "stream=codec_name,width,height,start_time:format=duration,start_time", path])
     streams = doc.get("streams") or []
     if not streams:
-        raise ProbeError("找不到影像串流")
+        raise ProbeError("No video stream found")
     s = streams[0]
     fmt = doc.get("format", {})
     try:
@@ -60,11 +61,11 @@ def probe(path: str) -> VideoInfo:
                          codec=s.get("codec_name", ""), start_time=start,
                          size=st.st_size, mtime=st.st_mtime)
     except (TypeError, ValueError, KeyError) as e:
-        raise ProbeError(f"ffprobe 欄位缺漏：{e!r}") from e
+        raise ProbeError(f"Missing ffprobe field: {e!r}") from e
 
 
 def keyframes(path: str) -> list[float]:
-    """掃描封包（不解碼）取得關鍵影格時間，已扣除容器起點（與事件時間同一基準）。"""
+    """Scan packets without decoding to get keyframe times, subtracting the container start to match the event-time basis."""
     start = _start_time(path)
     try:
         r = subprocess.run([ffbin.ffprobe(), "-v", "error", "-select_streams", "v:0",
@@ -73,9 +74,9 @@ def keyframes(path: str) -> list[float]:
     except FileNotFoundError as e:
         raise ProbeError(str(e)) from e
     except subprocess.TimeoutExpired as e:
-        raise ProbeError("ffprobe 逾時") from e
+        raise ProbeError("ffprobe timed out") from e
     if r.returncode != 0:
-        raise ProbeError(r.stderr.decode("utf-8", errors="replace")[-500:] or "ffprobe 失敗")
+        raise ProbeError(r.stderr.decode("utf-8", errors="replace")[-500:] or "ffprobe failed")
     out = []
     for line in r.stdout.decode("utf-8", errors="replace").splitlines():
         ts, _, flags = line.strip().partition(",")

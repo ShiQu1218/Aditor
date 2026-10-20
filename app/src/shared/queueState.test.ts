@@ -31,17 +31,17 @@ describe('summarizeQueue (pure)', () => {
   })
 
   test('ETA uses now - analyzingSince; null while elapsed < 3 s or progress < 2%', () => {
-    // 60 秒前開始、50% → 再 60 秒
+    // Started 60 seconds ago, 50% complete → 60 seconds remaining.
     expect(summarizeQueue(payload(), 1_060_000).analyzing?.etaMs).toBeCloseTo(60000)
-    // 剛開始 1 秒
+    // Started 1 second ago.
     expect(summarizeQueue(payload(), 1_001_000).analyzing?.etaMs).toBeNull()
-    // 進度 < 2%
+    // Progress < 2%.
     const low = payload({ current: { path: 'D:\\v\\a.mp4', progress: 0.01, analyzingSince: 1_000_000 } })
     expect(summarizeQueue(low, 1_060_000).analyzing?.etaMs).toBeNull()
-    // 沒有 analyzingSince
+    // No analyzingSince.
     const none = payload({ current: { path: 'D:\\v\\a.mp4', progress: 0.5, analyzingSince: null } })
     expect(summarizeQueue(none, 1_060_000).analyzing?.etaMs).toBeNull()
-    // queued 項目沒有 ETA
+    // Queued item has no ETA.
     expect(summarizeQueue(payload(), 1_060_000).rows[1].etaMs).toBeNull()
   })
 
@@ -63,7 +63,7 @@ describe('queueItemState — per-card label comes from the real queue, never fro
     const s = summarizeQueue(payload(), 1_060_000)
     expect(queueItemState(s, 'D:\\v\\a.mp4')).toBe('analyzing')
     expect(queueItemState(s, 'D:\\v\\b.mp4')).toBe('queued')
-    expect(queueItemState(s, 'd:/v/B.MP4')).toBe('queued') // 路徑拼法不同
+    expect(queueItemState(s, 'd:/v/B.MP4')).toBe('queued') // Different path spelling.
     expect(queueItemState(s, 'D:\\v\\never-queued.mp4')).toBe('idle')
     expect(queueItemState(summarizeQueue(null, 0), 'D:\\v\\a.mp4')).toBe('idle')
   })

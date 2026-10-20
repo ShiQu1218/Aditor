@@ -5,8 +5,8 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-# 釘選具名 autobuild（不可用 releases/download/latest：每天會換成不同的 master 快照）。
-# 要升級 ffmpeg：改下面三個值，並同步更新 THIRD_PARTY_NOTICES.md 與 README 的版本說明。
+# Pin a named autobuild (do not use releases/download/latest, which changes to a different master snapshot every day).
+# To upgrade FFmpeg, update the three values below and the version notes in THIRD_PARTY_NOTICES.md and README.
 $tag = "autobuild-2026-10-14-13-03"
 $asset = "ffmpeg-N-127527-g045dea2a34-win64-lgpl-shared.zip"
 $expectedSha256 = "B5D1AE0224E45AC0830EBB347EE30EE57DB2025D869DE4D5D09CFBD37093BA06"
@@ -29,7 +29,7 @@ if (-not (Test-Path $zipPath)) {
 $actualSha256 = (Get-FileHash -Path $zipPath -Algorithm SHA256).Hash
 Write-Host "Verifying SHA256: $actualSha256"
 if ($actualSha256 -ne $expectedSha256) {
-    # 不符就失敗：不解壓、不打包未驗證的二進位。舊版下載請刪除 $zipPath 後重跑。
+    # Fail on a mismatch: do not extract or package an unverified binary. Delete $zipPath and rerun to download again.
     throw "FATAL: SHA256 mismatch for $asset! Expected $expectedSha256, got $actualSha256. Delete $zipPath and retry, or update the pinned values deliberately."
 }
 

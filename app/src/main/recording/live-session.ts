@@ -1,8 +1,8 @@
 /**
- * 一個錄影工作的即時狀態（第 3 期）：段落清單、live 引擎事件、對局起訖。
- * - `live.json`：最新快照（原子寫入，寫入期間的新快照合併成一次）。
- * - `events.jsonl`：match_pending／match_cancel／match_start／match_end 各一行（由 session 的寫入鏈負責，收尾前會等完）。
- * - 讀 init.mp4／段落只允許此工作目錄內、索引中的檔案。
+ * Live state for one recording session (phase 3): segment list, live engine events, and match boundaries.
+ * - `live.json`: latest snapshot (atomic writes; snapshots arriving during a write are coalesced).
+ * - `events.jsonl`: one line per match_pending/match_cancel/match_start/match_end event (written by the session queue, which is drained before finalization).
+ * - Read init.mp4 and segments only from indexed files inside this session directory.
  */
 import fs from 'fs'
 import path from 'path'
@@ -17,7 +17,7 @@ import type { RecorderCommand } from './index'
 import { tr } from '../../shared/locale'
 
 const MAX_INIT_BYTES = 4 * 1024 * 1024
-/** 2 秒段落在 150 Mbps 上限約 38 MB；留足餘裕但拒絕異常大檔。 */
+/** A 2-second segment at the 150 Mbps limit is about 38 MB; allow headroom but reject abnormally large files. */
 const MAX_SEGMENT_BYTES = 256 * 1024 * 1024
 export const LIVE_FILE = 'live.json'
 
@@ -25,14 +25,14 @@ export function segmentFile(seq: number): string {
   return `seg_${String(seq).padStart(6, '0')}.m4s`
 }
 
-/** 依 match 事件更新對局清單（不改動原陣列）。 */
+/** Update the match list from match events without mutating the original array. */
 export function applyMatchEvent(matches: LiveMatch[], event: LiveMatchEvent): LiveMatch[] {
   if (event.ev === 'match_pending' || event.ev === 'match_cancel') return matches
   const last = matches.at(-1)
   if (event.ev === 'match_start') {
-    // 新引擎只看到重啟後的影格；首次恢復到 HUD／結算畫面時仍屬於目前這一局。
+    // A restarted engine sees only later frames; the first return to the HUD/results screen still belongs to the current match.
     if (last?.end === null && (event.reason === 'initial_match' || event.reason === 'initial_summary')) return matches
-    // 直接排下一場：上一局在新開局序列開始時結束。
+    // If the next match starts directly, end the previous one when the new opening sequence begins.
     const closed = last && last.end === null ? [...matches.slice(0, -1), { start: last.start, end: Math.max(last.start, event.t) }] : matches
     return [...closed, { start: event.t, end: null }]
   }
@@ -40,7 +40,7 @@ export function applyMatchEvent(matches: LiveMatch[], event: LiveMatchEvent): Li
   return matches
 }
 
-/** 本局計入的擊倒＋消滅（助攻與小隊抹殺不算）；沒有對局資訊時計整段錄影。 */
+/** Count this match's knocks and kills (not assists or squad wipes); count the full recording when match data is unavailable. */
 export function countKills(events: LiveEvent[], matches: LiveMatch[]): number {
   const last = matches.at(-1)
   return events.filter((e) => (e.type === 'knock' || e.type === 'elim') && isCounted(e) &&
@@ -63,7 +63,7 @@ export interface LiveSessionOptions {
   profileDir: string
   sceneDir?: string
   restartBaseMs?: number
-  /** 寫一行到 events.jsonl（session 的寫入鏈） */
+  /** Write one line to events.jsonl (through the session write queue). */
   recordEvent: (event: Record<string, unknown> & { ev: string }) => void
   notice: (message: string) => void
 }
@@ -80,7 +80,7 @@ export class LiveSession extends EventEmitter {
   private height: number | null = null
   private pending: number | null = null
   private healthy = false
-  /** 即時引擎已分析到的錄影時間（秒）；清理不會超過這個時間 */
+  /** Recording time in seconds processed by the live engine; cleanup never goes beyond it. */
   private analyzedT = -Infinity
   private failed = false
   private pruned = false
@@ -90,7 +90,7 @@ export class LiveSession extends EventEmitter {
 
   get sessionId(): string { return this.options.sessionId }
 
-  /** aditorrec `started` 帶共享記憶體名稱；沒有 live 引擎指令時只提供段落播放。 */
+  /** aditorrec `started` includes the shared-memory name; without a live engine command, provide segment playback only. */
   startEngine(shm: string, width: number, height: number): void {
     this.width = width
     this.height = height
@@ -118,7 +118,7 @@ export class LiveSession extends EventEmitter {
       this.healthy = false
       if (this.pruned) this.failed = true
       this.restartedAt = Date.now()
-      console.warn('[live] 重新啟動：', message)
+      console.warn('[live] Restarting:', message)
     })
   }
 
@@ -151,8 +151,8 @@ export class LiveSession extends EventEmitter {
     if (!this.mime) {
       try { this.mime = initMimeType(await readConfined(this.options.dir, 'init.mp4', MAX_INIT_BYTES)) }
       catch (error) {
-        // init.mp4 尚未寫出時稍後再試；格式錯誤只記錄。
-        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') console.warn('[live] 無法解析 init.mp4：', error)
+        // Retry later if init.mp4 has not been written yet; only log malformed files.
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') console.warn('[live] Failed to parse init.mp4:', error)
       }
     }
     return {
@@ -168,18 +168,18 @@ export class LiveSession extends EventEmitter {
     return readConfined(this.options.dir, segmentFile(seq), MAX_SEGMENT_BYTES)
   }
 
-  /** 停止 live 引擎（等最終 snapshot），再等 live.json 寫完。不丟出錯誤。 */
+  /** Stop the live engine (wait for its final snapshot), then wait for live.json to finish writing. Never throw. */
   async stop(): Promise<void> {
-    try { await this.engine?.stop() } catch (error) { console.warn('[live] 停止失敗：', error) }
+    try { await this.engine?.stop() } catch (error) { console.warn('[live] Stop failed:', error) }
     await this.flush()
-    // 全程偵測正常才標記：逐局模式收尾時，沒有對局就代表只待在大廳，不輸出整段。
+    // Set the marker only if detection stayed healthy throughout. In per-match mode, no matches at finalization means the user stayed in the lobby, so do not output the full recording.
     if (!this.engine || !this.healthy || this.failed) return
     try { await writeJson(path.join(this.options.dir, LIVE_COMPLETE_FILE), { version: 1 }) }
-    catch (error) { console.warn('[live] 無法寫入偵測完成標記：', error) }
+    catch (error) { console.warn('[live] Failed to write detection completion marker:', error) }
   }
 
   async flush(): Promise<void> {
-    // 寫入期間可能又排入一次；直到沒有待寫為止。
+    // Another write may be queued while this one is in progress; continue until the queue is empty.
     let pending = this.writing
     await pending
     while (pending !== this.writing) {
@@ -229,7 +229,7 @@ export class LiveSession extends EventEmitter {
         t: this.snapshot.t, events: this.snapshot.events, spectating: this.snapshot.spectating as LiveSpec[],
         matches: this.matches, width: this.width, height: this.height, quality: this.engine?.quality() ?? null
       })
-    }).catch((error) => { console.warn('[live] 無法寫入 live.json：', error) })
+    }).catch((error) => { console.warn('[live] Failed to write live.json:', error) })
   }
 
   private emitUpdate(patch: Omit<LiveUpdate, 'sessionId'>): void {

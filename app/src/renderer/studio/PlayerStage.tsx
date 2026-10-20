@@ -8,7 +8,7 @@ interface PlayerStageProps {
   mode: 'source' | 'project'
   modeLabel: string
   spectating: boolean
-  /** 近 90 秒計入事件數（0 時不顯示，資訊用） */
+  /** Number of included events in the last 90 seconds (informational; hidden when 0). */
   recentCounted: number
   onTogglePlay: () => void
   onTimeUpdate: (t: number) => void
@@ -18,7 +18,7 @@ interface PlayerStageProps {
   onError: () => void
 }
 
-/** 播放器舞台：模式膠囊（左上）、近 90 秒計數（右上）、影片本體。 */
+  /** Player stage: mode pill (top-left), last-90-second count (top-right), and video. */
 export function PlayerStage({
   videoRef,
   src,

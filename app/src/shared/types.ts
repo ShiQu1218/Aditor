@@ -38,9 +38,9 @@ export interface Clip {
   end: number
   origin: 'ai' | 'manual'
   event_ids: string[]
-  /** 缺省（舊檔）視為 'accepted' */
+  /** Defaults to 'accepted' for older files. */
   status?: ClipStatus
-  /** 重新分析後保留的 AI 片段，來源事件可能已變 */
+  /** AI clip retained after reanalysis; its source events may have changed. */
   stale?: boolean
 }
 
@@ -63,7 +63,7 @@ export interface AnalysisInfo {
 export interface CacheDoc {
   version: number
   video: VideoInfo
-  /** 舊版快取的語言（引擎 0.3.0 起不再寫入） */
+  /** Language in older caches (no longer written by engine since 0.3.0). */
   profile?: string | null
   analysis: AnalysisInfo
   events: EngineEvent[]
@@ -72,8 +72,8 @@ export interface CacheDoc {
   keyframes: number[]
   cache_path: string
   /**
-   * App 專屬欄位（引擎不認得，下次 analyze 重寫文件時會被丟棄，由 main 在重新分析後補回）。
-   * `suggestionsPending`：重新分析後 AI 建議尚未重算；工作室開啟時執行一次 merge 並清除。
+   * App-specific fields (unknown to the engine and discarded when `analyze` rewrites the file; main restores them after reanalysis).
+   * `suggestionsPending`: AI suggestions have not yet been recomputed after reanalysis; run one merge when Studio opens, then clear this flag.
    */
   app?: { suggestionsPending?: boolean }
 }

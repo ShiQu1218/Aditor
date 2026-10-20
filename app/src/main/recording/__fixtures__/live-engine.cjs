@@ -1,4 +1,4 @@
-// 假 live 引擎（計畫 7 合約 1）：依 FAKE_LIVE_MODE 輸出 JSON-lines。
+// Fake live engine (plan 7, contract 1): emit JSON-lines according to FAKE_LIVE_MODE.
 const fs = require('fs')
 const readline = require('readline')
 const mode = process.env.FAKE_LIVE_MODE || 'normal'

@@ -26,7 +26,7 @@ function centeredView(view: View, span: number, time: number): View {
   return view.span === span && view.start === start ? view : { ...view, span, start }
 }
 
-/** 自訂倍率獨立保存，切換全覽／細節不會覆寫。 */
+  /** Store the custom scale separately so switching overview/detail does not overwrite it. */
 export function setZoomMode(state: TimelineZoom, mode: ZoomMode, time: number): TimelineZoom {
   const { view } = state
   const span = mode === 'full' ? view.duration : mode === 'detail'
@@ -36,14 +36,14 @@ export function setZoomMode(state: TimelineZoom, mode: ZoomMode, time: number): 
   return state.mode === mode && next === view ? state : { ...state, mode, view: next }
 }
 
-/** 捲動、滾輪與群集縮放共用入口；全覽的無效平移維持原模式。 */
+  /** Shared entry point for scrolling, wheel, and cluster zoom; no-op panning in overview preserves the mode. */
 export function updateTimelineView(state: TimelineZoom, update: (view: View) => View): TimelineZoom {
   const view = update(state.view)
   if (view.start === state.view.start && view.span === state.view.span) return state
   return { mode: 'custom', customZoom: view.duration / view.span, view }
 }
 
-/** 自訂縮放（滾輪、按鈕、快捷鍵、倍率滑桿）：縮放後視窗以 `center`（播放頭）為中心，到兩端時夾住。 */
+  /** Custom zoom (wheel, buttons, shortcuts, zoom slider): center the resulting window on `center` (the playhead), clamped at either end. */
 export function zoomTimeline(state: TimelineZoom, factor: number, center: number): TimelineZoom {
   const view = centeredView(state.view, zoom(state.view, factor, center).span, center)
   return { mode: 'custom', customZoom: view.duration / view.span, view }
@@ -63,7 +63,7 @@ export function resizeTimeline(state: TimelineZoom, duration: number, width: num
   return { ...next, view: { ...next.view, span, start: Math.max(0, Math.min(d - span, next.view.start)) } }
 }
 
-/** 捲軸尺寸以軌寬的像素表示；全覽時拇指佔滿且不能捲動。 */
+  /** Scrollbar size is measured in timeline-width pixels; in overview the thumb fills the track and cannot scroll. */
 export function timelineScroll(view: View): { left: number; width: number; maxStart: number } {
   const width = Math.max(0, view.width)
   if (view.duration <= 0 || view.span >= view.duration) return { left: 0, width, maxStart: 0 }

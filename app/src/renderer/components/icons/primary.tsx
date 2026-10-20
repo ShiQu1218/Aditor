@@ -1,7 +1,7 @@
 import React, { forwardRef } from 'react'
 import type { LucideProps } from 'lucide-react'
 
-/** 32px 設計格線；沿用既有圖示的尺寸、顏色與 ref 介面。 */
+/** 32px design grid; keeps the existing icon size, colors, and ref interface. */
 function createIcon(name: string, content: React.ReactNode) {
   const Icon = forwardRef<SVGSVGElement, LucideProps>(({ size = 24, color = 'currentColor', strokeWidth = 2, absoluteStrokeWidth, className, children, ...props }, ref) => (
     <svg ref={ref} width={size} height={size} viewBox="0 0 32 32" fill="none"

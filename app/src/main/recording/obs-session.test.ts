@@ -24,8 +24,8 @@ async function rig(server: Awaited<ReturnType<typeof fakeObs>> | null, fallback 
   await waitFor(() => fs.existsSync(root))
   return { service, deps, trace, root }
 }
-describe('OBS 錄影生命週期', () => {
-  it.skipIf(!ffmpeg)('停止後原檔加入媒體庫，live 事件按 obs.json 位移', async () => {
+describe('OBS recording lifecycle', () => {
+  it.skipIf(!ffmpeg)('Add the original recording to the library after stopping, offsetting live events by obs.json', async () => {
     const root = tempRoot(); cleanup.push(() => fs.rmSync(root, { recursive: true, force: true }))
     createSegments(root)
     const outputPath = path.join(root, 'source.mp4')
@@ -47,7 +47,7 @@ describe('OBS 錄影生命週期', () => {
     expect(fs.readFileSync(outputPath)).toEqual(bytes)
   })
 
-  it('開始與停止由 OBS 負責；aditorrec 只擷取且可接收即時事件', async () => {
+  it('OBS handles start and stop while aditorrec captures and receives live events', async () => {
     const server = await fakeObs({ password: '測試密碼' }); cleanup.push(server.close)
     const r = await rig(server)
     r.deps.getObsPassword = () => '測試密碼'
@@ -57,12 +57,11 @@ describe('OBS 錄影生命週期', () => {
     expect(r.service.status()).toMatchObject({ phase: 'recording', backend: 'obs' })
     const start = fs.readFileSync(r.trace, 'utf8').trim().split('\n').map((s) => JSON.parse(s)).find((v) => v.cmd === 'start')
     expect(start).toMatchObject({ encode: null, audio: null, capture: 'dda' })
-    expect(start.hook_dir).toBeUndefined()
     expect(server.calls.filter((c) => c === 'StartRecord')).toHaveLength(1)
     await r.service.stopManual()
     expect(server.calls.filter((c) => c === 'StopRecord')).toHaveLength(1)
   })
-  it('沿用既有錄影不開始、不停止；停止偵測後仍等候 OBS 停止事件', async () => {
+  it('does not start or stop a reused recording and waits for the OBS stop event after detection ends', async () => {
     const server = await fakeObs({ recording: true, duration: 90000 }); cleanup.push(server.close)
     const r = await rig(server)
     await r.service.startManual()
@@ -77,7 +76,7 @@ describe('OBS 錄影生命週期', () => {
     server.event('OBS_WEBSOCKET_OUTPUT_STOPPED')
     await waitFor(() => !fs.existsSync(dir))
   })
-  it.skipIf(!ffmpeg)('沿用錄影在 App 執行期間停止後加入媒體庫', async () => {
+  it.skipIf(!ffmpeg)('Add the reused recording to the library after stopping while the app is running', async () => {
     const root = tempRoot(); cleanup.push(() => fs.rmSync(root, { recursive: true, force: true }))
     createSegments(root)
     const outputPath = path.join(root, 'source.mp4')
@@ -92,7 +91,7 @@ describe('OBS 錄影生命週期', () => {
     expect(server.calls).not.toContain('StartRecord')
     expect(server.calls).not.toContain('StopRecord')
   })
-  it.skipIf(!ffmpeg)('擷取沒啟動就失敗時，不把沿用的 OBS 錄影加入媒體庫', async () => {
+  it.skipIf(!ffmpeg)('Do not add the reused OBS recording to the library when capture fails before starting', async () => {
     const root = tempRoot(); cleanup.push(() => fs.rmSync(root, { recursive: true, force: true }))
     createSegments(root)
     const outputPath = path.join(root, 'source.mp4')
@@ -109,13 +108,13 @@ describe('OBS 錄影生命週期', () => {
     const sessions = path.join(r.root, 'videos', '.sessions')
     expect(fs.existsSync(sessions) ? fs.readdirSync(sessions) : []).toEqual([])
   })
-  it('剛停止自己的錄影後 OBS 仍回報錄影中，等它停下再開始新錄影而不是沿用', async () => {
+  it('waits for OBS to stop reporting active after stopping our recording before starting a new one instead of reusing it', async () => {
     const server = await fakeObs({ outputPath: 'C:/obs/a.mkv' }); cleanup.push(server.close)
     const r = await rig(server)
     r.deps.obsStopGraceMs = 2000
     await r.service.startManual()
     await r.service.stopManual()
-    // 模擬 OBS 停止中：狀態仍是錄影中，稍後才真正停止。
+    // Simulate OBS stopping: the state remains recording until it actually stops later.
     server.setRecording(true)
     setTimeout(() => server.setRecording(false), 150)
     await r.service.startManual()
@@ -123,7 +122,7 @@ describe('OBS 錄影生命週期', () => {
     expect(JSON.parse(fs.readFileSync(path.join(dir, 'obs.json'), 'utf8')).adopted).toBe(false)
     expect(server.calls.filter((c) => c === 'StartRecord')).toHaveLength(2)
   })
-  it('自動偵測 Apex 也會啟動 OBS 並使用純擷取模式', async () => {
+  it('automatic Apex detection also starts OBS and uses capture-only mode', async () => {
     const server = await fakeObs(); cleanup.push(server.close)
     const r = await rig(server)
     const settings = r.deps.getSettings()
@@ -134,7 +133,7 @@ describe('OBS 錄影生命週期', () => {
     const requests = fs.readFileSync(r.trace, 'utf8').trim().split('\n').map((s) => JSON.parse(s))
     expect(requests.find((r) => r.cmd === 'start').encode).toBeNull()
   })
-  it.each([true, false])('OBS 無法連線：回退設定 %s', async (fallback) => {
+  it.each([true, false])('OBS connection failure: fallback setting %s', async (fallback) => {
     const r = await rig(null, fallback)
     expect(await r.service.startManual()).toBe(true)
     const start = fs.readFileSync(r.trace, 'utf8').trim().split('\n').map((s) => JSON.parse(s)).find((v) => v.cmd === 'start')
@@ -143,7 +142,7 @@ describe('OBS 錄影生命週期', () => {
     expect(r.deps.notify).toHaveBeenCalled()
     await r.service.stopManual()
   })
-  it('斷線時擷取持續，退避重連不重複開始錄影', async () => {
+  it('continues capture during disconnects and reconnects with backoff without starting duplicate recordings', async () => {
     const server = await fakeObs(); cleanup.push(server.close)
     const r = await rig(server)
     await r.service.startManual()
@@ -155,7 +154,7 @@ describe('OBS 錄影生命週期', () => {
     await r.service.stopManual()
   })
 
-  it('斷線時 OBS 已停止且無路徑，重連後仍保留即時偵測，手動停止無檔收尾', async () => {
+  it('keeps live detection after reconnect when OBS stopped during disconnect with no path and finalizes cleanly on manual stop', async () => {
     const server = await fakeObs(); cleanup.push(server.close)
     const r = await rig(server)
     await r.service.startManual()
@@ -167,7 +166,7 @@ describe('OBS 錄影生命週期', () => {
     expect(r.service.status().phase).toBe('idle')
   })
 
-  it('僅偵測結束後改用內建，狀態不殘留 detectionOnly', async () => {
+  it('switches to the built-in recorder after detection-only mode ends without leaving detectionOnly in status', async () => {
     const r = await rig(null, false)
     await r.service.startManual()
     await r.service.stopManual()

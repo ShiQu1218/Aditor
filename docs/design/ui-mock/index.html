@@ -11,7 +11,7 @@
 </head>
 <body>
 <div class="app">
-  <!-- 左側圖示欄 -->
+  <!-- Left icon rail -->
   <nav class="rail" aria-label="主導覽">
     <svg class="logo" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"><path d="M16 2l12 7v14l-12 7-12-7V9z"/><path d="M16 9v14 M9 16h14"/></svg>
     <button class="rail-btn active" data-go="library" data-tip="影片庫" aria-label="影片庫"><svg class="ic lg" data-ic="grid"></svg></button>
@@ -23,7 +23,7 @@
   </nav>
 
   <div class="main" id="main">
-    <!-- ===== 影片庫 ===== -->
+    <!-- ===== Library ===== -->
     <section class="screen active" id="s-library">
       <header class="topbar">
         <h1>影片庫</h1>
@@ -69,7 +69,7 @@
       </div>
     </section>
 
-    <!-- ===== 工作室 ===== -->
+    <!-- ===== Studio ===== -->
     <section class="screen" id="s-studio">
       <header class="topbar">
         <button class="btn ghost icon" data-go="library" title="返回影片庫"><svg class="ic" data-ic="back"></svg></button>
@@ -156,7 +156,7 @@
       </div>
     </section>
 
-    <!-- ===== 設定 ===== -->
+    <!-- ===== Settings ===== -->
     <section class="screen" id="s-settings">
       <header class="topbar"><h1>設定</h1></header>
       <div class="settings">
@@ -202,7 +202,7 @@
       </div>
     </section>
 
-    <!-- ===== 自動剪輯浮層 ===== -->
+    <!-- ===== Auto-clip popover ===== -->
     <div class="pop" id="pop-ac" style="top:58px;right:190px">
       <h3 style="font-family:var(--font-display);font-size:var(--fs-subtitle)">AI 自動剪輯</h3>
       <p class="muted" style="margin:2px 0 14px">只會在時間軸放上「建議框」，由你確認後才加入專案。</p>
@@ -219,14 +219,14 @@
       </div>
     </div>
 
-    <!-- ===== 匯出抽屜 ===== -->
+    <!-- ===== Export drawer ===== -->
     <div class="drawer" id="drawer">
       <div class="drawer-head"><h3>匯出專案</h3><button class="btn ghost icon" id="dr-close"><svg class="ic" data-ic="x"></svg></button></div>
       <div class="drawer-body" id="dr-body"></div>
       <div class="drawer-foot" id="dr-foot"></div>
     </div>
 
-    <!-- 分析佇列浮層 -->
+    <!-- Analysis queue overlay -->
     <div class="pop qpop" id="qpop">
       <div style="display:flex;align-items:center;margin-bottom:6px"><h3 style="flex:1;font-family:var(--font-display);font-size:var(--fs-body-lg)">分析佇列</h3><span class="dim">一次分析一支</span></div>
       <div id="qlist"></div>
@@ -234,7 +234,7 @@
   </div>
 </div>
 
-<!-- 對話框 -->
+<!-- Dialogs -->
 <div class="scrim" id="dlg-addev">
   <div class="dialog" style="width:360px">
     <h3>於播放頭新增事件</h3><div class="sub">時間 <b class="mono" id="addev-t">0:00</b>　·　新增後會重跑計入推導</div>

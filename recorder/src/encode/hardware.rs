@@ -1,4 +1,4 @@
-//! D3D11 表面池與 GPU 格式轉換，不做完整影像的 CPU 讀回。
+//! D3D11 frame pool and GPU format conversion without reading full images back to the CPU.
 use std::{
     ffi::{CStr, CString},
     mem::ManuallyDrop,
@@ -53,7 +53,7 @@ fn aspect_rect(source: (u32, u32), target: (u32, u32), aspect: EncodeAspect) -> 
                 .max(2);
         }
     }
-    // NV12 的位置與大小均對齊色度取樣；奇數邊距的差額留在右側／下側。
+    // NV12 positions and dimensions are aligned to chroma samples; odd margins are left on the right/bottom.
     let left = ((target.0 - width) / 2) & !1;
     let top = ((target.1 - height) / 2) & !1;
     RECT {
@@ -71,35 +71,35 @@ pub(super) struct Hardware {
 impl Hardware {
     pub fn new(gpu: &Gpu, video: &VideoParams, format: AVPixelFormat) -> Result<Self> {
         super::ffmpeg::check_version()?;
-        // SAFETY: FFmpeg 配置相應 API 的 hwctx；COM into_raw 移交一個參照給 FFmpeg。
+        // SAFETY: FFmpeg allocates the hardware context through its API; COM into_raw transfers one reference to FFmpeg.
         unsafe {
             let device = Buffer::owned(av_hwdevice_ctx_alloc(AV_HWDEVICE_TYPE_D3D11VA))?;
             let context = &mut *((*device.0).data as *mut AVHWDeviceContext);
             let d3d = &mut *(context.hwctx as *mut AVD3D11VADeviceContext);
             d3d.device = gpu.device.clone().into_raw().cast();
             d3d.device_context = gpu.context.clone().into_raw().cast();
-            check(av_hwdevice_ctx_init(device.0), "初始化 D3D11 硬體裝置")?;
+            check(av_hwdevice_ctx_init(device.0), "Initialize D3D11 hardware device")?;
             let frames = Buffer::owned(av_hwframe_ctx_alloc(device.0))?;
             let context = &mut *((*frames.0).data as *mut AVHWFramesContext);
             context.format = AV_PIX_FMT_D3D11;
             context.sw_format = format;
             context.width = video.width as i32;
             context.height = video.height as i32;
-            // 個別 texture 避免部分 VideoProcessor 不支援 array output view。
+            // Use individual textures because some VideoProcessors do not support array output views.
             context.initial_pool_size = 0;
             let d3d = &mut *(context.hwctx as *mut AVD3D11VAFramesContext);
             d3d.BindFlags = D3D11_BIND_RENDER_TARGET.0 as u32;
-            check(av_hwframe_ctx_init(frames.0), "初始化 D3D11 表面池")?;
+            check(av_hwframe_ctx_init(frames.0), "Initialize D3D11 frame pool")?;
             Ok(Self { frames, format })
         }
     }
     pub fn surface(&self) -> Result<Frame> {
         let frame = Frame::new()?;
-        // SAFETY: 已初始化的硬體池及空白影格；成功後由影格持有表面參照。
+        // SAFETY: The hardware pool and empty frame are initialized; on success the frame owns a surface reference.
         unsafe {
             check(
                 av_hwframe_get_buffer(self.frames.0, frame.0, 0),
-                "配置 GPU 表面",
+                "Allocate GPU surface",
             )?;
         }
         Ok(frame)
@@ -108,13 +108,13 @@ impl Hardware {
         let name_c = CString::new(name)?;
         let encoder = Encoder::allocate(&name_c)?;
         let qsv_frames = if name.ends_with("_qsv") {
-            // SAFETY: 從既有 D3D11 裝置衍生 QSV；失敗時也由 Buffer 收回已配置的參照。
+            // SAFETY: Derive QSV from the existing D3D11 device; Buffer reclaims allocated references on failure.
             unsafe {
                 let mut qsv = Buffer(std::ptr::null_mut());
                 let device = (*((*self.frames.0).data as *mut AVHWFramesContext)).device_ref;
                 check(
                     av_hwdevice_ctx_create_derived(&mut qsv.0, AV_HWDEVICE_TYPE_QSV, device, 0),
-                    "建立 QSV 衍生裝置",
+                    "Create derived QSV device",
                 )?;
                 let mut frames = Buffer(std::ptr::null_mut());
                 check(
@@ -125,14 +125,14 @@ impl Hardware {
                         self.frames.0,
                         AV_HWFRAME_MAP_READ,
                     ),
-                    "建立 QSV 衍生表面池",
+                    "Create derived QSV frame pool",
                 )?;
                 Some(frames)
             }
         } else {
             None
         };
-        // SAFETY: 尚未開啟、由本函式獨佔的編碼 context；參照由 context 釋放。
+        // SAFETY: The unopened encoding context is exclusively owned by this function; the context releases its references.
         unsafe {
             let context = &mut *encoder.0;
             context.width = video.width as i32;
@@ -209,32 +209,32 @@ impl Copier {
         size: (u32, u32),
         frame: &Frame,
     ) -> Result<()> {
-        // SAFETY: frame 是 D3D11 hwframe，data[0] 為有效 texture，from_raw_borrowed 不取得擁有權。
+        // SAFETY: frame is a D3D11 hwframe, data[0] is a valid texture, and from_raw_borrowed does not take ownership.
         let target = unsafe {
             let raw = (*frame.0).data[0].cast();
             ID3D11Texture2D::from_raw_borrowed(&raw)
-                .context("GPU 影格沒有 texture")?
+                .context("GPU frame has no texture")?
                 .clone()
         };
         let mut desc = D3D11_TEXTURE2D_DESC::default();
-        // SAFETY: 有效 texture 及可寫的描述；後續確認尺寸及來源格式。
+        // SAFETY: The texture is valid and the description is writable; dimensions and source format are checked next.
         unsafe {
             source.GetDesc(&mut desc);
         }
-        // SAFETY: texture 持有來源裝置；比較 COM identity，避免跨裝置複製被 D3D11 靜默忽略。
+        // SAFETY: The texture retains its source device; compare COM identity to avoid D3D11 silently ignoring cross-device copies.
         let source_device = unsafe { source.GetDevice()? };
         ensure!(
             source_device == self.gpu.device,
-            "來源 texture 不屬於共用 GPU 裝置"
+            "Source texture does not belong to the shared GPU device"
         );
         ensure!(
             size == (desc.Width, desc.Height)
                 && desc.Format == DXGI_FORMAT_B8G8R8A8_UNORM
                 && desc.SampleDesc.Count == 1,
-            "來源 texture 尺寸或 BGRA 格式不符"
+            "Source texture dimensions or BGRA format do not match"
         );
         if size == (self.width, self.height) && self.format == AV_PIX_FMT_BGRA {
-            // SAFETY: 來源與目標同尺寸同格式，彼此獨立且裝置相同。
+            // SAFETY: Source and destination have matching dimensions and formats, are distinct, and use the same device.
             unsafe {
                 self.gpu
                     .context
@@ -251,7 +251,7 @@ impl Copier {
                 self.aspect,
             )?);
         }
-        let processor = self.processor.as_ref().context("GPU 縮放器未建立")?;
+        let processor = self.processor.as_ref().context("GPU scaler was not created")?;
         processor.copy(source, &target)
     }
 }
@@ -282,7 +282,7 @@ impl Processor {
             OutputHeight: target.1,
             Usage: D3D11_VIDEO_USAGE_PLAYBACK_NORMAL,
         };
-        // SAFETY: 描述與矩形在呼叫期間有效；processor 與 context 屬於相同裝置。
+        // SAFETY: The description and rectangles remain valid for the call; processor and context belong to the same device.
         unsafe {
             let enumerator = device.CreateVideoProcessorEnumerator(&desc)?;
             let processor = device.CreateVideoProcessor(&enumerator, 0)?;
@@ -291,7 +291,7 @@ impl Processor {
                 0,
                 D3D11_VIDEO_FRAME_FORMAT_PROGRESSIVE,
             );
-            // 關閉驅動的自動對比／色彩增強，避免 GPU 縮放改變原始遊戲色彩。
+            // Disable driver auto-contrast/color enhancement to keep GPU scaling from changing the original game colors.
             context.VideoProcessorSetStreamAutoProcessingMode(&processor, 0, false);
             let src = RECT {
                 left: 0,
@@ -323,7 +323,7 @@ impl Processor {
                     },
                 },
             );
-            // RGB 輸入全範圍，NV12 輸出採 BT.709／有限範圍。
+            // RGB input uses full range; NV12 output uses BT.709/limited range.
             color_context.VideoProcessorSetStreamColorSpace1(
                 &processor,
                 0,
@@ -357,7 +357,7 @@ impl Processor {
         };
         let mut input = None;
         let mut output = None;
-        // SAFETY: 所有 view 與 processor 使用相同裝置，描述指定 texture2D 的第 0 層。
+        // SAFETY: All views and the processor use the same device; the description selects mip 0 of a texture2D.
         unsafe {
             self.device.CreateVideoProcessorInputView(
                 source,
@@ -372,14 +372,14 @@ impl Processor {
                 Some(&mut output),
             )?;
         }
-        let output = output.context("沒有輸出 view")?;
-        let input = input.context("沒有輸入 view")?;
+        let output = output.context("Missing output view")?;
+        let input = input.context("Missing input view")?;
         let mut stream = D3D11_VIDEO_PROCESSOR_STREAM {
             Enable: true.into(),
             pInputSurface: ManuallyDrop::new(Some(input)),
             ..Default::default()
         };
-        // SAFETY: 有效的 input/output view；呼叫完成後明確釋放 ManuallyDrop 中的參照。
+        // SAFETY: Input and output views are valid; explicitly release the ManuallyDrop references after the call.
         let result = unsafe {
             let result = self.context.VideoProcessorBlt(
                 &self.processor,
@@ -390,7 +390,7 @@ impl Processor {
             ManuallyDrop::drop(&mut stream.pInputSurface);
             result
         };
-        result.context("GPU 縮放／NV12 轉換失敗")
+        result.context("GPU scaling/NV12 conversion failed")
     }
 }
 

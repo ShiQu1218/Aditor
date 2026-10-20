@@ -1,33 +1,33 @@
-// 影片庫虛擬網格版面（純函式）：依容器寬度算欄數，只回傳可視列＋上下 overscan。
+// Virtual library grid layout (pure functions): calculate columns from container width and return only visible rows plus overscan.
 
 /**
- * 卡片幾何的唯一來源：VirtualGrid 的計算與 library.css 都吃這組數字
- * （CSS 透過 cardGeomStyle() 設在網格容器上的自訂屬性；min 另與 tokens.css 的 --card-min 以測試鎖定）。
+ * The single source of card geometry: VirtualGrid calculations and library.css use these values
+ * (CSS receives custom properties on the grid container via cardGeomStyle(); tests also lock min to tokens.css --card-min).
  */
 export const CARD = {
-  /** 卡片最小寬度（= tokens --card-min） */
+  /** Minimum card width (tokens --card-min). */
   min: 280,
   gap: 16,
-  /** 日期分組表頭高度 */
+  /** Date-group header height. */
   headerH: 44,
-  /** 卡片 1px 邊框 */
+  /** 1px card border. */
   border: 1,
-  /** 卡片文字區固定高度：錯誤卡（名稱＋原因＋26px 按鈕列）也放得下 */
+  /** Fixed card text area height; accommodates error cards (name, reason, and a 26px button row). */
   bodyH: 96,
   overscanRows: 2
 } as const
 
-/** 卡片總高（含邊框）：16:9 縮圖（以內寬計）＋文字區 */
+/** Total card height including borders: 16:9 thumbnail (based on inner width) plus text area. */
 export function cardHeight(cardWidth: number): number {
   return Math.round(((cardWidth - 2 * CARD.border) * 9) / 16) + 2 * CARD.border + CARD.bodyH
 }
 
-/** 一列的高度（含列間距） */
+/** Row height including row gap. */
 export function cardRowHeight(cardWidth: number): number {
   return cardHeight(cardWidth) + CARD.gap
 }
 
-/** 要放在網格容器上的 CSS 自訂屬性（讓 CSS 與 TS 用同一組數字） */
+/** CSS custom properties for the grid container, keeping CSS and TS on the same values. */
 export function cardGeomStyle(): Record<string, string> {
   return {
     '--card-min': `${CARD.min}px`,
@@ -41,36 +41,36 @@ export type GridRow =
   | { type: 'row'; group: number; from: number; to: number }
 
 export interface GridParams {
-  /** 容器邏輯寬度（px） */
+  /** Container logical width in px. */
   width: number
-  /** 卡片最小寬度（--card-min，280） */
+  /** Minimum card width (--card-min, 280). */
   cardMin: number
-  /** 卡片間距（px） */
+  /** Card gap in px. */
   gap: number
-  /** 一列卡片的高度（含列與列之間的間距） */
+  /** Card row height, including the gap between rows. */
   rowHeight: number
-  /** 日期分組表頭高度 */
+  /** Date-group header height. */
   headerHeight: number
-  /** 各組卡片數 */
+  /** Number of cards in each group. */
   groups: number[]
   scrollTop: number
   viewHeight: number
-  /** 可視範圍上下額外渲染的列數 */
+  /** Extra rows rendered above and below the visible range. */
   overscanRows: number
 }
 
 export interface GridLayoutResult {
-  /** 要渲染的虛擬列（依分組與列序；不含可視範圍外者） */
+  /** Virtual rows to render, by group and row order; excludes rows outside the visible range. */
   rows: GridRow[]
-  /** 與視窗相交的分組索引範圍（含端點；無則 [0, -1]） */
+  /** Inclusive range of group indexes intersecting the viewport; [0, -1] when empty. */
   visible: [number, number]
-  /** 全部列的總高度 */
+  /** Total height of all rows. */
   totalHeight: number
-  /** 各分組表頭的 y 位移 */
+  /** Y offsets of each group header. */
   offsets: number[]
 }
 
-/** 欄數 = floor((width+gap)/(cardMin+gap))，至少 1 欄。 */
+/** Columns = floor((width + gap) / (cardMin + gap)), with at least one column. */
 export function gridColumns(width: number, cardMin: number, gap: number): number {
   return Math.max(1, Math.floor((Math.max(0, width) + gap) / (cardMin + gap)))
 }
@@ -89,7 +89,7 @@ export function computeGrid(p: GridParams): GridLayoutResult {
   const totalHeight = y
 
   const viewHeight = Math.max(0, p.viewHeight)
-  // 捲動位置夾在內容範圍內（過濾使內容變短時，舊 scrollTop 不至於渲染空白）
+  // Clamp scroll position to the content range so a stale scrollTop does not render blank space after filtering shortens the content.
   const scrollTop = Math.min(Math.max(0, p.scrollTop), Math.max(0, totalHeight - viewHeight))
   const top = Math.max(0, scrollTop - p.overscanRows * p.rowHeight)
   const bottom = scrollTop + viewHeight + p.overscanRows * p.rowHeight

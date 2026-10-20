@@ -1,4 +1,4 @@
-/** proxy:generate 的 IPC 處理本體（可注入假 sender / generateProxy 以便測試）。 */
+/** IPC handler for proxy:generate (accepts fake sender/generateProxy dependencies for tests). */
 import { isSafeLocalVideoPath } from './safe-path'
 
 export interface ProgressSender {
@@ -13,7 +13,7 @@ export interface ProxyIpcDeps {
 
 export const PROXY_PROGRESS_INTERVAL_MS = 250
 
-/** 只接受有限正數；其餘視為未知長度（不顯示百分比）。 */
+/** Accept only finite positive values; treat others as unknown duration (do not show a percentage). */
 export function parseProxyDuration(v: unknown): number | undefined {
   return typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : undefined
 }
@@ -33,14 +33,14 @@ export async function handleProxyGenerate(
   const onProgress = (ratio: number): void => {
     if (finished) return
     const t = now()
-    // 完成（1）一律送出，其餘節流
+    // Always send completion (1); throttle other updates.
     if (ratio < 1 && t - lastSent < PROXY_PROGRESS_INTERVAL_MS) return
     if (sender.isDestroyed()) return
     lastSent = t
     try {
       sender.send('proxy:progress', { videoPath, ratio })
     } catch {
-      // 視窗在送出瞬間被銷毀，忽略
+      // Ignore the send if the window was destroyed at that moment.
     }
   }
   try {
@@ -52,11 +52,11 @@ export async function handleProxyGenerate(
 
 export interface ProxyUsageDeps {
   proxyPath: (videoPath: string) => string
-  /** 檔案大小（bytes）；檔案不存在回 null */
+  /** File size in bytes; return null when the file does not exist. */
   statSize: (file: string) => number | null
 }
 
-/** 設定頁「代理檔佔用空間」：只統計傳入影片各自的代理檔（與 `proxy:delete` 的範圍一致）。 */
+/** "Proxy disk usage" for Settings: count only proxies for the supplied videos (same scope as `proxy:delete`). */
 export function handleProxyUsage(videoPaths: unknown, deps: ProxyUsageDeps): { count: number; bytes: number } {
   let count = 0
   let bytes = 0

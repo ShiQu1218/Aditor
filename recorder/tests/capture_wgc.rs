@@ -1,4 +1,4 @@
-//! 在真實 D3D11 裝置上驗證 WGC、重接與小圖；不開啟或操作遊戲程序。
+//! Validate WGC, reconnection, and thumbnails on a real D3D11 device; does not open or operate a game process.
 #![allow(dead_code)]
 
 #[path = "../src/capture/mod.rs"]
@@ -48,7 +48,7 @@ struct WindowState {
 }
 
 unsafe extern "system" fn window_proc(hwnd: HWND, message: u32, wp: WPARAM, lp: LPARAM) -> LRESULT {
-    // SAFETY: 所有訊息由此視窗的擁有執行緒處理；state 指標來自 CreateWindowExW 且活到訊息迴圈結束。
+    // SAFETY: All messages run on the window's owning thread; state comes from CreateWindowExW and lives until the message loop exits.
     unsafe {
         match message {
             WM_NCCREATE => {
@@ -142,7 +142,7 @@ unsafe extern "system" fn window_proc(hwnd: HWND, message: u32, wp: WPARAM, lp: 
 }
 
 unsafe fn fill(dc: HDC, rect: RECT, color: u32) {
-    // SAFETY: dc 在 BeginPaint/EndPaint 之間有效；brush 在 FillRect 後立即釋放。
+    // SAFETY: dc is valid between BeginPaint/EndPaint; brush is released immediately after FillRect.
     unsafe {
         let brush = CreateSolidBrush(COLORREF(color));
         assert_ne!(FillRect(dc, &rect, brush), 0);
@@ -159,7 +159,7 @@ impl TestWindow {
     fn new(width: i32, height: i32) -> Self {
         let (ready, initialized) = mpsc::sync_channel(1);
         let worker = thread::spawn(move || {
-            // SAFETY: 測試只設定自己的視窗執行緒 DPI 模式；HWND 與訊息迴圈留在同執行緒。
+            // SAFETY: The test only sets its window thread's DPI mode; HWND and the message loop remain on that thread.
             unsafe {
                 let _ = SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
                 let instance = HINSTANCE(GetModuleHandleW(None).unwrap().0);
@@ -206,7 +206,7 @@ impl TestWindow {
     }
 
     fn resize(&self, width: i32, height: i32) {
-        // SAFETY: 此 HWND 在 TestWindow 存活期間有效；只調整測試視窗的尺寸。
+        // SAFETY: HWND is valid while TestWindow lives; only resize the test window.
         unsafe {
             PostMessageW(
                 Some(HWND(self.hwnd as *mut _)),
@@ -219,7 +219,7 @@ impl TestWindow {
     }
 
     fn black(&self) {
-        // SAFETY: 訊息只傳給自己的測試視窗，不攜帶指標。
+        // SAFETY: Messages go only to the test window and carry no pointers.
         unsafe {
             PostMessageW(
                 Some(HWND(self.hwnd as *mut _)),
@@ -234,7 +234,7 @@ impl TestWindow {
 
 impl Drop for TestWindow {
     fn drop(&mut self) {
-        // SAFETY: WM_CLOSE 由擁有此視窗的執行緒處理，join 後 HWND 不再使用。
+        // SAFETY: The window's owning thread handles WM_CLOSE; HWND is unused after join.
         unsafe {
             let _ = PostMessageW(
                 Some(HWND(self.hwnd as *mut _)),
@@ -284,14 +284,14 @@ fn notice_until(
 
 fn assert_color(bytes: &[u8], bgr: [u8; 3], width: usize, height: usize) {
     assert_eq!(bytes.len(), width * height * 3);
-    // 略過縮放濾波的邊緣像素，仍檢查區塊中央的完整一列。
+    // Skip edge pixels affected by scaling filters while checking a complete central row of each block.
     for pixel in
         bytes[(height / 2 * width + 8) * 3..(height / 2 * width + width - 8) * 3].chunks_exact(3)
     {
         for (actual, expected) in pixel.iter().zip(bgr) {
             assert!(
                 actual.abs_diff(expected) <= 8,
-                "像素 {pixel:?} 與 {bgr:?} 不符"
+                "Pixel {pixel:?} does not match {bgr:?}"
             );
         }
     }
@@ -302,7 +302,7 @@ fn wgc_captures_pixels_resizes_reconnects_and_falls_back_to_monitor() {
     let _lock = HARDWARE.lock().unwrap_or_else(|error| error.into_inner());
     let gpu = Gpu::create().unwrap();
     let dxgi: IDXGIDevice = gpu.device.cast().unwrap();
-    // SAFETY: 只讀取測試 D3D11 裝置的轉接器資訊，COM 物件在查詢期間有效。
+    // SAFETY: Only read the test D3D11 device's adapter information; COM objects remain valid during queries.
     let adapter = unsafe { dxgi.GetAdapter().unwrap().GetDesc().unwrap() };
     let end = adapter
         .Description
@@ -310,7 +310,7 @@ fn wgc_captures_pixels_resizes_reconnects_and_falls_back_to_monitor() {
         .position(|ch| *ch == 0)
         .unwrap_or(adapter.Description.len());
     eprintln!(
-        "WGC 測試轉接器：{}",
+        "WGC test adapter: {}",
         String::from_utf16_lossy(&adapter.Description[..end])
     );
     let window = TestWindow::new(960, 540);
@@ -342,8 +342,8 @@ fn wgc_captures_pixels_resizes_reconnects_and_falls_back_to_monitor() {
     );
     thread::sleep(Duration::from_secs(2));
     let initial: Vec<_> = frames.try_iter().collect();
-    eprintln!("WGC 兩秒收到 {} 格", initial.len());
-    assert!(initial.len() >= 30, "兩秒只收到 {} 格", initial.len());
+    eprintln!("WGC received {} frames over two seconds", initial.len());
+    assert!(initial.len() >= 30, "Only received {} frames over two seconds", initial.len());
     assert!(initial.windows(2).all(|pair| pair[0].0 < pair[1].0));
     assert!(initial.iter().all(|frame| (frame.1, frame.2) == (960, 540)));
     let image = images
@@ -429,7 +429,7 @@ fn color_texture(gpu: &Gpu, width: u32, height: u32) -> ID3D11Texture2D {
         ..Default::default()
     };
     let mut texture = None;
-    // SAFETY: 初始像素的長度與列間距符合 texture 描述，CreateTexture2D 在返回前完成複製。
+    // SAFETY: Initial pixel length and row pitch match the texture descriptor; CreateTexture2D copies them before returning.
     unsafe {
         gpu.device
             .CreateTexture2D(&desc, Some(&initial), Some(&mut texture))
@@ -450,7 +450,7 @@ fn gpu_small_frames_preserve_roi_colors_cadence_and_previous_pts() {
         assert!(extractor.on_frame(&texture, width, height, 0).is_none());
         let mut received = 0;
         for sample in 1..=8 {
-            // SAFETY: Flush 只提交測試裝置的工作，不做同步等待；休眠讓上一批 GPU 命令完成。
+            // SAFETY: Flush submits test device work without waiting; sleeping allows the previous GPU commands to finish.
             unsafe { gpu.context.Flush() };
             thread::sleep(Duration::from_millis(250));
             let pts = sample * TICKS_PER_SEC / 4;
@@ -468,7 +468,7 @@ fn gpu_small_frames_preserve_roi_colors_cadence_and_previous_pts() {
                 .on_frame(&texture, width, height, pts + 1)
                 .is_none());
         }
-        assert_eq!(received, 8, "{width}×{height} 讀回組數不符");
+        assert_eq!(received, 8, "Unexpected readback count at {width}×{height}");
     }
 }
 

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-// 匯出進行中的編輯鎖定：側欄、專案軌、來源時間軸一律 inert（不只是資料層默默拒絕），結束後解除。
+// Editing is locked during export: sidebar, project timeline, and source timeline are all inert (not merely rejected silently by the data layer); unlock when export ends.
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { cleanupMounted, click, flush, focusEl, installDomShims, press } from '../../../test/dom'
 import { mountStudio, STUDIO_VIDEO, type StudioMount } from '../../../test/studioHarness'
@@ -48,10 +48,10 @@ describe('export lock', () => {
       expect(el.hasAttribute('inert'), `${sel} inert`).toBe(true)
       expect(el.getAttribute('aria-disabled'), `${sel} aria-disabled`).toBe('true')
     }
-    // 徽章狀態：專案軌匯出按鈕顯示進度
+    // Badge state: the project-timeline export button shows progress.
     expect(q('.plane-head .xd-badge')?.textContent).toContain('%')
 
-    // 縮小抽屜、收起再展開側欄：新掛載的側欄也必須是 inert
+    // Minimize the drawer and collapse/reopen the sidebar; the newly mounted sidebar must also be inert.
     press(document.activeElement ?? document.body, 'Escape')
     expect(q('.xd')).toBeNull()
     click(q('.same-day-card:not([aria-current])')!)
@@ -67,7 +67,7 @@ describe('export lock', () => {
     press(document.body, 'b', { ctrlKey: true })
     expect(q('.studio-aside')!.hasAttribute('inert')).toBe(true)
 
-    // 資料層仍拒絕異動（Delete 不會移除片段）
+    // The data layer still rejects edits (Delete does not remove a clip).
     const chip = qa('.pclip')[0]
     press(chip, 'Delete')
     expect(qa('.pclip').length).toBe(2)

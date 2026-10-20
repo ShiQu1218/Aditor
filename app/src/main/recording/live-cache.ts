@@ -1,10 +1,11 @@
 /**
- * 收尾：把錄影中的 `live.json` 轉成輸出影片的分析快取（格式同引擎 `analyze.py` 的 `_make_doc`），
- * 讓「錄後分析＝不分析」時工作室也有事件。
+ * Finalization converts the recording's `live.json` into an analysis cache for the output video
+ * (matching the engine's `analyze.py` `_make_doc` format), so the studio still has events when post-recording analysis is disabled.
  *
- * `analysis.status = "done"`（工作室與媒體庫只認 done），但 `engine_version` 刻意寫成 `live-<版本>`：
- * 引擎 `cache.needs_reanalysis` 比對 `engine_version != ENGINE_VERSION` 即重新分析，
- * 所以「關遊戲後／每局後」排入的完整分析與手動「重新分析」仍會跑完整分析並覆蓋（使用者對事件的修改照常合併）。
+ * Set `analysis.status = "done"` (the studio and library recognize only `done`), but deliberately
+ * write `engine_version` as `live-<version>`. The engine's `cache.needs_reanalysis` reruns analysis
+ * when `engine_version != ENGINE_VERSION`, so queued and manual full analyses still run and replace
+ * this cache, while preserving the usual merge behavior for user edits to events.
  */
 import fs from 'fs'
 import path from 'path'
@@ -24,10 +25,10 @@ export interface LiveFile {
   quality?: unknown
 }
 
-/** offset 與段落 pts 同方向：快取時間＝live 時間－offset。 */
+/** Offset has the same direction as segment PTS: cache time = live time - offset. */
 export interface LiveCacheRange { offset: number; duration: number; width?: number; height?: number; codec?: string }
 
-/** live 引擎判定結果等同離線分析，且有引擎版本可寫入快取。 */
+/** The live engine result is equivalent to offline analysis and includes an engine version for the cache. */
 export function isTrusted(live: LiveFile): boolean {
   const q = live.quality as { complete?: unknown } | null | undefined
   return !!q && q.complete === true && typeof live.engine_version === 'string' && live.engine_version.length > 0
@@ -46,7 +47,7 @@ export function liveCounts(events: EngineEvent[]): LiveAnalysisSummary['counts']
   return { knock, assist }
 }
 
-/** 由 live.json 內容組出快取文件；時間平移到輸出檔（第一段 = 0），只保留影片範圍內的事件。 */
+/** Build the cache document from live.json, shifting time to the output video (first segment = 0) and keeping only in-range events. */
 export function buildLiveCacheDoc(live: LiveFile, video: {
   path: string; size: number; mtime: number; duration: number; width: number; height: number; codec: string
 }, offset: number, templatesVersion: string, cachePath: string): Record<string, unknown> & { events: EngineEvent[] } {
@@ -73,14 +74,14 @@ export function buildLiveCacheDoc(live: LiveFile, video: {
     video: { ...video, start_time: 0 },
     analysis: {
       status: 'done', source: 'live', progress_t: video.duration,
-      // 可信時寫正式引擎版本：needs_reanalysis 視為已完成，不再重跑；否則 `live-` 前綴讓完整分析照常覆蓋。
+      // Trusted results use the official engine version so needs_reanalysis treats them as complete; otherwise the `live-` prefix lets full analysis replace them.
       engine_version: trusted ? version : `live-${version}`, templates_version: templatesVersion,
       h_scale: trusted && finite(hScale) ? hScale : 1
     },
     events,
     spectating,
     clips: [],
-    // 引擎不認得的欄位；完整分析重寫快取時會被丟棄。
+    // Engine-unknown field; discarded when full analysis rewrites the cache.
     live: { matches },
     cache_path: cachePath
   }
@@ -101,9 +102,10 @@ async function canWriteLiveCache(cachePath: string, overwriteLive: boolean): Pro
 }
 
 /**
- * 寫入指定段落範圍的 live 快取（未指定時使用整段）；可信收尾只允許覆蓋自己的 live 快取。
- * 沒有 live.json 或快取位置時略過；錄影中可強制標成不可信。
- * 回傳寫好的摘要（供媒體庫），略過時 null。
+ * Write a live cache for the requested segment range (the full recording by default). Trusted
+ * finalization may overwrite only its own live cache. Skip when live.json or a cache location is
+ * unavailable; callers may force an untrusted result during recording. Return the written summary
+ * for the library, or null when skipped.
  */
 export async function writeLiveCache(dir: string, outputPath: string, deps: RecordingDeps,
   range?: readonly IndexEntry[] | LiveCacheRange, options: { forceUntrusted?: boolean; overwriteLive?: boolean } = {}
@@ -127,7 +129,7 @@ export async function writeLiveCache(dir: string, outputPath: string, deps: Reco
   let codec = explicit?.codec ?? ''
   if (!explicit) {
     try { codec = codecName(initCodecs(new Uint8Array(await fs.promises.readFile(path.join(dir, 'init.mp4'))))) }
-    catch { /* 編碼未知：完整分析時引擎會補上 */ }
+    catch { /* Unknown codec; the engine will fill it in during full analysis. */ }
   }
   const stat = await fs.promises.stat(outputPath)
   const size = (v: unknown): number => (Number.isSafeInteger(v) && Number(v) > 0 ? Number(v) : 0)
@@ -136,7 +138,7 @@ export async function writeLiveCache(dir: string, outputPath: string, deps: Reco
     width: size(explicit?.width ?? live.width), height: size(explicit?.height ?? live.height), codec
   }, offset, await templatesVersion(deps.profileDir), cachePath)
   await fs.promises.mkdir(path.dirname(cachePath), { recursive: true })
-  // 完整分析使用 .tmp；即時快取用獨立暫存檔，避免同時寫入互相覆蓋。
+  // Full analysis uses .tmp; live cache uses a separate temporary file to avoid concurrent writes clobbering each other.
   const temp = `${cachePath}.live.tmp`
   try {
     await fs.promises.writeFile(temp, JSON.stringify(doc), 'utf8')

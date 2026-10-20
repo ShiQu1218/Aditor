@@ -7,7 +7,7 @@ import { ObsClient } from './obs-client'
 import { tr } from '../../shared/locale'
 
 const OBS_STOP_POLL_MS = 100
-/** 逐局開始錄影前，最多等上一局的 OBS 錄影停止這麼久 */
+/** Maximum time to wait for the previous OBS recording to stop before starting a per-match recording. */
 const OBS_MATCH_RESTART_WAIT_MS = 10_000
 
 export interface ObsMatch {
@@ -30,7 +30,7 @@ export interface ObsMetadata {
   adopted: boolean
 }
 
-/** OBS 連線與檔案時間軸；斷線時不影響 aditorrec 或 live 引擎。 */
+/** OBS connection and file timeline; disconnects do not affect aditorrec or the live engine. */
 export class ObsRecording extends EventEmitter {
   readonly client = new ObsClient()
   readonly meta: ObsMetadata = { recordStartedAt: Date.now(), captureStartedAt: Date.now(), adopted: false }
@@ -77,7 +77,7 @@ export class ObsRecording extends EventEmitter {
 
   private connect(): Promise<void> { return this.client.connect(this.settings.obsHost, this.settings.obsPort, this.password) }
 
-  /** `stopGraceUntil`：剛停止自己的錄影時，OBS 仍會短暫回報錄影中；等它停下，不誤當成使用者的錄影沿用。 */
+  /** `stopGraceUntil`: OBS may briefly report active after we stop our recording; wait for it to stop instead of mistaking it for a user-owned recording. */
   async start(stopGraceUntil = 0): Promise<void> {
     await this.connect()
     let status = await this.client.status()
@@ -100,7 +100,7 @@ export class ObsRecording extends EventEmitter {
     if (!this.perMatch) return
     if (this.matches.at(-1)?.stopped === false) throw new Error(tr('上一局 OBS 錄影尚未完成，已保留工作'))
     if (!this.client.connected) await this.connect()
-    // 連續排隊時上一局剛 StopRecord，OBS 還在寫檔尾、仍回報錄影中；等它真正停下。
+    // When matches are queued back to back, OBS may still be writing the previous file and report active after StopRecord; wait for it to stop.
     const waitUntil = Date.now() + OBS_MATCH_RESTART_WAIT_MS
     let status = await this.client.status()
     while (status.outputActive && Date.now() < waitUntil) {
@@ -116,7 +116,7 @@ export class ObsRecording extends EventEmitter {
     await this.flush()
     try { await this.client.start() }
     catch (error) {
-      // 指令可能已送達但回覆遺失；保留未完成狀態，交由復原確認。
+      // The command may have arrived even if its response was lost; retain the pending state for recovery to verify.
       this.persist()
       await this.flush()
       throw error
@@ -131,7 +131,7 @@ export class ObsRecording extends EventEmitter {
       const meta = JSON.parse(await fs.promises.readFile(path.join(this.dir, 'session.json'), 'utf8'))
       const parsed = Date.parse(meta.started_at)
       if (Number.isFinite(parsed)) startedAt = parsed
-    } catch { /* started 事件是舊版錄影器的替代時間來源 */ }
+    } catch { /* The started event is a fallback time source for older recorders. */ }
     this.meta.captureStartedAt = startedAt
     this.persist()
     await this.flush()
@@ -169,14 +169,14 @@ export class ObsRecording extends EventEmitter {
     const status = await this.client.status()
     this.attempt = 0
     if (!status.outputActive && !this.stopped) {
-      // v5 不提供已錯過停止事件的路徑，不猜測或掃描使用者的 OBS 資料夾。
+      // v5 does not provide paths for missed stop events; do not guess or scan the user's OBS folder.
       this.stopped = true
       this.notice(tr('OBS 已停止錄影；若停止事件在斷線期間遺失，請手動匯入 OBS 影片'))
       this.emit('stopped')
     }
   }
 
-  /** true＝可收尾；沿用的錄影尚未停止時留給停止事件處理。 */
+  /** True when finalization may proceed; a reused recording that is still active waits for its stop event. */
   async stop(): Promise<boolean> {
     if (this.meta.adopted) return this.stopped
     this.stopping = true

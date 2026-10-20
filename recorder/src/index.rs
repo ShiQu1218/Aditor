@@ -1,6 +1,6 @@
-//! `index.jsonl`／`session.json` 寫入（任務 B4，規格 §2.1）。
-//! 每段一行 `{"seq":1,"pts":0.0,"dur":2.0,"bytes":123,"wall":"2026-10-18T21:03:05.123+08:00"}`；
-//! 每行寫完即 `sync_data`，讓崩潰後的檔案仍是完整行（最後一行若不完整，讀端忽略）。
+//! Writes `index.jsonl` and `session.json` (task B4, spec §2.1).
+//! One line per segment `{"seq":1,"pts":0.0,"dur":2.0,"bytes":123,"wall":"2026-10-18T21:03:05.123+08:00"}`；
+//! Call `sync_data` after every line so complete lines survive a crash (readers ignore an incomplete final line).
 
 use std::fs::{self, File, OpenOptions};
 use std::io::{BufRead, BufReader, Read, Seek, SeekFrom, Write};
@@ -31,7 +31,7 @@ pub struct IndexLine {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SessionMeta {
     pub session_id: String,
-    /// ISO8601，包含時區；由工作啟動時間填入，不受重開索引影響。
+    /// ISO 8601 with timezone; set at job startup and unaffected by reopening the index.
     pub started_at: String,
     pub encoder: String,
     pub width: u32,
@@ -48,29 +48,29 @@ pub struct IndexWriter {
 }
 
 impl IndexWriter {
-    /// 保留既有完整行，修復崩潰留下的不完整尾行，再繼續附加。
+    /// Keep existing complete lines, repair an incomplete trailing line left by a crash, then resume appending.
     pub fn create(dir: &Path) -> Result<Self> {
-        fs::create_dir_all(dir).context("建立錄影索引目錄失敗")?;
+        fs::create_dir_all(dir).context("Failed to create recording index directory")?;
         let mut file = OpenOptions::new()
             .create(true)
             .read(true)
             .write(true)
             .truncate(false)
             .open(dir.join("index.jsonl"))
-            .context("開啟錄影索引失敗")?;
+            .context("Failed to open recording index")?;
         repair_tail(&mut file)?;
         file.seek(SeekFrom::End(0))
-            .context("定位索引附加位置失敗")?;
+            .context("Failed to seek to the index append position")?;
         Ok(Self {
             file,
             failed: false,
         })
     }
 
-    /// 呼叫端必須先完成段落檔案的 flush 與 sync，再公布索引。
+    /// The caller must flush and sync the segment file before publishing the index entry.
     pub fn append(&mut self, segment: &SegmentInfo, wall: SystemTime) -> Result<()> {
         if self.failed {
-            bail!("索引先前寫入失敗，必須重新開啟後才能繼續");
+            bail!("A previous index write failed; reopen the index before continuing");
         }
         if segment.seq == 0
             || !segment.pts_secs.is_finite()
@@ -78,7 +78,7 @@ impl IndexWriter {
             || !segment.dur_secs.is_finite()
             || segment.dur_secs <= 0.0
         {
-            bail!("段落序號或時間無效");
+            bail!("Invalid segment sequence number or timestamp");
         }
         let entry = IndexLine {
             seq: segment.seq,
@@ -87,7 +87,7 @@ impl IndexWriter {
             bytes: segment.bytes,
             wall: format_wall(wall)?,
         };
-        let mut line = serde_json::to_vec(&entry).context("序列化錄影索引失敗")?;
+        let mut line = serde_json::to_vec(&entry).context("Failed to serialize recording index")?;
         line.push(b'\n');
         if let Err(error) = self
             .file
@@ -95,15 +95,15 @@ impl IndexWriter {
             .and_then(|()| self.file.sync_data())
         {
             self.failed = true;
-            return Err(error).context("寫入或同步錄影索引失敗");
+            return Err(error).context("Failed to write or sync recording index");
         }
         Ok(())
     }
 }
 
-/// 不完整的最後一行尚未公布，忽略；其他 JSON 錯誤與 I/O 錯誤仍回報。
+/// Ignore an incomplete final line that was never published; report other JSON and I/O errors.
 pub fn read_index(path: &Path) -> Result<Vec<IndexLine>> {
-    let file = File::open(path).context("開啟錄影索引失敗")?;
+    let file = File::open(path).context("Failed to open recording index")?;
     let mut reader = BufReader::new(file);
     let mut entries = Vec::new();
     let mut line = Vec::new();
@@ -111,7 +111,7 @@ pub fn read_index(path: &Path) -> Result<Vec<IndexLine>> {
         line.clear();
         if reader
             .read_until(b'\n', &mut line)
-            .context("讀取錄影索引失敗")?
+            .context("Failed to read recording index")?
             == 0
         {
             break;
@@ -120,7 +120,7 @@ pub fn read_index(path: &Path) -> Result<Vec<IndexLine>> {
             Ok(entry) => entries.push(entry),
             Err(error) if !line.ends_with(b"\n") && error.is_eof() => break,
             Err(error) => {
-                return Err(error).with_context(|| format!("索引第 {} 行無效", entries.len() + 1))
+                return Err(error).with_context(|| format!("Invalid index line {}", entries.len() + 1))
             }
         }
     }
@@ -128,16 +128,16 @@ pub fn read_index(path: &Path) -> Result<Vec<IndexLine>> {
 }
 
 pub fn write_session_json(dir: &Path, meta: &SessionMeta) -> Result<()> {
-    let mut json = serde_json::to_vec(meta).context("序列化錄影設定失敗")?;
+    let mut json = serde_json::to_vec(meta).context("Failed to serialize recording session metadata")?;
     json.push(b'\n');
-    fs::create_dir_all(dir).context("建立錄影設定目錄失敗")?;
-    let mut file = File::create(dir.join("session.json")).context("建立錄影設定失敗")?;
-    file.write_all(&json).context("寫入錄影設定失敗")?;
-    file.sync_data().context("同步錄影設定失敗")
+    fs::create_dir_all(dir).context("Failed to create recording session directory")?;
+    let mut file = File::create(dir.join("session.json")).context("Failed to create recording session metadata")?;
+    file.write_all(&json).context("Failed to write recording session metadata")?;
+    file.sync_data().context("Failed to sync recording session metadata")
 }
 
 fn repair_tail(file: &mut File) -> Result<()> {
-    let len = file.metadata().context("讀取索引長度失敗")?.len();
+    let len = file.metadata().context("Failed to read index length")?.len();
     let mut start = len;
     let mut buffer = [0; 4096];
     let tail_start = loop {
@@ -147,9 +147,9 @@ fn repair_tail(file: &mut File) -> Result<()> {
         let count = start.min(buffer.len() as u64) as usize;
         start -= count as u64;
         file.seek(SeekFrom::Start(start))
-            .context("定位索引尾行失敗")?;
+            .context("Failed to seek to the final index line")?;
         file.read_exact(&mut buffer[..count])
-            .context("讀取索引尾行失敗")?;
+            .context("Failed to read the final index line")?;
         if let Some(pos) = buffer[..count].iter().rposition(|byte| *byte == b'\n') {
             break start + pos as u64 + 1;
         }
@@ -158,24 +158,24 @@ fn repair_tail(file: &mut File) -> Result<()> {
         return Ok(());
     }
     file.seek(SeekFrom::Start(tail_start))
-        .context("定位索引尾行失敗")?;
+        .context("Failed to seek to the final index line")?;
     let mut tail = Vec::new();
-    file.read_to_end(&mut tail).context("讀取索引尾行失敗")?;
+    file.read_to_end(&mut tail).context("Failed to read the final index line")?;
     match serde_json::from_slice::<IndexLine>(&tail) {
-        Ok(_) => file.write_all(b"\n").context("補齊索引換行失敗")?,
+        Ok(_) => file.write_all(b"\n").context("Failed to complete the index line")?,
         Err(error) if error.is_eof() => {
-            file.set_len(tail_start).context("截除索引不完整尾行失敗")?
+            file.set_len(tail_start).context("Failed to remove incomplete final index line")?
         }
-        Err(error) => return Err(error).context("索引尾行無效，拒絕繼續寫入"),
+        Err(error) => return Err(error).context("Invalid final index line; refusing to continue writing"),
     }
-    file.sync_data().context("同步索引尾行修復失敗")
+    file.sync_data().context("Failed to sync repaired index tail")
 }
 
 fn format_wall(wall: SystemTime) -> Result<String> {
     let mut zone = DYNAMIC_TIME_ZONE_INFORMATION::default();
-    // SAFETY: zone 是有效且可寫入的 Windows 時區結構。
+    // SAFETY: zone is a valid, writable Windows time zone structure.
     if unsafe { GetDynamicTimeZoneInformation(&mut zone) } == TIME_ZONE_ID_INVALID {
-        return Err(windows::core::Error::from_thread()).context("讀取本地時區失敗");
+        return Err(windows::core::Error::from_thread()).context("Failed to read local timezone");
     }
     format_wall_in_zone(wall, &zone)
 }
@@ -187,7 +187,7 @@ fn format_wall_in_zone(wall: SystemTime, zone: &DYNAMIC_TIME_ZONE_INFORMATION) -
         Err(error) => -((error.duration().as_nanos().div_ceil(100)) as i128),
     };
     let ticks =
-        u64::try_from(UNIX_EPOCH_FILETIME + unix_ticks).context("錄影時間超出 Windows 支援範圍")?;
+        u64::try_from(UNIX_EPOCH_FILETIME + unix_ticks).context("Recording time is outside the range supported by Windows")?;
     let filetime = FILETIME {
         dwLowDateTime: ticks as u32,
         dwHighDateTime: (ticks >> 32) as u32,
@@ -195,11 +195,11 @@ fn format_wall_in_zone(wall: SystemTime, zone: &DYNAMIC_TIME_ZONE_INFORMATION) -
     let mut utc = SYSTEMTIME::default();
     let mut local = SYSTEMTIME::default();
     let mut local_filetime = FILETIME::default();
-    // SAFETY: 所有結構皆已初始化；API 只讀輸入並寫入各自的輸出結構。
+    // SAFETY: All structures are initialized; the API reads the inputs and writes to their respective output structures.
     unsafe {
-        FileTimeToSystemTime(&filetime, &mut utc).context("轉換錄影 UTC 時間失敗")?;
+        FileTimeToSystemTime(&filetime, &mut utc).context("Failed to convert recording time to UTC")?;
         if zone.TimeZoneKeyName[0] == 0 {
-            // 手動設定的時區可能沒有登錄名稱，直接使用其固定規則。
+            // A manually configured timezone may not have a registered name; use its fixed rules directly.
             let fixed_zone = TIME_ZONE_INFORMATION {
                 Bias: zone.Bias,
                 StandardName: zone.StandardName,
@@ -210,16 +210,16 @@ fn format_wall_in_zone(wall: SystemTime, zone: &DYNAMIC_TIME_ZONE_INFORMATION) -
                 DaylightBias: zone.DaylightBias,
             };
             SystemTimeToTzSpecificLocalTime(Some(&fixed_zone), &utc, &mut local)
-                .context("轉換錄影自訂時區時間失敗")?;
+                .context("Failed to convert recording time in custom timezone")?;
         } else {
             SystemTimeToTzSpecificLocalTimeEx(Some(zone), &utc, &mut local)
-                .context("轉換錄影本地時間失敗")?;
+                .context("Failed to convert recording time to local time")?;
         }
-        SystemTimeToFileTime(&local, &mut local_filetime).context("計算錄影時區偏移失敗")?;
+        SystemTimeToFileTime(&local, &mut local_filetime).context("Failed to calculate recording timezone offset")?;
     }
     let local_ticks =
         (u64::from(local_filetime.dwHighDateTime) << 32) | u64::from(local_filetime.dwLowDateTime);
-    // UTC 與本地值皆截到毫秒，差值才不會因小數秒而少算一分鐘。
+    // Truncate both UTC and local values to milliseconds so fractional seconds do not undercount the offset by one minute.
     let offset = (i128::from(local_ticks) - i128::from(ticks / 10_000 * 10_000)) / 600_000_000;
     let sign = if offset < 0 { '-' } else { '+' };
     let minutes = offset.abs();
@@ -279,9 +279,9 @@ mod tests {
     fn named_zone(name: &str) -> DYNAMIC_TIME_ZONE_INFORMATION {
         for index in 0.. {
             let mut zone = DYNAMIC_TIME_ZONE_INFORMATION::default();
-            // SAFETY: 提供有效的可寫入結構；只列舉 Windows 時區，不變更系統設定。
+            // SAFETY: Provide a valid writable structure; this only enumerates Windows timezones and does not change system settings.
             let status = unsafe { EnumDynamicTimeZoneInformation(index, &mut zone) };
-            assert_eq!(status, 0, "找不到測試時區 {name}");
+            assert_eq!(status, 0, "Test timezone not found: {name}");
             let end = zone.TimeZoneKeyName.iter().position(|c| *c == 0).unwrap();
             if String::from_utf16(&zone.TimeZoneKeyName[..end]).unwrap() == name {
                 return zone;
@@ -379,7 +379,7 @@ mod tests {
         }
         fs::write(&path, b"not json").unwrap();
         assert!(IndexWriter::create(&dir.0).is_err());
-        fs::write(dir.0.join("blocked"), "不是目錄".as_bytes()).unwrap();
+        fs::write(dir.0.join("blocked"), b"not a directory").unwrap();
         assert!(IndexWriter::create(&dir.0.join("blocked")).is_err());
         fs::create_dir(dir.0.join("session.json")).unwrap();
         assert!(write_session_json(&dir.0, &meta()).is_err());
@@ -432,7 +432,7 @@ mod tests {
             .append(&segment(2), UNIX_EPOCH)
             .unwrap_err()
             .to_string()
-            .contains("必須重新開啟"));
+            .contains("reopen the index"));
         assert!(fs::read(&path).unwrap().is_empty());
     }
 

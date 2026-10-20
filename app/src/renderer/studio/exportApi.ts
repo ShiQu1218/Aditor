@@ -1,7 +1,7 @@
 import type { ExportApi } from './exportController'
 import { tr } from '../../shared/locale'
 
-/** 延遲綁定 `window.api.export`（preload 暴露）；沒有 IPC（純瀏覽器預覽）時回傳明確的錯誤而不是丟 TypeError。 */
+/** Lazily bind `window.api.export` (exposed by preload); return a clear error without IPC (browser-only preview) instead of throwing a TypeError. */
 function api(): Record<string, (...a: unknown[]) => unknown> {
   const a = (window as unknown as { api?: { export?: Record<string, (...a: unknown[]) => unknown> } }).api?.export
   if (!a) throw new Error(tr('匯出功能需要在 App 視窗內執行'))

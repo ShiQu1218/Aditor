@@ -1,13 +1,13 @@
 /**
- * 上／下一個事件（Ctrl+←／→）的基準時間。
- * 跳到事件時播放頭落在事件前 N 秒（lead-in）；若下一次仍用播放頭時間當基準，
- * 「下一個事件」會再次找到同一個事件而卡住（它還在播放頭之後），「上一個」則會略過 lead-in 區間內的事件。
- * 所以剛由導覽跳到的事件記成錨點：播放頭還停在那個 lead-in 位置時，以事件本身的時間為基準。
+ * Reference time for previous/next event (Ctrl+←/→).
+ * Seeking to an event places the playhead N seconds before it (lead-in). If the next search still uses the playhead time,
+ * "next event" finds the same event again and gets stuck (it is still ahead of the playhead), while "previous" skips events within the lead-in interval.
+ * Therefore, record the event just reached by navigation as an anchor: while the playhead remains at its lead-in position, use the event's own time as the reference.
  */
 export interface NavAnchor {
-  /** 事件時間 */
+  /** Event time. */
   eventT: number
-  /** 導覽時實際 seek 到的時間 */
+  /** Actual seek time during navigation. */
   seekT: number
 }
 

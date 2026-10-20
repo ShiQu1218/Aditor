@@ -19,11 +19,11 @@ const doc = (packets: Pkt[], timeBase = '1/1000', startTime = '0.000000') => ({
   streams: [{ time_base: timeBase }],
   format: { start_time: startTime }
 })
-/** 60 fps、沒有 B-frame：dts＝pts，tb 1/60 */
+/** 60 fps, no B-frames: dts=pts, tb 1/60. */
 const ipp = (from: number, to: number, gop: number): Pkt[] =>
   Array.from({ length: to - from }, (_, i) => ({ pts: from + i, dts: from + i, flags: (from + i) % gop === 0 ? 'K__' : '___' }))
 
-it('無法查詢或已中止的音軌探測回傳未知，不誤判為無音軌', async () => {
+it('returns unknown when audio-track probing fails or is cancelled, without treating it as no audio track', async () => {
   const probe = createAudioProbe(path.join(__dirname, '__missing_ffprobe__'))
   await expect(probe('source.mp4')).resolves.toBeNull()
   const ac = new AbortController()
@@ -49,13 +49,13 @@ describe('pickCopyCut: keyframe', () => {
     expect(pickCopyCut({}, 1, 2)).toBeNull()
     expect(pickCopyCut(doc([{ pts: 5000, flags: 'K__' }], 'bad'), 6, 7)).toBeNull()
     expect(pickCopyCut(doc([{ pts: 'N/A', flags: 'K__' }]), 6, 7)).toBeNull()
-    // 只有晚於起點的關鍵影格
+    // Only keyframes later than the start.
     expect(pickCopyCut(doc([{ pts: 7000, flags: 'K__' }]), 6, 8)).toBeNull()
   })
 })
 
 describe('cleanCutEnd: no hole at the tail of a B-frame stream copy', () => {
-  // 解碼順序 I0 P3 B1 B2 P6 B4 B5 …（每格 1 秒，方便閱讀）
+  // Decode order I0 P3 B1 B2 P6 B4 B5 … (one second per frame for readability).
   const ibbp = [
     { pts: 0, dts: -1 },
     { pts: 3, dts: 0 },
@@ -70,9 +70,9 @@ describe('cleanCutEnd: no hole at the tail of a B-frame stream copy', () => {
   ]
 
   it('extends the end until every frame shown before the last kept frame is kept too', () => {
-    // dts < 4 會留下 P6 卻少了 B4、B5（顯示到 6 但中間空了兩格）→ 延到 dts 5 之後
+    // dts < 4 retains P6 but drops B4 and B5 (display through 6 with two missing frames) → extend past dts 5.
     expect(cleanCutEnd(ibbp, 4)).toBeCloseTo(5.5, 9)
-    // dts < 5.2：同樣少 B5 → 延到 5.5
+    // dts < 5.2 also drops B5 → extend to 5.5.
     expect(cleanCutEnd(ibbp, 5.2)).toBeCloseTo(5.5, 9)
   })
 
@@ -92,7 +92,7 @@ describe('cleanCutEnd: no hole at the tail of a B-frame stream copy', () => {
     const tb = '1/1'
     const pk = (p: { pts: number; dts: number }, i: number): Pkt => ({ pts: p.pts + 20, dts: p.dts + 20, flags: i === 0 ? 'K__' : '___' })
     const d = doc([{ pts: 10, dts: 9, flags: 'K__' }, ...ibbp.map(pk)], tb)
-    // 視訊截在 25.5（留下 B24、B25）；保留的幀最晚顯示到 26＋1＝27，音訊截在 27 前 10 ms
+    // Cut video at 25.5 (keep B24 and B25); the last retained frame displays through 26+1=27, and cut audio 10 ms before 27.
     const cut = pickCopyCut(d, 12, 24)!
     expect(cut.keyframe).toBe(10)
     expect(cut.videoCut).toBeCloseTo(25.5, 9)

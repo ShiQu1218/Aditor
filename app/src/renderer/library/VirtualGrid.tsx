@@ -8,27 +8,27 @@ import { i18n } from '../i18n'
 
 interface VirtualGridProps {
   groups: DateGroup[]
-  /** active＝目前的 roving tabindex 游標卡片（整個網格只有它在 Tab 順序內） */
+  /** active is the current roving-tabindex card (the only card in the grid's Tab order). */
   renderCard: (entry: LibraryEntry, active: boolean) => React.ReactNode
 }
 
 const NAV_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'])
 
-/**
- * 虛擬化日期分組網格：只渲染可視列＋上下各 2 列 overscan。
- * 欄寬依容器寬度計算（卡片高度固定），捲動時不重新測量卡片。
- *
- * 鍵盤（roving tabindex）：整個網格只有一個 Tab 停靠點（游標卡片）；
- * 焦點在卡片主按鈕時 ←→↑↓／Home／End 移動游標（欄數取自 computeGrid 的實際欄數，跨日期分組延伸）。
- * 游標卡片被虛擬化捲出時：移動時先把它捲進視窗再對焦；有焦點時其所在列永遠保持渲染，滾輪捲動不會讓焦點掉到 body。
- */
+  /**
+   * Virtualized date-group grid: render only visible rows plus two overscan rows above and below.
+   * Column width is calculated from the container width (card height is fixed); cards are not remeasured while scrolling.
+   *
+   * Keyboard (roving tabindex): the grid has one Tab stop (the cursor card).
+   * When the main card button is focused, ←→↑↓/Home/End moves the cursor (using the actual column count from computeGrid across date groups).
+   * If virtualization has scrolled the cursor card out, scroll it into view before focusing it; keep the focused row rendered so wheel scrolling does not drop focus to body.
+   */
 export function VirtualGrid({ groups, renderCard }: VirtualGridProps): JSX.Element {
   const scrollRef = useRef<HTMLDivElement>(null)
   const [size, setSize] = useState({ width: 0, height: 0 })
   const [scrollTop, setScrollTop] = useState(0)
-  /** roving 游標（卡片路徑）；null＝尚未選擇，預設第一張 */
+  /** Roving cursor (card path); null means none selected, defaulting to the first card. */
   const [cursorPath, setCursorPath] = useState<string | null>(null)
-  /** 焦點目前在哪張卡片內（保持其所在列渲染）；焦點離開網格即清除 */
+  /** Card currently containing focus (keeps its row rendered); cleared when focus leaves the grid. */
   const [focusedPath, setFocusedPath] = useState<string | null>(null)
   const pendingFocus = useRef<string | null>(null)
 
@@ -63,7 +63,7 @@ export function VirtualGrid({ groups, renderCard }: VirtualGridProps): JSX.Eleme
     [groups, size.width, size.height, rowHeight, scrollTop]
   )
 
-  /** path → 分組內位置；游標失效（被篩掉）時退回第一張 */
+  /** Path to group position; if the cursor becomes invalid (filtered out), fall back to the first card. */
   const positions = useMemo(() => {
     const m = new Map<string, GridPos>()
     groups.forEach((g, gi) => g.entries.forEach((e, i) => m.set(e.path, { group: gi, index: i })))
@@ -72,10 +72,10 @@ export function VirtualGrid({ groups, renderCard }: VirtualGridProps): JSX.Eleme
   const firstPath = groups.find((g) => g.entries.length > 0)?.entries[0].path ?? null
   const activePath = cursorPath !== null && positions.has(cursorPath) ? cursorPath : firstPath
 
-  /** 把 (group,index) 那張卡片捲進視窗所需的 scrollTop（已可見＝null）。 */
+  /** scrollTop needed to bring the card at (group,index) into view (null if already visible). */
   const revealTarget = (pos: GridPos, viewTop: number, viewHeight: number): number | null => {
     const rowIdx = Math.floor(pos.index / cols)
-    // 組內第一列連同日期表頭一起看見
+  // Show the group's first row together with its date header.
     const top = rowIdx === 0 ? layout.offsets[pos.group] : layout.offsets[pos.group] + CARD.headerH + rowIdx * rowHeight
     const height = (rowIdx === 0 ? CARD.headerH : 0) + rowHeight - CARD.gap
     return revealScrollTarget({ top, height, scrollTop: viewTop, viewHeight, contentHeight: layout.totalHeight })
@@ -94,7 +94,7 @@ export function VirtualGrid({ groups, renderCard }: VirtualGridProps): JSX.Eleme
     }
   }
 
-  // 渲染後：游標卡片已在 DOM 才移動焦點（捲動使它剛被渲染時也在這裡完成）
+  // After rendering, move focus only once the cursor card is in the DOM (also handles cards rendered by scrolling).
   useEffect(() => {
     const path = pendingFocus.current
     if (path === null) return
@@ -110,12 +110,12 @@ export function VirtualGrid({ groups, renderCard }: VirtualGridProps): JSX.Eleme
   const onKeyDown = (e: React.KeyboardEvent<HTMLDivElement>): void => {
     if (!NAV_KEYS.has(e.key) || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey || e.nativeEvent.isComposing) return
     const target = e.target as HTMLElement
-    // 只有卡片主按鈕參與網格導覽；收藏／⋯／重試等次要按鈕的方向鍵保留原生語意
+    // Only the card's main button participates in grid navigation; arrow keys on secondary controls (favorite/⋯/retry) keep their native meaning.
     if (!target.classList.contains('vcard-open')) return
     const path = target.closest<HTMLElement>('.vcard')?.dataset.vcardPath
     const from = path ? positions.get(path) : undefined
     if (!from) return
-    e.preventDefault() // 不讓方向鍵捲動容器
+    e.preventDefault() // Prevent arrow keys from scrolling the container.
     const next = gridStep({ groups: groups.map((g) => g.entries.length), group: from.group, index: from.index, key: e.key, columns: cols })
     if (next) moveTo(next)
   }
@@ -131,7 +131,7 @@ export function VirtualGrid({ groups, renderCard }: VirtualGridProps): JSX.Eleme
     if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setFocusedPath(null)
   }
 
-  // 有焦點的卡片所在列即使捲出視窗也保持渲染（絕不把焦點卸載掉）
+  // Keep the focused card's row rendered even after it scrolls out of view; never unmount the focused element.
   let rendered: GridRow[] = layout.rows
   const fpos = focusedPath !== null ? positions.get(focusedPath) : undefined
   if (fpos) {

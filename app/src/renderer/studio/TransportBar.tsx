@@ -24,7 +24,7 @@ interface TransportBarProps {
   onToggleFilter: (t: EventType) => void
 }
 
-/** 傳輸列：播放／上下事件／時間／速度、快速剪輯／AI、事件類型 chip（帶計數）、新增事件。 */
+  /** Transport bar: playback, previous/next event, time/speed, quick clip/AI, event-type chips with counts, and add event. */
 export function TransportBar({
   playing,
   currentTime,

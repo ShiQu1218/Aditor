@@ -5,7 +5,7 @@ import { spawn } from 'child_process'
 import { proxyDir } from '../shared/paths'
 import { normalizePath } from './library'
 
-/** 縮圖上限 320x180（spec §6）：低階機的虛擬網格不必解碼原始解析度的 JPEG。 */
+/** Thumbnail limit 320x180 (spec §6): virtualized grids do not need to decode full-resolution JPEGs on low-end machines. */
 export const THUMB_MAX_W = 320
 export const THUMB_MAX_H = 180
 
@@ -37,7 +37,7 @@ export interface ThumbnailDeps {
   ffmpeg?: { bin: string; prefixArgs?: string[] }
 }
 
-/** 先寫 `<hash>.tmp.jpg`，成功才 rename；失敗刪除半成品，之後不會被誤當成可用縮圖。 */
+/** Write `<hash>.tmp.jpg` first and rename only on success; remove partial files on failure so they are not mistaken for usable thumbnails. */
 export async function generateThumbnail(videoPath: string, duration: number, deps: ThumbnailDeps = {}): Promise<string | undefined> {
   if (!fs.existsSync(videoPath)) return undefined
   const outPath = thumbnailPath(videoPath)
@@ -57,7 +57,7 @@ export async function generateThumbnail(videoPath: string, duration: number, dep
       return outPath
     }
   } catch {
-    // 落到下面的清理
+    // Fall through to cleanup below.
   }
   fs.rmSync(tmp, { force: true })
   return undefined

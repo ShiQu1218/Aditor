@@ -27,7 +27,7 @@ function statusText(s: UpdateStatus): string {
   }
 }
 
-/** 更新狀態＋動作：檢查／立即重新啟動並安裝；免安裝版改為開啟下載頁。 */
+/** Update status and actions: check or restart and install; portable builds open the download page instead. */
 export function UpdateControl({ ids, status, controller }: { ids: ControlIds; status: UpdateStatus; controller: SettingsController }): JSX.Element {
   const statusId = `${ids.ctl}-status`
   const busy = status.state === 'checking' || status.state === 'downloading'

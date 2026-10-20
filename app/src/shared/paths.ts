@@ -12,8 +12,8 @@ export function cacheDir(): string {
 }
 
 /**
- * Electron userData。預設＝%APPDATA%\aditor，其中 Chromium 的 `Cache` 在 Windows（不分大小寫）上
- * 就是分析快取 `cacheDir()`，Chromium 重建 HTTP 快取時會把分析結果一起刪掉，所以必須移開。
+ * Electron userData. Default = %APPDATA%\aditor, where Chromium's `Cache` is (case-insensitively) the same as the analysis cache `cacheDir()` on Windows.
+ * Chromium can delete analysis results while rebuilding its HTTP cache, so the directories must be separated.
  */
 export function chromiumUserDataDir(): string {
   return path.join(appDataDir(), 'electron-userdata')
@@ -27,7 +27,7 @@ export function codecsDir(): string {
   return path.join(appDataDir(), 'codecs')
 }
 
-/** 分析範本目錄（`profile_dir`）：開發＝repo 的 `templates/icons`（與語言無關的單一設定檔），打包＝resources 下同名目錄。 */
+/** Analysis profile directory (`profile_dir`): `templates/icons` in the repo during development (single language-independent profile), same-named directory under resources when packaged. */
 export function profileDir(isPackaged: boolean): string {
   const root = isPackaged
     ? (process as unknown as { resourcesPath?: string }).resourcesPath || path.join(__dirname, '..', '..')
@@ -61,14 +61,14 @@ export function engineCommand(isPackaged: boolean): {
   }
 }
 
-/** 對局場景範本（`templates/scene`，live 引擎 `--scene-dir`）；位置規則同 `profileDir`。 */
+/** Match-scene templates (`templates/scene`, live engine `--scene-dir`); location follows the same rule as `profileDir`. */
 export function sceneDir(isPackaged: boolean): string {
   return path.join(path.dirname(profileDir(isPackaged)), 'scene')
 }
 
 /**
- * live 引擎（第 3 期，`aditor live …`）的啟動方式：與 `engineCommand` 相同的執行檔，子指令改為 `live`。
- * 呼叫端再附加 `--shm`／`--profile-dir`／`--scene-dir`。
+ * Launch the live engine (Phase 3, `aditor live …`) with the same executable as `engineCommand`, but use the `live` subcommand.
+ * The caller appends `--shm`/`--profile-dir`/`--scene-dir`.
  */
 export function liveEngineCommand(isPackaged: boolean): {
   command: string
@@ -79,7 +79,7 @@ export function liveEngineCommand(isPackaged: boolean): {
   return { ...base, args: [...base.args.slice(0, -1), 'live'] }
 }
 
-/** aditorrec 與 FFmpeg DLL 同層；開發時優先使用 release，尚未建置時改找 debug。 */
+/** aditorrec is alongside FFmpeg DLLs; prefer release during development, falling back to debug when not built. */
 export function aditorrecCommand(isPackaged: boolean): {
   command: string
   args: string[]
@@ -98,15 +98,7 @@ export function aditorrecCommand(isPackaged: boolean): {
   }
 }
 
-/** OBS graphics-hook 檔案目錄（`hook_dir`）：開發＝repo 的 `build/obs-hook`，打包＝resources 下的 `obs-hook`。 */
-export function obsHookDir(isPackaged: boolean): string {
-  const root = isPackaged
-    ? (process as unknown as { resourcesPath?: string }).resourcesPath || path.join(__dirname, '..', '..')
-    : path.join(path.resolve(__dirname, '../../..'), 'build')
-  return path.join(root, 'obs-hook')
-}
-
-/** 隨安裝包附帶的第三方授權清單：打包＝resources 根目錄，開發＝repo 根目錄。 */
+/** Third-party notices bundled with the installer: resources root when packaged, repo root in development. */
 export function noticesFile(isPackaged: boolean): string {
   return bundledDocFile(isPackaged, 'THIRD_PARTY_NOTICES.md')
 }

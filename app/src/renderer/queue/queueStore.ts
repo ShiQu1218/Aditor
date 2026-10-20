@@ -1,18 +1,18 @@
 import { EMPTY_SUMMARY, queueKey, summarizeQueue, type QueueItemState, type QueuePayload, type QueueSummary } from '../../shared/queueState'
 
 /**
- * 全域分析佇列的單一資料來源（renderer）：環形進度、佇列條、浮層與每張卡片都從這裡讀，
- * 所以數字（進度、ETA、排隊與否）永遠一致。
- * 資料由 main 的 `library:updated` 事件（已 500 ms 節流）推入，這裡不呼叫 getEntries()。
- * 以 `useSyncExternalStore` 訂閱：卡片只訂閱自己的狀態（原始值），其他卡片不會因為進度更新而重繪。
+ * Single renderer-side source of truth for the global analysis queue: the progress ring, queue strip, popover, and each card read from here,
+ * keeping progress, ETA, and queue state consistent.
+ * Main sends updates through throttled `library:updated` events (500 ms); this store does not call getEntries().
+ * Subscribe with `useSyncExternalStore`: each card subscribes only to its own primitive state, so other cards do not rerender on progress updates.
  */
 export interface QueueStore {
   set(payload: QueuePayload | null | undefined): void
   getSummary(): QueueSummary
   subscribe(listener: () => void): () => void
-  /** 真實佇列狀態：analyzing／queued；其餘（匯入未排隊、取消後）為 idle */
+  /** Actual queue state: analyzing/queued; all other cases (imported but not queued, canceled) are idle. */
   stateOf(path: string): QueueItemState
-  /** 該影片的 ETA（毫秒）；非分析中或樣本不足為 null */
+  /** ETA for this video in milliseconds; null when not analyzing or when there are too few samples. */
   etaOf(path: string): number | null
 }
 

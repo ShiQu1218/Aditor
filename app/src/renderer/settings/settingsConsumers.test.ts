@@ -1,5 +1,5 @@
-// 鎖定「沒有空轉的設定列」：每個設定欄位與每一列都必須有真實的消費端（檔案＋識別字），
-// 新增設定欄位或設定列卻沒登記消費端時此測試會失敗。
+// Ensure no settings rows are inert: every setting field and row must have a real consumer (file and identifier).
+// This test fails when a setting field or row is added without registering its consumer.
 import { describe, expect, test } from 'vitest'
 import { existsSync, readFileSync } from 'fs'
 import { resolve } from 'path'
@@ -9,7 +9,7 @@ import { recordingI18n } from '../i18n'
 
 const src = (rel: string): string => resolve(__dirname, '../../', rel)
 
-/** 設定欄位 → 消費端（相對 src/）與在該檔必須出現的識別字 */
+/** Setting field to consumer (relative to src/) and identifier that must appear in that file. */
 const FIELD_CONSUMERS: Record<string, Array<[string, RegExp]>> = {
   watchFolders: [['main/watch.ts', /watchFolders/]],
   language: [['main/index.ts', /resolveLocale\(/], ['renderer/i18n/index.ts', /bootLocale/]],
@@ -26,7 +26,7 @@ const FIELD_CONSUMERS: Record<string, Array<[string, RegExp]>> = {
   lowPerfAsked: [['renderer/perf/lowPerfPrompt.ts', /lowPerfAsked/]],
   proxySuggest: [['renderer/studio/notices.ts', /proxySuggest/], ['renderer/library/VideoCard.tsx', /proxySuggest/]],
   before: [['renderer/studio/StudioScreen.tsx', /cfg\.before/]],
-  // 刀片改用兩點起訖；後秒數只保留舊設定的讀寫相容性。
+  // The clipper now uses start/end points; post-roll seconds remain only for legacy read/write compatibility.
   after: [['main/settings.ts', /after: pickNumber\(s\.after/]],
   autoclip: [['renderer/studio/highlights.ts', /settings\.autoclip/], ['renderer/studio/StudioScreen.tsx', /cfg\.autoclip/], ['main/ipc-handlers.ts', /\.autoclip/]],
   autoSuggestOnOpen: [['renderer/studio/highlights.ts', /settings\.autoSuggestOnOpen/]],
@@ -36,11 +36,11 @@ const FIELD_CONSUMERS: Record<string, Array<[string, RegExp]>> = {
   projectTrackCollapsed: [['renderer/studio/StudioScreen.tsx', /cfg\.projectTrackCollapsed/]],
   sameDayVideosCollapsed: [['renderer/studio/SameDayVideos.tsx', /settings\.sameDayVideosCollapsed/]],
   lastProjectId: [['renderer/editor/projectIo.ts', /lastProjectId/], ['main/project-ipc.ts', /lastProjectId/]],
-  // 錄影服務與系統匣由 A1／A3 接線；本任務驗證實際的設定讀寫與驗證入口。
+  // A1/A3 wire the recording service and system tray; this task verifies settings reads/writes and validation entry points.
   recording: [['main/settings.ts', /recording: pickRecording/], ['renderer/settings/RecordingControl.tsx', /controller\.setRecording/]]
 }
 
-/** 設定畫面的列 → 它控制的欄位，或（非設定欄位的列）真實後端／IPC 消費端 */
+/** Settings row to controlled field, or the real backend/IPC consumer for rows without a settings field. */
 const ROW_TARGETS: Record<string, { fields?: string[]; consumers?: Array<[string, RegExp]> }> = {
   language: { fields: ['language'] },
   watchFolders: { fields: ['watchFolders'] },
@@ -74,16 +74,16 @@ const check = (list: Array<[string, RegExp]>): void => {
   }
 }
 
-describe('設定欄位都有消費端', () => {
+describe('Every setting field has a consumer', () => {
   const keys = Object.keys(DEFAULT_SETTINGS).filter((k) => k !== 'version')
-  test('FIELD_CONSUMERS 與 Settings 欄位一一對應', () => {
+  test('FIELD_CONSUMERS maps one-to-one with Settings fields', () => {
     expect(Object.keys(FIELD_CONSUMERS).sort()).toEqual([...keys].sort())
   })
   test.each(keys)('%s', (k) => check(FIELD_CONSUMERS[k]))
 })
 
-describe('設定畫面每一列都不是空轉', () => {
-  test('每一列都已登記', () => {
+describe('Every settings row has an effect', () => {
+  test('Every row is registered', () => {
     expect(SETTING_ROWS.map((r) => r.id).sort()).toEqual(Object.keys(ROW_TARGETS).sort())
   })
   test.each(SETTING_ROWS.map((r) => r.id))('%s', (id) => {
@@ -91,7 +91,7 @@ describe('設定畫面每一列都不是空轉', () => {
     if (t.fields) for (const f of t.fields) check(FIELD_CONSUMERS[f])
     if (t.consumers) check(t.consumers)
   })
-  test('說明文字不得宣稱「需新增 IPC」', () => {
+  test('Descriptions must not say “IPC needs to be added”', () => {
     for (const r of SETTING_ROWS) expect(`${r.desc ?? ''}${r.disabledReason ?? ''}`).not.toMatch(/需新增\s*IPC/)
   })
 })

@@ -5,7 +5,7 @@ import path from 'path'
 import { createHash } from 'crypto'
 import { Readable } from 'stream'
 
-// 打包版沒有 engine/.venv 的 Python：任何 child_process.spawn 都視為失敗，驗證預設解壓縮路徑完全在 Node 內。
+// Packaged builds have no Python in engine/.venv: treat every child_process.spawn as a failure to verify that the default decompression path stays entirely in Node.
 vi.mock('child_process', () => ({
   spawn: () => {
     throw new Error('spawn must not be used to decompress OpenH264')

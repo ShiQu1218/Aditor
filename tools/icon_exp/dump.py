@@ -1,5 +1,5 @@
-"""把影片以引擎同一條解碼管線（4 fps、1080p、banner_roi）解出的橫幅區存成 raw uint8（N×180×800×3）。
-用法：dump.py <engine_dir> <label> <video> <outdir>"""
+"""Decode the banner region from a video with the engine's decoding pipeline (4 fps, 1080p, banner_roi) and save as raw uint8 (N×180×800×3).
+Usage: dump.py <engine_dir> <label> <video> <outdir>"""
 import sys, time
 from pathlib import Path
 sys.path.insert(0, sys.argv[1])

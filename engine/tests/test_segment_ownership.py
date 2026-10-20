@@ -1,7 +1,7 @@
-"""C1：切段平行／接續的事件「擁有權」合併。
+"""C1: Merge event ownership across parallel segments and resumed analysis.
 
-用合成的逐格偵測結果（假 FrameStream＋假 Detector）驅動真的 analyze／EventTracker／derive，
-刻意把「同一敵人再次被擊倒」（derive 去重）與橫幅放在段界兩側，並要求任何 jobs 的結果與 jobs=1 逐筆相同。
+Drive the real analyze/EventTracker/derive pipeline with synthetic per-frame detections (fake FrameStream and Detector).
+Place repeat knockdowns of the same enemy (deduplicated by derive) and banners across segment boundaries, and require every jobs result to match jobs=1 event by event.
 """
 import threading
 
@@ -24,7 +24,7 @@ def _sig(seed: int, width: int = 60) -> NameSig:
 
 
 def _build_script():
-    """{格索引: FrameResult}。每個敵人：先擊倒（讀得到名字），稍後同一敵人再次被擊倒（同名，derive 標為重複）。"""
+    """{frame index: FrameResult}. For each enemy, first record a knock with a readable name, then a later knock on the same enemy (same name, marked duplicate by derive)."""
     script: dict[int, FrameResult] = {}
 
     def put(t0, t1, kind, namer):
@@ -38,19 +38,19 @@ def _build_script():
     def reknock(t0, t1, seed):
         put(t0, t1, "knock", lambda i, s=_sig(seed): s)
 
-    # 時間軸（秒）。段界：jobs=2 → 30；jobs=3 → 20、40；jobs=4 → 15、30、45。
-    # 每組：擊倒與同敵人的再次擊倒，位置刻意跨在段界兩側。
+    # Timeline (seconds). Segment boundaries: jobs=2 → 30; jobs=3 → 20, 40; jobs=4 → 15, 30, 45.
+    # Each group contains a knock and a later knock on the same enemy, deliberately placed on opposite sides of a boundary.
     for n, (k0, k1, e0, e1) in enumerate([
-            (5.0, 7.5, 9.0, 11.0),       # 不靠近任何段界
-            (12.5, 14.5, 16.0, 18.0),    # 擊倒在 15 前、補刀在 15 後
-            (19.0, 21.5, 23.0, 25.0),    # 擊倒本身跨過 20
-            (26.0, 28.5, 31.0, 33.0),    # 擊倒在 30 前、補刀在 30 後
-            (36.0, 38.0, 41.0, 43.0),    # 擊倒在 40 前、補刀在 40 後
-            (44.0, 46.5, 48.0, 50.0),    # 擊倒跨過 45
-            (55.0, 57.0, 58.0, 59.75)]):  # 近片尾
+            (5.0, 7.5, 9.0, 11.0),       # Not near a segment boundary.
+            (12.5, 14.5, 16.0, 18.0),    # Knock before 15, follow-up after 15.
+            (19.0, 21.5, 23.0, 25.0),    # The knock itself crosses 20.
+            (26.0, 28.5, 31.0, 33.0),    # Knock before 30, follow-up after 30.
+            (36.0, 38.0, 41.0, 43.0),    # Knock before 40, follow-up after 40.
+            (44.0, 46.5, 48.0, 50.0),    # Knock crosses 45.
+            (55.0, 57.0, 58.0, 59.75)]):  # Near the end of the video.
         knock(k0, k1, 100 + n)
         reknock(e0, e1, 100 + n)
-    put(51.0, 53.0, "assist_elim", lambda i: None)  # 助攻消滅（沒有名字指紋 → 不去重）
+    put(51.0, 53.0, "assist_elim", lambda i: None)  # Assist-elim has no name fingerprint, so it is not deduplicated.
     return script
 
 
@@ -103,7 +103,7 @@ def fake_env(tmp_path, profile, monkeypatch):
     monkeypatch.setattr(az, "FrameStream", _FakeStream(script, DURATION))
     monkeypatch.setattr(az, "Detector", _FakeDetector)
     monkeypatch.setattr(az, "calibrate", lambda *a, **k: 1.0)
-    monkeypatch.setattr(az, "LEARN_SCAN_SECONDS", 0.0)  # 假畫面沒有錨點可學：不學關鍵字
+    monkeypatch.setattr(az, "LEARN_SCAN_SECONDS", 0.0)  # Synthetic frames have no anchors to learn from; do not learn keywords.
     monkeypatch.setattr(az, "EXTEND_LEARNING", False)
     return v, profile, tmp_path
 
@@ -117,7 +117,7 @@ def test_single_segment_baseline_counts_each_enemy_once(fake_env):
     v, prof, tmp = fake_env
     doc = az.analyze(str(v), prof, cache_dir=tmp / "c1", jobs=1)
     counted = [e for e in doc["events"] if e["counted"]]
-    # 7 個敵人各計一次（再次擊倒被去重）＋ 1 個助攻消滅
+    # Count each of 7 enemies once (duplicate knocks are deduplicated) plus 1 assist-elim.
     assert len(counted) == 8, _view(doc)
     assert sum(1 for e in doc["events"] if e["counted_reason"] == "duplicate") == 7
 
@@ -146,7 +146,7 @@ def test_spectating_intervals_identical_across_jobs(tmp_path, profile, monkeypat
 
 
 def test_resume_after_cancel_equals_uninterrupted(fake_env, monkeypatch):
-    """取消後接續（每段回到擁有範圍前再補足上下文）與不中斷的結果逐筆相同，不重複計入。"""
+    """Resuming after cancellation (rebuilding context before each segment's owned range) matches uninterrupted output item by item, with no duplicate counts."""
     v, prof, tmp = fake_env
     full = az.analyze(str(v), prof, cache_dir=tmp / "full", jobs=1)
     for jobs, stop_at in ((1, 26.0), (1, 31.5), (1, 44.0), (3, 36.0)):
@@ -160,7 +160,7 @@ def test_resume_after_cancel_equals_uninterrupted(fake_env, monkeypatch):
             class W:
                 def __iter__(s):
                     for t, b, sp in it:
-                        if t >= _stop and (jobs == 1 or k.get("end") == 52.0):  # jobs=3：只讓第 2 段（20–40 + 後延）觸發取消
+                        if t >= _stop and (jobs == 1 or k.get("end") == 52.0):  # For jobs=3, trigger cancellation only in segment 2 (20–40 + post-roll).
                             _cancel.set()
                         yield t, b, sp
 

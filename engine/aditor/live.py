@@ -1,21 +1,24 @@
-"""即時偵測（python -m aditor live）：讀 aditorrec 共享記憶體的小圖 → 擊殺事件與對局起訖（規格 §3.3–§3.5）。
+"""Live detection (python -m aditor live): read small frames from aditorrec shared memory and emit kill events and match boundaries (spec §3.3–§3.5).
 
-輸入：aditorrec 的具名 file mapping（版面見 recorder/src/shm.rs 檔頭）：4 fps 的 banner／spec（BGR24，與 decode.py
-相同的 1920×1080 基準裁切），每 4 格帶一張 640×360 GRAY8 thumb（1 fps）。
-輸出：stdout 每行一個 JSON（ready／snapshot／match_pending／match_cancel／match_start／match_end／stats／error；見計畫 7 合約 1）。
-stdin 收到 EOF 或 {"cmd":"stop"} → 收尾、送出最終 snapshot、exit 0。
+Input: aditorrec named file mapping (layout documented at the top of recorder/src/shm.rs): 4 fps banner/spec frames (BGR24,
+cropped using the same 1920×1080 reference as decode.py), with one 640×360 GRAY8 thumbnail every four frames (1 fps).
+Output: one JSON object per stdout line (ready/snapshot/match_pending/match_cancel/match_start/match_end/stats/error; see plan 7 contract 1).
+On stdin EOF or {"cmd":"stop"}, finish, send the final snapshot, and exit 0.
 
-擊殺偵測與離線分析一致：沿用 Detector／EventTracker／derive。離線版先掃一遍校準圖示尺度（calibrate）、
-再邊解碼邊學關鍵字（analyze._Learner）；live 版兩者都「邊收邊做」：
-1. 校準期：每格算多尺度圖示特徵，收集加分橫幅命中（與 calibrate._collect 相同的初篩與命中條件），
-   達 WANTED_HITS 個或掃滿 CALIB_MAX_SCAN_SECONDS 後以 pick_scale 決定尺度。期間只保留「任一候選尺度下可能有橫幅」
-   的格子（無損 PNG 壓縮），其餘格只記觀戰旗標（任一尺度都必定判為沒有橫幅，見 _Calibration.feed）；
-   決定尺度後把緩衝補跑一次。
-2. 學關鍵字期：與 analyze.work 的單段流程相同（AnchorCollector 蒐集 [0, LEARN_SCAN_SECONDS) 的錨點，需要關鍵字的
-   格子先緩衝為 Pending，學完再定案）；期間另用「不驗證關鍵字」的暫定追蹤器提供暫定 snapshot。
-3. 延伸學習：學習範圍內樣板學不齊時（與離線相同），保留逐格紀錄並繼續蒐集錨點；每多一個錨點橫幅就試著補上缺的
-   樣板，補到就用紀錄重新定案（snapshot 立刻反映）；收尾時以全部錨點決定最終樣板，結果與離線一致。
-   紀錄超過 LATE_REPLAY_MAX_BYTES 就停止延伸學習（degraded）。
+Kill detection matches offline analysis by reusing Detector/EventTracker/derive. Offline processing first scans to calibrate icon
+scale (calibrate), then learns keywords while decoding (analyze._Learner); live processing does both incrementally:
+1. Calibration: compute multi-scale icon features for each frame and collect score-banner hits (same initial filter and hit
+   conditions as calibrate._collect). Choose a scale with pick_scale after WANTED_HITS hits or CALIB_MAX_SCAN_SECONDS. Keep
+   only frames that may contain a banner at any candidate scale (losslessly PNG-compressed); for other frames, retain only the
+   spectating flag, since every scale necessarily classifies them as banner-free (see _Calibration.feed). Replay the buffer
+   after selecting the scale.
+2. Keyword learning: follow the single-segment analyze.work flow (AnchorCollector collects anchors in [0, LEARN_SCAN_SECONDS);
+   buffer frames requiring keyword validation as Pending and finalize them after learning). A provisional tracker that skips
+   keyword validation also provides provisional snapshots during this phase.
+3. Extended learning: when templates are incomplete within the learning window (same as offline), retain per-frame logs and
+   continue collecting anchors. Try to fill missing templates whenever another anchor banner arrives; when a template is added,
+   re-finalize from the log and update the snapshot immediately. At shutdown, choose final templates from all anchors, matching
+   offline results. Stop extended learning (degraded mode) if logs exceed LATE_REPLAY_MAX_BYTES.
 """
 from __future__ import annotations
 
@@ -44,37 +47,37 @@ from .models import Event, FrameResult, SpecInterval
 from .profile import Profile, load_profile
 from .scene import SCENE_SIZE, SceneDetector
 
-# ---- 共享記憶體版面（recorder/src/shm.rs） ----
+# ---- Shared-memory layout (recorder/src/shm.rs) ----
 SHM_MAGIC = b"APXSHM01"
 SHM_VERSION = 1
 SHM_SLOTS = 16
 SHM_HEADER_BYTES = 64
 SLOT_HEAD_BYTES = 24        # seq_begin(u64) + pts(i64) + has_thumb(u32) + reserved(u32)
 LATEST_SEQ_OFFSET = 48
-PTS_PER_SECOND = 10_000_000  # pts 為 100 ns tick
+PTS_PER_SECOND = 10_000_000  # PTS is measured in 100 ns ticks.
 
-# ---- 讀取節奏 ----
-MAX_LAG_SLOTS = 16          # 未讀槽數超過這麼多（最舊的已被覆寫）→ 跳到最新
-START_BACKLOG_SLOTS = 8     # 開啟時最多補讀這麼多個已寫好的槽（再舊的可能正被覆寫）
-POLL_INTERVAL = 0.05        # 沒有新槽時的等待秒數（槽間隔約 0.25 秒）
-SNAPSHOT_INTERVAL = 1.0     # snapshot 至多每秒一次（實際時間）
-STATS_INTERVAL = 5.0        # stats 每 5 秒（實際時間）
+# ---- Read pacing ----
+MAX_LAG_SLOTS = 16          # If more slots than this are unread (the oldest have been overwritten), jump to the latest slot.
+START_BACKLOG_SLOTS = 8     # On startup, read at most this many written slots (older slots may be overwritten).
+POLL_INTERVAL = 0.05        # Wait this many seconds when there is no new slot (slots are about 0.25 seconds apart).
+SNAPSHOT_INTERVAL = 1.0     # Emit snapshots at most once per second of wall-clock time.
+STATS_INTERVAL = 5.0        # Emit stats every 5 seconds of wall-clock time.
 
-# ---- 邊收邊做的緩衝上限 ----
-CALIB_MAX_SCAN_SECONDS = 600.0          # 同 calibrate() 的 max_scan_seconds：掃滿仍不足 WANTED_HITS 就用現有命中決定
-CALIB_BUFFER_MAX_BYTES = 64 * 1024 * 1024   # 校準期緩衝的 PNG 位元組上限（約 400 格橫幅）；超過就提早決定尺度
-PENDING_BUFFER_MAX_BYTES = 64 * 1024 * 1024  # 學關鍵字期待驗證格（Pending 筆畫圖）的位元組上限；超過就提早學完
-LATE_REPLAY_MAX_BYTES = 128 * 1024 * 1024    # 延伸學習的逐格紀錄上限（約數小時的錄影）；超過就停止延伸學習
-FRAME_RECORD_BYTES = 400                     # 估算：逐格紀錄每格的固定開銷（FrameResult／Pending 物件），另加筆畫圖
-# 跳過／撕裂的槽占全部影格的比例超過這個值，就不能保證結果等同離線分析
+# ---- Buffer limits for incremental processing ----
+CALIB_MAX_SCAN_SECONDS = 600.0          # Same as calibrate()'s max_scan_seconds: if WANTED_HITS is not reached, choose from existing hits.
+CALIB_BUFFER_MAX_BYTES = 64 * 1024 * 1024   # Maximum PNG bytes buffered during calibration (~400 banner frames); select a scale early if exceeded.
+PENDING_BUFFER_MAX_BYTES = 64 * 1024 * 1024  # Maximum bytes for pending keyword-validation frames (stroke images); finish learning early if exceeded.
+LATE_REPLAY_MAX_BYTES = 128 * 1024 * 1024    # Maximum extended-learning frame log (~hours of recording); stop extended learning if exceeded.
+FRAME_RECORD_BYTES = 400                     # Estimated fixed per-frame log overhead (FrameResult/Pending objects), excluding stroke images.
+# If skipped/torn slots exceed this fraction of all frames, equivalence with offline analysis is no longer guaranteed.
 MAX_LOSS_RATIO = 0.01
-PNG_LEVEL = 1               # 校準期緩衝的 PNG 壓縮等級（快；無損）
+PNG_LEVEL = 1               # Fast, lossless PNG compression level for calibration buffering.
 
 _EPS = 1e-6
 
 
 class LayoutError(Exception):
-    """共享記憶體檔頭不符（magic／版本／尺寸）。"""
+    """Shared-memory header does not match (magic, version, or size)."""
 
 
 @dataclass(frozen=True)
@@ -97,7 +100,7 @@ class ShmLayout:
 
     @property
     def slot_size(self) -> int:
-        """與 shm.rs Sizes::new 相同：槽頭 24 + 資料 + seq_end 8，向上對齊 8。"""
+        """Same layout as shm.rs Sizes::new: 24-byte slot header + data + 8-byte seq_end, rounded up to an 8-byte boundary."""
         return (self.banner_bytes + self.spec_bytes + self.thumb_bytes + 32 + 7) & ~7
 
     @property
@@ -111,33 +114,33 @@ class Slot:
     pts: int
     banner: np.ndarray        # (h, w, 3) BGR
     spec: np.ndarray          # (h, w, 3) BGR
-    thumb: np.ndarray | None  # (h, w) GRAY8；has_thumb=0 時為 None
+    thumb: np.ndarray | None  # (h, w) GRAY8; None when has_thumb=0.
 
 
 def parse_header(buf, size: int) -> ShmLayout:
-    """驗證檔頭並回傳版面；不符丟出 LayoutError。size＝可讀的映射大小。"""
+    """Validate the header and return the layout; raise LayoutError on mismatch. size is the readable mapping size."""
     if size < SHM_HEADER_BYTES:
-        raise LayoutError("共享記憶體小於檔頭大小")
+        raise LayoutError("Shared memory is smaller than the header")
     if bytes(buf[0:8]) != SHM_MAGIC:
-        raise LayoutError("共享記憶體 magic 不符")
+        raise LayoutError("Shared memory magic does not match")
     version, slots, slot_size, bw, bh, sw, sh, tw, th = struct.unpack_from("<9I", buf, 8)
     if version != SHM_VERSION:
-        raise LayoutError(f"不支援的共享記憶體版本：{version}")
+        raise LayoutError(f"Unsupported shared memory version: {version}")
     if slots != SHM_SLOTS:
-        raise LayoutError(f"槽數不符：{slots}")
+        raise LayoutError(f"Slot count does not match: {slots}")
     if min(bw, bh, sw, sh, tw, th) <= 0:
-        raise LayoutError("小圖尺寸必須大於 0")
+        raise LayoutError("Thumbnail dimensions must be greater than 0")
     layout = ShmLayout((bw, bh), (sw, sh), (tw, th))
     if slot_size != layout.slot_size:
-        raise LayoutError(f"槽大小不符：{slot_size} ≠ {layout.slot_size}")
+        raise LayoutError(f"Slot size does not match: {slot_size} != {layout.slot_size}")
     if layout.total_size > size:
-        raise LayoutError("共享記憶體小於版面所需大小")
+        raise LayoutError("Shared memory is smaller than the required layout")
     return layout
 
 
 class ShmReader:
-    """共享記憶體讀端（規則見 shm.rs：讀 seq_end → 複製 → 讀 seq_begin，兩者都等於預期且非 0 才有效）。
-    不保留槽內資料的參照：read 回傳的陣列都是複本。"""
+    """Shared-memory reader (see shm.rs for the protocol: read seq_end, copy, then read seq_begin; valid only when both match
+    the expected nonzero value). Slot data is not referenced after reading; arrays returned by read are copies."""
 
     def __init__(self, buf: memoryview, size: int, on_close: Callable[[], None] | None = None):
         self._buf = buf
@@ -146,7 +149,7 @@ class ShmReader:
 
     @classmethod
     def open(cls, name: str) -> "ShmReader":
-        """以 OpenFileMappingW 唯讀開啟（不會建立新的 mapping）。失敗丟出 OSError，版面不符丟出 LayoutError。"""
+        """Open read-only with OpenFileMappingW (does not create a mapping). Raise OSError on failure and LayoutError on layout mismatch."""
         mapping = _WinMapping(name)
         try:
             return cls(mapping.view, mapping.size, mapping.close)
@@ -164,7 +167,7 @@ class ShmReader:
         return self._u64(LATEST_SEQ_OFFSET)
 
     def peek_pts(self, seq: int) -> int | None:
-        """只讀某槽的 pts（同樣驗證序號）；撕裂回傳 None。"""
+        """Read only the PTS from a slot (validating the sequence as usual); return None if the slot is torn."""
         off = self._slot_offset(seq)
         if seq <= 0 or self._u64(off + self.layout.slot_size - 8) != seq:
             return None
@@ -172,7 +175,7 @@ class ShmReader:
         return pts if self._u64(off) == seq else None
 
     def read(self, seq: int) -> Slot | None:
-        """複製 seq 號槽；撕裂（正被覆寫或已被更新的序號取代）回傳 None。"""
+        """Copy the slot with the given sequence; return None if torn (being overwritten or replaced by a newer sequence)."""
         if seq <= 0:
             return None
         lay = self.layout
@@ -187,7 +190,7 @@ class ShmReader:
         spec = np.frombuffer(self._buf[b:c], np.uint8).copy()
         thumb = np.frombuffer(self._buf[c:c + lay.thumb_bytes], np.uint8).copy() if has_thumb else None
         if self._u64(off) != seq:
-            return None  # 複製期間寫端開始覆寫這一槽
+            return None  # The writer started overwriting this slot during the copy.
         return Slot(seq, pts,
                     banner.reshape(lay.banner[1], lay.banner[0], 3),
                     spec.reshape(lay.spec[1], lay.spec[0], 3),
@@ -203,13 +206,13 @@ class ShmReader:
 
 
 class _WinMapping:
-    """OpenFileMappingW（FILE_MAP_READ）＋MapViewOfFile 的最小包裝；view 是唯讀 memoryview。"""
+    """Minimal wrapper for OpenFileMappingW (FILE_MAP_READ) and MapViewOfFile; view is a read-only memoryview."""
 
     FILE_MAP_READ = 0x0004
 
     def __init__(self, name: str):
         if sys.platform != "win32":
-            raise OSError("共享記憶體讀端只支援 Windows")
+            raise OSError("The shared memory reader only supports Windows")
         import ctypes
         from ctypes import wintypes
 
@@ -261,45 +264,46 @@ class _WinMapping:
 def _png(img: np.ndarray) -> bytes:
     ok, buf = cv2.imencode(".png", img, [cv2.IMWRITE_PNG_COMPRESSION, PNG_LEVEL])
     if not ok:
-        raise RuntimeError("PNG 編碼失敗")
+        raise RuntimeError("PNG encoding failed")
     return buf.tobytes()
 
 
 def _unpng(data: bytes) -> np.ndarray:
     img = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_UNCHANGED)
     if img is None:
-        raise RuntimeError("PNG 解碼失敗")
+        raise RuntimeError("PNG decoding failed")
     return img
 
 
 def _empty(spectating: bool) -> FrameResult:
-    """與 Detector.prepare 對「沒有橫幅跡象」的格子產出的結果相同。"""
+    """Return the same result as Detector.prepare for a frame with no banner evidence."""
     return FrameResult(None, 0.0, 0, False, None, spectating)
 
 
 class _Calibration:
-    """校準期：與 calibrate._collect 相同的命中條件（尺度 1.0 箭頭初篩 ≥ PROBE_MIN，多尺度特徵有箭頭與「+」）。"""
+    """Calibration phase: use the same hit conditions as calibrate._collect (scale-1.0 chevron prefilter >= PROBE_MIN, then multi-scale chevron and plus features)."""
 
     def __init__(self, profile: Profile, max_scan: float, max_bytes: int):
         self.probe = IconDetector(profile.dir, scales=(1.0,))
         self.multi = IconDetector(profile.dir, scales=DEFAULT_SCALES)
-        self.spec_det = Detector(profile)  # 只用觀戰判斷（與圖示尺度無關）
+        self.spec_det = Detector(profile)  # Used only for spectating classification (independent of icon scale).
         self.max_scan, self.max_bytes = max_scan, max_bytes
         self.hits: list[float] = []
         self.scanned = 0.0
-        # (t, 觀戰, banner PNG, spec PNG)；PNG 為 None＝任一候選尺度下都沒有橫幅跡象
+        # (t, spectating, banner PNG, spec PNG); PNG is None when no candidate scale detects banner evidence.
         self.frames: list[tuple[float, bool, bytes | None, bytes | None]] = []
         self.bytes = 0
 
     def feed(self, t: float, banner: np.ndarray, spec: np.ndarray) -> bool:
-        """回傳是否已可決定尺度。"""
+        """Return whether the scale can now be selected."""
         p = self.multi.p
         f = self.multi.features(banner)
         self.scanned += 1.0 / FPS
         if (self.probe.chev_best(banner)[0] >= PROBE_MIN and f.chev >= p.chev_min and f.plus >= p.plus_min):
             self.hits.append(f.chev_scale)
-        # 多尺度特徵的分數是各候選尺度的最大值：箭頭全部 < chev_min 且（此時才會計算的）骷髏／握手全部 < left_min，
-        # 則任一候選尺度的 Detector 都判為沒有橫幅、也沒有 cont 提示（見 IconDetector.features／classify）。
+        # Multi-scale feature scores are maxima across candidate scales: when all chevrons are < chev_min and (computed only
+        # in that case) all skull/hand scores are < left_min, every candidate Detector classifies the frame as banner-free
+        # with no cont hint (see IconDetector.features/classify).
         if f.chev >= p.chev_min or max(f.skull, f.hand) >= p.left_min:
             b, s = _png(banner), _png(spec)
             self.bytes += len(b) + len(s)
@@ -311,7 +315,7 @@ class _Calibration:
 
 
 class LiveKills:
-    """擊殺偵測：邊收邊校準圖示尺度、邊收邊學關鍵字；結果與離線 analyze（單段）一致。"""
+    """Kill detection: calibrate icon scale and learn keywords incrementally; results match single-segment offline analyze."""
 
     def __init__(self, profile: Profile, *, calib_max_scan: float = CALIB_MAX_SCAN_SECONDS,
                  calib_max_bytes: int = CALIB_BUFFER_MAX_BYTES, learn_seconds: float = LEARN_SCAN_SECONDS,
@@ -321,7 +325,7 @@ class LiveKills:
         self._learn_hi = learn_seconds
         self._pending_max = pending_max_bytes
         self._late_max = late_max_bytes
-        # 延伸學習（學習範圍內樣板學不齊時）：學習範圍的收集器、延伸範圍的收集器、逐格紀錄
+        # Extended learning (when templates are incomplete in the learning window): learning-window collectors, extension collectors, and per-frame logs.
         self._head_col: AnchorCollector | None = None
         self._head_kw = None
         self._late_col: AnchorCollector | None = None
@@ -335,13 +339,13 @@ class LiveKills:
         self.detector: Detector | None = None
         self.tracker: EventTracker | None = None
         self._col: AnchorCollector | None = None
-        self._buf: list[tuple[float, FrameResult | Pending]] | None = None  # 關鍵字學完前的緩衝
+        self._buf: list[tuple[float, FrameResult | Pending]] | None = None  # Buffer frames until keyword learning completes.
         self._buf_bytes = 0
-        self._provisional: EventTracker | None = None  # 學關鍵字期的暫定追蹤器（不驗證關鍵字）
+        self._provisional: EventTracker | None = None  # Provisional tracker during keyword learning (skips keyword validation).
         self.keywords = None
-        # 與離線分析可能不同的原因（緩衝上限觸發的提早決定）；空＝與離線單段分析等價
+        # Reasons results may differ from offline analysis (early decisions caused by buffer limits); empty means equivalent to single-segment offline analysis.
         self.degraded: list[str] = []
-        self.revision = 0  # 每餵一格 +1：snapshot 只在有變化時才需要重算
+        self.revision = 0  # Incremented for each frame; recompute the snapshot only when this value changes.
 
     @property
     def phase(self) -> str:
@@ -362,8 +366,8 @@ class LiveKills:
         self.h_scale = pick_scale(cal.hits)
         if cal.bytes > cal.max_bytes:
             self.degraded.append("calib_buffer_cap")
-        self._log(f"圖示尺度 {self.h_scale}（命中 {len(cal.hits)} 格，掃描 {cal.scanned:.1f} 秒，"
-                  f"緩衝 {len(cal.frames)} 格／{cal.bytes // 1024} KB）")
+        self._log(f"Icon scale {self.h_scale} ({len(cal.hits)} hits, scanned {cal.scanned:.1f} seconds, "
+                  f"buffered {len(cal.frames)} frames / {cal.bytes // 1024} KB)")
         self.detector = Detector(self.profile, self.h_scale)
         self.tracker = EventTracker(self.profile)
         self._col = AnchorCollector(self.profile, self.detector)
@@ -380,7 +384,7 @@ class LiveKills:
         self._route(t, banner, r, f)
 
     def _route(self, t: float, banner: np.ndarray | None, r: FrameResult | Pending, f: IconFrame | None) -> None:
-        """與 analyze.work 的單段流程相同：蒐集錨點 → 學完就定案緩衝 → 本格直接定案或進緩衝。"""
+        """Same single-segment flow as analyze.work: collect anchors, finalize buffered frames when learning completes, and either finalize this frame or buffer it."""
         if self._col is not None:
             if t < self._learn_hi - _EPS and f is not None:
                 self._col.feed_features(t, banner, f)
@@ -392,45 +396,46 @@ class LiveKills:
                 self._late(t, banner, r, f)
             return
         self._buf.append((t, r))
-        self._provisional.feed(t, self.detector.resolve(r))  # 尚無關鍵字：resolve 不驗證
+        self._provisional.feed(t, self.detector.resolve(r))  # No keywords are available yet, so resolve skips validation.
         if isinstance(r, Pending):
             self._buf_bytes += r.ink.nbytes
             if self._buf_bytes > self._pending_max:
-                self._log("待驗證緩衝已達上限，提早學關鍵字")
+                self._log("Pending validation buffer reached its limit; learning keywords early")
                 self.degraded.append("pending_buffer_cap")
                 self._learned(t)
 
     def _learned(self, t: float | None = None) -> None:
-        """學習範圍結束（t＝觸發的格；None＝串流結束）：學出樣板並定案緩衝。樣板不齊且串流還在進行時開始延伸學習，
-        從學習範圍結尾（提早結束時從當下）繼續蒐集錨點，與離線的延伸範圍相同。"""
+        """Finish the learning window (t is the triggering frame; None means stream end): learn templates and finalize buffered frames.
+        If templates are incomplete and the stream continues, begin extended learning and keep collecting anchors from the end
+        of the learning window (or from the current position if learning ended early), matching the offline extension range."""
         col, self._col = self._col, None
         if col is None:
             return
         self.keywords = build_keywords([col])
         self.detector.set_keywords(self.keywords)
         buf, self._buf, self._provisional = self._buf, None, None
-        self._log(f"關鍵字學習完成（緩衝 {len(buf or [])} 格）")
+        self._log(f"Keyword learning complete ({len(buf or [])} buffered frames)")
         for bt, br in buf or []:
             self.tracker.feed(bt, self.detector.resolve(br))
         if t is not None and not keywords_complete(self.keywords):
             self._head_col, self._head_kw = col, self.keywords
             self._late_col = AnchorCollector(self.profile, self.detector)
-            # 學習範圍提早結束（緩衝上限）時從下一格接著蒐集：這一格已餵給學習範圍的收集器
+            # When the learning window ends early (buffer limit), continue collecting from the next frame; this frame was already fed to its collectors.
             self._late_from = self._learn_hi if t >= self._learn_hi - _EPS else t + STEP
             self._replay, self._replay_bytes = [], 0
             for bt, br in buf or []:
                 self._record(bt, br)
-            self._log("開頭的擊殺不足以學齊關鍵字樣板，繼續延伸學習")
+            self._log("Too few kills at the start to learn all keyword templates; continuing extended learning")
 
     def _record(self, t: float, r: FrameResult | Pending) -> None:
         self._replay.append((t, r))
         self._replay_bytes += FRAME_RECORD_BYTES + (r.ink.nbytes if isinstance(r, Pending) else 0)
 
     def _late(self, t: float, banner: np.ndarray | None, r: FrameResult | Pending, f: IconFrame | None) -> None:
-        """延伸學習期的一格：記錄、蒐集錨點；多了一個錨點橫幅就試著補上缺的樣板。"""
+        """Process one frame during extended learning: record it, collect anchors, and try filling missing templates when another anchor banner is added."""
         self._record(t, r)
         if self._replay_bytes > self._late_max:
-            self._log("延伸學習的逐格紀錄已達上限，停止延伸學習")
+            self._log("Extended learning frame history reached its limit; stopping extended learning")
             self.degraded.append("late_learn_cap")
             self._settle_late()
             self._replay = self._late_col = None
@@ -441,12 +446,12 @@ class LiveKills:
             if groups != self._late_groups:
                 self._late_groups = groups
                 self._settle_late()
-            if self._late_col.full(t):  # 之後的錨點不會再改變樣板（只取最早的錨點）：不必再記錄
+            if self._late_col.full(t):  # Later anchors cannot change templates (only earliest anchors are used), so stop recording.
                 self._settle_late()
                 self._replay = self._late_col = None
 
     def _settle_late(self) -> None:
-        """以目前的錨點補上缺的樣板；樣板有變化就用逐格紀錄重新定案（之後的格直接用新樣板）。"""
+        """Fill missing templates from current anchors; if templates change, re-finalize from the frame log (future frames use the new templates directly)."""
         if self._late_col is None:
             return
         kw = extend_keywords(self._head_kw, build_keywords([self._head_col, self._late_col]))
@@ -457,10 +462,10 @@ class LiveKills:
         self.tracker = EventTracker(self.profile)
         for bt, br in self._replay:
             self.tracker.feed(bt, self.detector.resolve(br))
-        self._log(f"延伸學習補上關鍵字樣板，重新定案 {len(self._replay)} 格")
+        self._log(f"Extended learning added keyword templates; reclassifying {len(self._replay)} frames")
 
     def snapshot(self) -> tuple[list[Event], list[SpecInterval]]:
-        """目前的事件（已 derive）與觀戰區間；校準期為空，學關鍵字期為暫定結果。"""
+        """Current events (after derive) and spectating intervals; empty during calibration and provisional during keyword learning."""
         src = self._provisional if self._buf is not None else self.tracker
         if src is None:
             return [], []
@@ -468,17 +473,17 @@ class LiveKills:
         return derive(events, spec, self.profile), spec
 
     def finish(self) -> tuple[list[Event], list[SpecInterval]]:
-        """串流結束：未決定尺度就以現有命中決定（同離線掃完仍不足的情況），未學完關鍵字就以現有錨點學。"""
+        """End the stream: choose a scale from existing hits if not yet selected (as offline does when scanning ends with too few hits), and learn keywords from existing anchors if needed."""
         if self._calib is not None:
             self._calibrated()
         self._learned()
-        self._settle_late()  # 以全部錨點決定最終樣板（與離線 finalize 相同）
+        self._settle_late()  # Choose final templates from all anchors (same as offline finalize).
         events, spec = self.tracker.finish()
         return derive(events, spec, self.profile), list(spec)
 
 
 class LiveEngine:
-    """輪詢共享記憶體並把每槽交給擊殺偵測（banner／spec）與對局切分（thumb）；事件經 emit 送出。"""
+    """Poll shared memory and pass each slot to kill detection (banner/spec) and match segmentation (thumb); emit resulting events."""
 
     def __init__(self, reader: ShmReader, profile: Profile, scene: SceneDetector,
                  emit: Callable[[dict], None], *, clock: Callable[[], float] = time.monotonic,
@@ -499,12 +504,12 @@ class LiveEngine:
         self._last_stats = now
         self._last_snap = now - SNAPSHOT_INTERVAL
         self._snap_rev = -1
-        # snapshot 只在事件清單有變化時送出：初始視為「已送出空清單」（收尾時一定送出最終 snapshot）
+        # Send snapshots only when the event list changes; initially treat an empty list as sent (always send the final snapshot during shutdown).
         self._snap_doc = self._snapshot_doc([], [])[1]
 
-    # ---- 讀取 ----
+    # ---- Reading ----
     def poll(self) -> int:
-        """處理目前所有可讀的槽；回傳處理的格數（0＝沒有新槽）。"""
+        """Process all currently readable slots; return the number of frames processed (0 means no new slots)."""
         n = 0
         while True:
             latest = self.reader.latest()
@@ -529,7 +534,7 @@ class LiveEngine:
         return n
 
     def _grid_time(self, pts: int) -> float | None:
-        """pts → 0.25 秒格線上的時間（EventTracker 以 STEP 判斷連續格）；寫端快於 4 fps 的多餘格回傳 None。"""
+        """Convert PTS to time on the 0.25-second grid (EventTracker uses STEP to detect consecutive frames); return None for extra slots written faster than 4 fps."""
         raw = max(0.0, pts / PTS_PER_SECOND)
         t = round(raw / STEP) * STEP
         if self.last_t is not None and t <= self.last_t + _EPS:
@@ -556,7 +561,7 @@ class LiveEngine:
         self._win_cpu += cpu
         return True
 
-    # ---- 定時輸出 ----
+    # ---- Periodic output ----
     def tick(self) -> None:
         now = self.clock()
         if now - self._last_snap >= SNAPSHOT_INTERVAL:
@@ -599,7 +604,7 @@ class LiveEngine:
                    "cpu_ms_per_frame": round(per, 3)})
 
     def finish(self) -> None:
-        """收尾：EventTracker.finish、MatchTracker.finish(最後時間)，送出對局事件、stats 與最終 snapshot。"""
+        """Finish EventTracker and MatchTracker (at the last timestamp), then emit match events, stats, and the final snapshot."""
         final = self.kills.finish()
         for ev in self.matches.finish(self.last_t or 0.0):
             self.emit({"ev": ev.type, "t": ev.t, "reason": ev.reason})
@@ -607,7 +612,7 @@ class LiveEngine:
         self._snapshot(force=True, final=final, quality=self.quality())
 
     def quality(self) -> dict:
-        """最終結果是否可直接當作分析結果（等同離線）：沒有緩衝上限觸發、跳過與撕裂的槽夠少。"""
+        """Whether the final result can be used directly as an analysis result (equivalent to offline): no buffer limit was hit and few slots were skipped or torn."""
         reasons = list(self.kills.degraded)
         lost = self.skipped + self.torn
         if self.frames and lost / (self.frames + lost) > MAX_LOSS_RATIO:
@@ -617,11 +622,11 @@ class LiveEngine:
 
 
 def _check_layout(layout: ShmLayout, profile: Profile) -> None:
-    """小圖尺寸必須與設定檔 ROI 相同（aditorrec 以 1920×1080 基準裁切），thumb 必須足夠場景判斷。"""
+    """Small-frame dimensions must match the configured ROI (aditorrec crops using a 1920×1080 reference), and the thumbnail must be large enough for scene classification."""
     if layout.banner != tuple(profile.banner_roi[2:]) or layout.spec != tuple(profile.spec_roi[2:]):
-        raise LayoutError(f"banner／spec 尺寸 {layout.banner}／{layout.spec} 與設定檔 ROI 不符")
+        raise LayoutError(f"banner/spec dimensions {layout.banner}/{layout.spec} do not match profile ROIs")
     if layout.thumb[0] < SCENE_SIZE[0] or layout.thumb[1] < SCENE_SIZE[1]:
-        raise LayoutError(f"thumb {layout.thumb} 小於場景判斷所需的 {SCENE_SIZE}")
+        raise LayoutError(f"thumb {layout.thumb} is smaller than required for scene detection ({SCENE_SIZE})")
 
 
 class _Out:
@@ -641,7 +646,7 @@ def _log(msg: str) -> None:
 
 
 def _watch_stdin(stdin, stop: threading.Event) -> None:
-    """stdin EOF 或一行 {"cmd":"stop"} → 設定 stop；其他行忽略（記在 stderr）。"""
+    """On stdin EOF or a line containing {"cmd":"stop"}, set stop; ignore other lines (log them to stderr)."""
     try:
         for raw in stdin:
             line = raw.decode("utf-8", errors="replace").strip() if isinstance(raw, bytes) else raw.strip()
@@ -650,13 +655,13 @@ def _watch_stdin(stdin, stop: threading.Event) -> None:
             try:
                 req = json.loads(line)
             except ValueError:
-                _log(f"忽略無法解析的指令：{line[:200]}")
+                _log(f"Ignoring unparseable command: {line[:200]}")
                 continue
             if isinstance(req, dict) and req.get("cmd") == "stop":
                 break
-            _log(f"忽略未知指令：{line[:200]}")
+            _log(f"Ignoring unknown command: {line[:200]}")
     except (OSError, ValueError) as e:
-        _log(f"stdin 讀取失敗，視為停止：{e}")
+        _log(f"Failed to read stdin; treating it as a stop request: {e}")
     finally:
         stop.set()
 
@@ -669,7 +674,7 @@ def run(shm: str, profile_dir: Path, scene_dir: Path | None = None, *, stdin=Non
         profile = load_profile(Path(profile_dir))
         scene = SceneDetector(Path(scene_dir) if scene_dir else None)
     except Exception as e:  # noqa: BLE001
-        out.send({"ev": "error", "code": "internal", "message": f"載入範本失敗：{e}"})
+        out.send({"ev": "error", "code": "internal", "message": f"Failed to load templates: {e}"})
         return 1
     try:
         reader = ShmReader.open(shm)
@@ -677,7 +682,7 @@ def run(shm: str, profile_dir: Path, scene_dir: Path | None = None, *, stdin=Non
         out.send({"ev": "error", "code": "bad_layout", "message": str(e)})
         return 1
     except OSError as e:
-        out.send({"ev": "error", "code": "shm_open_failed", "message": f"無法開啟共享記憶體 {shm}：{e}"})
+        out.send({"ev": "error", "code": "shm_open_failed", "message": f"Could not open shared memory {shm}: {e}"})
         return 1
     try:
         try:
@@ -695,7 +700,7 @@ def run(shm: str, profile_dir: Path, scene_dir: Path | None = None, *, stdin=Non
             while not stop.is_set():
                 if engine.poll() == 0:
                     stop.wait(poll_interval)
-            engine.poll()  # 停止前已寫好的槽
+            engine.poll()  # Process slots written before shutdown.
             engine.finish()
         except Exception as e:  # noqa: BLE001
             out.send({"ev": "error", "code": "internal", "message": f"{type(e).__name__}: {e}"})

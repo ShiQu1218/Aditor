@@ -29,7 +29,7 @@ describe('saveState transitions', () => {
     s.settingsLoaded(true)
     expect(s.getState().saveState).toBe('saved')
     s.apply(withItems(initial, 'a'))
-    expect(s.getState().saveState).toBe('pending') // 去抖中尚未開始寫
+    expect(s.getState().saveState).toBe('pending') // Debounce is pending; the write has not started.
     await vi.advanceTimersByTimeAsync(500)
     expect(io.save).toHaveBeenCalledTimes(1)
     expect(s.getState().lastSavedAt).toBe(1234)
@@ -74,9 +74,9 @@ describe('saveState transitions', () => {
     vi.advanceTimersByTime(500)
     s.apply(withItems(initial, 'a', 'b'))
     vi.advanceTimersByTime(500)
-    resolves[1]() // 新的先成功
+    resolves[1]() // The newer write succeeds first.
     await vi.advanceTimersByTimeAsync(0)
-    rejects[0](new Error('late failure')) // 舊的晚到失敗
+    rejects[0](new Error('late failure')) // The older write fails later.
     await vi.advanceTimersByTimeAsync(0)
     expect(s.getState().saveState).toBe('saved')
   })
@@ -123,7 +123,7 @@ describe('boot ordering', () => {
     s.apply(withItems(initial, 'a'))
     s.apply(withItems(initial, 'a', 'b'))
     await vi.advanceTimersByTimeAsync(5000)
-    expect(io.save).not.toHaveBeenCalled() // 設定未知：不寫也不丟
+    expect(io.save).not.toHaveBeenCalled() // Settings are unknown: do not write or discard.
     s.settingsLoaded(true)
     expect(io.save).toHaveBeenCalledTimes(1)
     expect(io.save.mock.calls[0][0].items).toHaveLength(2)
@@ -137,7 +137,7 @@ describe('boot ordering', () => {
     s.settingsLoaded(false)
     await vi.advanceTimersByTimeAsync(5000)
     expect(io.save).not.toHaveBeenCalled()
-    // 使用者之後在設定面板重新開啟：之後的編輯會寫
+    // The user later turns autosave back on in settings; subsequent edits are written.
     s.settingsLoaded(true)
     s.apply(withItems(initial, 'z'))
     await vi.advanceTimersByTimeAsync(500)
@@ -337,8 +337,8 @@ describe('unsaved changes while autosave is off (I5)', () => {
   })
 })
 
-describe('同步儲存的資料保護', () => {
-  test('非同步寫入尚未完成時，關窗仍送出最新快照', async () => {
+describe('Synchronous save data protection', () => {
+  test('Window close sends the latest snapshot while an async write is still pending', async () => {
     const { s, io } = mk()
     let complete: () => void = () => undefined
     io.save.mockImplementationOnce(() => new Promise<void>((resolve) => { complete = resolve }))
@@ -354,7 +354,7 @@ describe('同步儲存的資料保護', () => {
     expect(s.getState().unsaved).toBe(false)
   })
 
-  test('同步儲存失敗保留編輯與錯誤狀態，重試成功後清除', () => {
+  test('A failed synchronous save preserves edits and error state, then clears them after a successful retry', () => {
     const { s, io } = mk()
     s.settingsLoaded(false)
     s.apply(withItems(initial, 'a'))
@@ -367,7 +367,7 @@ describe('同步儲存的資料保護', () => {
     expect(s.getState().saveState).toBe('saved')
   })
 
-  test('舊專案的非同步結果不會覆蓋新專案的狀態', async () => {
+  test('An async result from an old project cannot overwrite the new project state', async () => {
     const { s, io } = mk()
     let reject: (e: Error) => void = () => undefined
     io.save.mockImplementationOnce(() => new Promise<void>((_resolve, fail) => { reject = fail }))

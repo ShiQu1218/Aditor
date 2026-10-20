@@ -1,4 +1,4 @@
-"""測試共用工具：合成影片產生器與 fixture 路徑。"""
+"""Shared test utilities: synthetic video generator and fixture paths."""
 import functools
 import json
 import subprocess
@@ -13,7 +13,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 REPO = Path(__file__).resolve().parents[2]
 FIXTURES = Path(__file__).parent / "fixtures"
 ICON_DIR = REPO / "templates" / "icons"
-LANGS = ("zh-TW", "en", "ja")  # fixture 的來源語言（只是素材分類；引擎本身與語言無關）
+LANGS = ("zh-TW", "en", "ja")  # Fixture source languages (asset categories only; the engine is language-independent).
 
 
 def _ffmpeg() -> str:
@@ -22,11 +22,11 @@ def _ffmpeg() -> str:
 
 
 def make_video(tmp_path, name, duration, *, start_time=0.0, vfr=False, marks=(), overlay=None):
-    """用 ffmpeg testsrc2 產生 1920x1080、60fps、-g 60 的 H.264 影片。
+    """Use ffmpeg testsrc2 to create a 1920x1080, 60 fps H.264 video with -g 60.
 
-    marks：(t_start, t_end) 清單，在這些時間於 banner 區域畫實心白框。
-    start_time：以 -output_ts_offset 達成。vfr：丟格並抖動 pts 產生可變幀率。
-    overlay：(png_path, [(t_start, t_end), ...])，於 (560,700) 疊上 PNG。
+    marks: (t_start, t_end) pairs; draw a solid white rectangle in the banner region during these intervals.
+    start_time: implemented with -output_ts_offset. vfr: drop frames and jitter PTS to create variable frame rate.
+    overlay: (png_path, [(t_start, t_end), ...]); overlay the PNG at (560, 700).
     """
     out = Path(tmp_path) / name
     filters = []
@@ -70,7 +70,7 @@ def detector(profile):
 
 
 def load_fixture(name, lang="zh-TW"):
-    """讀取 fixtures/<lang> 下的 PNG（banner 在上、spec 在下垂直拼接）→ (banner, spec)。"""
+    """Read a PNG under fixtures/<lang> (banner on top, spec below) and return (banner, spec)."""
     import cv2
     p = _profile()
     img = None
@@ -97,7 +97,7 @@ def lang_labels(lang):
 
 @pytest.fixture
 def knock_banner_png(tmp_path):
-    """把正例擊倒 fixture 裁成上方 180 列（只有 banner，供 make_video overlay 使用）。"""
+    """Crop the top 180 rows from a positive knock fixture (banner only) for make_video overlays."""
     import cv2
     src = FIXTURES / "en" / "pos" / "knock_a002500.png"
     img = cv2.imdecode(np.fromfile(str(src), dtype=np.uint8), cv2.IMREAD_COLOR)

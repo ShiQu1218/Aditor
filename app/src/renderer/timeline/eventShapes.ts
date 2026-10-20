@@ -4,13 +4,13 @@ export type ShapeKind = 'circle' | 'square' | 'hex' | 'diamond' | 'star'
 
 export interface ShapeSpec {
   shape: ShapeKind
-  /** 24×24 格線上的 SVG path 字串（以 3.2 px 粗筆畫描邊） */
+/** SVG path strings on a 24×24 grid (stroked with a 3.2 px line). */
   glyph: string
-  /** tokens.css 的 CSS 變數名稱 */
+/** CSS variable names from tokens.css. */
   colorVar: string
 }
 
-/** 與 spec §5.2 一致：形狀＋顏色＋字形三重編碼 */
+/** Triple encoding by shape, color, and glyph, matching spec §5.2. */
 export const SHAPES: Record<EventType, ShapeSpec> = {
   knock: {
     shape: 'circle',
@@ -41,13 +41,13 @@ export const SHAPES: Record<EventType, ShapeSpec> = {
 
 export const EVENT_TYPES = Object.keys(SHAPES) as EventType[]
 
-/** 未知類型（引擎新增）退回 knock 外觀，避免畫布丟例外 */
+/** Fall back to the knock appearance for unknown types (added by the engine) to avoid canvas errors. */
 export function shapeFor(type: string): ShapeSpec {
   return (SHAPES as Record<string, ShapeSpec>)[type] ?? SHAPES.knock
 }
 
 const glyphCache = new Map<string, Path2D>()
-/** Path2D 延遲建立並快取（Node 測試環境無 Path2D，需先 stub） */
+/** Create and cache Path2D lazily (the Node test environment lacks Path2D, so tests must stub it). */
 export function glyphPath(spec: ShapeSpec): Path2D {
   let p = glyphCache.get(spec.glyph)
   if (!p) {
@@ -57,7 +57,7 @@ export function glyphPath(spec: ShapeSpec): Path2D {
   return p
 }
 
-/** 在 (x,y) 以半徑 R 建立形狀路徑（beginPath 後呼叫端自行 fill/stroke） */
+/** Create a shape path at (x,y) with radius R; the caller fills/strokes it after beginPath. */
 export function shapePath(g: CanvasRenderingContext2D, kind: ShapeKind, x: number, y: number, R: number): void {
   g.beginPath()
   if (kind === 'square') {

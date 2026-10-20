@@ -60,7 +60,7 @@ async function waitFor(cond: () => boolean, ms = 5000): Promise<void> {
   }
 }
 
-// 假 ipcMain / 假 webContents：只模擬 handle 與 send
+// Fake ipcMain/webContents: simulate only handle and send.
 function fakeIpc() {
   const handlers = new Map<string, (event: any, ...args: any[]) => unknown>()
   return {
@@ -102,13 +102,13 @@ const req = (over: Record<string, unknown> = {}) => ({
   ...over
 })
 
-describe('IPC 接線（假 ipcMain / webContents）', () => {
-  it('註冊 export:start / export:cancel / export:diskSpace', () => {
+describe('IPC wiring (fake ipcMain/webContents)', () => {
+  it('registers export:start / export:cancel / export:diskSpace', () => {
     const { handlers } = setup()
     for (const ch of ['export:start', 'export:cancel', 'export:diskSpace']) expect(handlers.has(ch)).toBe(true)
   })
 
-  it('export:start 成功：進度只送給發出請求的 sender（export:progress），輸出在 outDir/Clips', async () => {
+  it('export:start succeeds: progress is sent only to the requesting sender (export:progress), with output in outDir/Clips', async () => {
     const { invoke, sender } = setup()
     const res = await invoke('export:start', sender, req())
     expect(res).toMatchObject({ ok: true, outputs: [path.join(outDir, 'Clips', 'clip_1.mp4')] })
@@ -120,7 +120,7 @@ describe('IPC 接線（假 ipcMain / webContents）', () => {
     expect(fs.readdirSync(path.join(outDir, 'Clips'))).toEqual(['clip_1.mp4'])
   })
 
-  it('mode=concat：實際輸出目錄是 outDir/Merged（自動建立），outputs 在其中，Clips 不會被建立', async () => {
+  it('mode=concat: actual output directory is outDir/Merged (created automatically), outputs are inside it, and Clips is not created', async () => {
     const { invoke, sender } = setup()
     expect(fs.readdirSync(outDir)).toEqual([])
     const res = await invoke('export:start', sender, req({ mode: 'concat', baseName: 'joined' }))
@@ -129,7 +129,7 @@ describe('IPC 接線（假 ipcMain / webContents）', () => {
     expect(fs.readdirSync(path.join(outDir, 'Merged'))).toEqual(['joined.mp4'])
   })
 
-  it('mode=separate：實際輸出目錄是 outDir/Clips；子資料夾已存在時照用', async () => {
+  it('mode=separate: actual output directory is outDir/Clips; reuse it when it already exists', async () => {
     const { invoke, sender } = setup()
     fs.mkdirSync(path.join(outDir, 'Clips'))
     const res = await invoke('export:start', sender, req())
@@ -137,7 +137,7 @@ describe('IPC 接線（假 ipcMain / webContents）', () => {
     expect(fs.existsSync(path.join(outDir, 'Merged'))).toBe(false)
   })
 
-  it('同名檔只在子資料夾內判斷：outDir 根目錄的同名檔不算衝突，Clips 內的才會改名', async () => {
+  it('checks duplicate names only within the subdirectory: a same-named file in outDir is not a conflict, but one in Clips is renamed', async () => {
     const { invoke, sender } = setup()
     fs.writeFileSync(path.join(outDir, 'clip_1.mp4'), 'root-file')
     const r1 = await invoke('export:start', sender, req())
@@ -147,7 +147,7 @@ describe('IPC 接線（假 ipcMain / webContents）', () => {
     expect(fs.readFileSync(path.join(outDir, 'clip_1.mp4'), 'utf-8')).toBe('root-file')
   })
 
-  it('子資料夾名稱被檔案佔用 → 失敗並回報錯誤，不啟動 ffmpeg', async () => {
+  it('fails with an error and does not start ffmpeg when a file occupies the subdirectory name', async () => {
     const { invoke, sender } = setup()
     fs.writeFileSync(path.join(outDir, 'Clips'), 'i am a file')
     const res = await invoke('export:start', sender, req())
@@ -156,7 +156,7 @@ describe('IPC 接線（假 ipcMain / webContents）', () => {
     expect(fs.readdirSync(pidDir)).toEqual([])
   })
 
-  it('視窗已銷毀就不送進度，也不丟錯', async () => {
+  it('does not send progress or throw after the window is destroyed', async () => {
     const { invoke, sender } = setup()
     sender.destroyed = true
     const res = await invoke('export:start', sender, req())
@@ -164,7 +164,7 @@ describe('IPC 接線（假 ipcMain / webContents）', () => {
     expect(sender.sent).toEqual([])
   })
 
-  it('export:cancel 中止進行中的匯出：ffmpeg 與孫程序都被殺，partial 檔刪除；再取消一次是 no-op', async () => {
+  it('export:cancel stops the active export: ffmpeg and its grandchild are killed and partial files removed; a second cancel is a no-op', async () => {
     process.env.FAKE_FFMPEG_SLEEP_MS = '60000'
     process.env.FAKE_FFMPEG_GRANDCHILD = '1'
     const { invoke, sender } = setup()
@@ -182,12 +182,12 @@ describe('IPC 接線（假 ipcMain / webContents）', () => {
     expect(fs.readdirSync(path.join(outDir, 'Clips'))).toEqual([])
   }, 15000)
 
-  it('沒有進行中的匯出時 export:cancel 是 no-op', async () => {
+  it('export:cancel is a no-op when no export is active', async () => {
     const { invoke, sender } = setup()
     expect(await invoke('export:cancel', sender)).toEqual({ cancelled: false })
   })
 
-  it('匯出進行中再 export:start → 明確錯誤，不會啟動第二個 ffmpeg', async () => {
+  it('rejects export:start with a clear error during an export and does not start a second ffmpeg', async () => {
     process.env.FAKE_FFMPEG_SLEEP_MS = '60000'
     const { invoke, sender, service } = setup()
     const p = invoke('export:start', sender, req())
@@ -196,13 +196,13 @@ describe('IPC 接線（假 ipcMain / webContents）', () => {
     expect(second).toMatchObject({ ok: false, code: 'busy' })
     expect(second.error).toMatch(/進行中/)
     await sleep(200)
-    expect(fs.readdirSync(pidDir)).toEqual(['clip_1.partial.mp4.pids.json']) // 只有一個 ffmpeg 啟動過
+    expect(fs.readdirSync(pidDir)).toEqual(['clip_1.partial.mp4.pids.json']) // Only one FFmpeg process was started.
     await service.cancelAndWait()
     expect(await p).toMatchObject({ cancelled: true })
     expect(service.isRunning()).toBe(false)
   }, 15000)
 
-  it('兩個 start 同時（同一 tick）送出，也只有一個會跑', async () => {
+  it('runs only one of two start requests sent in the same tick', async () => {
     const { invoke, sender } = setup()
     const [a, b] = await Promise.all([invoke('export:start', sender, req()), invoke('export:start', sender, req({ baseName: 'z' }))])
     const oks = [a, b].filter((r) => r.ok)
@@ -210,7 +210,7 @@ describe('IPC 接線（假 ipcMain / webContents）', () => {
     expect([a, b].find((r) => !r.ok)).toMatchObject({ code: 'busy' })
   })
 
-  it('取消後可以再開始新的匯出', async () => {
+  it('allows a new export after cancellation', async () => {
     process.env.FAKE_FFMPEG_SLEEP_MS = '60000'
     const { invoke, sender, service } = setup()
     const p = invoke('export:start', sender, req())
@@ -222,7 +222,7 @@ describe('IPC 接線（假 ipcMain / webContents）', () => {
     expect(res.ok).toBe(true)
   }, 15000)
 
-  it('視窗關閉（webContents destroyed）→ 自動取消，ffmpeg 不會變成孤兒', async () => {
+  it('automatically cancels on window close (webContents destroyed), so ffmpeg is not orphaned', async () => {
     process.env.FAKE_FFMPEG_SLEEP_MS = '60000'
     process.env.FAKE_FFMPEG_GRANDCHILD = '1'
     const { invoke, sender } = setup()
@@ -236,11 +236,11 @@ describe('IPC 接線（假 ipcMain / webContents）', () => {
     expect(fs.readdirSync(path.join(outDir, 'Clips'))).toEqual([])
   }, 15000)
 
-  it('export:checkOutDir：存在且可寫入 → ok；不存在／是檔案／不合法路徑 → ok:false 並附原因（不丟錯）', async () => {
+  it('export:checkOutDir returns ok for existing writable directories; missing paths, files, and invalid paths return ok:false with a reason (without throwing)', async () => {
     const { invoke, sender, handlers } = setup()
     expect(handlers.has('export:checkOutDir')).toBe(true)
     expect(await invoke('export:checkOutDir', sender, outDir)).toEqual({ ok: true })
-    // 檢查用的暫存探測檔不留在資料夾裡
+    // The temporary write-probe file must not remain in the directory.
     expect(fs.readdirSync(outDir).filter((f) => f.startsWith('.aditor-write-test'))).toEqual([])
     const missing = await invoke('export:checkOutDir', sender, path.join(root, 'nope'))
     expect(missing).toMatchObject({ ok: false })
@@ -255,7 +255,7 @@ describe('IPC 接線（假 ipcMain / webContents）', () => {
     }
   })
 
-  it('export:diskSpace 回傳有限數字；不合法的目錄被拒絕', async () => {
+  it('export:diskSpace returns a finite number and rejects invalid directories', async () => {
     const { invoke, sender } = setup()
     const r = await invoke('export:diskSpace', sender, outDir)
     expect(Number.isFinite(r.freeBytes)).toBe(true)
@@ -268,41 +268,41 @@ describe('IPC 接線（假 ipcMain / webContents）', () => {
   })
 })
 
-describe('export:start 輸入驗證（不信任 renderer）', () => {
+describe('export:start input validation (renderer is untrusted)', () => {
   const bad = async (over: Record<string, unknown>, sender = fakeSender()) => {
     const { invoke } = setup()
     const res = await invoke('export:start', sender, req(over))
     expect(res.ok).toBe(false)
     expect(typeof res.error).toBe('string')
     expect(fs.readdirSync(outDir)).toEqual([])
-    expect(fs.readdirSync(pidDir)).toEqual([]) // 沒有啟動 ffmpeg
+    expect(fs.readdirSync(pidDir)).toEqual([]) // FFmpeg was not started.
     return res
   }
 
-  it('整份請求不是物件 / items 空 / 非陣列', async () => {
+  it('rejects a non-object request, empty items, or non-array items', async () => {
     const { invoke, sender } = setup()
     for (const raw of [null, 'x', 5, undefined]) expect((await invoke('export:start', sender, raw)).ok).toBe(false)
     await bad({ items: [] })
     await bad({ items: 'nope' })
   })
 
-  it('時間必須是有限數字且 end > start >= 0', async () => {
+  it('requires finite times with end > start >= 0', async () => {
     for (const [s, e] of [[NaN, 5], [0, Infinity], ['0', 5], [5, 5], [6, 5], [-1, 5]] as const) {
       await bad({ items: [{ id: '1', source, start: s, end: e }] })
     }
   })
 
-  it('來源路徑必須是本機絕對影片路徑且存在（拒絕 UNC / 相對 / 不存在）', async () => {
+  it('requires an existing local absolute video path (rejects UNC, relative, and missing paths)', async () => {
     for (const src of ['\\\\server\\share\\a.mp4', 'a.mp4', path.join(root, 'missing.mp4'), 42]) {
       await bad({ items: [{ id: '1', source: src, start: 0, end: 5 }] })
     }
   })
 
-  it('outDir 必須是存在的本機絕對目錄', async () => {
+  it('requires outDir to be an existing local absolute directory', async () => {
     for (const d of ['relative', path.join(root, 'nope'), '\\\\server\\share', 42, source, '']) await bad({ outDir: d })
   })
 
-  it('outDir 不可寫入 → 拒絕', async () => {
+  it('rejects an unwritable outDir', async () => {
     const dir = path.join(root, 'ro')
     fs.mkdirSync(dir)
     fs.chmodSync(dir, 0o555)
@@ -315,18 +315,18 @@ describe('export:start 輸入驗證（不信任 renderer）', () => {
         return false
       }
     })()
-    if (writable) return // Windows 上唯讀目錄屬性不阻擋寫入，這裡無法重現
+    if (writable) return // Windows read-only directory attributes do not prevent writes, so this cannot be reproduced here.
     await bad({ outDir: dir })
   })
 
-  it('mode / quality / encoder 型別與值檢查', async () => {
+  it('validates mode/quality/encoder types and values', async () => {
     await bad({ mode: 'weird' })
     await bad({ quality: 'ultra' })
     await bad({ quality: 'precise', encoder: '-vf evil' })
     await bad({ quality: 'precise', encoder: 5 })
   })
 
-  it('baseName 不可路徑穿越：輸出一律在 outDir 內', async () => {
+  it('prevents baseName path traversal so all output stays within outDir', async () => {
     const { invoke, sender } = setup()
     for (const name of ['..\\..\\evil', '../../evil', 'a/b', 'C:\\x\\y', '..', '', '   ', 'con']) {
       const res = await invoke('export:start', sender, req({ baseName: name }))
@@ -337,14 +337,14 @@ describe('export:start 輸入驗證（不信任 renderer）', () => {
     expect(fs.readdirSync(root).sort()).toEqual(['out', 'pids', 'src.mp4'])
   })
 
-  it('baseName 非字串 → 拒絕', async () => {
+  it('rejects a non-string baseName', async () => {
     await bad({ baseName: 123 })
     await bad({ baseName: { toString: () => 'x' } })
   })
 })
 
 describe('sanitizeBaseName', () => {
-  it('移除非法字元、結尾點／空白、保留字、限制長度', () => {
+  it('removes invalid characters, trailing dots/spaces, and reserved names, and limits length', () => {
     expect(sanitizeBaseName('a/b\\c:d*e?f"g<h>i|j')).toBe('a_b_c_d_e_f_g_h_i_j')
     expect(sanitizeBaseName('name. ')).toBe('name')
     expect(sanitizeBaseName('..')).toBe('export')
@@ -355,8 +355,8 @@ describe('sanitizeBaseName', () => {
   })
 })
 
-describe('preload 與 main 的頻道一致', () => {
-  it('preload.export.start/cancel/diskSpace/onProgress 使用 main 註冊／傳送的同名頻道', async () => {
+describe('preload and main channel names match', () => {
+  it('preload.export.start/cancel/diskSpace/onProgress use the same channel names registered/sent by main', async () => {
     const invoked: Array<{ channel: string; args: unknown[] }> = []
     const listened: string[] = []
     let exposed: any
@@ -388,7 +388,7 @@ describe('preload 與 main 的頻道一致', () => {
     for (const c of chans) expect(handlers.has(c)).toBe(true)
     expect(invoked[0].args).toEqual([payload])
     expect(invoked[2].args).toEqual(['C:\\x'])
-    // 進度：preload 監聽的頻道 === service 傳送的頻道
+    // Progress: the channel listened to by preload matches the one sent by the service.
     expect(listened).toEqual(['export:progress'])
     const { invoke, sender } = setup()
     await invoke('export:start', sender, req())

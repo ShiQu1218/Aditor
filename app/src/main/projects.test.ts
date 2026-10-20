@@ -38,7 +38,7 @@ describe('ProjectStore', () => {
     await store.save(p)
     const loaded = await store.load('p_abc123')
     expect(loaded).toEqual(p)
-    // 檔案確實落在 <id>.json
+    // The file is written to <id>.json.
     expect(fs.existsSync(path.join(dir, 'p_abc123.json'))).toBe(true)
   })
 
@@ -57,7 +57,7 @@ describe('ProjectStore', () => {
     const loaded = await store.load('p_atomic')
     expect(loaded?.name).toBe('原始名')
     expect(store.lastError).toContain('儲存專案失敗')
-    // 暫存檔已清除
+    // The temporary file has been removed.
     expect(fs.existsSync(path.join(dir, 'p_atomic.json.tmp'))).toBe(false)
   })
 
@@ -71,7 +71,7 @@ describe('ProjectStore', () => {
     expect(fs.existsSync(path.join(dir, 'p_bad.json'))).toBe(false)
     expect(baks(dir, 'p_bad')).toHaveLength(1)
 
-    // 不存在的 id → null（不建備份）
+    // Missing id → null (do not create a backup).
     expect(await store.load('p_missing')).toBeNull()
   })
 
@@ -120,7 +120,7 @@ describe('ProjectStore', () => {
 
   test('shape errors are corrupt: renamed, existing backups never overwritten, keep newest 3', async () => {
     const { dir, store } = tmpStore()
-    vi.spyOn(Date, 'now').mockReturnValue(1000) // 同一毫秒也不可覆蓋
+    vi.spyOn(Date, 'now').mockReturnValue(1000) // Do not overwrite even when timestamps are in the same millisecond.
     for (let i = 0; i < 5; i++) {
       fs.writeFileSync(path.join(dir, 'p_x.json'), JSON.stringify({ version: 1, name: 'x', items: [{ id: 1 }] }), 'utf-8')
       expect(await store.load('p_x')).toBeNull()
@@ -128,7 +128,7 @@ describe('ProjectStore', () => {
     }
     const names = baks(dir, 'p_x')
     expect(names).toHaveLength(3)
-    // 保留最新三份
+    // Keep the latest three backups.
     expect(names.some((n) => n.includes('.1004.'))).toBe(true)
     expect(names.some((n) => n.includes('.1001.'))).toBe(false)
   })

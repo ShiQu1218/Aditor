@@ -1,37 +1,37 @@
-//! 共享記憶體環形緩衝（任務 B4），Python live 引擎是讀端（規格 §3.3）。
+//! Shared-memory ring buffer (task B4), read by the Python live engine (spec §3.3).
 //!
-//! 具名 file mapping `Local\aditorrec-<sessionId>`，所有整數為 little-endian。
+//! Named file mapping `Local\aditorrec-<sessionId>`; all integers are little-endian.
 //!
 //! ```text
 //! Header（64 bytes）
 //!   0  [u8; 8]  magic = b"APXSHM01"
 //!   8  u32      version = 1
 //!  12  u32      slot_count = 16
-//!  16  u32      slot_size（bytes，含槽頭，8 對齊）
+//!  16  u32      slot_size (bytes, including slot header, aligned to 8)
 //!  20  u32      banner_w   24 u32 banner_h
 //!  28  u32      spec_w     32 u32 spec_h
 //!  36  u32      thumb_w    40 u32 thumb_h
 //!  44  u32      reserved
-//!  48  u64      latest_seq（最新寫完的槽序號；0 = 尚無）
+//!  48  u64      latest_seq (sequence of the latest completed slot; 0 = none)
 //!  56  u64      reserved
-//! Slot i 位於 64 + i * slot_size，seq 對應槽 = (seq - 1) % slot_count
+//! Slot i is at 64 + i * slot_size; slot for seq = (seq - 1) % slot_count
 //!   0  u64      seq_begin
 //!   8  i64      pts（100 ns tick）
 //!  16  u32      has_thumb（0/1）
 //!  20  u32      reserved
 //!  24  [u8]     banner（banner_w*banner_h*3，BGR24）
 //!      [u8]     spec（spec_w*spec_h*3，BGR24）
-//!      [u8]     thumb（thumb_w*thumb_h，GRAY8；has_thumb=0 時內容無意義）
-//!      pad 到 8 對齊
+//!      [u8]     thumb (thumb_w*thumb_h, GRAY8; contents undefined when has_thumb=0)
+//!      pad to 8-byte alignment
 //!  slot_size-8  u64  seq_end
 //! ```
 //!
-//! 寫入順序：`seq_end = 0` → `seq_begin = s` → 資料 → `seq_end = s` → header `latest_seq = s`
-//! （每步之間 Release fence）。序號以對齊的 64 位元原子操作存取；可變資料以逐 byte 原子操作存取，
-//! 避免同一程序內的讀寫形成資料競爭。讀端：Acquire 讀 `latest_seq`，定位該槽，Acquire 讀 `seq_end`
-//! → 複製資料 → Acquire fence → Acquire 讀 `seq_begin`；兩者都等於預期 seq 且非 0 才有效，
-//! 否則視為撕裂丟棄。不可用未同步的 Rust slice 複製可變資料。寫端永不等待讀端。
-//! 讀端應在收到 started 後開啟 mapping、驗證 header；不可快取槽內資料的參照。
+//! Write order: `seq_end = 0` → `seq_begin = s` → data → `seq_end = s` → header `latest_seq = s`
+//! (Release fence between each step). Sequence numbers use aligned 64-bit atomic accesses; mutable data uses byte-wise atomic accesses
+//! to prevent intra-process data races. Reader: Acquire-load `latest_seq`, locate the slot, Acquire-load `seq_end`
+//! → copy data → Acquire fence → Acquire-load `seq_begin`; valid only if both equal the expected nonzero seq,
+//! otherwise discard as torn. Never copy mutable data using unsynchronized Rust slices. The writer never waits for readers.
+//! Readers should open the mapping and validate its header after started; never cache references to slot data.
 
 use std::sync::atomic::{fence, AtomicU64, AtomicU8, Ordering};
 
@@ -71,11 +71,11 @@ impl ShmWriter {
     pub fn create(name: &str, layout: ShmLayout) -> Result<Self> {
         let sizes = Sizes::new(layout)?;
         if name.is_empty() || name.contains('\0') {
-            bail!("共享記憶體名稱不可為空或含 NUL");
+            bail!("Shared-memory name must not be empty or contain NUL");
         }
         let name: Vec<u16> = name.encode_utf16().chain(Some(0)).collect();
         let total = sizes.total as u64;
-        // SAFETY: 名稱以 NUL 結尾；大小已檢查，INVALID_HANDLE_VALUE 表示分頁檔支援的 mapping。
+        // SAFETY: The name is NUL-terminated and size checked; INVALID_HANDLE_VALUE selects a pagefile-backed mapping.
         let handle = unsafe {
             CreateFileMappingW(
                 INVALID_HANDLE_VALUE,
@@ -85,9 +85,9 @@ impl ShmWriter {
                 total as u32,
                 PCWSTR(name.as_ptr()),
             )
-            .context("建立共享記憶體失敗")?
+            .context("Failed to create shared memory")?
         };
-        // SAFETY: 緊接建立呼叫讀取本執行緒的錯誤碼，不受其他 Windows 呼叫干擾。
+        // SAFETY: Read this thread's error code immediately after creation without intervening Windows calls.
         let exists = unsafe { GetLastError() } == ERROR_ALREADY_EXISTS;
         let mut mapping = Mapping {
             handle,
@@ -95,14 +95,14 @@ impl ShmWriter {
             bytes: sizes.total,
         };
         if exists {
-            bail!("共享記憶體名稱已存在，拒絕覆寫既有工作");
+            bail!("Shared-memory name already exists; refusing to overwrite an existing session");
         }
-        // SAFETY: handle 由本物件持有，映射長度等於建立時的已驗證大小。
+        // SAFETY: This object owns handle; the mapping length equals the validated creation size.
         mapping.view = unsafe { MapViewOfFile(handle, FILE_MAP_ALL_ACCESS, 0, 0, sizes.total) };
         if mapping.view.Value.is_null() {
-            return Err(windows::core::Error::from_thread()).context("映射共享記憶體失敗");
+            return Err(windows::core::Error::from_thread()).context("Failed to map shared memory");
         }
-        // 新的分頁檔 mapping 初始全為 0；序號及保留欄位維持此值。
+        // New pagefile mappings start zeroed; sequence numbers and reserved fields retain that value.
         mapping.store_bytes(0, SHM_MAGIC);
         for (offset, value) in [
             (8, SHM_VERSION),
@@ -125,7 +125,7 @@ impl ShmWriter {
         })
     }
 
-    /// 寫入一槽並回傳其 seq（從 1 開始遞增）。資料長度必須符合 layout，否則回傳錯誤。
+    /// Write one slot and return its seq (increasing from 1). Return an error if data lengths do not match the layout.
     pub fn write(
         &mut self,
         pts: i64,
@@ -137,9 +137,9 @@ impl ShmWriter {
             || spec.len() != self.sizes.spec
             || thumb.is_some_and(|data| data.len() != self.sizes.thumb)
         {
-            bail!("小圖資料長度與共享記憶體版面不符");
+            bail!("Thumbnail data length does not match the shared-memory layout");
         }
-        let seq = self.seq.checked_add(1).context("共享記憶體序號已耗盡")?;
+        let seq = self.seq.checked_add(1).context("Shared-memory sequence number exhausted")?;
         let slot = SHM_HEADER_BYTES + ((seq - 1) % u64::from(SHM_SLOTS)) as usize * self.sizes.slot;
         let end = slot + self.sizes.slot - 8;
         self.mapping.word_at(end).store(0, Ordering::Release);
@@ -183,12 +183,12 @@ impl Sizes {
     fn new(layout: ShmLayout) -> Result<Self> {
         let image_bytes = |(w, h): (u32, u32), channels: usize| -> Result<usize> {
             if w == 0 || h == 0 {
-                bail!("共享記憶體的小圖尺寸必須大於 0");
+                bail!("Shared-memory thumbnail dimensions must be greater than zero");
             }
             (w as usize)
                 .checked_mul(h as usize)
                 .and_then(|n| n.checked_mul(channels))
-                .context("共享記憶體的小圖尺寸溢位")
+                .context("Shared-memory thumbnail dimensions overflow")
         };
         let banner = image_bytes(layout.banner, 3)?;
         let spec = image_bytes(layout.spec, 3)?;
@@ -199,12 +199,12 @@ impl Sizes {
             .and_then(|n| n.checked_add(32 + 7))
             .map(|n| n & !7)
             .filter(|n| *n <= u32::MAX as usize)
-            .context("共享記憶體槽大小溢位")?;
+            .context("Shared-memory slot size overflow")?;
         let total = slot
             .checked_mul(SHM_SLOTS as usize)
             .and_then(|n| n.checked_add(SHM_HEADER_BYTES))
             .filter(|n| *n <= isize::MAX as usize)
-            .context("共享記憶體總大小溢位")?;
+            .context("Shared-memory total size overflow")?;
         Ok(Self {
             banner,
             spec,
@@ -221,19 +221,19 @@ struct Mapping {
     bytes: usize,
 }
 
-// SAFETY: mapping 由單一物件持有；移到另一執行緒不改變位址，所有可變資料以原子操作存取。
+// SAFETY: A single object owns the mapping; moving threads preserves its address, and all mutable data is accessed atomically.
 unsafe impl Send for Mapping {}
 
 impl Mapping {
     fn byte_at(&self, offset: usize) -> &AtomicU8 {
         assert!(offset < self.bytes);
-        // SAFETY: view 在 self 的生命週期內可讀寫；offset 已檢查，AtomicU8 無額外對齊要求。
+        // SAFETY: view is readable/writable during self's lifetime; offset is checked, and AtomicU8 needs no extra alignment.
         unsafe { AtomicU8::from_ptr(self.view.Value.cast::<u8>().add(offset)) }
     }
 
     fn word_at(&self, offset: usize) -> &AtomicU64 {
         assert!(offset.is_multiple_of(8) && offset <= self.bytes - 8);
-        // SAFETY: view 可讀寫且基址按頁對齊；序號欄位 8 對齊，不與 byte 存取範圍重疊。
+        // SAFETY: view is readable/writable with a page-aligned base; sequence fields are 8-byte aligned and do not overlap byte access ranges.
         unsafe { AtomicU64::from_ptr(self.view.Value.cast::<u8>().add(offset).cast()) }
     }
 
@@ -246,7 +246,7 @@ impl Mapping {
 
 impl Drop for Mapping {
     fn drop(&mut self) {
-        // SAFETY: view 及 handle 只由本物件釋放一次；未成功映射時只關閉 handle。
+        // SAFETY: This object releases view and handle exactly once; only close handle if mapping failed.
         unsafe {
             if !self.view.Value.is_null() {
                 let _ = UnmapViewOfFile(self.view);
@@ -290,7 +290,7 @@ mod tests {
     impl Reader {
         fn open(name: &str, sizes: &Sizes) -> Self {
             let name: Vec<u16> = name.encode_utf16().chain(Some(0)).collect();
-            // SAFETY: 名稱以 NUL 結尾；測試寫端仍持有相同名稱的有效 mapping。
+            // SAFETY: The name is NUL-terminated; the test writer still owns a valid mapping with the same name.
             let handle =
                 unsafe { OpenFileMappingW(FILE_MAP_ALL_ACCESS.0, false, PCWSTR(name.as_ptr())) }
                     .unwrap();
@@ -299,7 +299,7 @@ mod tests {
                 view: MEMORY_MAPPED_VIEW_ADDRESS::default(),
                 bytes: sizes.total,
             };
-            // SAFETY: 大小來自相同版面；Atomic::from_ptr 要求可讀寫 view，讀端僅執行 load。
+            // SAFETY: Size comes from the same layout; Atomic::from_ptr requires a writable view, but readers only load.
             mapping.view = unsafe { MapViewOfFile(handle, FILE_MAP_ALL_ACCESS, 0, 0, sizes.total) };
             assert!(!mapping.view.Value.is_null());
             Self {
@@ -362,7 +362,7 @@ mod tests {
             (40, 2),
             (44, 0),
         ] {
-            assert_eq!(reader.u32(offset), value, "欄位 offset={offset}");
+            assert_eq!(reader.u32(offset), value, "Field offset={offset}");
         }
         assert_eq!(reader.latest(), 0);
         assert_eq!(reader.bytes(56, 8), [0; 8]);
@@ -412,7 +412,7 @@ mod tests {
         assert!(reader.read(24).is_none());
         assert!(reader.read(25).is_some());
         drop(writer);
-        assert!(reader.read(40).is_some()); // 讀端 view 保持 mapping 存活。
+        assert!(reader.read(40).is_some()); // The reader view keeps the mapping alive.
     }
 
     #[test]

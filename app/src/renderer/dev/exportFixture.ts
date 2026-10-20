@@ -1,4 +1,4 @@
-/** 僅開發模式（由 StudioScreen 以 import.meta.env.DEV 動態載入）：?drawer=settings|running|done|failed|consent 的假 IPC，供截圖。 */
+/** Development only (dynamically imported by StudioScreen under import.meta.env.DEV): fake IPC for ?drawer=settings|running|done|failed|consent screenshots. */
 export type DrawerFixture = 'settings' | 'running' | 'done' | 'failed' | 'consent'
 
 export function installExportFixtureApi(kind: DrawerFixture): void {

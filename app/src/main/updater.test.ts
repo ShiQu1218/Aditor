@@ -110,7 +110,7 @@ describe('createAppUpdater', () => {
 
     const on = rig({ enabled: true })
     on.svc.start()
-    on.svc.start() // 重複呼叫不會排兩次
+    on.svc.start() // Repeated calls do not schedule another check.
     expect(on.timers).toHaveLength(1)
     on.timers[0]()
     expect(on.updater.checkForUpdates).toHaveBeenCalledTimes(1)

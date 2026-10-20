@@ -1,17 +1,17 @@
 import type { Project, ProjectItem } from './project'
 
 /**
- * 專案模式的播放序列（Task 13）：
- * `t < item.end` 續播同一段；`t >= item.end` 換下一段（可跨影片）；最後一段播完即結束。
+ * Playback sequence for project mode (Task 13):
+ * Continue the current clip while `t < item.end`; switch to the next clip when `t >= item.end` (including across videos); stop after the final clip.
  */
 export type NextStep =
   | { kind: 'continue' }
   | { kind: 'next'; item: ProjectItem }
   | { kind: 'end' }
-  /** 後面還有片段，但來源檔案全都不存在 */
+  /** More clips follow, but all their source files are missing. */
   | { kind: 'allMissing' }
 
-/** itemId 之後第一個來源存在的片段；後面沒有片段 → end；有但全部缺失 → allMissing。 */
+/** Find the first clip after itemId whose source exists; return end if there are no later clips, or allMissing if all later sources are missing. */
 export function nextPlayableItem(
   project: Project,
   itemId: string,

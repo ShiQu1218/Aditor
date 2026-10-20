@@ -12,7 +12,7 @@ export const i18n: Messages['i18n'] = {
     viewer: 'ビューア',
     editor: '編集プロジェクト'
   },
-  /** main プロセスのネイティブダイアログ（タイトルとファイル種別フィルター） */
+  /** Main-process native dialogs (titles and file type filters) */
   dialog: {
     selectFilesTitle: 'Apex Legends の録画ファイルを選択',
     videoFilter: '動画ファイル',
@@ -37,7 +37,7 @@ export const i18n: Messages['i18n'] = {
     date: {
       today: '今日',
       yesterday: '昨日',
-      /** その他の日付：2026年10月13日 */
+      /** Other dates: October 13, 2026 */
       header: '{y}年{m}月{d}日'
     },
     videoCount: '{n} 本の動画',

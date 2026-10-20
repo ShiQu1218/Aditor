@@ -82,7 +82,7 @@ describe('hlFromClips (studio save / re-analysis refresh) — hl = number of pen
     expect(hlFromClips([c('m', 'accepted', 'manual')])).toBe(0)
     expect(hlFromClips([])).toBe(0)
     expect(hlFromClips(undefined)).toBe(0)
-    // 舊檔缺 status 視為已加入
+    // Treat legacy files without status as added.
     expect(hlFromClips([{ id: 'x', start: 0, end: 1, origin: 'ai', event_ids: [] }])).toBe(0)
   })
 
@@ -119,7 +119,7 @@ describe('computeHlCount semantics = pending suggestions', () => {
   })
 
   test('pending re-analysis doc: counts what the studio merge will produce (new, non-overlapping suggestions only)', async () => {
-    // 已加入的舊 AI 片段（stale）在 100；新 autoclip 有一段與它重疊(100.3)、一段全新(500)
+    // An existing stale AI clip is at 100; new autoclip results overlap it at 100.3 and add a new clip at 500.
     const request = vi.fn(async () => ({ clips: [ai('f1', 100.3), ai('f2', 500)] }))
     const doc = { ...makeDoc(), clips: [ai('a1', 100, 'accepted', true)], app: { suggestionsPending: true } }
     expect(await computeHlCount(request, doc, PARAMS)).toBe(1)
@@ -150,7 +150,7 @@ describe('createHlGuard (negative cache + revision counter)', () => {
     const g = createHlGuard()
     const started = g.rev('k')
     const writes: string[] = []
-    g.bump('k') // cache:save 寫入較新的 hl
+    g.bump('k') // cache:save wrote a newer hl value.
     expect(g.commitIfCurrent('k', started, () => writes.push('stale compute'))).toBe(false)
     expect(writes).toEqual([])
     const fresh = g.rev('k')

@@ -6,7 +6,7 @@ export function playheadX(t: number, view: View): { x: number; visible: boolean 
   return { x, visible: x >= 0 && x <= view.width }
 }
 
-/** 播放中一律讀即時時間（video.currentTime）；props.time 來自 ~4Hz 的 timeupdate，會落後而造成倒退 */
+  /** Always read live time (video.currentTime) during playback; props.time comes from ~4 Hz timeupdate events and can lag, causing the playhead to move backward. */
 export function playheadTarget(a: { playing?: boolean; time: number; getTime?: () => number }): number {
   if (a.playing && a.getTime) {
     const t = a.getTime()
@@ -18,15 +18,15 @@ export function playheadTarget(a: { playing?: boolean; time: number; getTime?: (
 interface PlayheadProps {
   time: number
   view: View
-  /** 播放中以 rAF 讀取目前時間（例如 video.currentTime），不經 React 重繪 */
+  /** Read current time during playback via rAF (e.g. video.currentTime), without triggering React rerenders. */
   getTime?: () => number
   playing?: boolean
 }
 
-/**
- * 播放頭：DOM 元素，以 style.transform 移動；不觸發 canvas 重繪。
- * 外觀由 CSS（.tl-playhead）以 --tl-playhead 繪製。
- */
+  /**
+   * The playhead is a DOM element moved with style.transform; it does not trigger canvas redraws.
+   * CSS draws its appearance (.tl-playhead) using --tl-playhead.
+   */
 export function Playhead({ time, view, getTime, playing }: PlayheadProps): JSX.Element {
   const ref = useRef<HTMLDivElement>(null)
   const viewRef = useRef(view)
@@ -44,12 +44,12 @@ export function Playhead({ time, view, getTime, playing }: PlayheadProps): JSX.E
   getTimeRef.current = getTime
   const hasGetTime = !!getTime
 
-  // time／view 改變時定位；播放中改讀即時時間，不使用落後的 time
+  // Reposition when time/view changes; during playback, read live time instead of the stale time prop.
   useEffect(() => {
     place(playheadTarget({ playing, time, getTime: getTimeRef.current }))
   }, [time, view.start, view.span, view.width, playing])
 
-  // 播放中的 rAF 迴圈只依 playing 啟停（getTime 以 ref 讀取，父層 inline 函式不會使其重啟）
+  // Start/stop the playback rAF loop only from playing (getTime reads from a ref, so an inline parent function does not restart it).
   useEffect(() => {
     if (!playing || !hasGetTime) return
     let id = 0

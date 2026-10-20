@@ -3,7 +3,7 @@ import { AlertTriangle } from '../components/icons'
 import { i18n } from '../i18n'
 import { createLowPerfPrompt } from './lowPerfPrompt'
 
-/** 首次啟動的低效能詢問（非模態、頁內）：偵測到無硬體解碼時顯示一次。 */
+/** First-run low-performance prompt (non-modal, in-page); shown once when no hardware decoding is detected. */
 export function LowPerfNotice(): JSX.Element | null {
   const [visible, setVisible] = useState(false)
   const prompt = useMemo(

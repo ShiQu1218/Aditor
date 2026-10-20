@@ -1,4 +1,4 @@
-//! 實機端對端驗證與可重現的 60 秒資源量測；只擷取自己的持續重繪視窗。
+//! End-to-end validation on the current machine and reproducible 60-second resource measurement; captures only its own continuously redrawn window.
 use serde_json::{json, Value};
 use std::{
     fs,
@@ -40,7 +40,7 @@ use windows::{
 static HARDWARE: Mutex<()> = Mutex::new(());
 
 unsafe extern "system" fn paint(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> LRESULT {
-    // SAFETY: 只操作此測試執行緒建立的視窗；GDI 資源在相同訊息中成對釋放。
+    // SAFETY: Only access this test thread's window; GDI resources are released within the same message.
     unsafe {
         match msg {
             WM_TIMER => {
@@ -63,7 +63,7 @@ unsafe extern "system" fn paint(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) ->
                 let brush = CreateSolidBrush(COLORREF(0x0000ff));
                 FillRect(dc, &block, brush);
                 let _ = DeleteObject(brush.into());
-                // 背景不覆蓋紅色方塊：DDA 讀合成後的桌面，可能看到畫到一半的 GDI 視窗。
+                // Do not overwrite the red square with background: DDA reads the composed desktop and may see a partly drawn GDI window.
                 let _ = ExcludeClipRect(dc, block.left, block.top, block.right, block.bottom);
                 let brush = CreateSolidBrush(COLORREF(0x804020 + (tick % 64) * 0x010101));
                 FillRect(dc, &rect, brush);
@@ -93,7 +93,7 @@ impl Window {
     fn open(width: i32, height: i32) -> Self {
         let (tx, rx) = mpsc::sync_channel(1);
         let worker = thread::spawn(move || {
-            // SAFETY: DPI、視窗與訊息迴圈均限定於此測試執行緒。
+            // SAFETY: DPI, window, and message loop are confined to this test thread.
             unsafe {
                 let _ = SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
                 let instance = HINSTANCE(GetModuleHandleW(None).unwrap().0);
@@ -140,7 +140,7 @@ impl Window {
 }
 impl Drop for Window {
     fn drop(&mut self) {
-        // SAFETY: 訊息只送給自己的視窗；執行緒結束後才丟棄 HWND。
+        // SAFETY: Send messages only to our window; drop HWND after the thread exits.
         unsafe {
             let _ = PostMessageW(
                 Some(HWND(self.hwnd as *mut _)),
@@ -211,7 +211,7 @@ impl Process {
             let value = self
                 .output
                 .recv_timeout(deadline.saturating_duration_since(Instant::now()))
-                .unwrap_or_else(|e| panic!("等待 IPC 逾時：{e}；已收到 {:?}", self.seen));
+                .unwrap_or_else(|e| panic!("Timed out waiting for IPC: {e}; received {:?}", self.seen));
             let found = predicate(&value);
             self.seen.push(value.clone());
             if found {
@@ -233,7 +233,7 @@ impl Process {
                 assert!(status.success());
                 break;
             }
-            assert!(Instant::now() < deadline, "EOF 後未結束");
+            assert!(Instant::now() < deadline, "Did not exit after EOF");
             thread::sleep(Duration::from_millis(10));
         }
         self.output_worker.take().unwrap().join().unwrap();
@@ -278,10 +278,10 @@ struct Mapping {
 impl Mapping {
     fn open(name: &str) -> Self {
         let wide: Vec<u16> = name.encode_utf16().chain(Some(0)).collect();
-        // SAFETY: 記錄程序仍持有 mapping；名稱以 NUL 結尾，僅以唯讀權限開啟。
+        // SAFETY: The recorder still owns the mapping; its name is NUL-terminated and it is opened read-only.
         let handle =
             unsafe { OpenFileMappingW(FILE_MAP_READ.0, false, PCWSTR(wide.as_ptr())) }.unwrap();
-        // SAFETY: 映射完整的有效 file mapping，Drop 配對釋放。
+        // SAFETY: Map the complete valid file mapping; Drop releases it.
         let view = unsafe { MapViewOfFile(handle, FILE_MAP_READ, 0, 0, 0) };
         assert!(!view.Value.is_null());
         let mut result = Self {
@@ -299,7 +299,7 @@ impl Mapping {
         assert!(offset + len <= self.bytes);
         (offset..offset + len)
             .map(|i| {
-                // SAFETY: 版面已驗證且位於有效映射中；每 byte 原子讀取，避免與寫端形成資料競爭。
+                // SAFETY: The layout is validated within a valid mapping; atomic byte reads avoid data races with the writer.
                 unsafe {
                     AtomicU8::from_ptr(self.view.Value.cast::<u8>().add(i)).load(Ordering::Relaxed)
                 }
@@ -311,7 +311,7 @@ impl Mapping {
     }
     fn seq(&self, offset: usize) -> u64 {
         assert!(offset.is_multiple_of(8) && offset + 8 <= self.bytes);
-        // SAFETY: 序號是映射內 8 對齊的 u64 欄位，只以原子操作存取。
+        // SAFETY: Sequence numbers are 8-byte-aligned u64 fields in the mapping, accessed only atomically.
         u64::from_le(unsafe {
             AtomicU64::from_ptr(self.view.Value.cast::<u8>().add(offset).cast())
                 .load(Ordering::Acquire)
@@ -334,21 +334,21 @@ impl Mapping {
                         banner
                             .chunks_exact(3)
                             .all(|p| p[0] < 8 && p[1] < 8 && p[2] > 247),
-                        "banner 未擷取到紅色色塊：{:?}",
+                        "Banner did not capture the red block: {:?}",
                         &banner[..12]
                     );
                     assert_eq!((self.u32(36), self.u32(40)), (640, 360));
                     return seq;
                 }
             }
-            assert!(Instant::now() < deadline, "共享記憶體沒有有效槽");
+            assert!(Instant::now() < deadline, "No valid shared memory slots");
             thread::sleep(Duration::from_millis(20));
         }
     }
 }
 impl Drop for Mapping {
     fn drop(&mut self) {
-        // SAFETY: handle 與 view 由本測試物件獨佔，各釋放一次。
+        // SAFETY: This test object exclusively owns handle and view, releasing each exactly once.
         unsafe {
             let _ = UnmapViewOfFile(self.view);
             let _ = CloseHandle(self.handle);
@@ -359,7 +359,7 @@ impl Drop for Mapping {
 fn ffmpeg(name: &str) -> PathBuf {
     PathBuf::from(
         std::env::var_os("ADITORREC_FFMPEG_DIR")
-            .expect("端對端錄影測試需要設定 ADITORREC_FFMPEG_DIR 為含有 bin 的 FFmpeg 根目錄"),
+            .expect("End-to-end recording tests require ADITORREC_FFMPEG_DIR to point to the FFmpeg root containing bin"),
     )
     .join("bin")
     .join(format!("{name}.exe"))
@@ -412,7 +412,7 @@ fn verify_recording(dir: &Path, process: &Process, seconds: f64) -> Vec<Value> {
         combined.write_all(&fs::read(path).unwrap()).unwrap();
     }
     drop(combined);
-    assert!((end - seconds).abs() < 0.5, "索引時長 {end}");
+    assert!((end - seconds).abs() < 0.5, "Index duration {end}");
     let meta: Value = serde_json::from_slice(&fs::read(dir.join("session.json")).unwrap()).unwrap();
     assert_eq!(meta["audio"], true);
     assert_eq!(meta["fps"], 60);
@@ -448,7 +448,7 @@ fn verify_recording(dir: &Path, process: &Process, seconds: f64) -> Vec<Value> {
         .unwrap()
         .parse()
         .unwrap();
-    assert!((duration - seconds).abs() < 0.5, "影音時長 {duration}");
+    assert!((duration - seconds).abs() < 0.5, "Media duration {duration}");
     let decode = Command::new(ffmpeg("ffmpeg"))
         .args(["-v", "error", "-i"])
         .arg(dir.join("combined.mp4"))
@@ -477,7 +477,7 @@ fn resources(child: &Child) -> (f64, usize) {
         cb: std::mem::size_of::<PROCESS_MEMORY_COUNTERS>() as u32,
         ..Default::default()
     };
-    // SAFETY: 只讀取自己建立的 aditorrec 子程序；所有輸出結構均有效。
+    // SAFETY: Only query our aditorrec child process; all output structures are valid.
     unsafe {
         let handle = HANDLE(child.as_raw_handle());
         GetProcessTimes(handle, &mut created, &mut exited, &mut kernel, &mut user).unwrap();
@@ -498,11 +498,11 @@ fn resources(child: &Child) -> (f64, usize) {
 
 fn record(seconds: u64, perf: bool, capture: &str) {
     let _guard = HARDWARE.lock().unwrap_or_else(|e| e.into_inner());
-    // DDA 擷取整個螢幕，小圖 ROI 以螢幕座標換算；測試視窗鋪滿主螢幕才與 WGC 的檢查一致。
-    // 新視窗出現有淡入動畫；DDA 看的是合成後的桌面，等畫面穩定再開始，避免第一張小圖還是舊桌面。
+    // DDA captures the entire display and scales small-image ROIs in display coordinates; fill the primary display with the test window to match WGC checks.
+    // New windows fade in; DDA sees the composed desktop, so wait for it to stabilize to avoid capturing the old desktop in the first small image.
     let _window = if capture == "dda" {
         let window = Window::open(i32::MAX, i32::MAX);
-        // SAFETY: DDA 只在目標 PID 位於前景時送遊戲畫面；只啟用自己建立的測試視窗。
+        // SAFETY: DDA sends game frames only while the target PID is foreground; only activate our test window.
         unsafe {
             assert!(SetForegroundWindow(HWND(window.hwnd as *mut _)).as_bool());
         }
@@ -522,7 +522,7 @@ fn record(seconds: u64, perf: bool, capture: &str) {
     let started = process.until(|v| v["ev"] == "started" || v["ok"] == false);
     assert_eq!(started["ev"], "started", "{started}");
     assert_eq!(process.reply(1)["ok"], true);
-    // SAFETY: 查詢自己建立的子程序優先序，不讀取其他程序。
+    // SAFETY: Query only our child process priority without reading other processes.
     assert_eq!(
         unsafe { GetPriorityClass(HANDLE(process.child.as_raw_handle())) },
         BELOW_NORMAL_PRIORITY_CLASS.0
@@ -544,7 +544,7 @@ fn record(seconds: u64, perf: bool, capture: &str) {
     process.exit();
     let index = verify_recording(&dir, &process, seconds as f64);
     if perf {
-        // SAFETY: 0xffff 是 ALL_PROCESSOR_GROUPS，取得全機邏輯處理器數，不受程序 affinity 影響。
+        // SAFETY: 0xffff is ALL_PROCESSOR_GROUPS, querying all logical processors regardless of process affinity.
         let cores = unsafe { GetActiveProcessorCount(0xffff) };
         assert!(cores > 0);
         let stats = process
@@ -620,20 +620,20 @@ fn fit_encodes_non_widescreen_window_at_16_by_9_with_silent_track() {
     let pixel = |x: usize, y: usize| &decoded.stdout[(y * 1280 + x) * 3..(y * 1280 + x + 1) * 3];
     assert!(
         pixel(10, 360).iter().all(|value| *value < 12),
-        "左側應為黑邊"
+        "Left border should be black"
     );
     assert!(
         pixel(1270, 360).iter().all(|value| *value < 12),
-        "右側應為黑邊"
+        "Right border should be black"
     );
     assert!(
         pixel(640, 360).iter().any(|value| *value > 30),
-        "中間應保留來源畫面"
+        "Center should retain the source image"
     );
 }
 
 #[test]
-#[ignore = "需要可切換前景的互動桌面；此執行環境的 SetForegroundWindow 拒絕啟用測試視窗"]
+#[ignore = "Requires an interactive desktop that permits foreground switching; SetForegroundWindow refuses to activate the test window in this environment"]
 fn ipc_records_six_seconds_via_desktop_duplication() {
     record(6, false, "dda");
 }
@@ -735,13 +735,13 @@ fn audio_start_failure_releases_resources_and_eof_flushes_encoded_tail() {
 }
 
 #[test]
-#[ignore = "60 秒實機資源量測；以 release aditorrec 執行並保留 measurement.json"]
+#[ignore = "60-second hardware resource measurement; run release aditorrec and retain measurement.json"]
 fn measure_sixty_seconds_hevc_1440p60() {
     record(60, true, "wgc");
 }
 
 #[test]
-#[ignore = "60 秒實機資源量測（DDA 擷取整個螢幕）；以 release aditorrec 執行並保留 measurement.json"]
+#[ignore = "60-second hardware resource measurement (DDA full-display capture); run release aditorrec and retain measurement.json"]
 fn measure_sixty_seconds_hevc_1440p60_dda() {
     record(60, true, "dda");
 }

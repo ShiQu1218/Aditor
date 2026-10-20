@@ -1,4 +1,4 @@
-//! 黑畫面探測：GPU 縮出 thumb 並計算灰階總和，CPU 每秒只讀回 4 bytes。
+//! Black-frame detection: downscale to a thumbnail and sum grayscale values on the GPU; the CPU reads back only 4 bytes per second.
 
 use anyhow::{Context, Result};
 use windows::core::{s, BOOL};
@@ -8,7 +8,7 @@ use windows::Win32::Graphics::Dxgi::DXGI_ERROR_WAS_STILL_DRAWING;
 
 use super::{FrameGate, Scaler};
 use crate::gpu::Gpu;
-/// 黑畫面判斷用的縮圖尺寸（與 luma.hlsl 寫死的 320×180 一致；與共享記憶體的 thumb 無關）。
+/// Thumbnail dimensions used for black-frame detection (must match the 320×180 size hardcoded in luma.hlsl; unrelated to the shared-memory thumb).
 const LUMA_W: u32 = 320;
 const LUMA_H: u32 = 180;
 
@@ -31,7 +31,7 @@ impl LumaProbe {
         let mut shader = None;
         let mut sum = None;
         let mut output = None;
-        // SAFETY: shader 原始碼在編譯期間有效，不使用 include；輸出 blobs 由 windows crate 管理。
+        // SAFETY: Shader source remains valid during compilation and does not use includes; the windows crate manages output blobs.
         unsafe {
             D3DCompile(
                 source.as_ptr().cast(),
@@ -46,8 +46,8 @@ impl LumaProbe {
                 &mut code,
                 Some(&mut errors),
             )
-            .context("編譯黑畫面探測 shader 失敗")?;
-            let code = code.context("缺少黑畫面探測 shader 位元碼")?;
+            .context("Failed to compile black-frame detection shader")?;
+            let code = code.context("Missing black-frame detection shader bytecode")?;
             let bytes = std::slice::from_raw_parts(
                 code.GetBufferPointer().cast::<u8>(),
                 code.GetBufferSize(),
@@ -67,16 +67,16 @@ impl LumaProbe {
                 Some(&mut sum),
             )?;
             gpu.device.CreateUnorderedAccessView(
-                sum.as_ref().context("缺少亮度總和 buffer")?,
+                sum.as_ref().context("Missing luminance sum buffer")?,
                 None,
                 Some(&mut output),
             )?;
         }
         Ok(Self {
             gpu: gpu.clone(),
-            shader: shader.context("缺少亮度計算 shader")?,
-            sum: sum.context("缺少亮度總和 buffer")?,
-            output: output.context("缺少亮度輸出 view")?,
+            shader: shader.context("Missing luminance computation shader")?,
+            sum: sum.context("Missing luminance sum buffer")?,
+            output: output.context("Missing luminance output view")?,
             source: None,
             slots: [Slot::new(gpu)?, Slot::new(gpu)?],
             next: 0,
@@ -105,10 +105,10 @@ impl LumaProbe {
                 let commands = self.commands(&scaler.output)?;
                 self.source = Some((scaler, commands));
             }
-            let (scaler, commands) = self.source.as_ref().context("缺少黑畫面探測縮放器")?;
+            let (scaler, commands) = self.source.as_ref().context("Missing black-frame detection scaler")?;
             scaler.scale(&self.gpu, texture)?;
             let slot = &mut self.slots[self.next];
-            // SAFETY: command list 只存取本 probe 的資源；ExecuteCommandList 原子提交並保留共用 context 狀態。
+            // SAFETY: The command list accesses only this probe's resources; ExecuteCommandList submits atomically and preserves shared context state.
             unsafe {
                 self.gpu.context.ExecuteCommandList(commands, true);
                 self.gpu.context.CopyResource(&slot.staging, &self.sum);
@@ -125,12 +125,12 @@ impl LumaProbe {
         let mut context = None;
         let mut input = None;
         let mut commands = None;
-        // SAFETY: 專用 deferred context 在此方法內獨占使用；所有 shader 參照的資源活到 command list 釋放。
+        // SAFETY: The dedicated deferred context is used exclusively in this method; resources referenced by the shader remain alive until the command list is released.
         unsafe {
             self.gpu
                 .device
                 .CreateDeferredContext(0, Some(&mut context))?;
-            let context = context.context("缺少亮度計算 deferred context")?;
+            let context = context.context("Missing luminance computation deferred context")?;
             self.gpu
                 .device
                 .CreateShaderResourceView(thumb, None, Some(&mut input))?;
@@ -145,8 +145,8 @@ impl LumaProbe {
             context.Dispatch(1, 1, 1);
             context.FinishCommandList(false, Some(&mut commands))
         }
-        .context("建立亮度計算 command list 失敗")?;
-        commands.context("缺少亮度計算 command list")
+        .context("Failed to create luminance computation command list")?;
+        commands.context("Missing luminance computation command list")
     }
 }
 
@@ -160,7 +160,7 @@ impl Slot {
     fn new(gpu: &Gpu) -> Result<Self> {
         let mut staging = None;
         let mut ready = None;
-        // SAFETY: staging 是僅供 CPU 讀取的 4-byte buffer，query 不會啟動 GPU 等待。
+        // SAFETY: staging is a 4-byte buffer used only for CPU reads; the query does not wait for the GPU.
         unsafe {
             gpu.device.CreateBuffer(
                 &D3D11_BUFFER_DESC {
@@ -181,8 +181,8 @@ impl Slot {
             )?;
         }
         Ok(Self {
-            staging: staging.context("缺少亮度 staging")?,
-            ready: ready.context("缺少亮度完成事件")?,
+            staging: staging.context("Missing luminance staging buffer")?,
+            ready: ready.context("Missing luminance completion event")?,
             pts: None,
         })
     }
@@ -191,7 +191,7 @@ impl Slot {
         let Some(pts) = self.pts else { return Ok(None) };
         let mut complete = BOOL::default();
         let mut data = D3D11_MAPPED_SUBRESOURCE::default();
-        // SAFETY: query 讀取 BOOL；確認就緒後仍以 DO_NOT_WAIT 映射，僅讀取一個有效 u32 並配對 Unmap。
+        // SAFETY: The query reads a BOOL; even after it reports completion, map with DO_NOT_WAIT, read one valid u32, and pair it with Unmap.
         unsafe {
             gpu.context.GetData(
                 &self.ready,
@@ -212,7 +212,7 @@ impl Slot {
                 if error.code() == DXGI_ERROR_WAS_STILL_DRAWING {
                     return Ok(None);
                 }
-                return Err(error).context("讀回 thumb 亮度失敗");
+                return Err(error).context("Failed to read back thumbnail luminance");
             }
             let sum = data.pData.cast::<u32>().read_unaligned();
             gpu.context.Unmap(&self.staging, 0);
@@ -232,7 +232,7 @@ mod tests {
         let gpu = Gpu::create().unwrap();
         let texture = super::super::texture(&gpu, (960, 540), false).unwrap();
         let mut view = None;
-        // SAFETY: 單層 BGRA render target 的描述由 texture helper 保證，輸出 view 由 windows crate 管理。
+        // SAFETY: The texture helper guarantees a single-layer BGRA render target; the windows crate manages the output view.
         unsafe {
             gpu.device
                 .CreateRenderTargetView(&texture, None, Some(&mut view))
@@ -249,17 +249,17 @@ mod tests {
             ([0.0, 0.0, 1.0, 1.0], false),
         ] {
             probe.reset();
-            // SAFETY: 此測試獨占 texture，view 在整段 GPU 清除與取樣期間有效。
+            // SAFETY: The test exclusively owns texture; view remains valid throughout GPU clearing and sampling.
             unsafe { gpu.context.ClearRenderTargetView(&view, &color) };
             assert!(probe.on_frame(&texture, (960, 540), 0).unwrap().is_none());
             let deadline = Instant::now() + Duration::from_secs(2);
             loop {
                 if let Some((pts, detected)) = probe.on_frame(&texture, (960, 540), 1).unwrap() {
                     assert_eq!(pts, 0);
-                    assert_eq!(detected, black, "顏色 {color:?} 的黑畫面判定不符");
+                    assert_eq!(detected, black, "Incorrect black-frame classification for color {color:?}");
                     break;
                 }
-                assert!(Instant::now() < deadline, "GPU 亮度計算逾時");
+                assert!(Instant::now() < deadline, "GPU luminance computation timed out");
                 std::thread::sleep(Duration::from_millis(5));
             }
         }

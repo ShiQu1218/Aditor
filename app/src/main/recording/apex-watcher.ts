@@ -19,7 +19,7 @@ export function findApexPid(): Promise<number | null> {
   })
 }
 
-/** 輪詢不重疊；程序查詢失敗不當作遊戲關閉。 */
+/** Polls never overlap; a failed process query does not mean the game has closed. */
 export class ApexWatcher {
   private timer: ReturnType<typeof setTimeout> | null = null
   private running = false

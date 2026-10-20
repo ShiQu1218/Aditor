@@ -1,9 +1,9 @@
 import { Project } from './project'
 
-/** 專案加上檔案 id（`createProject` 不變；id 由 Provider 產生）。 */
+/** Add a file id to a project (`createProject` is unchanged; the Provider generates the id). */
 export type ProjectWithId = Project & { id: string }
 
-/** 產生 `p_<uuid>` 形式的檔名安全 id。 */
+/** Generate a filename-safe id in the `p_<uuid>` format. */
 export function newProjectId(): string {
   const uuid =
     typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
@@ -12,17 +12,17 @@ export function newProjectId(): string {
   return `p_${uuid}`
 }
 
-/** 還原所需的 window.api 子集（方便測試注入）。 */
+/** The subset of window.api needed for restoration (easy to inject in tests). */
 export interface RestoreApi {
-  /** 讀取設定；失敗可由呼叫端轉成 null。 */
+  /** Read settings; callers can convert failures to null. */
   getSettings: () => Promise<{ lastProjectId?: string | null } | null>
-  /** 依 id 讀取專案；檔案不存在或損毀回 null。 */
+  /** Read a project by id; return null if the file is missing or corrupted. */
   loadProject: (id: string) => Promise<Project | null>
 }
 
 /**
- * 啟動還原：依 `settings.lastProjectId` 讀回上次專案；
- * 設定讀取失敗／沒有紀錄／檔案不存在或損毀時一律回 null（改用新專案）。
+ * Restore the last project using `settings.lastProjectId`.
+ * Return null when settings cannot be read, no id is recorded, or the file is missing or corrupted (use a new project).
  */
 export async function restoreLastProject(api: RestoreApi): Promise<ProjectWithId | null> {
   try {
@@ -38,18 +38,18 @@ export async function restoreLastProject(api: RestoreApi): Promise<ProjectWithId
 }
 
 export interface ValidationResult {
-  /** 去重後、依片段順序排列的缺失來源路徑。 */
+  /** Missing source paths, deduplicated and ordered by clip. */
   missing: string[]
 }
 
 export interface ValidateOptions {
-  /** 同時檢查的路徑數上限（預設 4）。 */
+  /** Maximum number of paths to check concurrently (defaults to 4). */
   concurrency?: number
-  /** 單一路徑的逾時（ms，預設 3000）；逾時視為缺失，避免離線磁碟卡住載入。 */
+  /** Timeout per path in ms (defaults to 3000); treat a timeout as missing so an offline drive cannot stall loading. */
   timeoutMs?: number
 }
 
-/** 逾時視為 false；保證不丟錯。 */
+/** Treat timeouts as false; never throw. */
 function existsWithTimeout(exists: (s: string) => Promise<boolean>, source: string, timeoutMs: number): Promise<boolean> {
   return new Promise((resolve) => {
     const timer = setTimeout(() => resolve(false), timeoutMs)
@@ -64,9 +64,9 @@ function existsWithTimeout(exists: (s: string) => Promise<boolean>, source: stri
 }
 
 /**
- * 以 `exists`（主程序 `library:fileExists`）檢查專案所有來源是否存在；
- * 有限並行（預設 4）、單一路徑逾時（預設 3 秒）；檢查失敗（IPC 錯誤）或逾時視為缺失。
- * 缺少來源的片段由 Task 13 的 UI 標示。
+ * Check whether each project source exists through `exists` (main process `library:fileExists`).
+ * Use limited concurrency (defaults to 4) and a per-path timeout (defaults to 3 seconds); treat errors (IPC failures) and timeouts as missing.
+ * The Task 13 UI marks clips with missing sources.
  */
 export async function validateSources(
   project: Project,
@@ -93,15 +93,15 @@ function normSource(p: string): string {
 }
 
 /**
- * 由缺失來源推得「缺失片段」id 集合（衍生值，不寫入專案檔）：
- * 來源路徑以斜線／大小寫不敏感比對；UI 以此標示警示並禁止預覽。
+ * Derive the set of clip ids with missing sources (not persisted to the project file).
+ * Compare source paths case-insensitively after normalizing slashes; the UI uses this set to show warnings and disable previews.
  */
 export function missingItemIds(project: Project, missing: readonly string[]): ReadonlySet<string> {
   const gone = new Set(missing.map(normSource))
   return new Set(project.items.filter((i) => gone.has(normSource(i.source))).map((i) => i.id))
 }
 
-/** 節流閘門：距上次放行不足 minMs 回 false（視窗取回焦點時重新檢查來源用）。 */
+/** Throttle gate: return false if less than minMs has passed since the last allowed call (used to recheck sources when the window regains focus). */
 export function createRefreshGate(minMs: number, now: () => number = Date.now): () => boolean {
   let last = -Infinity
   return () => {

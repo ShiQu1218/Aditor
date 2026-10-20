@@ -1,10 +1,10 @@
 import type { CacheDoc, Clip } from '../../shared/types'
 import { LONG_SPECTATING, genLong } from '../../../test/fixtures/genEvents'
 
-/** 僅開發模式使用（由 Viewer 在 import.meta.env.DEV 內動態載入，不進入正式 bundle） */
+/** Development only (dynamically imported by Viewer under import.meta.env.DEV and excluded from the production bundle). */
 export function buildLongDoc(path: string): CacheDoc {
   const { events, duration } = genLong()
-  // 取幾個事件密集處做示範片段：偶數為 AI 建議、其餘為已加入
+  // Use several event-dense ranges for sample clips: even indices are AI suggestions; the rest are already added.
   const clips: Clip[] = []
   for (let i = 12; i < events.length && clips.length < 8; i += 37) {
     const e = events[i]

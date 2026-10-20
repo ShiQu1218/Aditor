@@ -1,10 +1,10 @@
 /**
- * live 引擎（第 3 期，計畫 7 合約 1）：`aditor live --shm … --profile-dir … [--scene-dir …]`。
- * 讀 aditorrec 的共享記憶體小圖，stdout 每行一個 JSON（ready／snapshot／match_pending／match_cancel／match_start／match_end／stats／error）。
+ * Live engine (phase 3, plan 7 contract 1): `aditor live --shm … --profile-dir … [--scene-dir …]`.
+ * Reads thumbnails from aditorrec shared memory and writes one JSON object per stdout line (ready/snapshot/match_pending/match_cancel/match_start/match_end/stats/error).
  *
- * - 以低於一般的優先序執行；當掉時以指數退避重啟（10 分鐘內最多 5 次），錄影本身不受影響。
- * - 重啟後的新程序只看得到重啟之後的影格：先前的事件保留（封存），新程序的事件只採用封存時間之後的部分。
- * - 停止：送 `{"cmd":"stop"}` 並關閉 stdin，等最終 snapshot 與程序結束；逾時就強制結束。
+ * - Runs at below-normal priority; restarts with exponential backoff after a crash (up to 5 times in 10 minutes) without affecting recording.
+ * - A restarted process sees only later frames: retain earlier events as archived and accept new events only after the archive time.
+ * - To stop, send `{"cmd":"stop"}`, close stdin, and wait for the final snapshot and process exit; force termination on timeout.
  */
 import os from 'os'
 import { spawn, type ChildProcessWithoutNullStreams } from 'child_process'
@@ -14,7 +14,7 @@ import type { LiveEvent } from '../../shared/recording'
 import type { RecorderCommand } from './index'
 import { tr } from '../../shared/locale'
 
-/** snapshot 含整份事件清單，可能遠大於 aditorrec 的 64 KB 行長上限。 */
+/** A snapshot contains the full event list and may exceed aditorrec's 64 KB line limit. */
 const MAX_LINE_BYTES = 8 * 1024 * 1024
 const MAX_EVENTS = 20_000
 const STDERR_TAIL = 16 * 1024
@@ -23,19 +23,19 @@ const MAX_RESTARTS = 5
 export const LIVE_STOP_TIMEOUT_MS = 5000
 
 export interface LiveSpec { start: number; end: number }
-/** live 引擎在最終 snapshot 附上的判定：complete＝結果等同離線分析，可直接當分析結果。 */
+/** The live engine's final snapshot assessment; complete means equivalent to offline analysis and can be used directly. */
 export interface LiveQuality { complete: boolean; reasons: string[]; hScale: number | null }
 export interface LiveSnapshot { t: number; events: LiveEvent[]; spectating: LiveSpec[]; quality?: LiveQuality }
 export interface LiveMatchEvent { ev: 'match_start' | 'match_end' | 'match_pending' | 'match_cancel'; t: number; reason: string }
 
 export interface LiveEngineOptions {
   command: RecorderCommand
-  /** 附加在 command.args 之後的 live 參數 */
+  /** Live arguments appended after command.args. */
   args: string[]
-  /** 重啟退避基準（毫秒，第 n 次重啟等 base × 2^n）；測試注入 */
+  /** Restart backoff base in milliseconds (the nth restart waits base × 2^n); test injection. */
   restartBaseMs?: number
   stopTimeoutMs?: number
-  /** 測試注入：設定程序優先序 */
+  /** Test injection: set process priority. */
   setPriority?: (pid: number) => void
 }
 
@@ -54,7 +54,7 @@ function validSpec(s: unknown): s is LiveSpec {
   return finite(r.start) && finite(r.end) && r.start >= 0 && r.end >= r.start
 }
 
-/** 解析一行 snapshot；格式不符回傳 null（整行忽略）。 */
+/** Parse a snapshot line; return null for invalid input (ignore the entire line). */
 export function parseSnapshot(msg: Record<string, unknown>): LiveSnapshot | null {
   if (!finite(msg.t) || !Array.isArray(msg.events) || !Array.isArray(msg.spectating)) return null
   if (msg.events.length > MAX_EVENTS || msg.spectating.length > MAX_EVENTS) return null
@@ -69,8 +69,9 @@ export function parseSnapshot(msg: Record<string, unknown>): LiveSnapshot | null
 }
 
 /**
- * 合併封存（前一個程序）與新程序的快照：封存全部保留，新程序只取 `resumeT` 之後開始的事件與觀戰區間。
- * 事件 id 由時間組成（`a<毫秒>`），同一事件在兩邊 id 相同，以 id 去重。
+ * Merge archived snapshots from the previous process with the new process: keep all archived
+ * data, and take only events and spectator intervals that start after `resumeT` from the new process.
+ * Event IDs are time-based (`a<milliseconds>`); matching IDs are deduplicated.
  */
 export function mergeIncarnations(archived: LiveSnapshot | null, fresh: LiveSnapshot, resumeT: number): LiveSnapshot {
   if (!archived) return fresh
@@ -79,7 +80,7 @@ export function mergeIncarnations(archived: LiveSnapshot | null, fresh: LiveSnap
     .sort((a, b) => a.t - b.t)
   const spectating = [...archived.spectating, ...fresh.spectating.filter((s) => s.start > resumeT)]
     .sort((a, b) => a.start - b.start)
-  // 重啟過的程序只看到後半段：最終判定一律不完整。
+  // A restarted process sees only the latter part, so its final assessment is always incomplete.
   const quality = fresh.quality && { ...fresh.quality, complete: false, reasons: [...fresh.quality.reasons, 'restarted'] }
   return { t: Math.max(archived.t, fresh.t), events, spectating, ...(quality ? { quality } : {}) }
 }
@@ -107,7 +108,7 @@ export class LiveEngine extends EventEmitter {
     this.launch()
   }
 
-  /** 目前合併後的快照（含重啟前的事件）。 */
+  /** Current merged snapshot, including events from before restarts. */
   snapshot(): LiveSnapshot | null { return this.current }
   engineVersion(): string | null { return this.version }
 
@@ -120,7 +121,7 @@ export class LiveEngine extends EventEmitter {
     try {
       proc.stdin.write('{"cmd":"stop"}\n')
       proc.stdin.end()
-    } catch { /* stdin 已關閉：等程序自行結束或逾時 */ }
+    } catch { /* stdin is closed; wait for process exit or timeout. */ }
     const timer = setTimeout(() => proc.kill(), this.options.stopTimeoutMs ?? LIVE_STOP_TIMEOUT_MS)
     try { await this.closed } finally { clearTimeout(timer) }
   }
@@ -155,13 +156,13 @@ export class LiveEngine extends EventEmitter {
       })
     })
     proc.once('error', (error) => this.emit('warning', tr('即時偵測程序錯誤：{message}', { message: error.message })))
-    proc.stdin.on('error', () => { /* 程序結束時寫入 stop 可能 EPIPE；由 close 處理 */ })
+    proc.stdin.on('error', () => { /* Writing stop may hit EPIPE after process exit; close handles it. */ })
     proc.stdout.on('data', (chunk: Buffer) => this.onData(chunk))
     proc.stderr.on('data', (chunk: Buffer) => { this.stderr = (this.stderr + chunk.toString('utf8')).slice(-STDERR_TAIL) })
   }
 
   private crashed(message: string): void {
-    // 封存目前事件；新程序從最新影格開始，只採用 lastT 之後的事件。
+    // Archive current events; the new process starts at the latest frame, so accept only events after lastT.
     this.archived = this.current
     this.resumeT = this.lastT
     const now = Date.now()
@@ -181,7 +182,7 @@ export class LiveEngine extends EventEmitter {
     this.restartTimer.unref()
   }
 
-  /** 最終判定；沒有收到最終 snapshot（被 kill、放棄重啟）時為 null＝不可直接採用。 */
+  /** Final assessment; null when no final snapshot arrived (killed or restart abandoned), so it cannot be used directly. */
   quality(): LiveQuality | null {
     const q = this.current?.quality
     if (!q) return null
@@ -232,7 +233,7 @@ export class LiveEngine extends EventEmitter {
         this.emit('match', { ev: msg.ev, t: msg.t, reason: typeof msg.reason === 'string' ? msg.reason.slice(0, 200) : '' })
         break
       case 'stats':
-        // 有處理影格才代表引擎在運作；大廳沒有擊殺時不會送 snapshot，只能靠這個判斷健康與分析進度
+        // Processed frames indicate the engine is running. With no lobby kills it sends no snapshot, so use this to track health and analysis progress.
         if (finite(msg.t) && finite(msg.frames) && msg.frames > 0) this.emit('progress', msg.t)
         break
       case 'error':

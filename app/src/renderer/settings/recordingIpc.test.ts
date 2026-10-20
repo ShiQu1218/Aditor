@@ -27,8 +27,8 @@ function setup(windows: unknown[] = []) {
   return { service, emit, off, dispose, call: (channel: string, ...args: unknown[]) => handlers.get(channel)!({}, ...args) }
 }
 
-describe('錄影 IPC', () => {
-  test('每個 invoke 轉交服務、回傳快照／能力／開始結果', async () => {
+describe('Recording IPC', () => {
+  test('Each invoke delegates to the service and returns snapshots, capabilities, or start results', async () => {
     const { call, service } = setup()
     expect(call(channels.getStatus)).toEqual(IDLE_RECORDING_STATUS)
     expect(await call(channels.getCapabilities)).toBeNull()
@@ -40,12 +40,12 @@ describe('錄影 IPC', () => {
     expect(service.setPaused).toHaveBeenNthCalledWith(1, true)
     expect(service.setPaused).toHaveBeenNthCalledWith(2, false)
   })
-  test.each([undefined, null, 0, 1, 'true', [], {}, { paused: true }])('拒絕非布林暫停值 %j', (raw) => {
+  test.each([undefined, null, 0, 1, 'true', [], {}, { paused: true }])('rejects non-boolean pause values %j', (raw) => {
     const { call, service } = setup()
     expect(() => call(channels.setPaused, raw)).toThrow('布林')
     expect(service.setPaused).not.toHaveBeenCalled()
   })
-  test('廣播跳過銷毀的視窗與 webContents，個別失敗不影響其他視窗；解除所有註冊', () => {
+  test('Broadcast skips destroyed windows and webContents; an individual failure does not affect other windows; removes all registrations', () => {
     const send = vi.fn()
     const skipped = vi.fn()
     const dead = (window: boolean, contents: boolean) => ({ isDestroyed: () => window, webContents: { isDestroyed: () => contents, send: skipped } })
@@ -64,7 +64,7 @@ describe('錄影 IPC', () => {
   })
 })
 
-describe('錄影中觀看 IPC', () => {
+describe('Live recording IPC', () => {
   function liveSetup(windows: unknown[] = []) {
     const base = setup(windows)
     let emitLive!: (u: LiveUpdate) => void
@@ -82,7 +82,7 @@ describe('錄影中觀看 IPC', () => {
   }
   const ID = '20261018-123456-abcd'
 
-  test('轉交服務；沒有實作的服務回傳 null', async () => {
+  test('Delegates to the service; an unimplemented service returns null', async () => {
     const { call, service } = liveSetup()
     expect(await call(channels.getLive)).toBeNull()
     expect(await call(channels.readInit, ID)).toEqual(new Uint8Array([1]))
@@ -92,20 +92,20 @@ describe('錄影中觀看 IPC', () => {
     expect(await plain.call(channels.getLive)).toBeNull()
   })
 
-  test.each([undefined, null, 1, '', '../x', '20261018-123456-ABCD', '20261018-123456-abcd/..', 'C:\\x', ['x']])('拒絕無效的錄影工作 ID %j', (raw) => {
+  test.each([undefined, null, 1, '', '../x', '20261018-123456-ABCD', '20261018-123456-abcd/..', 'C:\\x', ['x']])('rejects invalid recording session IDs %j', (raw) => {
     const { call, service } = liveSetup()
     expect(() => call(channels.readInit, raw)).toThrow('ID')
     expect(() => call(channels.readSegment, raw, 1)).toThrow('ID')
     expect(service.readInit).not.toHaveBeenCalled()
   })
 
-  test.each([undefined, null, 0, -1, 1.5, '1', Number.NaN, 2 ** 60, [1]])('拒絕無效的段落序號 %j', (raw) => {
+  test.each([undefined, null, 0, -1, 1.5, '1', Number.NaN, 2 ** 60, [1]])('rejects invalid segment sequence numbers %j', (raw) => {
     const { call, service } = liveSetup()
     expect(() => call(channels.readSegment, ID, raw)).toThrow('序號')
     expect(service.readSegment).not.toHaveBeenCalled()
   })
 
-  test('推播 recording:live 並在解除時取消訂閱', () => {
+  test('Broadcasts recording:live and unsubscribes on cleanup', () => {
     const send = vi.fn()
     const { emitLive, dispose, offLive } = liveSetup([{ isDestroyed: () => false, webContents: { isDestroyed: () => false, send } }])
     const update: LiveUpdate = { sessionId: ID, segment: { seq: 1, pts: 0, dur: 2 } }
@@ -116,7 +116,7 @@ describe('錄影中觀看 IPC', () => {
   })
 })
 
-test('preload 合約：invoke 頻道、參數、事件與解除 listener', async () => {
+test('Preload contract: invoke channels, arguments, events, and listener cleanup', async () => {
   vi.resetModules()
   const oldIsolated = process.contextIsolated
   Object.defineProperty(process, 'contextIsolated', { value: true, configurable: true })

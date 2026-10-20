@@ -1,14 +1,14 @@
 export type BootPhase = 'idle' | 'restoring' | 'ready'
 
 /**
- * 啟動還原的純狀態機（idle → restoring → ready）。事件：
- * - `start()`：開始啟動流程（先載入設定，再還原上次專案）
- * - `settingsLoaded(raw)`：設定載入完成／失敗（失敗＝null，自動儲存預設開啟，寧可多存不漏存）
- * - `edit()`：使用者已動手（apply／undo／redo／新增／開檔）
- * - `restored(found)`：非同步還原回來了；回傳是否應套用還原的專案
+ * Pure state machine for startup restoration (idle → restoring → ready). Events:
+ * - `start()`: begin startup (load settings, then restore the last project).
+ * - `settingsLoaded(raw)`: settings load succeeded or failed (failure is null; autosave defaults to on to avoid losing edits).
+ * - `edit()`: the user has made an edit (apply/undo/redo/add/open).
+ * - `restored(found)`: async restoration finished; return whether to apply the restored project.
  *
- * 規則：還原結果只在「使用者尚未編輯」時套用（只套用一次）；已編輯就保留目前專案、
- * 不動 undo 歷史，避免非同步還原蓋掉使用者在還原完成前做的修改。
+ * Apply restoration only once and only if the user has not edited. Otherwise keep the current project
+ * and undo history so async restoration cannot overwrite changes made while it was pending.
  */
 export class ProjectBoot {
   private _phase: BootPhase = 'idle'
@@ -37,7 +37,7 @@ export class ProjectBoot {
     this._edited = true
   }
 
-  /** 傳入 settings.projectAutosave（非布林或載入失敗＝true）；之後設定面板切換也可再次呼叫。 */
+  /** Pass settings.projectAutosave (non-boolean or load failure defaults to true); call again when the setting changes in the settings panel. */
   settingsLoaded(projectAutosave: unknown): boolean {
     this._settingsKnown = true
     this._autosaveEnabled = typeof projectAutosave === 'boolean' ? projectAutosave : true

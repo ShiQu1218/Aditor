@@ -149,7 +149,7 @@ describe('AnalysisQueue', () => {
   })
 })
 
-describe('AnalysisQueue：設定接線（decode／cacheLocation）', () => {
+describe('AnalysisQueue settings wiring (decode/cacheLocation)', () => {
   function run(settings: { decode: 'auto' | 'software'; cacheLocation: 'appdata' | 'besideVideo' } | undefined) {
     const seen: Array<Record<string, unknown>> = []
     const engineMock = {
@@ -178,7 +178,7 @@ describe('AnalysisQueue：設定接線（decode／cacheLocation）', () => {
     expect(seen[0]).toMatchObject({ hwaccel: false, beside: true, cache_dir: '/c' })
   })
 
-  it('預設 / 未提供設定 → hwaccel:true、beside:false；設定在每次請求時才讀取（免重啟）', async () => {
+  it('defaults to hwaccel:true and beside:false when settings are missing; reads settings on every request (no restart required)', async () => {
     const { seen } = run(undefined)
     await new Promise((r) => setTimeout(r, 30))
     expect(seen[0]).toMatchObject({ hwaccel: true, beside: false })

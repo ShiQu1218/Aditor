@@ -12,7 +12,7 @@ export interface LibraryToolbarProps {
   onToggleFavorite: () => void
   kind: LibraryKind
   onKindChange: (k: LibraryKind) => void
-  /** 各篩選（不計搜尋字串）的影片數 */
+  /** Video counts for each filter, excluding the search query. */
   counts: Record<LibraryKind, number>
   searchRef: React.RefObject<HTMLInputElement>
 }

@@ -55,7 +55,7 @@ def test_brief_lobby_before_reward_menus_ends_after_settle_and_backdates():
     for t in range(10, 13):
         assert not tr.feed(t, SceneFrame("lobby"))
     for t in range(13, 40):
-        assert not tr.feed(t, SceneFrame("other"))  # 開組合包／獎勵畫面
+        assert not tr.feed(t, SceneFrame("other"))  # Open a pack/reward screen.
     events = tr.feed(40, SceneFrame("other"))
     assert [(e.type, e.t, e.reason) for e in events] == [("match_end", 10, "lobby")]
     tr.finish(60)
@@ -223,7 +223,7 @@ def test_expired_opening_can_resume_from_hud():
 
 
 def test_game_hidden_between_matches_splits_at_hide():
-    # DDA：打完切出遊戲、排下一局，跳傘時才切回來；期間只有黑畫面。
+    # DDA: after a match, switch away to queue for the next one and return only when skydiving; the screen is black in between.
     tr = run([(0, 100, "in_match_hud"), (101, 250, "blank"), (251, 300, "in_match_hud")])
     assert tr.matches == [Match(0, 101), Match(251, 301)]
     assert [(e.type, e.t, e.reason) for e in tr.events] == [
@@ -264,7 +264,7 @@ def test_lobby_reset_allows_following_match():
 def test_finish_is_idempotent_and_no_feed_after_finish():
     tr = run([(0, 5, "in_match_hud")])
     assert tr.finish(6) == []
-    with pytest.raises(ValueError, match="已結束"):
+    with pytest.raises(ValueError, match="has ended"):
         tr.feed(7, SceneFrame("other"))
 
 
@@ -286,7 +286,7 @@ def test_no_video_cli_error_has_no_partial_json(tmp_path):
     result = subprocess.run([sys.executable, "-m", "aditor", "matches", str(tmp_path / "missing.mp4")],
                             capture_output=True)
     assert result.returncode == 1 and result.stdout == b""
-    assert "錯誤" in result.stderr.decode("utf-8")
+    assert "Error" in result.stderr.decode("utf-8")
 
 
 def test_cli_passes_options_and_outputs_json(monkeypatch, capsys):
@@ -298,7 +298,7 @@ def test_cli_passes_options_and_outputs_json(monkeypatch, capsys):
         return {"matches": [{"start": 1, "end": 3}], "timeline": [[1, "pre_match"]]}
 
     monkeypatch.setattr(matches, "analyze_matches", fake)
-    # pytest 的 StringIO 沒有 reconfigure；保留 main 的既有處理。
+    # pytest's StringIO has no reconfigure; preserve main's existing handling.
     for stream in (sys.stdout, sys.stderr):
         monkeypatch.setattr(stream, "reconfigure", lambda **kw: None, raising=False)
     assert __main__.main(["matches", "clip.mp4", "--fps", "2", "--timeline", "--no-hwaccel"]) == 0
@@ -396,8 +396,8 @@ def test_recording_acceptance(name):
     root = Path(os.environ.get("ADITOR_MATCH_DIR", "E:/Apex_highlighter_clip"))
     video = root / name
     if not video.is_file():
-        pytest.skip(f"未提供對局驗收影片：{video}")
-    # 使用真實 CLI／ffbin／串流狀態機，不以預存場景取代解碼。
+        pytest.skip(f"No match acceptance video provided: {video}")
+    # Use the real CLI, ffbin, and streaming state machine; decode instead of substituting cached scenes.
     result = subprocess.run([sys.executable, "-m", "aditor", "matches", str(video), "--timeline"],
                             capture_output=True, timeout=280)
     assert result.returncode == 0, result.stderr.decode("utf-8", errors="replace")

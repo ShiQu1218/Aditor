@@ -19,8 +19,8 @@ import { SettingsStore } from './settings'
 import { cacheFilePath } from './cache-io'
 import { cacheDir } from '../shared/paths'
 
-/** 接線測試：cache:loadByVideo 讀的位置隨 settings.cacheLocation 變，且與引擎的 beside 規則相同。 */
-describe('cache:loadByVideo 依 cacheLocation 設定讀取', () => {
+/** Wiring test: cache:loadByVideo reads from the location selected by settings.cacheLocation, using the same beside rule as the engine. */
+describe('cache:loadByVideo reads according to cacheLocation', () => {
   let dir: string
   let oldAppData: string | undefined
   beforeEach(() => {
@@ -34,7 +34,7 @@ describe('cache:loadByVideo 依 cacheLocation 設定讀取', () => {
     fs.rmSync(dir, { recursive: true, force: true })
   })
 
-  test('appdata 與 besideVideo 各讀各的檔；切換後另一處的舊快取仍讀得到', async () => {
+  test('appdata and besideVideo read their own files; the old cache at the other location remains readable after switching', async () => {
     const video = path.join(dir, 'videos', 'm.mp4')
     fs.mkdirSync(path.dirname(video), { recursive: true })
     const store = new SettingsStore(path.join(dir, 'settings.json'))
@@ -51,7 +51,7 @@ describe('cache:loadByVideo 依 cacheLocation 設定讀取', () => {
     expect(await load({}, video)).toEqual({ where: 'appdata' })
 
     store.set({ cacheLocation: 'besideVideo' })
-    // 影片旁尚無檔 → 退回 appdata 的既有快取（切換不會弄丟）
+    // No file beside the video yet → fall back to the existing appdata cache (changing locations does not lose it).
     expect(await load({}, video)).toEqual({ where: 'appdata' })
     fs.writeFileSync(besideFile, JSON.stringify({ where: 'beside' }))
     expect(await load({}, video)).toEqual({ where: 'beside' })
@@ -61,7 +61,7 @@ describe('cache:loadByVideo 依 cacheLocation 設定讀取', () => {
     expect(await load({}, video)).toEqual({ where: 'appdata' })
   })
 
-  test('library:computeHl 讀 besideVideo 的快取（與 cache:loadByVideo 同一規則）', async () => {
+  test('library:computeHl reads the besideVideo cache using the same rule as cache:loadByVideo', async () => {
     const video = path.join(dir, 'videos', 'h.mp4')
     fs.mkdirSync(path.dirname(video), { recursive: true })
     const store = new SettingsStore(path.join(dir, 'settings.json'))
@@ -86,7 +86,7 @@ describe('cache:loadByVideo 依 cacheLocation 設定讀取', () => {
     expect(updates).toContainEqual({ hl: 1 })
   })
 
-  test('I1：cache:save 忽略 renderer 的 cache_path，寫到由影片推得的快取位置；影片不在影片庫則拒絕', async () => {
+  test('I1: cache:save ignores renderer cache_path and writes to the location derived from the video; reject videos outside the library', async () => {
     const video = path.join(dir, 'videos', 's.mp4')
     fs.mkdirSync(path.dirname(video), { recursive: true })
     const store = new SettingsStore(path.join(dir, 'settings.json'))

@@ -34,9 +34,9 @@ describe('VideoCard structure (valid ARIA, no nested interactive elements)', () 
     const out = html(e)
     expect(out).not.toMatch(/<article[^>]*(role=|tabindex)/i)
     expect(out).not.toMatch(/role="button"/)
-    // 任何 <button> 開啟後、關閉前不得再出現 <button>
+    // No other <button> may appear between opening and closing this one.
     expect(out).not.toMatch(/<button\b(?:(?!<\/button>)[\s\S])*<button\b/)
-    // 恰一個主要按鈕
+    // Exactly one primary button.
     expect(out.match(/class="vcard-open"/g)).toHaveLength(1)
   })
   test('error card has retry and remove as siblings of the open button', () => {
@@ -69,15 +69,15 @@ describe('sameCardEntry (memo comparator: only the changed card re-renders)', ()
   })
   test('updating one card in a list leaves every other card skipping re-render', () => {
     const before = Array.from({ length: 50 }, (_, i) => entry({ path: `p${i}`, status: i === 7 ? 'analyzing' : 'done', progress: i === 7 ? 0.1 : 1 }))
-    const after = before.map((e) => (e.path === 'p7' ? { ...e, progress: 0.2 } : { ...e })) // main 每次送新物件
+  const after = before.map((e) => (e.path === 'p7' ? { ...e, progress: 0.2 } : { ...e })) // main sends a new object each time.
     const changed = after.filter((e, i) => !sameCardEntry(before[i], e)).map((e) => e.path)
     expect(changed).toEqual(['p7'])
   })
 })
 
-describe('proxySuggest 設定 → 卡片「建議代理檔」徽章', () => {
+describe('proxySuggest setting → “Proxy suggested” card badge', () => {
   const av1 = entry({ codec: 'av1' })
-  test('預設（未傳）與 true 顯示徽章；false 不顯示（AV1 也是代理檔建議）', () => {
+  test('Badge appears by default (omitted) and for true, but not false (AV1 also suggests a proxy)', () => {
     expect(html(av1)).toContain('建議代理檔')
     const withProp = (v: boolean): string =>
       renderToStaticMarkup(
@@ -86,7 +86,7 @@ describe('proxySuggest 設定 → 卡片「建議代理檔」徽章', () => {
     expect(withProp(true)).toContain('建議代理檔')
     expect(withProp(false)).not.toContain('建議代理檔')
   })
-  test('memo 比較器：proxySuggest 改變時卡片要重繪', () => {
+  test('memo comparator rerenders the card when proxySuggest changes', () => {
     const cmp = (VideoCard as unknown as { compare: (a: unknown, b: unknown) => boolean }).compare
     const base = { entry: av1, proxySuggest: true }
     expect(cmp(base, { entry: { ...av1 }, proxySuggest: true })).toBe(true)
@@ -94,8 +94,8 @@ describe('proxySuggest 設定 → 卡片「建議代理檔」徽章', () => {
   })
 })
 
-describe('LibraryScreen 接線（原始碼掃描）', () => {
-  test('訂閱設定並把 proxySuggest 傳給每張卡片', async () => {
+describe('LibraryScreen wiring (source scan)', () => {
+  test('Subscribes to settings and passes proxySuggest to each card', async () => {
     const { readFileSync } = await import('fs')
     const { resolve } = await import('path')
     const src = readFileSync(resolve(__dirname, 'LibraryScreen.tsx'), 'utf-8')

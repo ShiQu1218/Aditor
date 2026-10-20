@@ -63,7 +63,7 @@ describe('clips backup across cancelled re-analysis (F2)', () => {
   })
   const manual = clip('m1', 400, { origin: 'manual' })
 
-  /** 引擎行為：'done' ＝ 寫入完成文件（只剩手動片段）；'fail' ＝ 直接失敗 */
+  /** Engine behavior: 'done' writes a completed document (manual clips only); 'fail' fails immediately. */
   function engine(mode: 'done' | 'fail', mtime = 2): EngineClient {
     return {
       request: () => {
@@ -79,7 +79,7 @@ describe('clips backup across cancelled re-analysis (F2)', () => {
     } as unknown as EngineClient
   }
 
-  /** 取消用的引擎：先把快取覆寫成只剩手動片段的 partial（與真引擎一致），cancel(id) 以 Cancelled 拒絕 */
+  /** Cancellation fake engine: overwrite the cache with a partial containing only manual clips (matching the real engine), then have cancel(id) reject with Cancelled. */
   function cancellableEngine(): EngineClient {
     let rej!: (e: Error) => void
     return {
@@ -120,12 +120,12 @@ describe('clips backup across cancelled re-analysis (F2)', () => {
     await tick()
     q1.cancel(V1)
     await tick()
-    // 引擎寫的 partial 只有手動片段；備份仍保有已接受的 AI 片段
+    // The engine-written partial contains manual clips only; the backup still has accepted AI clips.
     expect(readDoc().analysis.status).toBe('partial')
     expect(readDoc().clips.map((c: any) => c.id)).toEqual(['m1'])
     expect(readClipsBackup(cache())?.some((c) => c.id === 'a1')).toBe(true)
 
-    // 之後的續跑／重跑：快取是 partial，仍要使用既有備份
+    // On a later resume/rerun, the cache is partial, so continue using the existing backup.
     const q2 = new AnalysisQueue(engine('done'), lib, { profileDir: '/p', cacheDir: dir })
     q2.enqueue(V1)
     await tick(60)
@@ -211,7 +211,7 @@ describe('clips backup across cancelled re-analysis (F2)', () => {
 
   it('a backup write failure never breaks the analysis', async () => {
     seedDone()
-    fs.mkdirSync(backup()) // 讓 rename 到備份路徑失敗（目標是資料夾）
+    fs.mkdirSync(backup()) // Make renaming to the backup path fail by creating a directory there.
     const q = new AnalysisQueue(engine('done'), lib, { profileDir: '/p', cacheDir: dir })
     q.enqueue(V1)
     await tick(60)

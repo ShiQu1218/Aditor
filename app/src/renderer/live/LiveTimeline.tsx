@@ -16,8 +16,8 @@ interface LiveTimelineProps {
 }
 
 /**
- * 錄影時間軸：對局起訖區段、事件標記（沿用事件形狀與顏色 token）、已釋放區段、播放頭。
- * 整條是一個 slider：←／→ 前後 5 秒、Home 到保留範圍起點、End 跳到最新；點擊或拖曳跳轉。
+ * Recording timeline: match segments, event markers (reusing event shapes and color tokens), released ranges, and playhead.
+ * The whole timeline is one slider: Left/Right move by 5 seconds, Home goes to the retained range start, and End jumps live; click or drag to seek.
  */
 export function LiveTimeline({ current, end, retainStart, events, matches, onSeek, onJumpLive }: LiveTimelineProps): JSX.Element {
   const seekFromPointer = (e: React.PointerEvent<HTMLDivElement>): void => {

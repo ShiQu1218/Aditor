@@ -1,7 +1,7 @@
 /**
- * 結束 App 前先等背景工作收尾（I7）：進行中的匯出／代理檔 ffmpeg 要被終止、半成品要刪除，
- * 引擎要停止。Windows 不會在主程序結束時連帶殺掉子程序，所以不能只送出取消就退出。
- * 第一次 before-quit 會被擋下，等所有任務完成（或逾時）後再真正退出。
+ * Wait for background work to finish before quitting the app (I7): terminate active export/proxy ffmpeg processes, remove partial files,
+ * and stop the engine. Windows does not kill child processes when the main process exits, so do not quit immediately after sending cancellation.
+ * Prevent the first before-quit event, then quit after all tasks finish (or time out).
  */
 export interface QuitGuardOptions {
   tasks: Array<() => Promise<unknown> | undefined | void>
@@ -22,7 +22,7 @@ export function createQuitGuard(opts: QuitGuardOptions): { onBeforeQuit: (e: { p
           try {
             await t()
           } catch {
-            // 單一任務失敗不能擋住退出
+            // A single task failure must not block quitting.
           }
         })
       )

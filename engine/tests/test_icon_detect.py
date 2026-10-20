@@ -1,8 +1,8 @@
-"""圖示偵測器（aditor.icon_detect／aditor.detect.Detector）：逐格行為、反例、名字指紋、觀戰。
+"""Icon detector (aditor.icon_detect/aditor.detect.Detector): per-frame behavior, counterexamples, name fingerprints, and spectating.
 
-fixture 是既有的 en／ja（訓練來源 English.mkv／Japanese.mkv）與 zh-TW（舊版遊戲）畫格；遮罩等價壓縮只保留
-亮或紅的像素，圖示（白／灰）仍在，所以可以當回歸資料。zh-TW fixture 來自舊版本遊戲：加分圖示語意不同，
-行為記錄成已知限制（見 test_old_season_*），不調參去貼合。"""
+Fixtures use existing en/ja frames (training sources English.mkv/Japanese.mkv) and zh-TW frames from the old game. Mask-equivalent compression keeps only
+bright or red pixels, preserving white/gray icons for regression tests. The zh-TW fixtures come from the old game, where bonus icons have different meanings;
+that behavior is documented as a known limitation (see test_old_season_*), and parameters are not tuned to fit it."""
 import json
 
 import cv2
@@ -61,8 +61,8 @@ def test_icon_templates_are_small_pngs():
 
 @pytest.mark.parametrize("lang", ["en", "ja"])
 def test_non_kill_banners_and_other_screens_are_never_product_events(det, lang):
-    """REVIVE／CRATE REVEAL／EVO HARVESTER／BANNER RECOVERY／RESPAWN／RING SCAN、死亡結算、大廳、觀戰、
-    HUD 等負例：同樣有加分箭頭的橫幅人形是三人 → 不是 knock／assist。"""
+    """Negative cases include REVIVE/CRATE REVEAL/EVO HARVESTER/BANNER RECOVERY/RESPAWN/RING SCAN, death summary, lobby, spectating,
+    and HUD: a three-person banner figure with the same bonus arrow is not a knock/assist."""
     bad = []
     for p in sorted((FIXTURES / lang / "neg").glob("*.png")):
         if _kind(det, lang, p.name).kind in PRODUCT_KINDS:
@@ -87,7 +87,7 @@ def test_squad_wipe_and_elim_are_never_product_events(det, lang):
     ("ja", "assist_elim_a", "assist_elim", 1.0),
 ])
 def test_per_frame_rates_on_training_fixtures(det, lang, prefix, expect, min_rate):
-    """非淡入正例的逐格命中率下限（淡入幀允許漏）。"""
+    """Minimum per-frame hit rate for positive examples outside fade-in (fade-in frames may be missed)."""
     ps = sorted((FIXTURES / lang / "pos").glob(f"{prefix}*.png"))
     assert ps
     ok = sum(1 for p in ps if _kind(det, lang, p.name).kind == expect)
@@ -110,23 +110,23 @@ def test_same_enemy_same_sig_different_enemy_different_sig(det, profile):
 
 
 def test_pink_and_yellow_name_colours_are_enemy_colours():
-    px = np.array([[[40, 40, 220], [59, 171, 180], [163, 152, 220], [200, 200, 200]]], np.uint8)  # BGR：紅、黃、粉紅、白
+    px = np.array([[[40, 40, 220], [59, 171, 180], [163, 152, 220], [200, 200, 200]]], np.uint8)  # BGR: red, yellow, pink, white.
     assert enemy_color_mask(px)[0].tolist() == [True, True, True, False]
 
 
 def test_banner_roi_excludes_top_right_kill_counter(profile):
-    """右上角擊殺數／小隊存活不在 banner_roi 內，結構上不可能誤報。"""
+    """The upper-right kill count and squad survival count are outside banner_roi, so false positives are structurally impossible."""
     x, y, w, h = profile.banner_roi
     assert y > 540 and x + w < 1920 - 400 and y + h < 1080
 
 
-# ---- 舊版遊戲（zh-TW fixture）上的行為：文件化的已知限制 ----
+# ---- Behavior on old-game (zh-TW) fixtures: documented known limitations ----
 
 def test_old_season_behaviour_is_documented_not_tuned(det):
-    """舊版（2026-07）遊戲：「敵方小隊已消滅」「小隊抹殺」「造訪過的興趣點」用單人加分圖示，
-    圖示法無法與擊倒／助攻擊倒區分（需要文字或分數數字）→ 這些會被誤判成 knock／assist_knock。
-    其餘（擊倒、助攻擊倒、助攻消滅、獨立消滅、其他畫面、觀戰）行為與新版相同。
-    下列數字是目前行為的凍結值，若偵測器改動使它們變動，請同步更新並在準確度報告記錄。"""
+    """In the old game (2026-07), three specific banners use the solo bonus icon.
+    Icon detection cannot distinguish these from knock/assist-knock without text or score values, so they are misclassified as knock/assist_knock.
+    Other behavior (knock, assist-knock, assist-elim, standalone elim, other screens, and spectating) matches the current game.
+    The values below freeze current behavior. If detector changes alter them, update these values and record the change in the accuracy report."""
     lab = lang_labels("zh-TW")
     assert len(lab) == 86
     got = {}
@@ -136,25 +136,25 @@ def test_old_season_behaviour_is_documented_not_tuned(det):
         got[key] = got.get(key, 0) + 1
     ok = lambda k: sum(c for (kind, fade, res), c in got.items() if kind == k and not fade and res == k)  # noqa: E731
     assert ok("knock") == 7 and ok("assist_knock") == 6 and ok("assist_elim") == 6
-    assert got.get(("elim", False, None)) == 9            # 獨立消滅不誤報
-    # 已知限制：舊版小隊抹殺 6 張 → 全部誤判為單人加分橫幅；其他負例 8 張誤報（敵方小隊已消滅 7＋興趣點 1）
+    assert got.get(("elim", False, None)) == 9            # No false positives for standalone eliminations.
+# Known limitation: all 6 old-game squad wipes are misclassified as solo bonus banners; 8 other negative cases are false positives (7 squad-eliminated + 1 POI visited).
     assert got.get(("squad_wipe", False, "knock"), 0) + got.get(("squad_wipe", False, "assist_knock"), 0) == 6
     assert got.get((None, False, "knock"), 0) + got.get((None, False, "assist_knock"), 0) == 8
 
 
-@pytest.mark.xfail(strict=True, reason="舊版本遊戲的「敵方小隊已消滅 +50」也用單人加分圖示，"
-                                      "圖示法無法與助攻擊倒區分；已知限制，不調參去貼合")
+@pytest.mark.xfail(strict=True, reason="The old-game +50 banner also uses the solo bonus icon, "
+                                      "which icon detection cannot distinguish from assist-knock; known limitation, do not tune to fit.")
 def test_old_season_enemy_squad_down_is_rejected(det):
     for p in sorted((FIXTURES / "zh-TW" / "neg").glob("enemy_squad_down_*.png")):
         assert _kind(det, "zh-TW", p.name).kind not in PRODUCT_KINDS, p.name
 
 
-# ---- 觀戰（唯一與語言有關的樣板：三語言並列、任一命中即算） ----
+# ---- Spectating (the only language-dependent template: three languages side by side, any match counts) ----
 
 @pytest.mark.parametrize("lang", LANGS)
 def test_spectating_detected_in_every_language_without_choosing_one(det, lang):
-    """三語言所有 fixture：觀戰畫格全部命中、非觀戰畫格全部不命中
-    （跨語言誤判量測：profile 內所有語言的樣板對其他語言的非觀戰畫格 0 次誤報）。"""
+    """For all three-language fixtures, every spectating frame must hit and every non-spectating frame must miss
+    (cross-language false-positive check: templates from all profile languages produce zero false positives on frames in other languages)."""
     wrong = []
     for n, v in lang_labels(lang).items():
         _, spec = load_fixture(n, lang)
@@ -169,7 +169,7 @@ def test_synthetic_frame_result_defaults():
 
 
 def test_single_off_one_scale_detector_never_raises_on_empty_or_unmatched_frames(profile):
-    """校準得到 0.95 等非 1.0 尺度時，沒有任何命中的畫格（空白、比樣板小的帶）也不得因預設尺度而出錯。"""
+    """When calibration returns a non-1.0 scale such as 0.95, frames with no hits (blank or a banner smaller than the template) must not fail due to the default scale."""
     d = Detector(profile, icon_scale=0.95)
     blank = np.zeros((180, 800, 3), np.uint8)
     spec = np.zeros((40, 480, 3), np.uint8)

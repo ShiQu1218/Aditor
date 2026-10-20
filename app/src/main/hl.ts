@@ -1,16 +1,16 @@
 import { mergeOnReanalyze, suggestionCount } from '../shared/clips'
 import type { AutoClipParams, CacheDoc, Clip } from '../shared/types'
 
-/** 與 EngineClient.request 相容的最小介面（cmd／args → 結果）。 */
+/** Minimal interface compatible with EngineClient.request (cmd/args → result). */
 export type EngineRequest = (cmd: string, args: Record<string, unknown>) => Promise<unknown>
 
 /**
- * 以預設參數惰性計算影片庫的「N 精華」＝**待確認建議數**（status === 'suggested'）。
- * - 只用**已存在的快取文件**；絕不呼叫 engine `analyze`（快取不存在／未完成＝null，hl 維持 undefined）。
- * - 文件已有 AI 片段：直接數 suggested（不呼叫引擎）。
- * - 文件沒有 AI 片段（只有手動片段）：autoclip 在預設參數下的片段數（工作室開啟時會放成建議）。
- * - 重新分析後 `app.suggestionsPending`：算出工作室將做的合併結果（mergeOnReanalyze）的建議數。
- * 任何失敗回傳 null（不寫入），成功回傳 >= 0 的數字。
+ * Lazily compute the library's "N highlights" with default parameters: the number of pending suggestions (status === 'suggested').
+ * - Use only an existing cache file; never call engine `analyze` (missing/incomplete cache → null, leaving hl undefined).
+ * - If the document already has AI clips, count suggested clips directly (no engine call).
+ * - If the document has no AI clips (manual clips only), count clips from autoclip with default parameters; Studio will add them as suggestions.
+ * - After reanalysis with `app.suggestionsPending`, count the suggestions in the merge result Studio will produce (mergeOnReanalyze).
+ * Return null on failure (without writing); on success return a number >= 0.
  */
 export async function computeHlCount(
   request: EngineRequest,
@@ -34,12 +34,12 @@ export async function computeHlCount(
   }
 }
 
-/** 由片段重算影片庫的 hl＝目前待確認建議數（舊檔缺 status 視為已加入）。 */
+/** Recompute library hl from clips: the current pending-suggestion count (legacy files without status are treated as added). */
 export function hlFromClips(clips: Clip[] | undefined): number {
   return (clips ?? []).filter((c) => c.origin === 'ai' && (c.status ?? 'accepted') === 'suggested').length
 }
 
-/** 工作室存檔時的 hl：重新分析的建議尚未重算（suggestionsPending）時不下結論（undefined＝交給惰性計算）。 */
+/** hl value when Studio saves: do not decide while post-reanalysis suggestions are pending recomputation (undefined delegates to lazy computation). */
 export function hlForSavedDoc(doc: { clips?: Clip[]; app?: { suggestionsPending?: boolean } }): number | undefined {
   return doc.app?.suggestionsPending ? undefined : hlFromClips(doc.clips)
 }
@@ -47,10 +47,10 @@ export function hlForSavedDoc(doc: { clips?: Clip[]; app?: { suggestionsPending?
 export const HL_NEGATIVE_TTL_MS = 60_000
 
 /**
- * computeHl 的防護：
- * - 負快取：計算失敗（null）的影片 60 秒內不再重試（避免捲動時每張卡片反覆打引擎）。
- * - 修訂號：`bump` 代表有更新的權威 hl 寫入（工作室 cache:save）；較早開始的計算用
- *   `commitIfCurrent` 提交時若修訂號已變就放棄，舊結果不能蓋掉新的 hl。
+ * Safeguards for computeHl:
+ * - Negative cache: do not retry a video whose computation failed (null) for 60 seconds (avoids repeated engine calls while scrolling cards).
+ * - Revision number: `bump` marks a newer authoritative hl write (Studio cache:save); if the revision has changed when an older computation
+ *   commits through `commitIfCurrent`, discard it so stale results cannot overwrite the newer hl.
  */
 export function createHlGuard(now: () => number = Date.now) {
   const revs = new Map<string, number>()
@@ -79,7 +79,7 @@ export function createHlGuard(now: () => number = Date.now) {
   }
 }
 
-/** 並行度 1 的 FIFO；同一 key 在排隊或執行中時共用同一個 Promise（去重）。 */
+/** FIFO with concurrency 1; requests with the same key share a Promise while queued or running (deduplicated). */
 export function createSerialQueue<T>(): {
   run: (key: string, task: () => Promise<T>) => Promise<T>
   size: () => number

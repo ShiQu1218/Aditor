@@ -4,7 +4,7 @@ test('native file drops import and analyze videos in both empty and populated li
   const { page } = await launch()
   const session = await page.context().newCDPSession(page)
   try {
-    // CDP 從磁碟建立原生 File；new File() 沒有本機路徑，無法驗證 preload 的路徑解析。
+    // Create a native File from disk through CDP; new File() has no local path and cannot verify preload path resolution.
     for (const batch of [videos.videos.slice(0, 2), videos.videos.slice(2)]) {
       const box = (await page.locator('.lib-screen').boundingBox())!
       const data = { items: [], files: batch.map((video) => video.path), dragOperationsMask: 1 }

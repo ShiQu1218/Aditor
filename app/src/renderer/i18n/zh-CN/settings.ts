@@ -1,6 +1,6 @@
 import type { Messages } from '../index'
 
-/** 设置界面：分类、卡片、各行文字与控件标签。 */
+/** Settings screen: categories, cards, row text, and control labels. */
 export const settingsI18n: Messages['settingsI18n'] = {
   title: '设置',
   searchPlaceholder: '搜索设置',

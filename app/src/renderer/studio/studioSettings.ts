@@ -1,17 +1,17 @@
 import { DEFAULT_SETTINGS } from '../../shared/settings'
 import type { AutoClipParams } from '../../shared/types'
 
-/** 工作室實際消費的設定子集（其餘設定由別處消費；對照表見 task-17 報告）。 */
+/** Settings subset actually consumed by the studio (other settings are consumed elsewhere; see the task-17 report for the mapping). */
 export interface StudioSettings {
-  /** 開啟影片時自動放置 AI 建議 */
+/** Automatically place AI suggestions when opening a video. */
   autoSuggestOnOpen: boolean
-  /** AI 浮層與自動建議共用的預設參數 */
+/** Default parameters shared by the AI popover and automatic suggestions. */
   autoclip: AutoClipParams
   projectTrackCollapsed: 'auto' | boolean
   sameDayVideosCollapsed: boolean
-  /** 事件 lead-in seek 的事件前秒數 */
+/** Number of seconds before an event to seek for lead-in. */
   before: number
-  /** 無硬體解碼／不可播放時是否建議代理檔 */
+/** Whether to suggest a proxy when hardware decoding is unavailable or the video is unplayable. */
   proxySuggest: boolean
 }
 
@@ -28,7 +28,7 @@ function num(v: unknown, fallback: number): number {
   return typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : fallback
 }
 
-/** 把 `settings:get`／`settings:changed` 的資料（不受信任的形狀）轉成工作室設定，缺漏欄位回退預設。 */
+/** Convert the untrusted shape from `settings:get`/`settings:changed` into studio settings, falling back to defaults for missing fields. */
 export function toStudioSettings(raw: unknown, base: StudioSettings = STUDIO_SETTINGS_DEFAULTS): StudioSettings {
   const s = (typeof raw === 'object' && raw !== null ? raw : {}) as Record<string, unknown>
   const pref = s.projectTrackCollapsed
@@ -42,7 +42,7 @@ export function toStudioSettings(raw: unknown, base: StudioSettings = STUDIO_SET
   }
 }
 
-/** 點事件／上下一個事件時的 seek 目標：事件前 `before` 秒（不小於 0）。 */
+/** Seek target when clicking or navigating between events: `before` seconds before the event, never below 0. */
 export function leadInSeek(t: number, before: number): number {
   return Math.max(0, t - before)
 }
@@ -55,9 +55,9 @@ interface SettingsApi {
 }
 
 /**
- * 讀取設定並訂閱 `settings:changed`（變更免重啟）。
- * 較新的 changed 事件不會被較晚回來的 get() 蓋掉；沒有 api → 立刻回預設；get 失敗 → 預設但不自動放置建議。
- * 回傳解除訂閱函式。
+ * Read settings and subscribe to `settings:changed` (changes apply without a restart).
+ * A newer changed event is not overwritten by a later get() response; without an API, return defaults immediately; if get() fails, use defaults without automatically placing suggestions.
+ * Returns an unsubscribe function.
  */
 export function subscribeStudioSettings(api: SettingsApi | undefined, onSettings: (s: StudioSettings) => void): () => void {
   if (!api?.settings?.get) {

@@ -3,7 +3,7 @@ name = "aditorrec"
 version = "0.1.0"
 edition = "2021"
 rust-version = "1.87"
-description = "Aditor 原生錄影核心：WGC 擷取、硬體編碼、WASAPI 音訊、fMP4 段落、共享記憶體小圖"
+description = "Aditor native recording core: WGC capture, hardware encoding, WASAPI audio, fMP4 segments, shared-memory thumbnails"
 license = "GPL-3.0-or-later"
 publish = false
 
@@ -42,8 +42,6 @@ features = [
   "Win32_System_Memory",
   "Win32_System_LibraryLoader",
   "Win32_System_Performance",
-  "Win32_System_IO",
-  "Win32_System_Pipes",
   "Win32_System_ProcessStatus",
   "Win32_System_Threading",
   "Win32_System_Time",

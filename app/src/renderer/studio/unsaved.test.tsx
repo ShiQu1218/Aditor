@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-// 自動儲存關閉時，關窗與新專案仍須保留最新編輯。
+// When autosave is disabled, closing the window or creating a project must still preserve the latest edits.
 import { act } from 'react'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { buttonByText, cleanupMounted, click, flush } from '../../../test/dom'
@@ -18,8 +18,8 @@ const accept = async (): Promise<void> => {
   await flush(5)
 }
 
-describe('專案只使用內部儲存', () => {
-  test('關窗直接同步儲存，即使自動儲存已關閉；重新掛載能還原', async () => {
+describe('Projects use internal storage only', () => {
+  test('Window close saves synchronously even when autosave is off; remount restores the project', async () => {
     s = await mountStudio({ api: { settings: { projectAutosave: false } } })
     await accept()
     expect(s.fake.api.projects.save).not.toHaveBeenCalled()
@@ -35,7 +35,7 @@ describe('專案只使用內部儲存', () => {
     expect(document.querySelectorAll('.pclip')).toHaveLength(1)
   })
 
-  test('同步儲存失敗回報 false，重試會再次送出相同內容', async () => {
+  test('A failed synchronous save returns false; retry sends the same content again', async () => {
     s = await mountStudio({ api: { settings: { projectAutosave: false } } })
     await accept()
     ;(s.fake.api.projects.flushSync as ReturnType<typeof vi.fn>).mockReturnValueOnce(false)
@@ -49,7 +49,7 @@ describe('專案只使用內部儲存', () => {
     expect(s.fake.api.projects.flushSync).toHaveBeenCalledTimes(2)
   })
 
-  test('新專案先同步儲存舊專案，不再提供另存選項', async () => {
+  test('New project synchronously saves the old project first and no longer offers Save As', async () => {
     s = await mountStudio({ api: { settings: { projectAutosave: false } } })
     await accept()
     click(buttonByText(document, T.track.newProject)!)
@@ -62,7 +62,7 @@ describe('專案只使用內部儲存', () => {
     expect(document.querySelectorAll('.pclip')).toHaveLength(0)
   })
 
-  test('新專案儲存失敗時保留原專案', async () => {
+  test('Keeps the original project when saving it before creating a new project fails', async () => {
     s = await mountStudio({ api: { settings: { projectAutosave: false } } })
     await accept()
     ;(s.fake.api.projects.flushSync as ReturnType<typeof vi.fn>).mockReturnValueOnce(false)

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-// I12：啟動還原遇到損毀／過新版本的專案檔時，要顯示 notice（main 已保留 .bak 並建立空專案）。
+// I12: show a notice when startup restoration finds a corrupted or newer-version project file (main has preserved the .bak and created an empty project).
 import React from 'react'
 import { afterEach, expect, test } from 'vitest'
 import { createFakeApi, installFakeApi } from '../../../test/fakeApi'

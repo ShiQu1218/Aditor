@@ -1,4 +1,4 @@
-// 工作室元件測試用：以假 api 掛載整個 StudioScreen（preloadedDoc＋ProjectProvider 還原的專案）。
+// Studio component-test helper: mount the full StudioScreen with a fake API (preloadedDoc plus a project restored by ProjectProvider).
 import React from 'react'
 import { StudioScreen } from '../src/renderer/studio/StudioScreen'
 import { buildLongDoc } from '../src/renderer/dev/longFixture'
@@ -11,10 +11,10 @@ import { flush, installDomShims, mount, type Mounted } from './dom'
 export const STUDIO_VIDEO = 'fixture://long'
 
 export interface StudioFixtureOptions {
-  /** 覆寫文件（預設 buildLongDoc：約 300 事件、8 個示範片段） */
+  /** Override the document (defaults to buildLongDoc: about 300 events and 8 sample clips). */
   doc?: (d: CacheDoc) => CacheDoc
   clips?: Clip[]
-  /** 啟動時由 ProjectProvider 還原的專案片段 */
+  /** Project clips restored by ProjectProvider at startup. */
   items?: ProjectItem[]
   api?: FakeApiOptions
   onBack?: () => void
@@ -28,7 +28,7 @@ export interface StudioMount {
   restore: () => void
 }
 
-/** 由事件均勻取 n 段 AI 片段（確定性）。 */
+/** Select n AI clips evenly from the events (deterministically). */
 export function makeAiClips(doc: CacheDoc, n: number): Clip[] {
   const evs = doc.events.filter((e) => !e.deleted)
   const step = Math.max(1, Math.floor(evs.length / (n + 1)))
@@ -42,7 +42,7 @@ export async function mountStudio(opts: StudioFixtureOptions = {}): Promise<Stud
   installDomShims({ width: 1366, height: 768 })
   let doc = { ...buildLongDoc(STUDIO_VIDEO), clips: [] as Clip[] }
   if (opts.doc) doc = opts.doc(doc)
-  // 引擎 autoclip 的假回應：自動放置建議（planSuggestions）會用它產生「待確認」的 AI 片段
+  // Fake engine autoclip response: automatic suggestion placement (planSuggestions) uses it to create pending AI clips.
   const ai: Clip[] = opts.clips ?? makeAiClips(doc, 6)
   const project = { ...createProject('測試專案'), items: opts.items ?? [] }
   const fake = createFakeApi({

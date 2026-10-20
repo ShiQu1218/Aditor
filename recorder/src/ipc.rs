@@ -1,8 +1,8 @@
-//! stdin 指令迴圈與 stdout 事件輸出（任務 B4）。錄影邏輯藏在 `Backend` 後面，
-//! 讓迴圈可以用假的 backend 測試；真正的 backend 是 `session::Recorder`（整合任務 C）。
+//! stdin command loop and stdout events (task B4). Recording logic is abstracted behind `Backend`
+//! so the loop can be tested with a fake backend; the real backend is `session::Recorder` (integration task C).
 //!
-//! 規則：每行一個 JSON；stdout 只寫協定訊息（由單一 writer 串行化，事件可來自任何執行緒）；
-//! stdin EOF = 主程序已離開 → 等同 `stop` 後結束。同一時間只能有一個錄影工作（第二次 start 回 `busy`）。
+//! Rules: one JSON value per line; stdout contains only protocol messages (serialized by one writer, with events from any thread);
+//! stdin EOF means the main process exited: stop recording and exit. Only one recording can run at a time (another start returns `busy`).
 
 use std::io::{self, BufRead, Write};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -13,7 +13,7 @@ use crate::protocol::{
     MAX_LINE_BYTES,
 };
 
-/// 可跨執行緒送出事件的 handle（clone 便宜）。
+/// Handle for sending events across threads (cheap to clone).
 #[derive(Clone)]
 pub struct EventSink {
     out: Arc<Mutex<Box<dyn Write + Send>>>,
@@ -30,7 +30,7 @@ impl EventSink {
 
     pub fn emit(&self, ev: &Event) {
         if matches!(ev, Event::Stopped { .. }) {
-            // 先更新狀態，讀端收到 stopped 後立刻 start 也不會看到過期的 busy。
+            // Update state first so a start immediately after stopped does not see a stale busy state.
             self.stopped.fetch_add(1, Ordering::Release);
         }
         self.write_line(ev, None);
@@ -44,22 +44,22 @@ impl EventSink {
         let mut line = match serde_json::to_string(v) {
             Ok(line) if line.len() <= MAX_LINE_BYTES => line,
             Ok(_) => {
-                self.output_error(id, format!("IPC 輸出超過 {MAX_LINE_BYTES} bytes"));
+                self.output_error(id, format!("IPC output exceeds {MAX_LINE_BYTES} bytes"));
                 return;
             }
             Err(error) => {
-                eprintln!("IPC 序列化失敗：{error}");
-                self.output_error(id, "IPC 序列化失敗".into());
+                eprintln!("IPC serialization failed: {error}");
+                self.output_error(id, "IPC serialization failed".into());
                 return;
             }
         };
         line.push('\n');
         if let Ok(mut out) = self.out.lock() {
             if let Err(error) = out.write_all(line.as_bytes()).and_then(|()| out.flush()) {
-                eprintln!("IPC 輸出失敗：{error}");
+                eprintln!("IPC output failed: {error}");
             }
         } else {
-            eprintln!("IPC 輸出鎖定失敗");
+            eprintln!("Failed to lock IPC output");
         }
     }
 
@@ -79,12 +79,12 @@ pub type BackendError = (ErrorCode, String);
 pub trait Backend {
     fn hello(&mut self) -> HelloInfo;
     fn start(&mut self, args: StartArgs, events: EventSink) -> Result<(), BackendError>;
-    /// 沒有錄影工作時也要回 Ok（冪等）。
+    /// Return Ok even when no recording is running (idempotent).
     fn stop(&mut self) -> Result<(), BackendError>;
     fn is_running(&self) -> bool;
 }
 
-/// 跑指令迴圈直到 stdin EOF。
+/// Run the command loop until stdin EOF.
 pub fn run(mut input: impl BufRead, events: EventSink, backend: &mut dyn Backend) {
     let mut recording = false;
     let mut stopped_generation = events.stopped.load(Ordering::Acquire);
@@ -96,7 +96,7 @@ pub fn run(mut input: impl BufRead, events: EventSink, backend: &mut dyn Backend
                     &events,
                     0,
                     ErrorCode::BadRequest,
-                    format!("指令超過 {MAX_LINE_BYTES} bytes"),
+                    format!("Command exceeds {MAX_LINE_BYTES} bytes"),
                 );
                 continue;
             }
@@ -104,7 +104,7 @@ pub fn run(mut input: impl BufRead, events: EventSink, backend: &mut dyn Backend
             Err(error) => {
                 events.emit(&Event::Error {
                     code: ErrorCode::Internal,
-                    message: format!("讀取 IPC 指令失敗：{error}"),
+                    message: format!("Failed to read IPC command: {error}"),
                 });
                 break;
             }
@@ -116,7 +116,7 @@ pub fn run(mut input: impl BufRead, events: EventSink, backend: &mut dyn Backend
                     &events,
                     0,
                     ErrorCode::BadRequest,
-                    "指令不是有效的 UTF-8".into(),
+                    "Command is not valid UTF-8".into(),
                 );
                 continue;
             }
@@ -131,7 +131,7 @@ pub fn run(mut input: impl BufRead, events: EventSink, backend: &mut dyn Backend
                     &events,
                     id.unwrap_or(0),
                     ErrorCode::BadRequest,
-                    format!("無效的指令：{message}"),
+                    format!("Invalid command: {message}"),
                 );
                 continue;
             }
@@ -144,7 +144,7 @@ pub fn run(mut input: impl BufRead, events: EventSink, backend: &mut dyn Backend
         let result = match request.cmd {
             Command::Hello => Ok(ReplyBody::Hello(backend.hello())),
             Command::Ping => Ok(ReplyBody::Empty {}),
-            Command::Start(_) if recording => Err((ErrorCode::Busy, "已有錄影工作執行中".into())),
+            Command::Start(_) if recording => Err((ErrorCode::Busy, "A recording is already running".into())),
             Command::Start(args) => backend.start(args, events.clone()).map(|()| {
                 recording = true;
                 ReplyBody::Empty {}
@@ -187,7 +187,7 @@ enum InputLine {
     Data(Vec<u8>),
 }
 
-// 超長行仍讀到換行再回覆，但只保留上限加一個 CR，下一個指令不受影響。
+// Read oversized lines through the newline before replying, retaining only the limit plus one CR so the next command is unaffected.
 fn read_bounded_line(input: &mut impl BufRead) -> io::Result<InputLine> {
     let mut line = Vec::new();
     let mut overflow = false;
@@ -284,7 +284,7 @@ mod tests {
             self.starts.push(args);
             if self.fail_starts > 0 {
                 self.fail_starts -= 1;
-                return Err((ErrorCode::CaptureFailed, "測試啟動失敗".into()));
+                return Err((ErrorCode::CaptureFailed, "Test start failed".into()));
             }
             self.running = !self.auto_stop;
             events.emit(&Event::Started {
@@ -309,7 +309,7 @@ mod tests {
                 if self.finish_on_stop_error {
                     self.running = false;
                 }
-                Err((ErrorCode::EncodeFailed, "測試停止失敗".into()))
+                Err((ErrorCode::EncodeFailed, "Test stop failed".into()))
             } else {
                 self.running = false;
                 Ok(())
@@ -407,7 +407,7 @@ mod tests {
         assert_eq!(lines[3]["code"], "encode_failed");
         assert_eq!(lines[4]["code"], "busy");
         assert_eq!(backend.starts.len(), 2);
-        assert_eq!(backend.stops, 2); // stop 失敗後 EOF 仍會收尾。
+        assert_eq!(backend.stops, 2); // EOF still finalizes after stop fails.
     }
 
     #[test]
@@ -490,7 +490,7 @@ mod tests {
 
     impl Read for ReadFailure {
         fn read(&mut self, _: &mut [u8]) -> io::Result<usize> {
-            Err(io::Error::other("測試讀取失敗"))
+            Err(io::Error::other("Test read failed"))
         }
     }
 

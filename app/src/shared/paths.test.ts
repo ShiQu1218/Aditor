@@ -6,7 +6,7 @@ import { aditorrecCommand, cacheDir, chromiumUserDataDir, liveEngineCommand, sce
 describe('chromiumUserDataDir', () => {
   afterEach(() => vi.unstubAllEnvs())
 
-  it('Chromium 的 Cache 子資料夾不與分析快取重疊（Windows 路徑不分大小寫）', () => {
+  it('Chromium Cache subfolder does not overlap the analysis cache (Windows paths are case-insensitive)', () => {
     vi.stubEnv('APPDATA', path.resolve('roaming'))
     const chromiumCache = path.join(chromiumUserDataDir(), 'Cache').toLowerCase()
     expect(chromiumCache).not.toBe(cacheDir().toLowerCase())
@@ -23,7 +23,7 @@ describe('liveEngineCommand', () => {
     else resources.resourcesPath = originalResources
   })
 
-  it('開發：同一個 venv Python，子指令改為 live；場景範本在 templates/scene', () => {
+  it('Development: uses the same venv Python, switches the subcommand to live, and places scene templates in templates/scene', () => {
     expect(liveEngineCommand(false)).toEqual({
       command: path.join(root, 'engine/.venv/Scripts/python.exe'), args: ['-m', 'aditor', 'live'],
       env: { PYTHONPATH: path.join(root, 'engine') }
@@ -31,7 +31,7 @@ describe('liveEngineCommand', () => {
     expect(sceneDir(false)).toBe(path.join(root, 'templates/scene'))
   })
 
-  it('打包：resources 下的 aditor.exe live', () => {
+  it('Packaged: runs aditor.exe live under resources', () => {
     resources.resourcesPath = path.resolve('installed/resources')
     expect(liveEngineCommand(true)).toEqual({ command: path.join(resources.resourcesPath, 'engine/aditor/aditor.exe'), args: ['live'] })
     expect(sceneDir(true)).toBe(path.join(resources.resourcesPath, 'templates/scene'))
@@ -83,23 +83,5 @@ describe('aditorrecCommand', () => {
       expect(png.readUInt32BE(16)).toBe(32)
       expect(png.readUInt32BE(20)).toBe(32)
     }
-  })
-})
-
-import { obsHookDir } from './paths'
-
-describe('obsHookDir', () => {
-  const root = path.resolve(__dirname, '../../..')
-  const resources = process as unknown as { resourcesPath?: string }
-  const originalResources = resources.resourcesPath
-  afterEach(() => {
-    if (originalResources === undefined) delete resources.resourcesPath
-    else resources.resourcesPath = originalResources
-  })
-
-  it('開發：repo 根目錄下的 build/obs-hook；打包：resources 下的 obs-hook', () => {
-    expect(obsHookDir(false)).toBe(path.join(root, 'build', 'obs-hook'))
-    resources.resourcesPath = path.resolve('installed/resources')
-    expect(obsHookDir(true)).toBe(path.join(resources.resourcesPath, 'obs-hook'))
   })
 })

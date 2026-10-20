@@ -1,4 +1,4 @@
-"""與文字無關的場景外框比對；只供對局切分，不影響既有擊殺偵測。"""
+"""Text-independent scene-frame matching used only for match segmentation; it does not affect kill detection."""
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -11,8 +11,8 @@ import numpy as np
 SceneKind = Literal["pre_match", "lobby", "in_match_hud", "other"]
 SCENE_SIZE = (640, 360)
 BASE_SIZE = (1920, 1080)
-# 下列座標均為 1920×1080 基準。離線先縮為 640×360，再裁局部區域。
-# 每個 ROI 的 min_size 是傳輸時所需的最低像素尺寸，fps 是最低取樣頻率。
+# Coordinates below use a 1920×1080 reference. Offline frames are first resized to 640×360, then cropped to local regions.
+# Each ROI's min_size is the minimum pixel size required for transmission; fps is the minimum sampling rate.
 SCENE_ROIS = {
     "mode_card": {"rect": (285, 45, 210, 165), "min_size": (70, 55), "fps": 1},
     "loading_footer": {"rect": (711, 828, 498, 84), "min_size": (166, 28), "fps": 1},
@@ -28,14 +28,16 @@ SCENE_ROIS = {
 @dataclass(frozen=True)
 class SceneFrame:
     kind: SceneKind
-    # 總結仍歸 other；只用正向外框恢復「錄影從上一局局尾開始」的狀態。
+    # Keep the summary classified as other; use only the positive frame to recover the state where recording
+    # starts at the end of the previous match.
     match_context: bool = False
     scores: dict[str, float] = field(default_factory=dict, compare=False)
-    # 全黑畫面：DDA 擷取時遊戲不在前景，錄影器改送黑幀，看不到遊戲狀態。
+    # A fully black frame means the game is not in the foreground during DDA capture, so the recorder sends
+    # a black frame and the game state is unavailable.
     blank: bool = False
 
 
-# 範本的原點為 SCENE_SIZE 座標，搜尋範圍含少量座標／縮放誤差。
+# Templates use SCENE_SIZE coordinates; the search area allows for small position and scale errors.
 _TEMPLATES = {
     "mode_chevron": ((95, 15, 70, 55), (132, 20)),
     "loading_footer": ((237, 276, 166, 28), (242, 281)),
@@ -54,7 +56,7 @@ PRE_MATCH_THRESHOLD = 0.75
 LOBBY_THRESHOLD = 0.70
 HUD_THRESHOLD = 0.60
 SUMMARY_THRESHOLD = 0.80
-# 縮圖最亮像素不超過這個值視為全黑（容許編碼後的黑位偏移）。
+# A thumbnail is considered black when its brightest pixel is at or below this value (allowing for encoded black-level offset).
 BLANK_MAX_LEVEL = 8
 
 
@@ -68,21 +70,21 @@ class SceneDetector:
                 path = template_dir / f"{name}{suffix}.png"
                 img = cv2.imdecode(np.fromfile(str(path), dtype=np.uint8), cv2.IMREAD_GRAYSCALE)
                 if img is None:
-                    raise ValueError(f"場景範本無法讀取：{path}")
+                    raise ValueError(f"Could not read scene template: {path}")
                 images.append(img)
             self._templates[name] = tuple(images)
 
     def classify(self, frame: np.ndarray) -> SceneFrame:
-        """輸入 uint8 BGR 或灰階全畫面；尺寸不足時拒絕，避免假性升頻。"""
+        """Accept a full-frame uint8 BGR or grayscale image; reject undersized input to avoid artificial upscaling."""
         if frame.dtype != np.uint8 or frame.ndim not in (2, 3):
-            raise ValueError("場景影格必須為 uint8 BGR 或灰階")
+            raise ValueError("Scene frame must be uint8 BGR or grayscale")
         if frame.ndim == 3:
             if frame.shape[2] != 3:
-                raise ValueError("場景影格必須為三通道 BGR")
+                raise ValueError("Scene frame must have three BGR channels")
             frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         h, w = frame.shape
         if w < SCENE_SIZE[0] or h < SCENE_SIZE[1]:
-            raise ValueError("目前場景設定至少需要 640×360；請提供場景 ROI 或較大的全畫面")
+            raise ValueError("Current scene settings require at least 640×360; provide a scene ROI or a larger full frame")
         gray = cv2.resize(frame, SCENE_SIZE, interpolation=cv2.INTER_AREA)
         scores = {}
         for name, (roi, _) in _TEMPLATES.items():

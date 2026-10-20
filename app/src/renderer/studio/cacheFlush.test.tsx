@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-// I4：工作室快取的 1 秒去抖寫入，在離開（卸載）、關閉視窗（beforeunload／main 的 flushRequest）時必須同步寫入，不能丟掉。
+// I4: the studio cache uses a 1-second debounced write; flush synchronously on navigation/unmount or window close (beforeunload/main flushRequest) so edits are not lost.
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { cleanupMounted, click, flush } from '../../../test/dom'
 import { mountStudio, type StudioMount } from '../../../test/studioHarness'
@@ -43,7 +43,7 @@ describe('studio cache flush (I4)', () => {
   test('main flushRequest flushes a pending edit; nothing pending -> nothing written', async () => {
     s = await mountStudio({ doc: (d) => ({ ...d, cache_path: 'C:/cache/x.json' }) })
     const saveSync = s.fake.api.cache.saveSync as ReturnType<typeof vi.fn>
-    // 載入時自動放置建議本身就是待寫入的編輯：先 flush 掉，之後沒有新編輯就不該再寫
+  // Automatically placing suggestions on load is itself an edit to persist: flush it first, then do not write again without further edits.
     window.dispatchEvent(new Event('beforeunload'))
     saveSync.mockClear()
     window.dispatchEvent(new Event('beforeunload'))
