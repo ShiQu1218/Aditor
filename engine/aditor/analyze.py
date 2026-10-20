@@ -198,7 +198,7 @@ def _save(cp: Path, doc: dict, fallback: Path) -> Path:
 
 
 def _resumable(old: dict | None, info, profile: Profile, check_aspect: bool = True) -> bool:
-    """check_aspect=False (untagged video, aspect detected) resumes whatever squash the partial holds."""
+    """check_aspect=False reuses the stored squash only if the partial records aspect provenance."""
     if not old:
         return False
     a, v = old.get("analysis") or {}, old.get("video") or {}
@@ -207,7 +207,7 @@ def _resumable(old: dict | None, info, profile: Profile, check_aspect: bool = Tr
             and abs(float(v.get("mtime", -1.0)) - info.mtime) < 1e-6
             and a.get("engine_version") == ENGINE_VERSION
             and a.get("templates_version") == profile.templates_version
-            and (not check_aspect or a.get("aspect_squash", 1.0) == profile.layout.squash))
+            and (a.get("aspect_squash", 1.0) == profile.layout.squash if check_aspect else "aspect_source" in a))
 
 
 class _Learner:

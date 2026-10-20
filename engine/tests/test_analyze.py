@@ -576,6 +576,38 @@ def test_analyze_legacy_cache_cancel_leaves_cache_untouched(tmp_path, profile, m
     assert cp.read_bytes() == before
 
 
+@pytest.mark.parametrize("legacy", [True, False])
+def test_analyze_untagged_partial_requires_aspect_source(tmp_path, profile, knock_banner_png, monkeypatch, short_learn, legacy):
+    v = make_video(tmp_path, "4by3.mp4", 15, overlay=(knock_banner_png, SPANS), game_height=1440)
+    cache = tmp_path / "cache"
+    cancel = threading.Event()
+    with monkeypatch.context() as m:
+        _detects(m, 1.0 if legacy else 0.75)
+        m.setattr(az, "FrameStream", _CancelAt(11.0, cancel))
+        with pytest.raises(az.Cancelled):
+            az.analyze(str(v), profile, cache_dir=cache, cancel=cancel)
+    cp = cache_path(str(v), cache)
+    part = load_cache(cp)
+    assert part["analysis"]["status"] == "partial"
+    assert part["analysis"]["h_scale"] is not None
+    if legacy:
+        part["analysis"].pop("aspect_source")
+        part["analysis"].pop("aspect_squash")
+        save_cache(cp, part)
+        calls = _detects(monkeypatch, 0.75)
+    else:
+        assert part["analysis"]["aspect_source"] == "detected"
+        _forbid(monkeypatch)
+        monkeypatch.setattr(az, "calibrate", lambda *a, **k: pytest.fail("Calibration should not run again."))
+    doc = az.analyze(str(v), profile, cache_dir=cache)
+    if legacy:
+        assert len(calls) == 1
+    assert doc["analysis"]["status"] == "done"
+    assert doc["analysis"]["aspect_squash"] == 0.75
+    assert doc["analysis"]["aspect_source"] == "detected"
+    assert len([e for e in doc["events"] if e["type"] == "knock"]) == 2
+
+
 def test_analyze_resume_reuses_the_stored_squash(tmp_path, profile, fixture_video, monkeypatch, short_learn):
     cache = tmp_path / "cache"
     cancel = threading.Event()
