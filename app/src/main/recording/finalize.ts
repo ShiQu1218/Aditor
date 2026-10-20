@@ -9,12 +9,15 @@ import { isTrusted, writeLiveCache, type LiveFile } from './live-cache'
 import { finalizeObsSession } from './obs-finalize'
 import { tr } from '../../shared/locale'
 import { DAY_FOLDER_PATTERN, dayFolderName } from '../../shared/storage'
+import { DEFAULT_GAME, GAMES, gameOf, type GameId } from '../../shared/games'
 
 export interface SessionSnapshot {
   startedAt: number
   postAnalysis: PostRecordAnalysis
   mode: RecordingMode
   gameAspect?: string | null
+  /** Absent in recordings made before multi-game support (Apex). */
+  game?: GameId
 }
 
 export interface IndexEntry { seq: number; pts: number; dur: number }
@@ -83,7 +86,7 @@ async function snapshot(dir: string, fallback: PostRecordAnalysis): Promise<Sess
     if (!Number.isFinite(value.startedAt) || !['none', 'afterExit', 'perMatch'].includes(value.postAnalysis)) {
       throw new Error(tr('錄影設定快照無效'))
     }
-    return { ...value, mode: value.mode === 'match' ? 'match' : 'session' }
+    return { ...value, mode: value.mode === 'match' ? 'match' : 'session', game: gameOf(value.game) }
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
   }
@@ -177,7 +180,7 @@ async function remuxMatch(dir: string, deps: RecordingDeps, config: SessionSnaps
   index: number, match: { start: number; end: number }, entries: IndexEntry[]
 ): Promise<MatchCut> {
   const outputDir = path.dirname(path.dirname(dir))
-  const { output, part } = await reserveOutput(outputDir, outputBase(config.startedAt + entries[0].pts * 1000), config.startedAt + entries[0].pts * 1000)
+  const { output, part } = await reserveOutput(outputDir, outputBase(config.startedAt + entries[0].pts * 1000, config.game), config.startedAt + entries[0].pts * 1000)
   const pending = path.join(dir, 'match-part.json')
   let recorded = false
   try {
@@ -186,7 +189,7 @@ async function remuxMatch(dir: string, deps: RecordingDeps, config: SessionSnaps
       const stat = await fs.promises.lstat(file)
       if (!stat.isFile() || stat.isSymbolicLink()) throw new Error(tr('逐局剪檔缺少有效片段：{file}', { file }))
     }
-    await remux(deps.ffmpegPath, segmentPaths(dir, entries), part, config.gameAspect)
+    await remux(deps.ffmpegPath, segmentPaths(dir, entries), part, config)
     if (fs.existsSync(output)) throw new Error(tr('輸出影片已存在：{output}', { output }))
     const cut: MatchCut = { index, ...match, firstSeq: entries[0].seq, lastSeq: entries.at(-1)!.seq,
       outputPath: output, analysisQueued: false, liveCached: false, liveTrusted: false }
@@ -333,10 +336,10 @@ export async function cutMatches(dir: string, deps: RecordingDeps, options: Matc
   return outputs
 }
 
-export function outputBase(startedAt: number): string {
+export function outputBase(startedAt: number, game?: GameId): string {
   const date = new Date(startedAt)
   const pad = (n: number): string => String(n).padStart(2, '0')
-  return `Apex_${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}_${pad(date.getHours())}-${pad(date.getMinutes())}`
+  return `${GAMES[gameOf(game)].filePrefix}_${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}_${pad(date.getHours())}-${pad(date.getMinutes())}`
 }
 
 /** Place output in `<outputDir>/<local start date>/`; check `_2`, `_3`, and similar collisions within that date folder. */
@@ -359,10 +362,18 @@ export async function reserveOutput(outputDir: string, base: string, startedAt: 
   }
 }
 
-async function remux(ffmpeg: string, files: string[], output: string, gameAspect?: string | null): Promise<void> {
-  const metadata = gameAspect ? ['-metadata', `aditor_game_aspect=${gameAspect}`] : []
+/** MP4 tags the engine reads back for offline analysis; Apex recordings stay untagged for the game, as before. */
+export function gameMetadataArgs(config: { gameAspect?: string | null; game?: GameId }): string[] {
+  const tags = [
+    ...(config.gameAspect ? [`aditor_game_aspect=${config.gameAspect}`] : []),
+    ...(config.game && config.game !== DEFAULT_GAME ? [`aditor_game=${config.game}`] : [])
+  ]
+  return [...tags.flatMap((tag) => ['-metadata', tag]), '-movflags', tags.length ? '+faststart+use_metadata_tags' : '+faststart']
+}
+
+async function remux(ffmpeg: string, files: string[], output: string, config: SessionSnapshot): Promise<void> {
   const proc = spawn(ffmpeg, ['-hide_banner', '-loglevel', 'error', '-y', '-f', 'mp4', '-i', 'pipe:0',
-    '-map', '0', '-c', 'copy', ...metadata, '-movflags', gameAspect ? '+faststart+use_metadata_tags' : '+faststart', output],
+    '-map', '0', '-c', 'copy', ...gameMetadataArgs(config), output],
   { windowsHide: true, stdio: 'pipe' })
   let stderr = Buffer.alloc(0)
   proc.stdout.resume()
@@ -429,9 +440,9 @@ export async function finalizeSession(dir: string, deps: RecordingDeps): Promise
     }
     const { present, missing } = await presentEntries(dir, entries)
     if (!present.length) throw new Error(tr('錄影段落檔案全部遺失，無法輸出影片，已保留工作'))
-    const { output, part } = await reserveOutput(outputDir, outputBase(config.startedAt), config.startedAt)
+    const { output, part } = await reserveOutput(outputDir, outputBase(config.startedAt, config.game), config.startedAt)
     try {
-      await remux(deps.ffmpegPath, segmentPaths(dir, present), part, config.gameAspect)
+      await remux(deps.ffmpegPath, segmentPaths(dir, present), part, config)
       await fs.promises.access(output).then(() => {
         throw new Error(tr('輸出影片已存在：{output}', { output }))
       }, (error: NodeJS.ErrnoException) => { if (error.code !== 'ENOENT') throw error })

@@ -8,6 +8,7 @@ import fs from 'fs'
 import path from 'path'
 import { EventEmitter } from 'events'
 import { isCounted } from '../../shared/types'
+import { DEFAULT_GAME, type GameId } from '../../shared/games'
 import type { LiveEvent, LiveMatch, LiveSegment, LiveState, LiveUpdate } from '../../shared/recording'
 import { LiveEngine, type LiveMatchEvent, type LiveSnapshot, type LiveSpec } from './live-engine'
 import { pruneSegments } from './prune'
@@ -62,8 +63,10 @@ export interface LiveSessionOptions {
   command?: RecorderCommand
   profileDir: string
   sceneDir?: string
-  /** Game render resolution (`WxH`) from the Apex config, passed as `--aspect` so detection follows the HUD layout. */
+  /** Game render resolution (`WxH`) from the game config, passed as `--aspect` so detection follows the HUD layout. */
   aspect?: string | null
+  /** Passed as `--game` for games other than the engine default (Apex). */
+  game?: GameId
   restartBaseMs?: number
   /** Write one line to events.jsonl (through the session write queue). */
   recordEvent: (event: Record<string, unknown> & { ev: string }) => void
@@ -105,6 +108,7 @@ export class LiveSession extends EventEmitter {
     const args = ['--shm', shm, '--profile-dir', this.options.profileDir]
     if (this.options.sceneDir) args.push('--scene-dir', this.options.sceneDir)
     if (this.options.aspect) args.push('--aspect', this.options.aspect)
+    if (this.options.game && this.options.game !== DEFAULT_GAME) args.push('--game', this.options.game)
     const engine = new LiveEngine({ command, args, restartBaseMs: this.options.restartBaseMs })
     this.engine = engine
     this.listen(engine)

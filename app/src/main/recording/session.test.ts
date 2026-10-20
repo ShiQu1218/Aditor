@@ -471,4 +471,10 @@ describe('recorder small-frame regions', () => {
     write({ ...rois, capture_rois: { banner: [560, 1000, 800, 228], spec: [60, 1028, 480, 44] } })
     await expect(readFrames(dir)).rejects.toThrow()
   })
+
+  it('reports a missing template set for a detected game that has none yet as profile_invalid', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'aditor-frames-'))
+    await expect(readFrames(path.join(dir, 'valorant', 'icons'), 'valorant')).rejects.toMatchObject({ code: 'profile_invalid' })
+    await expect(readFrames(path.join(dir, 'icons'), 'apex')).rejects.toMatchObject({ code: 'ENOENT' })
+  })
 })

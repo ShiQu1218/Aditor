@@ -7,7 +7,8 @@ import {
   type LiveState, type LiveUpdate, type RecordingBackend, type RecordingMode, type RecordingService, type RecordingStatus, type RecorderCapabilities, type ObsTestResult
 } from '../../shared/recording'
 import { isSafeLocalDirPath } from '../safe-path'
-import { ApexWatcher, findApexPid } from './apex-watcher'
+import { GameWatcher, findGameProcess, sameProcess, type GameProcess } from './game-watcher'
+import { DEFAULT_GAME, GAMES, gameProfileDir, gameSceneDir, type GameId } from '../../shared/games'
 import { AditorrecClient, RecorderError, type RecorderEvent } from './aditorrec-client'
 import { diskFreeBytes, diskLevel } from './disk'
 import { probeStorageKind } from './storage-location'
@@ -36,6 +37,7 @@ function driverHint(code: string, error: unknown): string | null {
 
 interface ActiveSession {
   pid: number
+  game: GameId
   id: string
   dir: string
   outputDir: string
@@ -77,8 +79,17 @@ function sessionId(): string {
 }
 
 /** Crop the profile capture rects, which contain the HUD regions for every game aspect; older profiles have only the 16:9 ROIs. */
-export async function readFrames(profileDir: string): Promise<object> {
-  const profile = JSON.parse(await fs.promises.readFile(path.join(profileDir, 'profile.json'), 'utf8'))
+export async function readFrames(profileDir: string, game: GameId = DEFAULT_GAME): Promise<object> {
+  let text: string
+  try { text = await fs.promises.readFile(path.join(profileDir, 'profile.json'), 'utf8') }
+  catch (error) {
+    // Games without shipped templates are detected but cannot be recorded yet.
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT' && game !== DEFAULT_GAME) {
+      throw new RecorderError('profile_invalid', tr('尚未支援 {game} 的錄影範本', { game: GAMES[game].displayName }))
+    }
+    throw error
+  }
+  const profile = JSON.parse(text)
   const roi = (value: unknown): value is number[] => Array.isArray(value) && value.length === 4 &&
     value.every((n) => Number.isInteger(n) && n >= 0) && value[2] > 0 && value[3] > 0 &&
     value[0] + value[2] <= 1920 && value[1] + value[3] <= 1080
@@ -91,9 +102,11 @@ export async function readFrames(profileDir: string): Promise<object> {
 export class RecordingSessionService implements RecordingService {
   private state: RecordingStatus = { ...IDLE_RECORDING_STATUS }
   private events = new EventEmitter()
-  private watcher: ApexWatcher
+  private watcher: GameWatcher<GameProcess>
   private running = false
   private gamePid: number | null = null
+  /** Game of gamePid; keeps the last game after it exits. */
+  private game: GameId = DEFAULT_GAME
   private active: ActiveSession | null = null
   private operations: Promise<void> = Promise.resolve()
   private recovery: Promise<void> = Promise.resolve()
@@ -119,34 +132,47 @@ export class RecordingSessionService implements RecordingService {
   private storageChecked = new Set<string>()
 
   constructor(private deps: RecordingDeps) {
-    this.watcher = new ApexWatcher(deps.findApexPid ?? findApexPid, deps.pollMs ?? 3000,
-      (pid) => {
+    this.watcher = new GameWatcher<GameProcess>(this.findGame, deps.pollMs ?? 3000,
+      (found) => {
         this.pollWarning = false
+        const pid = found?.pid ?? null
         const exited = this.gamePid !== null && pid === null
-        if (pid !== this.gamePid) {
+        if (!sameProcess(found, this.current())) {
           this.manualStopped = false
           this.builtinFallbackPid = null
           this.blocked = false
           this.cancelRetry()
           this.pidSeenAt = this.firstPoll ? -Infinity : Date.now()
           this.skipReason = null
-          this.log(`apex pid ${pid ?? 'none'}`)
+          this.log(`${found?.game ?? this.game} pid ${pid ?? 'none'}`)
         }
         this.firstPoll = false
         this.gamePid = pid
+        if (found) this.game = found.game
         if (exited && this.deps.getSettings().openOnGameExit) this.deps.onGameExit?.()
         void this.serialize(async () => {
           if (!this.running) return
           // Several polls may accumulate while starting or finalizing; use only the latest PID.
-          if (this.active && this.active.pid !== this.gamePid) await this.finish()
+          if (this.active && (this.active.pid !== this.gamePid || this.active.game !== this.game)) await this.finish()
           await this.autoStart()
         })
       }, (error) => {
         // Startup presence is unknown after a failed first query, so a game found later gets the launch delay.
         this.firstPoll = false
-        if (!this.pollWarning) this.notice('error', tr('無法偵測 Apex 程序：{error}', { error: String(error) }))
+        if (!this.pollWarning) this.notice('error', tr('無法偵測遊戲程序：{error}', { error: String(error) }))
         this.pollWarning = true
-      })
+      }, sameProcess)
+  }
+
+  private get findGame(): () => Promise<GameProcess | null> {
+    const { findGame, findApexPid } = this.deps
+    if (findGame) return findGame
+    if (findApexPid) return async () => { const pid = await findApexPid(); return pid ? { game: 'apex', pid } : null }
+    return findGameProcess
+  }
+
+  private current(): GameProcess | null {
+    return this.gamePid === null ? null : { game: this.game, pid: this.gamePid }
   }
 
   start(): void {
@@ -180,12 +206,14 @@ export class RecordingSessionService implements RecordingService {
     return this.serialize(async () => {
       if (!this.running) return false
       if (this.active) return this.state.phase === 'recording'
-      const pid = await (this.deps.findApexPid ?? findApexPid)()
-      if (!pid || !this.running) return false
-      if (pid !== this.gamePid) {
+      const found = await this.findGame()
+      if (!found || !this.running) return false
+      const { pid } = found
+      if (!sameProcess(found, this.current())) {
         this.builtinFallbackPid = null
       }
       this.gamePid = pid
+      this.game = found.game
       this.manualStopped = false
       this.blocked = false
       this.cancelRetry()
@@ -266,10 +294,11 @@ export class RecordingSessionService implements RecordingService {
     return this.active.live
   }
 
-  private createLive(id: string, dir: string, aspect: string | null): LiveSession {
+  private createLive(id: string, dir: string, aspect: string | null, game: GameId): LiveSession {
     const live = new LiveSession({
-      sessionId: id, dir, command: this.deps.liveEngineCommand, profileDir: this.deps.profileDir,
-      sceneDir: this.deps.sceneDir, aspect, restartBaseMs: this.deps.liveRestartBaseMs,
+      sessionId: id, dir, command: this.deps.liveEngineCommand, profileDir: gameProfileDir(this.deps.profileDir, game),
+      sceneDir: game === DEFAULT_GAME ? this.deps.sceneDir : gameSceneDir(this.deps.profileDir, game), aspect, game,
+      restartBaseMs: this.deps.liveRestartBaseMs,
       recordEvent: (event) => { if (this.active?.live === live) this.recordEvent(this.active, event) },
       notice: (message) => this.notice('error', message)
     })
@@ -375,7 +404,8 @@ export class RecordingSessionService implements RecordingService {
     const settings = { ...this.deps.getSettings() }
     if (builtin || this.builtinFallbackPid === pid) settings.backend = 'builtin'
     const capture = settings.backend === 'obs' ? 'dda' : settings.captureMethod
-    this.log(`begin pid=${pid} backend=${settings.backend} capture=${capture}`)
+    const game = this.game
+    this.log(`begin pid=${pid}${game === DEFAULT_GAME ? '' : ` game=${game}`} backend=${settings.backend} capture=${capture}`)
     const outputDir = settings.outputDir ?? this.deps.getWatchFolders()[0] ?? this.deps.defaultOutputDir
     this.update({ ...IDLE_RECORDING_STATUS, paused: this.state.paused, phase: 'starting' })
     let session: ActiveSession | null = null
@@ -386,8 +416,8 @@ export class RecordingSessionService implements RecordingService {
       this.update({ diskFreeBytes: free })
       this.warnStorage(outputDir)
       if (diskLevel(free, settings) === 'stop') throw new RecorderError('disk_full', tr('磁碟剩餘空間低於停止門檻，無法開始錄影'))
-      const frames = await readFrames(this.deps.profileDir)
-      const gameAspect = await (this.deps.readGameAspect ?? readGameAspect)()
+      const frames = await readFrames(gameProfileDir(this.deps.profileDir, game), game)
+      const gameAspect = await (this.deps.readGameAspect ?? readGameAspect)(game)
       this.log(`game aspect ${gameAspect ?? 'unknown'}`)
       const id = sessionId()
       const root = path.join(outputDir, '.sessions')
@@ -398,12 +428,12 @@ export class RecordingSessionService implements RecordingService {
       await validateSessionDir(dir)
       const startedAt = Date.now()
       const writeSnapshot = (): Promise<void> => writeJson(path.join(dir, 'recording.json'), {
-        startedAt, postAnalysis: settings.postAnalysis, mode: settings.mode, backend: session?.backend ?? settings.backend, gameAspect
+        startedAt, postAnalysis: settings.postAnalysis, mode: settings.mode, backend: session?.backend ?? settings.backend, gameAspect, game
       })
       await writeSnapshot()
       const client = new AditorrecClient(this.deps.recorderCommand)
-      const live = this.createLive(id, dir, gameAspect)
-      session = { pid, id, dir, outputDir, client, ending: false, warned: false, writes: Promise.resolve(), sequences: new Set(), live,
+      const live = this.createLive(id, dir, gameAspect, game)
+      session = { pid, game, id, dir, outputDir, client, ending: false, warned: false, writes: Promise.resolve(), sequences: new Set(), live,
         mode: settings.mode, cuts: Promise.resolve(), cutPending: false, cutting: false, failedCuts: new Set(), backend: settings.backend, obs: null, obsWork: Promise.resolve(), captured: false }
       this.active = session
       this.update({ sessionId: id, startedAt, backend: settings.backend })
@@ -439,7 +469,7 @@ export class RecordingSessionService implements RecordingService {
         }
       }
       await client.hello()
-      if (!this.running || this.manualStopped || this.gamePid !== pid) throw new RecorderError('cancelled', tr('錄影啟動已取消'))
+      if (!this.running || this.manualStopped || this.gamePid !== pid || this.game !== game) throw new RecorderError('cancelled', tr('錄影啟動已取消'))
       await client.startRecording({ pid, session_dir: dir, session_id: id,
         encode: current.backend === 'obs' ? null : { codec: settings.codec, encoder: settings.encoder, fps: settings.fps, height: settings.height, bitrate_kbps: settings.bitrateKbps,
           preset: settings.preset, aspect: settings.forceAspect ? settings.aspectMode : 'native' },
