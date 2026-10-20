@@ -123,14 +123,41 @@ describe('recording service state machine', () => {
     expect(commands(value, 'start')[1].capture).toBe('dda')
   })
 
-  it('waits for Apex startup to stabilize before capture, avoiding startup and anti-cheat loading', async () => {
+  it('waits for Apex startup to stabilize before capture when the game launches while Aditor runs', async () => {
     const value = rig()
     value.deps.gameStartDelayMs = 400
     value.service = createRecordingService(value.deps)
+    value.pid = null
+    value.service.start()
+    await waitFor(() => vi.mocked(value.deps.findApexPid!).mock.calls.length >= 2)
+    value.pid = 1234
+    const launchedAt = Date.now()
+    await waitFor(() => commands(value, 'start').length > 0, 5000)
+    expect(Date.now() - launchedAt).toBeGreaterThanOrEqual(400)
+  })
+  it('starts without the startup delay when Apex is already running when Aditor starts', async () => {
+    const value = rig()
+    value.deps.gameStartDelayMs = 5000
+    value.service = createRecordingService(value.deps)
     const startedAt = Date.now()
     value.service.start()
-    await waitFor(() => commands(value, 'start').length > 0, 5000)
-    expect(Date.now() - startedAt).toBeGreaterThanOrEqual(400)
+    await waitFor(() => commands(value, 'start').length > 0, 4000)
+    expect(Date.now() - startedAt).toBeLessThan(4000)
+  })
+  it('logs why auto-start is skipped once per reason', async () => {
+    const value = rig()
+    const log = vi.fn()
+    value.deps.log = log
+    value.settings.autoRecord = false
+    value.service = createRecordingService(value.deps)
+    value.service.start()
+    await waitFor(() => vi.mocked(value.deps.findApexPid!).mock.calls.length >= 4)
+    expect(log.mock.calls.filter(([line]) => line === 'auto-start skipped: auto record disabled')).toHaveLength(1)
+    value.service.setPaused(true)
+    value.settings.autoRecord = true
+    await waitFor(() => log.mock.calls.some(([line]) => line === 'auto-start skipped: paused'))
+    value.service.setPaused(false)
+    await waitFor(() => value.service.status().phase === 'recording')
   })
   it('recalculates the startup delay after the game restarts with a new PID', async () => {
     const value = rig()

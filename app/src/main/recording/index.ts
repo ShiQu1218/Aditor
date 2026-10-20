@@ -24,7 +24,7 @@ export interface RecordingDeps {
   obsFileSettleMs?: number
   /** Test injection: after stopping our OBS recording, how long to treat an active status as stopping rather than a user-owned recording (defaults to 30000). */
   obsStopGraceMs?: number
-  /** Delay in milliseconds between detecting Apex and starting capture (defaults to 20000; tests inject 0). */
+  /** Delay in milliseconds between detecting a newly launched Apex and starting capture; skipped when Apex is already running at startup (defaults to 20000; tests inject 0). */
   gameStartDelayMs?: number
   /** Diagnostic log, flushed line by line so recorder activity remains visible after a system crash. */
   log?: (message: string) => void

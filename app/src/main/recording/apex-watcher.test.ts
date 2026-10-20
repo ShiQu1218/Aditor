@@ -10,7 +10,7 @@ describe('Apex process detection', () => {
     expect(parseApexPid('"R5APEX_DX12.EXE","123","Console","1","10,000 K"\r\n"r5apex.exe","456"')).toBe(123)
   })
 
-  it('confirms starts and exits twice in a row, and does not treat query errors as exits', async () => {
+  it('reports every successful poll immediately and does not treat query errors as exits', async () => {
     vi.useFakeTimers()
     const find = vi.fn().mockResolvedValue(null)
     const changed = vi.fn()
@@ -18,23 +18,21 @@ describe('Apex process detection', () => {
     const watcher = new ApexWatcher(find, 3000, changed, failed)
     watcher.start()
     await vi.advanceTimersByTimeAsync(0)
+    expect(changed).toHaveBeenLastCalledWith(null)
     find.mockResolvedValue(123)
     await vi.advanceTimersByTimeAsync(3000)
-    expect(changed).not.toHaveBeenCalled()
-    await vi.advanceTimersByTimeAsync(3000)
     expect(changed).toHaveBeenLastCalledWith(123)
+    changed.mockClear()
     find.mockRejectedValueOnce(new Error('tasklist 失敗'))
     await vi.advanceTimersByTimeAsync(3000)
     expect(failed).toHaveBeenCalledOnce()
-    changed.mockClear()
-    find.mockResolvedValue(null)
-    await vi.advanceTimersByTimeAsync(3000)
     expect(changed).not.toHaveBeenCalled()
+    find.mockResolvedValue(null)
     await vi.advanceTimersByTimeAsync(3000)
     expect(changed).toHaveBeenLastCalledWith(null)
     watcher.stop()
     await vi.advanceTimersByTimeAsync(30000)
-    expect(find).toHaveBeenCalledTimes(6)
+    expect(find).toHaveBeenCalledTimes(4)
   })
 
   it('ignores pending queries after stop and prevents overlapping polls', async () => {

@@ -24,8 +24,6 @@ export class ApexWatcher {
   private timer: ReturnType<typeof setTimeout> | null = null
   private running = false
   private generation = 0
-  private candidate: number | null = null
-  private count = 0
 
   constructor(
     private find: () => Promise<number | null>,
@@ -37,8 +35,6 @@ export class ApexWatcher {
   start(): void {
     if (this.running) return
     this.running = true
-    this.candidate = null
-    this.count = 0
     void this.poll(++this.generation)
   }
 
@@ -53,13 +49,8 @@ export class ApexWatcher {
     try {
       const pid = await this.find()
       if (!this.running || generation !== this.generation) return
-      this.count = pid === this.candidate ? this.count + 1 : 1
-      this.candidate = pid
-      if (this.count >= 2) {
-        this.changed(pid)
-      }
+      this.changed(pid)
     } catch (error) {
-      this.count = 0
       if (this.running && generation === this.generation) this.failed(error)
     }
     if (this.running && generation === this.generation) {

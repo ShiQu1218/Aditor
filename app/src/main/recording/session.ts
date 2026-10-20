@@ -49,9 +49,10 @@ interface ActiveSession {
 /** After stopping our OBS recording, treat active status during this interval as still stopping. */
 const OBS_STOP_GRACE_MS = 30_000
 /**
- * Delay capture after detecting Apex. During startup the game creates its window, switches to
+ * Delay capture after Apex launches while Aditor is running. During startup the game creates its window, switches to
  * fullscreen, and loads its anti-cheat driver; capturing or creating devices at that point is
  * most likely to trigger driver issues, and the intro does not need to be recorded anyway.
+ * A game already running when Aditor starts is past that phase and starts without the delay.
  */
 const GAME_START_DELAY_MS = 20_000
 
@@ -93,7 +94,10 @@ export class RecordingSessionService implements RecordingService {
   private builtinFallbackPid: number | null = null
   /** Time when the current PID was first confirmed. */
   private pidSeenAt = 0
-  private startDelayTimer: ReturnType<typeof setTimeout> | null = null
+  /** True until the first successful poll after start; a game already running then is past its startup phase. */
+  private firstPoll = true
+  /** Last logged reason a detected game is not being recorded, so each reason is logged once. */
+  private skipReason: string | null = null
   /** Output folders already checked for cloud or network storage during this run. */
   private storageChecked = new Set<string>()
 
@@ -107,17 +111,18 @@ export class RecordingSessionService implements RecordingService {
           this.builtinFallbackPid = null
           this.blocked = false
           this.cancelRetry()
-          this.pidSeenAt = Date.now()
+          this.pidSeenAt = this.firstPoll ? -Infinity : Date.now()
+          this.skipReason = null
           this.log(`apex pid ${pid ?? 'none'}`)
-          this.clearStartDelay()
         }
+        this.firstPoll = false
         this.gamePid = pid
         if (exited && this.deps.getSettings().openOnGameExit) this.deps.onGameExit?.()
         void this.serialize(async () => {
           if (!this.running) return
-          // Several polls may accumulate while starting or finalizing; use only the latest confirmed PID.
+          // Several polls may accumulate while starting or finalizing; use only the latest PID.
           if (this.active && this.active.pid !== this.gamePid) await this.finish()
-          if (this.canAutoStart() && this.gameSettled()) await this.begin(this.gamePid!)
+          await this.autoStart()
         })
       }, (error) => {
         if (!this.pollWarning) this.notice('error', tr('無法偵測 Apex 程序：{error}', { error: String(error) }))
@@ -128,6 +133,7 @@ export class RecordingSessionService implements RecordingService {
   start(): void {
     if (this.running) return
     this.running = true
+    this.firstPoll = true
     this.recovery = this.serialize(() => recoverSessions(this.deps,
       (paths) => this.finalized(paths),
       (error) => this.fail('recovery_failed', tr('錄影補收尾失敗：{error}', { error: String(error) })),
@@ -139,7 +145,6 @@ export class RecordingSessionService implements RecordingService {
     this.running = false
     this.watcher.stop()
     this.cancelRetry()
-    this.clearStartDelay()
     this.clearDiskTimer()
     // Allow cancellation during startup handshakes so app shutdown does not wait for the full startup timeout.
     if (this.state.phase === 'starting') await this.active?.client.close()
@@ -180,7 +185,7 @@ export class RecordingSessionService implements RecordingService {
     this.update({ paused })
     if (paused) this.cancelRetry()
     else void this.serialize(async () => {
-      if (this.canAutoStart() && this.gameSettled()) await this.begin(this.gamePid!)
+      await this.autoStart()
     })
   }
 
@@ -323,30 +328,28 @@ export class RecordingSessionService implements RecordingService {
     return result
   }
 
-  /** Schedule one recheck and return false when the game has not yet completed its startup delay. */
-  private gameSettled(): boolean {
-    const remaining = this.pidSeenAt + (this.deps.gameStartDelayMs ?? GAME_START_DELAY_MS) - Date.now()
-    if (remaining <= 0) return true
-    if (!this.startDelayTimer) {
-      this.startDelayTimer = setTimeout(() => {
-        this.startDelayTimer = null
-        void this.serialize(async () => {
-          if (this.canAutoStart() && this.gameSettled()) await this.begin(this.gamePid!)
-        })
-      }, remaining)
-      this.startDelayTimer.unref()
+  /** Runs on every poll and on resume, so a game still in its startup delay starts on the first poll after the delay. */
+  private async autoStart(): Promise<void> {
+    if (!this.running || this.gamePid === null || this.active) return
+    const reason = this.autoStartBlocker()
+    if (!reason) {
+      this.skipReason = null
+      await this.begin(this.gamePid)
+      return
     }
-    return false
+    if (reason === this.skipReason) return
+    this.skipReason = reason
+    this.log(`auto-start skipped: ${reason}`)
   }
 
-  private clearStartDelay(): void {
-    if (this.startDelayTimer) clearTimeout(this.startDelayTimer)
-    this.startDelayTimer = null
-  }
-
-  private canAutoStart(): boolean {
-    return this.running && this.gamePid !== null && !this.active && !this.state.paused &&
-      !this.manualStopped && !this.blocked && !this.retryTimer && this.deps.getSettings().autoRecord
+  private autoStartBlocker(): string | null {
+    if (this.state.paused) return 'paused'
+    if (this.manualStopped) return 'manual stop'
+    if (this.blocked) return 'blocked after failure'
+    if (this.retryTimer) return 'retry pending'
+    if (!this.deps.getSettings().autoRecord) return 'auto record disabled'
+    if (Date.now() - this.pidSeenAt < (this.deps.gameStartDelayMs ?? GAME_START_DELAY_MS)) return 'waiting for game start delay'
+    return null
   }
 
   private async begin(pid: number, builtin = false): Promise<boolean> {
