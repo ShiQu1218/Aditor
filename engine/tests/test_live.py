@@ -499,6 +499,7 @@ def test_quality_flags_lost_frames(profile, layout, scene):
         w.close()
 
 
+@pytest.mark.slow
 @pytest.mark.timeout(900)
 def test_golden_live_vs_offline(tmp_path, profile, layout, scene):
     if not GOLDEN or not Path(GOLDEN).exists():
@@ -527,6 +528,7 @@ def test_golden_live_vs_offline(tmp_path, profile, layout, scene):
     assert [o for o in out if o["ev"] == "snapshot"]
 
 
+@pytest.mark.slow
 @pytest.mark.timeout(1800)
 @pytest.mark.parametrize("name", MATCH_VIDEOS)
 def test_recording_matches_live_vs_offline(profile, layout, scene, name):
