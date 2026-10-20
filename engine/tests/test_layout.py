@@ -18,6 +18,15 @@ def test_parse_aspect_rejects_unsupported(text):
         parse_aspect(text)
 
 
+@pytest.mark.parametrize("aspect", [
+    pytest.param("9" * 5000 + ":1", id="excessive_integer"),
+    pytest.param("9" * 400 + ":1", id="overflowing_ratio"),
+])
+def test_recorded_layout_ignores_invalid_numeric_tags(aspect):
+    from aditor.layout import recorded_layout
+    assert recorded_layout(aspect) == Layout(1.0)
+
+
 def test_source_rect_follows_anchor_after_vertical_squash():
     lay = Layout(0.75)
     assert lay.source_rect((21, 21, 309, 375), "top") == pytest.approx((21, 15.75, 309, 281.25))

@@ -14,6 +14,7 @@ export interface SessionSnapshot {
   startedAt: number
   postAnalysis: PostRecordAnalysis
   mode: RecordingMode
+  gameAspect?: string | null
 }
 
 export interface IndexEntry { seq: number; pts: number; dur: number }
@@ -185,7 +186,7 @@ async function remuxMatch(dir: string, deps: RecordingDeps, config: SessionSnaps
       const stat = await fs.promises.lstat(file)
       if (!stat.isFile() || stat.isSymbolicLink()) throw new Error(tr('逐局剪檔缺少有效片段：{file}', { file }))
     }
-    await remux(deps.ffmpegPath, segmentPaths(dir, entries), part)
+    await remux(deps.ffmpegPath, segmentPaths(dir, entries), part, config.gameAspect)
     if (fs.existsSync(output)) throw new Error(tr('輸出影片已存在：{output}', { output }))
     const cut: MatchCut = { index, ...match, firstSeq: entries[0].seq, lastSeq: entries.at(-1)!.seq,
       outputPath: output, analysisQueued: false, liveCached: false, liveTrusted: false }
@@ -358,9 +359,11 @@ export async function reserveOutput(outputDir: string, base: string, startedAt: 
   }
 }
 
-async function remux(ffmpeg: string, files: string[], output: string): Promise<void> {
+async function remux(ffmpeg: string, files: string[], output: string, gameAspect?: string | null): Promise<void> {
+  const metadata = gameAspect ? ['-metadata', `aditor_game_aspect=${gameAspect}`] : []
   const proc = spawn(ffmpeg, ['-hide_banner', '-loglevel', 'error', '-y', '-f', 'mp4', '-i', 'pipe:0',
-    '-map', '0', '-c', 'copy', '-movflags', '+faststart', output], { windowsHide: true, stdio: 'pipe' })
+    '-map', '0', '-c', 'copy', ...metadata, '-movflags', gameAspect ? '+faststart+use_metadata_tags' : '+faststart', output],
+  { windowsHide: true, stdio: 'pipe' })
   let stderr = Buffer.alloc(0)
   proc.stdout.resume()
   proc.stderr.on('data', (chunk: Buffer) => { stderr = Buffer.concat([stderr, chunk]).subarray(-65536) })
@@ -428,7 +431,7 @@ export async function finalizeSession(dir: string, deps: RecordingDeps): Promise
     if (!present.length) throw new Error(tr('錄影段落檔案全部遺失，無法輸出影片，已保留工作'))
     const { output, part } = await reserveOutput(outputDir, outputBase(config.startedAt), config.startedAt)
     try {
-      await remux(deps.ffmpegPath, segmentPaths(dir, present), part)
+      await remux(deps.ffmpegPath, segmentPaths(dir, present), part, config.gameAspect)
       await fs.promises.access(output).then(() => {
         throw new Error(tr('輸出影片已存在：{output}', { output }))
       }, (error: NodeJS.ErrnoException) => { if (error.code !== 'ENOENT') throw error })

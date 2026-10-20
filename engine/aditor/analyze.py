@@ -19,6 +19,7 @@ from .errors import Cancelled
 from .derive import derive
 from .detect import Detector, Keywords, Pending
 from .events import EventTracker
+from .layout import Layout, recorded_layout
 from .models import Clip, Event, FrameResult, SpecInterval
 from .probe import keyframes, probe
 from .profile import Profile
@@ -286,8 +287,12 @@ def _replay(sg: _Seg, log: list, own_from: float, hi: float, det: Detector, prof
 def analyze(path: str, profile: Profile, *, cache_dir: Path, beside: bool = False,
             force: bool = False, on_progress: Callable[[float, float], None] = _noop,
             cancel: threading.Event | None = None, hwaccel: bool = True,
-            jobs: int | None = None) -> dict:
+            jobs: int | None = None, layout: Layout | None = None) -> dict:
     info = probe(path)
+    if layout is None:
+        # Retain explicit profile layouts for existing callers.
+        layout = recorded_layout(info.game_aspect) if profile.layout.identity else profile.layout
+    profile = profile.with_layout(layout)
     cache_dir = Path(cache_dir)
     cp = cache_path(path, cache_dir, beside)
     old = load_cache(cp)

@@ -22,6 +22,7 @@ class VideoInfo:
     # Optional stream details used by export rate control; defaults keep older cache documents loadable.
     fps: float = 0.0
     pix_fmt: str = ""
+    game_aspect: str | None = None
 
     def to_dict(self) -> dict:
         return asdict(self)

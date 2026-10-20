@@ -150,10 +150,16 @@ def test_server_prunes_finished_worker_threads():
 
 
 def test_ipc_analyze_game_aspect(tmp_path):
-    v = make_video(tmp_path, "s.mp4", 2)
+    v = make_video(tmp_path, "s.mp4", 2, game_aspect="1920x1440")
     p = Proc()
     p.get()
     base = {"path": str(v), "profile_dir": str(ICON_DIR), "cache_dir": str(tmp_path / "c")}
+    p.send({"id": "tag", "cmd": "analyze", "args": base})
+    end = p.until(lambda m: m.get("id") == "tag" and m["type"] in ("error", "result"))
+    assert end["type"] == "result" and end["data"]["analysis"]["aspect_squash"] == 0.75
+    p.send({"id": "override", "cmd": "analyze", "args": {**base, "aspect": "16:9"}})
+    end = p.until(lambda m: m.get("id") == "override" and m["type"] in ("error", "result"))
+    assert end["type"] == "result" and end["data"]["analysis"]["aspect_squash"] == 1.0
     p.send({"id": "a", "cmd": "analyze", "args": {**base, "aspect": "1920x1440"}})
     end = p.until(lambda m: m.get("id") == "a" and m["type"] in ("error", "result"))
     assert end["type"] == "result" and end["data"]["analysis"]["aspect_squash"] == 0.75

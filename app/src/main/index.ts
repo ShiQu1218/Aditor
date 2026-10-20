@@ -3,8 +3,7 @@ import { createQuitGuard } from './quit-guard'
 import { delimiter, join, resolve } from 'path'
 import { EngineClient } from './engine'
 import { Library } from './library'
-import { AnalysisQueue, gameAspectArg } from './queue'
-import { readGameAspectSync } from './recording/game-aspect'
+import { AnalysisQueue } from './queue'
 import { SettingsStore } from './settings'
 import { WatchManager } from './watch'
 import { ProjectStore } from './projects'
@@ -184,8 +183,7 @@ async function initEngineAndServices(): Promise<void> {
     profileDir: templateProfileDir,
     cacheDir: cacheDir(),
     // Read decode/cacheLocation for each analysis so setting changes take effect without a restart.
-    getSettings: () => settingsStore?.get(),
-    getGameAspect: () => readGameAspectSync()
+    getSettings: () => settingsStore?.get()
   })
 
   // Restore folder watching from settings; automatically import new videos (enqueue them when autoAnalyze is enabled).
@@ -290,7 +288,7 @@ async function initEngineAndServices(): Promise<void> {
 
   ipcMain.handle('engine:analyze', async (event, args: unknown) => {
     // The renderer knows only the video path; main adds the engine's profile_dir/cache_dir (return directly on a cache hit).
-    const req = engineClient?.request('analyze', buildAnalyzeArgs({ profile_dir: templateProfileDir, cache_dir: cacheDir(), ...gameAspectArg(readGameAspectSync()) }, settingsStore?.get(), sanitizeAnalyzeArgs(args)), (progress) => {
+    const req = engineClient?.request('analyze', buildAnalyzeArgs({ profile_dir: templateProfileDir, cache_dir: cacheDir() }, settingsStore?.get(), sanitizeAnalyzeArgs(args)), (progress) => {
       event.sender.send('engine:progress', progress)
     })
     return req?.promise

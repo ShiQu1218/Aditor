@@ -389,3 +389,31 @@ def test_analyze_stretched_4_3_video_with_game_aspect(tmp_path, profile, knock_b
     doc = az.analyze(str(v), four, cache_dir=tmp_path / "cache")  # A different game aspect invalidates the cache.
     assert len([e for e in doc["events"] if e["type"] == "knock"]) == 2, doc["events"]
     assert doc["analysis"]["aspect_squash"] == 0.75
+
+
+@pytest.mark.parametrize("tag,explicit,expected", [
+    ("1920x1440", None, 0.75),
+    ("1920x1440", "16:9", 1.0),
+    ("1920x1440", "5:4", 0.703125),
+    ("invalid", None, 1.0),
+    ("21:9", None, 1.0),
+    (None, None, 1.0),
+])
+def test_analyze_resolves_recorded_aspect(tmp_path, profile, tag, explicit, expected):
+    from aditor.layout import parse_aspect
+    v = make_video(tmp_path, "tagged.mp4", 0.5, game_aspect=tag)
+    kwargs = {"layout": parse_aspect(explicit)} if explicit else {}
+    doc = az.analyze(str(v), profile, cache_dir=tmp_path / "cache", **kwargs)
+    assert doc["analysis"]["aspect_squash"] == expected
+
+
+def test_analyze_tagged_video_cache_and_explicit_override(tmp_path, profile, monkeypatch):
+    from aditor.layout import Layout
+    v = make_video(tmp_path, "tagged.mp4", 0.5, game_aspect="1920x1440")
+    cache = tmp_path / "cache"
+    doc = az.analyze(str(v), profile, cache_dir=cache)
+    assert doc["analysis"]["aspect_squash"] == 0.75
+    with monkeypatch.context() as m:
+        m.setattr(az, "calibrate", lambda *a, **kw: pytest.fail("Matching cache should be reused"))
+        assert az.analyze(str(v), profile, cache_dir=cache)["analysis"]["aspect_squash"] == 0.75
+    assert az.analyze(str(v), profile, cache_dir=cache, layout=Layout(1.0))["analysis"]["aspect_squash"] == 1.0

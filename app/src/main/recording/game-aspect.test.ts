@@ -2,7 +2,7 @@ import fs from 'fs'
 import os from 'os'
 import path from 'path'
 import { describe, expect, it } from 'vitest'
-import { apexVideoConfigPath, parseVideoConfig, readGameAspect, readGameAspectSync } from './game-aspect'
+import { apexVideoConfigPath, parseVideoConfig, readGameAspect } from './game-aspect'
 
 const config = (width: string, height: string, extra = ''): string =>
   `"VideoConfig"\n{\n\t"setting.cl_gib_allow"\t\t"0"\n\t"setting.defaultres"\t\t"${width}"\n` +
@@ -31,15 +31,5 @@ describe('Apex render aspect', () => {
     fs.mkdirSync(path.dirname(file), { recursive: true })
     fs.writeFileSync(file, config('1920', '1440'))
     expect(await readGameAspect(home)).toBe('1920x1440')
-  })
-})
-
-describe('Apex render aspect (synchronous)', () => {
-  it('matches the asynchronous reader', () => {
-    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'aditor-aspect-sync-'))
-    expect(readGameAspectSync(home)).toBeNull()
-    fs.mkdirSync(path.dirname(apexVideoConfigPath(home)), { recursive: true })
-    fs.writeFileSync(apexVideoConfigPath(home), config('1280', '1024'))
-    expect(readGameAspectSync(home)).toBe('1280x1024')
   })
 })

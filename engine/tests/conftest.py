@@ -21,7 +21,8 @@ def _ffmpeg() -> str:
     return ffbin.ffmpeg()
 
 
-def make_video(tmp_path, name, duration, *, start_time=0.0, vfr=False, marks=(), overlay=None, game_height=1080):
+def make_video(tmp_path, name, duration, *, start_time=0.0, vfr=False, marks=(), overlay=None, game_height=1080,
+               game_aspect=None):
     """Use ffmpeg testsrc2 to create a 1920x1080, 60 fps H.264 video with -g 60.
 
     game_height: render the scene on a 1920×game_height canvas (1440 = a 4:3 game) with the banner and marks kept at the
@@ -57,6 +58,8 @@ def make_video(tmp_path, name, duration, *, start_time=0.0, vfr=False, marks=(),
         cmd += ["-fps_mode", "passthrough"]
     if start_time:
         cmd += ["-output_ts_offset", str(start_time)]
+    if game_aspect is not None:
+        cmd += ["-metadata", f"aditor_game_aspect={game_aspect}", "-movflags", "+use_metadata_tags"]
     cmd += ["-t", str(duration), str(out)]
     r = subprocess.run(cmd, capture_output=True)
     if r.returncode != 0:

@@ -312,6 +312,27 @@ def test_invalid_fps_rejected_before_probe(fps):
         analyze_matches("not-a-video", fps=fps)
 
 
+@pytest.mark.parametrize("tag,explicit,expected", [
+    ("1920x1440", None, 0.75), ("1920x1440", "16:9", 1.0),
+    ("invalid", None, 1.0), ("21:9", None, 1.0), (None, None, 1.0),
+])
+def test_matches_resolves_recorded_aspect(tmp_path, monkeypatch, tag, explicit, expected):
+    from aditor import matches
+    from aditor.layout import parse_aspect
+    from conftest import make_video
+    v = make_video(tmp_path, "tagged.mp4", 0.5, game_aspect=tag)
+    real = matches.SceneDetector
+    layouts = []
+
+    def detector(*args, **kwargs):
+        layouts.append(kwargs["layout"])
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(matches, "SceneDetector", detector)
+    analyze_matches(str(v), layout=parse_aspect(explicit) if explicit else None)
+    assert layouts[0].squash == expected
+
+
 def test_no_video_cli_error_has_no_partial_json(tmp_path):
     result = subprocess.run([sys.executable, "-m", "aditor", "matches", str(tmp_path / "missing.mp4")],
                             capture_output=True)

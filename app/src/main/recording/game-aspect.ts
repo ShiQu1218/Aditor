@@ -29,12 +29,3 @@ export async function readGameAspect(home = os.homedir()): Promise<string | null
     return null
   }
 }
-
-/** Synchronous variant for callers that must issue their request immediately (the analysis queue). */
-export function readGameAspectSync(home = os.homedir()): string | null {
-  try {
-    return parseVideoConfig(fs.readFileSync(apexVideoConfigPath(home), 'utf8'))
-  } catch {
-    return null
-  }
-}

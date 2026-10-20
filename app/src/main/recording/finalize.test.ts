@@ -94,6 +94,23 @@ describe.skipIf(!ffmpeg)('finalization with real ffmpeg streams', () => {
   beforeAll(() => { fixtureRoot = tempRoot(); segments = createSegments(fixtureRoot) })
   afterAll(() => fs.rmSync(fixtureRoot, { recursive: true, force: true }))
 
+  it.each(['session', 'match'])('persists recording-time game aspect only when present: %s', async (mode) => {
+    for (const gameAspect of ['1920x1440', null, undefined]) {
+      const base = root(); const deps = makeDeps(base); deps.ffmpegPath = ffmpeg!
+      const dir = sessionDir(base); copySegments(segments, dir)
+      fs.writeFileSync(path.join(dir, 'recording.json'), JSON.stringify({ startedAt: Date.now(), postAnalysis: 'none', mode, gameAspect }))
+      if (mode === 'match') fs.writeFileSync(path.join(dir, 'live.json'), JSON.stringify({ matches: [{ start: 0, end: 2 }] }))
+      const [output] = await finalizeSession(dir, deps)
+      const ffprobe = path.join(path.dirname(ffmpeg!), `ffprobe${process.platform === 'win32' ? '.exe' : ''}`)
+      const result = spawnSync(ffprobe, ['-v', 'error', '-show_entries', 'format_tags', '-of', 'json', output],
+        { windowsHide: true, encoding: 'utf8' })
+      expect(result.status, result.stderr).toBe(0)
+      expect(JSON.parse(result.stdout).format.tags.aditor_game_aspect).toBe(gameAspect ?? undefined)
+      const bytes = fs.readFileSync(output)
+      expect(bytes.indexOf('moov')).toBeLessThan(bytes.indexOf('mdat'))
+    }
+  })
+
   it.each(['none', 'afterExit', 'perMatch'] as const)('Output is decodable, faststart, collision-free, and retains recording-time analysis settings: %s', async (postAnalysis) => {
     const base = root(); const deps = makeDeps(base); deps.ffmpegPath = ffmpeg!
     deps.addToLibrary = vi.fn(); deps.enqueueAnalysis = vi.fn()

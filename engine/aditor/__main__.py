@@ -11,14 +11,14 @@ def _cmd_analyze(a) -> int:
     from aditor.analyze import analyze
     from aditor.profile import load_profile
 
-    profile = load_profile(Path(a.profile_dir)).with_layout(_layout(a))
+    profile = load_profile(Path(a.profile_dir))
 
     def progress(t: float, duration: float) -> None:
         pct = 100.0 * t / duration if duration > 0 else 0.0
         print(f"\rAnalyzing {t:8.1f} / {duration:.1f} seconds ({pct:5.1f}%)", end="", file=sys.stderr, flush=True)
 
     doc = analyze(a.video, profile, cache_dir=Path(a.cache_dir), force=a.force,
-                  on_progress=progress, hwaccel=not a.no_hwaccel, jobs=a.jobs)
+                  on_progress=progress, hwaccel=not a.no_hwaccel, jobs=a.jobs, layout=_layout(a))
     print(file=sys.stderr)
     if a.out:
         Path(a.out).write_text(json.dumps(doc, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -38,11 +38,11 @@ def _cmd_matches(a) -> int:
 
 
 def _layout(a):
-    from aditor.layout import Layout, parse_aspect
-    return parse_aspect(a.aspect) if a.aspect else Layout(1.0)
+    from aditor.layout import parse_aspect
+    return parse_aspect(a.aspect) if a.aspect else None
 
 
-ASPECT_HELP = "Game render aspect or resolution (16:9, 16:10, 4:3, 5:4, or WxH); the HUD layout follows it (default 16:9)"
+ASPECT_HELP = "Game render aspect or resolution (16:9, 16:10, 4:3, 5:4, or WxH); offline default: video metadata, otherwise 16:9"
 
 
 def main(argv: list[str] | None = None) -> int:

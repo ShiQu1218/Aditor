@@ -150,7 +150,7 @@ Idle →(Apex 啟動)→ Lobby ⇄ InMatch →(Apex 關閉)→ Finalizing → Id
 
 ROI 由 Python 端在 live 握手時傳給 aditorrec（Python 讀 profile），aditorrec 不解析 profile。
 
-**遊戲比例（4:3／5:4／16:10）**：Apex 依寬度 1920 排 HUD，高度隨比例改變，各元素貼齊上緣、畫面中間或下緣。拉伸成 16:9（或錄 4:3 畫面再縮成 1920×1080）後，寬度與 x 不變，高度乘上壓縮比例（比例 ÷ 16/9：16:10 為 0.9、4:3 為 0.75、5:4 為 0.703），y 往貼齊的邊靠攏。App 開始錄影時讀 `Saved Games/Respawn/Apex/local/videoconfig.txt` 的 `setting.defaultres`／`defaultresheight`，寫入 `recording.json` 的 `gameAspect`，並以 `--aspect WxH` 傳給 live 引擎；離線分析的 `analyze` 請求也帶 `aspect`。aditorrec 一律裁切 `capture_rois`（四種比例的聯集，與遊戲設定無關），引擎依比例取出對應範圍再縮放回 `banner_roi`／`spec_roi` 大小；場景縮圖則依各 ROI 的貼齊方向（`SCENE_ROIS[*].anchor`）重建成 16:9 版面，模板與門檻不變。16:9 時完全等同舊行為。讀不到設定或比例不在四種之內時沿用 16:9。分析快取記錄 `aspect_squash`，比例改變會重新分析。保留黑邊（不拉伸）的輸出未處理。
+**遊戲比例（4:3／5:4／16:10）**：Apex 依寬度 1920 排 HUD，高度隨比例改變，各元素貼齊上緣、畫面中間或下緣。拉伸成 16:9（或錄 4:3 畫面再縮成 1920×1080）後，寬度與 x 不變，高度乘上壓縮比例（比例 ÷ 16/9：16:10 為 0.9、4:3 為 0.75、5:4 為 0.703），y 往貼齊的邊靠攏。App 開始錄影時讀 `Saved Games/Respawn/Apex/local/videoconfig.txt` 的 `setting.defaultres`／`defaultresheight`，寫入 `recording.json` 的 `gameAspect`，並以 `--aspect WxH` 傳給 live 引擎；內建錄影的完整輸出、逐局剪檔及 OBS 經 FFmpeg 重新封裝的輸出，會將該次錄影的比例寫入 MP4 中繼資料標記 `aditor_game_aspect`，未記錄比例時不寫入。離線分析讀取影片的比例標記，不再使用目前的 Apex 設定；明確指定的 CLI `--aspect` 或 IPC `aspect` 優先於影片標記，標記缺漏、無效或比例不受支援時沿用 16:9。aditorrec 一律裁切 `capture_rois`（四種比例的聯集，與遊戲設定無關），引擎依比例取出對應範圍再縮放回 `banner_roi`／`spec_roi` 大小；場景縮圖則依各 ROI 的貼齊方向（`SCENE_ROIS[*].anchor`）重建成 16:9 版面，模板與門檻不變。16:9 時完全等同舊行為。分析快取及可信 live 結果記錄 `aspect_squash`，與影片比例不符時會重新分析。保留黑邊（不拉伸）的輸出未處理。
 
 共享記憶體：具名 file mapping `Local\aditorrec-<sessionId>`，固定 16 槽環形緩衝；槽頭含 `seq`（u64，寫完最後才更新，讀端比對前後 seq 判斷撕裂）、`pts`、各區塊尺寸與 offset。讀端落後超過 16 槽就跳到最新（偵測丟格不阻塞擷取）。
 

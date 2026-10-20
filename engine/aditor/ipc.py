@@ -53,10 +53,10 @@ def _jobs(v):
     return v
 
 
-def _layout(v) -> Layout:
-    """Optional game render aspect (`W:H` or `WxH`); missing means 16:9."""
+def _layout(v) -> Layout | None:
+    """Optional explicit game render aspect (`W:H` or `WxH`); missing uses video metadata."""
     if v is None:
-        return Layout(1.0)
+        return None
     if not isinstance(v, str):
         raise BadRequest("aspect must be a string")
     try:
@@ -168,7 +168,8 @@ class Server:
 
     def _analyze(self, rid, args, cancel):
         path = _arg(args, "path")
-        profile = load_profile(Path(_arg(args, "profile_dir"))).with_layout(_layout(args.get("aspect")))
+        profile = load_profile(Path(_arg(args, "profile_dir")))
+        layout = _layout(args.get("aspect"))
         cache_dir = Path(_arg(args, "cache_dir"))
 
         def progress(t: float, duration: float) -> None:
@@ -176,7 +177,7 @@ class Server:
 
         return analyze(path, profile, cache_dir=cache_dir, beside=bool(args.get("beside", False)),
                        force=bool(args.get("force", False)), on_progress=progress, cancel=cancel,
-                       hwaccel=bool(args.get("hwaccel", True)), jobs=_jobs(args.get("jobs")))
+                       hwaccel=bool(args.get("hwaccel", True)), jobs=_jobs(args.get("jobs")), layout=layout)
 
     def _derive(self, rid, args, cancel):
         try:
