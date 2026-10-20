@@ -26,7 +26,7 @@
 
 ## 錯過倒數後以 HUD 恢復開局（2026-10-18）
 
-- 新增 `HUD_RESUME_CONFIRM_SECONDS = 3.0`：沒有進行中的對局、也沒有待確認的開局時，HUD 連續跨越至少 3 秒便以 `hud_resume` 開始，時間回溯到這段第一個 HUD 樣本。非 HUD（包含未知／黑畫面的 `other`）或超過 `_max_gap` 的取樣間隔會重算。原有 `opening_confirmed`、立即恢復的 `initial_match`／`initial_summary` 與結束規則不變。
+- 新增 `HUD_RESUME_CONFIRM_SECONDS = 3.0`：沒有進行中的對局、也沒有待確認的開局時，HUD 連續跨越至少 3 秒便以 `hud_resume` 開始，時間回溯到這段第一個 HUD 樣本。非 HUD（包含未知／黑畫面的 `other`）或超過 `_max_gap` 的取樣間隔會重算。`initial_match`／`initial_summary` 只在第一個樣本後 `INITIAL_RECOVERY_SECONDS = 10.0` 秒內（含）立即回溯到第一個樣本；之後只能靠持續 HUD 以 `hud_resume` 恢復，不再回溯到錄影開頭。這個時間窗配合 App 清理保留的 15 秒減去 5 秒前置緩衝。`opening_confirmed` 與結束規則不變。
 - live 直接轉送 `MatchTracker.feed()`／`finish()` 的事件與 `reason`，沒有原因白名單；`matches` CLI 只輸出區間及選用的場景時間軸，兩者均不需修改介面。新增的 live 測試以既有大廳／HUD 拼圖還原全畫面，穿插黑畫面，經共享記憶體驗證 `hud_resume` 與 EOF 事件。
 - 決策：未知畫面沿用 `other`，不增加場景種類或依賴。現有截圖只涵蓋稀疏時點，無法證明真實錄影的連續 3 秒，因此下列 Alt-Tab 驗證使用完整解碼後的 1 fps 場景串流；原始錄影全程唯讀，沒有複製到專案。
 

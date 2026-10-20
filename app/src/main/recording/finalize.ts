@@ -279,6 +279,9 @@ export async function cutMatches(dir: string, deps: RecordingDeps, options: Matc
   const entries = await readIndex(dir)
   const live = await readOptional<LiveFile>(path.join(dir, 'live.json'))
   const matches = liveMatches(live)
+  const retainedFrom = live?.retained_from
+  const retainedEntries = typeof retainedFrom === 'number' && Number.isFinite(retainedFrom) && retainedFrom >= 0
+    ? entries.filter(entry => entry.pts >= retainedFrom) : entries
   const last = entries.at(-1)
   if (finishing && last && matches.at(-1)?.end === null) {
     matches[matches.length - 1] = { start: matches.at(-1)!.start, end: last.pts + last.dur }
@@ -303,7 +306,7 @@ export async function cutMatches(dir: string, deps: RecordingDeps, options: Matc
         (!finishing && options.failed?.has(index))) continue
     const end = match.end
     if (end === null || (!finishing && !entries.some((entry) => entry.pts >= end + MATCH_POST_PAD_SEC))) continue
-    const { present: range, missing } = await presentEntries(dir, selectMatchEntries(entries, match.start, end))
+    const { present: range, missing } = await presentEntries(dir, selectMatchEntries(retainedEntries, match.start, end))
     if (!range.length) {
       if (finishing && missing > 0) {
         marker.skipped = [...(marker.skipped ?? []), index]

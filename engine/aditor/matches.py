@@ -18,6 +18,8 @@ from .scene import SCENE_SIZE, SceneDetector, SceneFrame
 HUD_CONFIRM_SECONDS = 180.0
 # If the opening sequence was missed, the in-match HUD must persist this long to restore the match start.
 HUD_RESUME_CONFIRM_SECONDS = 3.0
+# Keep within the app's 15 s prune buffer minus its 5 s pre-pad.
+INITIAL_RECOVERY_SECONDS = 10.0
 # A lobby visible continuously for this long tentatively ends the match (using the first lobby timestamp).
 # Rewards, bundles, or the store often appear soon after returning to the lobby, so do not require a long lobby dwell.
 LOBBY_CONFIRM_SECONDS = 1.0  # At 1 fps, two consecutive samples must show the lobby.
@@ -99,6 +101,8 @@ class MatchTracker:
         n = len(self._events)
         if self._first is None:
             self._first = t
+        if t - self._first > INITIAL_RECOVERY_SECONDS:
+            self._recover_initial = False
         gap = self._last is not None and t - self._last > self._max_gap
         self._last = t
         if gap or scene.kind != "lobby":

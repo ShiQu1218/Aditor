@@ -131,8 +131,38 @@ def test_respawn_spectating_queue_map_and_inventory_do_not_end_match():
 
 
 def test_recording_starts_in_match_with_menu_covering_hud():
-    tr = run([(0, 10, "other"), (11, 20, "in_match_hud")])
+    tr = run([(0, 9, "other"), (10, 20, "in_match_hud")])
     assert tr.matches == [Match(0, 21)]
+    assert tr.events[0].reason == "initial_match"
+
+
+@pytest.mark.parametrize("first", [0, 120])
+@pytest.mark.parametrize("delay", [1, 10])
+@pytest.mark.parametrize("summary", [False, True])
+def test_initial_recovery_within_window_uses_first_sample(first, delay, summary):
+    tr = MatchTracker()
+    tr.feed(first, SceneFrame("other"))
+    scene = SceneFrame("other", match_context=True) if summary else SceneFrame("in_match_hud")
+    events = tr.feed(first + delay, scene)
+    reason = "initial_summary" if summary else "initial_match"
+    assert [(e.type, e.t, e.reason) for e in events] == [("match_start", first, reason)]
+
+
+@pytest.mark.parametrize("delay", [11, 169, 449])
+@pytest.mark.parametrize("summary", [False, True])
+def test_initial_recovery_expires_and_only_sustained_hud_resumes(delay, summary):
+    tr = MatchTracker()
+    for t in range(delay):
+        assert tr.feed(t, SceneFrame("other")) == []
+    if summary:
+        assert tr.feed(delay, SceneFrame("other", match_context=True)) == []
+    first_hud = delay + int(summary)
+    for t in range(first_hud, first_hud + 3):
+        assert tr.feed(t, SceneFrame("in_match_hud")) == []
+    events = tr.feed(first_hud + 3, SceneFrame("in_match_hud"))
+    assert [(e.type, e.t, e.reason) for e in events] == [("match_start", first_hud, "hud_resume")]
+    tr.finish(first_hud + 4)
+    assert tr.matches == [Match(first_hud, first_hud + 4)]
 
 
 def test_recording_starts_in_previous_summary():

@@ -190,6 +190,36 @@ it('records and forwards countdown and cancellation events without changing conf
   expect(JSON.parse(fs.readFileSync(path.join(dir, 'live.json'), 'utf8')).matches).toEqual(matches)
 })
 
+it.each([false, true])('clamps late starts only after segments have been pruned (%s)', async (pruneFirst) => {
+  const dir = sessionDir(root())
+  const recordEvent = vi.fn()
+  const notice = vi.fn()
+  const log = vi.spyOn(console, 'warn').mockImplementation(() => {})
+  const live = new LiveSession({ sessionId: 'late-start', dir, profileDir: dir, recordEvent, notice })
+  for (let i = 1; i <= 30; i++) {
+    fs.writeFileSync(path.join(dir, `seg_${String(i).padStart(6, '0')}.m4s`), 'segment')
+    live.addSegment({ seq: i, pts: (i - 1) * 2 + (pruneFirst ? 0 : 12), dur: 2 })
+  }
+  const internal = live as any
+  internal.engine = { engineVersion: () => null, quality: () => null }
+  internal.onProgress(pruneFirst ? 60 : 10)
+  await live.prune()
+  if (pruneFirst) expect(JSON.parse(fs.readFileSync(path.join(dir, 'live.json'), 'utf8')).retained_from).toBe(42)
+  const event = { ev: 'match_start', t: 0, reason: 'initial_match' }
+  internal.onMatch(event)
+  await live.flush()
+  const start = pruneFirst ? 42 : 0
+  expect((await live.state()).matches).toEqual([{ start, end: null }])
+  const stored = JSON.parse(fs.readFileSync(path.join(dir, 'live.json'), 'utf8'))
+  expect(stored.matches).toEqual([{ start, end: null }])
+  expect(stored.retained_from).toBe(pruneFirst ? 42 : undefined)
+  expect(recordEvent).toHaveBeenLastCalledWith({ ...event, t: start })
+  expect(event.t).toBe(0)
+  internal.onMatch(event)
+  expect(log).toHaveBeenCalledTimes(pruneFirst ? 1 : 0)
+  expect(notice).not.toHaveBeenCalled()
+})
+
 it('skips cleanup before startup, before the first snapshot, during restart waits, and after failure; removes the playback list and publishes updates when healthy', async () => {
   const dir = sessionDir(root())
   const live = new LiveSession({ sessionId: '清理', dir, profileDir: dir, recordEvent: vi.fn(), notice: vi.fn() })
@@ -263,7 +293,7 @@ it('treats processed frames as healthy in a lobby with no kill snapshots, cleans
     live.addSegment({ seq: i, pts: (i - 1) * 2, dur: 2 })
   }
   const internal = live as any
-  const engine = new EventEmitter()
+  const engine = Object.assign(new EventEmitter(), { engineVersion: () => null, quality: () => null })
   internal.engine = engine
   internal.listen(engine)
   await live.prune()

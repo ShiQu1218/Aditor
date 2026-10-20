@@ -20,6 +20,8 @@ export interface LiveFile {
   events?: unknown
   spectating?: unknown
   matches?: unknown
+  /** Earliest retained segment PTS after pruning; excludes deleted pre-pad from match cuts. */
+  retained_from?: unknown
   width?: unknown
   height?: unknown
   quality?: unknown

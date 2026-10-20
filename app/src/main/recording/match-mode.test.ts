@@ -457,6 +457,19 @@ it('recovers matches and preserves countdowns after cleanup, and produces no out
   expect(remux.inputs).toHaveLength(count)
   expect(fs.existsSync(empty.dir)).toBe(false)
 })
+it('cuts a clamped match without treating its pruned pre-pad as missing segments', async () => {
+  const r = rig()
+  r.deps.notify = vi.fn()
+  await pruneSegments(r.dir, entries, [], null)
+  r.saveLive({ ...r.live, retained_from: 82, matches: [{ start: 82, end: 94 }] })
+  const outputs = await cutMatches(r.dir, r.deps, { finishing: true })
+  expect(outputs).toHaveLength(1)
+  expect(read(path.join(r.dir, 'matches.json')).cuts[0]).toMatchObject({ start: 82, firstSeq: 42 })
+  expect(r.deps.notify).not.toHaveBeenCalled()
+  const init = fs.readFileSync(path.join(r.dir, 'init.mp4'), 'utf8')
+  expect(remux.inputs).toEqual([init + entries.slice(41).map(e => `${e.pts}|`).join('')])
+})
+
 it('skips a missing clipping segment, outputs the rest of the match, and warns about the gap', async () => {
   const r = rig()
   r.deps.notify = vi.fn()

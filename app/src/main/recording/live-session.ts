@@ -138,8 +138,10 @@ export class LiveSession extends EventEmitter {
       if (this.restartedAt >= beganAt) this.failed = true
       const removed = new Set(sequences)
       this.segments = this.segments.filter(s => !removed.has(s.seq))
+      this.scheduleWrite()
       this.emitUpdate({ segments: [...this.segments] })
     })
+    await this.flush()
   }
 
   hasSegment(seq: number): boolean { return this.segments.some((s) => s.seq === seq) }
@@ -202,8 +204,14 @@ export class LiveSession extends EventEmitter {
   }
 
   private onMatch(event: LiveMatchEvent): void {
+    const originalT = event.t
+    const retainedFrom = this.retainedFrom()
+    if (event.ev === 'match_start' && retainedFrom !== undefined && event.t < retainedFrom) {
+      event = { ...event, t: retainedFrom }
+    }
     const next = applyMatchEvent(this.matches, event)
     if (event.ev === 'match_start' && next === this.matches) return
+    if (event.t !== originalT) console.warn('[live] Clamped match start after pruning:', originalT, '->', event.t)
     if (event.ev === 'match_pending') this.pending = event.t
     else if (event.ev === 'match_cancel' || event.ev === 'match_start') this.pending = null
     this.options.recordEvent({ ev: event.ev, t: event.t, reason: event.reason })
@@ -219,6 +227,10 @@ export class LiveSession extends EventEmitter {
     this.emit('match', event.ev, next.length, event.t)
   }
 
+  private retainedFrom(): number | undefined {
+    return this.pruned && this.segments.length ? this.segments.reduce((first, s) => Math.min(first, s.pts), Infinity) : undefined
+  }
+
   private scheduleWrite(): void {
     if (this.dirty) return
     this.dirty = true
@@ -227,7 +239,8 @@ export class LiveSession extends EventEmitter {
       await writeJson(path.join(this.options.dir, LIVE_FILE), {
         version: 1, engine_version: this.engine?.engineVersion() ?? null,
         t: this.snapshot.t, events: this.snapshot.events, spectating: this.snapshot.spectating as LiveSpec[],
-        matches: this.matches, width: this.width, height: this.height, quality: this.engine?.quality() ?? null
+        matches: this.matches, retained_from: this.retainedFrom(),
+        width: this.width, height: this.height, quality: this.engine?.quality() ?? null
       })
     }).catch((error) => { console.warn('[live] Failed to write live.json:', error) })
   }
