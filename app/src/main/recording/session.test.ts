@@ -60,6 +60,26 @@ describe('recording service state machine', () => {
     expect(vi.mocked(value.deps.notify).mock.calls.filter(([, message]) => message.includes(text))).toHaveLength(1)
   })
 
+  it('records Valorant with its own capture rects and as one file even when per-match mode is set', async () => {
+    const value = rig()
+    const icons = path.join(value.root, 'icons')
+    fs.mkdirSync(icons)
+    fs.copyFileSync(path.join(value.root, 'profile.json'), path.join(icons, 'profile.json'))
+    fs.mkdirSync(path.join(value.root, 'valorant', 'icons'), { recursive: true })
+    fs.writeFileSync(path.join(value.root, 'valorant', 'icons', 'profile.json'),
+      JSON.stringify({ templates_version: 'v', capture_rois: { banner: [1436, 84, 480, 256], spec: [20, 790, 440, 100] } }))
+    value.deps.profileDir = icons
+    value.deps.findGame = vi.fn(async () => ({ game: 'valorant' as const, pid: 4321 }))
+    value.settings.mode = 'match'
+    value.service.start()
+    await waitFor(() => commands(value, 'start').length === 1)
+    expect(commands(value, 'start')[0]).toMatchObject({ pid: 4321, frames: { banner: [1436, 84, 480, 256], spec: [20, 790, 440, 100] } })
+    const dir = commands(value, 'start')[0].session_dir as string
+    await waitFor(() => fs.existsSync(path.join(dir, 'recording.json')))
+    expect(JSON.parse(fs.readFileSync(path.join(dir, 'recording.json'), 'utf8'))).toMatchObject({ mode: 'session', game: 'valorant' })
+    expect(vi.mocked(value.deps.notify).mock.calls.some(([level, message]) => level === 'warning' && message.includes('VALORANT'))).toBe(true)
+  })
+
   it('keeps recording when the storage probe fails', async () => {
     const value = rig()
     value.deps.probeStorage = vi.fn(async () => { throw new Error('probe failed') })

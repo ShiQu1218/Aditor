@@ -178,6 +178,7 @@ const messages: MessageTable = {
   '不支援連結的錄影工作目錄：{root}': 'Linked recording work folders are not supported: {root}',
   '錄影範本的 ROI 無效': 'The recording template\'s ROI is invalid.',
   '認不出這支影片是哪個遊戲，請在卡片上選擇 Apex 或 Valorant。': 'Could not tell which game this video shows. Choose Apex or Valorant on its card.',
+  '{game} 尚不支援逐局分割，本次整段錄成一個檔': '{game} cannot be split per match yet, so this recording is saved as one file.',
   '無法偵測遊戲程序：{error}': 'Could not detect the game process: {error}',
   '尚未支援 {game} 的錄影範本': 'No recording templates for {game} yet',
   '錄影補收尾失敗：{error}': 'Failed to finalize the recording: {error}',

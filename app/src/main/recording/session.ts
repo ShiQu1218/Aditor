@@ -107,6 +107,8 @@ export class RecordingSessionService implements RecordingService {
   private gamePid: number | null = null
   /** Game of gamePid; keeps the last game after it exits. */
   private game: GameId = DEFAULT_GAME
+  /** Whether this run already said per-match mode is unavailable for the current game. */
+  private matchModeNoticed = false
   private active: ActiveSession | null = null
   private operations: Promise<void> = Promise.resolve()
   private recovery: Promise<void> = Promise.resolve()
@@ -132,7 +134,7 @@ export class RecordingSessionService implements RecordingService {
   private storageChecked = new Set<string>()
 
   constructor(private deps: RecordingDeps) {
-    this.watcher = new GameWatcher<GameProcess>(this.findGame, deps.pollMs ?? 3000,
+    this.watcher = new GameWatcher<GameProcess>(() => this.findGame(), deps.pollMs ?? 3000,
       (found) => {
         this.pollWarning = false
         const pid = found?.pid ?? null
@@ -405,6 +407,15 @@ export class RecordingSessionService implements RecordingService {
     if (builtin || this.builtinFallbackPid === pid) settings.backend = 'builtin'
     const capture = settings.backend === 'obs' ? 'dda' : settings.captureMethod
     const game = this.game
+    if (game !== DEFAULT_GAME && settings.mode === 'match') {
+      // Per-match cutting needs match events, which only Apex detection emits so far. Without them a healthy session
+      // with no match would be pruned and discarded as lobby time, so record the whole session instead.
+      settings.mode = 'session'
+      if (!this.matchModeNoticed) {
+        this.matchModeNoticed = true
+        this.notice('warning', tr('{game} 尚不支援逐局分割，本次整段錄成一個檔', { game: GAMES[game].displayName }))
+      }
+    }
     this.log(`begin pid=${pid}${game === DEFAULT_GAME ? '' : ` game=${game}`} backend=${settings.backend} capture=${capture}`)
     const outputDir = settings.outputDir ?? this.deps.getWatchFolders()[0] ?? this.deps.defaultOutputDir
     this.update({ ...IDLE_RECORDING_STATUS, paused: this.state.paused, phase: 'starting' })

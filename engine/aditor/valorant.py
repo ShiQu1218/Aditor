@@ -212,6 +212,27 @@ class FeedTracker:
         return new
 
 
+class ValorantLiveKills:
+    """Live kill detection with the interface live.LiveEngine expects of its `kills` (feed/snapshot/finish/revision)."""
+
+    def __init__(self, profile: ValorantProfile):
+        self.detector = FeedDetector(profile)
+        self.tracker = FeedTracker()
+        self.revision = 0      # Bumped when an event is added, so snapshots are rebuilt only then.
+        self.degraded: list[str] = []
+        self.h_scale = 1.0
+
+    def feed(self, t: float, banner: np.ndarray, spec: np.ndarray) -> None:
+        if self.tracker.feed(t, self.detector.rows(banner)):
+            self.revision += 1
+
+    def snapshot(self) -> tuple[list[Event], list]:
+        return list(self.tracker.events), []
+
+    def finish(self) -> tuple[list[Event], list]:
+        return self.snapshot()
+
+
 # ---- Recognising Valorant footage that carries no aditor_game tag (used by game_detect) ----
 
 # The top scoreboard: translucent grey score boxes beside the timer, flanked by the ally (teal) and enemy (red) agent

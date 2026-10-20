@@ -44,9 +44,9 @@ def test_cache_from_another_game_needs_reanalysis():
     assert not cache.needs_reanalysis({**doc, "game": "valorant"}, INFO, "v", game="valorant")
 
 
-def test_live_engine_rejects_a_game_without_a_pipeline_before_opening_shared_memory():
+def test_live_engine_rejects_an_unknown_game_before_opening_shared_memory():
     out = io.BytesIO()
-    code = run_live("Local\\aditor-missing", Path("unused"), stdin=io.BytesIO(), stdout=out, game="valorant")
+    code = run_live("Local\\aditor-missing", Path("unused"), stdin=io.BytesIO(), stdout=out, game="csgo")
     assert code == 1
     assert json.loads(out.getvalue().decode("utf-8").splitlines()[0])["code"] == "unsupported_game"
 

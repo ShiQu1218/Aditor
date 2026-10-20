@@ -487,7 +487,7 @@ class LiveKills:
 class LiveEngine:
     """Poll shared memory and pass each slot to kill detection (banner/spec) and match segmentation (thumb); emit resulting events."""
 
-    def __init__(self, reader: ShmReader, profile: Profile, scene: SceneDetector,
+    def __init__(self, reader: ShmReader, profile: Profile, scene: SceneDetector | None,
                  emit: Callable[[dict], None], *, clock: Callable[[], float] = time.monotonic,
                  log: Callable[[str], None] | None = None, kills: LiveKills | None = None):
         self.reader = reader
@@ -556,7 +556,7 @@ class LiveEngine:
         cpu0 = time.process_time()
         banner, spec = self.profile.restore(slot.banner, slot.spec) if self._restore else (slot.banner, slot.spec)
         self.kills.feed(t, banner, spec)
-        if slot.thumb is not None:
+        if slot.thumb is not None and self.scene is not None:  # No scene templates (Valorant): no match events.
             for ev in self.matches.feed(t, self.scene.classify(slot.thumb)):
                 self.emit({"ev": ev.type, "t": ev.t, "reason": ev.reason})
         cpu = time.process_time() - cpu0
@@ -628,16 +628,17 @@ class LiveEngine:
                 "frames": self.frames, "skipped": self.skipped, "torn": self.torn}
 
 
-def _check_layout(layout: ShmLayout, profile: Profile) -> None:
+def _check_layout(layout: ShmLayout, profile, needs_thumb: bool = True) -> None:
     """Small-frame dimensions must match the profile capture rects (aditorrec crops using a 1920×1080 reference), or the
     reference ROIs when the game is 16:9; the thumbnail must be large enough for scene classification."""
     sizes = (layout.banner, layout.spec)
     capture = (tuple(profile.capture_banner[2:]), tuple(profile.capture_spec[2:]))
-    reference = (tuple(profile.banner_roi[2:]), tuple(profile.spec_roi[2:]))
+    rois = (getattr(profile, "banner_roi", None), getattr(profile, "spec_roi", None))
+    reference = (tuple(rois[0][2:]), tuple(rois[1][2:])) if None not in rois else None
     if sizes != capture and not (sizes == reference and profile.layout.identity):
         raise LayoutError(f"banner/spec dimensions {layout.banner}/{layout.spec} do not match profile capture ROIs "
                           f"{capture[0]}/{capture[1]} for aspect squash {profile.layout.squash}")
-    if layout.thumb[0] < SCENE_SIZE[0] or layout.thumb[1] < SCENE_SIZE[1]:
+    if needs_thumb and (layout.thumb[0] < SCENE_SIZE[0] or layout.thumb[1] < SCENE_SIZE[1]):
         raise LayoutError(f"thumb {layout.thumb} is smaller than required for scene detection ({SCENE_SIZE})")
 
 
@@ -685,15 +686,20 @@ def run(shm: str, profile_dir: Path, scene_dir: Path | None = None, *, stdin=Non
     try:
         g = resolve_game(game)
         require_analyzable(g)
-        if g != "apex":  # Live detection only runs the Apex pipeline so far.
-            raise UnsupportedGame(f"{g} live detection is not available yet")
     except UnsupportedGame as e:
         out.send({"ev": "error", "code": "unsupported_game", "message": str(e)})
         return 1
+    kills = None
     try:
-        layout = parse_aspect(aspect) if aspect else Layout(1.0)
-        profile = load_profile(Path(profile_dir)).with_layout(layout)
-        scene = SceneDetector(Path(scene_dir) if scene_dir else None, layout=layout)
+        if g == "valorant":
+            # Matches and rounds come from the Riot client later; the kill feed needs no scene templates.
+            from .valorant import ValorantLiveKills, load_valorant_profile
+            profile = load_valorant_profile(Path(profile_dir))
+            scene, kills = None, ValorantLiveKills(profile)
+        else:
+            layout = parse_aspect(aspect) if aspect else Layout(1.0)
+            profile = load_profile(Path(profile_dir)).with_layout(layout)
+            scene = SceneDetector(Path(scene_dir) if scene_dir else None, layout=layout)
     except Exception as e:  # noqa: BLE001
         out.send({"ev": "error", "code": "internal", "message": f"Failed to load templates: {e}"})
         return 1
@@ -707,7 +713,7 @@ def run(shm: str, profile_dir: Path, scene_dir: Path | None = None, *, stdin=Non
         return 1
     try:
         try:
-            _check_layout(reader.layout, profile)
+            _check_layout(reader.layout, profile, needs_thumb=scene is not None)
         except LayoutError as e:
             out.send({"ev": "error", "code": "bad_layout", "message": str(e)})
             return 1
@@ -716,7 +722,7 @@ def run(shm: str, profile_dir: Path, scene_dir: Path | None = None, *, stdin=Non
                   "spec": list(lay.spec), "thumb": list(lay.thumb)})
         stop = threading.Event()
         threading.Thread(target=_watch_stdin, args=(stdin, stop), daemon=True).start()
-        engine = LiveEngine(reader, profile, scene, out.send, log=_log)
+        engine = LiveEngine(reader, profile, scene, out.send, log=_log, kills=kills)
         try:
             while not stop.is_set():
                 if engine.poll() == 0:

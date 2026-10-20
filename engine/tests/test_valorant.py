@@ -4,7 +4,8 @@ import cv2
 import numpy as np
 import pytest
 
-from aditor.valorant import (ALLY_STRIP, ENEMY_STRIP, SCORE_BOX, ROW_H, ROW_STEP, ROW_Y0, RIGHT_EDGE, FeedDetector,
+from aditor.live import LiveEngine, ShmLayout, ShmReader, run as run_live
+from aditor.valorant import (ValorantLiveKills, ALLY_STRIP, ENEMY_STRIP, SCORE_BOX, ROW_H, ROW_STEP, ROW_Y0, RIGHT_EDGE, FeedDetector,
                              FeedRow, FeedTracker, ValorantProfileError, load_valorant_profile, scoreboard_visible)
 
 TEMPLATES = Path(__file__).resolve().parents[2] / "templates" / "valorant" / "icons"
@@ -106,3 +107,57 @@ def test_profile_must_cover_the_kill_feed(tmp_path):
         encoding="utf-8")
     with pytest.raises(ValorantProfileError, match="kill feed"):
         load_valorant_profile(tmp_path)
+
+
+def _live_frames():
+    """4 fps: a kill row from 1 s to 5 s, then a death row from 10 s to 14 s."""
+    for k in range(64):
+        t = k * 0.25
+        rows = [(0, TEAL, RED, "left")] if 1 <= t < 5 else [(0, RED, TEAL, "right")] if 10 <= t < 14 else []
+        yield t, feed(*rows)
+
+
+def test_live_engine_reports_valorant_kills_and_deaths():
+    from test_live import FakeClock, ShmTestWriter, _name, _pts
+
+    lay = ShmLayout((CW, CH), tuple(PROFILE.capture_spec[2:]), (640, 360))
+    spec = np.zeros((lay.spec[1], lay.spec[0], 3), np.uint8)
+    name, out, clock = _name(), [], FakeClock()
+    w = ShmTestWriter(name, lay)
+    r = ShmReader.open(name)
+    eng = LiveEngine(r, PROFILE, None, out.append, clock=clock, kills=ValorantLiveKills(PROFILE))
+    try:
+        for t, banner in _live_frames():
+            w.write(_pts(t), banner, spec, None)
+            clock.now += 0.25
+            assert eng.poll() == 1
+        eng.finish()
+    finally:
+        r.close()
+        w.close()
+    final = [o for o in out if o["ev"] == "snapshot" and o.get("final")][-1]
+    assert [(e["type"], e["t"]) for e in final["events"]] == [("kill", 1.0), ("death", 10.0)]
+    assert final["quality"]["complete"] is True
+    assert not [o for o in out if o["ev"].startswith("match_")]
+
+
+def test_live_run_accepts_valorant_shared_memory():
+    import io
+    import json as _json
+    from test_live import ShmTestWriter, _name, _pts
+
+    lay = ShmLayout((CW, CH), tuple(PROFILE.capture_spec[2:]), (640, 360))
+    name = _name()
+    w = ShmTestWriter(name, lay)
+    try:
+        spec = np.zeros((lay.spec[1], lay.spec[0], 3), np.uint8)
+        for t, banner in list(_live_frames())[4:12]:  # The kill row, within the start-up backlog.
+            w.write(_pts(t), banner, spec, None)
+        out = io.BytesIO()
+        assert run_live(name, TEMPLATES, stdin=io.BytesIO(), stdout=out, game="valorant", poll_interval=0.01) == 0
+    finally:
+        w.close()
+    lines = [_json.loads(x) for x in out.getvalue().decode("utf-8").splitlines()]
+    assert lines[0]["ev"] == "ready"
+    final = [o for o in lines if o["ev"] == "snapshot" and o.get("final")][-1]
+    assert [e["type"] for e in final["events"]] == ["kill"]
