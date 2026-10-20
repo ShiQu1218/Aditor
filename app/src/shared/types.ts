@@ -1,4 +1,24 @@
-export type EventType = 'knock' | 'assist_knock' | 'assist_elim' | 'elim' | 'squad_wipe'
+import type { GameId } from './games'
+
+/** Apex: knock/assist_knock/assist_elim (elim/squad_wipe only in older or manual data). Valorant: kill/death/multikill/ace. */
+export type EventType = 'knock' | 'assist_knock' | 'assist_elim' | 'elim' | 'squad_wipe' | 'kill' | 'death' | 'multikill' | 'ace'
+
+/** Library badge counts; kill/death are absent for Apex and in entries written before multi-game support. */
+export interface EventCounts {
+  knock: number
+  assist: number
+  kill?: number
+  death?: number
+}
+
+/** A Valorant round from the Riot client presence or the scoreboard; `ally`/`enemy` are the score after the round. */
+export interface Round {
+  start: number
+  end: number
+  winner: 'ally' | 'enemy' | null
+  ally: number
+  enemy: number
+}
 
 export interface VideoInfo {
   path: string
@@ -74,11 +94,26 @@ export interface CacheDoc {
   clips: Clip[]
   keyframes: number[]
   cache_path: string
+  /** Absent in caches written before multi-game support (Apex). */
+  game?: GameId
+  rounds?: Round[]
   /**
    * App-specific fields (unknown to the engine and discarded when `analyze` rewrites the file; main restores them after reanalysis).
    * `suggestionsPending`: AI suggestions have not yet been recomputed after reanalysis; run one merge when Studio opens, then clear this flag.
    */
   app?: { suggestionsPending?: boolean }
+}
+
+export function countEvents(events: readonly EngineEvent[]): EventCounts {
+  const counts: EventCounts = { knock: 0, assist: 0 }
+  for (const e of events) {
+    if (!isCounted(e)) continue
+    if (e.type === 'knock') counts.knock++
+    else if (e.type === 'assist_knock' || e.type === 'assist_elim') counts.assist++
+    else if (e.type === 'kill') counts.kill = (counts.kill ?? 0) + 1
+    else if (e.type === 'death') counts.death = (counts.death ?? 0) + 1
+  }
+  return counts
 }
 
 export function isCounted(e: EngineEvent): boolean {

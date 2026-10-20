@@ -19,7 +19,7 @@ import { SHAPES } from './eventShapes'
 import { interactionReducer, initialInteraction, type IState } from './useTimelineInteractions'
 import { playheadX } from './Playhead'
 
-const ALL = new Set<EventType>(['knock', 'assist_knock', 'assist_elim', 'elim', 'squad_wipe'])
+const ALL = new Set<EventType>(Object.keys(SHAPES) as EventType[])
 const theme: Theme = {
   font: '11px sans-serif',
   bg: 'T_bg',
@@ -47,7 +47,11 @@ const theme: Theme = {
     assist_knock: 'C_ak',
     assist_elim: 'C_ae',
     elim: 'C_elim',
-    squad_wipe: 'C_wipe'
+    squad_wipe: 'C_wipe',
+    kill: 'C_kill',
+    death: 'C_death',
+    multikill: 'C_multi',
+    ace: 'C_ace'
   }
 }
 
@@ -213,14 +217,14 @@ describe('drawTimeline', () => {
 
   test('density ticks retain every banner colour and uncounted opacity', () => {
     const types = Object.keys(SHAPES) as EventType[]
-    const events = types.map((type, i) => ev(String(i), 100 + i * 150, { type, counted: i !== 1 }))
+    const events = types.map((type, i) => ev(String(i), 100 + i * 90, { type, counted: i !== 1 }))
     const m = model(events, {}, { ...view, width: 30 })
     expect(m.layout.mode).toBe('density')
     const { ctx, calls } = makeCtx()
     drawTimeline(ctx, m, theme)
     const ticks = calls.filter((c) => c.name === 'fillRect' && c.args[2] === 2 && c.args[3] === 10)
     expect(ticks.map((c) => c.fillStyle)).toEqual(types.map((type) => theme.events[type]))
-    expect(ticks.map((c) => c.globalAlpha)).toEqual([1, 0.65, 1, 1, 1])
+    expect(ticks.map((c) => c.globalAlpha)).toEqual(types.map((_, i) => (i === 1 ? 0.65 : 1)))
   })
 
   test('a single-type cluster uses its banner colour for the pill and counted bar', () => {

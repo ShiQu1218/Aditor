@@ -1,7 +1,8 @@
 import fs from 'fs'
 import path from 'path'
 import chokidar, { FSWatcher } from 'chokidar'
-import { EventType } from '../shared/types'
+import { EventType, type EventCounts } from '../shared/types'
+import type { GameId } from '../shared/games'
 
 export type LibraryStatus = 'pending' | 'analyzing' | 'done' | 'error'
 
@@ -14,7 +15,9 @@ export interface LibraryEntry {
   status: LibraryStatus
   progress: number
   error?: string
-  counts?: { knock: number; assist: number }
+  counts?: EventCounts
+  /** Absent for entries analyzed before multi-game support (Apex). */
+  game?: GameId
   durationSec?: number
   thumb?: string
   /** Number of highlight clips available with default parameters (Task 11 lazy write, used by card badges and the "has highlights" filter). */

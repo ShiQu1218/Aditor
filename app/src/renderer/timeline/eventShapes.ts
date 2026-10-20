@@ -36,6 +36,27 @@ export const SHAPES: Record<EventType, ShapeSpec> = {
     shape: 'star',
     glyph: 'M12 3l2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5z',
     colorVar: '--ev-squad-wipe'
+  },
+  // Valorant: a kill reads like an Apex knock (the player's own frag); multikill/ace borrow the elim/squad-wipe colors.
+  kill: {
+    shape: 'circle',
+    glyph: 'M17 12a5 5 0 1 1-10 0a5 5 0 0 1 10 0z M12 3v4 M12 17v4 M3 12h4 M17 12h4',
+    colorVar: '--ev-knock'
+  },
+  death: {
+    shape: 'square',
+    glyph: 'M12 4a7 7 0 0 0-4 12.7V19h8v-2.3A7 7 0 0 0 12 4z M9.5 11.5h.01 M14.5 11.5h.01',
+    colorVar: '--ev-death'
+  },
+  multikill: {
+    shape: 'diamond',
+    glyph: 'M13 3L6 13h5l-1 8 7-10h-5z',
+    colorVar: '--ev-elim'
+  },
+  ace: {
+    shape: 'star',
+    glyph: 'M12 3l2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5z',
+    colorVar: '--ev-squad-wipe'
   }
 }
 

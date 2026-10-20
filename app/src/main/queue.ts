@@ -1,7 +1,8 @@
 import { EventEmitter } from 'events'
 import { EngineClient } from './engine'
 import { Library, normalizePath } from './library'
-import { CacheDoc, isCounted } from '../shared/types'
+import { CacheDoc, countEvents } from '../shared/types'
+import { gameOf } from '../shared/games'
 import type { QueuePayload, QueueSnapshot } from '../shared/queueState'
 import { analyzeSettingArgs, AnalyzeSettings } from './settings-derived'
 import { capturePriorCache, preserveClipsAfterReanalysis } from './reanalysis'
@@ -146,18 +147,6 @@ export class AnalysisQueue extends EventEmitter {
         console.error('[Queue] failed to preserve clips after re-analysis:', err)
       }
 
-      let knock = 0
-      let assist = 0
-      for (const ev of doc.events || []) {
-        if (isCounted(ev)) {
-          if (ev.type === 'knock') {
-            knock++
-          } else if (ev.type === 'assist_knock' || ev.type === 'assist_elim') {
-            assist++
-          }
-        }
-      }
-
       const duration = doc.video?.duration || 0
       const thumb = await this._generateThumbnail(videoPath, duration).catch(() => undefined)
 
@@ -165,7 +154,8 @@ export class AnalysisQueue extends EventEmitter {
         status: 'done',
         progress: 1,
         analyzingSince: undefined,
-        counts: { knock, assist },
+        counts: countEvents(doc.events || []),
+        game: gameOf(doc.game),
         durationSec: duration,
         thumb,
         codec: doc.video?.codec,

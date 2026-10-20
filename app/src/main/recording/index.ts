@@ -3,6 +3,7 @@
  * The interface is fixed by the skeleton (`RecordingDeps` and `createRecordingService` signatures); implementations live in the other files in this directory.
  */
 import type { GameId } from '../../shared/games'
+import type { EventCounts } from '../../shared/types'
 import type { RecordingService, RecordingSettings } from '../../shared/recording'
 import type { GameProcess } from './game-watcher'
 import { RecordingSessionService } from './session'
@@ -73,7 +74,8 @@ export interface RecordingDeps {
 }
 
 export interface LiveAnalysisSummary {
-  counts: { knock: number; assist: number }
+  counts: EventCounts
+  game: GameId
   durationSec: number
   codec: string
   /** Live results are equivalent to offline analysis (the cache has the official version), so a full analysis is unnecessary. */

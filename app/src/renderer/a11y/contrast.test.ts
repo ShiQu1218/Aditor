@@ -22,7 +22,7 @@ const SURFACES: Array<[string, string]> = [
   ['--bg-raised', v('--bg-raised')],
   ['selected #2C2C30', '#2c2c30']
 ]
-const EVENTS = ['--ev-knock', '--ev-assist-knock', '--ev-assist-elim', '--ev-elim', '--ev-squad-wipe']
+const EVENTS = ['--ev-knock', '--ev-assist-knock', '--ev-assist-elim', '--ev-elim', '--ev-squad-wipe', '--ev-death']
 
 describe('contrast() (WCAG 2.x relative luminance)', () => {
   test('Black and white: 21:1; identical colors: 1:1', () => {

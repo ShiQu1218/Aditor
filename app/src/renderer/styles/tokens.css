@@ -41,6 +41,7 @@
   --ev-assist-elim: #2dd4bf; /* Diamond · cross. */
   --ev-elim: #f2e65a; /* Square · skull. */
   --ev-squad-wipe: #b66dff; /* Star · sparkle. */
+  --ev-death: #cbd5e1; /* Valorant death: square · skull. Valorant kill/multikill/ace reuse knock/elim/squad-wipe colors. */
   --ev-uncounted-alpha: 0.65; /* Uncounted: hollow ring at 65% opacity (ring contrast >=3:1). */
 
   /* Timeline. */
