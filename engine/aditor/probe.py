@@ -71,8 +71,9 @@ def probe(path: str) -> VideoInfo:
         raise ProbeError("No video stream found")
     s = streams[0]
     fmt = doc.get("format", {})
-    game_aspect = next((value for key, value in (fmt.get("tags") or {}).items()
-                        if key.lower() == "aditor_game_aspect" and isinstance(value, str)), None)
+    tags = {key.lower(): value for key, value in (fmt.get("tags") or {}).items() if isinstance(value, str)}
+    game_aspect = tags.get("aditor_game_aspect")
+    game = tags.get("aditor_game")
     try:
         start = float(s.get("start_time") or fmt.get("start_time") or 0.0)
         duration = float(fmt.get("duration"))
@@ -80,7 +81,7 @@ def probe(path: str) -> VideoInfo:
         return VideoInfo(path=path, duration=duration, width=int(s["width"]), height=int(s["height"]),
                          codec=s.get("codec_name", ""), start_time=start,
                          size=st.st_size, mtime=st.st_mtime,
-                         fps=_frame_rate(s), pix_fmt=s.get("pix_fmt") or "", game_aspect=game_aspect)
+                         fps=_frame_rate(s), pix_fmt=s.get("pix_fmt") or "", game_aspect=game_aspect, game=game)
     except (TypeError, ValueError, KeyError) as e:
         raise ProbeError(f"Missing ffprobe field: {e!r}") from e
 

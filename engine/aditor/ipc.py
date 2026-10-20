@@ -177,7 +177,8 @@ class Server:
 
         return analyze(path, profile, cache_dir=cache_dir, beside=bool(args.get("beside", False)),
                        force=bool(args.get("force", False)), on_progress=progress, cancel=cancel,
-                       hwaccel=bool(args.get("hwaccel", True)), jobs=_jobs(args.get("jobs")), layout=layout)
+                       hwaccel=bool(args.get("hwaccel", True)), jobs=_jobs(args.get("jobs")), layout=layout,
+                       game=args.get("game"))
 
     def _derive(self, rid, args, cancel):
         try:

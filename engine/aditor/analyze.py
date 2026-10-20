@@ -20,6 +20,7 @@ from .errors import Cancelled
 from .derive import derive
 from .detect import Detector, Keywords, Pending
 from .events import EventTracker
+from .games import require_analyzable, resolve_game
 from .layout import Layout
 from .models import Clip, Event, FrameResult, SpecInterval
 from .probe import keyframes, probe
@@ -291,8 +292,10 @@ def _replay(sg: _Seg, log: list, own_from: float, hi: float, det: Detector, prof
 def analyze(path: str, profile: Profile, *, cache_dir: Path, beside: bool = False,
             force: bool = False, on_progress: Callable[[float, float], None] = _noop,
             cancel: threading.Event | None = None, hwaccel: bool = True,
-            jobs: int | None = None, layout: Layout | None = None) -> dict:
+            jobs: int | None = None, layout: Layout | None = None, game: str | None = None) -> dict:
     info = probe(path)
+    # Only Apex has a detection pipeline so far; fail clearly instead of running Apex templates on another game.
+    require_analyzable(resolve_game(game, info))
     scene_dir = profile.dir.parent / "scene"
     scene_dir = scene_dir if scene_dir.is_dir() else None
     if layout is None and not profile.layout.identity:

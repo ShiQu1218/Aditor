@@ -46,6 +46,7 @@ from .matches import MatchTracker
 from .models import Event, FrameResult, SpecInterval
 from .profile import Profile, load_profile
 from .layout import Layout, parse_aspect
+from .games import UnsupportedGame, require_analyzable, resolve_game
 from .scene import SCENE_SIZE, SceneDetector
 
 # ---- Shared-memory layout (recorder/src/shm.rs) ----
@@ -678,9 +679,14 @@ def _watch_stdin(stdin, stop: threading.Event) -> None:
 
 
 def run(shm: str, profile_dir: Path, scene_dir: Path | None = None, *, stdin=None, stdout=None,
-        poll_interval: float = POLL_INTERVAL, aspect: str | None = None) -> int:
+        poll_interval: float = POLL_INTERVAL, aspect: str | None = None, game: str | None = None) -> int:
     out = _Out(stdout if stdout is not None else sys.stdout.buffer)
     stdin = stdin if stdin is not None else sys.stdin.buffer
+    try:
+        require_analyzable(resolve_game(game))
+    except UnsupportedGame as e:
+        out.send({"ev": "error", "code": "unsupported_game", "message": str(e)})
+        return 1
     try:
         layout = parse_aspect(aspect) if aspect else Layout(1.0)
         profile = load_profile(Path(profile_dir)).with_layout(layout)

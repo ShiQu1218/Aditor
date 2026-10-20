@@ -23,6 +23,8 @@ class VideoInfo:
     fps: float = 0.0
     pix_fmt: str = ""
     game_aspect: str | None = None
+    # aditor_game tag written by the app for non-Apex recordings; None for Apex and imported videos.
+    game: str | None = None
 
     def to_dict(self) -> dict:
         return asdict(self)
