@@ -1,5 +1,8 @@
 """Auto-detect the game aspect of untagged videos with the scene templates."""
 import subprocess
+import sys
+import threading
+import time
 
 import cv2
 import numpy as np
@@ -10,6 +13,7 @@ from aditor import ffbin
 from aditor.aspect import (DETECT_SAMPLES, MIN_POSITIVE_FRAMES, choose_layout, detect_aspect, detect_layout,
                            pick_aspect)
 from aditor.layout import SUPPORTED_ASPECTS, Layout, parse_aspect
+from aditor.errors import Cancelled
 from aditor.probe import probe
 from aditor.scene import SCENE_ROIS, SCENE_SIZE
 from conftest import make_video
@@ -115,3 +119,60 @@ def test_detect_layout_honours_cancel(tmp_path):
     cancel.set()
     with pytest.raises(Cancelled):
         detect_layout(str(v), probe(str(v)), hwaccel=False, cancel=cancel)
+
+
+def test_grab_cancel_kills_and_reaps_slow_ffmpeg(monkeypatch):
+    real_popen = subprocess.Popen
+    children = []
+    cancel = threading.Event()
+
+    def popen(cmd, **kwargs):
+        child = real_popen([sys.executable, "-c", "import time; time.sleep(30)"], **kwargs)
+        children.append(child)
+        return child
+    monkeypatch.setattr(asp.subprocess, "Popen", popen)
+    timer = threading.Timer(0.2, cancel.set)
+    timer.start()
+    started = time.monotonic()
+    try:
+        with pytest.raises(Cancelled):
+            asp._grab("unused.mp4", 1.0, True, cancel=cancel)
+        assert time.monotonic() - started < 1.0
+        assert len(children) == 1
+        assert children[0].poll() is not None
+        assert children[0].stdout.closed and children[0].stderr.closed
+    finally:
+        timer.cancel()
+        timer.join()
+        for child in children:
+            if child.poll() is None:
+                child.kill()
+            child.communicate()
+
+
+def test_grab_drains_a_frame_larger_than_the_pipe_buffer(monkeypatch):
+    real_popen = subprocess.Popen
+
+    def popen(cmd, **kwargs):
+        return real_popen([sys.executable, "-c", "import sys; sys.stdout.buffer.write(b'x' * (640 * 360))"], **kwargs)
+    monkeypatch.setattr(asp.subprocess, "Popen", popen)
+    frame = asp._grab("unused.mp4", 1.0, False)
+    assert frame.shape == (360, 640)
+    assert np.all(frame == ord("x"))
+
+
+def test_grab_timeout_reaps_process_and_falls_back_to_software(monkeypatch):
+    real_popen = subprocess.Popen
+    children = []
+
+    def popen(cmd, **kwargs):
+        code = "import time; time.sleep(30)" if not children else "import sys; sys.stdout.buffer.write(b'x' * (640 * 360))"
+        child = real_popen([sys.executable, "-c", code], **kwargs)
+        children.append(child)
+        return child
+    monkeypatch.setattr(asp.subprocess, "Popen", popen)
+    monkeypatch.setattr(asp, "SAMPLE_TIMEOUT", 0.5)
+    frame = asp._grab("unused.mp4", 1.0, True)
+    assert frame.shape == (360, 640)
+    assert len(children) == 2
+    assert all(child.poll() is not None and child.stdout.closed and child.stderr.closed for child in children)

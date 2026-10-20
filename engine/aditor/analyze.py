@@ -295,7 +295,7 @@ def analyze(path: str, profile: Profile, *, cache_dir: Path, beside: bool = Fals
     info = probe(path)
     if layout is None and not profile.layout.identity:
         layout = profile.layout  # Retain explicit profile layouts for existing callers.
-    # Explicit > video tag > detection; None means detect when the video is decoded (cache hits never detect).
+    # Explicit > video tag > detection; legacy cache hits also need detection to validate their layout.
     layout, aspect_source = resolve_layout(layout, info)
     profile = profile.with_layout(layout or Layout(1.0))
     cache_dir = Path(cache_dir)
@@ -304,8 +304,19 @@ def analyze(path: str, profile: Profile, *, cache_dir: Path, beside: bool = Fals
     # An untagged video's cache records the detected squash, so accept whichever it holds.
     squash = None if layout is None else profile.layout.squash
     if not force and old is not None and not needs_reanalysis(old, info, profile.templates_version, squash):
-        old["cache_path"] = str(cp)
-        return old
+        if layout is None and "aspect_source" not in old["analysis"]:
+            detection = detect_aspect(path, info, cancel=cancel, hwaccel=hwaccel)
+            if cancel is not None and cancel.is_set():
+                raise Cancelled()
+            layout, aspect_source = detection.layout, "detected" if detection.found else "default"
+            profile = profile.with_layout(layout)
+            if old["analysis"].get("aspect_squash", 1.0) == layout.squash:
+                old["analysis"].update(aspect_source=aspect_source, aspect_squash=layout.squash)
+                _save(cp, old, cache_dir)
+                return old
+        else:
+            old["cache_path"] = str(cp)
+            return old
 
     resuming = (not force) and _resumable(old, info, profile, squash is not None)
     old_clips = [Clip.from_dict(c) for c in (old or {}).get("clips", [])]

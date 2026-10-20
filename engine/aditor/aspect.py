@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import subprocess
 import threading
+import time
 from typing import Iterable, NamedTuple
 
 import numpy as np
@@ -82,19 +83,37 @@ def choose_layout(frames: Iterable[np.ndarray]) -> Detection:
     return Detection(Layout(1.0), False) if name is None else Detection(parse_aspect(name), True)
 
 
-def _grab(path: str, t: float, hwaccel: bool) -> np.ndarray | None:
+def _grab(path: str, t: float, hwaccel: bool, cancel: threading.Event | None = None) -> np.ndarray | None:
     """Decode one 640×360 grayscale frame at t; None when the video has no frame there."""
     w, h = SCENE_SIZE
     for hw in ((True, False) if hwaccel else (False,)):
+        if cancel is not None and cancel.is_set():
+            raise Cancelled()
         cmd = [ffbin.ffmpeg(), "-v", "error", "-nostdin"] + build_input_args(None, hw, t)
         cmd += ["-i", path, "-map", "0:v:0", "-an", "-sn", "-dn", "-frames:v", "1", "-vf", f"scale={w}:{h}",
                 "-pix_fmt", "gray", "-f", "rawvideo", "pipe:1"]
-        try:
-            r = subprocess.run(cmd, capture_output=True, timeout=SAMPLE_TIMEOUT)
-        except subprocess.TimeoutExpired:
-            continue
-        if r.returncode == 0 and len(r.stdout) == w * h:
-            return np.frombuffer(r.stdout, np.uint8).reshape(h, w)
+        with subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE) as proc:
+            deadline = time.monotonic() + SAMPLE_TIMEOUT
+            try:
+                while True:
+                    if cancel is not None and cancel.is_set():
+                        raise Cancelled()
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        break
+                    try:
+                        stdout, _ = proc.communicate(timeout=min(0.1, remaining))
+                    except subprocess.TimeoutExpired:
+                        continue
+                    if cancel is not None and cancel.is_set():
+                        raise Cancelled()
+                    if proc.returncode == 0 and len(stdout) == w * h:
+                        return np.frombuffer(stdout, np.uint8).reshape(h, w)
+                    break
+            finally:
+                if proc.poll() is None:
+                    proc.kill()
+                proc.communicate()
     return None
 
 
@@ -103,9 +122,11 @@ def _sampled_frames(path: str, info: VideoInfo, hwaccel: bool, cancel: threading
         if cancel is not None and cancel.is_set():
             raise Cancelled()
         t = info.duration * (i + 0.5) / DETECT_SAMPLES
-        frame = _grab(path, t, hwaccel)
+        frame = _grab(path, t, hwaccel, cancel)
         if frame is None and t > SAMPLE_RETRY_BACK:  # Seeking past the last frame of a low-fps video yields nothing.
-            frame = _grab(path, t - SAMPLE_RETRY_BACK, hwaccel)
+            if cancel is not None and cancel.is_set():
+                raise Cancelled()
+            frame = _grab(path, t - SAMPLE_RETRY_BACK, hwaccel, cancel)
         if frame is not None:
             yield frame
 
