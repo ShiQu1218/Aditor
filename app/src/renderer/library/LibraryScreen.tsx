@@ -123,11 +123,17 @@ export function LibraryScreen({ onSelectVideo, onOpenSettings }: LibraryScreenPr
     void window.api?.library?.toggleFavorite?.(path)
   }, [])
 
-  const handleRemove = useCallback((path: string) => {
-    const confirmed = window.confirm(t.card.removeConfirm.replace('{name}', fileName(path)))
+  const handleRemove = useCallback(async (path: string) => {
+    const entry = entries.find((entry) => entry.path === path)
+    const message = entry?.source === 'recording' ? t.card.removeSourceConfirm : t.card.removeConfirm
+    const confirmed = window.confirm(message.replace('{name}', fileName(path)))
     if (!confirmed) return
-    void window.api?.library?.remove?.(path)
-  }, [])
+    try {
+      await window.api.library.remove(path)
+    } catch {
+      toast({ message: t.card.removeFailed })
+    }
+  }, [entries, toast])
 
   const handleRetry = useCallback((path: string) => {
     void window.api?.queue?.enqueue?.(path)

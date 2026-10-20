@@ -11,11 +11,73 @@ beforeEach(() => {
   file = path.join(dir, 'library.json')
 })
 afterEach(() => {
+  vi.restoreAllMocks()
   vi.useRealTimers()
   fs.rmSync(dir, { recursive: true, force: true })
 })
 
 describe('Library durability (I3)', () => {
+  it('deletes recorded sources after reloading and persists removal', () => {
+    const video = path.join(dir, 'recorded.mp4')
+    fs.writeFileSync(video, 'recording')
+    const lib = new Library(file)
+    lib.add([video], 'recording')
+    expect(new Library(file).get(video)?.source).toBe('recording')
+    expect(new Library(file).remove(video.toUpperCase())).toBe(true)
+    expect(fs.existsSync(video)).toBe(false)
+    expect(new Library(file).getEntries()).toEqual([])
+  })
+
+  it('preserves external sources and legacy sources with unknown provenance', () => {
+    const external = path.join(dir, 'external.mp4')
+    const legacy = path.join(dir, 'legacy.mp4')
+    fs.writeFileSync(external, 'external')
+    fs.writeFileSync(legacy, 'legacy')
+    const lib = new Library(file)
+    lib.add([external, legacy])
+    lib.update(legacy, { source: undefined })
+    const reloaded = new Library(file)
+    expect(reloaded.remove(external)).toBe(true)
+    expect(reloaded.remove(legacy)).toBe(true)
+    expect(fs.readFileSync(external, 'utf8')).toBe('external')
+    expect(fs.readFileSync(legacy, 'utf8')).toBe('legacy')
+  })
+
+  it('marks recordings already imported by a watcher without duplicating them or losing ownership on reimport', () => {
+    const lib = new Library(file)
+    const video = path.join(dir, 'watched.mp4')
+    lib.add([video])
+    expect(lib.add([video], 'recording')).toEqual([])
+    lib.add([video])
+    const entries = new Library(file).getEntries()
+    expect(entries).toHaveLength(1)
+    expect(entries[0].source).toBe('recording')
+  })
+
+  it('retains the entry and source when deletion fails', () => {
+    const video = path.join(dir, 'locked.mp4')
+    fs.writeFileSync(video, 'recording')
+    const lib = new Library(file)
+    lib.add([video], 'recording')
+    vi.spyOn(fs, 'unlinkSync').mockImplementation(() => {
+      throw Object.assign(new Error('file is busy'), { code: 'EBUSY' })
+    })
+    expect(() => lib.remove(video)).toThrow('file is busy')
+    expect(new Library(file).get(video)).toBeDefined()
+    expect(lib.get(video)).toBeDefined()
+    expect(fs.existsSync(video)).toBe(true)
+  })
+
+  it('removes missing recorded files and ignores paths outside the library', () => {
+    const lib = new Library(file)
+    lib.add([path.join(dir, 'missing.mp4')], 'recording')
+    expect(lib.remove(path.join(dir, 'missing.mp4'))).toBe(true)
+    const outside = path.join(dir, 'outside.mp4')
+    fs.writeFileSync(outside, 'keep')
+    expect(lib.remove(outside)).toBe(false)
+    expect(fs.existsSync(outside)).toBe(true)
+  })
+
   it('a corrupt library.json is moved to library.bak.<ts>.json (not overwritten) and reported', () => {
     fs.writeFileSync(file, '[{"path":"D:/a.mp4",')
     const lib = new Library(file)

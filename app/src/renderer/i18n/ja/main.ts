@@ -83,7 +83,9 @@ export const i18n: Messages['i18n'] = {
       assistBadge: 'アシスト {n}',
       av1: 'AV1 · プロキシファイル推奨',
       proxySuggest: 'プロキシファイルを推奨',
-      removeConfirm: '「{name}」をライブラリから削除しますか？（動画ファイルは削除されません）'
+      removeConfirm: '「{name}」をライブラリから削除しますか？（動画ファイルは削除されません）',
+      removeSourceConfirm: '「{name}」をライブラリから削除し、元の動画ファイルも削除しますか？この操作は取り消せません。',
+      removeFailed: '元の動画ファイルを削除できませんでした。アクセス権限や使用中でないかを確認してください。'
     }
   },
   queue: {

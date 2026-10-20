@@ -7,6 +7,8 @@ export type LibraryStatus = 'pending' | 'analyzing' | 'done' | 'error'
 
 export interface LibraryEntry {
   path: string
+  /** Only recordings added by the recording pipeline own their source file. Missing means legacy/unknown. */
+  source?: 'recording' | 'external'
   addedAt: number
   favorite: boolean
   status: LibraryStatus
@@ -135,9 +137,10 @@ export class Library {
     return n
   }
 
-  add(paths: string[]): LibraryEntry[] {
+  add(paths: string[], source: 'recording' | 'external' = 'external'): LibraryEntry[] {
     const existing = new Set(this.entries.map((e) => normalizePath(e.path)))
     const added: LibraryEntry[] = []
+    let changed = false
 
     for (const p of paths) {
       const ext = path.extname(p).toLowerCase()
@@ -146,11 +149,18 @@ export class Library {
       }
       const norm = normalizePath(p)
       if (existing.has(norm)) {
+        // A folder watcher may have imported the recording before finalization finishes.
+        const entry = this.get(p)!
+        if (source === 'recording' && entry.source !== 'recording') {
+          entry.source = source
+          changed = true
+        }
         continue
       }
       existing.add(norm)
       const entry: LibraryEntry = {
         path: p,
+        source,
         addedAt: Date.now(),
         favorite: false,
         status: 'pending',
@@ -160,13 +170,23 @@ export class Library {
       added.push(entry)
     }
 
-    if (added.length > 0) {
+    if (added.length > 0 || changed) {
       this.save()
     }
     return added
   }
 
   remove(videoPath: string): boolean {
+    const entry = this.get(videoPath)
+    if (!entry) return false
+    if (entry.source === 'recording') {
+      try {
+        fs.unlinkSync(entry.path)
+      } catch (err) {
+        // Already-missing files can still be removed from the library; other failures retain the entry.
+        if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err
+      }
+    }
     const norm = normalizePath(videoPath)
     const initialLen = this.entries.length
     this.entries = this.entries.filter((e) => normalizePath(e.path) !== norm)

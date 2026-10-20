@@ -81,7 +81,9 @@ export const i18n: Messages['i18n'] = {
       assistBadge: 'Assists {n}',
       av1: 'AV1 · Proxy recommended',
       proxySuggest: 'Proxy recommended',
-      removeConfirm: 'Remove "{name}" from the library? The video file will not be deleted.'
+      removeConfirm: 'Remove "{name}" from the library? The video file will not be deleted.',
+      removeSourceConfirm: 'Remove "{name}" from the library and delete the source video file? This cannot be undone.',
+      removeFailed: 'Removal failed. Could not delete the source video file. Check its permissions or whether it is in use.'
     }
   },
   queue: {

@@ -82,7 +82,9 @@ const i18n = {
       assistBadge: '助攻 {n}',
       av1: 'AV1 · 建議代理檔',
       proxySuggest: '建議代理檔',
-      removeConfirm: '確定要從影片庫移除「{name}」嗎？（不會刪除影片檔案）'
+      removeConfirm: '確定要從影片庫移除「{name}」嗎？（不會刪除影片檔案）',
+      removeSourceConfirm: '確定要從影片庫移除「{name}」並刪除來源影片檔案嗎？此操作無法復原。',
+      removeFailed: '移除失敗，無法刪除來源影片檔案，請確認檔案權限或是否正被使用。'
     }
   },
   queue: {

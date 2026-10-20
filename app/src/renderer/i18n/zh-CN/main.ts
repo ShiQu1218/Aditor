@@ -83,7 +83,9 @@ export const i18n: Messages['i18n'] = {
       assistBadge: '助攻 {n}',
       av1: 'AV1 · 建议代理文件',
       proxySuggest: '建议代理文件',
-      removeConfirm: '确定要从视频库移除“{name}”吗？（不会删除视频文件）'
+      removeConfirm: '确定要从视频库移除“{name}”吗？（不会删除视频文件）',
+      removeSourceConfirm: '确定要从视频库移除“{name}”并删除源视频文件吗？此操作无法撤销。',
+      removeFailed: '移除失败，无法删除源视频文件，请检查文件权限或是否正在使用。'
     }
   },
   queue: {

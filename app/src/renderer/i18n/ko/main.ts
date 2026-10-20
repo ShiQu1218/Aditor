@@ -84,7 +84,9 @@ export const i18n: Messages['i18n'] = {
       assistBadge: '어시스트 {n}',
       av1: 'AV1 · 프록시 파일 권장',
       proxySuggest: '프록시 파일 권장',
-      removeConfirm: '‘{name}’을(를) 라이브러리에서 제거할까요? (영상 파일은 삭제되지 않습니다)'
+      removeConfirm: '‘{name}’을(를) 라이브러리에서 제거할까요? (영상 파일은 삭제되지 않습니다)',
+      removeSourceConfirm: '‘{name}’을(를) 라이브러리에서 제거하고 원본 영상 파일도 삭제할까요? 이 작업은 취소할 수 없습니다.',
+      removeFailed: '원본 영상 파일을 삭제하지 못했습니다. 파일 권한이나 사용 중인지 확인하세요.'
     }
   },
   queue: {

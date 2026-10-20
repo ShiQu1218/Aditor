@@ -218,7 +218,7 @@ async function initEngineAndServices(): Promise<void> {
     ffmpegPath: ffmpegExecutable(app.isPackaged),
     profileDir: templateProfileDir,
     addToLibrary: (paths) => {
-      library!.add(paths)
+      library!.add(paths, 'recording')
       pushLibrary()
     },
     enqueueAnalysis: (videoPath) => queue!.enqueue(videoPath),
