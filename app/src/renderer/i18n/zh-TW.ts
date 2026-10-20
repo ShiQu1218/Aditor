@@ -279,6 +279,9 @@ const i18n = {
       apply: '套用（取代現有建議）'
     },
     transport: {
+      volume: '預覽音量',
+      mute: '靜音',
+      unmute: '取消靜音',
       play: '播放',
       pause: '暫停',
       prevEvent: '上一個事件',

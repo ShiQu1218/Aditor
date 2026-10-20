@@ -42,6 +42,22 @@ describe('settings store', () => {
     expect(loadSettings(file).sameDayVideosCollapsed).toBe(true)
   })
 
+  it('persists preview audio across reload and unrelated changes, rejecting invalid values', () => {
+    const store = new SettingsStore(file)
+    expect(store.get()).toMatchObject({ previewVolume: 100, previewMuted: false })
+    expect(store.set({ previewVolume: 35, previewMuted: true }).persisted).toBe(true)
+    store.set({ before: 5 })
+    expect(new SettingsStore(file).get()).toMatchObject({ previewVolume: 35, previewMuted: true })
+    for (const previewVolume of [-1, 101, NaN, Infinity, '50', null]) {
+      store.set({ previewVolume } as never)
+      expect(store.get().previewVolume).toBe(35)
+    }
+    store.set({ previewMuted: 'true' } as never)
+    expect(store.get().previewMuted).toBe(true)
+    expect(store.set({ previewVolume: 0, previewMuted: false }).persisted).toBe(true)
+    expect(loadSettings(file)).toMatchObject({ previewVolume: 0, previewMuted: false })
+  })
+
   it('recording setting defaults, legacy FPS migration, invalid values, and reload', () => {
     const store = new SettingsStore(file)
     expect(store.get().recording).toMatchObject({ preset: 'speed', forceAspect: false, aspectMode: 'fit',

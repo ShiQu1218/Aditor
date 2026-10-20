@@ -32,7 +32,8 @@ def _cmd_analyze(a) -> int:
 def _cmd_matches(a) -> int:
     from aditor.matches import analyze_matches
 
-    doc = analyze_matches(a.video, fps=a.fps, timeline=a.timeline, hwaccel=not a.no_hwaccel, layout=_layout(a))
+    doc = analyze_matches(a.video, fps=a.fps, timeline=a.timeline, hwaccel=not a.no_hwaccel, layout=_layout(a),
+                          scene_dir=Path(a.scene_dir) if a.scene_dir else None)
     print(json.dumps(doc, ensure_ascii=False))
     return 0
 
@@ -63,6 +64,7 @@ def main(argv: list[str] | None = None) -> int:
     ma.add_argument("--timeline", action="store_true", help="Include a per-frame scene timeline")
     ma.add_argument("--no-hwaccel", action="store_true")
     ma.add_argument("--aspect", default=None, help=ASPECT_HELP)
+    ma.add_argument("--scene-dir", default=None, help="Scene template directory (default: templates/scene)")
     sub.add_parser("ipc", help="JSON Lines IPC server")
     li = sub.add_parser("live", help="Live detection (reads aditorrec shared memory and writes JSON Lines to stdout)")
     li.add_argument("--shm", required=True, help="Shared memory name (for example, Local\\aditorrec-<sessionId>)")

@@ -23,7 +23,7 @@ import { useEditorLock } from '../editor/useEditorLock'
 import { checkSmooth, PlayabilityResult } from '../media/playability'
 import { Command } from '../input/keymap'
 import { drawerFixtureRequested, longFixtureRequested } from '../dev/fixture'
-import { i18n } from '../i18n'
+import { i18n, settingsI18n } from '../i18n'
 import { AddEventDialog } from './AddEventDialog'
 import { Aside } from './Aside'
 import { AutoClipPopover } from './AutoClipPopover'
@@ -369,6 +369,18 @@ export function StudioScreen({ videoPath, onBack, onOpenVideo, playbackRequest, 
 
   // Read settings and subscribe to settings:changed (lead-in/out, proxy suggestion, AI defaults, and project-track collapse apply without restart).
   useEffect(() => subscribeStudioSettings(window.api, setSettings), [])
+
+  const changePreviewAudio = (previewVolume: number, previewMuted: boolean): void => {
+    setSettings((current) => ({ ...(current ?? STUDIO_SETTINGS_DEFAULTS), previewVolume, previewMuted }))
+    void (async () => {
+      try {
+        const result = await window.api.settings.set({ previewVolume, previewMuted })
+        if (!result.persisted) toast({ message: settingsI18n.saveFailed })
+      } catch {
+        toast({ message: settingsI18n.saveFailed })
+      }
+    })()
+  }
 
   // Suggestions after analysis (spec §3.2.6, §4.2): engine documents contain manual clips only, so
   // - on load, if there are no AI clips and the setting is enabled, place suggestions automatically;
@@ -1498,6 +1510,8 @@ export function StudioScreen({ videoPath, onBack, onOpenVideo, playbackRequest, 
           <PlayerStage
             videoRef={videoRef}
             src={videoSrc}
+            volume={cfg.previewVolume}
+            muted={settings === null || cfg.previewMuted}
             mode={mode.mode}
             modeLabel={modeLabel}
             spectating={spectatingNow}
@@ -1515,6 +1529,13 @@ export function StudioScreen({ videoPath, onBack, onOpenVideo, playbackRequest, 
             currentTime={currentTime}
             duration={duration}
             speed={speed}
+            volume={cfg.previewVolume}
+            muted={cfg.previewMuted}
+            audioDisabled={settings === null}
+            onVolumeChange={(value) => changePreviewAudio(value, false)}
+            onToggleMute={() => cfg.previewVolume === 0
+              ? changePreviewAudio(100, false)
+              : changePreviewAudio(cfg.previewVolume, !cfg.previewMuted)}
             counts={counts}
             filter={state.filter}
             onTogglePlay={togglePlay}

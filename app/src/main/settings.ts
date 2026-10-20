@@ -134,6 +134,8 @@ function applySettings(base: Settings, src: unknown): Settings {
     cacheLocation: pickEnum(s.cacheLocation, ['appdata', 'besideVideo'] as const, base.cacheLocation),
     lowPerfMode: pickBool(s.lowPerfMode, base.lowPerfMode),
     proxySuggest: pickBool(s.proxySuggest, base.proxySuggest),
+    previewVolume: pickNumber(s.previewVolume, { min: 0, max: 100 }, base.previewVolume),
+    previewMuted: pickBool(s.previewMuted, base.previewMuted),
     before: pickNumber(s.before, RANGES.before, base.before),
     after: pickNumber(s.after, RANGES.after, base.after),
     autoclip: pickAutoClip(s.autoclip, base.autoclip),

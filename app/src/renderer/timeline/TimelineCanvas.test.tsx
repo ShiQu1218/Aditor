@@ -14,7 +14,7 @@ const props: Props = {
 const q = <T extends HTMLElement = HTMLElement>(selector: string): T => document.querySelector<T>(selector)!
 const scrollbar = (): HTMLElement => q('[role="scrollbar"]')
 const start = (): number => Number(scrollbar().getAttribute('aria-valuenow'))
-const slider = (): HTMLInputElement => q('input[type="range"]')
+const slider = (): HTMLInputElement => q('.tl-custom-zoom')
 const modeButton = (mode: 'full' | 'detail' | 'custom'): HTMLButtonElement =>
   Array.from(document.querySelectorAll<HTMLButtonElement>('.tl-mode')).find((b) => b.textContent === i18n.timeline.zoomModes[mode])!
 const expectMode = (mode: 'full' | 'detail' | 'custom'): void => {

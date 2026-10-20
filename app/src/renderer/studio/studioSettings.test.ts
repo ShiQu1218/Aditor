@@ -17,6 +17,14 @@ describe('toStudioSettings (pure decision logic)', () => {
     expect(s.proxySuggest).toBe(false)
     expect(s.autoclip.n).toBe(5)
   })
+
+  test('Preview audio defaults and validation preserve valid saved values', () => {
+    expect(toStudioSettings(undefined)).toMatchObject({ previewVolume: 100, previewMuted: false })
+    expect(toStudioSettings({ previewVolume: 0, previewMuted: true })).toMatchObject({ previewVolume: 0, previewMuted: true })
+    for (const previewVolume of [-1, 101, NaN, Infinity, '25', null]) {
+      expect(toStudioSettings({ previewVolume, previewMuted: 'true' })).toMatchObject({ previewVolume: 100, previewMuted: false })
+    }
+  })
 })
 
 describe('leadInSeek uses the configured number of seconds', () => {

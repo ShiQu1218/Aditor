@@ -6,6 +6,7 @@ import subprocess
 import tempfile
 from contextlib import closing
 from dataclasses import asdict, dataclass
+from pathlib import Path
 from typing import Iterator
 
 import numpy as np
@@ -229,14 +230,14 @@ def _video_frames(path: str, fps: float, hwaccel: bool, codec: str) -> Iterator[
 
 
 def analyze_matches(path: str, *, fps: float = 1.0, timeline: bool = False,
-                    hwaccel: bool = True, layout: Layout | None = None) -> dict:
+                    hwaccel: bool = True, layout: Layout | None = None, scene_dir: Path | None = None) -> dict:
     if not math.isfinite(fps) or fps <= 0:
         raise ValueError("fps must be a finite positive number")
     info = probe(path)
     layout, _ = resolve_layout(layout, info)
     if layout is None:
-        layout = detect_aspect(path, info, hwaccel=hwaccel).layout
-    detector = SceneDetector(layout=layout)
+        layout = detect_aspect(path, info, scene_dir=scene_dir, hwaccel=hwaccel).layout
+    detector = SceneDetector(scene_dir, layout=layout)
     tracker = MatchTracker(sample_period=1 / fps)
     scenes = []
     with closing(_video_frames(path, fps, hwaccel, info.codec)) as frames:

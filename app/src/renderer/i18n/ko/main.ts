@@ -281,6 +281,9 @@ export const i18n: Messages['i18n'] = {
       apply: '적용(기존 제안 대체)'
     },
     transport: {
+      volume: '미리보기 음량',
+      mute: '음소거',
+      unmute: '음소거 해제',
       play: '재생',
       pause: '일시정지',
       prevEvent: '이전 이벤트',
