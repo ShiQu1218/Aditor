@@ -135,6 +135,7 @@ export const i18n: Messages['i18n'] = {
       duplicate: '重复敌人',
       spectating: '观战中',
       not_counting_type: '小队全灭不计',
+      death: '自己阵亡，不算击杀',
       manual: '手动'
     },
     forced: '强制',

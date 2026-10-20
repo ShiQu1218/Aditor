@@ -107,11 +107,15 @@ export interface CacheDoc {
 export function countEvents(events: readonly EngineEvent[]): EventCounts {
   const counts: EventCounts = { knock: 0, assist: 0 }
   for (const e of events) {
+    // A death is never counted toward kills, so tally it on its own; only a deleted one drops out.
+    if (e.type === 'death') {
+      if (!e.deleted) counts.death = (counts.death ?? 0) + 1
+      continue
+    }
     if (!isCounted(e)) continue
     if (e.type === 'knock') counts.knock++
     else if (e.type === 'assist_knock' || e.type === 'assist_elim') counts.assist++
     else if (e.type === 'kill') counts.kill = (counts.kill ?? 0) + 1
-    else if (e.type === 'death') counts.death = (counts.death ?? 0) + 1
   }
   return counts
 }

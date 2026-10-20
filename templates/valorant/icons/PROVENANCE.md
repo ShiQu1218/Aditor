@@ -1,6 +1,6 @@
 # templates/valorant/icons 範本來源
 
-Valorant 的偵測不用圖片樣板，`profile.json` 只描述裁切區（`templates_version = valorant-feed@1`）：
+Valorant 的偵測不用圖片樣板，`profile.json` 只描述裁切區（`templates_version = valorant-feed@2`）：
 
 - `banner`：右上擊殺列表（1920×1080 參考座標 1436,84 起、480×256，涵蓋 6 列）。
 - `spec`：左下觀戰列，目前只會傳給錄影器做小圖，偵測時沒有用到。

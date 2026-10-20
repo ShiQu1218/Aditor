@@ -41,10 +41,10 @@ export function applyMatchEvent(matches: LiveMatch[], event: LiveMatchEvent): Li
   return matches
 }
 
-/** Count this match's knocks and kills (not assists or squad wipes); count the full recording when match data is unavailable. */
+/** Count this match's knocks and kills (Valorant kills too; not assists, squad wipes or deaths); count the full recording when match data is unavailable. */
 export function countKills(events: LiveEvent[], matches: LiveMatch[]): number {
   const last = matches.at(-1)
-  return events.filter((e) => (e.type === 'knock' || e.type === 'elim') && isCounted(e) &&
+  return events.filter((e) => (e.type === 'knock' || e.type === 'elim' || e.type === 'kill') && isCounted(e) &&
     (!last || (e.t >= last.start && (last.end === null || e.t <= last.end)))).length
 }
 

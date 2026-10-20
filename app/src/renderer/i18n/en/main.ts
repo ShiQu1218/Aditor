@@ -133,6 +133,7 @@ export const i18n: Messages['i18n'] = {
       duplicate: 'Duplicate enemy',
       spectating: 'Spectating',
       not_counting_type: 'Squad wipe not counted',
+      death: 'Your death, not a kill',
       manual: 'Manual'
     },
     forced: 'Forced',

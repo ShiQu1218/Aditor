@@ -1,6 +1,7 @@
 import path from 'path'
 import { describe, expect, it } from 'vitest'
 import { gameOf, gameProfileDir, gameSceneDir } from './games'
+import { countEvents, type EngineEvent } from './types'
 import { gameMetadataArgs, outputBase } from '../main/recording/finalize'
 import { recordedTime } from '../renderer/library/recordedTime'
 
@@ -35,5 +36,16 @@ describe('game-aware recording output', () => {
       .toEqual(['-metadata', 'aditor_game_aspect=1920x1440', '-movflags', '+faststart+use_metadata_tags'])
     expect(gameMetadataArgs({ game: 'valorant' }))
       .toEqual(['-metadata', 'aditor_game=valorant', '-movflags', '+faststart+use_metadata_tags'])
+  })
+})
+
+
+describe('Valorant event counts', () => {
+  const ev = (type: string, counted: boolean, deleted = false): EngineEvent => ({ id: type + String(counted) + String(deleted), t: 1, type,
+    score: 1, damage_line: false, name_sig: null, counted, counted_reason: '', counted_override: null, source: 'auto', deleted })
+
+  it('tallies deaths apart from kills, so two kills and a death are two kills', () => {
+    expect(countEvents([ev('kill', true), ev('kill', true), ev('death', false)])).toEqual({ knock: 0, assist: 0, kill: 2, death: 1 })
+    expect(countEvents([ev('death', false, true)])).toEqual({ knock: 0, assist: 0 })
   })
 })

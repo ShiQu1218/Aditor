@@ -5,8 +5,9 @@ from dataclasses import asdict, dataclass, field, fields
 
 import numpy as np
 
-# The engine emits knock/assist_knock/assist_elim for Apex and kill/death for Valorant; keep elim as a countable type for compatibility with older project files and manual events.
-COUNTING_TYPES = frozenset({"knock", "assist_knock", "assist_elim", "elim", "kill", "death"})
+# Counted means "counts toward the player's kills". The engine emits knock/assist_knock/assist_elim for Apex and kill/death for
+# Valorant; a death is never counted (derive marks it "death"). Keep elim countable for older project files and manual events.
+COUNTING_TYPES = frozenset({"knock", "assist_knock", "assist_elim", "elim", "kill"})
 
 
 @dataclass(frozen=True)

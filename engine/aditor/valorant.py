@@ -205,8 +205,10 @@ class FeedTracker:
                 if t - self._last_death < DEATH_GAP:  # A death row that fades and returns looking different.
                     continue
                 self._last_death = t
+            # "Counted" means a kill of the player's; a death is shown but never counted (as derive marks it).
+            kill = row.type == "kill"
             ev = Event(id=f"v{int(round(t * 1000))}", t=round(t, 3), type=row.type, score=1.0, damage_line=False,
-                       name_sig=None, counted=True, counted_reason="first")
+                       name_sig=None, counted=kill, counted_reason="first" if kill else "death")
             self.events.append(ev)
             new.append(ev)
         return new

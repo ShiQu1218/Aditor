@@ -134,6 +134,7 @@ const i18n = {
       duplicate: '重複敵人',
       spectating: '觀戰中',
       not_counting_type: '小隊抹殺不計',
+      death: '自己陣亡，不算擊殺',
       manual: '手動'
     },
     forced: '強制',

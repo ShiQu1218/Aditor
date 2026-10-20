@@ -85,7 +85,7 @@ def test_a_returning_death_row_with_another_look_is_still_one_death():
     tr.feed(14.0, [row(3, "death", [0, 0, 1])])        # Different slot and look, within the death gap.
     tr.feed(40.0, [row(0, "death", [0, 1, 0])])        # Next round.
     assert [e.t for e in tr.events] == [10.0, 40.0]
-    assert all(e.counted and e.type == "death" for e in tr.events)
+    assert all(e.type == "death" and not e.counted and e.counted_reason == "death" for e in tr.events)
 
 
 def test_the_top_scoreboard_identifies_valorant_footage():
@@ -161,3 +161,16 @@ def test_live_run_accepts_valorant_shared_memory():
     assert lines[0]["ev"] == "ready"
     final = [o for o in lines if o["ev"] == "snapshot" and o.get("final")][-1]
     assert [e["type"] for e in final["events"]] == ["kill"]
+
+
+def test_derive_never_counts_a_death_as_a_kill():
+    from aditor.derive import derive
+    from aditor.models import Event
+    from aditor.profile import load_profile
+    from conftest import ICON_DIR
+
+    events = [Event(id=f"v{i}", t=float(i), type=typ, score=1.0, damage_line=False, name_sig=None, counted=True)
+              for i, typ in enumerate(("kill", "kill", "death"))]
+    out = derive(events, [], load_profile(ICON_DIR))
+    assert [(e.type, e.counted, e.counted_reason) for e in out] == [
+        ("kill", True, "first"), ("kill", True, "first"), ("death", False, "death")]
