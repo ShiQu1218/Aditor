@@ -185,7 +185,6 @@ const messages: MessageTable = {
   '{message}；{fallback}': '{message}; {fallback}',
   '本次改用內建錄影器': 'The built-in recorder will be used for this session.',
   '本次僅執行即時偵測': 'Only live detection will run for this session.',
-  '遊戲擷取無法使用，本次改用螢幕擷取（DDA）：{reason}': 'Game capture is unavailable, so screen capture (DDA) will be used for this session: {reason}',
   '錄影啟動已取消': 'Recording start was canceled.',
   '無法開始錄影：{error}': 'Could not start recording: {error}',
   '錄影意外停止：{reason}': 'Recording stopped unexpectedly: {reason}',

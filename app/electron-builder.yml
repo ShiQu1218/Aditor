@@ -11,8 +11,6 @@ extraResources:
     to: engine/aditor
   - from: ../build/ffmpeg
     to: ffmpeg
-  - from: ../build/obs-hook
-    to: obs-hook
   - from: resources
     to: resources
     filter:

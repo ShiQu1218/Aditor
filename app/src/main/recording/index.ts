@@ -35,8 +35,6 @@ export interface RecordingDeps {
   defaultOutputDir: string
   /** How to launch aditorrec.exe (paths.ts, provided by task A3). */
   recorderCommand: RecorderCommand
-  /** OBS graphics-hook directory (`hook_dir`). */
-  obsHookDir?: string
   /** ffmpeg.exe used to concatenate segments during finalization. */
   ffmpegPath: string
   /** `templates/icons`: read `banner_roi`/`spec_roi` from `profile.json` and pass them to aditorrec. */

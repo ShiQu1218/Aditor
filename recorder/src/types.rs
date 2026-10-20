@@ -61,15 +61,13 @@ pub enum Codec {
 }
 
 /// Capture method: `wgc` = Windows Graphics Capture (window, default); `dda` = DXGI Desktop
-/// Duplication (entire game display; lower latency without DWM window composition); `hook` = OBS
-/// graphics-hook (inject into the game to intercept Present shared textures; bypass DWM and keep updating in the background unless minimized).
+/// Duplication (entire game display; lower latency without DWM window composition).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum CaptureMethod {
     #[default]
     Wgc,
     Dda,
-    Hook,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]

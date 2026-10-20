@@ -65,13 +65,13 @@ export interface RecordingSettings {
   diskStopGb: number
   /** Whether to show Windows notifications when a match starts or ends (errors always notify). */
   notifyMatch: boolean
-  /** Capture method: 'wgc' = window capture (default); 'dda' = screen capture (DXGI Desktop Duplication); 'hook' = game capture (optional OBS graphics hook, falls back to DDA if unavailable). */
+  /** Capture method: 'wgc' = window capture (default); 'dda' = screen capture (DXGI Desktop Duplication). */
   captureMethod: RecordingCaptureMethod
   /** Show the Aditor window automatically when Apex exits. */
   openOnGameExit: boolean
 }
 
-export type RecordingCaptureMethod = 'hook' | 'wgc' | 'dda'
+export type RecordingCaptureMethod = 'wgc' | 'dda'
 
 export const RECORDING_RANGES = {
   bitrateKbps: { min: 2_000, max: 150_000 },

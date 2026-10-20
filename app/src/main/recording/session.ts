@@ -90,7 +90,6 @@ export class RecordingSessionService implements RecordingService {
   /** Epoch time when this app last stopped an OBS recording (ms). */
   private obsStoppedAt = 0
   private builtinFallbackPid: number | null = null
-  private hookFallbackPid: number | null = null
   /** Time when the current PID was first confirmed. */
   private pidSeenAt = 0
   private startDelayTimer: ReturnType<typeof setTimeout> | null = null
@@ -103,7 +102,6 @@ export class RecordingSessionService implements RecordingService {
         if (pid !== this.gamePid) {
           this.manualStopped = false
           this.builtinFallbackPid = null
-          this.hookFallbackPid = null
           this.blocked = false
           this.cancelRetry()
           this.pidSeenAt = Date.now()
@@ -159,7 +157,6 @@ export class RecordingSessionService implements RecordingService {
       if (!pid || !this.running) return false
       if (pid !== this.gamePid) {
         this.builtinFallbackPid = null
-        this.hookFallbackPid = null
       }
       this.gamePid = pid
       this.manualStopped = false
@@ -352,14 +349,8 @@ export class RecordingSessionService implements RecordingService {
   private async begin(pid: number, builtin = false): Promise<boolean> {
     const settings = { ...this.deps.getSettings() }
     if (builtin || this.builtinFallbackPid === pid) settings.backend = 'builtin'
-    const capture = settings.backend === 'obs' ? 'dda'
-      : settings.captureMethod === 'hook' && this.hookFallbackPid === pid ? 'dda'
-      : settings.captureMethod === 'hook' && !this.deps.obsHookDir ? 'dda'
-      : settings.captureMethod
-    const fallbackReason = capture !== settings.captureMethod
-      ? (settings.backend === 'obs' ? 'obs_backend' : this.hookFallbackPid === pid ? 'hook_fallback_pid' : 'no_hook_dir')
-      : null
-    this.log(`begin pid=${pid} backend=${settings.backend} capture=${capture}${fallbackReason ? ` (fallback=${fallbackReason})` : ''}`)
+    const capture = settings.backend === 'obs' ? 'dda' : settings.captureMethod
+    this.log(`begin pid=${pid} backend=${settings.backend} capture=${capture}`)
     const outputDir = settings.outputDir ?? this.deps.getWatchFolders()[0] ?? this.deps.defaultOutputDir
     this.update({ ...IDLE_RECORDING_STATUS, paused: this.state.paused, phase: 'starting' })
     let session: ActiveSession | null = null
@@ -427,7 +418,7 @@ export class RecordingSessionService implements RecordingService {
         audio: current.backend === 'obs' ? null : { render: settings.renderDevice, capture: settings.captureDevice, mic_gain: settings.micGain, mic_enabled: settings.micEnabled,
           render_enabled: settings.systemAudioEnabled, render_gain: settings.systemGain, render_source: settings.gameAudioOnly ? 'game' : 'device',
           mic_mono: settings.micMono }, frames,
-        capture, ...(capture === 'hook' ? { hook_dir: this.deps.obsHookDir } : {}) })
+        capture })
       await current.writes
       if (this.active !== current || current.ending) return false
       await this.checkDisk(current)
@@ -447,13 +438,6 @@ export class RecordingSessionService implements RecordingService {
       }
       const code = error instanceof RecorderError ? error.code : 'recording_start_failed'
       if (!this.running || this.manualStopped || code === 'cancelled') { this.idle(); return false }
-      const hookReason = this.hookUnavailableReason(code, error)
-      if (hookReason !== null && this.hookFallbackPid !== pid && this.gamePid === pid) {
-        this.hookFallbackPid = pid
-        this.log(`hook fallback pid=${pid} reason=${hookReason}`)
-        this.notice('warning', tr('遊戲擷取無法使用，本次改用螢幕擷取（DDA）：{reason}', { reason: hookReason }))
-        return this.begin(pid, builtin)
-      }
       this.fail(code, tr('無法開始錄影：{error}', { error: String(error) }))
       if (code === 'no_hw_encoder' || code === 'disk_full' || code === 'profile_invalid' || code === 'output_invalid') this.blocked = true
       else this.scheduleRestart()
@@ -563,12 +547,6 @@ export class RecordingSessionService implements RecordingService {
     }).catch((error) => this.notice('error', tr('OBS 逐局影片入庫失敗，收尾時將重試：{error}', { error: String(error) })))
   }
 
-  private hookUnavailableReason(code: string, error: unknown): string | null {
-    const message = error instanceof Error ? error.message : String(error)
-    if (code !== 'hook_unavailable' && !message.includes('hook_unavailable:')) return null
-    return message.replace(/^[\s\S]*?hook_unavailable:\s*/, '').trim() || message
-  }
-
   private async crashed(session: ActiveSession, error: Error): Promise<void> {
     if (this.active !== session || session.ending) return
     this.recordEvent(session, { ev: 'gap', pts: this.state.durationSec, message: error.message })
@@ -576,16 +554,6 @@ export class RecordingSessionService implements RecordingService {
     const code = error instanceof RecorderError ? error.code : 'recorder_crashed'
     if (!finalized) return
     if (!this.running) return
-    const hookReason = this.hookUnavailableReason(code, error)
-    if (hookReason !== null && this.hookFallbackPid !== session.pid) {
-      this.hookFallbackPid = session.pid
-      this.log(`hook fallback pid=${session.pid} reason=${hookReason}`)
-      this.notice('warning', tr('遊戲擷取無法使用，本次改用螢幕擷取（DDA）：{reason}', { reason: hookReason }))
-      if (this.gamePid === session.pid && !this.state.paused && !this.manualStopped) {
-        await this.begin(session.pid)
-      }
-      return
-    }
     this.fail(code, error.message)
     if (code === 'no_hw_encoder') this.blocked = true
     else this.scheduleRestart()

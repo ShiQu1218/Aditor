@@ -55,18 +55,28 @@ describe('Recording settings validation and migration', () => {
     ['fps', [10, 20, 30, 60, 90, 120]],
     ['height', [0, 720, 1080, 1440]],
     ['postAnalysis', ['none', 'afterExit', 'perMatch']],
-    ['captureMethod', ['hook', 'wgc', 'dda']]
+    ['captureMethod', ['wgc', 'dda']]
   ] as const)('%s accepts only allowed enum values', (field, allowed) => {
     for (const value of allowed) expect(migrate({ [field]: value })[field]).toBe(value)
     for (const value of ['invalid', null, false, {}, [], -1, 999]) expect(migrate({ [field]: value })[field]).toBe(defaults[field])
   })
 
-  test('Capture defaults to wgc; previously saved hook/dda values are preserved', () => {
+  test('Capture defaults to wgc; removed capture settings migrate safely and remain valid after saving and reloading', () => {
     expect(defaults.captureMethod).toBe('wgc')
     expect(migrate({}).captureMethod).toBe('wgc')
-    expect(migrate({ captureMethod: 'hook' }).captureMethod).toBe('hook')
+    expect(migrate({ captureMethod: 'hook' }).captureMethod).toBe('wgc')
     expect(migrate({ captureMethod: 'dda' }).captureMethod).toBe('dda')
     expect(migrate({ captureMethod: 'wgc' }).captureMethod).toBe('wgc')
+    fs.writeFileSync(file, JSON.stringify({ recording: { captureMethod: 'hook', bitrateKbps: 23456 } }))
+    const store = new SettingsStore(file)
+    expect(store.get().recording).toMatchObject({ captureMethod: 'wgc', bitrateKbps: 23456 })
+    expect(store.set(patch({ fps: 30 })).persisted).toBe(true)
+    expect(JSON.parse(fs.readFileSync(file, 'utf8')).recording.captureMethod).toBe('wgc')
+    const reloaded = new SettingsStore(file)
+    expect(reloaded.get().recording).toMatchObject({ captureMethod: 'wgc', bitrateKbps: 23456, fps: 30 })
+    expect(reloaded.set(patch({ captureMethod: 'dda' })).persisted).toBe(true)
+    expect(reloaded.set(patch({ captureMethod: 'hook' })).settings.recording.captureMethod).toBe('dda')
+    expect(new SettingsStore(file).get().recording.captureMethod).toBe('dda')
   })
 
   test.each(['builtin', 'obs', 'invalid', null, 1])('backend %j preserves valid values', (backend) => {

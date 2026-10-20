@@ -1,10 +1,9 @@
 ﻿# Manual recording and measurement: run cargo build --release, then set ADITORREC_FFMPEG_DIR and add FFmpeg bin to PATH.
 # Example: ./tools/rec-cli.ps1 -TargetPid 1234 -Seconds 60 -NoMicrophone
-# Compare capture methods with -Capture wgc|dda|hook (hook requires -HookDir, defaulting to D:\obs-studio win-capture); -GpuCounters also samples GPU engine utilization for aditorrec and dwm once per second.
+# Compare capture methods with -Capture wgc|dda; -GpuCounters also samples GPU engine utilization for aditorrec and dwm once per second.
 [CmdletBinding()]
 param(
-    [ValidateSet('wgc', 'dda', 'hook')][string]$Capture = 'wgc',
-    [string]$HookDir = 'D:\obs-studio\data\obs-plugins\win-capture',
+    [ValidateSet('wgc', 'dda')][string]$Capture = 'wgc',
     [switch]$GpuCounters,
     [Parameter(Mandatory)][ValidateRange(1, 2147483647)][int]$TargetPid,
     [ValidateRange(1, 86400)][int]$Seconds = 10,
@@ -41,7 +40,6 @@ if (-not $NoEncode) { $video = @{ codec = $Codec; encoder = $Encoder; fps = $Fps
 $audio = $null
 if (-not $NoAudio -and -not $NoEncode) { $audio = @{ render = $RenderDevice; capture = $CaptureDevice; mic_gain = $MicGain; mic_enabled = -not $NoMicrophone } }
 $request = @{ id = 1; cmd = 'start'; pid = $TargetPid; session_dir = $directory; session_id = $sessionId; encode = $video; audio = $audio; frames = @{ banner = $Banner; spec = $Spectator; base = @(1920, 1080) }; capture = $Capture }
-if ($Capture -eq 'hook') { $request.hook_dir = (Resolve-Path -LiteralPath $HookDir).Path }
 $info = [Diagnostics.ProcessStartInfo]::new()
 $info.FileName = $executable
 $info.UseShellExecute = $false

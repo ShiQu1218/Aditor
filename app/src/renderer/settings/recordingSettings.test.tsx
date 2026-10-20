@@ -6,7 +6,7 @@ import { SettingsController, type SettingsApi } from './settingsController'
 import { DEFAULT_SETTINGS, type Settings } from '../../shared/settings'
 import type { RecorderCapabilities } from '../../shared/recording'
 import { recordingI18n as t } from '../i18n'
-import { cleanupMounted, click, flush, installDomShims, mount, press } from '../../../test/dom'
+import { cleanupMounted, click, flush, installDomShims, mount } from '../../../test/dom'
 
 const capabilities: RecorderCapabilities = {
   version: '0.1.0', encoders: ['hevc_nvenc', 'h264_nvenc', 'av1_qsv'],
@@ -149,8 +149,7 @@ describe('Recording settings screen and controller', () => {
     expect(options('captureDevice')).toEqual(['default', 'mic'])
     expect(options('height')).toEqual(['0', '720', '1080', '1440'])
     expect(Array.from(control('fps').querySelectorAll('input')).map((el) => el.value)).toEqual(['10', '20', '30', '60', '90', '120'])
-    expect(options('captureMethod')).toEqual(['hook', 'dda', 'wgc'])
-    expect(control<HTMLSelectElement>('captureMethod').querySelector('option[value="hook"]')?.textContent).toBe('遊戲擷取')
+    expect(options('captureMethod')).toEqual(['dda', 'wgc'])
   })
 
   test('Toggles, format, device, and numeric units are submitted and updated from the result; values persist after remount', async () => {
@@ -261,140 +260,23 @@ describe('Recording settings screen and controller', () => {
     expect(document.querySelector('details')?.open).toBe(true)
   })
 
-  test('Switching to game capture opens a 5-second warning dialog: confirm is disabled during countdown and applies hook afterward; switching away from hook has no warning', async () => {
+  test('Capture selection persists after remount and surfaces save failures', async () => {
     const r = await show()
-    const details = control('captureMethod').closest('details')!
-    details.open = true
-    expect(control<HTMLSelectElement>('captureMethod').value).toBe('wgc')
-
-    vi.useFakeTimers()
-    select('captureMethod', 'hook')
-
-    const dlg = document.querySelector<HTMLElement>('[role="alertdialog"]')!
-    expect(dlg).not.toBeNull()
-    expect(dlg.getAttribute('aria-modal')).toBe('true')
-    expect(document.getElementById(dlg.getAttribute('aria-labelledby')!)?.textContent).toBe('使用遊戲擷取前請注意')
-    const descEl = document.getElementById(dlg.getAttribute('aria-describedby')!)!
-    expect(descEl.classList.contains('set-dlg-body')).toBe(true)
-    expect(descEl.tabIndex).toBe(0)
-    expect(Array.from(descEl.querySelectorAll('h4')).map((el) => el.textContent)).toEqual([
-      '遊戲擷取與視窗擷取（WGC）的差別',
-      '運作原理',
-      '風險',
-      '聲明'
-    ])
-    expect(descEl.textContent).toContain('graphics-hook')
-    expect(descEl.textContent).toContain('EA Javelin Anticheat')
-    expect(r.controller.getState().settings?.recording.captureMethod).toBe('wgc')
-    expect(control<HTMLSelectElement>('captureMethod').value).toBe('wgc')
-    expect(r.set).not.toHaveBeenCalled()
-
-    const cancelBtn = document.getElementById('set-recording-captureHook-cancel') as HTMLButtonElement
-    const confirmBtn = document.getElementById('set-recording-captureHook-confirm') as HTMLButtonElement
-    expect(document.activeElement).toBe(cancelBtn)
-    expect(confirmBtn.disabled).toBe(true)
-    expect(confirmBtn.textContent).toBe('確認（5）')
-
-    // Click, Enter, and Space cannot confirm during the countdown.
-    click(confirmBtn)
-    act(() => {
-      confirmBtn.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
-      confirmBtn.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true }))
-    })
-    expect(document.querySelector('[role="alertdialog"]')).not.toBeNull()
-    expect(r.controller.getState().settings?.recording.captureMethod).toBe('wgc')
-
-    // The button remains disabled through the countdown to 4 seconds.
-    for (const expected of ['確認（4）', '確認（3）', '確認（2）', '確認（1）']) {
-      act(() => { vi.advanceTimersByTime(1000) })
-      expect(confirmBtn.disabled).toBe(true)
-      expect(confirmBtn.textContent).toBe(expected)
-    }
-    click(confirmBtn)
-    expect(r.controller.getState().settings?.recording.captureMethod).toBe('wgc')
-
-    // Enable the button and show "Confirm" after 5 seconds.
-    act(() => { vi.advanceTimersByTime(1000) })
-    expect(confirmBtn.disabled).toBe(false)
-    expect(confirmBtn.textContent).toBe('確認')
-
-    vi.useRealTimers()
-    click(confirmBtn)
-    await flush()
-    expect(document.querySelector('[role="alertdialog"]')).toBeNull()
-    expect(r.controller.getState().settings?.recording.captureMethod).toBe('hook')
-    expect(control<HTMLSelectElement>('captureMethod').value).toBe('hook')
-    expect(document.activeElement).toBe(control('captureMethod'))
-
-    // Selecting hook again while already using hook does not open the dialog.
-    select('captureMethod', 'hook')
-    await flush()
-    expect(document.querySelector('[role="alertdialog"]')).toBeNull()
-
-    // Switching from hook to another method applies immediately without opening the dialog.
+    expect(options('captureMethod')).toEqual(['dda', 'wgc'])
     select('captureMethod', 'dda')
     await flush()
-    expect(document.querySelector('[role="alertdialog"]')).toBeNull()
     expect(r.controller.getState().settings?.recording.captureMethod).toBe('dda')
-
-    // Switching back to hook still opens the dialog; confirmation is not remembered.
-    select('captureMethod', 'hook')
+    cleanupMounted()
+    const reloaded = new SettingsController(r.api)
+    mount(<SettingsScreen controller={reloaded} initialCategory="recording" />)
     await flush()
-    expect(document.querySelector('[role="alertdialog"]')).not.toBeNull()
+    expect(control<HTMLSelectElement>('captureMethod').value).toBe('dda')
+    r.set.mockRejectedValueOnce(new Error('disk unavailable'))
+    select('captureMethod', 'wgc')
+    await flush()
+    expect(control<HTMLSelectElement>('captureMethod').value).toBe('dda')
+    expect(reloaded.getState().saveFailed).toBe(true)
+    expect(document.querySelector('.set-notice')).not.toBeNull()
   })
-
-  test('Game-capture warning: cancel, Esc, and outside click preserve the value and restore focus to the selector; Tab focus stays trapped', async () => {
-    const r = await show()
-    const selectEl = control<HTMLSelectElement>('captureMethod')
-    selectEl.closest('details')!.open = true
-    select('captureMethod', 'dda')
-    await flush()
-    r.set.mockClear()
-
-    // 1. Click Cancel.
-    select('captureMethod', 'hook')
-    await flush()
-    const cancelBtn = document.getElementById('set-recording-captureHook-cancel') as HTMLButtonElement
-    const bodyEl = document.getElementById('set-capture-hook-warn-desc') as HTMLElement
-    expect(document.activeElement).toBe(cancelBtn)
-
-    // Keep Tab focus inside the dialog; with Confirm disabled, cycle between the scrollable body and Cancel.
-    press(cancelBtn, 'Tab')
-    expect(document.activeElement).toBe(bodyEl)
-    press(bodyEl, 'Tab')
-    expect(document.activeElement).toBe(cancelBtn)
-
-    click(cancelBtn)
-    await flush()
-    expect(document.querySelector('[role="alertdialog"]')).toBeNull()
-    expect(r.controller.getState().settings?.recording.captureMethod).toBe('dda')
-    expect(selectEl.value).toBe('dda')
-    expect(r.set).not.toHaveBeenCalled()
-    expect(document.activeElement).toBe(selectEl)
-
-    // 2. Press Escape.
-    select('captureMethod', 'hook')
-    await flush()
-    expect(document.querySelector('[role="alertdialog"]')).not.toBeNull()
-    press(document.activeElement!, 'Escape')
-    await flush()
-    expect(document.querySelector('[role="alertdialog"]')).toBeNull()
-    expect(r.controller.getState().settings?.recording.captureMethod).toBe('dda')
-    expect(selectEl.value).toBe('dda')
-    expect(r.set).not.toHaveBeenCalled()
-    expect(document.activeElement).toBe(selectEl)
-
-    // 3. Click the backdrop outside the dialog.
-    select('captureMethod', 'hook')
-    await flush()
-    const scrim = document.querySelector<HTMLElement>('.set-dlg-scrim')!
-    click(scrim)
-    await flush()
-    expect(document.querySelector('[role="alertdialog"]')).toBeNull()
-    expect(r.controller.getState().settings?.recording.captureMethod).toBe('dda')
-    expect(selectEl.value).toBe('dda')
-    expect(document.activeElement).toBe(selectEl)
-  })
-
 })
 

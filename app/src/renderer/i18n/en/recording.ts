@@ -46,7 +46,7 @@ export const recordingI18n: Messages['recordingI18n'] = {
     codec: { title: 'Codec', desc: 'Uses hardware encoding only. No recording is made if no encoder is available.' },
     encoder: { title: 'Recording encoder', desc: 'Lists the hardware encoders the recorder can use for the current codec.' },
     preset: { title: 'Encoding preset', desc: 'Higher quality uses more GPU.' },
-    captureMethod: { title: 'Capture method', desc: 'Window capture (WGC, default) records only the game window, but adds mouse latency in the lobby. Screen capture (DDA) does not cause mouse latency, but records the entire screen, including windows covering the game, and outputs a black screen when the game is not in the foreground. Game capture (optional, requires confirmation) injects the official OBS capture component, does not cause mouse latency, keeps recording when the game is in the background or minimized, and automatically falls back to screen capture when unavailable. Takes effect the next time recording starts.' },
+    captureMethod: { title: 'Capture method', desc: 'Window capture (WGC, default) records only the game window, but adds mouse latency in the lobby. Screen capture (DDA) does not cause mouse latency, but records the entire screen, including windows covering the game, and outputs a black screen when the game is not in the foreground. Takes effect the next time recording starts.' },
     systemAudioEnabled: { title: 'Record system audio', desc: 'Records system sound into the video.' },
     renderDevice: { title: 'System audio device', desc: 'Captures system sound played through this output device.' },
     systemGain: { title: 'System audio volume', desc: '100% is the original volume. Maximum is 200%.' },
@@ -64,41 +64,8 @@ export const recordingI18n: Messages['recordingI18n'] = {
   analysisNone: 'No analysis',
   analysisAfterExit: 'After closing Apex',
   analysisPerMatch: 'After each match',
-  captureHook: 'Game capture',
   captureWgc: 'Window capture (WGC)',
   captureDda: 'Screen capture (DDA)',
-  captureHookWarning: {
-    title: 'Before using game capture',
-    sections: {
-      diff: {
-        heading: 'Difference between game capture and window capture (WGC)',
-        items: [
-          'Window capture (WGC, default): Uses built-in Windows capture to record the game window without placing anything into the game process. However, game frames are processed through the Windows Desktop Window Manager (DWM), which may cause mouse latency in menus such as the lobby.',
-          'Game capture: Does not cause mouse latency, and keeps recording even when the game is in the background or minimized (for example, if you switch out to queue after finishing a match, the two matches can still be separated accurately).'
-        ]
-      },
-      how: {
-        heading: 'How it works',
-        text: 'Game capture uses the same component as "Game Capture" in OBS Studio: Aditor loads the official capture component distributed by OBS and digitally signed by OBS Project (graphics-hook) into the Apex Legends process, copying each rendered frame to Aditor for recording. Aditor does not modify this component; it only handles video output and never reads game state such as player positions or health.'
-      },
-      risk: {
-        heading: 'Risks',
-        items: [
-          'Loading an external component into the game process may be treated as suspicious activity by the Apex Legends anti-cheat system (EA Javelin Anticheat).',
-          'Apex Legends (EA/Respawn) has not publicly stated whether this type of capture is permitted. Although game capture in OBS is widely used, loading the same component from Aditor is not guaranteed to be treated the same way; anti-cheat detection rules may also be updated at any time, so working today does not guarantee it will work in the future.',
-          'Possible outcomes include capture failure (Aditor will automatically fall back to screen capture), the game being terminated by anti-cheat, or in the worst case, account suspension or ban.',
-          'If you are unsure, please use the default window capture.'
-        ]
-      },
-      disclaimer: {
-        heading: 'Disclaimer',
-        text: 'By clicking "Confirm", you acknowledge that you have read and understood the above information and agree to assume all risks of using game capture. The developer of this program assumes no responsibility if your account is suspended or banned as a result.'
-      }
-    },
-    cancel: 'Cancel',
-    confirm: 'Confirm',
-    confirmCountdown: 'Confirm ({sec})'
-  },
   capabilitiesUnavailable: 'Unable to get recorder capabilities. Make sure aditorrec is installed. For now, only the automatic encoder and default device are available.',
   capabilitiesLoading: 'Getting recorder capabilities…',
   currentUnavailable: 'Current setting: {value} (not detected)',
