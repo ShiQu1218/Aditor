@@ -30,6 +30,7 @@ import { AutoClipPopover } from './AutoClipPopover'
 import {
   acceptToProject,
   applyAutoClip,
+  clipAt,
   clipTitle,
   findItemsForClip,
   isSuggested,
@@ -412,6 +413,13 @@ export function StudioScreen({ videoPath, onBack, onOpenVideo, playbackRequest, 
       prev && shownClips.some((c) => c.id === prev) ? prev : nextSuggestion(shownClips, null, 1)
     )
   }, [shownClips])
+
+  // When the playhead enters a highlight's range, make that card active so the sidebar points at it;
+  // react only to entering a new range so manual card selection outside highlights is left alone.
+  const clipUnderPlayhead = useMemo(() => clipAt(shownClips, currentTime), [shownClips, currentTime])
+  useEffect(() => {
+    if (clipUnderPlayhead) setActiveClipId(clipUnderPlayhead)
+  }, [clipUnderPlayhead])
 
   /* ---------------- Playback controls ---------------- */
 
@@ -1124,7 +1132,7 @@ export function StudioScreen({ videoPath, onBack, onOpenVideo, playbackRequest, 
     void buildPlanBase(
       project,
       missingItemIds,
-      { path: videoPath, info: { codec: doc.video.codec, width: doc.video.width, height: doc.video.height }, keyframes: doc.keyframes ?? [] },
+      { path: videoPath, info: { codec: doc.video.codec, width: doc.video.width, height: doc.video.height, fps: doc.video.fps, pix_fmt: doc.video.pix_fmt }, keyframes: doc.keyframes ?? [] },
       async (src) => (await window.api?.engine?.probe?.(src)) ?? null
     ).then((b) => {
       if (!cancelled) setExportBase(b)

@@ -52,6 +52,8 @@ export function HighlightsTab({
     if (!activeId) return
     const el = cardRefs.current.get(activeId)
     if (!el) return
+    // Always keep the active card visible (e.g. it follows the playhead), even when focus stays elsewhere.
+    el.scrollIntoView?.({ block: 'nearest' })
     const focused = document.activeElement as HTMLElement | null
     if (focused && el.contains(focused)) return // Focus is already inside this card (e.g. an inner button was just pressed); do not steal it.
     const inHl = typeof focused?.closest === 'function' && focused.closest('[data-zone="hl"]') !== null

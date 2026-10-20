@@ -1,13 +1,19 @@
 import { Project } from '../editor/project'
 import { concatCompatible, extraSecondsForCopy, StreamProbe } from '../../shared/exportCompat'
+import { estimateOutputBytes } from '../../shared/exportEstimate'
 import { i18n } from '../i18n'
 import { tr } from '../../shared/locale'
 
-/** Source video metadata (returned by engine:probe); main uses defaults for other stream parameters, so compare only these three. */
+/** Source video metadata (returned by engine:probe); optional stream parameters remain unknown when unavailable. */
 export interface SourceInfo {
   codec: string
   width: number
   height: number
+  fps?: number
+  pix_fmt?: string
+  acodec?: string
+  sample_rate?: number
+  channels?: number
 }
 
 export interface ExportPlan {
@@ -34,6 +40,7 @@ export interface ExportEncoders {
 
 export interface ExportViewModel {
   notices: Notice[]
+  estimatedBytes: number
   copyAvailable: boolean
 /** Average extra seconds at each clip start for fast lossless; null for other modes or without keyframe data (never fabricate a number). */
   extraSecondsHint: number | null
@@ -46,8 +53,8 @@ export interface ExportViewModel {
 }
 
 function toProbe(i: SourceInfo): StreamProbe {
-  // Engine probe does not provide frame rate, pixel format, or audio metadata; use 0/empty string for unknown (see concatCompatible).
-  return { vcodec: i.codec, width: i.width, height: i.height, fps: 0, pix_fmt: '', acodec: '', sample_rate: 0, channels: 0 }
+  // Preserve stream metadata when available; use 0/empty string for unknown (see concatCompatible).
+  return { vcodec: i.codec, width: i.width, height: i.height, fps: i.fps ?? 0, pix_fmt: i.pix_fmt ?? '', acodec: i.acodec ?? '', sample_rate: i.sample_rate ?? 0, channels: i.channels ?? 0 }
 }
 
 /** Derived state for the export settings page (pure function). Reuse shared/exportCompat for compatibility checks, the same logic as main's buildJobs. */
@@ -67,15 +74,14 @@ export function exportViewModel(project: Project, plan: ExportPlan | null, enc: 
   }
   for (const s of missingSources) blockers.push(t.blockMissingSource.replace('{path}', s))
 
+  const probes = new Map<string, StreamProbe>()
+  for (const src of new Set(items.map((it) => it.source))) {
+    const info = plan?.sources[src]
+    if (info) probes.set(src, toProbe(info))
+  }
   let copyAvailable = true
   if (plan && plan.mode === 'concat') {
-    const probes: StreamProbe[] = []
-  // Probe each source only once (duplicate clips from one video are already compatible).
-    for (const src of new Set(items.map((it) => it.source))) {
-      const info = plan.sources[src]
-      if (info) probes.push(toProbe(info))
-    }
-    const check = concatCompatible(probes)
+    const check = concatCompatible([...probes.values()])
     if (!check.ok) {
       copyAvailable = false
       if (plan.quality === 'copy') {
@@ -102,7 +108,8 @@ export function exportViewModel(project: Project, plan: ExportPlan | null, enc: 
   if (needsEncoder && noEncoder && enc.openh264) blockers.push(t.blockNoEncoder)
 
   const canStart = plan !== null && items.length > 0 && missingSources.length === 0 && !(needsEncoder && noEncoder)
-  return { notices, copyAvailable, extraSecondsHint, canStart, blockers, effectiveQuality, openh264Required }
+  const estimatedBytes = estimateOutputBytes(project, effectiveQuality, probes, plan?.mode)
+  return { notices, estimatedBytes, copyAvailable, extraSecondsHint, canStart, blockers, effectiveQuality, openh264Required }
 }
 
 /** Format bytes as e.g. "1.6 GB" or "212 MB". */

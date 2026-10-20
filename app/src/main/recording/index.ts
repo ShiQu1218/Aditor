@@ -4,6 +4,7 @@
  */
 import type { RecordingService, RecordingSettings } from '../../shared/recording'
 import { RecordingSessionService } from './session'
+import type { StorageKind } from './storage-location'
 
 export interface RecorderCommand {
   command: string
@@ -47,6 +48,8 @@ export interface RecordingDeps {
   notify: (kind: RecordingNoticeKind, message: string) => void
   /** Test injection: list Apex process PIDs (defaults to querying r5apex*.exe with tasklist every 3 seconds). */
   findApexPid?: () => Promise<number | null>
+  /** Test injection: classify the output folder as cloud-synced or network storage (defaults to probeStorageKind). */
+  probeStorage?: (dir: string) => Promise<StorageKind | null>
   /** Test injection: polling interval in milliseconds. */
   pollMs?: number
   /** Phase 3: how to launch the live engine (`aditor live`); when omitted, skip live detection and provide segment playback only. */

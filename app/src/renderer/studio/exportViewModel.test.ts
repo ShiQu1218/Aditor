@@ -24,6 +24,16 @@ function plan(over: Partial<ExportPlan> = {}): ExportPlan {
 const HW = { encoders: ['h264_nvenc'], openh264: false }
 
 describe('exportViewModel', () => {
+  test('estimates mixed precise exports from the selected mode and preserves source fps', () => {
+    const p = proj([['1', A, 0, 60], ['2', B, 0, 30]])
+    const sources = { [A]: { codec: 'h264', width: 3840, height: 2160, fps: 30 }, [B]: { codec: 'h264', width: 1920, height: 1080, fps: 60 } }
+    const merged = exportViewModel(p, plan({ sources }), HW)
+    expect(merged.effectiveQuality).toBe('precise')
+    expect(merged.estimatedBytes).toBe(90 * (149_250 + 192) * 1000 / 8)
+    const separate = exportViewModel(p, plan({ sources, mode: 'separate', quality: 'precise' }), HW)
+    expect(separate.estimatedBytes).toBe((60 * (74_700 + 192) + 30 * (37_350 + 192)) * 1000 / 8)
+  })
+
   test('mixed source params → copyAvailable false with fallback notice', () => {
     const p = proj([['1', A, 0, 10], ['2', B, 5, 15]])
     const vm = exportViewModel(p, plan({ sources: { [A]: { codec: 'h264', width: 1920, height: 1080 }, [B]: { codec: 'h264', width: 1728, height: 1080 } } }), HW)

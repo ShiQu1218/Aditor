@@ -9,6 +9,9 @@ export interface VideoInfo {
   height: number
   codec: string
   start_time: number
+  /** Average frame rate from the engine probe; absent in caches written before it was probed. */
+  fps?: number
+  pix_fmt?: string
 }
 
 export interface EngineEvent {

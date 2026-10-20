@@ -23,12 +23,12 @@ describe('buildPlanBase', () => {
       async (p) => {
         probed.push(p)
         if (p === 'D:/c.mp4') throw new Error('gone')
-        return { codec: 'hevc', width: 1280, height: 720, duration: 1 }
+        return { codec: 'hevc', width: 1280, height: 720, fps: 120, duration: 1 }
       }
     )
     expect(probed).toEqual(['D:/b.mp4']) // Use cache for a; probe b once; do not probe missing source c.
     expect(base.sources['D:/a.mp4']).toEqual({ codec: 'h264', width: 1920, height: 1080 })
-    expect(base.sources['D:/b.mp4']).toEqual({ codec: 'hevc', width: 1280, height: 720 })
+    expect(base.sources['D:/b.mp4']).toEqual({ codec: 'hevc', width: 1280, height: 720, fps: 120 })
     expect(base.sources['D:/c.mp4']).toBeUndefined()
     expect(base.keyframes['D:/a.mp4']).toEqual([0, 2, 4])
     expect(base.keyframes['D:/b.mp4']).toBeUndefined()

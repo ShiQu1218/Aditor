@@ -1,6 +1,6 @@
 import pytest
 
-from aditor.probe import ProbeError, is_16x9, keyframes, probe
+from aditor.probe import ProbeError, _frame_rate, is_16x9, keyframes, probe
 from conftest import make_video
 
 
@@ -14,6 +14,25 @@ def test_probe_start_time(tmp_path):
     info = probe(str(v))
     assert info.width == 1920 and info.height == 1080
     assert abs(info.start_time - 5.0) < 0.1 and abs(info.duration - 4.0) < 0.2
+
+
+def test_probe_frame_rate_and_pixel_format(tmp_path):
+    v = make_video(tmp_path, "fps.mp4", 2.0)  # make_video renders 60 fps.
+    info = probe(str(v))
+    assert info.fps == pytest.approx(60.0, abs=0.01)
+    assert info.pix_fmt == "yuv420p"
+    assert info.to_dict()["fps"] == pytest.approx(60.0, abs=0.01)
+
+
+@pytest.mark.parametrize("avg,real,expected", [
+    ("144/1", "144/1", 144.0),
+    ("30000/1001", "60/1", 30000 / 1001),
+    ("0/0", "120/1", 120.0),
+    ("0/0", "0/0", 0.0),
+    (None, "bad", 0.0),
+])
+def test_parse_frame_rate_prefers_average_then_real(avg, real, expected):
+    assert _frame_rate({"avg_frame_rate": avg, "r_frame_rate": real}) == pytest.approx(expected)
 
 
 def test_probe_bad_file(tmp_path):

@@ -132,6 +132,29 @@ describe.skipIf(!ffmpeg)('finalization with real ffmpeg streams', () => {
     expect(fs.existsSync(path.join(base, 'videos', '.sessions'))).toBe(true)
   })
 
+  it('skips missing segments in a full recording, outputs the rest, and warns about the gap', async () => {
+    const base = root(); const deps = makeDeps(base); deps.ffmpegPath = ffmpeg!
+    deps.addToLibrary = vi.fn(); deps.notify = vi.fn()
+    const dir = sessionDir(base); copySegments(segments, dir)
+    fs.unlinkSync(path.join(dir, 'seg_000001.m4s'))
+    const [output] = await finalizeSession(dir, deps)
+    const decoded = spawnSync(ffmpeg!, ['-v', 'error', '-i', output, '-map', '0:v', '-f', 'null', '-'],
+      { windowsHide: true, encoding: 'utf8' })
+    expect(decoded.status, decoded.stderr).toBe(0)
+    expect(deps.addToLibrary).toHaveBeenCalledWith([output])
+    expect(deps.notify).toHaveBeenCalledWith('warning', expect.stringContaining('1'))
+    expect(fs.existsSync(dir)).toBe(false)
+  })
+
+  it('preserves the session when every segment of a full recording is missing', async () => {
+    const base = root(); const deps = makeDeps(base); deps.ffmpegPath = ffmpeg!
+    const dir = sessionDir(base); copySegments(segments, dir)
+    for (const name of fs.readdirSync(dir).filter((n) => n.endsWith('.m4s'))) fs.unlinkSync(path.join(dir, name))
+    await expect(finalizeSession(dir, deps)).rejects.toThrow('遺失')
+    expect(fs.existsSync(dir)).toBe(true)
+    expect(fs.existsSync(path.join(base, 'videos', '2026-10-18'))).toBe(false)
+  })
+
   it('preserves segments after concatenation fails and recovers on startup after repair', async () => {
     const base = root(); const deps = makeDeps(base)
     const dir = sessionDir(base); copySegments(segments, dir)

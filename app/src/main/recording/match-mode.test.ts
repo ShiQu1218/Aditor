@@ -457,10 +457,23 @@ it('recovers matches and preserves countdowns after cleanup, and produces no out
   expect(remux.inputs).toHaveLength(count)
   expect(fs.existsSync(empty.dir)).toBe(false)
 })
-it('reports a clear failure and preserves the session when a required clipping segment is missing', async () => {
+it('skips a missing clipping segment, outputs the rest of the match, and warns about the gap', async () => {
   const r = rig()
+  r.deps.notify = vi.fn()
+  fs.unlinkSync(path.join(r.dir, 'seg_000003.m4s'))
   fs.unlinkSync(path.join(r.dir, 'seg_000005.m4s'))
-  await expect(finalizeSession(r.dir, r.deps)).rejects.toThrow()
+  const outputs = await finalizeSession(r.dir, r.deps)
+  expect(outputs).toHaveLength(2)
+  expect(remux.inputs[0]).toBe('初始化|' + entries.slice(3, 12).filter((e) => e.seq !== 5).map((e) => `${e.pts}|`).join(''))
+  expect(r.deps.notify).toHaveBeenCalledWith('warning', expect.stringContaining('2'))
+  expect(r.deps.notify).toHaveBeenCalledTimes(1)
+  expect(fs.existsSync(r.dir)).toBe(false)
+})
+
+it('reports a clear failure and preserves the session when every segment of a match is missing', async () => {
+  const r = rig()
+  for (const entry of entries.slice(2, 12)) fs.unlinkSync(path.join(r.dir, `seg_${String(entry.seq).padStart(6, '0')}.m4s`))
+  await expect(finalizeSession(r.dir, r.deps)).rejects.toThrow('沒有錄影片段')
   expect(fs.existsSync(r.dir)).toBe(true)
   expect(remux.inputs).toEqual([])
 })

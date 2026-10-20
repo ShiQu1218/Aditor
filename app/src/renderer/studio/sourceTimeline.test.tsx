@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { buttonByText, cleanupMounted, click, focusEl, press } from '../../../test/dom'
 import { mountStudio, STUDIO_VIDEO, type StudioMount } from '../../../test/studioHarness'
 import type { Project } from '../editor/project'
-import type { CacheDoc } from '../../shared/types'
+import type { CacheDoc, Clip } from '../../shared/types'
 import { i18n } from '../i18n'
 
 let studio: StudioMount | null = null
@@ -211,6 +211,35 @@ describe('Source timeline player wiring', () => {
     expect(q('.mode-pill').textContent).toContain(i18n.studio.mode.project)
     expect(video.currentTime).toBe(15)
     expect(video.paused).toBe(false)
+  })
+})
+
+describe('Highlights sidebar follows the playhead', () => {
+  const ai = (id: string, start: number): Clip => ({ id, start, end: start + 20, origin: 'ai', event_ids: [], status: 'suggested' })
+  const activeCard = (): string | undefined => document.querySelector<HTMLElement>('.hl-card.active')?.dataset.clipId
+
+  test('entering a highlight range makes its card active and scrolls it into view', async () => {
+    // Keep the fixture events: suggestions are only placed when the document has events.
+    studio = await mountStudio({ doc: (d) => ({ ...d, video: { ...d.video, duration: 600 } }), clips: [ai('h1', 100), ai('h2', 300)] })
+    const scroll = vi.spyOn(Element.prototype, 'scrollIntoView')
+    const { video } = player(10)
+    expect(activeCard()).toBe('h1')
+    act(() => {
+      video.currentTime = 305
+      video.dispatchEvent(new Event('timeupdate'))
+    })
+    expect(activeCard()).toBe('h2')
+    expect(scroll.mock.contexts.some((el) => (el as HTMLElement).dataset?.clipId === 'h2')).toBe(true)
+    act(() => {
+      video.currentTime = 200
+      video.dispatchEvent(new Event('timeupdate'))
+    })
+    expect(activeCard()).toBe('h2')
+    act(() => {
+      video.currentTime = 110
+      video.dispatchEvent(new Event('timeupdate'))
+    })
+    expect(activeCard()).toBe('h1')
   })
 })
 

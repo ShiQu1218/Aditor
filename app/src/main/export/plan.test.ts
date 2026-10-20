@@ -8,7 +8,8 @@ import {
   StreamProbe,
   copyCutArgs,
   concatList,
-  resolveQuality
+  resolveQuality,
+  estimateOutputBytes
 } from './plan'
 import { ProjectItem } from '../../renderer/editor/project'
 
@@ -59,6 +60,22 @@ describe('export plan', () => {
     ['C:/clips/vid1.mp4', probeH264],
     ['C:/clips/vid 2 \'apex\'.mp4', probeAV1]
   ])
+
+  it('estimates match the peak rates of separate and normalized concat jobs', () => {
+    const probes = new Map<string, StreamProbe>([
+      [sampleItems[0].source, { ...probeH264, width: 3840, height: 2160, fps: 30 }],
+      [sampleItems[1].source, probeH264]
+    ])
+    for (const mode of ['separate', 'concat'] as const) {
+      const { jobs } = buildJobs(sampleItems, { mode, quality: 'precise', encoder: 'h264_nvenc', outDir: 'C:/out', baseName: 'h' }, probes)
+      const rendered = mode === 'concat' ? jobs.filter((job) => job.intermediate) : jobs
+      const expected = rendered.reduce((sum, job, i) => {
+        const peak = Number(job.args[job.args.indexOf('-maxrate') + 1].replace('k', ''))
+        return sum + (sampleItems[i].end - sampleItems[i].start) * (peak + 192) * 1000 / 8
+      }, 0)
+      expect(estimateOutputBytes(sampleItems, 'precise', probes, mode)).toBe(Math.ceil(expected))
+    }
+  })
 
   it('copy separate jobs use -ss before -i and -c copy', () => {
     const { jobs, notices } = buildJobs(
@@ -223,6 +240,19 @@ describe('export plan: unknown stream info and mixed sources (I9)', () => {
     expect(a).toContain('-ar')
     expect(a).toContain('-ac')
     expect(a.indexOf('-ss')).toBeLessThan(a.indexOf('-i'))
+  })
+
+  it('mixed specs render to the largest/fastest timeline with Lanczos scaling and an explicit high bitrate', () => {
+    const k: StreamProbe = { vcodec: 'h264', width: 1280, height: 720, fps: 30, pix_fmt: 'yuv420p', acodec: 'aac', sample_rate: 48000, channels: 2 }
+    const res = buildJobs(items, { mode: 'concat', quality: 'precise', encoder: 'h264_nvenc', outDir: 'C:/out', baseName: 'h' }, new Map([
+      ['C:/a.mp4', k],
+      ['C:/b.mp4', { ...k, width: 1920, height: 1080, fps: 60 }]
+    ]))
+    for (const s of res.jobs.filter((j) => j.intermediate)) {
+      expect(s.args.join(' ')).toContain('scale=1920:1080:force_original_aspect_ratio=decrease:flags=lanczos')
+      expect(s.args.join(' ')).toContain('fps=60')
+      expect(s.args[s.args.indexOf('-b:v') + 1]).toBe('24900k')
+    }
   })
 
   it('compatible, fully known sources stay lossless: per-segment stream copy + copy concat, no notice', () => {

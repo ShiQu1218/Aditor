@@ -171,6 +171,15 @@ export function nextSuggestion(clips: Clip[], activeId: string | null, dir: 1 | 
   return null
 }
 
+/** Clip whose source range contains playhead t (on overlap, the one starting latest); null when t is outside every clip. */
+export function clipAt(clips: Clip[], t: number): string | null {
+  let hit: Clip | null = null
+  for (const c of clips) {
+    if (t >= c.start && t <= c.end && (!hit || c.start > hit.start)) hit = c
+  }
+  return hit?.id ?? null
+}
+
 export interface AddAllPlan {
   project: Project
   /** Project clip ids actually added this time (empty means nothing changed; callers should not push history or show a Toast). */

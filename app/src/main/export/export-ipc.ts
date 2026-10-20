@@ -223,7 +223,7 @@ export function createExportService(deps: ExportServiceDeps = {}) {
           jobs,
           totalEstimatedSeconds: totalDur,
           outDir: req.outputDir,
-          estimatedBytes: estimateOutputBytes({ items: req.items }, req.quality),
+          estimatedBytes: estimateOutputBytes({ items: req.items }, resolveQuality(req.items, req, probes).quality, probes, req.mode),
           concatListContent,
           ffmpeg: deps.ffmpeg,
           tempDir: deps.tempDir
