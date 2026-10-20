@@ -6,6 +6,7 @@ import {
   acceptToProject,
   planAddAll,
   applyAutoClip,
+  clipAt,
   clipEventGlyphs,
   clipTitle,
   mergeSuggestions,
@@ -332,6 +333,19 @@ describe('nextSuggestion', () => {
     const legacy = [{ ...clip('l1', 0) }] as Clip[]
     delete legacy[0].status
     expect(nextSuggestion(legacy, null, 1)).toBeNull()
+  })
+})
+
+describe('clipAt', () => {
+  test('returns the clip whose range contains the playhead, preferring the latest start on overlap', () => {
+    const clips = [clip('a', 10), clip('b', 30, { status: 'skipped' }), clip('c', 35)]
+    expect(clipAt(clips, 5)).toBeNull()
+    expect(clipAt(clips, 10)).toBe('a')
+    expect(clipAt(clips, 20)).toBe('a')
+    expect(clipAt(clips, 25)).toBeNull()
+    expect(clipAt(clips, 32)).toBe('b')
+    expect(clipAt(clips, 37)).toBe('c')
+    expect(clipAt([], 10)).toBeNull()
   })
 })
 

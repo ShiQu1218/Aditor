@@ -1,4 +1,4 @@
-import React, { useEffect, useId, useRef, useState } from 'react'
+import React, { useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
 import type { LibraryEntry } from '../../main/library'
 import { formatTime } from '../../shared/time'
 import { ChevronDown, ImageOff, AlertTriangle, Loader2 } from '../components/icons'
@@ -13,6 +13,9 @@ import { tr } from '../../shared/locale'
 
 const t = i18n.studio.sameDay
 const normalize = (path: string): string => path.replace(/\\/g, '/').toLowerCase()
+
+/** Horizontal scroll of the strip, kept across studio remounts (switching source remounts the studio) so the strip does not jump. */
+let savedScroll: { day: string; left: number } | null = null
 
 function SameDayCard({ entry, current, activeRef, onOpenVideo }: {
   entry: LibraryEntry; current: boolean; activeRef: React.Ref<HTMLButtonElement>; onOpenVideo: (path: string) => void
@@ -61,9 +64,22 @@ export function SameDayVideos({ videoPath, onOpenVideo }: { videoPath: string; o
   const videos = day ? entries!.filter((entry) => new Date(recordedTime(entry)).toDateString() === day.toDateString())
     .sort((a, b) => recordedTime(b) - recordedTime(a)) : []
   const currentPath = active?.path
-  useEffect(() => {
-    if (!collapsed) activeRef.current?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })
-  }, [currentPath, collapsed, videos.length])
+  const dayKey = day?.toDateString() ?? null
+  const listRef = useRef<HTMLDivElement>(null)
+  const restoredRef = useRef(false)
+  useLayoutEffect(() => {
+    const list = listRef.current
+    if (collapsed || !list || videos.length === 0) return
+    // Restore the previous offset first; scrollIntoView then moves only if the current card is out of view.
+    if (!restoredRef.current) {
+      restoredRef.current = true
+      if (savedScroll && savedScroll.day === dayKey) list.scrollLeft = savedScroll.left
+    }
+    activeRef.current?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })
+  }, [currentPath, collapsed, videos.length, dayKey])
+  const rememberScroll = (e: React.UIEvent<HTMLDivElement>): void => {
+    if (dayKey) savedScroll = { day: dayKey, left: e.currentTarget.scrollLeft }
+  }
   const toggle = async (): Promise<void> => {
     if (saving || collapsed === null) return
     const next = !collapsed
@@ -94,7 +110,7 @@ export function SameDayVideos({ videoPath, onOpenVideo }: { videoPath: string; o
           <ChevronDown className="ic" aria-hidden="true" />
         </button>
       </div>
-      <div id={listId} className="same-day-list" role="group" aria-labelledby={headingId} hidden={collapsed === true}>
+      <div id={listId} ref={listRef} onScroll={rememberScroll} className="same-day-list" role="group" aria-labelledby={headingId} hidden={collapsed === true}>
         {!collapsed && videos.map((entry) => <SameDayCard key={entry.path} entry={entry} current={normalize(entry.path) === normalize(videoPath)} activeRef={activeRef} onOpenVideo={onOpenVideo} />)}
       </div>
     </section>

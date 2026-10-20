@@ -66,6 +66,19 @@ describe('Same-day video list', () => {
     expect(fake.api.library.getEntries).not.toHaveBeenCalled()
   })
 
+  test('Keeps the strip scroll offset when the studio remounts for the selected video', async () => {
+    fake.setEntries([entry(A), entry(B)])
+    show(A)
+    await flush()
+    const list = document.querySelector<HTMLDivElement>('.same-day-list')!
+    list.scrollLeft = 240
+    act(() => { list.dispatchEvent(new Event('scroll')) })
+    cleanupMounted()
+    show(B)
+    await flush()
+    expect(document.querySelector<HTMLDivElement>('.same-day-list')!.scrollLeft).toBe(240)
+  })
+
   test('Collapsed preference is saved through settings, persists on remount, and does not write back the default', async () => {
     fake.setEntries([entry(A)])
     show()
