@@ -81,6 +81,26 @@ Video stays on the GPU and only hardware encoders are used, so the impact on the
 
 ---
 
+## Resource usage measurements
+
+Two local Windows sessions were measured on October 20, 2026 (UTC+8), with the recording bitrate set to **40,000 kbps (40 Mbps)**. Values cover Aditor and its child processes, including the recorder and analysis engines; they exclude the game and unrelated apps. These are observations from one PC. Hardware, recording resolution, frame rate and codec were not saved in the monitoring logs, so the results are not an RTX 3060 benchmark or a comparison with other recorders.
+
+| Metric | 9 min 17 sec: average / peak | 60 min: average / peak |
+|---|---|---|
+| CPU, normalized to the whole machine | 0.75% / 2.52% | 0.72% / 8.70% |
+| Resident working set, summed | 773 / 810 MiB | 962 / 1,397 MiB |
+| Private committed memory | 1,884 / 1,904 MiB | 1,995 / 2,412 MiB |
+| Process write I/O | 7.05 / 20.58 MiB/s | 15.01 / 606.10 MiB/s |
+| GPU VideoEncode engine utilization, summed | 5.52% / 10% | Not collected |
+
+The short session ran from 13:30:37 to 13:39:55 (552 samples, approximately one second apart); the long session ran from 14:00:08 to 15:00:08 (720 samples, approximately five seconds apart). Averages are arithmetic means of available samples. CPU and I/O rates exclude the initial sample without a baseline.
+
+During the hour-long session, the recorder and live analysis engine showed about **4.2 MiB** and **1.0 MiB** of growth respectively, comparing the first and last three minute-window medians after five minutes of warmup. One UI process rose from approximately 73 MiB to 408 MiB near minute 51, then fell to about 255 MiB and stayed there through the end. No process met the sustained-growth screening criteria, but the retained UI memory warrants checking across repeated equivalent operations; this test does not establish the absence of leaks.
+
+Working-set sums can double-count shared pages. Private committed memory includes non-resident pages and is not physical RAM usage. Process I/O includes cached and device I/O, so its peaks are not physical disk throughput. GPU values sum encoder-engine counters rather than total GPU usage. Game FPS, frame times, recording frame drops and GPU memory were not measured; these results do not quantify gameplay impact.
+
+---
+
 ## Known limitations
 
 - Only Battle Royale (casual) and Ranked are supported; Wildcard, Team Deathmatch and other modes are not.
