@@ -16,16 +16,11 @@ impl<T: Copy + Default, const N: usize> Default for __BindgenOpaqueArray8<[T; N]
         Self([<T as Default>::default(); N])
     }
 }
-pub const LIBAVUTIL_VERSION_MAJOR: u32 = 61;
-pub const LIBAVCODEC_VERSION_MAJOR: u32 = 63;
+pub const LIBAVUTIL_VERSION_MAJOR: u32 = 60;
+pub const LIBAVCODEC_VERSION_MAJOR: u32 = 62;
 pub const AV_PKT_FLAG_KEY: u32 = 1;
 pub const AV_CODEC_FLAG_GLOBAL_HEADER: u32 = 4194304;
-pub const LIBAVFORMAT_VERSION_MAJOR: u32 = 63;
-unsafe extern "C" {
-    pub fn avutil_version() -> ::std::os::raw::c_uint;
-    pub fn avcodec_version() -> ::std::os::raw::c_uint;
-    pub fn avformat_version() -> ::std::os::raw::c_uint;
-}
+pub const LIBAVFORMAT_VERSION_MAJOR: u32 = 62;
 pub const AVFMT_FLAG_CUSTOM_IO: u32 = 128;
 pub const AV_SAMPLE_FMT_NONE: AVSampleFormat = -1;
 pub const AV_SAMPLE_FMT_U8: AVSampleFormat = 0;
@@ -40,9 +35,11 @@ pub const AV_SAMPLE_FMT_FLTP: AVSampleFormat = 8;
 pub const AV_SAMPLE_FMT_DBLP: AVSampleFormat = 9;
 pub const AV_SAMPLE_FMT_S64: AVSampleFormat = 10;
 pub const AV_SAMPLE_FMT_S64P: AVSampleFormat = 11;
-pub const AV_SAMPLE_FMT_DSD: AVSampleFormat = 12;
-pub const AV_SAMPLE_FMT_NB: AVSampleFormat = 13;
+pub const AV_SAMPLE_FMT_NB: AVSampleFormat = 12;
 pub type AVSampleFormat = ::std::os::raw::c_int;
+unsafe extern "C" {
+    pub fn avutil_version() -> ::std::os::raw::c_uint;
+}
 pub const AVMEDIA_TYPE_UNKNOWN: AVMediaType = -1;
 pub const AVMEDIA_TYPE_VIDEO: AVMediaType = 0;
 pub const AVMEDIA_TYPE_AUDIO: AVMediaType = 1;
@@ -356,10 +353,7 @@ pub const AV_PIX_FMT_GBRP10MSBLE: AVPixelFormat = 263;
 pub const AV_PIX_FMT_GBRP12MSBBE: AVPixelFormat = 264;
 pub const AV_PIX_FMT_GBRP12MSBLE: AVPixelFormat = 265;
 pub const AV_PIX_FMT_OHCODEC: AVPixelFormat = 266;
-pub const AV_PIX_FMT_CUARRAY: AVPixelFormat = 267;
-pub const AV_PIX_FMT_XYZP12LE: AVPixelFormat = 268;
-pub const AV_PIX_FMT_XYZP12BE: AVPixelFormat = 269;
-pub const AV_PIX_FMT_NB: AVPixelFormat = 270;
+pub const AV_PIX_FMT_NB: AVPixelFormat = 267;
 pub type AVPixelFormat = ::std::os::raw::c_int;
 pub const AVCOL_PRI_RESERVED0: AVColorPrimaries = 0;
 pub const AVCOL_PRI_BT709: AVColorPrimaries = 1;
@@ -597,13 +591,6 @@ pub const AV_FRAME_DATA_LCEVC: AVFrameSideDataType = 28;
 pub const AV_FRAME_DATA_VIEW_ID: AVFrameSideDataType = 29;
 pub const AV_FRAME_DATA_3D_REFERENCE_DISPLAYS: AVFrameSideDataType = 30;
 pub const AV_FRAME_DATA_EXIF: AVFrameSideDataType = 31;
-pub const AV_FRAME_DATA_DYNAMIC_HDR_SMPTE_2094_APP5: AVFrameSideDataType = 32;
-pub const AV_FRAME_DATA_IAMF_MIX_GAIN_PARAM: AVFrameSideDataType = 33;
-pub const AV_FRAME_DATA_IAMF_DEMIXING_INFO_PARAM: AVFrameSideDataType = 34;
-pub const AV_FRAME_DATA_IAMF_RECON_GAIN_INFO_PARAM: AVFrameSideDataType = 35;
-pub const AV_FRAME_DATA_RAW_COLOR_PARAMS: AVFrameSideDataType = 36;
-pub const AV_FRAME_DATA_DOWNMIX_MATRIX: AVFrameSideDataType = 37;
-pub const AV_FRAME_DATA_GAIN_MAP_PARAMS: AVFrameSideDataType = 38;
 pub type AVFrameSideDataType = ::std::os::raw::c_int;
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
@@ -918,126 +905,126 @@ pub const AV_CODEC_ID_UTVIDEO: AVCodecID = 152;
 pub const AV_CODEC_ID_BMV_VIDEO: AVCodecID = 153;
 pub const AV_CODEC_ID_VBLE: AVCodecID = 154;
 pub const AV_CODEC_ID_DXTORY: AVCodecID = 155;
-pub const AV_CODEC_ID_XWD: AVCodecID = 156;
-pub const AV_CODEC_ID_CDXL: AVCodecID = 157;
-pub const AV_CODEC_ID_XBM: AVCodecID = 158;
-pub const AV_CODEC_ID_ZEROCODEC: AVCodecID = 159;
-pub const AV_CODEC_ID_MSS1: AVCodecID = 160;
-pub const AV_CODEC_ID_MSA1: AVCodecID = 161;
-pub const AV_CODEC_ID_TSCC2: AVCodecID = 162;
-pub const AV_CODEC_ID_MTS2: AVCodecID = 163;
-pub const AV_CODEC_ID_CLLC: AVCodecID = 164;
-pub const AV_CODEC_ID_MSS2: AVCodecID = 165;
-pub const AV_CODEC_ID_VP9: AVCodecID = 166;
-pub const AV_CODEC_ID_AIC: AVCodecID = 167;
-pub const AV_CODEC_ID_ESCAPE130: AVCodecID = 168;
-pub const AV_CODEC_ID_G2M: AVCodecID = 169;
-pub const AV_CODEC_ID_WEBP: AVCodecID = 170;
-pub const AV_CODEC_ID_HNM4_VIDEO: AVCodecID = 171;
-pub const AV_CODEC_ID_HEVC: AVCodecID = 172;
-pub const AV_CODEC_ID_FIC: AVCodecID = 173;
-pub const AV_CODEC_ID_ALIAS_PIX: AVCodecID = 174;
-pub const AV_CODEC_ID_BRENDER_PIX: AVCodecID = 175;
-pub const AV_CODEC_ID_PAF_VIDEO: AVCodecID = 176;
-pub const AV_CODEC_ID_EXR: AVCodecID = 177;
-pub const AV_CODEC_ID_VP7: AVCodecID = 178;
-pub const AV_CODEC_ID_SANM: AVCodecID = 179;
-pub const AV_CODEC_ID_SGIRLE: AVCodecID = 180;
-pub const AV_CODEC_ID_MVC1: AVCodecID = 181;
-pub const AV_CODEC_ID_MVC2: AVCodecID = 182;
-pub const AV_CODEC_ID_HQX: AVCodecID = 183;
-pub const AV_CODEC_ID_TDSC: AVCodecID = 184;
-pub const AV_CODEC_ID_HQ_HQA: AVCodecID = 185;
-pub const AV_CODEC_ID_HAP: AVCodecID = 186;
-pub const AV_CODEC_ID_DDS: AVCodecID = 187;
-pub const AV_CODEC_ID_DXV: AVCodecID = 188;
-pub const AV_CODEC_ID_SCREENPRESSO: AVCodecID = 189;
-pub const AV_CODEC_ID_RSCC: AVCodecID = 190;
-pub const AV_CODEC_ID_AVS2: AVCodecID = 191;
-pub const AV_CODEC_ID_PGX: AVCodecID = 192;
-pub const AV_CODEC_ID_AVS3: AVCodecID = 193;
-pub const AV_CODEC_ID_MSP2: AVCodecID = 194;
-pub const AV_CODEC_ID_VVC: AVCodecID = 195;
-pub const AV_CODEC_ID_Y41P: AVCodecID = 196;
-pub const AV_CODEC_ID_AVRP: AVCodecID = 197;
-pub const AV_CODEC_ID_012V: AVCodecID = 198;
-pub const AV_CODEC_ID_AVUI: AVCodecID = 199;
-pub const AV_CODEC_ID_TARGA_Y216: AVCodecID = 200;
-pub const AV_CODEC_ID_YUV4: AVCodecID = 201;
-pub const AV_CODEC_ID_AVRN: AVCodecID = 202;
-pub const AV_CODEC_ID_CPIA: AVCodecID = 203;
-pub const AV_CODEC_ID_XFACE: AVCodecID = 204;
-pub const AV_CODEC_ID_SNOW: AVCodecID = 205;
-pub const AV_CODEC_ID_SMVJPEG: AVCodecID = 206;
-pub const AV_CODEC_ID_APNG: AVCodecID = 207;
-pub const AV_CODEC_ID_DAALA: AVCodecID = 208;
-pub const AV_CODEC_ID_CFHD: AVCodecID = 209;
-pub const AV_CODEC_ID_TRUEMOTION2RT: AVCodecID = 210;
-pub const AV_CODEC_ID_M101: AVCodecID = 211;
-pub const AV_CODEC_ID_MAGICYUV: AVCodecID = 212;
-pub const AV_CODEC_ID_SHEERVIDEO: AVCodecID = 213;
-pub const AV_CODEC_ID_YLC: AVCodecID = 214;
-pub const AV_CODEC_ID_PSD: AVCodecID = 215;
-pub const AV_CODEC_ID_PIXLET: AVCodecID = 216;
-pub const AV_CODEC_ID_SPEEDHQ: AVCodecID = 217;
-pub const AV_CODEC_ID_FMVC: AVCodecID = 218;
-pub const AV_CODEC_ID_SCPR: AVCodecID = 219;
-pub const AV_CODEC_ID_CLEARVIDEO: AVCodecID = 220;
-pub const AV_CODEC_ID_XPM: AVCodecID = 221;
-pub const AV_CODEC_ID_AV1: AVCodecID = 222;
-pub const AV_CODEC_ID_BITPACKED: AVCodecID = 223;
-pub const AV_CODEC_ID_MSCC: AVCodecID = 224;
-pub const AV_CODEC_ID_SRGC: AVCodecID = 225;
-pub const AV_CODEC_ID_SVG: AVCodecID = 226;
-pub const AV_CODEC_ID_GDV: AVCodecID = 227;
-pub const AV_CODEC_ID_FITS: AVCodecID = 228;
-pub const AV_CODEC_ID_IMM4: AVCodecID = 229;
-pub const AV_CODEC_ID_PROSUMER: AVCodecID = 230;
-pub const AV_CODEC_ID_MWSC: AVCodecID = 231;
-pub const AV_CODEC_ID_WCMV: AVCodecID = 232;
-pub const AV_CODEC_ID_RASC: AVCodecID = 233;
-pub const AV_CODEC_ID_HYMT: AVCodecID = 234;
-pub const AV_CODEC_ID_ARBC: AVCodecID = 235;
-pub const AV_CODEC_ID_AGM: AVCodecID = 236;
-pub const AV_CODEC_ID_LSCR: AVCodecID = 237;
-pub const AV_CODEC_ID_VP4: AVCodecID = 238;
-pub const AV_CODEC_ID_IMM5: AVCodecID = 239;
-pub const AV_CODEC_ID_MVDV: AVCodecID = 240;
-pub const AV_CODEC_ID_MVHA: AVCodecID = 241;
-pub const AV_CODEC_ID_CDTOONS: AVCodecID = 242;
-pub const AV_CODEC_ID_MV30: AVCodecID = 243;
-pub const AV_CODEC_ID_NOTCHLC: AVCodecID = 244;
-pub const AV_CODEC_ID_PFM: AVCodecID = 245;
-pub const AV_CODEC_ID_MOBICLIP: AVCodecID = 246;
-pub const AV_CODEC_ID_PHOTOCD: AVCodecID = 247;
-pub const AV_CODEC_ID_IPU: AVCodecID = 248;
-pub const AV_CODEC_ID_ARGO: AVCodecID = 249;
-pub const AV_CODEC_ID_CRI: AVCodecID = 250;
-pub const AV_CODEC_ID_SIMBIOSIS_IMX: AVCodecID = 251;
-pub const AV_CODEC_ID_SGA_VIDEO: AVCodecID = 252;
-pub const AV_CODEC_ID_GEM: AVCodecID = 253;
-pub const AV_CODEC_ID_VBN: AVCodecID = 254;
-pub const AV_CODEC_ID_JPEGXL: AVCodecID = 255;
-pub const AV_CODEC_ID_QOI: AVCodecID = 256;
-pub const AV_CODEC_ID_PHM: AVCodecID = 257;
-pub const AV_CODEC_ID_RADIANCE_HDR: AVCodecID = 258;
-pub const AV_CODEC_ID_WBMP: AVCodecID = 259;
-pub const AV_CODEC_ID_MEDIA100: AVCodecID = 260;
-pub const AV_CODEC_ID_VQC: AVCodecID = 261;
-pub const AV_CODEC_ID_PDV: AVCodecID = 262;
-pub const AV_CODEC_ID_EVC: AVCodecID = 263;
-pub const AV_CODEC_ID_RTV1: AVCodecID = 264;
-pub const AV_CODEC_ID_VMIX: AVCodecID = 265;
-pub const AV_CODEC_ID_LEAD: AVCodecID = 266;
-pub const AV_CODEC_ID_DNXUC: AVCodecID = 267;
-pub const AV_CODEC_ID_RV60: AVCodecID = 268;
-pub const AV_CODEC_ID_JPEGXL_ANIM: AVCodecID = 269;
-pub const AV_CODEC_ID_APV: AVCodecID = 270;
-pub const AV_CODEC_ID_PRORES_RAW: AVCodecID = 271;
-pub const AV_CODEC_ID_JPEGXS: AVCodecID = 272;
-pub const AV_CODEC_ID_WEBP_ANIM: AVCodecID = 273;
-pub const AV_CODEC_ID_ASTC: AVCodecID = 274;
-pub const AV_CODEC_ID_RW2: AVCodecID = 275;
+pub const AV_CODEC_ID_V410: AVCodecID = 156;
+pub const AV_CODEC_ID_XWD: AVCodecID = 157;
+pub const AV_CODEC_ID_CDXL: AVCodecID = 158;
+pub const AV_CODEC_ID_XBM: AVCodecID = 159;
+pub const AV_CODEC_ID_ZEROCODEC: AVCodecID = 160;
+pub const AV_CODEC_ID_MSS1: AVCodecID = 161;
+pub const AV_CODEC_ID_MSA1: AVCodecID = 162;
+pub const AV_CODEC_ID_TSCC2: AVCodecID = 163;
+pub const AV_CODEC_ID_MTS2: AVCodecID = 164;
+pub const AV_CODEC_ID_CLLC: AVCodecID = 165;
+pub const AV_CODEC_ID_MSS2: AVCodecID = 166;
+pub const AV_CODEC_ID_VP9: AVCodecID = 167;
+pub const AV_CODEC_ID_AIC: AVCodecID = 168;
+pub const AV_CODEC_ID_ESCAPE130: AVCodecID = 169;
+pub const AV_CODEC_ID_G2M: AVCodecID = 170;
+pub const AV_CODEC_ID_WEBP: AVCodecID = 171;
+pub const AV_CODEC_ID_HNM4_VIDEO: AVCodecID = 172;
+pub const AV_CODEC_ID_HEVC: AVCodecID = 173;
+pub const AV_CODEC_ID_FIC: AVCodecID = 174;
+pub const AV_CODEC_ID_ALIAS_PIX: AVCodecID = 175;
+pub const AV_CODEC_ID_BRENDER_PIX: AVCodecID = 176;
+pub const AV_CODEC_ID_PAF_VIDEO: AVCodecID = 177;
+pub const AV_CODEC_ID_EXR: AVCodecID = 178;
+pub const AV_CODEC_ID_VP7: AVCodecID = 179;
+pub const AV_CODEC_ID_SANM: AVCodecID = 180;
+pub const AV_CODEC_ID_SGIRLE: AVCodecID = 181;
+pub const AV_CODEC_ID_MVC1: AVCodecID = 182;
+pub const AV_CODEC_ID_MVC2: AVCodecID = 183;
+pub const AV_CODEC_ID_HQX: AVCodecID = 184;
+pub const AV_CODEC_ID_TDSC: AVCodecID = 185;
+pub const AV_CODEC_ID_HQ_HQA: AVCodecID = 186;
+pub const AV_CODEC_ID_HAP: AVCodecID = 187;
+pub const AV_CODEC_ID_DDS: AVCodecID = 188;
+pub const AV_CODEC_ID_DXV: AVCodecID = 189;
+pub const AV_CODEC_ID_SCREENPRESSO: AVCodecID = 190;
+pub const AV_CODEC_ID_RSCC: AVCodecID = 191;
+pub const AV_CODEC_ID_AVS2: AVCodecID = 192;
+pub const AV_CODEC_ID_PGX: AVCodecID = 193;
+pub const AV_CODEC_ID_AVS3: AVCodecID = 194;
+pub const AV_CODEC_ID_MSP2: AVCodecID = 195;
+pub const AV_CODEC_ID_VVC: AVCodecID = 196;
+pub const AV_CODEC_ID_Y41P: AVCodecID = 197;
+pub const AV_CODEC_ID_AVRP: AVCodecID = 198;
+pub const AV_CODEC_ID_012V: AVCodecID = 199;
+pub const AV_CODEC_ID_AVUI: AVCodecID = 200;
+pub const AV_CODEC_ID_TARGA_Y216: AVCodecID = 201;
+pub const AV_CODEC_ID_V308: AVCodecID = 202;
+pub const AV_CODEC_ID_V408: AVCodecID = 203;
+pub const AV_CODEC_ID_YUV4: AVCodecID = 204;
+pub const AV_CODEC_ID_AVRN: AVCodecID = 205;
+pub const AV_CODEC_ID_CPIA: AVCodecID = 206;
+pub const AV_CODEC_ID_XFACE: AVCodecID = 207;
+pub const AV_CODEC_ID_SNOW: AVCodecID = 208;
+pub const AV_CODEC_ID_SMVJPEG: AVCodecID = 209;
+pub const AV_CODEC_ID_APNG: AVCodecID = 210;
+pub const AV_CODEC_ID_DAALA: AVCodecID = 211;
+pub const AV_CODEC_ID_CFHD: AVCodecID = 212;
+pub const AV_CODEC_ID_TRUEMOTION2RT: AVCodecID = 213;
+pub const AV_CODEC_ID_M101: AVCodecID = 214;
+pub const AV_CODEC_ID_MAGICYUV: AVCodecID = 215;
+pub const AV_CODEC_ID_SHEERVIDEO: AVCodecID = 216;
+pub const AV_CODEC_ID_YLC: AVCodecID = 217;
+pub const AV_CODEC_ID_PSD: AVCodecID = 218;
+pub const AV_CODEC_ID_PIXLET: AVCodecID = 219;
+pub const AV_CODEC_ID_SPEEDHQ: AVCodecID = 220;
+pub const AV_CODEC_ID_FMVC: AVCodecID = 221;
+pub const AV_CODEC_ID_SCPR: AVCodecID = 222;
+pub const AV_CODEC_ID_CLEARVIDEO: AVCodecID = 223;
+pub const AV_CODEC_ID_XPM: AVCodecID = 224;
+pub const AV_CODEC_ID_AV1: AVCodecID = 225;
+pub const AV_CODEC_ID_BITPACKED: AVCodecID = 226;
+pub const AV_CODEC_ID_MSCC: AVCodecID = 227;
+pub const AV_CODEC_ID_SRGC: AVCodecID = 228;
+pub const AV_CODEC_ID_SVG: AVCodecID = 229;
+pub const AV_CODEC_ID_GDV: AVCodecID = 230;
+pub const AV_CODEC_ID_FITS: AVCodecID = 231;
+pub const AV_CODEC_ID_IMM4: AVCodecID = 232;
+pub const AV_CODEC_ID_PROSUMER: AVCodecID = 233;
+pub const AV_CODEC_ID_MWSC: AVCodecID = 234;
+pub const AV_CODEC_ID_WCMV: AVCodecID = 235;
+pub const AV_CODEC_ID_RASC: AVCodecID = 236;
+pub const AV_CODEC_ID_HYMT: AVCodecID = 237;
+pub const AV_CODEC_ID_ARBC: AVCodecID = 238;
+pub const AV_CODEC_ID_AGM: AVCodecID = 239;
+pub const AV_CODEC_ID_LSCR: AVCodecID = 240;
+pub const AV_CODEC_ID_VP4: AVCodecID = 241;
+pub const AV_CODEC_ID_IMM5: AVCodecID = 242;
+pub const AV_CODEC_ID_MVDV: AVCodecID = 243;
+pub const AV_CODEC_ID_MVHA: AVCodecID = 244;
+pub const AV_CODEC_ID_CDTOONS: AVCodecID = 245;
+pub const AV_CODEC_ID_MV30: AVCodecID = 246;
+pub const AV_CODEC_ID_NOTCHLC: AVCodecID = 247;
+pub const AV_CODEC_ID_PFM: AVCodecID = 248;
+pub const AV_CODEC_ID_MOBICLIP: AVCodecID = 249;
+pub const AV_CODEC_ID_PHOTOCD: AVCodecID = 250;
+pub const AV_CODEC_ID_IPU: AVCodecID = 251;
+pub const AV_CODEC_ID_ARGO: AVCodecID = 252;
+pub const AV_CODEC_ID_CRI: AVCodecID = 253;
+pub const AV_CODEC_ID_SIMBIOSIS_IMX: AVCodecID = 254;
+pub const AV_CODEC_ID_SGA_VIDEO: AVCodecID = 255;
+pub const AV_CODEC_ID_GEM: AVCodecID = 256;
+pub const AV_CODEC_ID_VBN: AVCodecID = 257;
+pub const AV_CODEC_ID_JPEGXL: AVCodecID = 258;
+pub const AV_CODEC_ID_QOI: AVCodecID = 259;
+pub const AV_CODEC_ID_PHM: AVCodecID = 260;
+pub const AV_CODEC_ID_RADIANCE_HDR: AVCodecID = 261;
+pub const AV_CODEC_ID_WBMP: AVCodecID = 262;
+pub const AV_CODEC_ID_MEDIA100: AVCodecID = 263;
+pub const AV_CODEC_ID_VQC: AVCodecID = 264;
+pub const AV_CODEC_ID_PDV: AVCodecID = 265;
+pub const AV_CODEC_ID_EVC: AVCodecID = 266;
+pub const AV_CODEC_ID_RTV1: AVCodecID = 267;
+pub const AV_CODEC_ID_VMIX: AVCodecID = 268;
+pub const AV_CODEC_ID_LEAD: AVCodecID = 269;
+pub const AV_CODEC_ID_DNXUC: AVCodecID = 270;
+pub const AV_CODEC_ID_RV60: AVCodecID = 271;
+pub const AV_CODEC_ID_JPEGXL_ANIM: AVCodecID = 272;
+pub const AV_CODEC_ID_APV: AVCodecID = 273;
+pub const AV_CODEC_ID_PRORES_RAW: AVCodecID = 274;
+pub const AV_CODEC_ID_JPEGXS: AVCodecID = 275;
 pub const AV_CODEC_ID_FIRST_AUDIO: AVCodecID = 65536;
 pub const AV_CODEC_ID_PCM_S16LE: AVCodecID = 65536;
 pub const AV_CODEC_ID_PCM_S16BE: AVCodecID = 65537;
@@ -1076,7 +1063,6 @@ pub const AV_CODEC_ID_PCM_F16LE: AVCodecID = 65569;
 pub const AV_CODEC_ID_PCM_F24LE: AVCodecID = 65570;
 pub const AV_CODEC_ID_PCM_VIDC: AVCodecID = 65571;
 pub const AV_CODEC_ID_PCM_SGA: AVCodecID = 65572;
-pub const AV_CODEC_ID_PCM_DVDA: AVCodecID = 65573;
 pub const AV_CODEC_ID_ADPCM_IMA_QT: AVCodecID = 69632;
 pub const AV_CODEC_ID_ADPCM_IMA_WAV: AVCodecID = 69633;
 pub const AV_CODEC_ID_ADPCM_IMA_DK3: AVCodecID = 69634;
@@ -1139,8 +1125,6 @@ pub const AV_CODEC_ID_ADPCM_IMA_MAGIX: AVCodecID = 69690;
 pub const AV_CODEC_ID_ADPCM_PSXC: AVCodecID = 69691;
 pub const AV_CODEC_ID_ADPCM_CIRCUS: AVCodecID = 69692;
 pub const AV_CODEC_ID_ADPCM_IMA_ESCAPE: AVCodecID = 69693;
-pub const AV_CODEC_ID_ADPCM_RHETOREX: AVCodecID = 69694;
-pub const AV_CODEC_ID_ADPCM_IMA_CITRIX: AVCodecID = 69695;
 pub const AV_CODEC_ID_AMR_NB: AVCodecID = 73728;
 pub const AV_CODEC_ID_AMR_WB: AVCodecID = 73729;
 pub const AV_CODEC_ID_RA_144: AVCodecID = 77824;
@@ -1263,7 +1247,6 @@ pub const AV_CODEC_ID_QOA: AVCodecID = 86121;
 pub const AV_CODEC_ID_LC3: AVCodecID = 86122;
 pub const AV_CODEC_ID_G728: AVCodecID = 86123;
 pub const AV_CODEC_ID_AHX: AVCodecID = 86124;
-pub const AV_CODEC_ID_APPLE_APAC: AVCodecID = 86125;
 pub const AV_CODEC_ID_FIRST_SUBTITLE: AVCodecID = 94208;
 pub const AV_CODEC_ID_DVD_SUBTITLE: AVCodecID = 94208;
 pub const AV_CODEC_ID_DVB_SUBTITLE: AVCodecID = 94209;
@@ -1307,7 +1290,6 @@ pub const AV_CODEC_ID_BIN_DATA: AVCodecID = 98314;
 pub const AV_CODEC_ID_SMPTE_2038: AVCodecID = 98315;
 pub const AV_CODEC_ID_LCEVC: AVCodecID = 98316;
 pub const AV_CODEC_ID_SMPTE_436M_ANC: AVCodecID = 98317;
-pub const AV_CODEC_ID_ITUT_T35: AVCodecID = 98318;
 pub const AV_CODEC_ID_PROBE: AVCodecID = 102400;
 pub const AV_CODEC_ID_MPEG2TS: AVCodecID = 131072;
 pub const AV_CODEC_ID_MPEG4SYSTEMS: AVCodecID = 131073;
@@ -1326,7 +1308,7 @@ pub struct AVProfile {
 #[repr(align(8))]
 #[derive(Debug, Copy, Clone)]
 pub struct AVCodec {
-    pub _bindgen_opaque_blob: __BindgenOpaqueArray8<[u8; 56usize]>,
+    pub _bindgen_opaque_blob: __BindgenOpaqueArray8<[u8; 96usize]>,
 }
 unsafe extern "C" {
     pub fn avcodec_find_encoder_by_name(name: *const ::std::os::raw::c_char) -> *const AVCodec;
@@ -1398,10 +1380,7 @@ pub const AV_PKT_DATA_LCEVC: AVPacketSideDataType = 37;
 pub const AV_PKT_DATA_3D_REFERENCE_DISPLAYS: AVPacketSideDataType = 38;
 pub const AV_PKT_DATA_RTCP_SR: AVPacketSideDataType = 39;
 pub const AV_PKT_DATA_EXIF: AVPacketSideDataType = 40;
-pub const AV_PKT_DATA_DYNAMIC_HDR_SMPTE_2094_APP5: AVPacketSideDataType = 41;
-pub const AV_PKT_DATA_HEVC_CONF: AVPacketSideDataType = 42;
-pub const AV_PKT_DATA_GAIN_MAP_PARAMS: AVPacketSideDataType = 43;
-pub const AV_PKT_DATA_NB: AVPacketSideDataType = 44;
+pub const AV_PKT_DATA_NB: AVPacketSideDataType = 41;
 pub type AVPacketSideDataType = ::std::os::raw::c_int;
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
@@ -1664,6 +1643,7 @@ pub struct AVCodecContext {
     >,
     pub profile: ::std::os::raw::c_int,
     pub level: ::std::os::raw::c_int,
+    pub properties: ::std::os::raw::c_uint,
     pub skip_loop_filter: AVDiscard,
     pub skip_idct: AVDiscard,
     pub skip_frame: AVDiscard,
@@ -1698,7 +1678,6 @@ pub struct AVCodecContext {
     pub decoded_side_data: *mut *mut AVFrameSideData,
     pub nb_decoded_side_data: ::std::os::raw::c_int,
     pub alpha_mode: AVAlphaMode,
-    pub skip_pred: AVDiscard,
 }
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
@@ -1708,6 +1687,9 @@ pub struct AVHWAccel {
     pub id: AVCodecID,
     pub pix_fmt: AVPixelFormat,
     pub capabilities: ::std::os::raw::c_int,
+}
+unsafe extern "C" {
+    pub fn avcodec_version() -> ::std::os::raw::c_uint;
 }
 unsafe extern "C" {
     pub fn avcodec_alloc_context3(codec: *const AVCodec) -> *mut AVCodecContext;
@@ -1925,33 +1907,18 @@ pub struct AVStreamGroupTileGrid__bindgen_ty_1 {
     pub vertical: ::std::os::raw::c_int,
 }
 #[repr(C)]
-#[derive(Copy, Clone)]
-pub struct AVStreamGroupLayeredVideo {
+#[derive(Debug, Copy, Clone)]
+pub struct AVStreamGroupLCEVC {
     pub av_class: *const AVClass,
-    pub __bindgen_anon_1: AVStreamGroupLayeredVideo__bindgen_ty_1,
+    pub lcevc_index: ::std::os::raw::c_uint,
     pub width: ::std::os::raw::c_int,
     pub height: ::std::os::raw::c_int,
-}
-#[repr(C)]
-#[derive(Copy, Clone)]
-pub union AVStreamGroupLayeredVideo__bindgen_ty_1 {
-    pub el_index: ::std::os::raw::c_uint,
-    pub lcevc_index: ::std::os::raw::c_uint,
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct AVStreamGroupTREF {
-    pub av_class: *const AVClass,
-    pub metadata_index: ::std::os::raw::c_uint,
 }
 pub const AV_STREAM_GROUP_PARAMS_NONE: AVStreamGroupParamsType = 0;
 pub const AV_STREAM_GROUP_PARAMS_IAMF_AUDIO_ELEMENT: AVStreamGroupParamsType = 1;
 pub const AV_STREAM_GROUP_PARAMS_IAMF_MIX_PRESENTATION: AVStreamGroupParamsType = 2;
 pub const AV_STREAM_GROUP_PARAMS_TILE_GRID: AVStreamGroupParamsType = 3;
 pub const AV_STREAM_GROUP_PARAMS_LCEVC: AVStreamGroupParamsType = 4;
-pub const AV_STREAM_GROUP_PARAMS_TREF: AVStreamGroupParamsType = 5;
-pub const AV_STREAM_GROUP_PARAMS_DOLBY_VISION: AVStreamGroupParamsType = 6;
-pub const AV_STREAM_GROUP_PARAMS_GAIN_MAP: AVStreamGroupParamsType = 7;
 pub type AVStreamGroupParamsType = ::std::os::raw::c_int;
 #[repr(C)]
 #[derive(Debug)]
@@ -1962,21 +1929,6 @@ pub struct AVIAMFAudioElement {
 #[derive(Debug)]
 pub struct AVIAMFMixPresentation {
     _unused: [u8; 0],
-}
-pub const AV_STREAM_GROUP_ENTRY_STREAM: AVStreamGroupEntryType = 0;
-pub const AV_STREAM_GROUP_ENTRY_STREAM_GROUP: AVStreamGroupEntryType = 1;
-pub type AVStreamGroupEntryType = ::std::os::raw::c_int;
-#[repr(C)]
-#[derive(Copy, Clone)]
-pub struct AVStreamGroupEntry {
-    pub type_: AVStreamGroupEntryType,
-    pub __bindgen_anon_1: AVStreamGroupEntry__bindgen_ty_1,
-}
-#[repr(C)]
-#[derive(Copy, Clone)]
-pub union AVStreamGroupEntry__bindgen_ty_1 {
-    pub stream: *mut AVStream,
-    pub stream_group: *mut AVStreamGroup,
 }
 #[repr(C)]
 #[derive(Copy, Clone)]
@@ -1991,10 +1943,6 @@ pub struct AVStreamGroup {
     pub nb_streams: ::std::os::raw::c_uint,
     pub streams: *mut *mut AVStream,
     pub disposition: ::std::os::raw::c_int,
-    pub nb_entries: ::std::os::raw::c_uint,
-    pub entries: *mut *mut AVStreamGroupEntry,
-    pub coded_side_data: *mut AVPacketSideData,
-    pub nb_coded_side_data: ::std::os::raw::c_int,
 }
 #[repr(C)]
 #[derive(Copy, Clone)]
@@ -2002,9 +1950,7 @@ pub union AVStreamGroup__bindgen_ty_1 {
     pub iamf_audio_element: *mut AVIAMFAudioElement,
     pub iamf_mix_presentation: *mut AVIAMFMixPresentation,
     pub tile_grid: *mut AVStreamGroupTileGrid,
-    pub layered_video: *mut AVStreamGroupLayeredVideo,
-    pub lcevc: *mut AVStreamGroupLayeredVideo,
-    pub tref: *mut AVStreamGroupTREF,
+    pub lcevc: *mut AVStreamGroupLCEVC,
 }
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
@@ -2136,7 +2082,9 @@ pub struct AVFormatContext {
     >,
     pub duration_probesize: i64,
     pub name: *mut ::std::os::raw::c_char,
-    pub recursion_limit: ::std::os::raw::c_int,
+}
+unsafe extern "C" {
+    pub fn avformat_version() -> ::std::os::raw::c_uint;
 }
 unsafe extern "C" {
     pub fn avformat_free_context(s: *mut AVFormatContext);

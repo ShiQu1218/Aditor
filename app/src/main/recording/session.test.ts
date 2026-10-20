@@ -259,6 +259,21 @@ describe('recording service state machine', () => {
     expect(Object.isFrozen(value.service.status().error)).toBe(true)
   })
 
+  it('tells the user to update an outdated NVIDIA driver and keeps the recorder details', async () => {
+    const value = rig('no-hw-nvidia')
+    value.service.start()
+    await waitFor(() => value.service.status().error?.code === 'no_hw_encoder')
+    const message = value.service.status().error!.message
+    expect(message).toMatch(/^NVIDIA 顯示卡驅動版本過舊/)
+    // Details start after the recorder's internal prefixes: no extra start-failure or RecorderError wrapping.
+    expect(message).toContain('詳細資訊：The NVIDIA driver supports NVENC API 12.2 but 13.0 is required')
+    expect(message).not.toContain('nvidia_driver_outdated')
+    expect(message).not.toContain('無法開始錄影')
+    expect(message).not.toContain('RecorderError')
+    expect(value.deps.notify).toHaveBeenCalledWith('error', message)
+    expect(commands(value, 'start')).toHaveLength(1)
+  })
+
   it('uses 1/2/4/8/16-second crash backoff and allows at most 5 restarts within 10 minutes', async () => {
     vi.useFakeTimers()
     const value = rig('crash')

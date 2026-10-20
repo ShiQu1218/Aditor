@@ -1,6 +1,7 @@
 use std::{
     fs,
     io::Write,
+    path::PathBuf,
     process::Command,
     sync::atomic::AtomicUsize,
     time::{Instant, SystemTime, UNIX_EPOCH},
@@ -12,6 +13,82 @@ use super::*;
 
 static GPU_TEST: Mutex<()> = Mutex::new(());
 static NEXT_DIR: AtomicUsize = AtomicUsize::new(0);
+
+fn ffmpeg_failure(code: i32) -> anyhow::Error {
+    anyhow::Error::from(ffmpeg::FfmpegError::new(
+        code,
+        format!("Open encoder failed: test ({code})"),
+    ))
+    .context("Trial encoding failed")
+}
+
+#[test]
+fn nvenc_not_implemented_with_old_driver_api_flags_outdated_nvidia_driver() {
+    let failures = [
+        ("hevc_nvenc", ffmpeg_failure(ffmpeg::NOT_IMPLEMENTED)),
+        ("hevc_amf", ffmpeg_failure(-1313558101)),
+    ];
+    let message = no_hw_encoder_message(&failures, || Some((12, 2)));
+    assert!(message.starts_with("no_hw_encoder: nvidia_driver_outdated:"));
+    assert!(message.contains("NVENC API 12.2 but 13.0 is required"));
+    assert!(message.contains("570.0 or newer"));
+    assert!(message.contains("hevc_nvenc: Trial encoding failed: Open encoder failed: test (-40)"));
+    assert!(message.contains("；hevc_amf: "));
+}
+
+#[test]
+fn nvenc_not_implemented_with_current_driver_is_not_blamed_on_the_driver() {
+    // Unsupported GPUs (no NVENC, or no HEVC encoder) also return ENOSYS; a current driver must not get the hint.
+    let failures = [("hevc_nvenc", ffmpeg_failure(ffmpeg::NOT_IMPLEMENTED))];
+    for driver_api in [Some(nvenc::REQUIRED_API), Some((13, 1)), None] {
+        let message = no_hw_encoder_message(&failures, || driver_api);
+        assert!(message.starts_with("no_hw_encoder: No hardware encoder is available;"));
+    }
+}
+
+#[test]
+fn other_failures_keep_generic_message_without_querying_the_driver() {
+    let failures = [
+        ("hevc_nvenc", ffmpeg_failure(-1313558101)),
+        ("hevc_amf", ffmpeg_failure(ffmpeg::NOT_IMPLEMENTED)),
+        ("hevc_qsv", anyhow::anyhow!("Failed to create QSV device")),
+    ];
+    let message = no_hw_encoder_message(&failures, || panic!("driver must not be queried"));
+    assert!(message.starts_with("no_hw_encoder: No hardware encoder is available;"));
+    assert!(!message.contains("nvidia_driver_outdated"));
+}
+
+#[test]
+fn nvenc_requirement_matches_the_loaded_avcodec_build() {
+    // FFmpeg embeds the minimum driver of the NVENC SDK it was built with; an FFmpeg upgrade that raises it fails here.
+    let dir = std::env::var_os("ADITORREC_FFMPEG_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../build/ffmpeg")));
+    let path = dir
+        .join("bin")
+        .join(format!("avcodec-{}.dll", ffi::LIBAVCODEC_VERSION_MAJOR));
+    let dll = fs::read(&path).unwrap_or_else(|error| {
+        panic!(
+            "Cannot read {}; set ADITORREC_FFMPEG_DIR to the FFmpeg root containing bin: {error}",
+            path.display()
+        )
+    });
+    let contains = |needle: &[u8]| dll.windows(needle.len()).any(|window| window == needle);
+    assert!(contains(b"The minimum required Nvidia driver for nvenc is %s or newer"));
+    assert!(
+        contains(format!("\0{}\0", nvenc::MIN_DRIVER).as_bytes()),
+        "avcodec no longer requires driver {}; update nvenc::REQUIRED_API and MIN_DRIVER",
+        nvenc::MIN_DRIVER
+    );
+}
+
+#[test]
+fn nvidia_driver_api_query_reports_a_plausible_version_when_present() {
+    // Runs on any machine; only machines with an NVIDIA driver exercise the FFI call result.
+    if let Some((major, minor)) = nvenc::driver_api() {
+        assert!((5..=99).contains(&major) && minor < 16, "{major}.{minor}");
+    }
+}
 
 #[test]
 fn worker_failures_are_latched_without_further_frames() {

@@ -21,6 +21,19 @@ import { ObsRecording } from './obs-session'
 import type { RecordingDeps, RecordingNoticeKind } from './index'
 import { tr } from '../../shared/locale'
 
+/** Marker aditorrec puts in no_hw_encoder messages when the NVIDIA driver is too old (IPC contract with recorder/src/encode/mod.rs). */
+const NVIDIA_DRIVER_OUTDATED = 'nvidia_driver_outdated'
+
+/** Leads with the driver update hint and keeps the recorder details without its internal prefixes, or returns null for other errors. */
+function driverHint(code: string, error: unknown): string | null {
+  const message = error instanceof Error ? error.message : String(error)
+  if (code !== 'no_hw_encoder' || !message.includes(NVIDIA_DRIVER_OUTDATED)) return null
+  // Drop any prefix before the marker (normally no_hw_encoder) so the details start at "The NVIDIA driver supports ...".
+  const details = message.slice(message.indexOf(NVIDIA_DRIVER_OUTDATED) + NVIDIA_DRIVER_OUTDATED.length)
+    .replace(/^:\s*/, '')
+  return tr('NVIDIA 顯示卡驅動版本過舊，無法使用硬體編碼。請更新 NVIDIA 驅動後再試一次；較舊的顯示卡（例如多數 GTX 600/700 系列）已無法安裝所需的驅動版本。詳細資訊：{details}', { details })
+}
+
 interface ActiveSession {
   pid: number
   id: string
@@ -453,7 +466,7 @@ export class RecordingSessionService implements RecordingService {
       }
       const code = error instanceof RecorderError ? error.code : 'recording_start_failed'
       if (!this.running || this.manualStopped || code === 'cancelled') { this.idle(); return false }
-      this.fail(code, tr('無法開始錄影：{error}', { error: String(error) }))
+      this.fail(code, driverHint(code, error) ?? tr('無法開始錄影：{error}', { error: String(error) }))
       if (code === 'no_hw_encoder' || code === 'disk_full' || code === 'profile_invalid' || code === 'output_invalid') this.blocked = true
       else this.scheduleRestart()
       return false
@@ -569,7 +582,7 @@ export class RecordingSessionService implements RecordingService {
     const code = error instanceof RecorderError ? error.code : 'recorder_crashed'
     if (!finalized) return
     if (!this.running) return
-    this.fail(code, error.message)
+    this.fail(code, driverHint(code, error) ?? error.message)
     if (code === 'no_hw_encoder') this.blocked = true
     else this.scheduleRestart()
   }

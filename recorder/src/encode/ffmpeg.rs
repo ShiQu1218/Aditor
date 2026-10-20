@@ -15,6 +15,8 @@ pub(super) const AUDIO_BASE: AVRational = AVRational {
 };
 pub(super) const EOF: i32 = -541478725;
 pub(super) const AGAIN: i32 = -11;
+// AVERROR(ENOSYS): NVENC returns this when the driver is older than the NVENC API FFmpeg was built against.
+pub(super) const NOT_IMPLEMENTED: i32 = -40;
 // libavutil/avutil.h: sentinel for an unset timestamp; do not use as recording time.
 pub(super) const AV_NOPTS_VALUE: i64 = i64::MIN;
 
@@ -49,17 +51,41 @@ fn validate_versions(versions: [u32; 3]) -> Result<()> {
     Ok(())
 }
 
+/// FFmpeg call failure that keeps the AVERROR code so callers can classify it after anyhow wrapping.
+#[derive(Debug)]
+pub(super) struct FfmpegError {
+    pub code: i32,
+    message: String,
+}
+impl FfmpegError {
+    pub fn new(code: i32, message: String) -> Self {
+        Self { code, message }
+    }
+}
+impl std::fmt::Display for FfmpegError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.message)
+    }
+}
+impl std::error::Error for FfmpegError {}
+
+/// Returns the FFmpeg error code anywhere in the error chain.
+pub(super) fn error_code(error: &anyhow::Error) -> Option<i32> {
+    error
+        .chain()
+        .find_map(|cause| cause.downcast_ref::<FfmpegError>())
+        .map(|error| error.code)
+}
+
 pub(super) fn check(code: i32, action: &str) -> Result<()> {
     if code < 0 {
         let mut buffer = [0i8; 256];
         // SAFETY: buffer is a writable error-message buffer with a specified length.
-        unsafe {
+        let reason = unsafe {
             av_strerror(code, buffer.as_mut_ptr(), buffer.len());
-            bail!(
-                "{action} failed: {} ({code})",
-                CStr::from_ptr(buffer.as_ptr()).to_string_lossy()
-            );
-        }
+            CStr::from_ptr(buffer.as_ptr()).to_string_lossy().into_owned()
+        };
+        return Err(FfmpegError::new(code, format!("{action} failed: {reason} ({code})")).into());
     }
     Ok(())
 }

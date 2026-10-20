@@ -22,6 +22,7 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
   }
   if (req.cmd === 'start') {
     if (mode === 'no-hw') return send({ id: req.id, ok: false, code: 'no_hw_encoder', message: '沒有硬體編碼器' })
+    if (mode === 'no-hw-nvidia') return send({ id: req.id, ok: false, code: 'no_hw_encoder', message: 'no_hw_encoder: nvidia_driver_outdated: The NVIDIA driver supports NVENC API 12.2 but 13.0 is required; update the NVIDIA driver to 570.0 or newer and try again (GPUs whose newest driver is older cannot use NVENC); hevc_nvenc: Open encoder failed: Function not implemented (-40)' })
     if (mode === 'start-stall') return send({ id: req.id, ok: true })
     sessionDir = req.session_dir
     if (process.env.FAKE_SEGMENT_DIR) {
