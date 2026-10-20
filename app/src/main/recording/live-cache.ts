@@ -70,7 +70,10 @@ export function buildLiveCacheDoc(live: LiveFile, video: {
     .map((m) => ({ start: Math.max(0, m.start - offset), end: m.end === null ? null : Math.min(video.duration, m.end - offset) }))
   const version = typeof live.engine_version === 'string' ? live.engine_version : 'unknown'
   const trusted = isTrusted(live)
-  const hScale = (live.quality as { hScale?: unknown } | null | undefined)?.hScale
+  const quality = live.quality as { hScale?: unknown; aspectSquash?: unknown } | null | undefined
+  const hScale = quality?.hScale
+  // Offline analysis keys its cache on the game aspect; caches without the field are 16:9.
+  const squash = trusted && finite(quality?.aspectSquash) && quality.aspectSquash !== 1 ? { aspect_squash: quality.aspectSquash } : {}
   return {
     version: 1,
     video: { ...video, start_time: 0 },
@@ -78,7 +81,7 @@ export function buildLiveCacheDoc(live: LiveFile, video: {
       status: 'done', source: 'live', progress_t: video.duration,
       // Trusted results use the official engine version so needs_reanalysis treats them as complete; otherwise the `live-` prefix lets full analysis replace them.
       engine_version: trusted ? version : `live-${version}`, templates_version: templatesVersion,
-      h_scale: trusted && finite(hScale) ? hScale : 1
+      h_scale: trusted && finite(hScale) ? hScale : 1, ...squash
     },
     events,
     spectating,

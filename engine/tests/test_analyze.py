@@ -378,3 +378,14 @@ def test_ipc_jobs_validation():
     for bad in (0, -1, "2", True, 1.5):
         with pytest.raises(ipc.BadRequest):
             ipc._jobs(bad)
+
+
+def test_analyze_stretched_4_3_video_with_game_aspect(tmp_path, profile, knock_banner_png):
+    from aditor.layout import parse_aspect
+    v = make_video(tmp_path, "4比3.mp4", 15, overlay=(knock_banner_png, SPANS), game_height=1440)
+    four = profile.with_layout(parse_aspect("4:3"))
+    plain = az.analyze(str(v), profile, cache_dir=tmp_path / "cache")
+    assert [e for e in plain["events"] if e["type"] == "knock"] == []
+    doc = az.analyze(str(v), four, cache_dir=tmp_path / "cache")  # A different game aspect invalidates the cache.
+    assert len([e for e in doc["events"] if e["type"] == "knock"]) == 2, doc["events"]
+    assert doc["analysis"]["aspect_squash"] == 0.75

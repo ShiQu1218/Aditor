@@ -40,6 +40,14 @@ describe('live engine output parsing', () => {
     expect(merged.quality).toEqual({ complete: false, reasons: ['restarted'], hScale: 1.05 })
   })
 
+  it('keeps the game aspect squash the engine analyzed with', () => {
+    const quality = { complete: true, reasons: [], h_scale: 1, aspect_squash: 0.75 }
+    expect(parseSnapshot({ t: 1, events: [], spectating: [], final: true, quality })?.quality)
+      .toEqual({ complete: true, reasons: [], hScale: 1, aspectSquash: 0.75 })
+    expect(parseSnapshot({ t: 1, events: [], spectating: [], final: true, quality: { ...quality, aspect_squash: 'x' } })?.quality)
+      .not.toHaveProperty('aspectSquash')
+  })
+
   it('merges after restart by keeping all archived data and taking only unique events after the archive time', () => {
     const archived: LiveSnapshot = { t: 10, events: [ev('a1000', 1), ev('a9000', 9)], spectating: [{ start: 2, end: 3 }] }
     const fresh: LiveSnapshot = { t: 20, events: [ev('a5000', 5), ev('a9000', 9), ev('a15000', 15)], spectating: [{ start: 4, end: 5 }, { start: 12, end: 13 }] }

@@ -1,7 +1,9 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import fs from 'fs'
+import os from 'os'
 import path from 'path'
 import { createRecordingService, type RecordingDeps } from './index'
+import { readFrames } from './session'
 import type { RecordingService, RecordingSettings } from '../../shared/recording'
 import * as disk from './disk'
 import { copySegments, createSegments, fakeCommand, ffmpeg, makeDeps, sessionDir, tempRoot, waitFor } from './test-support'
@@ -422,5 +424,19 @@ describe.skipIf(!ffmpeg)('recording service integration with real finalization',
     const current = commands(value, 'start')[0].session_dir
     expect(fs.existsSync(current)).toBe(true)
     expect(value.deps.addToLibrary).toHaveBeenCalledOnce()
+  })
+})
+
+describe('recorder small-frame regions', () => {
+  it('passes the profile capture rects so every game aspect fits, falling back to the reference ROIs', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'aditor-frames-'))
+    const write = (doc: object): void => fs.writeFileSync(path.join(dir, 'profile.json'), JSON.stringify(doc))
+    const rois = { banner_roi: [560, 700, 800, 180], spec_roi: [60, 1028, 480, 40] }
+    write({ ...rois, capture_rois: { banner: [560, 652, 800, 228], spec: [60, 1028, 480, 44] } })
+    expect(await readFrames(dir)).toEqual({ banner: [560, 652, 800, 228], spec: [60, 1028, 480, 44], base: [1920, 1080] })
+    write(rois)
+    expect(await readFrames(dir)).toEqual({ banner: [560, 700, 800, 180], spec: [60, 1028, 480, 40], base: [1920, 1080] })
+    write({ ...rois, capture_rois: { banner: [560, 1000, 800, 228], spec: [60, 1028, 480, 44] } })
+    await expect(readFrames(dir)).rejects.toThrow()
   })
 })

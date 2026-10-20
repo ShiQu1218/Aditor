@@ -13,6 +13,7 @@ import numpy as np
 from . import ffbin
 from .decode import DecodeError, STDERR_LIMIT, build_input_args, is_gpu_path
 from .probe import probe
+from .layout import Layout
 from .scene import SCENE_SIZE, SceneDetector, SceneFrame
 
 HUD_CONFIRM_SECONDS = 180.0
@@ -227,11 +228,11 @@ def _video_frames(path: str, fps: float, hwaccel: bool, codec: str) -> Iterator[
 
 
 def analyze_matches(path: str, *, fps: float = 1.0, timeline: bool = False,
-                    hwaccel: bool = True) -> dict:
+                    hwaccel: bool = True, layout: Layout | None = None) -> dict:
     if not math.isfinite(fps) or fps <= 0:
         raise ValueError("fps must be a finite positive number")
     info = probe(path)
-    detector = SceneDetector()
+    detector = SceneDetector(layout=layout)
     tracker = MatchTracker(sample_period=1 / fps)
     scenes = []
     with closing(_video_frames(path, fps, hwaccel, info.codec)) as frames:

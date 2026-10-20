@@ -21,18 +21,22 @@ def _ffmpeg() -> str:
     return ffbin.ffmpeg()
 
 
-def make_video(tmp_path, name, duration, *, start_time=0.0, vfr=False, marks=(), overlay=None):
+def make_video(tmp_path, name, duration, *, start_time=0.0, vfr=False, marks=(), overlay=None, game_height=1080):
     """Use ffmpeg testsrc2 to create a 1920x1080, 60 fps H.264 video with -g 60.
+
+    game_height: render the scene on a 1920×game_height canvas (1440 = a 4:3 game) with the banner and marks kept at the
+    center-anchored HUD position, then stretch it to 1920×1080 as a full-screen 4:3 game does.
 
     marks: (t_start, t_end) pairs; draw a solid white rectangle in the banner region during these intervals.
     start_time: implemented with -output_ts_offset. vfr: drop frames and jitter PTS to create variable frame rate.
     overlay: (png_path, [(t_start, t_end), ...]); overlay the PNG at (560, 700).
     """
     out = Path(tmp_path) / name
+    shift = (game_height - 1080) // 2
     filters = []
     for a, b in marks:
-        filters.append(f"drawbox=x=400:y=600:w=1120:h=350:color=white:t=fill:enable='between(t,{a},{b})'")
-    inputs = ["-f", "lavfi", "-i", f"testsrc2=size=1920x1080:rate=60:duration={duration}"]
+        filters.append(f"drawbox=x=400:y={600 + shift}:w=1120:h=350:color=white:t=fill:enable='between(t,{a},{b})'")
+    inputs = ["-f", "lavfi", "-i", f"testsrc2=size=1920x{game_height}:rate=60:duration={duration}"]
     chain = ",".join(filters) if filters else "null"
     if vfr:
         chain += ",select='not(eq(mod(n,7),3))',setpts='PTS+(0.006*sin(N*7))/TB'"
@@ -42,8 +46,11 @@ def make_video(tmp_path, name, duration, *, start_time=0.0, vfr=False, marks=(),
         png, spans = overlay
         inputs += ["-loop", "1", "-i", str(png)]
         en = "+".join(f"between(t,{a},{b})" for a, b in spans)
-        fc += f";[v0][1:v]overlay=x=560:y=700:enable='{en}':shortest=1[v1]"
+        fc += f";[v0][1:v]overlay=x=560:y={700 + shift}:enable='{en}':shortest=1[v1]"
         last = "[v1]"
+    if game_height != 1080:
+        fc += f";{last}scale=1920:1080[vs]"
+        last = "[vs]"
     cmd = [_ffmpeg(), "-v", "error", "-y", *inputs, "-filter_complex", fc, "-map", last,
            "-c:v", "libx264", "-preset", "ultrafast", "-g", "60", "-pix_fmt", "yuv420p"]
     if vfr:

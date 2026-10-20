@@ -172,7 +172,7 @@ def _make_doc(info, profile: Profile, status: str, progress_t: float, h_scale: f
         "video": info.to_dict(),
         "analysis": {"status": status, "progress_t": progress_t, "engine_version": ENGINE_VERSION,
                      "templates_version": profile.templates_version,
-                     "h_scale": h_scale},
+                     "h_scale": h_scale, "aspect_squash": profile.layout.squash},
         "events": [e.to_dict() for e in events],
         "spectating": [s.to_dict() for s in spectating],
         "clips": [c.to_dict() for c in clips],
@@ -201,7 +201,8 @@ def _resumable(old: dict | None, info, profile: Profile) -> bool:
             and v.get("size") == info.size
             and abs(float(v.get("mtime", -1.0)) - info.mtime) < 1e-6
             and a.get("engine_version") == ENGINE_VERSION
-            and a.get("templates_version") == profile.templates_version)
+            and a.get("templates_version") == profile.templates_version
+            and a.get("aspect_squash", 1.0) == profile.layout.squash)
 
 
 class _Learner:
@@ -290,7 +291,7 @@ def analyze(path: str, profile: Profile, *, cache_dir: Path, beside: bool = Fals
     cache_dir = Path(cache_dir)
     cp = cache_path(path, cache_dir, beside)
     old = load_cache(cp)
-    if not force and old is not None and not needs_reanalysis(old, info, profile.templates_version):
+    if not force and old is not None and not needs_reanalysis(old, info, profile.templates_version, profile.layout.squash):
         old["cache_path"] = str(cp)
         return old
 

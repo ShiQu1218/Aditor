@@ -13,6 +13,7 @@ from .decode import DecodeError
 from .derive import derive
 from .models import AutoClipParams, Event, SpecInterval
 from .probe import ProbeError, probe
+from .layout import Layout, LayoutError, parse_aspect
 from .profile import ProfileError, load_profile
 
 
@@ -50,6 +51,18 @@ def _jobs(v):
     if isinstance(v, bool) or not isinstance(v, int) or v < 1:
         raise BadRequest("jobs must be a positive integer")
     return v
+
+
+def _layout(v) -> Layout:
+    """Optional game render aspect (`W:H` or `WxH`); missing means 16:9."""
+    if v is None:
+        return Layout(1.0)
+    if not isinstance(v, str):
+        raise BadRequest("aspect must be a string")
+    try:
+        return parse_aspect(v)
+    except LayoutError as e:
+        raise BadRequest(str(e)) from e
 
 
 class Server:
@@ -155,7 +168,7 @@ class Server:
 
     def _analyze(self, rid, args, cancel):
         path = _arg(args, "path")
-        profile = load_profile(Path(_arg(args, "profile_dir")))
+        profile = load_profile(Path(_arg(args, "profile_dir"))).with_layout(_layout(args.get("aspect")))
         cache_dir = Path(_arg(args, "cache_dir"))
 
         def progress(t: float, duration: float) -> None:

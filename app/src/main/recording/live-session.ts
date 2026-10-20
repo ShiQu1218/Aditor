@@ -62,6 +62,8 @@ export interface LiveSessionOptions {
   command?: RecorderCommand
   profileDir: string
   sceneDir?: string
+  /** Game render resolution (`WxH`) from the Apex config, passed as `--aspect` so detection follows the HUD layout. */
+  aspect?: string | null
   restartBaseMs?: number
   /** Write one line to events.jsonl (through the session write queue). */
   recordEvent: (event: Record<string, unknown> & { ev: string }) => void
@@ -102,6 +104,7 @@ export class LiveSession extends EventEmitter {
     }
     const args = ['--shm', shm, '--profile-dir', this.options.profileDir]
     if (this.options.sceneDir) args.push('--scene-dir', this.options.sceneDir)
+    if (this.options.aspect) args.push('--aspect', this.options.aspect)
     const engine = new LiveEngine({ command, args, restartBaseMs: this.options.restartBaseMs })
     this.engine = engine
     this.listen(engine)

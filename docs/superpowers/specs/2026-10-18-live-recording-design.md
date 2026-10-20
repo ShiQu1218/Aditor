@@ -144,11 +144,13 @@ Idle →(Apex 啟動)→ Lobby ⇄ InMatch →(Apex 關閉)→ Finalizing → Id
 
 | 名稱 | 內容 | 頻率 | 格式 |
 |---|---|---|---|
-| banner | `profile.banner_roi`（1920×1080 基準座標，依實際解析度等比換算） | 4 fps | BGR24 |
-| spec | `profile.spec_roi` | 4 fps | BGR24 |
+| banner | `profile.capture_rois.banner`（1920×1080 基準座標，依實際解析度等比換算；涵蓋所有遊戲比例下 `banner_roi` 的位置） | 4 fps | BGR24 |
+| spec | `profile.capture_rois.spec`（同上，涵蓋 `spec_roi`） | 4 fps | BGR24 |
 | thumb | 全畫面縮到 640×360（對局場景判斷的最低需求，見 §3.4） | 1 fps（每 4 格帶一次） | GRAY8 |
 
 ROI 由 Python 端在 live 握手時傳給 aditorrec（Python 讀 profile），aditorrec 不解析 profile。
+
+**遊戲比例（4:3／5:4／16:10）**：Apex 依寬度 1920 排 HUD，高度隨比例改變，各元素貼齊上緣、畫面中間或下緣。拉伸成 16:9（或錄 4:3 畫面再縮成 1920×1080）後，寬度與 x 不變，高度乘上壓縮比例（比例 ÷ 16/9：16:10 為 0.9、4:3 為 0.75、5:4 為 0.703），y 往貼齊的邊靠攏。App 開始錄影時讀 `Saved Games/Respawn/Apex/local/videoconfig.txt` 的 `setting.defaultres`／`defaultresheight`，寫入 `recording.json` 的 `gameAspect`，並以 `--aspect WxH` 傳給 live 引擎；離線分析的 `analyze` 請求也帶 `aspect`。aditorrec 一律裁切 `capture_rois`（四種比例的聯集，與遊戲設定無關），引擎依比例取出對應範圍再縮放回 `banner_roi`／`spec_roi` 大小；場景縮圖則依各 ROI 的貼齊方向（`SCENE_ROIS[*].anchor`）重建成 16:9 版面，模板與門檻不變。16:9 時完全等同舊行為。讀不到設定或比例不在四種之內時沿用 16:9。分析快取記錄 `aspect_squash`，比例改變會重新分析。保留黑邊（不拉伸）的輸出未處理。
 
 共享記憶體：具名 file mapping `Local\aditorrec-<sessionId>`，固定 16 槽環形緩衝；槽頭含 `seq`（u64，寫完最後才更新，讀端比對前後 seq 判斷撕裂）、`pts`、各區塊尺寸與 offset。讀端落後超過 16 槽就跳到最新（偵測丟格不阻塞擷取）。
 

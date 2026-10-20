@@ -4,10 +4,11 @@ Event detection uses icon templates (icon_detect) and enemy-name color rules. Th
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from .icon_detect import ICON_NAMES
+from .layout import BANNER_ANCHOR, SPEC_ANCHOR, Layout, capture_rect
 
 
 class ProfileError(Exception):
@@ -33,6 +34,24 @@ class Profile:
     name_sig_threshold: float
     dedupe_window: float
     dir: Path = field(default_factory=Path)
+    layout: Layout = Layout(1.0)  # Game render aspect; banner_roi/spec_roi stay in 16:9 reference layout.
+
+    @property
+    def capture_banner(self) -> tuple[int, int, int, int]:
+        """Region cropped from the 1920×1080-normalized frame; contains banner_roi's content at every supported aspect."""
+        return capture_rect(self.banner_roi, BANNER_ANCHOR)
+
+    @property
+    def capture_spec(self) -> tuple[int, int, int, int]:
+        return capture_rect(self.spec_roi, SPEC_ANCHOR)
+
+    def with_layout(self, layout: Layout) -> "Profile":
+        return replace(self, layout=layout)
+
+    def restore(self, banner_capture, spec_capture):
+        """Convert captured regions (capture_banner/capture_spec) into reference-layout banner and spec images."""
+        return (self.layout.extract(banner_capture, self.capture_banner, self.banner_roi, BANNER_ANCHOR),
+                self.layout.extract(spec_capture, self.capture_spec, self.spec_roi, SPEC_ANCHOR))
 
 
 # Optional red subrules for colorblind name colors and their required fields; detect.red_mask reads these keys directly.

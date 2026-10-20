@@ -12,6 +12,8 @@ export interface AnalysisQueueOptions {
   cacheDir: string
   /** Read before each analysis (setting changes take effect without a restart): decode → hwaccel, cacheLocation → beside. */
   getSettings?: () => AnalyzeSettings | undefined
+  /** Apex render resolution (`WxH`) read before each analysis; null keeps the 16:9 HUD layout. */
+  getGameAspect?: () => string | null
 }
 
 interface CurrentRun {
@@ -19,6 +21,10 @@ interface CurrentRun {
   reqId: string | null
   /** Cancelled by the user: report idle externally, but do not start the next item until the engine actually stops. */
   cancelled: boolean
+}
+
+export function gameAspectArg(aspect: string | null): { aspect?: string } {
+  return aspect ? { aspect } : {}
 }
 
 export class AnalysisQueue extends EventEmitter {
@@ -121,7 +127,8 @@ export class AnalysisQueue extends EventEmitter {
           profile_dir: this.opts.profileDir,
           cache_dir: this.opts.cacheDir,
           hwaccel: extra.hwaccel,
-          beside: extra.beside
+          beside: extra.beside,
+          ...gameAspectArg(this.opts.getGameAspect?.() ?? null)
         },
         (progress) => {
           if (run.cancelled) {

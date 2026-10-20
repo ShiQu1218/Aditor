@@ -147,3 +147,17 @@ def test_server_prunes_finished_worker_threads():
             t.join(timeout=10)
     srv._dispatch(req)
     assert len(srv._threads) <= 2
+
+
+def test_ipc_analyze_game_aspect(tmp_path):
+    v = make_video(tmp_path, "s.mp4", 2)
+    p = Proc()
+    p.get()
+    base = {"path": str(v), "profile_dir": str(ICON_DIR), "cache_dir": str(tmp_path / "c")}
+    p.send({"id": "a", "cmd": "analyze", "args": {**base, "aspect": "1920x1440"}})
+    end = p.until(lambda m: m.get("id") == "a" and m["type"] in ("error", "result"))
+    assert end["type"] == "result" and end["data"]["analysis"]["aspect_squash"] == 0.75
+    p.send({"id": "b", "cmd": "analyze", "args": {**base, "aspect": "21:9"}})
+    end = p.until(lambda m: m.get("id") == "b" and m["type"] in ("error", "result"))
+    assert end["type"] == "error" and end["code"] == "bad_request"
+    assert p.close() == 0

@@ -24,7 +24,8 @@ export const LIVE_STOP_TIMEOUT_MS = 5000
 
 export interface LiveSpec { start: number; end: number }
 /** The live engine's final snapshot assessment; complete means equivalent to offline analysis and can be used directly. */
-export interface LiveQuality { complete: boolean; reasons: string[]; hScale: number | null }
+/** aspectSquash: the game aspect layout the engine detected with (absent means 16:9). */
+export interface LiveQuality { complete: boolean; reasons: string[]; hScale: number | null; aspectSquash?: number }
 export interface LiveSnapshot { t: number; events: LiveEvent[]; spectating: LiveSpec[]; quality?: LiveQuality }
 export interface LiveMatchEvent { ev: 'match_start' | 'match_end' | 'match_pending' | 'match_cancel'; t: number; reason: string }
 
@@ -63,7 +64,8 @@ export function parseSnapshot(msg: Record<string, unknown>): LiveSnapshot | null
   const q = msg.quality as Record<string, unknown> | undefined
   if (msg.final === true && q && typeof q === 'object' && typeof q.complete === 'boolean') {
     const reasons = Array.isArray(q.reasons) ? q.reasons.filter((r): r is string => typeof r === 'string').map((r) => r.slice(0, 64)) : []
-    snap.quality = { complete: q.complete, reasons, hScale: finite(q.h_scale) ? q.h_scale : null }
+    snap.quality = { complete: q.complete, reasons, hScale: finite(q.h_scale) ? q.h_scale : null,
+      ...(finite(q.aspect_squash) ? { aspectSquash: q.aspect_squash } : {}) }
   }
   return snap
 }

@@ -11,6 +11,7 @@ import { ApexWatcher, findApexPid } from './apex-watcher'
 import { AditorrecClient, RecorderError, type RecorderEvent } from './aditorrec-client'
 import { diskFreeBytes, diskLevel } from './disk'
 import { probeStorageKind } from './storage-location'
+import { readGameAspect } from './game-aspect'
 import { MATCH_POST_PAD_SEC, cutMatches, finalizeSession, validateSessionDir, writeJson } from './finalize'
 import { recoverSessions } from './recovery'
 import { LiveSession } from './live-session'
@@ -62,13 +63,16 @@ function sessionId(): string {
   return `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}-${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}-${randomBytes(2).toString('hex')}`
 }
 
-async function readFrames(profileDir: string): Promise<object> {
+/** Crop the profile capture rects, which contain the HUD regions for every game aspect; older profiles have only the 16:9 ROIs. */
+export async function readFrames(profileDir: string): Promise<object> {
   const profile = JSON.parse(await fs.promises.readFile(path.join(profileDir, 'profile.json'), 'utf8'))
   const roi = (value: unknown): value is number[] => Array.isArray(value) && value.length === 4 &&
     value.every((n) => Number.isInteger(n) && n >= 0) && value[2] > 0 && value[3] > 0 &&
     value[0] + value[2] <= 1920 && value[1] + value[3] <= 1080
-  if (!roi(profile.banner_roi) || !roi(profile.spec_roi)) throw new RecorderError('profile_invalid', tr('錄影範本的 ROI 無效'))
-  return { banner: profile.banner_roi, spec: profile.spec_roi, base: [1920, 1080] }
+  const banner = profile.capture_rois ? profile.capture_rois.banner : profile.banner_roi
+  const spec = profile.capture_rois ? profile.capture_rois.spec : profile.spec_roi
+  if (!roi(banner) || !roi(spec)) throw new RecorderError('profile_invalid', tr('錄影範本的 ROI 無效'))
+  return { banner, spec, base: [1920, 1080] }
 }
 
 export class RecordingSessionService implements RecordingService {
@@ -249,10 +253,10 @@ export class RecordingSessionService implements RecordingService {
     return this.active.live
   }
 
-  private createLive(id: string, dir: string): LiveSession {
+  private createLive(id: string, dir: string, aspect: string | null): LiveSession {
     const live = new LiveSession({
       sessionId: id, dir, command: this.deps.liveEngineCommand, profileDir: this.deps.profileDir,
-      sceneDir: this.deps.sceneDir, restartBaseMs: this.deps.liveRestartBaseMs,
+      sceneDir: this.deps.sceneDir, aspect, restartBaseMs: this.deps.liveRestartBaseMs,
       recordEvent: (event) => { if (this.active?.live === live) this.recordEvent(this.active, event) },
       notice: (message) => this.notice('error', message)
     })
@@ -370,6 +374,8 @@ export class RecordingSessionService implements RecordingService {
       this.warnStorage(outputDir)
       if (diskLevel(free, settings) === 'stop') throw new RecorderError('disk_full', tr('磁碟剩餘空間低於停止門檻，無法開始錄影'))
       const frames = await readFrames(this.deps.profileDir)
+      const gameAspect = await (this.deps.readGameAspect ?? readGameAspect)()
+      this.log(`game aspect ${gameAspect ?? 'unknown'}`)
       const id = sessionId()
       const root = path.join(outputDir, '.sessions')
       await fs.promises.mkdir(root, { recursive: true })
@@ -379,11 +385,11 @@ export class RecordingSessionService implements RecordingService {
       await validateSessionDir(dir)
       const startedAt = Date.now()
       const writeSnapshot = (): Promise<void> => writeJson(path.join(dir, 'recording.json'), {
-        startedAt, postAnalysis: settings.postAnalysis, mode: settings.mode, backend: session?.backend ?? settings.backend
+        startedAt, postAnalysis: settings.postAnalysis, mode: settings.mode, backend: session?.backend ?? settings.backend, gameAspect
       })
       await writeSnapshot()
       const client = new AditorrecClient(this.deps.recorderCommand)
-      const live = this.createLive(id, dir)
+      const live = this.createLive(id, dir, gameAspect)
       session = { pid, id, dir, outputDir, client, ending: false, warned: false, writes: Promise.resolve(), sequences: new Set(), live,
         mode: settings.mode, cuts: Promise.resolve(), cutPending: false, cutting: false, failedCuts: new Set(), backend: settings.backend, obs: null, obsWork: Promise.resolve(), captured: false }
       this.active = session

@@ -321,17 +321,18 @@ def test_no_video_cli_error_has_no_partial_json(tmp_path):
 
 def test_cli_passes_options_and_outputs_json(monkeypatch, capsys):
     from aditor import __main__, matches
+    from aditor.layout import Layout
 
     def fake(path, **kw):
         assert path == "clip.mp4"
-        assert kw == {"fps": 2, "timeline": True, "hwaccel": False}
+        assert kw == {"fps": 2, "timeline": True, "hwaccel": False, "layout": Layout(0.75)}
         return {"matches": [{"start": 1, "end": 3}], "timeline": [[1, "pre_match"]]}
 
     monkeypatch.setattr(matches, "analyze_matches", fake)
     # pytest's StringIO has no reconfigure; preserve main's existing handling.
     for stream in (sys.stdout, sys.stderr):
         monkeypatch.setattr(stream, "reconfigure", lambda **kw: None, raising=False)
-    assert __main__.main(["matches", "clip.mp4", "--fps", "2", "--timeline", "--no-hwaccel"]) == 0
+    assert __main__.main(["matches", "clip.mp4", "--fps", "2", "--timeline", "--no-hwaccel", "--aspect", "4:3"]) == 0
     assert json.loads(capsys.readouterr().out)["matches"] == [{"start": 1, "end": 3}]
 
 

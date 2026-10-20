@@ -116,6 +116,7 @@ describe('recording service integration with the live engine', () => {
     deps.recorderCommand = fakeCommand('normal', { FAKE_SEGMENT_DIR: segments })
     deps.liveEngineCommand = fakeLiveCommand('normal', { FAKE_LIVE_TRACE: trace })
     deps.sceneDir = path.join(base, 'scene')
+    deps.readGameAspect = vi.fn(async () => '1920x1440')
     deps.notify = vi.fn()
     const pid = { value: 1234 as number | null }
     deps.findApexPid = vi.fn(async () => pid.value)
@@ -143,8 +144,9 @@ describe('recording service integration with the live engine', () => {
     expect(Buffer.from(await r.service.readSegment!(status.sessionId!, 1)).toString()).toBe('segment-1')
     await expect(r.service.readSegment!('20990101-000000-ffff', 1)).rejects.toThrow('不存在')
     const argv = JSON.parse(fs.readFileSync(r.trace, 'utf8').split('\n')[0]).argv
-    expect(argv).toEqual(['--shm', 'Local\\fake', '--profile-dir', r.deps.profileDir, '--scene-dir', r.deps.sceneDir])
+    expect(argv).toEqual(['--shm', 'Local\\fake', '--profile-dir', r.deps.profileDir, '--scene-dir', r.deps.sceneDir, '--aspect', '1920x1440'])
     const sessionDir = path.join(r.deps.defaultOutputDir, '.sessions', status.sessionId!)
+    expect(JSON.parse(fs.readFileSync(path.join(sessionDir, 'recording.json'), 'utf8')).gameAspect).toBe('1920x1440')
     await waitFor(() => fs.existsSync(path.join(sessionDir, 'live.json')))
     expect(fs.readFileSync(path.join(sessionDir, 'events.jsonl'), 'utf8')).toContain('"ev":"match_start"')
     expect(r.deps.notify).toHaveBeenCalledWith('matchStart', '第 1 局開始')
