@@ -122,6 +122,7 @@ try {
                 Timestamp = $timestamp
                 ElapsedSeconds = [math]::Round($now, 3)
                 ProcessId = $id
+                ProcessStartedAt = $item.CreationDate.ToUniversalTime().ToString('o')
                 ParentProcessId = [int]$item.ParentProcessId
                 Name = $item.Name
                 CpuPercent = $cpu
