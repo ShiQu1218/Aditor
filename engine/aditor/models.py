@@ -19,6 +19,9 @@ class VideoInfo:
     start_time: float
     size: int
     mtime: float
+    # Optional stream details used by export rate control; defaults keep older cache documents loadable.
+    fps: float = 0.0
+    pix_fmt: str = ""
 
     def to_dict(self) -> dict:
         return asdict(self)

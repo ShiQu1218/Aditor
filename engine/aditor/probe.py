@@ -45,9 +45,27 @@ def _start_time(path: str) -> float:
         return 0.0
 
 
+def _rate(value: object) -> float:
+    """Parse an ffprobe "num/den" rate; return 0 for missing, zero, or malformed values."""
+    if not isinstance(value, str):
+        return 0.0
+    num, _, den = value.partition("/")
+    try:
+        n, d = float(num), float(den or 1)
+    except ValueError:
+        return 0.0
+    return n / d if n > 0 and d > 0 else 0.0
+
+
+def _frame_rate(stream: dict) -> float:
+    """Average frame rate (actual for VFR captures), falling back to the nominal r_frame_rate; 0 when unknown."""
+    return _rate(stream.get("avg_frame_rate")) or _rate(stream.get("r_frame_rate"))
+
+
 def probe(path: str) -> VideoInfo:
     doc = _run(["-select_streams", "v:0", "-show_entries",
-                "stream=codec_name,width,height,start_time:format=duration,start_time", path])
+                "stream=codec_name,width,height,pix_fmt,avg_frame_rate,r_frame_rate,start_time:format=duration,start_time",
+                path])
     streams = doc.get("streams") or []
     if not streams:
         raise ProbeError("No video stream found")
@@ -59,7 +77,8 @@ def probe(path: str) -> VideoInfo:
         st = os.stat(path)
         return VideoInfo(path=path, duration=duration, width=int(s["width"]), height=int(s["height"]),
                          codec=s.get("codec_name", ""), start_time=start,
-                         size=st.st_size, mtime=st.st_mtime)
+                         size=st.st_size, mtime=st.st_mtime,
+                         fps=_frame_rate(s), pix_fmt=s.get("pix_fmt") or "")
     except (TypeError, ValueError, KeyError) as e:
         raise ProbeError(f"Missing ffprobe field: {e!r}") from e
 

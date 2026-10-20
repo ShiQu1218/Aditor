@@ -31,17 +31,17 @@ export function sourceSpec(probe: StreamProbe | undefined): VideoSpec {
 }
 
 /**
- * Timeline spec for mixed sources: like an NLE timeline, pick the largest resolution and the highest frame rate
- * so no source is downscaled or has frames dropped; smaller sources are upscaled with a high-quality scaler instead.
+ * Timeline spec for mixed sources: like an NLE timeline, use a canvas as wide as the widest source and as tall as the tallest,
+ * plus the highest frame rate, so no source is downscaled or has frames dropped (independent of source order);
+ * smaller sources are upscaled with a high-quality scaler instead.
  */
 export function timelineSpec(probes: ReadonlyArray<StreamProbe | undefined>): VideoSpec {
   const known = probes.filter((p): p is StreamProbe => !!p)
   const sized = known.filter((p) => p.width > 0 && p.height > 0)
-  const largest = sized.reduce<StreamProbe | null>((best, p) => (!best || p.width * p.height > best.width * best.height ? p : best), null)
   const fps = Math.max(0, ...known.map((p) => (p.fps > 0 ? p.fps : 0)))
   return {
-    width: largest ? even(largest.width) : FALLBACK_SPEC.width,
-    height: largest ? even(largest.height) : FALLBACK_SPEC.height,
+    width: sized.length ? even(Math.max(...sized.map((p) => p.width))) : FALLBACK_SPEC.width,
+    height: sized.length ? even(Math.max(...sized.map((p) => p.height))) : FALLBACK_SPEC.height,
     fps: fps > 0 ? fps : FALLBACK_SPEC.fps
   }
 }

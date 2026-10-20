@@ -25,6 +25,13 @@ describe('timelineSpec', () => {
       .toEqual({ width: 2560, height: 1440, fps: 144 })
   })
 
+  it('sizes the canvas to contain every source regardless of orientation or order', () => {
+    const landscape = probe(1920, 1080, 60)
+    const portrait = probe(1080, 1920, 60)
+    expect(timelineSpec([landscape, portrait])).toEqual({ width: 1920, height: 1920, fps: 60 })
+    expect(timelineSpec([portrait, landscape])).toEqual({ width: 1920, height: 1920, fps: 60 })
+  })
+
   it('keeps dimensions even and falls back to 1080p60 when nothing is known', () => {
     expect(timelineSpec([probe(1919, 1081, 59.94)])).toEqual({ width: 1918, height: 1080, fps: 59.94 })
     expect(timelineSpec([undefined, probe(0, 0, 0)])).toEqual({ width: 1920, height: 1080, fps: 60 })

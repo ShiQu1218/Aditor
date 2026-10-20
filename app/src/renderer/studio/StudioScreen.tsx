@@ -1132,7 +1132,7 @@ export function StudioScreen({ videoPath, onBack, onOpenVideo, playbackRequest, 
     void buildPlanBase(
       project,
       missingItemIds,
-      { path: videoPath, info: { codec: doc.video.codec, width: doc.video.width, height: doc.video.height }, keyframes: doc.keyframes ?? [] },
+      { path: videoPath, info: { codec: doc.video.codec, width: doc.video.width, height: doc.video.height, fps: doc.video.fps, pix_fmt: doc.video.pix_fmt }, keyframes: doc.keyframes ?? [] },
       async (src) => (await window.api?.engine?.probe?.(src)) ?? null
     ).then((b) => {
       if (!cancelled) setExportBase(b)
