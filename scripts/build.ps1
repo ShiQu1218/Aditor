@@ -16,20 +16,27 @@ Write-Host "========================================"
 # 1. Build Engine
 if (-not $SkipEngine) {
     Write-Host "`n[1/5] Building Engine with PyInstaller..."
-    $pyinstaller = Join-Path $root "engine\.venv\Scripts\pyinstaller.exe"
-    if (-not (Test-Path $pyinstaller)) {
+    $python = Join-Path $root "engine\.venv\Scripts\python.exe"
+    & $python -c "import PyInstaller"
+    if ($LASTEXITCODE -ne 0) {
         Write-Host "PyInstaller not found in venv, installing..."
-        & (Join-Path $root "engine\.venv\Scripts\python.exe") -m pip install "pyinstaller==6.22.3"
+        & $python -m pip install "pyinstaller==6.22.3"
+        if ($LASTEXITCODE -ne 0) { throw "PyInstaller installation failed" }
     }
 
     $distPath = Join-Path $root "build\engine"
     $workPath = Join-Path $root "build\pyinstaller-temp"
     $specPath = Join-Path $root "engine\aditor.spec"
 
-    & $pyinstaller --distpath $distPath --workpath $workPath -y $specPath
+    $buildStarted = [DateTime]::UtcNow
+    & $python -m PyInstaller --distpath $distPath --workpath $workPath -y $specPath
+    if ($LASTEXITCODE -ne 0) { throw "PyInstaller build failed" }
     $engineExe = Join-Path $distPath "aditor\aditor.exe"
     if (-not (Test-Path $engineExe)) {
         throw "Engine build failed: $engineExe not found!"
+    }
+    if ((Get-Item -LiteralPath $engineExe).LastWriteTimeUtc -le $buildStarted) {
+        throw "Engine build failed: $engineExe was not rebuilt during this run!"
     }
     Write-Host "✓ Engine built successfully: $engineExe"
 } else {

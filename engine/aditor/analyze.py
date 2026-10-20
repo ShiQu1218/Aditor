@@ -293,6 +293,8 @@ def analyze(path: str, profile: Profile, *, cache_dir: Path, beside: bool = Fals
             cancel: threading.Event | None = None, hwaccel: bool = True,
             jobs: int | None = None, layout: Layout | None = None) -> dict:
     info = probe(path)
+    scene_dir = profile.dir.parent / "scene"
+    scene_dir = scene_dir if scene_dir.is_dir() else None
     if layout is None and not profile.layout.identity:
         layout = profile.layout  # Retain explicit profile layouts for existing callers.
     # Explicit > video tag > detection; legacy cache hits also need detection to validate their layout.
@@ -305,7 +307,7 @@ def analyze(path: str, profile: Profile, *, cache_dir: Path, beside: bool = Fals
     squash = None if layout is None else profile.layout.squash
     if not force and old is not None and not needs_reanalysis(old, info, profile.templates_version, squash):
         if layout is None and "aspect_source" not in old["analysis"]:
-            detection = detect_aspect(path, info, cancel=cancel, hwaccel=hwaccel)
+            detection = detect_aspect(path, info, scene_dir=scene_dir, cancel=cancel, hwaccel=hwaccel)
             if cancel is not None and cancel.is_set():
                 raise Cancelled()
             layout, aspect_source = detection.layout, "detected" if detection.found else "default"
@@ -357,7 +359,7 @@ def analyze(path: str, profile: Profile, *, cache_dir: Path, beside: bool = Fals
     if h_scale is None or keywords is None:
         try:
             if layout is None:
-                detection = detect_aspect(path, info, cancel=cancel, hwaccel=hwaccel)
+                detection = detect_aspect(path, info, scene_dir=scene_dir, cancel=cancel, hwaccel=hwaccel)
                 layout, aspect_source = detection.layout, "detected" if detection.found else "default"
                 profile = profile.with_layout(layout)
             if h_scale is None:

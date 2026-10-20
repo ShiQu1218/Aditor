@@ -1,3 +1,4 @@
+import shutil
 import threading
 
 import pytest
@@ -5,7 +6,7 @@ import pytest
 from aditor import analyze as az
 from aditor.cache import cache_path, load_cache, save_cache
 from aditor.decode import FrameStream
-from conftest import make_video
+from conftest import ICON_DIR, make_video
 
 SPANS = [(2.0, 4.5), (10.0, 12.5)]
 
@@ -31,6 +32,42 @@ def test_analyze_synthetic_no_events(tmp_path, profile):
     assert doc["keyframes"] and doc["clips"] == []
     assert doc["cache_path"] == str(cache_path(str(v), tmp_path / "cache"))
     assert load_cache(cache_path(str(v), tmp_path / "cache"))["analysis"]["status"] == "done"
+
+
+def test_analyze_uses_sibling_scene_templates_in_packaged_layout(tmp_path, monkeypatch):
+    from aditor import aspect, scene
+    from aditor.layout import SUPPORTED_ASPECTS
+    from aditor.profile import load_profile
+
+    templates = tmp_path / "templates"
+    shutil.copytree(ICON_DIR, templates / "icons")
+    scene_dir = shutil.copytree(ICON_DIR.parent / "scene", templates / "scene")
+    monkeypatch.setattr(scene, "__file__", str(tmp_path / "missing" / "engine" / "aditor" / "scene.py"))
+    with pytest.raises(FileNotFoundError):
+        scene.SceneDetector()
+
+    used_dirs = []
+
+    def detector(template_dir=None, **kwargs):
+        used_dirs.append(template_dir)
+        return scene.SceneDetector(template_dir, **kwargs)
+
+    # conftest skips frame sampling, but every real detector must still load its templates.
+    monkeypatch.setattr(aspect, "SceneDetector", detector)
+    v = make_video(tmp_path, "untagged.mp4", 0.5)
+    profile = load_profile(templates / "icons")
+    cache_dir = tmp_path / "cache"
+    doc = az.analyze(str(v), profile, cache_dir=cache_dir, hwaccel=False)
+    assert doc["analysis"]["status"] == "done"
+    assert used_dirs == [scene_dir] * len(SUPPORTED_ASPECTS)
+
+    # Legacy cache validation also detects the aspect using the packaged templates.
+    cp = cache_path(str(v), cache_dir)
+    del doc["analysis"]["aspect_source"]
+    save_cache(cp, doc)
+    used_dirs.clear()
+    assert az.analyze(str(v), profile, cache_dir=cache_dir, hwaccel=False)["analysis"]["status"] == "done"
+    assert used_dirs == [scene_dir] * len(SUPPORTED_ASPECTS)
 
 
 def test_analyze_uses_cache(tmp_path, profile, monkeypatch):

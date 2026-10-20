@@ -100,7 +100,7 @@ def test_detect_layout_samples_the_whole_video(tmp_path, monkeypatch):
     v = _encode(tmp_path, "game.mp4", _mixed("4:3", 60))
     seen = []
     real = asp.choose_layout
-    monkeypatch.setattr(asp, "choose_layout", lambda frames: real(seen.append(f) or f for f in frames))
+    monkeypatch.setattr(asp, "choose_layout", lambda frames, **kw: real((seen.append(f) or f for f in frames), **kw))
     detect_aspect(str(v), probe(str(v)), hwaccel=False)
     assert len(seen) == DETECT_SAMPLES
 

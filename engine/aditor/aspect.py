@@ -9,6 +9,7 @@ from __future__ import annotations
 import subprocess
 import threading
 import time
+from pathlib import Path
 from typing import Iterable, NamedTuple
 
 import numpy as np
@@ -69,9 +70,9 @@ def pick_aspect(stats: AspectStats) -> str | None:
     return max((name for name, (n, _) in stats.items() if n == best), key=lambda name: stats[name][1])
 
 
-def choose_layout(frames: Iterable[np.ndarray]) -> Detection:
+def choose_layout(frames: Iterable[np.ndarray], scene_dir: Path | None = None) -> Detection:
     """Classify 640×360 grayscale frames with a SceneDetector per supported aspect and pick the best aspect."""
-    detectors = {name: SceneDetector(layout=parse_aspect(name)) for name in SUPPORTED_ASPECTS}
+    detectors = {name: SceneDetector(scene_dir, layout=parse_aspect(name)) for name in SUPPORTED_ASPECTS}
     counts = {name: 0 for name in detectors}
     totals = {name: 0.0 for name in detectors}
     for frame in frames:
@@ -131,12 +132,12 @@ def _sampled_frames(path: str, info: VideoInfo, hwaccel: bool, cancel: threading
             yield frame
 
 
-def detect_aspect(path: str, info: VideoInfo, *, hwaccel: bool = True,
+def detect_aspect(path: str, info: VideoInfo, *, scene_dir: Path | None = None, hwaccel: bool = True,
                   cancel: threading.Event | None = None) -> Detection:
     """Sample about DETECT_SAMPLES frames evenly over the video and pick the aspect the scene templates recognise."""
     if info.duration <= 0:
         return Detection(Layout(1.0), False)
-    return choose_layout(_sampled_frames(path, info, hwaccel, cancel))
+    return choose_layout(_sampled_frames(path, info, hwaccel, cancel), scene_dir=scene_dir)
 
 
 def detect_layout(path: str, info: VideoInfo, *, hwaccel: bool = True,
