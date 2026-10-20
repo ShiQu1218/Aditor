@@ -53,13 +53,12 @@ export class ApexWatcher {
     try {
       const pid = await this.find()
       if (!this.running || generation !== this.generation) return
-      this.count = pid === this.candidate ? this.count + 1 : 1
+      const firstPoll = this.count === 0
+      this.count = pid === this.candidate ? Math.min(this.count + 1, 2) : 1
       this.candidate = pid
-      if (this.count >= 2) {
-        this.changed(pid)
-      }
+      // Report startup presence immediately; debounce later transitions while retaining stable poll notifications.
+      if (firstPoll || this.count >= 2) this.changed(pid)
     } catch (error) {
-      this.count = 0
       if (this.running && generation === this.generation) this.failed(error)
     }
     if (this.running && generation === this.generation) {

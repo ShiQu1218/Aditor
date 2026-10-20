@@ -118,6 +118,7 @@ const messages: MessageTable = {
   '輸出影片已存在：{output}': 'Output video already exists: {output}',
   '逐局剪檔紀錄無效': 'The per-match cut record is invalid.',
   '對局範圍沒有錄影片段，已保留工作': 'No recorded segments fall within the match range. The recording job has been kept.',
+  '第 {index} 局的錄影片段檔案全部遺失，已略過此局': 'All recording segment files for match {index} are missing. This match was skipped.',
   '錄影串接失敗（{code}）：{stderr}': 'Recording concatenation failed ({code}): {stderr}',
   '錄影段落不是一般檔案：{file}': 'Recording segment is not a regular file: {file}',
   '有 {count} 個錄影段落檔案遺失（可能被防毒或同步程式移除），已略過缺少的部分並輸出：{output}': '{count} recording segment files were missing (possibly removed by antivirus or a sync client). The missing parts were skipped and the rest was saved: {output}',

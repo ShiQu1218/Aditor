@@ -24,7 +24,7 @@ export interface RecordingDeps {
   obsFileSettleMs?: number
   /** Test injection: after stopping our OBS recording, how long to treat an active status as stopping rather than a user-owned recording (defaults to 30000). */
   obsStopGraceMs?: number
-  /** Delay in milliseconds between detecting Apex and starting capture (defaults to 20000; tests inject 0). */
+  /** Delay in milliseconds between detecting a newly launched Apex and starting capture; skipped when Apex is already running at startup (defaults to 20000; tests inject 0). */
   gameStartDelayMs?: number
   /** Diagnostic log, flushed line by line so recorder activity remains visible after a system crash. */
   log?: (message: string) => void
@@ -38,7 +38,7 @@ export interface RecordingDeps {
   recorderCommand: RecorderCommand
   /** ffmpeg.exe used to concatenate segments during finalization. */
   ffmpegPath: string
-  /** `templates/icons`: read `banner_roi`/`spec_roi` from `profile.json` and pass them to aditorrec. */
+  /** `templates/icons`: read `capture_rois` (or `banner_roi`/`spec_roi`) from `profile.json` and pass them to aditorrec. */
   profileDir: string
   /** Add an item to the library (`Library.add`). */
   addToLibrary: (paths: string[]) => void
@@ -50,6 +50,8 @@ export interface RecordingDeps {
   findApexPid?: () => Promise<number | null>
   /** Test injection: classify the output folder as cloud-synced or network storage (defaults to probeStorageKind). */
   probeStorage?: (dir: string) => Promise<StorageKind | null>
+  /** Test injection: read the Apex render resolution (`WxH`, defaults to readGameAspect); null keeps the 16:9 layout. */
+  readGameAspect?: () => Promise<string | null>
   /** Test injection: polling interval in milliseconds. */
   pollMs?: number
   /** Phase 3: how to launch the live engine (`aditor live`); when omitted, skip live detection and provide segment playback only. */

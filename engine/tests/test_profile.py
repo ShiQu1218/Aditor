@@ -117,3 +117,20 @@ def test_invalid_field_rejected(tmp_path, mutate, match):
 def test_spectating_may_be_empty(tmp_path):
     p = load_profile(_copy(tmp_path, lambda d: d.update(spectating=[])))
     assert p.spectating == []
+
+
+def test_shipped_capture_rois_cover_every_supported_aspect():
+    """The app passes capture_rois to aditorrec; they must equal the engine's union of all supported game aspects."""
+    from aditor.layout import BANNER_ANCHOR, SPEC_ANCHOR, capture_rect
+    doc = json.loads((ICON_DIR / "profile.json").read_text(encoding="utf-8"))
+    p = load_profile(ICON_DIR)
+    assert tuple(doc["capture_rois"]["banner"]) == capture_rect(p.banner_roi, BANNER_ANCHOR) == p.capture_banner
+    assert tuple(doc["capture_rois"]["spec"]) == capture_rect(p.spec_roi, SPEC_ANCHOR) == p.capture_spec
+
+
+def test_profile_layout_defaults_to_16_9_and_can_be_replaced():
+    from aditor.layout import parse_aspect
+    p = load_profile(ICON_DIR)
+    assert p.layout.identity
+    q = p.with_layout(parse_aspect("4:3"))
+    assert q.layout.squash == 0.75 and p.layout.identity and q.banner_roi == p.banner_roi

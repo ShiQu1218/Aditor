@@ -26,6 +26,7 @@ pytestmark = pytest.mark.skipif(sys.platform != "win32", reason="Shared memory r
 
 from aditor.live import (LATEST_SEQ_OFFSET, MAX_LAG_SLOTS, PTS_PER_SECOND, SHM_HEADER_BYTES, SHM_MAGIC,  # noqa: E402
                          SHM_SLOTS, SHM_VERSION, LayoutError, LiveEngine, LiveKills, ShmLayout, ShmReader)
+from aditor.profile import Profile  # noqa: E402
 
 ENGINE_DIR = Path(__file__).resolve().parents[1]
 GOLDEN = os.environ.get("ADITOR_GOLDEN_VIDEO")
@@ -566,3 +567,45 @@ def test_live_forwards_pending_and_cancel(profile, layout, scene, monkeypatch, k
     assert [o for o in out if o["ev"].startswith("match_")] == [
         {"ev": "match_pending", "t": 0, "reason": "pre_match"},
         {"ev": "match_cancel", "t": t, "reason": reason}]
+
+
+# ---------------- Game aspect ratio ----------------
+
+class _RawCaptureProfile(Profile):
+    """Yield the capture crops aditorrec writes (capture_banner/capture_spec) instead of restored reference images."""
+
+    def restore(self, banner_capture, spec_capture):
+        return banner_capture, spec_capture
+
+
+def test_layout_check_accepts_capture_rects_and_reference_rects_only_at_16_9(profile):
+    from dataclasses import asdict
+    from aditor.layout import parse_aspect
+    from aditor.live import _check_layout
+    capture = ShmLayout(tuple(profile.capture_banner[2:]), tuple(profile.capture_spec[2:]), (640, 360))
+    reference = ShmLayout(tuple(profile.banner_roi[2:]), tuple(profile.spec_roi[2:]), (640, 360))
+    four = profile.with_layout(parse_aspect("4:3"))
+    _check_layout(capture, profile)
+    _check_layout(capture, four)
+    _check_layout(reference, profile)
+    with pytest.raises(LayoutError):
+        _check_layout(reference, four)
+    assert asdict(four)["layout"]["squash"] == 0.75
+
+
+def test_live_restores_stretched_4_3_capture_like_offline(tmp_path, profile, scene, knock_banner_png):
+    from dataclasses import fields
+    from aditor.analyze import analyze
+    from aditor.decode import FrameStream
+    from aditor.layout import parse_aspect
+    four = profile.with_layout(parse_aspect("4:3"))
+    video = make_video(tmp_path, "4比3.mp4", 16, overlay=(knock_banner_png, [(2, 5), (9, 12)]), game_height=1440)
+    doc = analyze(str(video), four, cache_dir=tmp_path / "cache", jobs=1)
+    raw = _RawCaptureProfile(**{f.name: getattr(four, f.name) for f in fields(Profile)})
+    capture = ShmLayout(tuple(profile.capture_banner[2:]), tuple(profile.capture_spec[2:]), (640, 360))
+    out, eng = _run_live(capture, four, scene, ((t, b, s, None) for t, b, s in FrameStream(str(video), raw)))
+    final = out[-1]
+    assert len(doc["events"]) >= 2
+    assert [(e["type"], e["t"], e["counted"]) for e in final["events"]] == \
+        [(e["type"], e["t"], e["counted"]) for e in doc["events"]]
+    assert final["quality"]["aspect_squash"] == 0.75

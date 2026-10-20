@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { AnalysisQueue } from './queue'
 import { Library } from './library'
 import { EngineClient } from './engine'
@@ -204,5 +204,33 @@ describe('AnalysisQueue settings wiring (decode/cacheLocation)', () => {
       [true, false],
       [false, true]
     ])
+  })
+})
+
+describe('AnalysisQueue game aspect', () => {
+  it('leaves aspect resolution to the engine instead of reading the current Apex config', async () => {
+    const lib = new Library(path.join(os.tmpdir(), `aditor_queue_aspect_${Date.now()}_${Math.random()}.json`))
+    const seen: Record<string, unknown>[] = []
+    const engineMock = {
+      request: (_cmd: string, args: Record<string, unknown>) => {
+        seen.push(args)
+        return { id: 'r', promise: Promise.resolve({ video: { duration: 10 }, events: [] }) }
+      },
+      cancel: () => {}
+    } as unknown as EngineClient
+    lib.add(['D:/Videos/a.mp4', 'D:/Videos/b.mp4'])
+    let aspect: string | null = '1920x1440'
+    const getGameAspect = vi.fn(() => aspect)
+    const options = { profileDir: '/profile', cacheDir: '/cache', getGameAspect }
+    const queue = new AnalysisQueue(engineMock, lib, options)
+    queue.enqueue('D:/Videos/a.mp4')
+    await new Promise((r) => setTimeout(r, 20))
+    aspect = null
+    queue.enqueue('D:/Videos/b.mp4')
+    await new Promise((r) => setTimeout(r, 20))
+    expect(seen).toHaveLength(2)
+    expect(seen[0]).not.toHaveProperty('aspect')
+    expect(seen[1]).not.toHaveProperty('aspect')
+    expect(getGameAspect).not.toHaveBeenCalled()
   })
 })

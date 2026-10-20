@@ -1,4 +1,6 @@
-"""ffmpeg decode pipeline (spec §5.1): reduce frame rate → scale to 1080p → crop two regions → vstack → bgr24 rawvideo."""
+"""ffmpeg decode pipeline (spec §5.1): reduce frame rate → scale to 1080p → crop two regions → vstack → bgr24 rawvideo.
+
+The crops are the profile capture rects; Profile.restore turns them into reference-layout banner/spec images (layout.py)."""
 from __future__ import annotations
 
 import subprocess
@@ -37,8 +39,8 @@ def build_filter(profile: Profile, gpu: bool = False, hw_format: str = "nv12") -
     """hw_format is the pixel format after hwdownload. The 8-bit decode surface is nv12; 10-bit (HEVC Main10/AV1 10-bit,
     common in HDR recordings) uses p010le. FFmpeg's format filter accepts only the first candidate, so nv12|p010le
     cannot be specified. FrameStream retries with another format if decoding fails before the first frame."""
-    bx, by, bw, bh = profile.banner_roi
-    sx, sy, sw, sh = profile.spec_roi
+    bx, by, bw, bh = profile.capture_banner
+    sx, sy, sw, sh = profile.capture_spec
     pre = f"fps={FPS},hwdownload,format={hw_format}" if gpu else f"fps={FPS}"
     return (f"[0:v]{pre},scale=1920:1080,split[a][b];"
             f"[a]crop={bw}:{bh}:{bx}:{by}[a1];"
@@ -122,8 +124,8 @@ class FrameStream:
 
     def _frames(self, hwaccel: bool, k0: int = 0) -> Iterator[tuple[float, np.ndarray, np.ndarray]]:
         """k0 is the number of frames produced by the previous (failed) hardware decode; resume at start + k0/FPS to preserve the timeline grid."""
-        bx, by, bw, bh = self.profile.banner_roi
-        sx, sy, sw, sh = self.profile.spec_roi
+        bx, by, bw, bh = self.profile.capture_banner
+        sx, sy, sw, sh = self.profile.capture_spec
         frame_bytes = bw * (bh + sh) * 3
         buf = bytearray(frame_bytes)
         view = memoryview(buf)
@@ -139,9 +141,9 @@ class FrameStream:
             if got < frame_bytes:
                 break
             arr = np.frombuffer(buf, dtype=np.uint8)
-            banner = arr[: bw * bh * 3].reshape(bh, bw, 3).copy()
-            spec = arr[bw * bh * 3:].reshape(sh, bw, 3)[:, :sw].copy()
-            yield self.start + k * (1.0 / FPS), banner, spec
+            banner, spec = self.profile.restore(arr[: bw * bh * 3].reshape(bh, bw, 3),
+                                                arr[bw * bh * 3:].reshape(sh, bw, 3)[:, :sw])
+            yield self.start + k * (1.0 / FPS), banner.copy(), spec.copy()
             k += 1
         rc = proc.wait()
         if rc != 0 and not self._closed:

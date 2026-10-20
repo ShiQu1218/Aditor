@@ -157,8 +157,8 @@ def test_hw_failure_mid_stream_continues_in_software_on_the_same_time_grid(tmp_p
     import sys
     import subprocess
     v = make_video(tmp_path, "h.mp4", 3.0)
-    bx, by, bw, bh = profile.banner_roi
-    sx, sy, sw, sh = profile.spec_roi
+    bx, by, bw, bh = profile.capture_banner
+    sx, sy, sw, sh = profile.capture_spec
     frame_bytes = bw * (bh + sh) * 3
     real_spawn = FrameStream._spawn
     calls = []
@@ -202,3 +202,17 @@ def test_ten_bit_hevc_uses_hardware_path(tmp_path, profile):
     assert len(list(fs)) == 8
     if not fs.used_hwaccel:
         pytest.skip("D3D11VA hardware decoding is unavailable on this machine")
+
+
+def test_stretched_4_3_banner_is_restored_to_reference_layout(tmp_path, profile, knock_banner_png):
+    import cv2
+    import numpy as np
+    from aditor.layout import parse_aspect
+    v = make_video(tmp_path, "s.mp4", 2.0, overlay=(knock_banner_png, [(0.0, 2.0)]), game_height=1440)
+    banner = cv2.imdecode(np.fromfile(str(knock_banner_png), np.uint8), cv2.IMREAD_COLOR)
+    four = profile.with_layout(parse_aspect("4:3"))
+    t, got, spec = next(iter(FrameStream(str(v), four)))
+    assert got.shape == banner.shape and spec.shape == (profile.spec_roi[3], profile.spec_roi[2], 3)
+    plain = next(iter(FrameStream(str(v), profile)))[1]
+    def corr(a): return float(cv2.matchTemplate(a, banner, cv2.TM_CCOEFF_NORMED).max())
+    assert corr(got) > 0.8 > corr(plain)

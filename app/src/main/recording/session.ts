@@ -11,6 +11,7 @@ import { ApexWatcher, findApexPid } from './apex-watcher'
 import { AditorrecClient, RecorderError, type RecorderEvent } from './aditorrec-client'
 import { diskFreeBytes, diskLevel } from './disk'
 import { probeStorageKind } from './storage-location'
+import { readGameAspect } from './game-aspect'
 import { MATCH_POST_PAD_SEC, cutMatches, finalizeSession, validateSessionDir, writeJson } from './finalize'
 import { recoverSessions } from './recovery'
 import { LiveSession } from './live-session'
@@ -49,9 +50,10 @@ interface ActiveSession {
 /** After stopping our OBS recording, treat active status during this interval as still stopping. */
 const OBS_STOP_GRACE_MS = 30_000
 /**
- * Delay capture after detecting Apex. During startup the game creates its window, switches to
+ * Delay capture after Apex launches while Aditor is running. During startup the game creates its window, switches to
  * fullscreen, and loads its anti-cheat driver; capturing or creating devices at that point is
  * most likely to trigger driver issues, and the intro does not need to be recorded anyway.
+ * A game already running when Aditor starts is past that phase and starts without the delay.
  */
 const GAME_START_DELAY_MS = 20_000
 
@@ -61,13 +63,16 @@ function sessionId(): string {
   return `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}-${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}-${randomBytes(2).toString('hex')}`
 }
 
-async function readFrames(profileDir: string): Promise<object> {
+/** Crop the profile capture rects, which contain the HUD regions for every game aspect; older profiles have only the 16:9 ROIs. */
+export async function readFrames(profileDir: string): Promise<object> {
   const profile = JSON.parse(await fs.promises.readFile(path.join(profileDir, 'profile.json'), 'utf8'))
   const roi = (value: unknown): value is number[] => Array.isArray(value) && value.length === 4 &&
     value.every((n) => Number.isInteger(n) && n >= 0) && value[2] > 0 && value[3] > 0 &&
     value[0] + value[2] <= 1920 && value[1] + value[3] <= 1080
-  if (!roi(profile.banner_roi) || !roi(profile.spec_roi)) throw new RecorderError('profile_invalid', tr('錄影範本的 ROI 無效'))
-  return { banner: profile.banner_roi, spec: profile.spec_roi, base: [1920, 1080] }
+  const banner = profile.capture_rois ? profile.capture_rois.banner : profile.banner_roi
+  const spec = profile.capture_rois ? profile.capture_rois.spec : profile.spec_roi
+  if (!roi(banner) || !roi(spec)) throw new RecorderError('profile_invalid', tr('錄影範本的 ROI 無效'))
+  return { banner, spec, base: [1920, 1080] }
 }
 
 export class RecordingSessionService implements RecordingService {
@@ -93,7 +98,10 @@ export class RecordingSessionService implements RecordingService {
   private builtinFallbackPid: number | null = null
   /** Time when the current PID was first confirmed. */
   private pidSeenAt = 0
-  private startDelayTimer: ReturnType<typeof setTimeout> | null = null
+  /** True until the first successful poll after start; a game already running then is past its startup phase. */
+  private firstPoll = true
+  /** Last logged reason a detected game is not being recorded, so each reason is logged once. */
+  private skipReason: string | null = null
   /** Output folders already checked for cloud or network storage during this run. */
   private storageChecked = new Set<string>()
 
@@ -107,19 +115,22 @@ export class RecordingSessionService implements RecordingService {
           this.builtinFallbackPid = null
           this.blocked = false
           this.cancelRetry()
-          this.pidSeenAt = Date.now()
+          this.pidSeenAt = this.firstPoll ? -Infinity : Date.now()
+          this.skipReason = null
           this.log(`apex pid ${pid ?? 'none'}`)
-          this.clearStartDelay()
         }
+        this.firstPoll = false
         this.gamePid = pid
         if (exited && this.deps.getSettings().openOnGameExit) this.deps.onGameExit?.()
         void this.serialize(async () => {
           if (!this.running) return
-          // Several polls may accumulate while starting or finalizing; use only the latest confirmed PID.
+          // Several polls may accumulate while starting or finalizing; use only the latest PID.
           if (this.active && this.active.pid !== this.gamePid) await this.finish()
-          if (this.canAutoStart() && this.gameSettled()) await this.begin(this.gamePid!)
+          await this.autoStart()
         })
       }, (error) => {
+        // Startup presence is unknown after a failed first query, so a game found later gets the launch delay.
+        this.firstPoll = false
         if (!this.pollWarning) this.notice('error', tr('無法偵測 Apex 程序：{error}', { error: String(error) }))
         this.pollWarning = true
       })
@@ -128,6 +139,7 @@ export class RecordingSessionService implements RecordingService {
   start(): void {
     if (this.running) return
     this.running = true
+    this.firstPoll = true
     this.recovery = this.serialize(() => recoverSessions(this.deps,
       (paths) => this.finalized(paths),
       (error) => this.fail('recovery_failed', tr('錄影補收尾失敗：{error}', { error: String(error) })),
@@ -139,7 +151,6 @@ export class RecordingSessionService implements RecordingService {
     this.running = false
     this.watcher.stop()
     this.cancelRetry()
-    this.clearStartDelay()
     this.clearDiskTimer()
     // Allow cancellation during startup handshakes so app shutdown does not wait for the full startup timeout.
     if (this.state.phase === 'starting') await this.active?.client.close()
@@ -180,7 +191,7 @@ export class RecordingSessionService implements RecordingService {
     this.update({ paused })
     if (paused) this.cancelRetry()
     else void this.serialize(async () => {
-      if (this.canAutoStart() && this.gameSettled()) await this.begin(this.gamePid!)
+      await this.autoStart()
     })
   }
 
@@ -242,10 +253,10 @@ export class RecordingSessionService implements RecordingService {
     return this.active.live
   }
 
-  private createLive(id: string, dir: string): LiveSession {
+  private createLive(id: string, dir: string, aspect: string | null): LiveSession {
     const live = new LiveSession({
       sessionId: id, dir, command: this.deps.liveEngineCommand, profileDir: this.deps.profileDir,
-      sceneDir: this.deps.sceneDir, restartBaseMs: this.deps.liveRestartBaseMs,
+      sceneDir: this.deps.sceneDir, aspect, restartBaseMs: this.deps.liveRestartBaseMs,
       recordEvent: (event) => { if (this.active?.live === live) this.recordEvent(this.active, event) },
       notice: (message) => this.notice('error', message)
     })
@@ -323,30 +334,28 @@ export class RecordingSessionService implements RecordingService {
     return result
   }
 
-  /** Schedule one recheck and return false when the game has not yet completed its startup delay. */
-  private gameSettled(): boolean {
-    const remaining = this.pidSeenAt + (this.deps.gameStartDelayMs ?? GAME_START_DELAY_MS) - Date.now()
-    if (remaining <= 0) return true
-    if (!this.startDelayTimer) {
-      this.startDelayTimer = setTimeout(() => {
-        this.startDelayTimer = null
-        void this.serialize(async () => {
-          if (this.canAutoStart() && this.gameSettled()) await this.begin(this.gamePid!)
-        })
-      }, remaining)
-      this.startDelayTimer.unref()
+  /** Runs on every poll and on resume, so a game still in its startup delay starts on the first poll after the delay. */
+  private async autoStart(): Promise<void> {
+    if (!this.running || this.gamePid === null || this.active) return
+    const reason = this.autoStartBlocker()
+    if (!reason) {
+      this.skipReason = null
+      await this.begin(this.gamePid)
+      return
     }
-    return false
+    if (reason === this.skipReason) return
+    this.skipReason = reason
+    this.log(`auto-start skipped: ${reason}`)
   }
 
-  private clearStartDelay(): void {
-    if (this.startDelayTimer) clearTimeout(this.startDelayTimer)
-    this.startDelayTimer = null
-  }
-
-  private canAutoStart(): boolean {
-    return this.running && this.gamePid !== null && !this.active && !this.state.paused &&
-      !this.manualStopped && !this.blocked && !this.retryTimer && this.deps.getSettings().autoRecord
+  private autoStartBlocker(): string | null {
+    if (this.state.paused) return 'paused'
+    if (this.manualStopped) return 'manual stop'
+    if (this.blocked) return 'blocked after failure'
+    if (this.retryTimer) return 'retry pending'
+    if (!this.deps.getSettings().autoRecord) return 'auto record disabled'
+    if (Date.now() - this.pidSeenAt < (this.deps.gameStartDelayMs ?? GAME_START_DELAY_MS)) return 'waiting for game start delay'
+    return null
   }
 
   private async begin(pid: number, builtin = false): Promise<boolean> {
@@ -365,6 +374,8 @@ export class RecordingSessionService implements RecordingService {
       this.warnStorage(outputDir)
       if (diskLevel(free, settings) === 'stop') throw new RecorderError('disk_full', tr('磁碟剩餘空間低於停止門檻，無法開始錄影'))
       const frames = await readFrames(this.deps.profileDir)
+      const gameAspect = await (this.deps.readGameAspect ?? readGameAspect)()
+      this.log(`game aspect ${gameAspect ?? 'unknown'}`)
       const id = sessionId()
       const root = path.join(outputDir, '.sessions')
       await fs.promises.mkdir(root, { recursive: true })
@@ -374,11 +385,11 @@ export class RecordingSessionService implements RecordingService {
       await validateSessionDir(dir)
       const startedAt = Date.now()
       const writeSnapshot = (): Promise<void> => writeJson(path.join(dir, 'recording.json'), {
-        startedAt, postAnalysis: settings.postAnalysis, mode: settings.mode, backend: session?.backend ?? settings.backend
+        startedAt, postAnalysis: settings.postAnalysis, mode: settings.mode, backend: session?.backend ?? settings.backend, gameAspect
       })
       await writeSnapshot()
       const client = new AditorrecClient(this.deps.recorderCommand)
-      const live = this.createLive(id, dir)
+      const live = this.createLive(id, dir, gameAspect)
       session = { pid, id, dir, outputDir, client, ending: false, warned: false, writes: Promise.resolve(), sequences: new Set(), live,
         mode: settings.mode, cuts: Promise.resolve(), cutPending: false, cutting: false, failedCuts: new Set(), backend: settings.backend, obs: null, obsWork: Promise.resolve(), captured: false }
       this.active = session

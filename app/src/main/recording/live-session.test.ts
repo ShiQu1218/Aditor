@@ -116,6 +116,7 @@ describe('recording service integration with the live engine', () => {
     deps.recorderCommand = fakeCommand('normal', { FAKE_SEGMENT_DIR: segments })
     deps.liveEngineCommand = fakeLiveCommand('normal', { FAKE_LIVE_TRACE: trace })
     deps.sceneDir = path.join(base, 'scene')
+    deps.readGameAspect = vi.fn(async () => '1920x1440')
     deps.notify = vi.fn()
     const pid = { value: 1234 as number | null }
     deps.findApexPid = vi.fn(async () => pid.value)
@@ -143,8 +144,9 @@ describe('recording service integration with the live engine', () => {
     expect(Buffer.from(await r.service.readSegment!(status.sessionId!, 1)).toString()).toBe('segment-1')
     await expect(r.service.readSegment!('20990101-000000-ffff', 1)).rejects.toThrow('不存在')
     const argv = JSON.parse(fs.readFileSync(r.trace, 'utf8').split('\n')[0]).argv
-    expect(argv).toEqual(['--shm', 'Local\\fake', '--profile-dir', r.deps.profileDir, '--scene-dir', r.deps.sceneDir])
+    expect(argv).toEqual(['--shm', 'Local\\fake', '--profile-dir', r.deps.profileDir, '--scene-dir', r.deps.sceneDir, '--aspect', '1920x1440'])
     const sessionDir = path.join(r.deps.defaultOutputDir, '.sessions', status.sessionId!)
+    expect(JSON.parse(fs.readFileSync(path.join(sessionDir, 'recording.json'), 'utf8')).gameAspect).toBe('1920x1440')
     await waitFor(() => fs.existsSync(path.join(sessionDir, 'live.json')))
     expect(fs.readFileSync(path.join(sessionDir, 'events.jsonl'), 'utf8')).toContain('"ev":"match_start"')
     expect(r.deps.notify).toHaveBeenCalledWith('matchStart', '第 1 局開始')
@@ -188,6 +190,36 @@ it('records and forwards countdown and cancellation events without changing conf
   await live.flush()
   expect((await live.state()).matches).toEqual(matches)
   expect(JSON.parse(fs.readFileSync(path.join(dir, 'live.json'), 'utf8')).matches).toEqual(matches)
+})
+
+it.each([false, true])('clamps late starts only after segments have been pruned (%s)', async (pruneFirst) => {
+  const dir = sessionDir(root())
+  const recordEvent = vi.fn()
+  const notice = vi.fn()
+  const log = vi.spyOn(console, 'warn').mockImplementation(() => {})
+  const live = new LiveSession({ sessionId: 'late-start', dir, profileDir: dir, recordEvent, notice })
+  for (let i = 1; i <= 30; i++) {
+    fs.writeFileSync(path.join(dir, `seg_${String(i).padStart(6, '0')}.m4s`), 'segment')
+    live.addSegment({ seq: i, pts: (i - 1) * 2 + (pruneFirst ? 0 : 12), dur: 2 })
+  }
+  const internal = live as any
+  internal.engine = { engineVersion: () => null, quality: () => null }
+  internal.onProgress(pruneFirst ? 60 : 10)
+  await live.prune()
+  if (pruneFirst) expect(JSON.parse(fs.readFileSync(path.join(dir, 'live.json'), 'utf8')).retained_from).toBe(42)
+  const event = { ev: 'match_start', t: 0, reason: 'initial_match' }
+  internal.onMatch(event)
+  await live.flush()
+  const start = pruneFirst ? 42 : 0
+  expect((await live.state()).matches).toEqual([{ start, end: null }])
+  const stored = JSON.parse(fs.readFileSync(path.join(dir, 'live.json'), 'utf8'))
+  expect(stored.matches).toEqual([{ start, end: null }])
+  expect(stored.retained_from).toBe(pruneFirst ? 42 : undefined)
+  expect(recordEvent).toHaveBeenLastCalledWith({ ...event, t: start })
+  expect(event.t).toBe(0)
+  internal.onMatch(event)
+  expect(log).toHaveBeenCalledTimes(pruneFirst ? 1 : 0)
+  expect(notice).not.toHaveBeenCalled()
 })
 
 it('skips cleanup before startup, before the first snapshot, during restart waits, and after failure; removes the playback list and publishes updates when healthy', async () => {
@@ -263,7 +295,7 @@ it('treats processed frames as healthy in a lobby with no kill snapshots, cleans
     live.addSegment({ seq: i, pts: (i - 1) * 2, dur: 2 })
   }
   const internal = live as any
-  const engine = new EventEmitter()
+  const engine = Object.assign(new EventEmitter(), { engineVersion: () => null, quality: () => null })
   internal.engine = engine
   internal.listen(engine)
   await live.prune()

@@ -144,11 +144,13 @@ Idle →(Apex 啟動)→ Lobby ⇄ InMatch →(Apex 關閉)→ Finalizing → Id
 
 | 名稱 | 內容 | 頻率 | 格式 |
 |---|---|---|---|
-| banner | `profile.banner_roi`（1920×1080 基準座標，依實際解析度等比換算） | 4 fps | BGR24 |
-| spec | `profile.spec_roi` | 4 fps | BGR24 |
+| banner | `profile.capture_rois.banner`（1920×1080 基準座標，依實際解析度等比換算；涵蓋所有遊戲比例下 `banner_roi` 的位置） | 4 fps | BGR24 |
+| spec | `profile.capture_rois.spec`（同上，涵蓋 `spec_roi`） | 4 fps | BGR24 |
 | thumb | 全畫面縮到 640×360（對局場景判斷的最低需求，見 §3.4） | 1 fps（每 4 格帶一次） | GRAY8 |
 
 ROI 由 Python 端在 live 握手時傳給 aditorrec（Python 讀 profile），aditorrec 不解析 profile。
+
+**遊戲比例（4:3／5:4／16:10）**：Apex 依寬度 1920 排 HUD，高度隨比例改變，各元素貼齊上緣、畫面中間或下緣。拉伸成 16:9（或錄 4:3 畫面再縮成 1920×1080）後，寬度與 x 不變，高度乘上壓縮比例（比例 ÷ 16/9：16:10 為 0.9、4:3 為 0.75、5:4 為 0.703），y 往貼齊的邊靠攏。App 開始錄影時讀 `Saved Games/Respawn/Apex/local/videoconfig.txt` 的 `setting.defaultres`／`defaultresheight`，寫入 `recording.json` 的 `gameAspect`，並以 `--aspect WxH` 傳給 live 引擎；內建錄影的完整輸出、逐局剪檔及 OBS 經 FFmpeg 重新封裝的輸出，會將該次錄影的比例寫入 MP4 中繼資料標記 `aditor_game_aspect`，未記錄比例時不寫入。離線分析（`analyze`／`matches`）不再使用目前的 Apex 設定，比例依序取：明確指定的 CLI `--aspect` 或 IPC `aspect` > 影片標記 > 自動偵測；live 模式不變（App 一定知道設定）。標記缺漏、無效或比例不受支援的影片（例如從其他電腦匯入的影片）會用場景模板自動偵測：在影片上平均取樣約 40 格（`DETECT_SAMPLES`），以 640×360 灰階分別用四種比例的 `SceneDetector` 分類，取正向格數（`pre_match`＋`lobby`＋`in_match_hud`）最多的比例；正向格數不足 3 格（`MIN_POSITIVE_FRAMES`），或 16:9 與最高格數並列時沿用 16:9，其餘比例並列時取 HUD／大廳模板分數總和較高者。偵測只在分析真的要解碼影片時才執行：`analyze` 對未標記且未指定比例的影片，不論 `aspect_squash` 為何都直接沿用已完成的快取（快取記錄的就是偵測出的比例），續跑未完成的分析時沿用部分快取內的 `aspect_squash` 而不重新偵測；明確指定或有標記的比例仍嚴格比對 `aspect_squash`。分析結果以 `analysis.aspect_source`（`explicit`／`tag`／`detected`／`default`）記錄比例來源，`default` 表示偵測不到足夠的正向格數而沿用 16:9。aditorrec 一律裁切 `capture_rois`（四種比例的聯集，與遊戲設定無關），引擎依比例取出對應範圍再縮放回 `banner_roi`／`spec_roi` 大小；場景縮圖則依各 ROI 的貼齊方向（`SCENE_ROIS[*].anchor`）重建成 16:9 版面，模板與門檻不變。16:9 時完全等同舊行為。分析快取及可信 live 結果記錄 `aspect_squash`，與影片比例不符時會重新分析。保留黑邊（不拉伸）的輸出未處理。
 
 共享記憶體：具名 file mapping `Local\aditorrec-<sessionId>`，固定 16 槽環形緩衝；槽頭含 `seq`（u64，寫完最後才更新，讀端比對前後 seq 判斷撕裂）、`pts`、各區塊尺寸與 offset。讀端落後超過 16 槽就跳到最新（偵測丟格不阻塞擷取）。
 
@@ -167,7 +169,7 @@ ROI 由 Python 端在 live 握手時傳給 aditorrec（Python 讀 profile），a
 
 - **倒數（`match_pending`）與取消（`match_cancel`）**：新的開局序列第一次設為等待確認時送出 `match_pending`，時間取當次取樣、原因 `pre_match`；同一序列不重送。等待中遇到大廳、超過 180 秒仍無 HUD、或串流結束時送出 `match_cancel`，原因分別為 `lobby`／`timeout`／`eof`，時間取取消樣本或結束時間。直接排下一場時先送上一局 `match_end(next_match)` 再送 `match_pending`。兩者僅屬串流事件，不加入確認對局清單，不改變離線結果與準確度。內建錄影器忽略這兩種事件。
 - **開始（`match_start`）**：偵測到**開局序列**（倒數面板，或載入畫面的模式卡片）→ 時間取序列第一次出現。對局 HUD（左上小地圖外框、左下血條／護甲欄）出現後確認（`opening_confirmed`）；若開局序列後 180 秒內沒有出現 HUD（例如取消配對），撤銷這次開始。
-- **錯過開局序列時恢復開始（`hud_resume`）**：目前沒有進行中的對局、也沒有等待 HUD 確認的開始時，對局 HUD 連續取樣跨越至少 `HUD_RESUME_CONFIRM_SECONDS = 3.0` 秒，送出 `match_start`，時間回溯到這一段的第一個 HUD 樣本。相鄰樣本間隔不得超過 `_max_gap`（取樣週期 × 2.5），任何非 HUD 場景（包含未知／黑畫面的 `other`）都會重算。適用於切回遊戲時已在跳傘／對局中，以及上一局的大廳結束已確定後又漏看下一局序列。錄影開頭的 `initial_match`／`initial_summary` 維持立即恢復，不等待 3 秒；大廳結束仍在暫定期間時，HUD 仍只取消結束、延續同一局。
+- **錯過開局序列時恢復開始（`hud_resume`）**：目前沒有進行中的對局、也沒有等待 HUD 確認的開始時，對局 HUD 連續取樣跨越至少 `HUD_RESUME_CONFIRM_SECONDS = 3.0` 秒，送出 `match_start`，時間回溯到這一段的第一個 HUD 樣本。相鄰樣本間隔不得超過 `_max_gap`（取樣週期 × 2.5），任何非 HUD 場景（包含未知／黑畫面的 `other`）都會重算。適用於切回遊戲時已在跳傘／對局中，以及上一局的大廳結束已確定後又漏看下一局序列。錄影開頭的 `initial_match`／`initial_summary` 只在第一個樣本後 `INITIAL_RECOVERY_SECONDS = 10.0` 秒內（含）立即恢復、不等待 3 秒；超過後永久停用，之後只能以 `hud_resume` 恢復。這個時間窗配合 App 清理保留的 15 秒減去 5 秒前置緩衝；清理過段落後，App 也會把早於最早保留段落的開始時間改成該段落的時間（記在 `live.json` 的 `retained_from`）。大廳結束仍在暫定期間時，HUD 仍只取消結束、延續同一局。
 - **結束（`match_end`）**取下列最早者：
   1. **下一局的開局序列**出現（直接排下一場）→ 上一局在序列開始前一刻結束，緊接著新局開始；
   2. **大廳畫面**正向偵測連續兩次取樣（1 fps 約 1 秒）→ 暫定結束，時間取大廳首次出現；30 秒內沒有回到對局 HUD 才確定（回大廳後玩家常立刻開組合包／獎勵／商店，畫面不會一直停在大廳，原本「連續 15 秒」的規則在使用者錄影中失敗）；

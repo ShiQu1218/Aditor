@@ -34,13 +34,14 @@ async function localFile(file: unknown): Promise<boolean> {
  * and the MP4 edit list hides the gap. Chromium playback can then drift by one keyframe interval,
  * so find the keyframe first and cut from there, as the export path does.
  */
-async function copyMatch(ffmpeg: string, source: string, part: string, start: number, end: number): Promise<number> {
+async function copyMatch(ffmpeg: string, source: string, part: string, start: number, end: number, gameAspect?: string | null): Promise<number> {
   const cut = await createCutLookup(ffprobePath(ffmpeg))({ source, start, end })
   const aligned = cut && Number.isFinite(cut.keyframe) && cut.keyframe <= start && cut.keyframe >= 0 ? cut.keyframe : null
   const args = copyCutArgs({ source, start, end } as ProjectItem, cut, part)
     // Preserve all OBS audio tracks; move the MP4 index to the front for faster playback during download and faster studio opening.
     .map((arg) => (arg === '0:a:0?' ? '0:a?' : arg))
-  args.splice(args.lastIndexOf('-y'), 0, '-movflags', '+faststart')
+  const metadata = gameAspect ? ['-metadata', `aditor_game_aspect=${gameAspect}`] : []
+  args.splice(args.lastIndexOf('-y'), 0, ...metadata, '-movflags', gameAspect ? '+faststart+use_metadata_tags' : '+faststart')
   await new Promise<void>((resolve, reject) => {
     const proc = spawn(ffmpeg, ['-hide_banner', '-loglevel', 'error', ...args],
     { windowsHide: true, stdio: ['ignore', 'ignore', 'pipe'] })
@@ -119,7 +120,7 @@ export async function finalizeObsSession(dir: string, deps: RecordingDeps, confi
       let recorded = false
       try {
         await writeJson(path.join(dir, 'match-part.json'), { output, part })
-        const actualStart = await copyMatch(deps.ffmpegPath, meta.outputPath, part, start, end)
+        const actualStart = await copyMatch(deps.ffmpegPath, meta.outputPath, part, start, end, config.gameAspect)
         if (fs.existsSync(output)) throw new Error(tr('逐局輸出路徑已存在'))
         // Limit the cache to the actual duration; stream-copy cuts land on a nearby keyframe.
         const cutDuration = await probe(part)

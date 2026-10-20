@@ -24,6 +24,25 @@ def test_probe_frame_rate_and_pixel_format(tmp_path):
     assert info.to_dict()["fps"] == pytest.approx(60.0, abs=0.01)
 
 
+@pytest.mark.parametrize("aspect", [None, "1920x1440"])
+def test_probe_game_aspect_metadata(tmp_path, aspect):
+    v = make_video(tmp_path, "aspect.mp4", 0.5, game_aspect=aspect)
+    info = probe(str(v))
+    assert info.game_aspect == aspect
+    assert info.to_dict()["game_aspect"] == aspect
+
+
+def test_probe_game_aspect_tag_is_case_insensitive(tmp_path, monkeypatch):
+    from aditor import probe as module
+    v = tmp_path / "aspect.mp4"
+    v.touch()
+    monkeypatch.setattr(module, "_run", lambda args: {
+        "streams": [{"width": 1920, "height": 1080}],
+        "format": {"duration": "1", "tags": {"ADITOR_GAME_ASPECT": "1920x1440"}},
+    })
+    assert probe(str(v)).game_aspect == "1920x1440"
+
+
 @pytest.mark.parametrize("avg,real,expected", [
     ("144/1", "144/1", 144.0),
     ("30000/1001", "60/1", 30000 / 1001),

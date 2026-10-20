@@ -60,6 +60,19 @@ describe('live.json to analysis cache', () => {
     expect(deps.onLiveAnalysis).toHaveBeenCalledWith(output, expect.objectContaining({ trusted: true }))
     const doc = JSON.parse(fs.readFileSync(cacheFilePath(output, cacheDir), 'utf8'))
     expect(doc.analysis).toMatchObject({ engine_version: '0.3.0', h_scale: 1.05 })
+    expect(doc.analysis).not.toHaveProperty('aspect_squash')
+  })
+
+  it('records the game aspect of a trusted live result so offline analysis keys the cache the same way', async () => {
+    const base = root()
+    const deps = makeDeps(base)
+    deps.enqueueAnalysis = vi.fn()
+    const cacheDir = path.join(base, 'cache')
+    deps.liveCachePath = (video) => cacheFilePath(video, cacheDir)
+    const trusted = { ...LIVE, quality: { complete: true, reasons: [], hScale: 1, aspectSquash: 0.75 } }
+    const { dir, output } = finishedSession(base, 'afterExit', trusted)
+    expect(await finalizeSession(dir, deps)).toEqual([output])
+    expect(JSON.parse(fs.readFileSync(cacheFilePath(output, cacheDir), 'utf8')).analysis.aspect_squash).toBe(0.75)
   })
 
   it.each([

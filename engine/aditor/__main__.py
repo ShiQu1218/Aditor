@@ -18,7 +18,7 @@ def _cmd_analyze(a) -> int:
         print(f"\rAnalyzing {t:8.1f} / {duration:.1f} seconds ({pct:5.1f}%)", end="", file=sys.stderr, flush=True)
 
     doc = analyze(a.video, profile, cache_dir=Path(a.cache_dir), force=a.force,
-                  on_progress=progress, hwaccel=not a.no_hwaccel, jobs=a.jobs)
+                  on_progress=progress, hwaccel=not a.no_hwaccel, jobs=a.jobs, layout=_layout(a))
     print(file=sys.stderr)
     if a.out:
         Path(a.out).write_text(json.dumps(doc, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -32,9 +32,17 @@ def _cmd_analyze(a) -> int:
 def _cmd_matches(a) -> int:
     from aditor.matches import analyze_matches
 
-    doc = analyze_matches(a.video, fps=a.fps, timeline=a.timeline, hwaccel=not a.no_hwaccel)
+    doc = analyze_matches(a.video, fps=a.fps, timeline=a.timeline, hwaccel=not a.no_hwaccel, layout=_layout(a))
     print(json.dumps(doc, ensure_ascii=False))
     return 0
+
+
+def _layout(a):
+    from aditor.layout import parse_aspect
+    return parse_aspect(a.aspect) if a.aspect else None
+
+
+ASPECT_HELP = "Game render aspect or resolution (16:9, 16:10, 4:3, 5:4, or WxH); offline default: video metadata, otherwise 16:9"
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -48,16 +56,19 @@ def main(argv: list[str] | None = None) -> int:
     an.add_argument("--no-hwaccel", action="store_true")
     an.add_argument("--jobs", type=int, default=None, help="Number of segments to decode in parallel (automatic by default)")
     an.add_argument("--out")
+    an.add_argument("--aspect", default=None, help=ASPECT_HELP)
     ma = sub.add_parser("matches", help="Detect match start and end times in a video")
     ma.add_argument("video")
     ma.add_argument("--fps", type=float, default=1.0)
     ma.add_argument("--timeline", action="store_true", help="Include a per-frame scene timeline")
     ma.add_argument("--no-hwaccel", action="store_true")
+    ma.add_argument("--aspect", default=None, help=ASPECT_HELP)
     sub.add_parser("ipc", help="JSON Lines IPC server")
     li = sub.add_parser("live", help="Live detection (reads aditorrec shared memory and writes JSON Lines to stdout)")
     li.add_argument("--shm", required=True, help="Shared memory name (for example, Local\\aditorrec-<sessionId>)")
     li.add_argument("--profile-dir", required=True, help="Icon template directory (templates/icons)")
     li.add_argument("--scene-dir", default=None, help="Scene template directory (default: templates/scene)")
+    li.add_argument("--aspect", default=None, help=ASPECT_HELP)
     for s in (sys.stdout, sys.stderr):
         s.reconfigure(encoding="utf-8")
     a = ap.parse_args(argv)
@@ -66,7 +77,7 @@ def main(argv: list[str] | None = None) -> int:
         return run()
     if a.cmd == "live":
         from aditor.live import run as run_live
-        return run_live(a.shm, Path(a.profile_dir), Path(a.scene_dir) if a.scene_dir else None)
+        return run_live(a.shm, Path(a.profile_dir), Path(a.scene_dir) if a.scene_dir else None, aspect=a.aspect)
     try:
         if a.cmd == "matches":
             return _cmd_matches(a)

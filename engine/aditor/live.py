@@ -45,6 +45,7 @@ from .icon_detect import DEFAULT_SCALES, IconDetector, IconFrame
 from .matches import MatchTracker
 from .models import Event, FrameResult, SpecInterval
 from .profile import Profile, load_profile
+from .layout import Layout, parse_aspect
 from .scene import SCENE_SIZE, SceneDetector
 
 # ---- Shared-memory layout (recorder/src/shm.rs) ----
@@ -489,6 +490,9 @@ class LiveEngine:
                  emit: Callable[[dict], None], *, clock: Callable[[], float] = time.monotonic,
                  log: Callable[[str], None] | None = None, kills: LiveKills | None = None):
         self.reader = reader
+        self.profile = profile
+        # aditorrec writes capture rects (every aspect); older hosts write the 16:9 reference rects unchanged.
+        self._restore = reader.layout.banner == tuple(profile.capture_banner[2:])
         self.scene = scene
         self.emit = emit
         self.clock = clock
@@ -549,7 +553,8 @@ class LiveEngine:
             self.skipped += 1
             return False
         cpu0 = time.process_time()
-        self.kills.feed(t, slot.banner, slot.spec)
+        banner, spec = self.profile.restore(slot.banner, slot.spec) if self._restore else (slot.banner, slot.spec)
+        self.kills.feed(t, banner, spec)
         if slot.thumb is not None:
             for ev in self.matches.feed(t, self.scene.classify(slot.thumb)):
                 self.emit({"ev": ev.type, "t": ev.t, "reason": ev.reason})
@@ -618,13 +623,19 @@ class LiveEngine:
         if self.frames and lost / (self.frames + lost) > MAX_LOSS_RATIO:
             reasons.append("frames_lost")
         return {"complete": not reasons, "reasons": reasons, "h_scale": self.kills.h_scale,
+                "aspect_squash": self.profile.layout.squash,
                 "frames": self.frames, "skipped": self.skipped, "torn": self.torn}
 
 
 def _check_layout(layout: ShmLayout, profile: Profile) -> None:
-    """Small-frame dimensions must match the configured ROI (aditorrec crops using a 1920×1080 reference), and the thumbnail must be large enough for scene classification."""
-    if layout.banner != tuple(profile.banner_roi[2:]) or layout.spec != tuple(profile.spec_roi[2:]):
-        raise LayoutError(f"banner/spec dimensions {layout.banner}/{layout.spec} do not match profile ROIs")
+    """Small-frame dimensions must match the profile capture rects (aditorrec crops using a 1920×1080 reference), or the
+    reference ROIs when the game is 16:9; the thumbnail must be large enough for scene classification."""
+    sizes = (layout.banner, layout.spec)
+    capture = (tuple(profile.capture_banner[2:]), tuple(profile.capture_spec[2:]))
+    reference = (tuple(profile.banner_roi[2:]), tuple(profile.spec_roi[2:]))
+    if sizes != capture and not (sizes == reference and profile.layout.identity):
+        raise LayoutError(f"banner/spec dimensions {layout.banner}/{layout.spec} do not match profile capture ROIs "
+                          f"{capture[0]}/{capture[1]} for aspect squash {profile.layout.squash}")
     if layout.thumb[0] < SCENE_SIZE[0] or layout.thumb[1] < SCENE_SIZE[1]:
         raise LayoutError(f"thumb {layout.thumb} is smaller than required for scene detection ({SCENE_SIZE})")
 
@@ -667,12 +678,13 @@ def _watch_stdin(stdin, stop: threading.Event) -> None:
 
 
 def run(shm: str, profile_dir: Path, scene_dir: Path | None = None, *, stdin=None, stdout=None,
-        poll_interval: float = POLL_INTERVAL) -> int:
+        poll_interval: float = POLL_INTERVAL, aspect: str | None = None) -> int:
     out = _Out(stdout if stdout is not None else sys.stdout.buffer)
     stdin = stdin if stdin is not None else sys.stdin.buffer
     try:
-        profile = load_profile(Path(profile_dir))
-        scene = SceneDetector(Path(scene_dir) if scene_dir else None)
+        layout = parse_aspect(aspect) if aspect else Layout(1.0)
+        profile = load_profile(Path(profile_dir)).with_layout(layout)
+        scene = SceneDetector(Path(scene_dir) if scene_dir else None, layout=layout)
     except Exception as e:  # noqa: BLE001
         out.send({"ev": "error", "code": "internal", "message": f"Failed to load templates: {e}"})
         return 1

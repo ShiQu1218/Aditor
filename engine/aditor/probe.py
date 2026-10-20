@@ -64,13 +64,15 @@ def _frame_rate(stream: dict) -> float:
 
 def probe(path: str) -> VideoInfo:
     doc = _run(["-select_streams", "v:0", "-show_entries",
-                "stream=codec_name,width,height,pix_fmt,avg_frame_rate,r_frame_rate,start_time:format=duration,start_time",
+                "stream=codec_name,width,height,pix_fmt,avg_frame_rate,r_frame_rate,start_time:format=duration,start_time:format_tags",
                 path])
     streams = doc.get("streams") or []
     if not streams:
         raise ProbeError("No video stream found")
     s = streams[0]
     fmt = doc.get("format", {})
+    game_aspect = next((value for key, value in (fmt.get("tags") or {}).items()
+                        if key.lower() == "aditor_game_aspect" and isinstance(value, str)), None)
     try:
         start = float(s.get("start_time") or fmt.get("start_time") or 0.0)
         duration = float(fmt.get("duration"))
@@ -78,7 +80,7 @@ def probe(path: str) -> VideoInfo:
         return VideoInfo(path=path, duration=duration, width=int(s["width"]), height=int(s["height"]),
                          codec=s.get("codec_name", ""), start_time=start,
                          size=st.st_size, mtime=st.st_mtime,
-                         fps=_frame_rate(s), pix_fmt=s.get("pix_fmt") or "")
+                         fps=_frame_rate(s), pix_fmt=s.get("pix_fmt") or "", game_aspect=game_aspect)
     except (TypeError, ValueError, KeyError) as e:
         raise ProbeError(f"Missing ffprobe field: {e!r}") from e
 

@@ -87,3 +87,31 @@ def test_text_and_artwork_outside_masks_do_not_affect_opening(detector):
     frame[20:85, :130] = 127
     frame[302:340, 200:460] = 255
     assert detector.classify(frame).kind == "pre_match"
+
+
+def _stretch_4_3(frame):
+    """Lay out the reference screen as a 4:3 game (640×480, each ROI kept at its anchor) and stretch it to 640×360."""
+    canvas = np.zeros((480, 640), np.uint8)
+    for roi in SCENE_ROIS.values():
+        x, y, w, h = (v // 3 for v in roi["rect"])
+        shift = {"top": 0, "center": 60, "bottom": 120}[roi["anchor"]]
+        canvas[y + shift:y + shift + h, x:x + w] = frame[y:y + h, x:x + w]
+    return cv2.resize(canvas, SCENE_SIZE, interpolation=cv2.INTER_AREA)
+
+
+def test_scenes_of_a_stretched_4_3_game():
+    """A 4:3 game keeps only 3/4 of the vertical resolution, so scores near a threshold may drop below it; such frames must
+    fall back to other, never become a match, lobby, or opening that is not there."""
+    from aditor.layout import parse_aspect
+    detector = SceneDetector(layout=parse_aspect("4:3"))
+    got = [(item["scene"], detector.classify(_stretch_4_3(load_screen(item))).kind) for item in SCREENS["frames"]]
+    wrong = [(want, kind) for want, kind in got if want != kind]
+    assert all(kind == "other" for _, kind in wrong), wrong
+    assert len(wrong) <= len(got) // 20, wrong
+
+
+def test_blank_uses_the_whole_frame_with_a_layout():
+    from aditor.layout import parse_aspect
+    frame = np.zeros((360, 640), np.uint8)
+    frame[180, 320] = 255  # Outside every scene ROI.
+    assert not SceneDetector(layout=parse_aspect("4:3")).classify(frame).blank

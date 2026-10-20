@@ -82,6 +82,15 @@ def test_needs_reanalysis_triggers():
     assert cache.needs_reanalysis(d, info(), "icons@1")
 
 
+def test_needs_reanalysis_aspect_squash_check():
+    d = good_doc(); d["analysis"]["aspect_squash"] = 0.75
+    assert cache.needs_reanalysis(d, info(), "icons@1")  # The default is 16:9.
+    assert cache.needs_reanalysis(d, info(), "icons@1", 1.0)
+    assert not cache.needs_reanalysis(d, info(), "icons@1", 0.75)
+    assert not cache.needs_reanalysis(d, info(), "icons@1", None)  # None accepts whatever squash was recorded.
+    assert cache.needs_reanalysis(good_doc(), info(size=11), "icons@1", None)
+
+
 def test_merge_keeps_manual_and_transfers_state():
     old = [ev("m1", 5.0, source="manual"),
            ev("o1", 10.0, deleted=True),

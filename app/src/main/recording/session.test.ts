@@ -1,7 +1,9 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import fs from 'fs'
+import os from 'os'
 import path from 'path'
 import { createRecordingService, type RecordingDeps } from './index'
+import { readFrames } from './session'
 import type { RecordingService, RecordingSettings } from '../../shared/recording'
 import * as disk from './disk'
 import { copySegments, createSegments, fakeCommand, ffmpeg, makeDeps, sessionDir, tempRoot, waitFor } from './test-support'
@@ -92,6 +94,23 @@ describe('recording service state machine', () => {
     expect(fs.existsSync(start.session_dir)).toBe(false)
   })
 
+  it('keeps the same recording through a transient null and stops after confirmed absence', async () => {
+    const value = rig()
+    value.service.start()
+    await waitFor(() => value.service.status().segments === 2)
+    const sessionId = value.service.status().sessionId
+    const find = vi.mocked(value.deps.findApexPid!)
+    const polls = find.mock.calls.length
+    find.mockResolvedValueOnce(null)
+    await waitFor(() => find.mock.calls.length >= polls + 3)
+    expect(value.service.status()).toMatchObject({ phase: 'recording', sessionId })
+    expect(commands(value, 'start')).toHaveLength(1)
+    expect(commands(value, 'stop')).toHaveLength(0)
+    value.pid = null
+    await waitFor(() => value.service.status().phase === 'idle')
+    expect(commands(value, 'stop')).toHaveLength(1)
+  })
+
   it.each(['fit', 'stretch'] as const)('Pass all new video settings to start: %s', async (aspectMode) => {
     const value = rig()
     Object.assign(value.settings, { fps: 20, preset: 'quality', forceAspect: true, aspectMode,
@@ -123,14 +142,54 @@ describe('recording service state machine', () => {
     expect(commands(value, 'start')[1].capture).toBe('dda')
   })
 
-  it('waits for Apex startup to stabilize before capture, avoiding startup and anti-cheat loading', async () => {
+  it('waits for Apex startup to stabilize before capture when the game launches while Aditor runs', async () => {
     const value = rig()
     value.deps.gameStartDelayMs = 400
     value.service = createRecordingService(value.deps)
+    value.pid = null
+    value.service.start()
+    await waitFor(() => vi.mocked(value.deps.findApexPid!).mock.calls.length >= 2)
+    value.pid = 1234
+    const launchedAt = Date.now()
+    await waitFor(() => commands(value, 'start').length > 0, 5000)
+    expect(Date.now() - launchedAt).toBeGreaterThanOrEqual(400)
+  })
+  it('starts without the startup delay when Apex is already running when Aditor starts', async () => {
+    const value = rig()
+    value.deps.gameStartDelayMs = 5000
+    value.service = createRecordingService(value.deps)
     const startedAt = Date.now()
     value.service.start()
+    await waitFor(() => commands(value, 'start').length > 0, 4000)
+    expect(Date.now() - startedAt).toBeLessThan(4000)
+  })
+  it('keeps the startup delay when the first process query fails and Apex appears later', async () => {
+    const value = rig()
+    value.deps.gameStartDelayMs = 400
+    value.pid = 1234
+    const find = vi.mocked(value.deps.findApexPid!)
+    find.mockRejectedValueOnce(new Error('tasklist failed'))
+    value.service = createRecordingService(value.deps)
+    value.service.start()
+    await waitFor(() => find.mock.calls.length >= 2)
+    const seenAt = Date.now()
     await waitFor(() => commands(value, 'start').length > 0, 5000)
-    expect(Date.now() - startedAt).toBeGreaterThanOrEqual(400)
+    expect(Date.now() - seenAt).toBeGreaterThanOrEqual(350)
+  })
+  it('logs why auto-start is skipped once per reason', async () => {
+    const value = rig()
+    const log = vi.fn()
+    value.deps.log = log
+    value.settings.autoRecord = false
+    value.service = createRecordingService(value.deps)
+    value.service.start()
+    await waitFor(() => vi.mocked(value.deps.findApexPid!).mock.calls.length >= 4)
+    expect(log.mock.calls.filter(([line]) => line === 'auto-start skipped: auto record disabled')).toHaveLength(1)
+    value.service.setPaused(true)
+    value.settings.autoRecord = true
+    await waitFor(() => log.mock.calls.some(([line]) => line === 'auto-start skipped: paused'))
+    value.service.setPaused(false)
+    await waitFor(() => value.service.status().phase === 'recording')
   })
   it('recalculates the startup delay after the game restarts with a new PID', async () => {
     const value = rig()
@@ -382,5 +441,19 @@ describe.skipIf(!ffmpeg)('recording service integration with real finalization',
     const current = commands(value, 'start')[0].session_dir
     expect(fs.existsSync(current)).toBe(true)
     expect(value.deps.addToLibrary).toHaveBeenCalledOnce()
+  })
+})
+
+describe('recorder small-frame regions', () => {
+  it('passes the profile capture rects so every game aspect fits, falling back to the reference ROIs', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'aditor-frames-'))
+    const write = (doc: object): void => fs.writeFileSync(path.join(dir, 'profile.json'), JSON.stringify(doc))
+    const rois = { banner_roi: [560, 700, 800, 180], spec_roi: [60, 1028, 480, 40] }
+    write({ ...rois, capture_rois: { banner: [560, 652, 800, 228], spec: [60, 1028, 480, 44] } })
+    expect(await readFrames(dir)).toEqual({ banner: [560, 652, 800, 228], spec: [60, 1028, 480, 44], base: [1920, 1080] })
+    write(rois)
+    expect(await readFrames(dir)).toEqual({ banner: [560, 700, 800, 180], spec: [60, 1028, 480, 40], base: [1920, 1080] })
+    write({ ...rois, capture_rois: { banner: [560, 1000, 800, 228], spec: [60, 1028, 480, 44] } })
+    await expect(readFrames(dir)).rejects.toThrow()
   })
 })

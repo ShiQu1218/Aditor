@@ -8,20 +8,23 @@ from typing import Literal
 import cv2
 import numpy as np
 
+from .layout import Layout
+
 SceneKind = Literal["pre_match", "lobby", "in_match_hud", "other"]
 SCENE_SIZE = (640, 360)
 BASE_SIZE = (1920, 1080)
 # Coordinates below use a 1920×1080 reference. Offline frames are first resized to 640×360, then cropped to local regions.
-# Each ROI's min_size is the minimum pixel size required for transmission; fps is the minimum sampling rate.
+# Each ROI's min_size is the minimum pixel size required for transmission; fps is the minimum sampling rate; anchor is the
+# screen edge the element keeps its distance to when the game renders at a narrower aspect (see layout.py).
 SCENE_ROIS = {
-    "mode_card": {"rect": (285, 45, 210, 165), "min_size": (70, 55), "fps": 1},
-    "loading_footer": {"rect": (711, 828, 498, 84), "min_size": (166, 28), "fps": 1},
-    "wildcard_footer": {"rect": (711, 471, 498, 84), "min_size": (166, 28), "fps": 1},
-    "ready_button": {"rect": (741, 891, 444, 165), "min_size": (148, 55), "fps": 1},
-    "mode_selector": {"rect": (0, 804, 447, 255), "min_size": (149, 85), "fps": 1},
-    "minimap": {"rect": (21, 21, 309, 375), "min_size": (103, 125), "fps": 1},
-    "health": {"rect": (99, 873, 366, 183), "min_size": (122, 61), "fps": 1},
-    "summary_tabs": {"rect": (588, 60, 750, 102), "min_size": (250, 34), "fps": 1},
+    "mode_card": {"rect": (285, 45, 210, 165), "min_size": (70, 55), "fps": 1, "anchor": "top"},
+    "loading_footer": {"rect": (711, 828, 498, 84), "min_size": (166, 28), "fps": 1, "anchor": "bottom"},
+    "wildcard_footer": {"rect": (711, 471, 498, 84), "min_size": (166, 28), "fps": 1, "anchor": "center"},
+    "ready_button": {"rect": (741, 891, 444, 165), "min_size": (148, 55), "fps": 1, "anchor": "bottom"},
+    "mode_selector": {"rect": (0, 804, 447, 255), "min_size": (149, 85), "fps": 1, "anchor": "bottom"},
+    "minimap": {"rect": (21, 21, 309, 375), "min_size": (103, 125), "fps": 1, "anchor": "top"},
+    "health": {"rect": (99, 873, 366, 183), "min_size": (122, 61), "fps": 1, "anchor": "bottom"},
+    "summary_tabs": {"rect": (588, 60, 750, 102), "min_size": (250, 34), "fps": 1, "anchor": "top"},
 }
 
 
@@ -61,7 +64,8 @@ BLANK_MAX_LEVEL = 8
 
 
 class SceneDetector:
-    def __init__(self, template_dir: Path | None = None):
+    def __init__(self, template_dir: Path | None = None, layout: Layout | None = None):
+        self._layout = layout or Layout(1.0)
         template_dir = template_dir or Path(__file__).resolve().parents[2] / "templates" / "scene"
         self._templates = {}
         for name in _TEMPLATES:
@@ -86,11 +90,12 @@ class SceneDetector:
         if w < SCENE_SIZE[0] or h < SCENE_SIZE[1]:
             raise ValueError("Current scene settings require at least 640×360; provide a scene ROI or a larger full frame")
         gray = cv2.resize(frame, SCENE_SIZE, interpolation=cv2.INTER_AREA)
+        ref = self._layout.reference_thumb(gray)
         scores = {}
         for name, (roi, _) in _TEMPLATES.items():
             x, y, rw, rh = roi
             template, mask = self._templates[name]
-            result = cv2.matchTemplate(gray[y:y + rh, x:x + rw], template,
+            result = cv2.matchTemplate(ref[y:y + rh, x:x + rw], template,
                                        cv2.TM_CCOEFF_NORMED, mask=mask)
             finite = result[np.isfinite(result)]
             scores[name] = float(finite.max()) if finite.size else 0.0

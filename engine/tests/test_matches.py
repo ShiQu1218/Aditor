@@ -131,8 +131,38 @@ def test_respawn_spectating_queue_map_and_inventory_do_not_end_match():
 
 
 def test_recording_starts_in_match_with_menu_covering_hud():
-    tr = run([(0, 10, "other"), (11, 20, "in_match_hud")])
+    tr = run([(0, 9, "other"), (10, 20, "in_match_hud")])
     assert tr.matches == [Match(0, 21)]
+    assert tr.events[0].reason == "initial_match"
+
+
+@pytest.mark.parametrize("first", [0, 120])
+@pytest.mark.parametrize("delay", [1, 10])
+@pytest.mark.parametrize("summary", [False, True])
+def test_initial_recovery_within_window_uses_first_sample(first, delay, summary):
+    tr = MatchTracker()
+    tr.feed(first, SceneFrame("other"))
+    scene = SceneFrame("other", match_context=True) if summary else SceneFrame("in_match_hud")
+    events = tr.feed(first + delay, scene)
+    reason = "initial_summary" if summary else "initial_match"
+    assert [(e.type, e.t, e.reason) for e in events] == [("match_start", first, reason)]
+
+
+@pytest.mark.parametrize("delay", [11, 169, 449])
+@pytest.mark.parametrize("summary", [False, True])
+def test_initial_recovery_expires_and_only_sustained_hud_resumes(delay, summary):
+    tr = MatchTracker()
+    for t in range(delay):
+        assert tr.feed(t, SceneFrame("other")) == []
+    if summary:
+        assert tr.feed(delay, SceneFrame("other", match_context=True)) == []
+    first_hud = delay + int(summary)
+    for t in range(first_hud, first_hud + 3):
+        assert tr.feed(t, SceneFrame("in_match_hud")) == []
+    events = tr.feed(first_hud + 3, SceneFrame("in_match_hud"))
+    assert [(e.type, e.t, e.reason) for e in events] == [("match_start", first_hud, "hud_resume")]
+    tr.finish(first_hud + 4)
+    assert tr.matches == [Match(first_hud, first_hud + 4)]
 
 
 def test_recording_starts_in_previous_summary():
@@ -282,6 +312,27 @@ def test_invalid_fps_rejected_before_probe(fps):
         analyze_matches("not-a-video", fps=fps)
 
 
+@pytest.mark.parametrize("tag,explicit,expected", [
+    ("1920x1440", None, 0.75), ("1920x1440", "16:9", 1.0),
+    ("invalid", None, 1.0), ("21:9", None, 1.0), (None, None, 1.0),
+])
+def test_matches_resolves_recorded_aspect(tmp_path, monkeypatch, tag, explicit, expected):
+    from aditor import matches
+    from aditor.layout import parse_aspect
+    from conftest import make_video
+    v = make_video(tmp_path, "tagged.mp4", 0.5, game_aspect=tag)
+    real = matches.SceneDetector
+    layouts = []
+
+    def detector(*args, **kwargs):
+        layouts.append(kwargs["layout"])
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(matches, "SceneDetector", detector)
+    analyze_matches(str(v), layout=parse_aspect(explicit) if explicit else None)
+    assert layouts[0].squash == expected
+
+
 def test_no_video_cli_error_has_no_partial_json(tmp_path):
     result = subprocess.run([sys.executable, "-m", "aditor", "matches", str(tmp_path / "missing.mp4")],
                             capture_output=True)
@@ -291,17 +342,18 @@ def test_no_video_cli_error_has_no_partial_json(tmp_path):
 
 def test_cli_passes_options_and_outputs_json(monkeypatch, capsys):
     from aditor import __main__, matches
+    from aditor.layout import Layout
 
     def fake(path, **kw):
         assert path == "clip.mp4"
-        assert kw == {"fps": 2, "timeline": True, "hwaccel": False}
+        assert kw == {"fps": 2, "timeline": True, "hwaccel": False, "layout": Layout(0.75)}
         return {"matches": [{"start": 1, "end": 3}], "timeline": [[1, "pre_match"]]}
 
     monkeypatch.setattr(matches, "analyze_matches", fake)
     # pytest's StringIO has no reconfigure; preserve main's existing handling.
     for stream in (sys.stdout, sys.stderr):
         monkeypatch.setattr(stream, "reconfigure", lambda **kw: None, raising=False)
-    assert __main__.main(["matches", "clip.mp4", "--fps", "2", "--timeline", "--no-hwaccel"]) == 0
+    assert __main__.main(["matches", "clip.mp4", "--fps", "2", "--timeline", "--no-hwaccel", "--aspect", "4:3"]) == 0
     assert json.loads(capsys.readouterr().out)["matches"] == [{"start": 1, "end": 3}]
 
 
@@ -417,3 +469,30 @@ def test_pending_cancellation_is_stream_only(kind, t, reason):
     assert [(e.type, e.t, e.reason) for e in tr.feed(t, SceneFrame(kind))] == [("match_cancel", t, reason)]
     assert tr.finish(t + 1) == []
     assert tr.matches == []
+
+
+def test_matches_detects_the_aspect_of_an_untagged_video(tmp_path, monkeypatch):
+    from aditor import matches
+    from aditor.aspect import Detection
+    from aditor.layout import Layout, parse_aspect
+    from conftest import make_video
+    plain = make_video(tmp_path, "plain.mp4", 0.5)
+    tagged = make_video(tmp_path, "tagged.mp4", 0.5, game_aspect="1920x1440")
+    layouts, detections = [], []
+    real = matches.SceneDetector
+
+    def detector(*args, **kwargs):
+        layouts.append(kwargs["layout"])
+        return real(*args, **kwargs)
+
+    def detect(*args, **kwargs):
+        detections.append(args)
+        return Detection(Layout(0.703125), True)
+
+    monkeypatch.setattr(matches, "SceneDetector", detector)
+    monkeypatch.setattr(matches, "detect_aspect", detect)
+    analyze_matches(str(plain))
+    assert layouts == [Layout(0.703125)] and len(detections) == 1
+    analyze_matches(str(plain), layout=parse_aspect("4:3"))  # Explicit beats detection.
+    analyze_matches(str(tagged))  # The tag beats detection.
+    assert layouts[1:] == [Layout(0.75), Layout(0.75)] and len(detections) == 1

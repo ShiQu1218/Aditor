@@ -13,6 +13,7 @@ from .decode import DecodeError
 from .derive import derive
 from .models import AutoClipParams, Event, SpecInterval
 from .probe import ProbeError, probe
+from .layout import Layout, LayoutError, parse_aspect
 from .profile import ProfileError, load_profile
 
 
@@ -50,6 +51,18 @@ def _jobs(v):
     if isinstance(v, bool) or not isinstance(v, int) or v < 1:
         raise BadRequest("jobs must be a positive integer")
     return v
+
+
+def _layout(v) -> Layout | None:
+    """Optional explicit game render aspect (`W:H` or `WxH`); missing uses video metadata."""
+    if v is None:
+        return None
+    if not isinstance(v, str):
+        raise BadRequest("aspect must be a string")
+    try:
+        return parse_aspect(v)
+    except LayoutError as e:
+        raise BadRequest(str(e)) from e
 
 
 class Server:
@@ -156,6 +169,7 @@ class Server:
     def _analyze(self, rid, args, cancel):
         path = _arg(args, "path")
         profile = load_profile(Path(_arg(args, "profile_dir")))
+        layout = _layout(args.get("aspect"))
         cache_dir = Path(_arg(args, "cache_dir"))
 
         def progress(t: float, duration: float) -> None:
@@ -163,7 +177,7 @@ class Server:
 
         return analyze(path, profile, cache_dir=cache_dir, beside=bool(args.get("beside", False)),
                        force=bool(args.get("force", False)), on_progress=progress, cancel=cancel,
-                       hwaccel=bool(args.get("hwaccel", True)), jobs=_jobs(args.get("jobs")))
+                       hwaccel=bool(args.get("hwaccel", True)), jobs=_jobs(args.get("jobs")), layout=layout)
 
     def _derive(self, rid, args, cancel):
         try:

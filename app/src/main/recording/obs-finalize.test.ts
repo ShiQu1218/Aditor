@@ -32,6 +32,20 @@ async function rig(mode = 'session', trusted = false) {
   return { root, dir, deps, outputPath, original }
 }
 describe.skipIf(!ffmpeg)('OBS finalization and recovery (real ffmpeg)', () => {
+  it.each(['1920x1440', null, undefined])('persists recording-time game aspect on remuxed match output: %s', async (gameAspect) => {
+    const r = await rig('match')
+    const config = JSON.parse(fs.readFileSync(path.join(r.dir, 'recording.json'), 'utf8'))
+    await writeJson(path.join(r.dir, 'recording.json'), { ...config, gameAspect })
+    const [cut] = await finalizeSession(r.dir, r.deps)
+    const ffprobe = path.join(path.dirname(ffmpeg!), `ffprobe${process.platform === 'win32' ? '.exe' : ''}`)
+    const result = spawnSync(ffprobe, ['-v', 'error', '-show_entries', 'format_tags', '-of', 'json', cut],
+      { windowsHide: true, encoding: 'utf8' })
+    expect(result.status, result.stderr).toBe(0)
+    expect(JSON.parse(result.stdout).format.tags.aditor_game_aspect).toBe(gameAspect ?? undefined)
+    const bytes = fs.readFileSync(cut)
+    expect(bytes.indexOf('moov')).toBeLessThan(bytes.indexOf('mdat'))
+    expect(fs.readFileSync(r.outputPath)).toEqual(r.original)
+  })
   it.each([false, true])('Without segments, still import the original, shift the cache, and follow trusted-analysis rules: %s', async (trusted) => {
     const r = await rig('session', trusted)
     expect(await finalizeSession(r.dir, r.deps)).toEqual([r.outputPath])
