@@ -278,6 +278,9 @@ export const i18n: Messages['i18n'] = {
       apply: 'Apply (replaces current suggestions)'
     },
     transport: {
+      volume: 'Preview volume',
+      mute: 'Mute',
+      unmute: 'Unmute',
       play: 'Play',
       pause: 'Pause',
       prevEvent: 'Previous event',

@@ -219,6 +219,9 @@
   gap: var(--sp-2);
 }
 .transport-spacer { flex: 1; }
+.preview-volume { display: flex; align-items: center; gap: var(--sp-1); }
+.preview-volume input { width: 80px; accent-color: var(--accent); }
+.preview-volume .mono { min-width: 4ch; color: var(--text-2); font-size: var(--fs-small); }
 .play-btn {
   width: 40px;
   height: 40px;

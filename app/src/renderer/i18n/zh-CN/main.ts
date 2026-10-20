@@ -280,6 +280,9 @@ export const i18n: Messages['i18n'] = {
       apply: '应用（替换现有建议）'
     },
     transport: {
+      volume: '预览音量',
+      mute: '静音',
+      unmute: '取消静音',
       play: '播放',
       pause: '暂停',
       prevEvent: '上一个事件',

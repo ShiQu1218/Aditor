@@ -280,6 +280,9 @@ export const i18n: Messages['i18n'] = {
       apply: '適用（既存の提案を置き換え）'
     },
     transport: {
+      volume: 'プレビュー音量',
+      mute: 'ミュート',
+      unmute: 'ミュート解除',
       play: '再生',
       pause: '一時停止',
       prevEvent: '前のイベント',

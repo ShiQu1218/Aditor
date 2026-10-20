@@ -2,7 +2,7 @@ import React from 'react'
 import { EventType } from '../../shared/types'
 import { formatTime } from '../../shared/time'
 import { i18n } from '../i18n'
-import { Pause, Play, Scissors, SkipBack, SkipForward, Sparkles } from '../components/icons'
+import { Pause, Play, Scissors, SkipBack, SkipForward, Sparkles, Volume2, VolumeX } from '../components/icons'
 import { EventFilterChips } from './EventFilterChips'
 
 interface TransportBarProps {
@@ -10,6 +10,11 @@ interface TransportBarProps {
   currentTime: number
   duration: number
   speed: number
+  volume: number
+  muted: boolean
+  audioDisabled: boolean
+  onVolumeChange: (volume: number) => void
+  onToggleMute: () => void
   counts: Record<EventType, number>
   filter: Set<EventType>
   onTogglePlay: () => void
@@ -30,6 +35,11 @@ export function TransportBar({
   currentTime,
   duration,
   speed,
+  volume,
+  muted,
+  audioDisabled,
+  onVolumeChange,
+  onToggleMute,
   counts,
   filter,
   onTogglePlay,
@@ -61,6 +71,16 @@ export function TransportBar({
       <button type="button" className="speed-btn mono" onClick={onCycleSpeed}>
         {speed}x
       </button>
+      <div className="preview-volume">
+        <button type="button" className="icon-btn" aria-label={muted || volume === 0 ? t.unmute : t.mute}
+          aria-pressed={muted || volume === 0} disabled={audioDisabled} onClick={onToggleMute}>
+          {muted || volume === 0 ? <VolumeX className="ic" aria-hidden="true" /> : <Volume2 className="ic" aria-hidden="true" />}
+        </button>
+        <input type="range" min={0} max={100} step={1} value={volume} disabled={audioDisabled}
+          aria-label={t.volume} aria-valuetext={`${volume}%`}
+          onChange={(e) => onVolumeChange(Number(e.currentTarget.value))} />
+        <span className="mono">{volume}%</span>
+      </div>
       <div className="transport-spacer" />
       <button
         type="button"

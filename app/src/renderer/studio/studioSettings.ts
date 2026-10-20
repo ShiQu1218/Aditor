@@ -13,6 +13,8 @@ export interface StudioSettings {
   before: number
 /** Whether to suggest a proxy when hardware decoding is unavailable or the video is unplayable. */
   proxySuggest: boolean
+  previewVolume: number
+  previewMuted: boolean
 }
 
 export const STUDIO_SETTINGS_DEFAULTS: StudioSettings = {
@@ -21,7 +23,9 @@ export const STUDIO_SETTINGS_DEFAULTS: StudioSettings = {
   projectTrackCollapsed: DEFAULT_SETTINGS.projectTrackCollapsed,
   sameDayVideosCollapsed: DEFAULT_SETTINGS.sameDayVideosCollapsed,
   before: DEFAULT_SETTINGS.before,
-  proxySuggest: DEFAULT_SETTINGS.proxySuggest
+  proxySuggest: DEFAULT_SETTINGS.proxySuggest,
+  previewVolume: DEFAULT_SETTINGS.previewVolume,
+  previewMuted: DEFAULT_SETTINGS.previewMuted
 }
 
 function num(v: unknown, fallback: number): number {
@@ -38,7 +42,10 @@ export function toStudioSettings(raw: unknown, base: StudioSettings = STUDIO_SET
     projectTrackCollapsed: pref === true || pref === false || pref === 'auto' ? pref : base.projectTrackCollapsed,
     sameDayVideosCollapsed: typeof s.sameDayVideosCollapsed === 'boolean' ? s.sameDayVideosCollapsed : base.sameDayVideosCollapsed,
     before: num(s.before, base.before),
-    proxySuggest: typeof s.proxySuggest === 'boolean' ? s.proxySuggest : base.proxySuggest
+    proxySuggest: typeof s.proxySuggest === 'boolean' ? s.proxySuggest : base.proxySuggest,
+    previewVolume: typeof s.previewVolume === 'number' && Number.isFinite(s.previewVolume) && s.previewVolume >= 0 && s.previewVolume <= 100
+      ? s.previewVolume : base.previewVolume,
+    previewMuted: typeof s.previewMuted === 'boolean' ? s.previewMuted : base.previewMuted
   }
 }
 

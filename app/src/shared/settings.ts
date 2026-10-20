@@ -33,6 +33,9 @@ export interface Settings {
   lowPerfMode: boolean
   /** Suggest generating a proxy for videos that cannot be played. */
   proxySuggest: boolean
+  /** Preview playback volume (0..100); does not affect recording or export. */
+  previewVolume: number
+  previewMuted: boolean
   /** Quick clip: seconds before the event (0..30). */
   before: number
   /** Quick clip: seconds after the event (0..30). */
@@ -99,6 +102,8 @@ export const DEFAULT_SETTINGS: Settings = {
   cacheLocation: 'appdata',
   lowPerfMode: false,
   proxySuggest: true,
+  previewVolume: 100,
+  previewMuted: false,
   before: 8,
   after: 4,
   autoclip: { n: 3, gap: 20, before: 8, after: 4, max_len: 90 },

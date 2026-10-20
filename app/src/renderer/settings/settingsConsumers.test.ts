@@ -25,6 +25,8 @@ const FIELD_CONSUMERS: Record<string, Array<[string, RegExp]>> = {
   lowPerfMode: [['renderer/perf/lowPerf.ts', /lowPerfMode/], ['renderer/App.tsx', /watchLowPerfSetting/]],
   lowPerfAsked: [['renderer/perf/lowPerfPrompt.ts', /lowPerfAsked/]],
   proxySuggest: [['renderer/studio/notices.ts', /proxySuggest/], ['renderer/library/VideoCard.tsx', /proxySuggest/]],
+  previewVolume: [['renderer/studio/StudioScreen.tsx', /cfg\.previewVolume/]],
+  previewMuted: [['renderer/studio/StudioScreen.tsx', /cfg\.previewMuted/]],
   before: [['renderer/studio/StudioScreen.tsx', /cfg\.before/]],
   // The clipper now uses start/end points; post-roll seconds remain only for legacy read/write compatibility.
   after: [['main/settings.ts', /after: pickNumber\(s\.after/]],

@@ -5,6 +5,8 @@ import { ModePill } from './ModePill'
 interface PlayerStageProps {
   videoRef: React.RefObject<HTMLVideoElement>
   src: string
+  volume: number
+  muted: boolean
   mode: 'source' | 'project'
   modeLabel: string
   spectating: boolean
@@ -22,6 +24,8 @@ interface PlayerStageProps {
 export function PlayerStage({
   videoRef,
   src,
+  volume,
+  muted,
   mode,
   modeLabel,
   spectating,
@@ -33,6 +37,10 @@ export function PlayerStage({
   onEnded,
   onError
 }: PlayerStageProps): JSX.Element {
+  React.useEffect(() => {
+    if (videoRef.current) videoRef.current.volume = volume / 100
+  }, [videoRef, volume, src])
+
   return (
     <div className="stage">
       <div className="stage-overlay-top">
@@ -45,6 +53,7 @@ export function PlayerStage({
         ref={videoRef}
         className="stage-video"
         src={src}
+        muted={muted}
         onClick={onTogglePlay}
         onTimeUpdate={(e) => onTimeUpdate((e.target as HTMLVideoElement).currentTime)}
         onLoadedMetadata={onLoadedMetadata}
