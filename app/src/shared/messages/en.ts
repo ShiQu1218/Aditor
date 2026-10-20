@@ -192,6 +192,7 @@ const messages: MessageTable = {
   '本次僅執行即時偵測': 'Only live detection will run for this session.',
   '錄影啟動已取消': 'Recording start was canceled.',
   '無法開始錄影：{error}': 'Could not start recording: {error}',
+  'NVIDIA 顯示卡驅動版本過舊，無法使用硬體編碼。請更新 NVIDIA 驅動後再試一次；較舊的顯示卡（例如多數 GTX 600/700 系列）已無法安裝所需的驅動版本。詳細資訊：{details}': 'The NVIDIA graphics driver is too old for hardware encoding. Update the NVIDIA driver and try again; older graphics cards (such as most GTX 600/700 series) can no longer install the required driver version. Details: {details}',
   '錄影意外停止：{reason}': 'Recording stopped unexpectedly: {reason}',
   '逐局剪檔失敗，錄影繼續，收尾時將重試：{error}': 'Per-match cut failed. Recording continues and will be retried when finalizing: {error}',
   'OBS 逐局錄影處理失敗，已保留工作：{error}': 'OBS per-match recording processing failed. The recording job has been kept: {error}',

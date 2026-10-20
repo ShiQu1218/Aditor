@@ -9,6 +9,7 @@ pub mod ffi;
 mod ffmpeg;
 mod hardware;
 mod mux;
+mod nvenc;
 
 use std::{
     path::Path,
@@ -175,7 +176,7 @@ fn probe(gpu: &Gpu, name: &str) -> Result<ffi::AVPixelFormat> {
         preset: EncodePreset::Speed,
         aspect: EncodeAspect::Native,
     };
-    let mut failure = String::new();
+    let mut failure = None;
     for format in [ffi::AV_PIX_FMT_BGRA, ffi::AV_PIX_FMT_NV12] {
         let attempt = || -> Result<()> {
             let hardware = Hardware::new(gpu, &params, format)?;
@@ -195,10 +196,42 @@ fn probe(gpu: &Gpu, name: &str) -> Result<ffi::AVPixelFormat> {
         };
         match attempt() {
             Ok(()) => return Ok(format),
-            Err(error) => failure = format!("{error:#}"),
+            Err(error) => failure = Some(error),
         }
     }
-    bail!("{name} trial encoding failed: {failure}")
+    let failure = failure.unwrap_or_else(|| anyhow::anyhow!("No pixel format was tried"));
+    Err(failure.context("Trial encoding failed"))
+}
+
+/// Builds the no_hw_encoder message; flags an outdated NVIDIA driver so the app can show an update hint.
+/// IPC contract: the app matches the `nvidia_driver_outdated` marker (app/src/main/recording/session.ts).
+/// FFmpeg also returns ENOSYS for GPUs or codecs NVENC does not support, so the driver is queried only to confirm.
+fn no_hw_encoder_message(
+    failures: &[(&str, anyhow::Error)],
+    driver_api: impl FnOnce() -> Option<(u32, u32)>,
+) -> String {
+    let details = failures
+        .iter()
+        .map(|(name, error)| format!("{name}: {error:#}"))
+        .collect::<Vec<_>>()
+        .join("；");
+    let nvenc_unsupported = failures.iter().any(|(name, error)| {
+        name.ends_with("_nvenc") && ffmpeg::error_code(error) == Some(ffmpeg::NOT_IMPLEMENTED)
+    });
+    let outdated = nvenc_unsupported
+        .then(driver_api)
+        .flatten()
+        .filter(|api| *api < nvenc::REQUIRED_API);
+    match outdated {
+        Some((major, minor)) => {
+            let (required_major, required_minor) = nvenc::REQUIRED_API;
+            format!(
+                "no_hw_encoder: nvidia_driver_outdated: The NVIDIA driver supports NVENC API {major}.{minor} but {required_major}.{required_minor} is required; update the NVIDIA driver to {} or newer and try again (GPUs whose newest driver is older cannot use NVENC); {details}",
+                nvenc::MIN_DRIVER
+            )
+        }
+        None => format!("no_hw_encoder: No hardware encoder is available; {details}"),
+    }
 }
 
 impl SegmentWriter {
@@ -248,14 +281,11 @@ impl SegmentWriter {
                     selected = Some((name.to_owned(), hardware, encoder));
                     break;
                 }
-                Err(error) => failures.push(format!("{name}: {error:#}")),
+                Err(error) => failures.push((name, error)),
             }
         }
         let Some((name, hardware, encoder)) = selected else {
-            bail!(
-                "no_hw_encoder: No hardware encoder is available; {}",
-                failures.join("；")
-            );
+            bail!(no_hw_encoder_message(&failures, nvenc::driver_api));
         };
         let mut pool = Vec::with_capacity(POOL_SIZE);
         for _ in 0..POOL_SIZE {
