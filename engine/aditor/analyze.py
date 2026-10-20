@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Callable
 
 from . import ENGINE_VERSION
+from .aspect import detect_aspect, resolve_layout
 from .cache import (cache_path, load_cache, merge_clips, merge_reanalysis,
                     needs_reanalysis, save_cache)
 from .calibrate import (LEARN_SCAN_SECONDS, AnchorCollector, build_keywords, calibrate, extend_keywords,
@@ -19,7 +20,7 @@ from .errors import Cancelled
 from .derive import derive
 from .detect import Detector, Keywords, Pending
 from .events import EventTracker
-from .layout import Layout, recorded_layout
+from .layout import Layout
 from .models import Clip, Event, FrameResult, SpecInterval
 from .probe import keyframes, probe
 from .profile import Profile
@@ -166,14 +167,16 @@ def _segments_from_doc(raw, duration: float) -> list[_Seg] | None:
 
 def _make_doc(info, profile: Profile, status: str, progress_t: float, h_scale: float | None,
               events: list[Event], spectating: list[SpecInterval], clips: list[Clip],
-              segments: list[dict] | None = None, keywords: Keywords | None = None) -> dict:
-    """h_scale is the icon scale calibrated for this video (field name retained from an older version; None means not calibrated)."""
+              segments: list[dict] | None = None, keywords: Keywords | None = None,
+              aspect_source: str = "default") -> dict:
+    """h_scale is the icon scale calibrated for this video (field name retained from an older version; None means not calibrated).
+    aspect_source records where profile.layout came from: explicit, tag, detected, or default."""
     doc = {
         "version": 1,
         "video": info.to_dict(),
         "analysis": {"status": status, "progress_t": progress_t, "engine_version": ENGINE_VERSION,
                      "templates_version": profile.templates_version,
-                     "h_scale": h_scale, "aspect_squash": profile.layout.squash},
+                     "h_scale": h_scale, "aspect_squash": profile.layout.squash, "aspect_source": aspect_source},
         "events": [e.to_dict() for e in events],
         "spectating": [s.to_dict() for s in spectating],
         "clips": [c.to_dict() for c in clips],
@@ -194,7 +197,8 @@ def _save(cp: Path, doc: dict, fallback: Path) -> Path:
     return written
 
 
-def _resumable(old: dict | None, info, profile: Profile) -> bool:
+def _resumable(old: dict | None, info, profile: Profile, check_aspect: bool = True) -> bool:
+    """check_aspect=False (untagged video, aspect detected) resumes whatever squash the partial holds."""
     if not old:
         return False
     a, v = old.get("analysis") or {}, old.get("video") or {}
@@ -203,7 +207,7 @@ def _resumable(old: dict | None, info, profile: Profile) -> bool:
             and abs(float(v.get("mtime", -1.0)) - info.mtime) < 1e-6
             and a.get("engine_version") == ENGINE_VERSION
             and a.get("templates_version") == profile.templates_version
-            and a.get("aspect_squash", 1.0) == profile.layout.squash)
+            and (not check_aspect or a.get("aspect_squash", 1.0) == profile.layout.squash))
 
 
 class _Learner:
@@ -289,18 +293,21 @@ def analyze(path: str, profile: Profile, *, cache_dir: Path, beside: bool = Fals
             cancel: threading.Event | None = None, hwaccel: bool = True,
             jobs: int | None = None, layout: Layout | None = None) -> dict:
     info = probe(path)
-    if layout is None:
-        # Retain explicit profile layouts for existing callers.
-        layout = recorded_layout(info.game_aspect) if profile.layout.identity else profile.layout
-    profile = profile.with_layout(layout)
+    if layout is None and not profile.layout.identity:
+        layout = profile.layout  # Retain explicit profile layouts for existing callers.
+    # Explicit > video tag > detection; None means detect when the video is decoded (cache hits never detect).
+    layout, aspect_source = resolve_layout(layout, info)
+    profile = profile.with_layout(layout or Layout(1.0))
     cache_dir = Path(cache_dir)
     cp = cache_path(path, cache_dir, beside)
     old = load_cache(cp)
-    if not force and old is not None and not needs_reanalysis(old, info, profile.templates_version, profile.layout.squash):
+    # An untagged video's cache records the detected squash, so accept whichever it holds.
+    squash = None if layout is None else profile.layout.squash
+    if not force and old is not None and not needs_reanalysis(old, info, profile.templates_version, squash):
         old["cache_path"] = str(cp)
         return old
 
-    resuming = (not force) and _resumable(old, info, profile)
+    resuming = (not force) and _resumable(old, info, profile, squash is not None)
     old_clips = [Clip.from_dict(c) for c in (old or {}).get("clips", [])]
     segs: list[_Seg] | None = None
     if resuming:
@@ -309,6 +316,10 @@ def analyze(path: str, profile: Profile, *, cache_dir: Path, beside: bool = Fals
             segs = _segments_from_doc(raw_segs, info.duration)
             resuming = segs is not None  # Invalid format means there is no resumable partial.
     if resuming:
+        if layout is None:  # Reuse the squash detected by the interrupted run instead of detecting again.
+            a = old["analysis"]
+            layout, aspect_source = Layout(float(a.get("aspect_squash", 1.0))), a.get("aspect_source", "default")
+            profile = profile.with_layout(layout)
         h_scale = float(old["analysis"].get("h_scale", 1.0))
         kw_doc = old["analysis"].get("keywords")
         try:
@@ -334,10 +345,15 @@ def analyze(path: str, profile: Profile, *, cache_dir: Path, beside: bool = Fals
     learner: _Learner | None = None
     if h_scale is None or keywords is None:
         try:
+            if layout is None:
+                detection = detect_aspect(path, info, cancel=cancel, hwaccel=hwaccel)
+                layout, aspect_source = detection.layout, "detected" if detection.found else "default"
+                profile = profile.with_layout(layout)
             if h_scale is None:
                 h_scale = calibrate(path, info, profile, cancel=cancel, hwaccel=hwaccel)
         except Cancelled:
-            doc = _make_doc(info, profile, "partial", 0.0, None, [], [], manual_clips)  # h_scale=None means not calibrated yet.
+            doc = _make_doc(info, profile, "partial", 0.0, None, [], [], manual_clips,  # h_scale=None means not calibrated yet.
+                            aspect_source=aspect_source)
             if base_events:
                 doc["base_events"] = [e.to_dict() for e in base_events]
             _save(cp, doc, cache_dir)
@@ -398,12 +414,12 @@ def analyze(path: str, profile: Profile, *, cache_dir: Path, beside: bool = Fals
         kw = learned()
         if kw is None:
             # Keywords are not ready, so buffered frames cannot be finalized. Save only calibration results; resume replans segments and relearns while decoding from the start.
-            doc = _make_doc(info, profile, "partial", 0.0, h_scale, [], [], manual_clips)
+            doc = _make_doc(info, profile, "partial", 0.0, h_scale, [], [], manual_clips, aspect_source=aspect_source)
         else:
             evs, spec = combined()
             doc = _make_doc(info, profile, "partial", sum(sg.contribution(sg.snap_progress) for sg in segs),
                             h_scale, evs, spec, manual_clips,
-                            [sg.to_dict() for sg in segs] if len(segs) > 1 else None, kw)
+                            [sg.to_dict() for sg in segs] if len(segs) > 1 else None, kw, aspect_source)
         if base_events:
             doc["base_events"] = [e.to_dict() for e in base_events]
         return doc
@@ -556,7 +572,7 @@ def analyze(path: str, profile: Profile, *, cache_dir: Path, beside: bool = Fals
         raw, unmatched = merge_reanalysis(base_events, raw)
     final = derive(raw, spectating, profile)
     doc = _make_doc(info, profile, "done", info.duration, h_scale, final, spectating, manual_clips,
-                    keywords=learned())
+                    keywords=learned(), aspect_source=aspect_source)
     doc["keyframes"] = kf
     doc["unmatched"] = [e.to_dict() for e in unmatched]
     _save(cp, doc, cache_dir)

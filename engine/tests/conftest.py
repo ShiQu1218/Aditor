@@ -21,6 +21,14 @@ def _ffmpeg() -> str:
     return ffbin.ffmpeg()
 
 
+@pytest.fixture(autouse=True)
+def _skip_aspect_sampling(request, monkeypatch):
+    """Aspect auto-detection spawns ~40 ffmpeg processes per untagged video; skip the sampling (16:9 result) except in test_aspect."""
+    if request.module.__name__ != "test_aspect":
+        from aditor import aspect
+        monkeypatch.setattr(aspect, "_sampled_frames", lambda *a, **k: iter(()))
+
+
 def make_video(tmp_path, name, duration, *, start_time=0.0, vfr=False, marks=(), overlay=None, game_height=1080,
                game_aspect=None):
     """Use ffmpeg testsrc2 to create a 1920x1080, 60 fps H.264 video with -g 60.

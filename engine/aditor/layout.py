@@ -112,9 +112,14 @@ def parse_aspect(text: str) -> Layout:
     raise LayoutError(f"Unsupported aspect ratio: {text!r}")
 
 
-def recorded_layout(aspect: str | None) -> Layout:
-    """Read optional video metadata; absent or invalid tags use the reference layout."""
+def tagged_layout(aspect: str | None) -> Layout | None:
+    """Read optional video metadata; absent, invalid, or unsupported tags give None."""
     try:
         return parse_aspect(aspect or "")
     except (ValueError, OverflowError):
-        return Layout(1.0)
+        return None
+
+
+def recorded_layout(aspect: str | None) -> Layout:
+    """Read optional video metadata; absent or invalid tags use the reference layout."""
+    return tagged_layout(aspect) or Layout(1.0)

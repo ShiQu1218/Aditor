@@ -469,3 +469,30 @@ def test_pending_cancellation_is_stream_only(kind, t, reason):
     assert [(e.type, e.t, e.reason) for e in tr.feed(t, SceneFrame(kind))] == [("match_cancel", t, reason)]
     assert tr.finish(t + 1) == []
     assert tr.matches == []
+
+
+def test_matches_detects_the_aspect_of_an_untagged_video(tmp_path, monkeypatch):
+    from aditor import matches
+    from aditor.aspect import Detection
+    from aditor.layout import Layout, parse_aspect
+    from conftest import make_video
+    plain = make_video(tmp_path, "plain.mp4", 0.5)
+    tagged = make_video(tmp_path, "tagged.mp4", 0.5, game_aspect="1920x1440")
+    layouts, detections = [], []
+    real = matches.SceneDetector
+
+    def detector(*args, **kwargs):
+        layouts.append(kwargs["layout"])
+        return real(*args, **kwargs)
+
+    def detect(*args, **kwargs):
+        detections.append(args)
+        return Detection(Layout(0.703125), True)
+
+    monkeypatch.setattr(matches, "SceneDetector", detector)
+    monkeypatch.setattr(matches, "detect_aspect", detect)
+    analyze_matches(str(plain))
+    assert layouts == [Layout(0.703125)] and len(detections) == 1
+    analyze_matches(str(plain), layout=parse_aspect("4:3"))  # Explicit beats detection.
+    analyze_matches(str(tagged))  # The tag beats detection.
+    assert layouts[1:] == [Layout(0.75), Layout(0.75)] and len(detections) == 1

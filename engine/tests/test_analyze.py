@@ -417,3 +417,126 @@ def test_analyze_tagged_video_cache_and_explicit_override(tmp_path, profile, mon
         m.setattr(az, "calibrate", lambda *a, **kw: pytest.fail("Matching cache should be reused"))
         assert az.analyze(str(v), profile, cache_dir=cache)["analysis"]["aspect_squash"] == 0.75
     assert az.analyze(str(v), profile, cache_dir=cache, layout=Layout(1.0))["analysis"]["aspect_squash"] == 1.0
+
+
+def _forbid(monkeypatch, name="detect_aspect"):
+    monkeypatch.setattr(az, name, lambda *a, **k: pytest.fail("Aspect detection should not run"))
+
+
+def _detects(monkeypatch, squash):
+    """Make the detector report a 4:3-like layout, as real detection cannot work on synthetic footage."""
+    from aditor.aspect import Detection
+    from aditor.layout import Layout
+    calls = []
+
+    def detect(*a, **k):
+        calls.append(a)
+        return Detection(Layout(squash), True)
+    monkeypatch.setattr(az, "detect_aspect", detect)
+    return calls
+
+
+def test_analyze_detects_the_aspect_of_an_untagged_video(tmp_path, profile, knock_banner_png, monkeypatch):
+    v = make_video(tmp_path, "4比3.mp4", 15, overlay=(knock_banner_png, SPANS), game_height=1440)
+    calls = _detects(monkeypatch, 0.75)
+    cache = tmp_path / "cache"
+    doc = az.analyze(str(v), profile, cache_dir=cache)
+    assert len(calls) == 1
+    assert len([e for e in doc["events"] if e["type"] == "knock"]) == 2, doc["events"]
+    assert doc["analysis"]["aspect_squash"] == 0.75 and doc["analysis"]["aspect_source"] == "detected"
+
+    def boom(*a, **k):
+        raise AssertionError("Decoding should not occur")
+    for name in ("FrameStream", "calibrate", "detect_aspect"):
+        monkeypatch.setattr(az, name, boom)
+    again = az.analyze(str(v), profile, cache_dir=cache)  # The cache records the detected squash and is accepted as is.
+    assert again["analysis"]["aspect_squash"] == 0.75 and again["analysis"]["aspect_source"] == "detected"
+
+
+def test_analyze_untagged_video_without_hud_uses_the_default(tmp_path, profile):
+    v = make_video(tmp_path, "plain.mp4", 4)
+    doc = az.analyze(str(v), profile, cache_dir=tmp_path / "cache")
+    assert doc["analysis"]["aspect_squash"] == 1.0 and doc["analysis"]["aspect_source"] == "default"
+
+
+def test_analyze_aspect_sources(tmp_path, profile, monkeypatch):
+    from aditor.layout import Layout
+    tagged = make_video(tmp_path, "tagged.mp4", 0.5, game_aspect="1920x1440")
+    plain = make_video(tmp_path, "plain.mp4", 0.5)
+    _forbid(monkeypatch)
+    doc = az.analyze(str(tagged), profile, cache_dir=tmp_path / "c1")
+    assert (doc["analysis"]["aspect_squash"], doc["analysis"]["aspect_source"]) == (0.75, "tag")
+    doc = az.analyze(str(tagged), profile, cache_dir=tmp_path / "c2", layout=Layout(1.0))  # Explicit beats the tag.
+    assert (doc["analysis"]["aspect_squash"], doc["analysis"]["aspect_source"]) == (1.0, "explicit")
+    doc = az.analyze(str(plain), profile, cache_dir=tmp_path / "c3", layout=Layout(0.75))  # Explicit beats detection.
+    assert (doc["analysis"]["aspect_squash"], doc["analysis"]["aspect_source"]) == (0.75, "explicit")
+    doc = az.analyze(str(plain), profile.with_layout(Layout(0.9)), cache_dir=tmp_path / "c4")  # Profile layouts are explicit.
+    assert (doc["analysis"]["aspect_squash"], doc["analysis"]["aspect_source"]) == (0.9, "explicit")
+
+
+def test_analyze_tag_beats_detection_and_keeps_the_strict_cache_check(tmp_path, profile, monkeypatch):
+    from aditor.layout import Layout
+    v = make_video(tmp_path, "tagged.mp4", 0.5, game_aspect="1920x1440")
+    cache = tmp_path / "cache"
+    _forbid(monkeypatch)
+    az.analyze(str(v), profile, cache_dir=cache)
+    with monkeypatch.context() as m:
+        m.setattr(az, "calibrate", lambda *a, **kw: pytest.fail("Matching cache should be reused"))
+        az.analyze(str(v), profile, cache_dir=cache)
+    doc = az.analyze(str(v), profile, cache_dir=cache, layout=Layout(1.0))  # A different explicit aspect reanalyzes.
+    assert doc["analysis"]["aspect_squash"] == 1.0
+
+
+def test_analyze_invalid_tag_is_detected(tmp_path, profile, monkeypatch):
+    v = make_video(tmp_path, "bad.mp4", 0.5, game_aspect="21:9")
+    calls = _detects(monkeypatch, 0.9)
+    doc = az.analyze(str(v), profile, cache_dir=tmp_path / "cache")
+    assert len(calls) == 1 and doc["analysis"]["aspect_source"] == "detected" and doc["analysis"]["aspect_squash"] == 0.9
+
+
+def test_analyze_untagged_cache_is_accepted_whatever_the_squash(tmp_path, profile, monkeypatch):
+    v = make_video(tmp_path, "plain.mp4", 4)
+    cache = tmp_path / "cache"
+    _detects(monkeypatch, 0.703125)
+    doc = az.analyze(str(v), profile, cache_dir=cache)
+    assert doc["analysis"]["aspect_squash"] == 0.703125
+    cp = cache_path(str(v), cache)
+    stored = load_cache(cp)
+    stored["analysis"].pop("aspect_source")  # A cache written before the source was recorded.
+    save_cache(cp, stored)
+    for name in ("FrameStream", "calibrate", "detect_aspect"):
+        monkeypatch.setattr(az, name, lambda *a, **k: pytest.fail("Decoding should not occur"))
+    assert az.analyze(str(v), profile, cache_dir=cache)["analysis"]["aspect_squash"] == 0.703125
+
+
+def test_analyze_resume_reuses_the_stored_squash(tmp_path, profile, fixture_video, monkeypatch, short_learn):
+    cache = tmp_path / "cache"
+    cancel = threading.Event()
+    calls = _detects(monkeypatch, 0.75)
+    with monkeypatch.context() as m:
+        m.setattr(az, "FrameStream", _CancelAt(11.0, cancel))
+        with pytest.raises(az.Cancelled):
+            az.analyze(str(fixture_video), profile, cache_dir=cache, cancel=cancel)
+    part = load_cache(cache_path(str(fixture_video), cache))["analysis"]
+    assert part["status"] == "partial" and part["aspect_squash"] == 0.75 and part["aspect_source"] == "detected"
+    assert len(calls) == 1
+    _forbid(monkeypatch)
+    monkeypatch.setattr(az, "calibrate", lambda *a, **k: pytest.fail("Calibration should not run again."))
+    doc = az.analyze(str(fixture_video), profile, cache_dir=cache)
+    assert doc["analysis"]["status"] == "done"
+    assert doc["analysis"]["aspect_squash"] == 0.75 and doc["analysis"]["aspect_source"] == "detected"
+
+
+def test_analyze_cancelled_detection_leaves_a_partial_that_is_not_resumed(tmp_path, profile, monkeypatch):
+    v = make_video(tmp_path, "plain.mp4", 4)
+    cache = tmp_path / "cache"
+
+    def cancelled(*a, **k):
+        raise az.Cancelled()
+    monkeypatch.setattr(az, "detect_aspect", cancelled)
+    with pytest.raises(az.Cancelled):
+        az.analyze(str(v), profile, cache_dir=cache)
+    assert load_cache(cache_path(str(v), cache))["analysis"]["status"] == "partial"
+    calls = _detects(monkeypatch, 0.75)
+    assert az.analyze(str(v), profile, cache_dir=cache)["analysis"]["aspect_squash"] == 0.75
+    assert len(calls) == 1

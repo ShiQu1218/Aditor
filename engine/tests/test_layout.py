@@ -23,8 +23,20 @@ def test_parse_aspect_rejects_unsupported(text):
     pytest.param("9" * 400 + ":1", id="overflowing_ratio"),
 ])
 def test_recorded_layout_ignores_invalid_numeric_tags(aspect):
-    from aditor.layout import recorded_layout
+    from aditor.layout import recorded_layout, tagged_layout
     assert recorded_layout(aspect) == Layout(1.0)
+    assert tagged_layout(aspect) is None
+
+
+@pytest.mark.parametrize("aspect", [None, "", "invalid", "21:9"])
+def test_tagged_layout_is_none_for_missing_or_unsupported_tags(aspect):
+    from aditor.layout import tagged_layout
+    assert tagged_layout(aspect) is None
+
+
+def test_tagged_layout_parses_supported_tags():
+    from aditor.layout import tagged_layout
+    assert tagged_layout("1920x1440") == Layout(0.75)
 
 
 def test_source_rect_follows_anchor_after_vertical_squash():

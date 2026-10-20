@@ -55,8 +55,9 @@ def save_cache(p: Path, doc: dict, fallback_dir: Path | None = None) -> Path:
     return fb
 
 
-def needs_reanalysis(doc: dict | None, info: VideoInfo, templates_version: str, aspect_squash: float = 1.0) -> bool:
-    """Whether a cache needs reanalysis: it is incomplete, the video changed, the engine/template version differs (invalidating caches from the old text-keyword method), or it was analyzed for another game aspect (caches without the field are 16:9)."""
+def needs_reanalysis(doc: dict | None, info: VideoInfo, templates_version: str,
+                     aspect_squash: float | None = 1.0) -> bool:
+    """Whether a cache needs reanalysis: it is incomplete, the video changed, the engine/template version differs (invalidating caches from the old text-keyword method), or it was analyzed for another game aspect (caches without the field are 16:9; None accepts any aspect, for untagged videos whose aspect is detected)."""
     if not doc:
         return True
     analysis = doc.get("analysis") or {}
@@ -69,7 +70,7 @@ def needs_reanalysis(doc: dict | None, info: VideoInfo, templates_version: str, 
         return True
     if analysis.get("engine_version") != ENGINE_VERSION:
         return True
-    if analysis.get("aspect_squash", 1.0) != aspect_squash:
+    if aspect_squash is not None and analysis.get("aspect_squash", 1.0) != aspect_squash:
         return True
     return analysis.get("templates_version") != templates_version
 
