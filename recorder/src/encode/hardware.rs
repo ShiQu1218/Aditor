@@ -168,6 +168,7 @@ impl Hardware {
             encoder.option(c"rc-lookahead", c"0")?;
         } else if name.ends_with("_amf") {
             encoder.option(c"usage", c"ultralowlatency")?;
+            encoder.option(c"forced_idr", c"1")?;
         } else if name.ends_with("_qsv") {
             encoder.option(c"async_depth", c"1")?;
             encoder.option(c"forced_idr", c"1")?;
