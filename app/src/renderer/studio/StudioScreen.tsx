@@ -1558,6 +1558,7 @@ export function StudioScreen({ videoPath, onBack, onOpenVideo, playbackRequest, 
               currentTime={currentTime}
               events={state.doc.events}
               spectating={state.doc.spectating}
+              rounds={state.doc.rounds}
               clips={shownClips}
               filter={state.filter}
               onSeek={seekTo}

@@ -21,6 +21,8 @@ export interface LiveFile {
   events?: unknown
   spectating?: unknown
   matches?: unknown
+  /** Valorant rounds from the scoreboard (recording time). */
+  rounds?: unknown
   /** Earliest retained segment PTS after pruning; excludes deleted pre-pad from match cuts. */
   retained_from?: unknown
   width?: unknown
@@ -62,6 +64,11 @@ export function buildLiveCacheDoc(live: LiveFile, video: {
       (m.end === null || (finite(m.end) && m.end >= m.start)))
     .filter((m) => m.start <= offset + video.duration && (m.end === null || m.end >= offset))
     .map((m) => ({ start: Math.max(0, m.start - offset), end: m.end === null ? null : Math.min(video.duration, m.end - offset) }))
+  const rounds = (Array.isArray(live.rounds) ? live.rounds : [])
+    .filter((r): r is { start: number; end: number; winner: string; ally: number; enemy: number } =>
+      !!r && finite(r.start) && finite(r.end) && r.end >= r.start && (r.winner === 'ally' || r.winner === 'enemy') && finite(r.ally) && finite(r.enemy))
+    .map((r) => ({ ...r, start: Math.max(0, r.start - offset), end: r.end - offset }))
+    .filter((r) => r.end > 0 && r.start < video.duration)
   const version = typeof live.engine_version === 'string' ? live.engine_version : 'unknown'
   const trusted = isTrusted(live)
   const quality = live.quality as { hScale?: unknown; aspectSquash?: unknown } | null | undefined
@@ -83,6 +90,7 @@ export function buildLiveCacheDoc(live: LiveFile, video: {
     // Engine-unknown field; discarded when full analysis rewrites the cache.
     live: { matches },
     cache_path: cachePath,
+    ...(rounds.length ? { rounds } : {}),
     // Apex caches stay without the field, as before.
     ...(game === DEFAULT_GAME ? {} : { game })
   }

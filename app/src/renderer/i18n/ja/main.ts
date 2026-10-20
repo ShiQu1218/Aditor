@@ -136,6 +136,7 @@ export const i18n: Messages['i18n'] = {
       spectating: '観戦中',
       not_counting_type: '部隊全滅は集計対象外',
       death: '自分のデス（キルには数えない）',
+      highlight: 'ラウンドのハイライト（キルとして重複集計しない）',
       manual: '手動'
     },
     forced: '強制',

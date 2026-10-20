@@ -90,6 +90,8 @@ export class LiveSession extends EventEmitter {
   private failed = false
   private pruned = false
   private restartedAt = -Infinity
+  /** Wall time (ms) when aditorrec reported capture started; recording time 0 is about then. */
+  private capturedAt: number | null = null
 
   constructor(private options: LiveSessionOptions) { super() }
 
@@ -99,6 +101,7 @@ export class LiveSession extends EventEmitter {
   startEngine(shm: string, width: number, height: number): void {
     this.width = width
     this.height = height
+    this.capturedAt = Date.now()
     const { command } = this.options
     if (!command || this.engine) return
     if (path.isAbsolute(command.command) && !fs.existsSync(command.command)) {
@@ -210,6 +213,12 @@ export class LiveSession extends EventEmitter {
     this.emit('stats')
   }
 
+  /** Match boundaries from the game client (Valorant's Riot Client), at wall time `at` (ms). */
+  clientMatch(ev: 'match_start' | 'match_end', at: number): void {
+    if (this.capturedAt === null) return
+    this.onMatch({ ev, t: Math.max(0, (at - this.capturedAt) / 1000), reason: 'game_client' })
+  }
+
   private onMatch(event: LiveMatchEvent): void {
     const originalT = event.t
     const retainedFrom = this.retainedFrom()
@@ -246,6 +255,7 @@ export class LiveSession extends EventEmitter {
       await writeJson(path.join(this.options.dir, LIVE_FILE), {
         version: 1, engine_version: this.engine?.engineVersion() ?? null,
         t: this.snapshot.t, events: this.snapshot.events, spectating: this.snapshot.spectating as LiveSpec[],
+        ...(this.snapshot.rounds ? { rounds: this.snapshot.rounds } : {}),
         matches: this.matches, retained_from: this.retainedFrom(),
         width: this.width, height: this.height, quality: this.engine?.quality() ?? null
       })

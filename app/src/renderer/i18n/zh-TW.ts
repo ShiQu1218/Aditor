@@ -135,6 +135,7 @@ const i18n = {
       spectating: '觀戰中',
       not_counting_type: '小隊抹殺不計',
       death: '自己陣亡，不算擊殺',
+      highlight: '回合精華，不重複計入擊殺',
       manual: '手動'
     },
     forced: '強制',

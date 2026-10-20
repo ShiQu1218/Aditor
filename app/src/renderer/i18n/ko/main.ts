@@ -137,6 +137,7 @@ export const i18n: Messages['i18n'] = {
       spectating: '관전 중',
       not_counting_type: '스쿼드 전멸은 집계하지 않음',
       death: '내 데스(킬로 세지 않음)',
+      highlight: '라운드 하이라이트(킬로 중복 집계하지 않음)',
       manual: '수동'
     },
     forced: '강제',

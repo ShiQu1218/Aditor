@@ -1,4 +1,4 @@
-import type { Clip, EngineEvent, EventType, SpecInterval } from '../../shared/types'
+import type { Clip, EngineEvent, EventType, SpecInterval, Round } from '../../shared/types'
 import { isCounted } from '../../shared/types'
 import { formatTime } from '../../shared/time'
 import { i18n } from '../i18n'
@@ -35,6 +35,8 @@ export interface Theme {
   onShape: string
   spectatingFill: string
   spectatingHatch: string
+  roundWin: string
+  roundLoss: string
   unanalyzed: string
   /** 'r, g, b', combined with alpha to form rgba(). */
   heatRgb: string
@@ -56,6 +58,8 @@ export interface DrawModel {
   duration: number
   layout: TimelineLayout
   spectating: SpecInterval[]
+  /** Valorant rounds: a strip under the ruler, coloured by who won. */
+  rounds?: Round[]
   clips: Clip[]
   selected: Set<string>
   /** Event containing the current playhead (drawn with an outer ring). */
@@ -99,6 +103,8 @@ export function readTheme(getVar: (name: string) => string = defaultGetVar): The
     onShape: getVar('--bg-app'),
     spectatingFill: getVar('--tl-spectating-fill'),
     spectatingHatch: getVar('--tl-spectating-hatch'),
+    roundWin: getVar('--tl-round-win'),
+    roundLoss: getVar('--tl-round-loss'),
     unanalyzed: getVar('--tl-unanalyzed'),
     heatRgb: getVar('--tl-heat'),
     clipSuggestLine: getVar('--tl-clip-suggest-line'),
@@ -188,6 +194,21 @@ function drawSpectating(g: Ctx2D, m: DrawModel, th: Theme): void {
       g.fillStyle = th.text2
       g.fillText(i18n.timeline.spectating, x0 + 4, height - 20)
     }
+  }
+}
+
+const ROUND_STRIP_H = 4
+
+function drawRounds(g: Ctx2D, m: DrawModel, th: Theme): void {
+  if (!m.rounds?.length) return
+  const top = RULER_H + 1
+  for (const r of m.rounds) {
+    const x0 = timeToX(r.start, m.view)
+    const x1 = timeToX(r.end, m.view)
+    if (x1 < 0 || x0 > m.width) continue
+    g.fillStyle = r.winner === 'ally' ? th.roundWin : th.roundLoss
+    // A 1 px gap keeps neighbouring rounds apart.
+    g.fillRect(x0 + 1, top, Math.max(1, x1 - x0 - 1), ROUND_STRIP_H)
   }
 }
 
@@ -458,6 +479,7 @@ export function drawTimeline(g: Ctx2D, m: DrawModel, th: Theme): void {
 
   drawRuler(g, m, th)
   drawSpectating(g, m, th)
+  drawRounds(g, m, th)
   drawUnanalyzed(g, m, th)
   drawHeat(g, m, th, bot)
   drawClips(g, m, th, bot)

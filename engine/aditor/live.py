@@ -510,7 +510,7 @@ class LiveEngine:
         self._last_snap = now - SNAPSHOT_INTERVAL
         self._snap_rev = -1
         # Send snapshots only when the event list changes; initially treat an empty list as sent (always send the final snapshot during shutdown).
-        self._snap_doc = self._snapshot_doc([], [])[1]
+        self._snap_doc = self._snapshot_doc([], [], getattr(self.kills, "rounds", None))[1]
 
     # ---- Reading ----
     def poll(self) -> int:
@@ -582,7 +582,7 @@ class LiveEngine:
             return
         self._snap_rev = self.kills.revision
         events, spec = final if final is not None else self.kills.snapshot()
-        body, doc = self._snapshot_doc(events, spec)
+        body, doc = self._snapshot_doc(events, spec, getattr(self.kills, "rounds", None))
         if not force and doc == self._snap_doc:
             return
         self._snap_doc = doc
@@ -591,8 +591,10 @@ class LiveEngine:
         self.emit({"ev": "snapshot", "t": self.last_t or 0.0, **body})
 
     @staticmethod
-    def _snapshot_doc(events: list[Event], spec: list[SpecInterval]) -> tuple[dict, str]:
+    def _snapshot_doc(events: list[Event], spec: list[SpecInterval], rounds=None) -> tuple[dict, str]:
         body = {"events": [e.to_dict() for e in events], "spectating": [s.to_dict() for s in spec]}
+        if rounds is not None:  # Games with rounds (Valorant) also report them.
+            body["rounds"] = [r.to_dict() for r in rounds]
         return body, json.dumps(body, ensure_ascii=False, sort_keys=True)
 
     def lag_seconds(self) -> float:

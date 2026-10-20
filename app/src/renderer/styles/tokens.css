@@ -49,6 +49,8 @@
   --tl-ruler: #828282;
   --tl-spectating-fill: rgba(168, 168, 168, 0.14);
   --tl-spectating-hatch: rgba(168, 168, 168, 0.3);
+  --tl-round-win: rgba(45, 212, 191, 0.6); /* Valorant round won: strip under the ruler. */
+  --tl-round-loss: rgba(248, 113, 113, 0.6); /* Valorant round lost. */
   --tl-unanalyzed: rgba(255, 213, 0, 0.1);
   --tl-heat: 143, 163, 191; /* Blue-gray, not the brand red; alpha 0.3–0.9. */
   --tl-clip-suggest-line: rgba(255, 255, 255, 0.85); /* AI suggestion: white dashed line. */

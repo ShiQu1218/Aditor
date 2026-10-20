@@ -28,6 +28,7 @@ from .errors import Cancelled
 from .layout import Layout
 from .models import Clip, Event, VideoInfo
 from .probe import keyframes
+from .valorant_rounds import Round, RoundTracker, round_highlights
 
 GAME = "valorant"
 
@@ -37,6 +38,12 @@ RIGHT_EDGE = 1902
 MIN_BOX_H = 28
 MIN_ROW_EDGE = 45.0
 MIN_TEAM_FILL = 0.30
+# Newer clients mark the player's row with a thin yellow outline along their half and a chevron outside the row end
+# instead of a solid portrait box. The chevron is a narrow upright triangle (~9x19; assist mini-portraits are squarer)
+# and the outline next to it shows a row is there, so a lower edge contrast suffices (overlays such as the performance
+# graphs soften the row edges).
+MIN_OUTLINE = 40
+MIN_CHEVRON_ROW_EDGE = 25.0
 
 # Tracking: one kill-feed entry may flicker while fading and moves up a slot when an older row expires.
 SAME_ENTRY = 0.80   # Row signature correlation above which two sightings are the same entry.
@@ -159,11 +166,37 @@ class FeedDetector:
             sides.setdefault(slot, set()).add("death" if at_right else "kill")
         return sides
 
+    def _chevrons(self, hsv: np.ndarray, gray: np.ndarray) -> dict[int, set[str]]:
+        """slot -> sides with a yellow chevron outside the row end and the yellow outline running along the row."""
+        yellow = cv2.inRange(hsv, (20, 90, 150), (38, 255, 255))
+        n, _, stats, _ = cv2.connectedComponentsWithStats(yellow, connectivity=8)
+        sides: dict[int, set[str]] = {}
+        for i in range(1, n):
+            x, y, w, h, area = (int(v) for v in stats[i])
+            if not (5 <= w <= 12 and 14 <= h <= 22 and h >= 1.5 * w and area >= 0.25 * w * h):
+                continue
+            slot = round((y + h / 2 + self.cy - ROW_Y0) / ROW_STEP)
+            if not 0 <= slot < ROWS:
+                continue
+            b0, b1 = self.band(slot)
+            if y < b0 - 2 or y + h > b1 + 2 or self._row_edge(gray, slot) < MIN_CHEVRON_ROW_EDGE:
+                continue
+            side = "death" if x >= self.right - 4 else "kill"
+            span = slice(max(0, x - 170), max(0, x - 2)) if side == "death" else slice(x + w + 2, x + w + 170)
+            outline = max(int((yellow[max(0, b0 - 3):b0 + 3, span] > 0).any(axis=0).sum()),
+                          int((yellow[b1 - 3:b1 + 3, span] > 0).any(axis=0).sum()))
+            if outline >= MIN_OUTLINE:
+                sides.setdefault(slot, set()).add(side)
+        return sides
+
     def rows(self, feed: np.ndarray) -> list[FeedRow]:
         hsv = cv2.cvtColor(feed, cv2.COLOR_BGR2HSV)
         gray = cv2.cvtColor(feed, cv2.COLOR_BGR2GRAY).astype(np.float32)
+        marks = self._self_boxes(hsv, gray)
+        for k, s in self._chevrons(hsv, gray).items():
+            marks.setdefault(k, set()).update(s)
         out = []
-        for k, sides in sorted(self._self_boxes(hsv, gray).items()):
+        for k, sides in sorted(marks.items()):
             team = self._victim_team(hsv, k)
             if team == "ally" and "death" in sides:
                 kind = "death"
@@ -215,21 +248,30 @@ class FeedTracker:
 
 
 class ValorantLiveKills:
-    """Live kill detection with the interface live.LiveEngine expects of its `kills` (feed/snapshot/finish/revision)."""
+    """Live kill detection with the interface live.LiveEngine expects of its `kills` (feed/snapshot/finish/revision),
+    plus rounds from the scoreboard and per-round multi-kill / ace events."""
 
     def __init__(self, profile: ValorantProfile):
         self.detector = FeedDetector(profile)
         self.tracker = FeedTracker()
-        self.revision = 0      # Bumped when an event is added, so snapshots are rebuilt only then.
+        self.round_tracker = RoundTracker(profile.capture_spec[:2])
+        self.revision = 0      # Bumped when an event or round is added, so snapshots are rebuilt only then.
         self.degraded: list[str] = []
         self.h_scale = 1.0
+
+    @property
+    def rounds(self) -> list[Round]:
+        return self.round_tracker.rounds
 
     def feed(self, t: float, banner: np.ndarray, spec: np.ndarray) -> None:
         if self.tracker.feed(t, self.detector.rows(banner)):
             self.revision += 1
+        if self.round_tracker.feed(t, spec) is not None:
+            self.revision += 1
 
     def snapshot(self) -> tuple[list[Event], list]:
-        return list(self.tracker.events), []
+        events = self.tracker.events
+        return sorted(events + round_highlights(events, self.rounds), key=lambda e: e.t), []
 
     def finish(self) -> tuple[list[Event], list]:
         return self.snapshot()
@@ -302,21 +344,27 @@ def analyze_valorant(path: str, info: VideoInfo, profile: ValorantProfile, *, ca
 
     detector = FeedDetector(profile)
     tracker = FeedTracker()
-    stream = FrameStream(path, profile, hwaccel=hwaccel, codec=info.codec)
+    rounds = RoundTracker(profile.capture_spec[:2])
+    # Software decoding: the player's yellow kill-feed marker is only faintly saturated in some clients, and hardware
+    # decoding's slightly different chroma pushes it under the yellow threshold (a deathmatch recording lost 4 of 34
+    # kills). Live detection is unaffected: aditorrec crops the captured RGB frames directly.
+    stream = FrameStream(path, profile, hwaccel=False, codec=info.codec)
     last_report = -1.0
-    for t, feed, _spec in stream:
+    for t, feed, spec in stream:
         if cancel is not None and cancel.is_set():
             stream.close()
             raise Cancelled()
         tracker.feed(t, detector.rows(feed))
+        rounds.feed(t, spec)
         if t - last_report >= 1.0:
             on_progress(t, info.duration)
             last_report = t
-    events = tracker.events
+    events = sorted(tracker.events + round_highlights(tracker.events, rounds.rounds), key=lambda e: e.t)
     unmatched: list[Event] = []
     if base_events:
         events, unmatched = merge_reanalysis(base_events, events)
     doc = _make_doc(info, profile, "done", info.duration, events, clips)
+    doc["rounds"] = [r.to_dict() for r in rounds.rounds]
     try:
         doc["keyframes"] = keyframes(path)
     except Exception:  # noqa: BLE001 - keyframes only speed up export cuts; analysis stands without them.

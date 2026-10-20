@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useId, useImperativeHandle, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { isLowPerf, subscribeLowPerf } from '../perf/lowPerf'
 import '../styles/timeline.css'
-import { Clip, EngineEvent, EventType, SpecInterval } from '../../shared/types'
+import { Clip, EngineEvent, EventType, SpecInterval, Round } from '../../shared/types'
 import { View, TimelineZoom, ZoomMode, maxCustomZoom, pan, resizeTimeline, setCustomZoom, setZoomMode, updateTimelineView, zoomTimeline } from './model'
 import { i18n } from '../i18n'
 import { layoutTimeline, TimelineLayout } from './layout'
@@ -24,6 +24,8 @@ interface TimelineCanvasProps extends Pick<InteractionOptions,
   currentTime: number
   events: EngineEvent[]
   spectating: SpecInterval[]
+  /** Valorant rounds, drawn as a won/lost strip. */
+  rounds?: Round[]
   clips: Clip[]
   filter: Set<EventType>
   onSeek: (t: number) => void
@@ -56,6 +58,7 @@ export const TimelineCanvas = React.forwardRef<TimelineHandle, TimelineCanvasPro
     currentTime,
     events,
     spectating,
+    rounds,
     clips,
     filter,
     onSeek,
@@ -208,6 +211,7 @@ export const TimelineCanvas = React.forwardRef<TimelineHandle, TimelineCanvasPro
     duration,
     layout,
     spectating,
+    rounds,
     clips,
     selected,
     currentId: currentEventId,
@@ -249,7 +253,7 @@ export const TimelineCanvas = React.forwardRef<TimelineHandle, TimelineCanvasPro
   // Static layer: use rAF to coalesce redraws only when data, zoom, size, selection, or hover changes (not currentTime).
   useEffect(() => {
     scheduler.invalidate()
-  }, [scheduler, view, layout, spectating, clips, selected, currentEventId, ix.hoverClipId, activeClipId, height, lowPerf, projectItem, ix.blade])
+  }, [scheduler, view, layout, spectating, rounds, clips, selected, currentEventId, ix.hoverClipId, activeClipId, height, lowPerf, projectItem, ix.blade])
 
   return (
     <div className="tl-source" data-zone="src">

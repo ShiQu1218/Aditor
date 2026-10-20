@@ -42,6 +42,8 @@ const theme: Theme = {
   projectFill: 'T_projectFill',
   bladeLine: 'T_bladeLine',
   bladeFill: 'T_bladeFill',
+  roundWin: 'T_roundWin',
+  roundLoss: 'T_roundLoss',
   events: {
     knock: 'C_knock',
     assist_knock: 'C_ak',
@@ -225,6 +227,16 @@ describe('drawTimeline', () => {
     const ticks = calls.filter((c) => c.name === 'fillRect' && c.args[2] === 2 && c.args[3] === 10)
     expect(ticks.map((c) => c.fillStyle)).toEqual(types.map((type) => theme.events[type]))
     expect(ticks.map((c) => c.globalAlpha)).toEqual(types.map((_, i) => (i === 1 ? 0.65 : 1)))
+  })
+
+  test('Valorant rounds draw a strip under the ruler, coloured by the winner', () => {
+    const { ctx, calls } = makeCtx()
+    drawTimeline(ctx, model([], { rounds: [
+      { start: 0, end: 100, winner: 'ally', ally: 1, enemy: 0 },
+      { start: 100, end: 250, winner: 'enemy', ally: 1, enemy: 1 }] }), theme)
+    const strips = calls.filter((c) => c.name === 'fillRect' && c.args[3] === 4)
+    expect(strips.map((c) => c.fillStyle)).toEqual(['T_roundWin', 'T_roundLoss'])
+    expect(strips.map((c) => [c.args[0], c.args[2]])).toEqual([[1, 99], [101, 149]])
   })
 
   test('a single-type cluster uses its banner colour for the pill and counted bar', () => {

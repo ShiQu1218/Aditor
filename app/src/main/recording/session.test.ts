@@ -2,6 +2,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
+import { EventEmitter } from 'events'
 import { createRecordingService, type RecordingDeps } from './index'
 import { readFrames } from './session'
 import type { RecordingService, RecordingSettings } from '../../shared/recording'
@@ -70,6 +71,8 @@ describe('recording service state machine', () => {
       JSON.stringify({ templates_version: 'v', capture_rois: { banner: [1436, 84, 480, 256], spec: [20, 790, 440, 100] } }))
     value.deps.profileDir = icons
     value.deps.findGame = vi.fn(async () => ({ game: 'valorant' as const, pid: 4321 }))
+    // The Riot Client is not running: no match boundaries, so the session is kept whole.
+    value.deps.createValorantClient = () => Object.assign(new EventEmitter(), { probe: async () => false, start: vi.fn(), stop: vi.fn() }) as never
     value.settings.mode = 'match'
     value.service.start()
     await waitFor(() => commands(value, 'start').length === 1)
@@ -78,6 +81,30 @@ describe('recording service state machine', () => {
     await waitFor(() => fs.existsSync(path.join(dir, 'recording.json')))
     expect(JSON.parse(fs.readFileSync(path.join(dir, 'recording.json'), 'utf8'))).toMatchObject({ mode: 'session', game: 'valorant' })
     expect(vi.mocked(value.deps.notify).mock.calls.some(([level, message]) => level === 'warning' && message.includes('VALORANT'))).toBe(true)
+  })
+
+  it('cuts Valorant per match from the Riot Client when it answers', async () => {
+    const value = rig()
+    const icons = path.join(value.root, 'icons')
+    fs.mkdirSync(icons)
+    fs.copyFileSync(path.join(value.root, 'profile.json'), path.join(icons, 'profile.json'))
+    fs.mkdirSync(path.join(value.root, 'valorant', 'icons'), { recursive: true })
+    fs.writeFileSync(path.join(value.root, 'valorant', 'icons', 'profile.json'),
+      JSON.stringify({ templates_version: 'v', capture_rois: { banner: [1316, 84, 600, 256], spec: [740, 20, 460, 64] } }))
+    value.deps.profileDir = icons
+    value.deps.findGame = vi.fn(async () => ({ game: 'valorant' as const, pid: 4321 }))
+    const client = Object.assign(new EventEmitter(), { probe: async () => true, start: vi.fn(), stop: vi.fn() })
+    value.deps.createValorantClient = () => client as never
+    value.settings.mode = 'match'
+    value.service.start()
+    await waitFor(() => value.service.status().phase === 'recording')
+    const dir = commands(value, 'start')[0].session_dir as string
+    expect(JSON.parse(fs.readFileSync(path.join(dir, 'recording.json'), 'utf8'))).toMatchObject({ mode: 'match', game: 'valorant' })
+    expect(client.start).toHaveBeenCalledOnce()
+    client.emit('event', { type: 'match_start', at: Date.now() })
+    await waitFor(() => fs.existsSync(path.join(dir, 'events.jsonl')) &&
+      fs.readFileSync(path.join(dir, 'events.jsonl'), 'utf8').includes('"reason":"game_client"'))
+    expect(vi.mocked(value.deps.notify).mock.calls.some(([, message]) => message.includes('逐局分割'))).toBe(false)
   })
 
   it('keeps recording when the storage probe fails', async () => {

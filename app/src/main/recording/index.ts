@@ -6,6 +6,7 @@ import type { GameId } from '../../shared/games'
 import type { EventCounts } from '../../shared/types'
 import type { RecordingService, RecordingSettings } from '../../shared/recording'
 import type { GameProcess } from './game-watcher'
+import type { ValorantClient } from './valorant-client'
 import { RecordingSessionService } from './session'
 import type { StorageKind } from './storage-location'
 
@@ -29,6 +30,8 @@ export interface RecordingDeps {
   obsStopGraceMs?: number
   /** Delay in milliseconds between detecting a newly launched Apex and starting capture; skipped when Apex is already running at startup (defaults to 20000; tests inject 0). */
   gameStartDelayMs?: number
+  /** Test injection: the Riot Client local API client used for Valorant match boundaries. */
+  createValorantClient?: () => ValorantClient
   /** Diagnostic log, flushed line by line so recorder activity remains visible after a system crash. */
   log?: (message: string) => void
   probeVideo?: (file: string) => Promise<{ duration: number; width?: number; height?: number; codec?: string }>

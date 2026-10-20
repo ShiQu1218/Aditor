@@ -51,6 +51,27 @@ def test_the_players_box_and_the_victims_team_decide_kill_or_death():
     assert kinds(feed((0, RED, TEAL, None), (1, TEAL, RED, None))) == []  # Other players' rows.
 
 
+def outline_feed(slot, killer, victim, side):
+    """Newer clients: a thin yellow outline along the player's half and a chevron just outside the row end."""
+    img = feed((slot, killer, victim, None))
+    right = RIGHT_EDGE - CX
+    cy = ROW_Y0 + ROW_STEP * slot - CY
+    y0, y1 = cy - ROW_H // 2, cy + ROW_H // 2
+    x0, x1 = (right - 330, right - 180) if side == "left" else (right - 150, right - 1)
+    cv2.line(img, (x0, y0), (x1, y0), YELLOW, 2)
+    cv2.line(img, (x0, y1 - 1), (x1, y1 - 1), YELLOW, 2)
+    tip = x0 - 10 if side == "left" else right + 2
+    pts = np.array([[tip + (8 if side == "left" else 0), cy - 9], [tip + (0 if side == "left" else 8), cy],
+                    [tip + (8 if side == "left" else 0), cy + 9]], np.int32)
+    cv2.fillPoly(img, [pts], YELLOW)
+    return img
+
+
+def test_the_newer_outline_and_chevron_style_marks_the_player_too():
+    assert kinds(outline_feed(1, TEAL, RED, "left")) == [(1, "kill")]
+    assert kinds(outline_feed(2, RED, TEAL, "right")) == [(2, "death")]
+
+
 def test_killing_yourself_is_a_death_not_a_kill():
     assert kinds(feed((0, TEAL, TEAL, "both"))) == [(0, "death")]
 

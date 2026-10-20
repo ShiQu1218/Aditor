@@ -134,6 +134,7 @@ export const i18n: Messages['i18n'] = {
       spectating: 'Spectating',
       not_counting_type: 'Squad wipe not counted',
       death: 'Your death, not a kill',
+      highlight: 'Round highlight, not counted again',
       manual: 'Manual'
     },
     forced: 'Forced',

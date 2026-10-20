@@ -8,6 +8,7 @@ import {
 } from '../../shared/recording'
 import { isSafeLocalDirPath } from '../safe-path'
 import { GameWatcher, findGameProcess, sameProcess, type GameProcess } from './game-watcher'
+import { ValorantClient, type PresenceEvent } from './valorant-client'
 import { DEFAULT_GAME, GAMES, gameProfileDir, gameSceneDir, type GameId } from '../../shared/games'
 import { AditorrecClient, RecorderError, type RecorderEvent } from './aditorrec-client'
 import { diskFreeBytes, diskLevel } from './disk'
@@ -60,6 +61,8 @@ interface ActiveSession {
   obsWork: Promise<void>
   /** aditorrec has reported started (capture has actually begun). */
   captured: boolean
+  /** Valorant: match boundaries from the Riot Client's local API. */
+  gameClient?: ValorantClient
 }
 
 /** After stopping our OBS recording, treat active status during this interval as still stopping. */
@@ -407,9 +410,12 @@ export class RecordingSessionService implements RecordingService {
     if (builtin || this.builtinFallbackPid === pid) settings.backend = 'builtin'
     const capture = settings.backend === 'obs' ? 'dda' : settings.captureMethod
     const game = this.game
-    if (game !== DEFAULT_GAME && settings.mode === 'match') {
-      // Per-match cutting needs match events, which only Apex detection emits so far. Without them a healthy session
-      // with no match would be pruned and discarded as lobby time, so record the whole session instead.
+    // Valorant's match boundaries come from the Riot Client; Apex detection finds its own.
+    const gameClient = game === 'valorant' ? (this.deps.createValorantClient ?? (() => new ValorantClient()))() : undefined
+    const clientReachable = gameClient ? await gameClient.probe() : false
+    if (game !== DEFAULT_GAME && settings.mode === 'match' && !clientReachable) {
+      // Per-match cutting needs match events. Without them a healthy session with no match would be pruned and
+      // discarded as lobby time, so record the whole session instead.
       settings.mode = 'session'
       if (!this.matchModeNoticed) {
         this.matchModeNoticed = true
@@ -445,7 +451,15 @@ export class RecordingSessionService implements RecordingService {
       const client = new AditorrecClient(this.deps.recorderCommand)
       const live = this.createLive(id, dir, gameAspect, game)
       session = { pid, game, id, dir, outputDir, client, ending: false, warned: false, writes: Promise.resolve(), sequences: new Set(), live,
-        mode: settings.mode, cuts: Promise.resolve(), cutPending: false, cutting: false, failedCuts: new Set(), backend: settings.backend, obs: null, obsWork: Promise.resolve(), captured: false }
+        mode: settings.mode, cuts: Promise.resolve(), cutPending: false, cutting: false, failedCuts: new Set(), backend: settings.backend, obs: null, obsWork: Promise.resolve(), captured: false,
+        ...(clientReachable && gameClient ? { gameClient } : {}) }
+      if (clientReachable && gameClient) {
+        gameClient.on('event', (ev: PresenceEvent) => {
+          if ((ev.type === 'match_start' || ev.type === 'match_end') && this.active === session && !session!.ending) session!.live.clientMatch(ev.type, ev.at)
+        })
+        gameClient.on('unavailable', (error: Error) => this.log(`riot client unavailable: ${error.message}`))
+        gameClient.start()
+      }
       this.active = session
       this.update({ sessionId: id, startedAt, backend: settings.backend })
       const current = session
@@ -672,6 +686,7 @@ export class RecordingSessionService implements RecordingService {
     const session = this.active
     if (!session) return true
     session.ending = true
+    session.gameClient?.stop()
     if (session.obsTimer) clearTimeout(session.obsTimer)
     await session.obsWork
     this.clearDiskTimer()

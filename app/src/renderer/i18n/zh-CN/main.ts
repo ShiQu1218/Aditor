@@ -136,6 +136,7 @@ export const i18n: Messages['i18n'] = {
       spectating: '观战中',
       not_counting_type: '小队全灭不计',
       death: '自己阵亡，不算击杀',
+      highlight: '回合精华，不重复计入击杀',
       manual: '手动'
     },
     forced: '强制',
