@@ -144,6 +144,19 @@ describe('recording service state machine', () => {
     await waitFor(() => commands(value, 'start').length > 0, 4000)
     expect(Date.now() - startedAt).toBeLessThan(4000)
   })
+  it('keeps the startup delay when the first process query fails and Apex appears later', async () => {
+    const value = rig()
+    value.deps.gameStartDelayMs = 400
+    value.pid = 1234
+    const find = vi.mocked(value.deps.findApexPid!)
+    find.mockRejectedValueOnce(new Error('tasklist failed'))
+    value.service = createRecordingService(value.deps)
+    value.service.start()
+    await waitFor(() => find.mock.calls.length >= 2)
+    const seenAt = Date.now()
+    await waitFor(() => commands(value, 'start').length > 0, 5000)
+    expect(Date.now() - seenAt).toBeGreaterThanOrEqual(350)
+  })
   it('logs why auto-start is skipped once per reason', async () => {
     const value = rig()
     const log = vi.fn()

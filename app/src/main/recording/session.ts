@@ -125,6 +125,8 @@ export class RecordingSessionService implements RecordingService {
           await this.autoStart()
         })
       }, (error) => {
+        // Startup presence is unknown after a failed first query, so a game found later gets the launch delay.
+        this.firstPoll = false
         if (!this.pollWarning) this.notice('error', tr('無法偵測 Apex 程序：{error}', { error: String(error) }))
         this.pollWarning = true
       })
