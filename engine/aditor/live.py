@@ -683,7 +683,10 @@ def run(shm: str, profile_dir: Path, scene_dir: Path | None = None, *, stdin=Non
     out = _Out(stdout if stdout is not None else sys.stdout.buffer)
     stdin = stdin if stdin is not None else sys.stdin.buffer
     try:
-        require_analyzable(resolve_game(game))
+        g = resolve_game(game)
+        require_analyzable(g)
+        if g != "apex":  # Live detection only runs the Apex pipeline so far.
+            raise UnsupportedGame(f"{g} live detection is not available yet")
     except UnsupportedGame as e:
         out.send({"ev": "error", "code": "unsupported_game", "message": str(e)})
         return 1

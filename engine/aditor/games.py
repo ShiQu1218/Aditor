@@ -13,7 +13,7 @@ from .models import VideoInfo
 DEFAULT_GAME = "apex"
 GAMES = ("apex", "valorant")
 # Games whose detection pipeline is implemented; the others are recognised but cannot be analyzed yet.
-ANALYZABLE = frozenset({"apex"})
+ANALYZABLE = frozenset({"apex", "valorant"})
 
 
 class UnsupportedGame(ValueError):

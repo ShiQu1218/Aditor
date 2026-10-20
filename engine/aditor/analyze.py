@@ -20,7 +20,7 @@ from .errors import Cancelled
 from .derive import derive
 from .detect import Detector, Keywords, Pending
 from .events import EventTracker
-from .games import require_analyzable, resolve_game
+from .games import DEFAULT_GAME, profile_dir_for, require_analyzable, resolve_game
 from .layout import Layout
 from .models import Clip, Event, FrameResult, SpecInterval
 from .probe import keyframes, probe
@@ -289,13 +289,42 @@ def _replay(sg: _Seg, log: list, own_from: float, hi: float, det: Detector, prof
     sg.snap_spec = _clip_intervals(intervals, own_from, hi)
 
 
+def _resolve_video_game(path: str, info, explicit: str | None, cp: Path | None, scene_dir: Path | None,
+                        hwaccel: bool, cancel: threading.Event | None) -> str:
+    """Explicit > aditor_game tag > a fresh cache's game > recognising the game from sampled frames.
+
+    Imported videos carry no tag; the cache check avoids sampling the video again on every open, and a forced
+    reanalysis (cp None) recognises the game afresh. Raises UnknownGame when neither game is recognised, so the
+    user can say which one it is (and the app passes it back as `explicit`)."""
+    if explicit or info.game:
+        return resolve_game(explicit, info)
+    old = load_cache(cp) if cp is not None else None
+    video = (old or {}).get("video") or {}
+    if old and video.get("size") == info.size and abs(float(video.get("mtime", -1.0)) - info.mtime) < 1e-6:
+        return old.get("game", DEFAULT_GAME)
+    from .game_detect import UnknownGame, detect_game
+
+    game = detect_game(path, info, scene_dir=scene_dir, hwaccel=hwaccel, cancel=cancel)
+    if game is None:
+        raise UnknownGame("Could not recognise the game in this video; choose Apex or Valorant")
+    return game
+
+
 def analyze(path: str, profile: Profile, *, cache_dir: Path, beside: bool = False,
             force: bool = False, on_progress: Callable[[float, float], None] = _noop,
             cancel: threading.Event | None = None, hwaccel: bool = True,
             jobs: int | None = None, layout: Layout | None = None, game: str | None = None) -> dict:
     info = probe(path)
-    # Only Apex has a detection pipeline so far; fail clearly instead of running Apex templates on another game.
-    require_analyzable(resolve_game(game, info))
+    apex_scene = profile.dir.parent / "scene"
+    game = _resolve_video_game(path, info, game, None if force else cache_path(path, Path(cache_dir), beside),
+                               apex_scene if apex_scene.is_dir() else None, hwaccel, cancel)
+    require_analyzable(game)
+    if game == "valorant":
+        from .valorant import analyze_valorant, load_valorant_profile
+
+        vprofile = load_valorant_profile(profile_dir_for(profile.dir, game))
+        return analyze_valorant(path, info, vprofile, cache_dir=Path(cache_dir), beside=beside, force=force,
+                                on_progress=on_progress, cancel=cancel, hwaccel=hwaccel)
     scene_dir = profile.dir.parent / "scene"
     scene_dir = scene_dir if scene_dir.is_dir() else None
     if layout is None and not profile.layout.identity:

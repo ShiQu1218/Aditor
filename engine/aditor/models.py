@@ -5,8 +5,8 @@ from dataclasses import asdict, dataclass, field, fields
 
 import numpy as np
 
-# The engine only emits knock/assist_knock/assist_elim; keep elim as a countable type for compatibility with older project files and manual events.
-COUNTING_TYPES = frozenset({"knock", "assist_knock", "assist_elim", "elim"})
+# The engine emits knock/assist_knock/assist_elim for Apex and kill/death for Valorant; keep elim as a countable type for compatibility with older project files and manual events.
+COUNTING_TYPES = frozenset({"knock", "assist_knock", "assist_elim", "elim", "kill", "death"})
 
 
 @dataclass(frozen=True)

@@ -29,6 +29,15 @@ def _skip_aspect_sampling(request, monkeypatch):
         monkeypatch.setattr(aspect, "_sampled_frames", lambda *a, **k: iter(()))
 
 
+@pytest.fixture(autouse=True)
+def _assume_apex(request, monkeypatch):
+    """Synthetic test videos carry no aditor_game tag and no real game HUD, so game recognition would report them as
+    unknown; the Apex pipeline tests treat them as Apex. Recognition itself is tested in test_games/test_game_detect."""
+    if request.module.__name__ not in ("test_games", "test_game_detect"):
+        from aditor import game_detect
+        monkeypatch.setattr(game_detect, "detect_game", lambda *a, **k: "apex")
+
+
 def make_video(tmp_path, name, duration, *, start_time=0.0, vfr=False, marks=(), overlay=None, game_height=1080,
                game_aspect=None):
     """Use ffmpeg testsrc2 to create a 1920x1080, 60 fps H.264 video with -g 60.

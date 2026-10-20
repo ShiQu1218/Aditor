@@ -25,10 +25,9 @@ def test_game_resolution_prefers_explicit_then_tag_then_apex():
         parse_game("csgo")
 
 
-def test_only_implemented_games_are_analyzable():
+def test_implemented_games_are_analyzable():
     require_analyzable("apex")
-    with pytest.raises(UnsupportedGame, match="valorant"):
-        require_analyzable("valorant")
+    require_analyzable("valorant")
 
 
 def test_profile_dirs_match_the_app_template_layout():
@@ -56,3 +55,20 @@ def test_cli_rejects_unknown_games(tmp_path, capsys):
     assert main(["analyze", str(tmp_path / "x.mp4"), "--profile-dir", str(tmp_path), "--cache-dir", str(tmp_path),
                  "--game", "csgo"]) == 1
     assert "Unknown game" in capsys.readouterr().err
+
+
+def test_detection_needs_a_clear_winner():
+    from aditor.game_detect import pick_game
+
+    assert pick_game({"apex": 5, "valorant": 0}) == "apex"
+    assert pick_game({"apex": 1, "valorant": 4}) == "valorant"
+    assert pick_game({"apex": 2, "valorant": 1}) is None   # Too few frames for either.
+    assert pick_game({"apex": 4, "valorant": 4}) is None   # Tie: let the user decide.
+
+
+def test_unknown_and_unsupported_games_have_their_own_ipc_codes():
+    from aditor.game_detect import UnknownGame
+    from aditor.ipc import _code
+
+    assert _code(UnknownGame("x")) == "unknown_game"
+    assert _code(UnsupportedGame("x")) == "unsupported_game"
