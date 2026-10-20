@@ -2,6 +2,12 @@
 // Only installed (NSIS) builds support updates; development and portable builds report unsupported, and Settings links to the download page.
 import type { UpdateStatus } from '../shared/update'
 
+/** Native import() exposes electron-updater's CommonJS singleton through default. */
+export async function loadAutoUpdater(): Promise<UpdaterLike> {
+  const { default: electronUpdater } = await import('electron-updater')
+  return electronUpdater.autoUpdater
+}
+
 /** Subset of electron-updater AppUpdater used here (tests can inject a fake). */
 export interface UpdaterLike {
   autoDownload: boolean
