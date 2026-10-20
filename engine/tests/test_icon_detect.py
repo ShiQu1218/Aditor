@@ -10,7 +10,8 @@ import numpy as np
 import pytest
 
 from aditor.detect import Detector, PRODUCT_KINDS, same_name
-from aditor.icon_detect import ICON_NAMES, IconDetector, enemy_color_mask
+from aditor.icon_detect import (DEFAULT_SCALES, ICON_NAMES, IconDetector, IconFrame, IconParams,
+                                enemy_color_mask)
 from aditor.models import FrameResult
 from conftest import FIXTURES, ICON_DIR, LANGS, lang_labels, load_fixture
 
@@ -57,6 +58,113 @@ def test_icon_templates_are_small_pngs():
         total += f.stat().st_size
         assert f.stat().st_size < 50_000
     assert total < 500_000
+
+
+class _ReferenceIconDetector(IconDetector):
+    """Unoptimized reference: always search the second-line skull/hand roster, as before the lazy optimization."""
+
+    def _needs_line2_icons(self, f, fig):
+        return True
+
+
+def _reference_detector(profile, scale):
+    detector = Detector(profile, icon_scale=scale)
+    detector.icons = _ReferenceIconDetector(ICON_DIR, scales=(scale,))
+    return detector
+
+
+def _prepare_and_resolve(detector, banner, spec):
+    pending, features = detector.prepare(banner, spec)
+    return detector.resolve(pending), features
+
+
+def _result_key(result):
+    return (result.kind, result.score, result.x, result.damage_line,
+            result.name_sig.to_b64() if result.name_sig is not None else None,
+            result.spectating, result.hint)
+
+
+def _track_peaks(detector, monkeypatch):
+    calls = []
+    peaks = detector._peaks
+
+    def tracked(g, key, s, thr):
+        calls.append(key)
+        return peaks(g, key, s, thr)
+
+    monkeypatch.setattr(detector, "_peaks", tracked)
+    return calls
+
+
+@pytest.mark.parametrize("lang,name", [
+    ("en", "knock_a002500.png"),              # Plus present and a confident solo figure.
+    ("en", "knock_fadein_a048250.png"),       # Plus below plus_min and a confident solo figure.
+    ("ja", "assist_knock_fadein_a025600.png"),  # Plus below plus_min, ambiguous figure.
+])
+def test_roster_search_is_skipped_when_classification_cannot_consume_it(lang, name, monkeypatch):
+    banner, _ = load_fixture(name, lang)
+    detector = IconDetector(ICON_DIR)
+    calls = _track_peaks(detector, monkeypatch)
+    f = detector.features(banner)
+    assert f.chev >= detector.p.chev_min
+    assert f.plus < detector.p.plus_min or detector._figure(f) == "person"
+    assert calls == []
+    assert f.line2_icons == 0
+
+
+@pytest.mark.parametrize("lang,name,expected_figure", [
+    ("en", "squad_wipe_a007600.png", "group"),
+    ("en", "assist_knock_a006475.png", None),
+])
+def test_roster_search_is_retained_when_classification_uses_it(lang, name, expected_figure, monkeypatch):
+    banner, _ = load_fixture(name, lang)
+    detector = IconDetector(ICON_DIR)
+    calls = _track_peaks(detector, monkeypatch)
+    f = detector.features(banner)
+    assert f.chev >= detector.p.chev_min and f.plus >= detector.p.plus_min
+    assert detector._figure(f) == expected_figure
+    assert calls == ["skull", "hand"]
+
+
+def test_diag_keeps_roster_search_for_a_solo_banner(monkeypatch):
+    banner, _ = load_fixture("knock_a002500.png", "en")
+    detector = IconDetector(ICON_DIR, diag=True)
+    calls = _track_peaks(detector, monkeypatch)
+    detector.features(banner)
+    assert calls == ["skull", "hand"]
+
+
+def test_zero_fig_lead_tie_keeps_group_classification():
+    detector = IconDetector(ICON_DIR, params=IconParams(fig_lead=0.0))
+    f = IconFrame(chev=0.9, plus=0.9, person=0.8, group=0.8)
+    assert detector._figure(f) == "group"
+    assert detector.classify(f) == "score_other"
+    assert detector._needs_line2_icons(f, detector._figure(f))
+    f.person = 0.81
+    assert detector._figure(f) == "person"
+    assert not detector._needs_line2_icons(f, detector._figure(f))
+
+
+@pytest.mark.parametrize("scale", DEFAULT_SCALES)
+def test_lazy_roster_search_preserves_detector_results(profile, scale):
+    """Compare every zh-TW/en/ja fixture against the unoptimized feature path at each supported calibration scale."""
+    fast = Detector(profile, icon_scale=scale)
+    reference = _reference_detector(profile, scale)
+    for lang in LANGS:
+        for sub in ("pos", "neg"):
+            for path in sorted((FIXTURES / lang / sub).glob("*.png")):
+                banner, spec = load_fixture(path.name, lang)
+                got, got_f = _prepare_and_resolve(fast, banner, spec)
+                want, want_f = _prepare_and_resolve(reference, banner, spec)
+                where = (lang, path.name)
+                assert _result_key(got) == _result_key(want), where
+                got_d, want_d = got_f.to_dict(), want_f.to_dict()
+                for key, value in want_d.items():
+                    if key != "line2_icons":
+                        assert got_d[key] == value, (where, key)
+                if got_d["line2_icons"] != want_d["line2_icons"]:
+                    assert got_d["line2_icons"] == 0, where
+                    assert not fast.icons._needs_line2_icons(want_f, fast.icons._figure(want_f)), where
 
 
 @pytest.mark.parametrize("lang", ["en", "ja"])

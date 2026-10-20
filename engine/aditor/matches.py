@@ -244,7 +244,7 @@ def analyze_matches(path: str, *, fps: float = 1.0, timeline: bool = False,
         for t, frame in frames:
             if t >= info.duration:
                 break
-            scene = detector.classify(frame)
+            scene = detector.classify(frame, full_scores=False)
             tracker.feed(t, scene)
             if timeline:
                 scenes.append([t, scene.kind])

@@ -563,7 +563,7 @@ def test_live_forwards_pending_and_cancel(profile, layout, scene, monkeypatch, k
     from aditor.scene import SceneFrame
 
     scenes = iter([SceneFrame("pre_match"), SceneFrame(kind)])
-    monkeypatch.setattr(scene, "classify", lambda _: next(scenes))
+    monkeypatch.setattr(scene, "classify", lambda frame, **_: next(scenes))
     banner, spec, thumb = _blank(layout)
     out, _ = _run_live(layout, profile, scene, [(0, banner, spec, thumb), (t, banner, spec, thumb)])
     assert [o for o in out if o["ev"].startswith("match_")] == [

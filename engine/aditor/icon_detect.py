@@ -59,7 +59,7 @@ class IconFrame:
     hand_x: int = 0
     hand_y: int = 0
     left_above: float = 0.0          # Chevron score on the line above the left icon (to determine whether it is on the second line).
-    line2_icons: int = 0             # Number of skull/hand matches on the line below the chevron.
+    line2_icons: int = 0             # Number of skull/hand matches on the line below the chevron (0 when classification cannot use the roster and the search is skipped).
     line2_ink: float = 0.0
     name_color: int = 0
     line2_ink_bg: float = 0.0        # Thin-stroke ratio in the background reference band (just above the first line).
@@ -141,6 +141,18 @@ class IconDetector:
                 x += 1
         return n
 
+    def _figure(self, f: IconFrame) -> str | None:
+        """Solo/group figure when the scores are strong and separated enough; otherwise ambiguous."""
+        p = self.p
+        if max(f.person, f.group) >= p.fig_min and abs(f.person - f.group) >= p.fig_lead:
+            return "person" if f.person > f.group else "group"
+        return None
+
+    def _needs_line2_icons(self, f: IconFrame, fig: str | None) -> bool:
+        """Whether classification can consume line2_icons. A missing plus already ends classification,
+        and a confident solo figure never reads the roster, so those frames skip the skull/hand peak searches."""
+        return self.diag or (f.plus >= self.p.plus_min and fig != "person")
+
     def _score_features(self, g: np.ndarray) -> IconFrame:
         """Match the chevron and plus sign only, so scale calibration does not need to compute other classification features."""
         f = IconFrame()
@@ -180,9 +192,10 @@ class IconDetector:
             # Below the chevron: skull/hand count in a squad-wipe roster and the second-line thin-stroke ratio.
             l2y0, l2y1 = cy + int(0.75 * ch[0]), min(g.shape[0], cy + int(2.1 * ch[0]))
             l2 = g[l2y0:l2y1]
-            s_icon = min(self.scales, key=lambda s: abs(s - sc))
-            f.line2_icons = self._peaks(l2, "skull", s_icon, p.line2_icon_min) + \
-                self._peaks(l2, "hand", s_icon, p.line2_icon_min)
+            if self._needs_line2_icons(f, self._figure(f)):
+                s_icon = min(self.scales, key=lambda s: abs(s - sc))
+                f.line2_icons = self._peaks(l2, "skull", s_icon, p.line2_icon_min) + \
+                    self._peaks(l2, "hand", s_icon, p.line2_icon_min)
             # The full banner is centered (banner center x=400): the first line's right edge is approximately the figure's right edge R,
             # and its left edge is approximately 800-R. The second (damage) line is also centered but shorter, so inspect only
             # the center [400-w/4, 400+w/4] (w = first-line width) to reduce background interference.
@@ -233,9 +246,7 @@ class IconDetector:
         if f.chev >= p.chev_min:
             if f.plus < p.plus_min:
                 return None
-            fig = None
-            if max(f.person, f.group) >= p.fig_min and abs(f.person - f.group) >= p.fig_lead:
-                fig = "person" if f.person > f.group else "group"
+            fig = self._figure(f)
             if fig == "group":  # Squad score: squad wipe (roster icon on the second line) or REVIVE/CRATE REVEAL, etc.
                 return "squad_wipe" if f.line2_icons >= 1 else "score_other"
             if fig == "person":  # Personal kill score: knock (enemy-colored name or damage line) / assist-knock (white text, one line).

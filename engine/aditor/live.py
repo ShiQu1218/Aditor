@@ -556,7 +556,7 @@ class LiveEngine:
         banner, spec = self.profile.restore(slot.banner, slot.spec) if self._restore else (slot.banner, slot.spec)
         self.kills.feed(t, banner, spec)
         if slot.thumb is not None:
-            for ev in self.matches.feed(t, self.scene.classify(slot.thumb)):
+            for ev in self.matches.feed(t, self.scene.classify(slot.thumb, full_scores=False)):
                 self.emit({"ev": ev.type, "t": ev.t, "reason": ev.reason})
         cpu = time.process_time() - cpu0
         self.last_t, self.last_pts = t, slot.pts

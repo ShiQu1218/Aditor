@@ -6,7 +6,7 @@ import cv2
 import numpy as np
 import pytest
 
-from aditor.scene import SCENE_ROIS, SCENE_SIZE, SceneDetector
+from aditor.scene import _TEMPLATES, SCENE_ROIS, SCENE_SIZE, SceneDetector
 
 FIXTURES = Path(__file__).parent / "fixtures" / "matches"
 SCREENS = json.loads((FIXTURES / "screens.json").read_text(encoding="utf-8"))
@@ -31,6 +31,71 @@ def detector():
 @pytest.mark.parametrize("item", SCREENS["frames"], ids=lambda s: s["file"])
 def test_scenes(detector, item):
     assert detector.classify(load_screen(item)).kind == item["scene"], item["evidence"]
+
+
+def test_fast_classification_matches_full_on_every_fixture(detector):
+    """The opt-in lazy path must produce the same kind, match_context, and blank, and the same value for every score it computes."""
+    for item in SCREENS["frames"]:
+        frame = load_screen(item)
+        full = detector.classify(frame)
+        fast = detector.classify(frame, full_scores=False)
+        assert (fast.kind, fast.match_context, fast.blank) == \
+            (full.kind, full.match_context, full.blank), item["file"]
+        assert set(full.scores) == set(_TEMPLATES), item["file"]
+        assert all(np.isfinite(v) for v in full.scores.values()), item["file"]
+        assert set(fast.scores) <= set(full.scores), item["file"]
+        for name, value in fast.scores.items():
+            assert value == full.scores[name], (item["file"], name)
+
+
+def test_fast_classification_short_circuits_template_matches(detector, monkeypatch):
+    calls = []
+    match_score = detector._match_score
+
+    def tracked(ref, name):
+        calls.append(name)
+        return match_score(ref, name)
+
+    monkeypatch.setattr(detector, "_match_score", tracked)
+
+    def classify(item):
+        calls.clear()
+        scene = detector.classify(load_screen(item), full_scores=False)
+        assert len(calls) == len(set(calls))  # Each matched score is computed once per frame.
+        return scene, list(calls)
+
+    calls.clear()
+    detector.classify(np.full((360, 640), 127, np.uint8), full_scores=False)
+    assert "summary_tabs" in calls and "health_border" not in calls
+    assert len(calls) < len(_TEMPLATES)
+
+    pre = next(s for s in SCREENS["frames"] if s["scene"] == "pre_match")
+    scene, names = classify(pre)
+    assert scene.kind == "pre_match" and len(names) <= 3
+    assert "summary_tabs" not in names and "ready_border" not in names
+
+    lobby = next(s for s in SCREENS["frames"] if s["scene"] == "lobby")
+    scene, names = classify(lobby)
+    assert scene.kind == "lobby" and {"ready_border", "mode_border"} <= set(names)
+    assert "summary_tabs" not in names and "minimap_border" not in names
+
+    hud = next(s for s in SCREENS["frames"] if s["scene"] == "in_match_hud")
+    scene, names = classify(hud)
+    assert scene.kind == "in_match_hud" and "summary_tabs" not in names
+    assert any("minimap" in n for n in names) and any("health" in n for n in names)
+
+    other = next(s for s in SCREENS["frames"] if s["scene"] == "other")
+    scene, names = classify(other)
+    assert scene.kind == "other" and "summary_tabs" in names
+    assert len(names) < len(_TEMPLATES)
+
+
+def test_default_classification_keeps_full_scores_for_aspect(detector):
+    from aditor.aspect import _template_score
+    for item in SCREENS["frames"]:
+        scene = detector.classify(load_screen(item))
+        assert set(scene.scores) == set(_TEMPLATES), item["file"]
+        assert np.isfinite(_template_score(scene))
 
 
 @pytest.mark.parametrize("size", [(640, 360), (1280, 720), (1916, 1080), (2560, 1440)])
@@ -63,12 +128,13 @@ def test_dark_content_is_not_blank(detector):
     assert not detector.classify(frame).blank
 
 
+@pytest.mark.parametrize("full_scores", [True, False])
 @pytest.mark.parametrize("frame", [np.zeros((180, 320), np.uint8),
                                    np.zeros((360, 640, 4), np.uint8),
                                    np.zeros((360, 640), np.float32)])
-def test_unsupported_frames_fail_explicitly(detector, frame):
+def test_unsupported_frames_fail_explicitly(detector, frame, full_scores):
     with pytest.raises(ValueError):
-        detector.classify(frame)
+        detector.classify(frame, full_scores=full_scores)
 
 
 def test_roi_contract_and_fixture_budget():

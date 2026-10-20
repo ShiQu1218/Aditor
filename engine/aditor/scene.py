@@ -78,8 +78,22 @@ class SceneDetector:
                 images.append(img)
             self._templates[name] = tuple(images)
 
-    def classify(self, frame: np.ndarray) -> SceneFrame:
-        """Accept a full-frame uint8 BGR or grayscale image; reject undersized input to avoid artificial upscaling."""
+    def _match_score(self, ref: np.ndarray, name: str) -> float:
+        """Best template score for one ROI; non-finite correlation results are treated as no match."""
+        x, y, rw, rh = _TEMPLATES[name][0]
+        template, mask = self._templates[name]
+        result = cv2.matchTemplate(ref[y:y + rh, x:x + rw], template,
+                                   cv2.TM_CCOEFF_NORMED, mask=mask)
+        finite = result[np.isfinite(result)]
+        return float(finite.max()) if finite.size else 0.0
+
+    def classify(self, frame: np.ndarray, *, full_scores: bool = True) -> SceneFrame:
+        """Accept a full-frame uint8 BGR or grayscale image; reject undersized input to avoid artificial upscaling.
+
+        full_scores=True (default) matches all templates so scores contains every template, as required by aspect detection.
+        full_scores=False matches templates lazily in classification order and stops at the first decisive scene, so scores is
+        partial: it contains only the templates evaluated for that frame. kind, match_context, and blank are identical either way.
+        """
         if frame.dtype != np.uint8 or frame.ndim not in (2, 3):
             raise ValueError("Scene frame must be uint8 BGR or grayscale")
         if frame.ndim == 3:
@@ -91,22 +105,38 @@ class SceneDetector:
             raise ValueError("Current scene settings require at least 640×360; provide a scene ROI or a larger full frame")
         gray = cv2.resize(frame, SCENE_SIZE, interpolation=cv2.INTER_AREA)
         ref = self._layout.reference_thumb(gray)
-        scores = {}
-        for name, (roi, _) in _TEMPLATES.items():
-            x, y, rw, rh = roi
-            template, mask = self._templates[name]
-            result = cv2.matchTemplate(ref[y:y + rh, x:x + rw], template,
-                                       cv2.TM_CCOEFF_NORMED, mask=mask)
-            finite = result[np.isfinite(result)]
-            scores[name] = float(finite.max()) if finite.size else 0.0
-        footer = max(scores["loading_footer"], scores["wildcard_footer"])
-        if min(scores["mode_chevron"], footer) >= PRE_MATCH_THRESHOLD:
-            return SceneFrame("pre_match", scores=scores)
-        if min(scores["ready_border"], scores["mode_border"]) >= LOBBY_THRESHOLD:
+        scores: dict[str, float] = {}
+
+        def score(name: str) -> float:
+            if name not in scores:
+                scores[name] = self._match_score(ref, name)
+            return scores[name]
+
+        if full_scores:
+            for name in _TEMPLATES:
+                score(name)
+        # Evaluate the same priority order as before, computing only the scores that can still affect the result.
+        chevron = score("mode_chevron")
+        if chevron >= PRE_MATCH_THRESHOLD:
+            footer = score("loading_footer")
+            if footer < PRE_MATCH_THRESHOLD:
+                footer = score("wildcard_footer")
+            if footer >= PRE_MATCH_THRESHOLD:
+                return SceneFrame("pre_match", scores=scores)
+        if score("ready_border") >= LOBBY_THRESHOLD and score("mode_border") >= LOBBY_THRESHOLD:
             return SceneFrame("lobby", scores=scores)
-        minimap = max(scores["minimap_border"], scores["ranked_minimap"], scores["spectator_minimap"])
-        health = max(scores["health_border"], scores["ranked_health"], scores["spectator_health"])
-        if min(minimap, health) >= HUD_THRESHOLD:
-            return SceneFrame("in_match_hud", scores=scores)
-        return SceneFrame("other", scores["summary_tabs"] >= SUMMARY_THRESHOLD, scores,
+        minimap = score("minimap_border")
+        if minimap < HUD_THRESHOLD:
+            minimap = score("ranked_minimap")
+        if minimap < HUD_THRESHOLD:
+            minimap = score("spectator_minimap")
+        if minimap >= HUD_THRESHOLD:
+            health = score("health_border")
+            if health < HUD_THRESHOLD:
+                health = score("ranked_health")
+            if health < HUD_THRESHOLD:
+                health = score("spectator_health")
+            if health >= HUD_THRESHOLD:
+                return SceneFrame("in_match_hud", scores=scores)
+        return SceneFrame("other", score("summary_tabs") >= SUMMARY_THRESHOLD, scores,
                           blank=int(gray.max()) <= BLANK_MAX_LEVEL)
