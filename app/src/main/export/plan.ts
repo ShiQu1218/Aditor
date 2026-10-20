@@ -3,6 +3,7 @@ import { ProjectItem } from '../../renderer/editor/project'
 import { estimateOutputBytes as estimateBytes } from '../../shared/exportEstimate'
 import { concatCompatible, StreamProbe } from '../../shared/exportCompat'
 import type { CopyCut } from './keyframe'
+import { sourceSpec, timelineSpec, videoEncodeArgs, type VideoSpec } from './encodeQuality'
 import { tr } from '../../shared/locale'
 
 // Compatibility checks live in shared (the renderer's export drawer also uses them); re-export here to preserve the existing import path.
@@ -174,7 +175,8 @@ export function buildJobs(
     const output = path.join(opts.outDir, `${opts.baseName}_${idx + 1}.mp4`)
     if (quality === 'copy') return { args: copyCutArgs(item, opts.copyCuts?.[idx], output), output }
     // Put -ss before -i: precise seeking when transcoding, without decoding from the start of the file to the cut (I8).
-    const args = ['-ss', secs(item.start), '-i', item.source, '-t', durationOf(item), ...STREAM_SELECT, '-c:v', opts.encoder!, ...AUDIO_AAC, ...STRIP_METADATA, '-y', output]
+    const video = videoEncodeArgs(opts.encoder!, sourceSpec(probes.get(item.source)))
+    const args = ['-ss', secs(item.start), '-i', item.source, '-t', durationOf(item), ...STREAM_SELECT, ...video, ...AUDIO_AAC, ...STRIP_METADATA, '-y', output]
     return { args, output }
   })
   return { jobs, notices }
@@ -235,12 +237,9 @@ function needsNormalize(items: ProjectItem[], probes: Map<string, StreamProbe>):
   return list.length < sources.length || !concatCompatible(list).ok
 }
 
-function normalizeFilter(items: ProjectItem[], probes: Map<string, StreamProbe>): string {
-  const first = probes.get(items[0].source)
-  const w = first && first.width > 0 ? first.width : 1920
-  const h = first && first.height > 0 ? first.height : 1080
-  const fps = first && first.fps > 0 ? first.fps : 60
-  return [`scale=${w}:${h}:force_original_aspect_ratio=decrease`, `pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2`, `fps=${fps}`, 'format=yuv420p'].join(',')
+/** Fit each segment into the timeline spec with Lanczos scaling (sharper than the default bicubic), letterboxing any aspect mismatch. */
+function normalizeFilter({ width: w, height: h, fps }: VideoSpec): string {
+  return [`scale=${w}:${h}:force_original_aspect_ratio=decrease:flags=lanczos`, `pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2`, `fps=${fps}`, 'format=yuv420p'].join(',')
 }
 
 /**
@@ -258,7 +257,9 @@ function buildPreciseConcat(
   notices: string[]
 ): { jobs: FfmpegJob[]; notices: string[]; concatListContent: string } {
   const normalize = needsNormalize(items, probes)
-  const vf = normalize ? ['-vf', normalizeFilter(items, probes)] : []
+  const spec = normalize ? timelineSpec([...new Set(items.map((it) => it.source))].map((src) => probes.get(src))) : sourceSpec(probes.get(items[0].source))
+  const vf = normalize ? ['-vf', normalizeFilter(spec)] : []
+  const video = videoEncodeArgs(opts.encoder!, spec)
   const tag = segmentTag()
   const segments: FfmpegJob[] = items.map((item, idx) => {
     const output = segmentPath(opts.outDir, tag, idx, '.mov')
@@ -268,7 +269,7 @@ function buildPreciseConcat(
     return {
       intermediate: true,
       output,
-      args: ['-ss', secs(item.start), '-i', item.source, ...audioInput, '-t', durationOf(item), ...streams, ...vf, '-c:v', opts.encoder!, '-c:a', 'pcm_s16le', '-ar', '48000', '-ac', '2', ...(silent ? ['-shortest'] : []), ...STRIP_METADATA, '-y', output]
+      args: ['-ss', secs(item.start), '-i', item.source, ...audioInput, '-t', durationOf(item), ...streams, ...vf, ...video, '-c:a', 'pcm_s16le', '-ar', '48000', '-ac', '2', ...(silent ? ['-shortest'] : []), ...STRIP_METADATA, '-y', output]
     }
   })
   const output = path.join(opts.outDir, `${opts.baseName}.mp4`)

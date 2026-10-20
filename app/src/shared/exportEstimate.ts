@@ -6,9 +6,9 @@ export interface EstimateItem {
   end: number
 }
 
-/** Assumed bitrates: copy preserves original quality (about 30 Mbps); precise transcoding uses about 12 Mbps. */
+/** Assumed bitrates: copy preserves original quality (about 30 Mbps); precise transcoding targets about 25 Mbps at 1080p60 (see encodeQuality). */
 export const COPY_BYTES_PER_SECOND = (30 * 1024 * 1024) / 8
-export const PRECISE_BYTES_PER_SECOND = (12 * 1024 * 1024) / 8
+export const PRECISE_BYTES_PER_SECOND = (25 * 1024 * 1024) / 8
 
 export function estimateOutputBytes(project: { items: EstimateItem[] }, quality: ExportQuality): number {
   let totalDur = 0

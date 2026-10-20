@@ -3,6 +3,7 @@ import fs from 'fs'
 import path from 'path'
 import { codecsDir } from '../../shared/paths'
 import { killTree } from './killTree'
+import { FALLBACK_SPEC, videoEncodeArgs } from './encodeQuality'
 
 export function parseEncoderList(stdout: string): string[] {
   const result: string[] = []
@@ -27,9 +28,12 @@ export function pickEncoder(available: string[]): string | null {
   return null
 }
 
-/** NVENC/AMF/QSV have minimum frame dimensions (about 145x49 for NVENC); use a 256x256 test frame to avoid false hardware-unavailable results. */
+/**
+ * NVENC/AMF/QSV have minimum frame dimensions (about 145x49 for NVENC); use a 256x256 test frame to avoid false hardware-unavailable results.
+ * Test with the same rate-control arguments as precise export, so a driver that rejects them is not offered.
+ */
 export function encoderTestArgs(encoder: string): string[] {
-  return ['-f', 'lavfi', '-i', 'color=c=black:s=256x256:d=0.1', '-c:v', encoder, '-f', 'null', '-']
+  return ['-f', 'lavfi', '-i', 'color=c=black:s=256x256:d=0.1', ...videoEncodeArgs(encoder, FALLBACK_SPEC), '-f', 'null', '-']
 }
 
 const ENCODER_TEST_TIMEOUT_MS = 10_000

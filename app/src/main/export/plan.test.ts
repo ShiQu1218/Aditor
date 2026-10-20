@@ -225,6 +225,19 @@ describe('export plan: unknown stream info and mixed sources (I9)', () => {
     expect(a.indexOf('-ss')).toBeLessThan(a.indexOf('-i'))
   })
 
+  it('mixed specs render to the largest/fastest timeline with Lanczos scaling and an explicit high bitrate', () => {
+    const k: StreamProbe = { vcodec: 'h264', width: 1280, height: 720, fps: 30, pix_fmt: 'yuv420p', acodec: 'aac', sample_rate: 48000, channels: 2 }
+    const res = buildJobs(items, { mode: 'concat', quality: 'precise', encoder: 'h264_nvenc', outDir: 'C:/out', baseName: 'h' }, new Map([
+      ['C:/a.mp4', k],
+      ['C:/b.mp4', { ...k, width: 1920, height: 1080, fps: 60 }]
+    ]))
+    for (const s of res.jobs.filter((j) => j.intermediate)) {
+      expect(s.args.join(' ')).toContain('scale=1920:1080:force_original_aspect_ratio=decrease:flags=lanczos')
+      expect(s.args.join(' ')).toContain('fps=60')
+      expect(s.args[s.args.indexOf('-b:v') + 1]).toBe('24900k')
+    }
+  })
+
   it('compatible, fully known sources stay lossless: per-segment stream copy + copy concat, no notice', () => {
     const k: StreamProbe = { vcodec: 'h264', width: 1920, height: 1080, fps: 60, pix_fmt: 'yuv420p', acodec: 'aac', sample_rate: 48000, channels: 2 }
     const res = buildJobs(items, { mode: 'concat', quality: 'copy', outDir: 'C:/out', baseName: 'h' }, new Map([['C:/a.mp4', k], ['C:/b.mp4', { ...k }]]))
