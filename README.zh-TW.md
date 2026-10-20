@@ -107,6 +107,8 @@ powershell -ExecutionPolicy Bypass -File scripts\build.ps1
 
 安裝檔與免安裝版輸出在 `dist\`。測試：`engine\.venv\Scripts\python.exe -m pytest -q` 與 `npm --prefix app test`。
 
+若要監控錄影時的資源占用，啟動 Aditor 後執行 `powershell -ExecutionPolicy Bypass -File scripts\monitor-resources.ps1 -GpuCounters`，按 Ctrl+C 結束。各處理程序與合計的 CPU、記憶體、I/O 及 GPU 引擎數據會儲存為 CSV，位於 `out/resource-monitor/`。詳見[參數與數據定義](scripts/monitor-resources.md)。
+
 ---
 
 ## 授權
