@@ -79,6 +79,9 @@ export const i18n: Messages['i18n'] = {
       hlCount: 'Highlights {n}',
       knockBadge: 'Knockdowns {n}',
       assistBadge: 'Assists {n}',
+      killBadge: 'Kills {n}',
+      deathBadge: 'Deaths {n}',
+      unknownGame: 'Could not tell which game this is. Choose one:',
       av1: 'AV1 · Proxy recommended',
       proxySuggest: 'Proxy recommended',
       removeConfirm: 'Remove "{name}" from the library? The video file will not be deleted.',
@@ -117,7 +120,11 @@ export const i18n: Messages['i18n'] = {
       assist_knock: 'Knockdown assist',
       assist_elim: 'Elimination assist',
       elim: 'Elimination',
-      squad_wipe: 'Squad wipe'
+      squad_wipe: 'Squad wipe',
+      kill: 'Kill',
+      death: 'Death',
+      multikill: 'Multi-kill',
+      ace: 'Ace'
     },
     counted: 'Counted',
     uncounted: 'Not counted',

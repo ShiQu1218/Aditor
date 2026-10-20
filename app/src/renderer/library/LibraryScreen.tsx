@@ -5,6 +5,7 @@ import { EmptyState } from './EmptyState'
 import { LibraryToolbar } from './LibraryToolbar'
 import { QueueStrip } from './QueueStrip'
 import { VideoCard, fileName } from './VideoCard'
+import type { GameId } from '../../shared/games'
 import { resolveCardActivation, resolveLibraryEscape } from './cardLogic'
 import { VirtualGrid } from './VirtualGrid'
 import { groupByDate } from '../lib/groupByDate'
@@ -139,6 +140,10 @@ export function LibraryScreen({ onSelectVideo, onOpenSettings }: LibraryScreenPr
     void window.api?.queue?.enqueue?.(path)
   }, [])
 
+  const handleSetGame = useCallback((path: string, game: GameId) => {
+    void window.api?.library?.setGame?.(path, game)
+  }, [])
+
   const handleDrop = useCallback(
     (e: React.DragEvent) => {
       e.preventDefault()
@@ -206,6 +211,7 @@ export function LibraryScreen({ onSelectVideo, onOpenSettings }: LibraryScreenPr
                   onToggleFavorite={handleToggleFavorite}
                   onRemove={handleRemove}
                   onRetry={handleRetry}
+                  onSetGame={handleSetGame}
                   onMenuChange={handleMenuChange}
                   proxySuggest={proxySuggest}
                   active={active}

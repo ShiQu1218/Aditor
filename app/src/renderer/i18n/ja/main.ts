@@ -81,6 +81,9 @@ export const i18n: Messages['i18n'] = {
       hlCount: 'ハイライト {n} 件',
       knockBadge: 'ノックダウン {n}',
       assistBadge: 'アシスト {n}',
+      killBadge: 'キル {n}',
+      deathBadge: 'デス {n}',
+      unknownGame: 'どのゲームか判別できません。選択してください：',
       av1: 'AV1 · プロキシファイル推奨',
       proxySuggest: 'プロキシファイルを推奨',
       removeConfirm: '「{name}」をライブラリから削除しますか？（動画ファイルは削除されません）',
@@ -119,7 +122,11 @@ export const i18n: Messages['i18n'] = {
       assist_knock: 'アシストノックダウン',
       assist_elim: 'アシスト撃破',
       elim: '撃破',
-      squad_wipe: '部隊全滅'
+      squad_wipe: '部隊全滅',
+      kill: 'キル',
+      death: 'デス',
+      multikill: 'マルチキル',
+      ace: 'エース'
     },
     counted: '集計対象',
     uncounted: '集計対象外',

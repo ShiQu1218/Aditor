@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { AnalysisQueue } from './queue'
 import { Library } from './library'
-import { EngineClient } from './engine'
+import { EngineClient, EngineError } from './engine'
 import path from 'path'
 import os from 'os'
 
@@ -12,6 +12,38 @@ describe('AnalysisQueue', () => {
   beforeEach(() => {
     tmpFile = path.join(os.tmpdir(), `aditor_queue_test_${Date.now()}_${Math.random()}.json`)
     lib = new Library(tmpFile)
+  })
+
+  it('asks the user for the game when the engine cannot recognise it, then analyzes with the chosen game', async () => {
+    const calls: Array<{ game?: string }> = []
+    const engineMock = {
+      request: (_cmd: string, args: { path: string; game?: string }) => {
+        calls.push({ game: args.game })
+        const promise = args.game
+          ? Promise.resolve({ game: args.game, video: { duration: 10 }, events: [
+            { id: 'v1', t: 1, type: 'kill', counted: true, counted_override: null },
+            { id: 'v2', t: 2, type: 'death', counted: true, counted_override: null }] })
+          : Promise.reject(new EngineError('unknown_game', 'Could not recognise the game'))
+        return { id: `req_${calls.length}`, promise }
+      },
+      cancel: () => {}
+    } as unknown as EngineClient
+
+    const video = 'D:/Videos/vod.mp4'
+    lib.add([video])
+    const queue = new AnalysisQueue(engineMock, lib, { profileDir: '/profile', cacheDir: '/cache' })
+    queue.enqueue(video)
+    await new Promise((r) => setTimeout(r, 20))
+    expect(calls).toEqual([{ game: undefined }])
+    expect(lib.get(video)).toMatchObject({ status: 'error', errorCode: 'unknown_game' })
+
+    // What library:setGame does: record the choice and queue the video again.
+    lib.update(video, { game: 'valorant', status: 'pending', error: undefined, errorCode: undefined })
+    queue.enqueue(video)
+    await new Promise((r) => setTimeout(r, 20))
+    expect(calls[1]).toEqual({ game: 'valorant' })
+    expect(lib.get(video)).toMatchObject({ status: 'done', game: 'valorant', counts: { knock: 0, assist: 0, kill: 1, death: 1 } })
+    expect(lib.get(video)?.errorCode).toBeUndefined()
   })
 
   it('queue runs one analyze at a time', async () => {

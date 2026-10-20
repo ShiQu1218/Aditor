@@ -266,6 +266,8 @@
 .chip-assist_elim .chip-dot { background: var(--ev-assist-elim); }
 .chip-elim .chip-dot { background: var(--ev-elim); border-radius: 2px; }
 .chip-squad_wipe .chip-dot { background: var(--ev-squad-wipe); }
+.chip-kill .chip-dot { background: var(--ev-knock); }
+.chip-death .chip-dot { background: var(--ev-death); border-radius: 2px; }
 .chip-n { font-size: var(--fs-small); }
 
 /* ---- Source timeline ---- */
@@ -406,6 +408,8 @@
 .hl-glyph[data-type='assist_knock'] { background: var(--ev-assist-knock); border-radius: 3px; }
 .hl-glyph[data-type='assist_elim'] { background: var(--ev-assist-elim); border-radius: 2px; transform: rotate(45deg); }
 .hl-glyph[data-type='elim'] { background: var(--ev-elim); border-radius: 2px; }
+.hl-glyph[data-type='kill'] { background: var(--ev-knock); }
+.hl-glyph[data-type='death'] { background: var(--ev-death); border-radius: 2px; }
 .hl-glyph[data-type='squad_wipe'] {
   background: var(--ev-squad-wipe);
   clip-path: polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%);

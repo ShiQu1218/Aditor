@@ -80,6 +80,9 @@ const i18n = {
       hlCount: '{n} 精華',
       knockBadge: '擊倒 {n}',
       assistBadge: '助攻 {n}',
+      killBadge: '擊殺 {n}',
+      deathBadge: '死亡 {n}',
+      unknownGame: '認不出是哪個遊戲，請選擇：',
       av1: 'AV1 · 建議代理檔',
       proxySuggest: '建議代理檔',
       removeConfirm: '確定要從影片庫移除「{name}」嗎？（不會刪除影片檔案）',
@@ -118,7 +121,11 @@ const i18n = {
       assist_knock: '助攻擊倒',
       assist_elim: '助攻消滅',
       elim: '已消滅',
-      squad_wipe: '小隊抹殺'
+      squad_wipe: '小隊抹殺',
+      kill: '擊殺',
+      death: '死亡',
+      multikill: '多殺',
+      ace: 'Ace'
     },
     counted: '計入',
     uncounted: '不計入',

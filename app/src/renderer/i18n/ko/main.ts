@@ -82,6 +82,9 @@ export const i18n: Messages['i18n'] = {
       hlCount: '하이라이트 {n}',
       knockBadge: '녹다운 {n}',
       assistBadge: '어시스트 {n}',
+      killBadge: '킬 {n}',
+      deathBadge: '데스 {n}',
+      unknownGame: '어떤 게임인지 알 수 없습니다. 선택하세요:',
       av1: 'AV1 · 프록시 파일 권장',
       proxySuggest: '프록시 파일 권장',
       removeConfirm: '‘{name}’을(를) 라이브러리에서 제거할까요? (영상 파일은 삭제되지 않습니다)',
@@ -120,7 +123,11 @@ export const i18n: Messages['i18n'] = {
       assist_knock: '녹다운 어시스트',
       assist_elim: '처치 어시스트',
       elim: '처치',
-      squad_wipe: '스쿼드 전멸'
+      squad_wipe: '스쿼드 전멸',
+      kill: '킬',
+      death: '데스',
+      multikill: '멀티킬',
+      ace: '에이스'
     },
     counted: '집계',
     uncounted: '집계 안 함',

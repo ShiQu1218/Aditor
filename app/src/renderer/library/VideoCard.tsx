@@ -10,6 +10,7 @@ import { nextTrapIndex } from '../a11y/focusTrap'
 import { rovingStep } from '../a11y/roving'
 import { AlertTriangle, ImageOff, MoreHorizontal, RefreshCw, Star, Trash2 } from '../components/icons'
 import { cardStatusText, fileName, thumbnailUrl } from './cardLogic'
+import { GAMES, GAME_IDS, type GameId } from '../../shared/games'
 
 export { fileName } from './cardLogic'
 
@@ -22,6 +23,8 @@ export interface VideoCardProps {
   onToggleFavorite: (path: string) => void
   onRemove: (path: string) => void
   onRetry: (path: string) => void
+  /** The user picks the game after recognition failed; main records it and analyzes the video again. */
+  onSetGame?: (path: string, game: GameId) => void
   /** Report when the card menu opens/closes (include a close function when opening); keymap handles Esc in menu-then-search order. */
   onMenuChange?: (path: string, close: (() => void) | null) => void
   /** Proxy suggestion setting: hide the proxy-suggestion badge when false (defaults to true). */
@@ -55,16 +58,20 @@ export function sameCardEntry(a: LibraryEntry, b: LibraryEntry): boolean {
     a.analyzingSince === b.analyzingSince &&
     a.favorite === b.favorite &&
     a.error === b.error &&
+    a.errorCode === b.errorCode &&
+    a.game === b.game &&
     a.hl === b.hl &&
     a.durationSec === b.durationSec &&
     a.thumb === b.thumb &&
     a.codec === b.codec &&
     a.counts?.knock === b.counts?.knock &&
-    a.counts?.assist === b.counts?.assist
+    a.counts?.assist === b.counts?.assist &&
+    a.counts?.kill === b.counts?.kill &&
+    a.counts?.death === b.counts?.death
   )
 }
 
-function VideoCardView({ entry, onOpen, onToggleFavorite, onRemove, onRetry, onMenuChange, proxySuggest = true, active = true }: VideoCardProps): JSX.Element {
+function VideoCardView({ entry, onOpen, onToggleFavorite, onRemove, onRetry, onSetGame, onMenuChange, proxySuggest = true, active = true }: VideoCardProps): JSX.Element {
   const [menuOpen, setMenuOpen] = useState(false)
   const rootRef = useRef<HTMLElement>(null)
   const moreRef = useRef<HTMLButtonElement>(null)
@@ -78,6 +85,7 @@ function VideoCardView({ entry, onOpen, onToggleFavorite, onRemove, onRetry, onM
   const badge = proxySuggest ? proxyBadge(entry) : null
   const done = entry.status === 'done'
   const error = entry.status === 'error'
+  const unknownGame = error && entry.errorCode === 'unknown_game'
   // Waiting refers only to main's real queue; pending items not in the queue (imported but not queued, or canceled) are not analyzed yet.
   const queueState = useQueueItemState(entry.path)
   const notQueued = entry.status === 'pending' && queueState === 'idle'
@@ -191,6 +199,12 @@ function VideoCardView({ entry, onOpen, onToggleFavorite, onRemove, onRetry, onM
               {(entry.counts?.assist ?? 0) > 0 && (
                 <span className="vbadge assist">{t.assistBadge.replace('{n}', String(entry.counts?.assist ?? 0))}</span>
               )}
+              {(entry.counts?.kill ?? 0) > 0 && (
+                <span className="vbadge knock">{t.killBadge.replace('{n}', String(entry.counts?.kill ?? 0))}</span>
+              )}
+              {(entry.counts?.death ?? 0) > 0 && (
+                <span className="vbadge death">{t.deathBadge.replace('{n}', String(entry.counts?.death ?? 0))}</span>
+              )}
               {(entry.hl ?? 0) > 0 && <span className="vbadge hl">{t.hlCount.replace('{n}', String(entry.hl))}</span>}
             </span>
           )}
@@ -236,7 +250,7 @@ function VideoCardView({ entry, onOpen, onToggleFavorite, onRemove, onRetry, onM
           {error ? (
             <span className="vcard-error-reason" title={entry.error}>
               <AlertTriangle className="ic sm" />
-              <span>{entry.error || t.error}</span>
+              <span>{unknownGame ? t.unknownGame : entry.error || t.error}</span>
             </span>
           ) : (
             <span className="vcard-meta">
@@ -266,9 +280,17 @@ function VideoCardView({ entry, onOpen, onToggleFavorite, onRemove, onRetry, onM
 
       {error && (
         <div className="vcard-error-actions">
-          <button type="button" className="lib-btn sm" tabIndex={tab} onClick={() => onRetry(entry.path)}>
-            {t.retry}
-          </button>
+          {unknownGame && onSetGame ? (
+            GAME_IDS.map((game) => (
+              <button key={game} type="button" className="lib-btn sm primary" tabIndex={tab} onClick={() => onSetGame(entry.path, game)}>
+                {GAMES[game].displayName}
+              </button>
+            ))
+          ) : (
+            <button type="button" className="lib-btn sm" tabIndex={tab} onClick={() => onRetry(entry.path)}>
+              {t.retry}
+            </button>
+          )}
           <button type="button" className="lib-btn sm" tabIndex={tab} onClick={() => onRemove(entry.path)}>
             {t.remove}
           </button>

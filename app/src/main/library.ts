@@ -15,6 +15,8 @@ export interface LibraryEntry {
   status: LibraryStatus
   progress: number
   error?: string
+  /** Machine-readable failure reason: unknown_game means the user has to choose the game (sets `game`). */
+  errorCode?: 'unknown_game'
   counts?: EventCounts
   /** Absent for entries analyzed before multi-game support (Apex). */
   game?: GameId

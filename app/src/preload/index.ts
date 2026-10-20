@@ -49,6 +49,7 @@ const api = {
     },
     remove: (path: string) => ipcRenderer.invoke('library:remove', path),
     toggleFavorite: (path: string) => ipcRenderer.invoke('library:toggleFavorite', path),
+    setGame: (path: string, game: string) => ipcRenderer.invoke('library:setGame', path, game),
     selectFiles: () => ipcRenderer.invoke('library:selectFiles'),
     selectFolder: () => ipcRenderer.invoke('library:selectFolder'),
     getWatchFolders: () => ipcRenderer.invoke('library:getWatchFolders'),
