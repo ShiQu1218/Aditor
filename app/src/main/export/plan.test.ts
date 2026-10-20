@@ -8,7 +8,8 @@ import {
   StreamProbe,
   copyCutArgs,
   concatList,
-  resolveQuality
+  resolveQuality,
+  estimateOutputBytes
 } from './plan'
 import { ProjectItem } from '../../renderer/editor/project'
 
@@ -59,6 +60,22 @@ describe('export plan', () => {
     ['C:/clips/vid1.mp4', probeH264],
     ['C:/clips/vid 2 \'apex\'.mp4', probeAV1]
   ])
+
+  it('estimates match the peak rates of separate and normalized concat jobs', () => {
+    const probes = new Map<string, StreamProbe>([
+      [sampleItems[0].source, { ...probeH264, width: 3840, height: 2160, fps: 30 }],
+      [sampleItems[1].source, probeH264]
+    ])
+    for (const mode of ['separate', 'concat'] as const) {
+      const { jobs } = buildJobs(sampleItems, { mode, quality: 'precise', encoder: 'h264_nvenc', outDir: 'C:/out', baseName: 'h' }, probes)
+      const rendered = mode === 'concat' ? jobs.filter((job) => job.intermediate) : jobs
+      const expected = rendered.reduce((sum, job, i) => {
+        const peak = Number(job.args[job.args.indexOf('-maxrate') + 1].replace('k', ''))
+        return sum + (sampleItems[i].end - sampleItems[i].start) * (peak + 192) * 1000 / 8
+      }, 0)
+      expect(estimateOutputBytes(sampleItems, 'precise', probes, mode)).toBe(Math.ceil(expected))
+    }
+  })
 
   it('copy separate jobs use -ss before -i and -c copy', () => {
     const { jobs, notices } = buildJobs(

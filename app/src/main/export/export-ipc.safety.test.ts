@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
@@ -55,5 +55,26 @@ describe('export:start with mixed sources (I9)', () => {
     expect(r).toMatchObject({ ok: true, outputs: [path.join(outDir, 'Merged', 'joined.mp4')] })
     expect((r as { notices: string[] }).notices.length).toBeGreaterThan(0)
     expect(fs.readdirSync(path.join(outDir, 'Merged'))).toEqual(['joined.mp4'])
+  })
+})
+
+describe('export:start disk estimates', () => {
+  it.each(['separate', 'concat'] as const)('rejects insufficient space for a 4K60 %s export before starting ffmpeg', async (mode) => {
+    const stats = await fs.promises.statfs(outDir)
+    const statfs = vi.spyOn(fs.promises, 'statfs').mockImplementation(async () => ({ ...stats, bavail: 1024 ** 3, bsize: 1 }))
+    try {
+      const service = createExportService({
+        ffmpeg: { bin: process.execPath, prefixArgs: [FAKE] },
+        probe: async (source) => ({ codec: 'h264', width: source === srcA ? 3840 : 1920, height: source === srcA ? 2160 : 1080, fps: 60 }),
+        hasAudio: async () => true
+      })
+      const items = [{ id: '1', source: srcA, start: 0, end: 60 }]
+      if (mode === 'concat') items.push({ id: '2', source: srcB, start: 0, end: 30 })
+      const result = await service.start(sender(), { items, mode, quality: mode === 'concat' ? 'copy' : 'precise', encoder: 'libopenh264', outDir, baseName: 'large' })
+      expect(result).toMatchObject({ ok: false, outputs: [], error: expect.stringContaining('磁碟剩餘空間不足') })
+      expect(fs.readdirSync(path.join(outDir, mode === 'concat' ? 'Merged' : 'Clips'))).toEqual([])
+    } finally {
+      statfs.mockRestore()
+    }
   })
 })

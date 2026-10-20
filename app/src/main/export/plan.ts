@@ -3,7 +3,7 @@ import { ProjectItem } from '../../renderer/editor/project'
 import { estimateOutputBytes as estimateBytes } from '../../shared/exportEstimate'
 import { concatCompatible, StreamProbe } from '../../shared/exportCompat'
 import type { CopyCut } from './keyframe'
-import { sourceSpec, timelineSpec, videoEncodeArgs, type VideoSpec } from './encodeQuality'
+import { sourceSpec, concatRenderSpec, videoEncodeArgs, type VideoSpec } from './encodeQuality'
 import { tr } from '../../shared/locale'
 
 // Compatibility checks live in shared (the renderer's export drawer also uses them); re-export here to preserve the existing import path.
@@ -35,9 +35,10 @@ export function escapeConcatPath(filePath: string): string {
 export function estimateOutputBytes(
   items: ProjectItem[],
   quality: 'copy' | 'precise',
-  _probes?: Map<string, StreamProbe>
+  probes?: Map<string, StreamProbe>,
+  mode: 'concat' | 'separate' = 'concat'
 ): number {
-  return estimateBytes({ items }, quality)
+  return estimateBytes({ items }, quality, probes, mode)
 }
 
 export interface BuildJobsOptions {
@@ -230,13 +231,6 @@ function buildCopyConcat(
   return { jobs: [...segments, final], notices, concatListContent: listOf(segments) }
 }
 
-function needsNormalize(items: ProjectItem[], probes: Map<string, StreamProbe>): boolean {
-  const sources = [...new Set(items.map((it) => it.source))]
-  if (sources.length <= 1) return false
-  const list = sources.map((src) => probes.get(src)).filter((p): p is StreamProbe => !!p)
-  return list.length < sources.length || !concatCompatible(list).ok
-}
-
 /** Fit each segment into the timeline spec with Lanczos scaling (sharper than the default bicubic), letterboxing any aspect mismatch. */
 function normalizeFilter({ width: w, height: h, fps }: VideoSpec): string {
   return [`scale=${w}:${h}:force_original_aspect_ratio=decrease:flags=lanczos`, `pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2`, `fps=${fps}`, 'format=yuv420p'].join(',')
@@ -256,8 +250,7 @@ function buildPreciseConcat(
   probes: Map<string, StreamProbe>,
   notices: string[]
 ): { jobs: FfmpegJob[]; notices: string[]; concatListContent: string } {
-  const normalize = needsNormalize(items, probes)
-  const spec = normalize ? timelineSpec([...new Set(items.map((it) => it.source))].map((src) => probes.get(src))) : sourceSpec(probes.get(items[0].source))
+  const { spec, normalize } = concatRenderSpec([...new Set(items.map((it) => it.source))].map((src) => probes.get(src)))
   const vf = normalize ? ['-vf', normalizeFilter(spec)] : []
   const video = videoEncodeArgs(opts.encoder!, spec)
   const tag = segmentTag()

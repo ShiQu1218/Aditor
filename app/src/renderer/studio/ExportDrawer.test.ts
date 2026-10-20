@@ -136,6 +136,15 @@ describe('ExportDrawer markup (all four states)', () => {
 })
 
 describe('ExportDrawer blockers and warnings', () => {
+  test('4K sources use the peak-rate estimate for the displayed size and disk warning', async () => {
+    const { c } = await ready({ diskSpace: async () => ({ freeBytes: GB, totalBytes: 10 * GB }) })
+    await c.setQuality('precise')
+    const highRes: ExportPlanBase = { ...base, sources: { [A]: { codec: 'h264', width: 3840, height: 2160, fps: 60 }, [B]: { codec: 'h264', width: 3840, height: 2160, fps: 60 } } }
+    const m = html(c, project, highRes)
+    expect(m).toContain('1.0 GB')
+    expect(m).toContain('剩餘空間不足')
+  })
+
   test('empty project: blocker shown, start disabled', async () => {
     const { c } = await ready()
     const m = html(c, { ...project, items: [] })

@@ -7,11 +7,7 @@ export interface ExportPlanBase {
   missingItemIds: ReadonlySet<string>
 }
 
-interface ProbeResult {
-  codec?: string
-  width?: number
-  height?: number
-}
+type ProbeResult = Partial<SourceInfo>
 
 /**
  * Collect metadata for each source video when the export drawer opens: use the loaded cache (including keyframes) for the current video,
@@ -38,7 +34,7 @@ export async function buildPlanBase(
       try {
         const p = await probe(src)
         if (p && typeof p.width === 'number' && typeof p.height === 'number') {
-          sources[src] = { codec: p.codec ?? '', width: p.width, height: p.height }
+          sources[src] = { codec: p.codec ?? '', width: p.width, height: p.height, fps: p.fps, pix_fmt: p.pix_fmt, acodec: p.acodec, sample_rate: p.sample_rate, channels: p.channels }
         }
       } catch {
   // Treat sources that cannot be probed as unknown.

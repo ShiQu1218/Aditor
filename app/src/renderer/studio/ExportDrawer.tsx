@@ -4,7 +4,6 @@ import { i18n } from '../i18n'
 import { formatTime } from '../../shared/time'
 import { tr } from '../../shared/locale'
 import { exportSubDirName, joinForDisplay } from '../../shared/storage'
-import { estimateOutputBytes } from '../../shared/exportEstimate'
 import { totalDuration, Project } from '../editor/project'
 import { Check, Copy, Download, FolderOpen, AlertTriangle, X } from '../components/icons'
 import { ExportController, ExportItem, ExportState } from './exportController'
@@ -56,11 +55,11 @@ function encoderLabel(name: string): string {
   return fmt(t.encoderDetected, { name: encoderName(name) })
 }
 
-function SettingsBody({ state, vm, project, items, sourceCount, on }: ExportDrawerViewProps): JSX.Element {
+function SettingsBody({ state, vm, project, sourceCount, on }: ExportDrawerViewProps): JSX.Element {
   const t = i18n.export
   const s = state.settings
   const total = totalDuration(project)
-  const estimate = estimateOutputBytes({ items }, vm.effectiveQuality)
+  const estimate = vm.estimatedBytes
   const low = state.disk ? diskIsLow(state.disk.freeBytes, estimate) : false
   const drive = s.outDir && /^[A-Za-z]:/.test(s.outDir) ? s.outDir.slice(0, 2) : (s.outDir ?? '')
   const encoderOptions = state.encoders.length > 0 ? state.encoders : ['libopenh264']
