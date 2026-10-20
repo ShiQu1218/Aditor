@@ -112,7 +112,7 @@ interface MatchCut {
   liveTrusted: boolean
 }
 
-interface MatchMarker { cuts: MatchCut[] }
+interface MatchMarker { cuts: MatchCut[]; skipped?: number[] }
 
 interface MatchCutOptions {
   finishing?: boolean
@@ -190,7 +190,7 @@ async function remuxMatch(dir: string, deps: RecordingDeps, config: SessionSnaps
     const cut: MatchCut = { index, ...match, firstSeq: entries[0].seq, lastSeq: entries.at(-1)!.seq,
       outputPath: output, analysisQueued: false, liveCached: false, liveTrusted: false }
     // Persist the marker before renaming so recovery can reuse the temporary file without leaving an unregistered final video.
-    await writeJson(path.join(dir, 'matches.json'), { cuts: [...marker.cuts, cut] })
+    await writeJson(path.join(dir, 'matches.json'), { ...marker, cuts: [...marker.cuts, cut] })
     marker.cuts.push(cut)
     recorded = true
     await fs.promises.rename(part, output)
@@ -285,7 +285,9 @@ export async function cutMatches(dir: string, deps: RecordingDeps, options: Matc
     await writeJson(path.join(dir, 'live.json'), { ...live, matches })
   }
   const marker = await readOptional<MatchMarker>(path.join(dir, 'matches.json')) ?? { cuts: [] }
-  if (!Array.isArray(marker.cuts)) throw new Error(tr('逐局剪檔紀錄無效'))
+  if (!Array.isArray(marker.cuts) || (marker.skipped !== undefined && !Array.isArray(marker.skipped))) {
+    throw new Error(tr('逐局剪檔紀錄無效'))
+  }
   await resumeMatchPart(dir, marker)
   const trusted = finishing && !!live && isTrusted(live)
   for (const cut of marker.cuts) {
@@ -297,12 +299,19 @@ export async function cutMatches(dir: string, deps: RecordingDeps, options: Matc
   }
   const outputs: string[] = []
   for (const [index, match] of matches.entries()) {
-    if (marker.cuts.some((cut) => cut.index === index) || (!finishing && options.failed?.has(index))) continue
+    if (marker.cuts.some((cut) => cut.index === index) || marker.skipped?.includes(index) ||
+        (!finishing && options.failed?.has(index))) continue
     const end = match.end
     if (end === null || (!finishing && !entries.some((entry) => entry.pts >= end + MATCH_POST_PAD_SEC))) continue
     const { present: range, missing } = await presentEntries(dir, selectMatchEntries(entries, match.start, end))
     if (!range.length) {
-      cutError(index, new Error(tr('對局範圍沒有錄影片段，已保留工作')), options)
+      if (finishing && missing > 0) {
+        marker.skipped = [...(marker.skipped ?? []), index]
+        await writeJson(path.join(dir, 'matches.json'), marker)
+        deps.notify('warning', tr('第 {index} 局的錄影片段檔案全部遺失，已略過此局', { index: index + 1 }))
+      } else {
+        cutError(index, new Error(tr('對局範圍沒有錄影片段，已保留工作')), options)
+      }
       continue
     }
     try {
@@ -396,8 +405,11 @@ export async function finalizeSession(dir: string, deps: RecordingDeps): Promise
       const live = await readOptional<LiveFile>(path.join(dir, 'live.json'))
       const outputs = await cutMatches(dir, deps, { finishing: true })
       const matches = await readOptional<MatchMarker>(path.join(dir, 'matches.json'))
-      if (liveMatches(live).length && !matches?.cuts.length) throw new Error(tr('對局沒有可剪出的片段，已保留工作'))
-      if (liveMatches(live).length && matches?.cuts.length) {
+      const detected = liveMatches(live)
+      if (detected.length) {
+        if (!matches?.cuts.length && !detected.every((_, index) => matches?.skipped?.includes(index))) {
+          throw new Error(tr('對局沒有可剪出的片段，已保留工作'))
+        }
         await fs.promises.rm(dir, { recursive: true })
         return outputs
       }

@@ -470,12 +470,116 @@ it('skips a missing clipping segment, outputs the rest of the match, and warns a
   expect(fs.existsSync(r.dir)).toBe(false)
 })
 
-it('reports a clear failure and preserves the session when every segment of a match is missing', async () => {
+it('skips a match with all segment files missing, warns once, and finalizes the next match', async () => {
   const r = rig()
+  r.deps.notify = vi.fn()
   for (const entry of entries.slice(2, 12)) fs.unlinkSync(path.join(r.dir, `seg_${String(entry.seq).padStart(6, '0')}.m4s`))
-  await expect(finalizeSession(r.dir, r.deps)).rejects.toThrow('沒有錄影片段')
+  const outputs = await finalizeSession(r.dir, r.deps)
+  expect(outputs).toHaveLength(1)
+  expect(remux.inputs).toEqual(['初始化|' + entries.slice(32, 43).map((e) => `${e.pts}|`).join('')])
+  expect(r.deps.addToLibrary).toHaveBeenCalledOnce()
+  expect(r.deps.addToLibrary).toHaveBeenCalledWith(outputs)
+  expect(r.deps.notify).toHaveBeenCalledOnce()
+  expect(r.deps.notify).toHaveBeenCalledWith('warning', '第 1 局的錄影片段檔案全部遺失，已略過此局')
+  expect(fs.existsSync(r.dir)).toBe(false)
+})
+
+it('removes the session without output when all matches have all segment files missing', async () => {
+  const r = rig()
+  r.deps.notify = vi.fn()
+  for (const match of matches) {
+    for (const entry of selectMatchEntries(entries, match.start, match.end)) {
+      fs.unlinkSync(path.join(r.dir, `seg_${String(entry.seq).padStart(6, '0')}.m4s`))
+    }
+  }
+  expect(await finalizeSession(r.dir, r.deps)).toEqual([])
+  expect(remux.inputs).toEqual([])
+  expect(r.deps.addToLibrary).not.toHaveBeenCalled()
+  expect(r.deps.notify).toHaveBeenCalledTimes(2)
+  for (const index of [1, 2]) {
+    expect(r.deps.notify).toHaveBeenCalledWith('warning', `第 ${index} 局的錄影片段檔案全部遺失，已略過此局`)
+  }
+  expect(fs.existsSync(r.dir)).toBe(false)
+})
+
+it('keeps the recording-time error path for missing segments and retries at finalization', async () => {
+  const r = rig()
+  r.deps.notify = vi.fn()
+  for (const entry of entries.slice(2, 12)) fs.unlinkSync(path.join(r.dir, `seg_${String(entry.seq).padStart(6, '0')}.m4s`))
+  const onError = vi.fn()
+  const failed = new Set<number>()
+  expect(await cutMatches(r.dir, r.deps, { onError, failed })).toHaveLength(1)
+  expect(onError).toHaveBeenCalledOnce()
+  expect(onError).toHaveBeenCalledWith(expect.objectContaining({ message: '對局範圍沒有錄影片段，已保留工作' }))
+  expect(failed).toEqual(new Set([0]))
+  expect(r.deps.notify).not.toHaveBeenCalled()
+  expect(fs.existsSync(r.dir)).toBe(true)
+  expect(await finalizeSession(r.dir, r.deps)).toEqual([])
+  expect(r.deps.notify).toHaveBeenCalledOnce()
+  expect(r.deps.notify).toHaveBeenCalledWith('warning', '第 1 局的錄影片段檔案全部遺失，已略過此局')
+  expect(remux.inputs).toHaveLength(1)
+  expect(fs.existsSync(r.dir)).toBe(false)
+})
+
+it('preserves the session on ffmpeg failure and does not retry or re-warn a skipped match', async () => {
+  const r = rig()
+  r.deps.notify = vi.fn()
+  for (const entry of entries.slice(2, 12)) fs.unlinkSync(path.join(r.dir, `seg_${String(entry.seq).padStart(6, '0')}.m4s`))
+  remux.fail = true
+  await expect(finalizeSession(r.dir, r.deps)).rejects.toThrow('串接失敗')
+  expect(fs.existsSync(r.dir)).toBe(true)
+  expect(r.deps.addToLibrary).not.toHaveBeenCalled()
+  remux.fail = false
+  expect(await finalizeSession(r.dir, r.deps)).toHaveLength(1)
+  expect(r.deps.notify).toHaveBeenCalledOnce()
+  expect(r.deps.notify).toHaveBeenCalledWith('warning', '第 1 局的錄影片段檔案全部遺失，已略過此局')
+  expect(remux.inputs).toHaveLength(2)
+  expect(fs.existsSync(r.dir)).toBe(false)
+})
+
+it('keeps skipped matches recorded when a later cut is interrupted after marker write', async () => {
+  const r = rig()
+  r.deps.notify = vi.fn()
+  for (const entry of entries.slice(2, 12)) fs.unlinkSync(path.join(r.dir, `seg_${String(entry.seq).padStart(6, '0')}.m4s`))
+  const rename = fs.promises.rename.bind(fs.promises)
+  const spy = vi.spyOn(fs.promises, 'rename').mockImplementation(async (from, to) => {
+    if (String(from).endsWith('.part.mp4')) throw new Error('interrupted rename')
+    await rename(from, to)
+  })
+  await expect(finalizeSession(r.dir, r.deps)).rejects.toThrow('interrupted rename')
+  expect(fs.existsSync(r.dir)).toBe(true)
+  spy.mockRestore()
+  expect(await finalizeSession(r.dir, r.deps)).toEqual([])
+  expect(r.deps.notify).toHaveBeenCalledOnce()
+  expect(r.deps.addToLibrary).toHaveBeenCalledOnce()
+  expect(remux.inputs).toHaveLength(1)
+  expect(fs.existsSync(r.dir)).toBe(false)
+})
+
+it.each(['empty range', 'non-regular segment', 'marker write failure'])('preserves the session for %s rather than skipping the match', async (failure) => {
+  const r = rig()
+  r.deps.notify = vi.fn()
+  let message: string
+  if (failure === 'empty range') {
+    r.saveLive({ ...r.live, matches: [{ start: 120, end: 130 }] })
+    message = '沒有錄影片段'
+  } else if (failure === 'non-regular segment') {
+    fs.unlinkSync(path.join(r.dir, 'seg_000003.m4s'))
+    fs.mkdirSync(path.join(r.dir, 'seg_000003.m4s'))
+    message = '不是一般檔案'
+  } else {
+    for (const entry of entries.slice(2, 12)) fs.unlinkSync(path.join(r.dir, `seg_${String(entry.seq).padStart(6, '0')}.m4s`))
+    const rename = fs.promises.rename.bind(fs.promises)
+    vi.spyOn(fs.promises, 'rename').mockImplementation(async (from, to) => {
+      if (String(to).endsWith('matches.json')) throw new Error('marker write failure')
+      await rename(from, to)
+    })
+    message = 'marker write failure'
+  }
+  await expect(finalizeSession(r.dir, r.deps)).rejects.toThrow(message)
   expect(fs.existsSync(r.dir)).toBe(true)
   expect(remux.inputs).toEqual([])
+  expect(r.deps.notify).not.toHaveBeenCalled()
 })
 
 it.each([{ backend: 'builtin', mode: 'session' }, { backend: 'obs', mode: 'match' }])('Do not queue pruning for other modes: %j', async ({ backend, mode }) => {
