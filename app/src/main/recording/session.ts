@@ -10,6 +10,7 @@ import { isSafeLocalDirPath } from '../safe-path'
 import { ApexWatcher, findApexPid } from './apex-watcher'
 import { AditorrecClient, RecorderError, type RecorderEvent } from './aditorrec-client'
 import { diskFreeBytes, diskLevel } from './disk'
+import { probeStorageKind } from './storage-location'
 import { MATCH_POST_PAD_SEC, cutMatches, finalizeSession, validateSessionDir, writeJson } from './finalize'
 import { recoverSessions } from './recovery'
 import { LiveSession } from './live-session'
@@ -93,6 +94,8 @@ export class RecordingSessionService implements RecordingService {
   /** Time when the current PID was first confirmed. */
   private pidSeenAt = 0
   private startDelayTimer: ReturnType<typeof setTimeout> | null = null
+  /** Output folders already checked for cloud or network storage during this run. */
+  private storageChecked = new Set<string>()
 
   constructor(private deps: RecordingDeps) {
     this.watcher = new ApexWatcher(deps.findApexPid ?? findApexPid, deps.pollMs ?? 3000,
@@ -359,6 +362,7 @@ export class RecordingSessionService implements RecordingService {
       await fs.promises.mkdir(outputDir, { recursive: true })
       const free = await diskFreeBytes(outputDir)
       this.update({ diskFreeBytes: free })
+      this.warnStorage(outputDir)
       if (diskLevel(free, settings) === 'stop') throw new RecorderError('disk_full', tr('磁碟剩餘空間低於停止門檻，無法開始錄影'))
       const frames = await readFrames(this.deps.profileDir)
       const id = sessionId()
@@ -706,6 +710,16 @@ export class RecordingSessionService implements RecordingService {
   private notice(kind: RecordingNoticeKind, message: string): void {
     this.log(`notice ${kind}: ${message}`)
     this.deps.notify(kind, message)
+  }
+  /** Warn once per folder without delaying capture; sync clients and network drives can move or delay segments and break live playback. */
+  private warnStorage(dir: string): void {
+    const key = path.resolve(dir).toLowerCase()
+    if (this.storageChecked.has(key)) return
+    this.storageChecked.add(key)
+    void (this.deps.probeStorage ?? probeStorageKind)(dir).then((kind) => {
+      if (kind === 'cloud') this.notice('warning', tr('錄影資料夾位於雲端同步資料夾（{dir}），同步程式可能移動或鎖定錄影段落，導致即時預覽失效或影片遺失，建議改用未同步的本機資料夾', { dir }))
+      else if (kind === 'network') this.notice('warning', tr('錄影資料夾位於網路磁碟（{dir}），寫入延遲或連線中斷可能導致即時預覽失效或影片遺失，建議改用本機磁碟', { dir }))
+    }, (error) => this.log(`storage probe failed: ${String(error)}`))
   }
   private log(message: string): void {
     try { this.deps.log?.(message) } catch { /* A diagnostic logging failure must not affect recording. */ }

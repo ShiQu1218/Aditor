@@ -205,8 +205,37 @@ async function remuxMatch(dir: string, deps: RecordingDeps, config: SessionSnaps
   }
 }
 
+function segmentPath(dir: string, seq: number): string {
+  return path.join(dir, `seg_${String(seq).padStart(6, '0')}.m4s`)
+}
+
 function segmentPaths(dir: string, entries: readonly IndexEntry[]): string[] {
-  return [path.join(dir, 'init.mp4'), ...entries.map((entry) => path.join(dir, `seg_${String(entry.seq).padStart(6, '0')}.m4s`))]
+  return [path.join(dir, 'init.mp4'), ...entries.map((entry) => segmentPath(dir, entry.seq))]
+}
+
+/** Drop indexed segments whose files are gone (for example removed by antivirus or a sync client) so the rest can still be output with a gap. */
+async function presentEntries(dir: string, entries: readonly IndexEntry[]): Promise<{ present: IndexEntry[]; missing: number }> {
+  const present: IndexEntry[] = []
+  for (const entry of entries) {
+    const file = segmentPath(dir, entry.seq)
+    let stat: fs.Stats
+    try { stat = await fs.promises.lstat(file) }
+    catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') continue
+      throw error
+    }
+    if (!stat.isFile() || stat.isSymbolicLink()) throw new Error(tr('錄影段落不是一般檔案：{file}', { file }))
+    present.push(entry)
+  }
+  return { present, missing: entries.length - present.length }
+}
+
+function reportMissing(deps: RecordingDeps, missing: number, output: string): void {
+  if (missing <= 0) return
+  const message = tr('有 {count} 個錄影段落檔案遺失（可能被防毒或同步程式移除），已略過缺少的部分並輸出：{output}',
+    { count: missing, output: path.basename(output) })
+  try { deps.log?.(`notice warning: ${message}`) } catch { /* Diagnostic logging must not affect finalization. */ }
+  deps.notify('warning', message)
 }
 
 async function completeCut(dir: string, deps: RecordingDeps, config: SessionSnapshot, marker: MatchMarker,
@@ -271,13 +300,14 @@ export async function cutMatches(dir: string, deps: RecordingDeps, options: Matc
     if (marker.cuts.some((cut) => cut.index === index) || (!finishing && options.failed?.has(index))) continue
     const end = match.end
     if (end === null || (!finishing && !entries.some((entry) => entry.pts >= end + MATCH_POST_PAD_SEC))) continue
-    const range = selectMatchEntries(entries, match.start, end)
+    const { present: range, missing } = await presentEntries(dir, selectMatchEntries(entries, match.start, end))
     if (!range.length) {
       cutError(index, new Error(tr('對局範圍沒有錄影片段，已保留工作')), options)
       continue
     }
     try {
       const cut = await remuxMatch(dir, deps, config, marker, index, { start: match.start, end }, range)
+      reportMissing(deps, missing, cut.outputPath)
       await completeCut(dir, deps, config, marker, cut, range, finishing, trusted)
       outputs.push(cut.outputPath)
       options.onCut?.(cut.outputPath)
@@ -379,16 +409,18 @@ export async function finalizeSession(dir: string, deps: RecordingDeps): Promise
       await fs.promises.rm(dir, { recursive: true })
       return []
     }
+    const { present, missing } = await presentEntries(dir, entries)
+    if (!present.length) throw new Error(tr('錄影段落檔案全部遺失，無法輸出影片，已保留工作'))
     const { output, part } = await reserveOutput(outputDir, outputBase(config.startedAt), config.startedAt)
     try {
-      await remux(deps.ffmpegPath, [path.join(dir, 'init.mp4'), ...entries.map(
-        (entry) => path.join(dir, `seg_${String(entry.seq).padStart(6, '0')}.m4s`))], part)
+      await remux(deps.ffmpegPath, segmentPaths(dir, present), part)
       await fs.promises.access(output).then(() => {
         throw new Error(tr('輸出影片已存在：{output}', { output }))
       }, (error: NodeJS.ErrnoException) => { if (error.code !== 'ENOENT') throw error })
       await fs.promises.rename(part, output)
       marker = { outputPath: output, postAnalysis: config.postAnalysis, analysisQueued: false }
       await writeJson(markerPath, marker)
+      reportMissing(deps, missing, output)
     } catch (error) {
       await fs.promises.unlink(part).catch(() => {})
       throw error
@@ -404,7 +436,9 @@ export async function finalizeSession(dir: string, deps: RecordingDeps): Promise
   if (!marker.liveCached) {
       // Live events are best-effort: conversion failure does not block finalization; full or manual analysis can fill them in later.
     try {
-      const summary = await writeLiveCache(dir, marker.outputPath, deps)
+      // Align the cache with the first segment actually in the output when leading segments went missing; use the full index if no segment files remain.
+      const { present } = await presentEntries(dir, await readIndex(dir))
+      const summary = await writeLiveCache(dir, marker.outputPath, deps, present.length ? present : undefined)
       if (summary) deps.onLiveAnalysis?.(marker.outputPath, summary)
       // Live results are equivalent to offline analysis, so do not enqueue a full analysis (the user can still reanalyze manually).
       if (summary?.trusted) marker.liveTrusted = true

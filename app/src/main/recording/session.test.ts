@@ -44,6 +44,28 @@ afterEach(async () => {
 })
 
 describe('recording service state machine', () => {
+  it.each([['cloud', '雲端同步'], ['network', '網路磁碟']] as const)('warns once per output folder when recording to %s storage', async (kind, text) => {
+    const value = rig()
+    value.deps.probeStorage = vi.fn(async () => kind)
+    value.service.start()
+    await waitFor(() => vi.mocked(value.deps.notify).mock.calls.some(([level, message]) => level === 'warning' && message.includes(text)))
+    await waitFor(() => value.service.status().segments === 2)
+    value.pid = null
+    await waitFor(() => value.service.status().phase === 'idle')
+    value.pid = 5678
+    await waitFor(() => commands(value, 'start').length === 2)
+    expect(value.deps.probeStorage).toHaveBeenCalledOnce()
+    expect(vi.mocked(value.deps.notify).mock.calls.filter(([, message]) => message.includes(text))).toHaveLength(1)
+  })
+
+  it('keeps recording when the storage probe fails', async () => {
+    const value = rig()
+    value.deps.probeStorage = vi.fn(async () => { throw new Error('probe failed') })
+    value.service.start()
+    await waitFor(() => value.service.status().segments === 2)
+    expect(value.service.status().phase).toBe('recording')
+  })
+
   it('automatically starts and stops, passes ROI and media settings, tracks segments and dropped frames, and returns immutable snapshots', async () => {
     const value = rig()
     value.settings.height = 1080; value.settings.micEnabled = false; value.settings.micGain = 0.4
