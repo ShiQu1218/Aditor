@@ -36,7 +36,7 @@
 
 建議拆檔：`apex-watcher.ts`（程序偵測）、`aditorrec-client.ts`（子程序＋JSON-lines）、`session.ts`（狀態機）、`finalize.ts`（串接）、`recovery.ts`（補收尾）、`disk.ts`。
 
-1. **Apex 偵測**：預設 `findApexPid` 每 3 秒執行 `tasklist /FI "IMAGENAME eq r5apex*" /FO CSV /NH`（`windowsHide`），解析出第一個 `r5apex.exe` 或 `r5apex_dx12.exe` 的 PID。連續 2 次看到才算啟動、連續 2 次沒看到才算關閉（防抖）。
+1. **Apex 偵測**：預設 `findApexPid` 每 3 秒執行 `tasklist /FI "IMAGENAME eq r5apex*" /FO CSV /NH`（`windowsHide`），解析出第一個 `r5apex.exe` 或 `r5apex_dx12.exe` 的 PID。每次啟動偵測後首次成功輪詢立即回報；後續 PID 變更（含啟動、關閉及 PID 替換）需連續 2 次成功輪詢得到相同新值才確認（防抖）。查詢失敗不計次，也不清除待確認值。
 2. **aditorrec client**：spawn `recorderCommand`（stdio pipe、`windowsHide`），逐行解析 stdout；`hello` 握手（逾時 10 秒）；請求以遞增 `id` 對應回覆；事件（無 `id`）轉給狀態機；stderr 保留最後 64 KB 供錯誤訊息。程序異常結束 → 狀態機處理。
 3. **開始**：Apex 確認啟動、`autoRecord` 為真、未暫停 → `phase: starting`。錄影資料夾 = `outputDir` ?? 第一個監看資料夾 ?? `deps.defaultOutputDir`（不存在就建立）。`recording/` 內不要 import electron。建立 `<錄影資料夾>/.sessions/<sessionId>`（`YYYYMMDD-HHMMSS-xxxx`），讀 profile 的 `banner_roi`／`spec_roi`，送 `start`（`encode` 依設定；`height: 0` 表原生；`audio` 依 `micEnabled`／`micGain`／裝置）。收到 `started` → `phase: recording`。
 4. **錄影中**：`segment` 事件更新 `segments`／`durationSec`；`stats` 更新 `droppedFrames`；`window_lost`／`window_found` 只記錄。每 30 秒用 `fs.promises.statfs` 查錄影資料夾所在磁碟：< `diskWarnGb` 通知一次（`diskWarn`）；< `diskStopGb` 主動 stop 並收尾，通知 `error`。

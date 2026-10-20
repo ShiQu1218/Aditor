@@ -94,6 +94,23 @@ describe('recording service state machine', () => {
     expect(fs.existsSync(start.session_dir)).toBe(false)
   })
 
+  it('keeps the same recording through a transient null and stops after confirmed absence', async () => {
+    const value = rig()
+    value.service.start()
+    await waitFor(() => value.service.status().segments === 2)
+    const sessionId = value.service.status().sessionId
+    const find = vi.mocked(value.deps.findApexPid!)
+    const polls = find.mock.calls.length
+    find.mockResolvedValueOnce(null)
+    await waitFor(() => find.mock.calls.length >= polls + 3)
+    expect(value.service.status()).toMatchObject({ phase: 'recording', sessionId })
+    expect(commands(value, 'start')).toHaveLength(1)
+    expect(commands(value, 'stop')).toHaveLength(0)
+    value.pid = null
+    await waitFor(() => value.service.status().phase === 'idle')
+    expect(commands(value, 'stop')).toHaveLength(1)
+  })
+
   it.each(['fit', 'stretch'] as const)('Pass all new video settings to start: %s', async (aspectMode) => {
     const value = rig()
     Object.assign(value.settings, { fps: 20, preset: 'quality', forceAspect: true, aspectMode,
