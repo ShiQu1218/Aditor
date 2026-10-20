@@ -10,6 +10,7 @@
     "build": "electron-vite build",
     "package": "electron-builder",
     "test": "vitest run",
+    "test:fast": "vitest run --exclude \"**/*.real.test.ts\" --exclude \"**/*-real.test.ts\"",
     "typecheck": "tsc --noEmit",
     "bench": "vitest bench --run",
     "test:e2e": "electron-vite build && playwright test -c e2e/playwright.config.ts"

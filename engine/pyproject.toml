@@ -20,3 +20,4 @@ include = ["aditor*"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 timeout = 120
+markers = ["slow: long-running tests against real recordings; excluded from the fast test tier"]

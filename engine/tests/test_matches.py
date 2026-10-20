@@ -447,6 +447,7 @@ def test_real_scene_decoder_time_grid(tmp_path, offset, vfr):
     assert [t for t, frame in frames if frame.mean() > 220][0] == 1
 
 
+@pytest.mark.slow
 @pytest.mark.timeout(300)
 @pytest.mark.parametrize("name", list(TRUTH))
 def test_recording_acceptance(name):
