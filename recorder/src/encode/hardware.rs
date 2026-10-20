@@ -401,6 +401,17 @@ mod settings_tests {
     use crate::types::{EncodeAspect, EncodePreset};
 
     #[test]
+    fn bundled_ffmpeg_accepts_forced_idr_for_all_amf_codecs() {
+        // Allocating a context and setting AVOptions does not require an AMD GPU.
+        for name in [c"h264_amf", c"hevc_amf", c"av1_amf"] {
+            let encoder = Encoder::allocate(name).unwrap();
+            encoder.option(c"forced_idr", c"1").unwrap_or_else(|error| {
+                panic!("{} must accept forced_idr: {error}", name.to_string_lossy())
+            });
+        }
+    }
+
+    #[test]
     fn presets_match_each_hardware_family() {
         for (preset, nvenc, amf, qsv) in [
             (EncodePreset::Speed, c"p1", c"speed", c"veryfast"),
