@@ -8,6 +8,7 @@ import fs from 'fs'
 import path from 'path'
 import { EventEmitter } from 'events'
 import { isCounted } from '../../shared/types'
+import { DEFAULT_GAME, type GameId } from '../../shared/games'
 import type { LiveEvent, LiveMatch, LiveSegment, LiveState, LiveUpdate } from '../../shared/recording'
 import { LiveEngine, type LiveMatchEvent, type LiveSnapshot, type LiveSpec } from './live-engine'
 import { pruneSegments } from './prune'
@@ -40,10 +41,10 @@ export function applyMatchEvent(matches: LiveMatch[], event: LiveMatchEvent): Li
   return matches
 }
 
-/** Count this match's knocks and kills (not assists or squad wipes); count the full recording when match data is unavailable. */
+/** Count this match's knocks and kills (Valorant kills too; not assists, squad wipes or deaths); count the full recording when match data is unavailable. */
 export function countKills(events: LiveEvent[], matches: LiveMatch[]): number {
   const last = matches.at(-1)
-  return events.filter((e) => (e.type === 'knock' || e.type === 'elim') && isCounted(e) &&
+  return events.filter((e) => (e.type === 'knock' || e.type === 'elim' || e.type === 'kill') && isCounted(e) &&
     (!last || (e.t >= last.start && (last.end === null || e.t <= last.end)))).length
 }
 
@@ -62,8 +63,10 @@ export interface LiveSessionOptions {
   command?: RecorderCommand
   profileDir: string
   sceneDir?: string
-  /** Game render resolution (`WxH`) from the Apex config, passed as `--aspect` so detection follows the HUD layout. */
+  /** Game render resolution (`WxH`) from the game config, passed as `--aspect` so detection follows the HUD layout. */
   aspect?: string | null
+  /** Passed as `--game` for games other than the engine default (Apex). */
+  game?: GameId
   restartBaseMs?: number
   /** Write one line to events.jsonl (through the session write queue). */
   recordEvent: (event: Record<string, unknown> & { ev: string }) => void
@@ -87,6 +90,10 @@ export class LiveSession extends EventEmitter {
   private failed = false
   private pruned = false
   private restartedAt = -Infinity
+  /** Wall time (ms) when aditorrec reported capture started; recording time 0 is about then. */
+  private capturedAt: number | null = null
+  /** The game client's last match boundary before capture started; an open match is replayed at time 0. */
+  private earlyClientMatch: 'match_start' | 'match_end' | null = null
 
   constructor(private options: LiveSessionOptions) { super() }
 
@@ -96,6 +103,9 @@ export class LiveSession extends EventEmitter {
   startEngine(shm: string, width: number, height: number): void {
     this.width = width
     this.height = height
+    this.capturedAt = Date.now()
+    if (this.earlyClientMatch === 'match_start') this.clientMatch('match_start', this.capturedAt)
+    this.earlyClientMatch = null
     const { command } = this.options
     if (!command || this.engine) return
     if (path.isAbsolute(command.command) && !fs.existsSync(command.command)) {
@@ -105,6 +115,7 @@ export class LiveSession extends EventEmitter {
     const args = ['--shm', shm, '--profile-dir', this.options.profileDir]
     if (this.options.sceneDir) args.push('--scene-dir', this.options.sceneDir)
     if (this.options.aspect) args.push('--aspect', this.options.aspect)
+    if (this.options.game && this.options.game !== DEFAULT_GAME) args.push('--game', this.options.game)
     const engine = new LiveEngine({ command, args, restartBaseMs: this.options.restartBaseMs })
     this.engine = engine
     this.listen(engine)
@@ -206,6 +217,15 @@ export class LiveSession extends EventEmitter {
     this.emit('stats')
   }
 
+  /** Match boundaries from the game client (Valorant's Riot Client), at wall time `at` (ms). */
+  clientMatch(ev: 'match_start' | 'match_end', at: number): void {
+    if (this.capturedAt === null) {
+      this.earlyClientMatch = ev
+      return
+    }
+    this.onMatch({ ev, t: Math.max(0, (at - this.capturedAt) / 1000), reason: 'game_client' })
+  }
+
   private onMatch(event: LiveMatchEvent): void {
     const originalT = event.t
     const retainedFrom = this.retainedFrom()
@@ -242,6 +262,7 @@ export class LiveSession extends EventEmitter {
       await writeJson(path.join(this.options.dir, LIVE_FILE), {
         version: 1, engine_version: this.engine?.engineVersion() ?? null,
         t: this.snapshot.t, events: this.snapshot.events, spectating: this.snapshot.spectating as LiveSpec[],
+        ...(this.snapshot.rounds ? { rounds: this.snapshot.rounds } : {}),
         matches: this.matches, retained_from: this.retainedFrom(),
         width: this.width, height: this.height, quality: this.engine?.quality() ?? null
       })

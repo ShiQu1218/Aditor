@@ -13,6 +13,14 @@ describe('Library', () => {
     lib = new Library(tmpFile)
   })
 
+  it('keeps the recorded game, also for a file a folder watcher imported first', () => {
+    lib.add(['D:/Videos/obs.mp4'], 'recording', 'valorant')
+    lib.add(['D:/Videos/watched.mp4'])
+    lib.add(['D:/Videos/watched.mp4'], 'recording', 'valorant')
+    expect(lib.get('D:/Videos/obs.mp4')?.game).toBe('valorant')
+    expect(lib.get('D:/Videos/watched.mp4')?.game).toBe('valorant')
+  })
+
   it('add dedupes by normalized path and filters extensions', () => {
     const p1 = 'D:\\Videos\\match1.MP4'
     const p1_lower = 'd:/videos/match1.mp4'

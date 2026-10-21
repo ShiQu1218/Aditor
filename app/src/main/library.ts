@@ -1,7 +1,8 @@
 import fs from 'fs'
 import path from 'path'
 import chokidar, { FSWatcher } from 'chokidar'
-import { EventType } from '../shared/types'
+import { EventType, type EventCounts } from '../shared/types'
+import type { GameId } from '../shared/games'
 
 export type LibraryStatus = 'pending' | 'analyzing' | 'done' | 'error'
 
@@ -14,7 +15,11 @@ export interface LibraryEntry {
   status: LibraryStatus
   progress: number
   error?: string
-  counts?: { knock: number; assist: number }
+  /** Machine-readable failure reason: unknown_game means the user has to choose the game (sets `game`). */
+  errorCode?: 'unknown_game'
+  counts?: EventCounts
+  /** Absent for entries analyzed before multi-game support (Apex). */
+  game?: GameId
   durationSec?: number
   thumb?: string
   /** Number of highlight clips available with default parameters (Task 11 lazy write, used by card badges and the "has highlights" filter). */
@@ -137,7 +142,7 @@ export class Library {
     return n
   }
 
-  add(paths: string[], source: 'recording' | 'external' = 'external'): LibraryEntry[] {
+  add(paths: string[], source: 'recording' | 'external' = 'external', game?: GameId): LibraryEntry[] {
     const existing = new Set(this.entries.map((e) => normalizePath(e.path)))
     const added: LibraryEntry[] = []
     let changed = false
@@ -155,6 +160,10 @@ export class Library {
           entry.source = source
           changed = true
         }
+        if (game && !entry.game) {
+          entry.game = game
+          changed = true
+        }
         continue
       }
       existing.add(norm)
@@ -164,7 +173,8 @@ export class Library {
         addedAt: Date.now(),
         favorite: false,
         status: 'pending',
-        progress: 0
+        progress: 0,
+        ...(game ? { game } : {})
       }
       this.entries.push(entry)
       added.push(entry)

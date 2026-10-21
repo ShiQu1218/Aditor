@@ -78,7 +78,7 @@ def test_ipc_busy_and_cancel(tmp_path, knock_banner_png):
     v = make_video(tmp_path, "long.mp4", 240, overlay=(knock_banner_png, [(120.0, 130.0)]))
     p = Proc()
     p.get()
-    args = {"path": str(v), "profile_dir": str(ICON_DIR), "cache_dir": str(tmp_path / "c")}
+    args = {"path": str(v), "profile_dir": str(ICON_DIR), "cache_dir": str(tmp_path / "c"), "game": "apex"}
     p.send({"id": "a", "cmd": "analyze", "args": args})
     p.send({"id": "b", "cmd": "analyze", "args": args})
     busy = p.until(lambda m: m.get("id") == "b")
@@ -96,7 +96,7 @@ def test_ipc_analyze_result(tmp_path):
     p = Proc()
     p.get()
     p.send({"id": "a", "cmd": "analyze", "args": {"path": str(v), "profile_dir": str(ICON_DIR),
-                                                   "cache_dir": str(tmp_path / "c")}})
+                                                   "cache_dir": str(tmp_path / "c"), "game": "apex"}})
     end = p.until(lambda m: m.get("id") == "a" and m["type"] in ("error", "result"))
     assert end["type"] == "result" and end["data"]["analysis"]["status"] == "done"
     assert Path(end["data"]["cache_path"]).exists()
@@ -125,7 +125,7 @@ def test_ipc_no_false_busy_after_terminal_line(tmp_path):
     v = make_video(tmp_path, "s.mp4", 3)
     p = Proc()
     p.get()
-    args = {"path": str(v), "profile_dir": str(ICON_DIR), "cache_dir": str(tmp_path / "c"), "force": True}
+    args = {"path": str(v), "profile_dir": str(ICON_DIR), "cache_dir": str(tmp_path / "c"), "force": True, "game": "apex"}
     for i in range(3):
         rid = f"a{i}"
         p.send({"id": rid, "cmd": "analyze", "args": args})
@@ -153,7 +153,7 @@ def test_ipc_analyze_game_aspect(tmp_path):
     v = make_video(tmp_path, "s.mp4", 2, game_aspect="1920x1440")
     p = Proc()
     p.get()
-    base = {"path": str(v), "profile_dir": str(ICON_DIR), "cache_dir": str(tmp_path / "c")}
+    base = {"path": str(v), "profile_dir": str(ICON_DIR), "cache_dir": str(tmp_path / "c"), "game": "apex"}
     p.send({"id": "tag", "cmd": "analyze", "args": base})
     end = p.until(lambda m: m.get("id") == "tag" and m["type"] in ("error", "result"))
     assert end["type"] == "result" and end["data"]["analysis"]["aspect_squash"] == 0.75

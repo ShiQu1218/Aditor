@@ -9,7 +9,8 @@
  */
 import fs from 'fs'
 import path from 'path'
-import { isCounted, type EngineEvent } from '../../shared/types'
+import { countEvents, type EngineEvent } from '../../shared/types'
+import { DEFAULT_GAME, gameOf, gameProfileDir, type GameId } from '../../shared/games'
 import { readIndex, type IndexEntry } from './finalize'
 import { LIVE_FILE } from './live-session'
 import { codecName, initCodecs } from './mp4-codec'
@@ -20,6 +21,8 @@ export interface LiveFile {
   events?: unknown
   spectating?: unknown
   matches?: unknown
+  /** Valorant rounds from the scoreboard (recording time). */
+  rounds?: unknown
   /** Earliest retained segment PTS after pruning; excludes deleted pre-pad from match cuts. */
   retained_from?: unknown
   width?: unknown
@@ -39,20 +42,13 @@ export function isTrusted(live: LiveFile): boolean {
 const finite = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v)
 
 export function liveCounts(events: EngineEvent[]): LiveAnalysisSummary['counts'] {
-  let knock = 0
-  let assist = 0
-  for (const e of events) {
-    if (!isCounted(e)) continue
-    if (e.type === 'knock') knock++
-    else if (e.type === 'assist_knock' || e.type === 'assist_elim') assist++
-  }
-  return { knock, assist }
+  return countEvents(events)
 }
 
 /** Build the cache document from live.json, shifting time to the output video (first segment = 0) and keeping only in-range events. */
 export function buildLiveCacheDoc(live: LiveFile, video: {
   path: string; size: number; mtime: number; duration: number; width: number; height: number; codec: string
-}, offset: number, templatesVersion: string, cachePath: string): Record<string, unknown> & { events: EngineEvent[] } {
+}, offset: number, templatesVersion: string, cachePath: string, game: GameId = DEFAULT_GAME): Record<string, unknown> & { events: EngineEvent[] } {
   const inRange = (t: number): boolean => t >= 0 && t <= video.duration
   const events = (Array.isArray(live.events) ? live.events : [])
     .filter((e): e is EngineEvent => !!e && typeof e === 'object' && typeof e.id === 'string' && finite(e.t) && typeof e.type === 'string')
@@ -68,6 +64,11 @@ export function buildLiveCacheDoc(live: LiveFile, video: {
       (m.end === null || (finite(m.end) && m.end >= m.start)))
     .filter((m) => m.start <= offset + video.duration && (m.end === null || m.end >= offset))
     .map((m) => ({ start: Math.max(0, m.start - offset), end: m.end === null ? null : Math.min(video.duration, m.end - offset) }))
+  const rounds = (Array.isArray(live.rounds) ? live.rounds : [])
+    .filter((r): r is { start: number; end: number; winner: string; ally: number; enemy: number } =>
+      !!r && finite(r.start) && finite(r.end) && r.end >= r.start && (r.winner === 'ally' || r.winner === 'enemy') && finite(r.ally) && finite(r.enemy))
+    .map((r) => ({ ...r, start: Math.max(0, r.start - offset), end: r.end - offset }))
+    .filter((r) => r.end > 0 && r.start < video.duration)
   const version = typeof live.engine_version === 'string' ? live.engine_version : 'unknown'
   const trusted = isTrusted(live)
   const quality = live.quality as { hScale?: unknown; aspectSquash?: unknown } | null | undefined
@@ -88,7 +89,10 @@ export function buildLiveCacheDoc(live: LiveFile, video: {
     clips: [],
     // Engine-unknown field; discarded when full analysis rewrites the cache.
     live: { matches },
-    cache_path: cachePath
+    cache_path: cachePath,
+    ...(rounds.length ? { rounds } : {}),
+    // Apex caches stay without the field, as before.
+    ...(game === DEFAULT_GAME ? {} : { game })
   }
 }
 
@@ -97,6 +101,12 @@ async function templatesVersion(profileDir: string): Promise<string> {
     const profile = JSON.parse(await fs.promises.readFile(path.join(profileDir, 'profile.json'), 'utf8'))
     return typeof profile.templates_version === 'string' ? profile.templates_version : ''
   } catch { return '' }
+}
+
+/** Game from the session's recording.json; sessions recorded before multi-game support are Apex. */
+async function recordedGame(dir: string): Promise<GameId> {
+  try { return gameOf(JSON.parse(await fs.promises.readFile(path.join(dir, 'recording.json'), 'utf8')).game) }
+  catch { return DEFAULT_GAME }
 }
 
 async function canWriteLiveCache(cachePath: string, overwriteLive: boolean): Promise<boolean> {
@@ -136,12 +146,13 @@ export async function writeLiveCache(dir: string, outputPath: string, deps: Reco
     try { codec = codecName(initCodecs(new Uint8Array(await fs.promises.readFile(path.join(dir, 'init.mp4'))))) }
     catch { /* Unknown codec; the engine will fill it in during full analysis. */ }
   }
+  const game = await recordedGame(dir)
   const stat = await fs.promises.stat(outputPath)
   const size = (v: unknown): number => (Number.isSafeInteger(v) && Number(v) > 0 ? Number(v) : 0)
   const doc = buildLiveCacheDoc(live, {
     path: outputPath, size: stat.size, mtime: stat.mtimeMs / 1000, duration,
     width: size(explicit?.width ?? live.width), height: size(explicit?.height ?? live.height), codec
-  }, offset, await templatesVersion(deps.profileDir), cachePath)
+  }, offset, await templatesVersion(gameProfileDir(deps.profileDir, game)), cachePath, game)
   await fs.promises.mkdir(path.dirname(cachePath), { recursive: true })
   // Full analysis uses .tmp; live cache uses a separate temporary file to avoid concurrent writes clobbering each other.
   const temp = `${cachePath}.live.tmp`
@@ -150,5 +161,5 @@ export async function writeLiveCache(dir: string, outputPath: string, deps: Reco
     if (!await canWriteLiveCache(cachePath, !!options.overwriteLive)) return null
     await fs.promises.rename(temp, cachePath)
   } finally { await fs.promises.unlink(temp).catch(() => {}) }
-  return { counts: liveCounts(doc.events), durationSec: duration, codec, trusted: isTrusted(live) }
+  return { counts: liveCounts(doc.events), durationSec: duration, codec, trusted: isTrusted(live), game }
 }

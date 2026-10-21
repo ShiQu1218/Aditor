@@ -10,6 +10,8 @@ interface AddEventDialogProps {
   time: number
   onCancel: () => void
   onConfirm: (t: EventType) => void
+  /** Types offered for this video's game (defaults to Apex's). */
+  types?: EventType[]
 }
 
 /** Whether Enter is handled by the window-level handler; buttons handle their own Enter (the cancel button must not confirm). */
@@ -18,8 +20,8 @@ export function enterConfirms(target: { tagName: string } | null): boolean {
 }
 
 /** Add-event dialog (M): shows the playhead time, Enter confirms, and Esc cancels. */
-export function AddEventDialog({ time, onCancel, onConfirm }: AddEventDialogProps): JSX.Element {
-  const [type, setType] = useState<EventType>('knock')
+export function AddEventDialog({ time, onCancel, onConfirm, types: offered = CHIP_TYPES }: AddEventDialogProps): JSX.Element {
+  const [type, setType] = useState<EventType>(offered[0])
   const boxRef = useRef<HTMLDivElement>(null)
 
   const titleId = useId()
@@ -55,7 +57,7 @@ export function AddEventDialog({ time, onCancel, onConfirm }: AddEventDialogProp
         <h3 id={titleId}>{t.title.replace('{time}', formatTime(time))}</h3>
         <fieldset className="add-event-types">
           <legend>{t.type}</legend>
-          {CHIP_TYPES.map((key) => (
+          {offered.map((key) => (
             <label key={key} className={`add-event-type chip-${key}`}>
               <input type="radio" name="addEventType" checked={type === key} onChange={() => setType(key)} />
               <span className="chip-dot" aria-hidden="true" />

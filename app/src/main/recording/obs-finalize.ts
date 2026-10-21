@@ -4,8 +4,8 @@ import { spawn } from 'child_process'
 import type { RecordingDeps } from './index'
 import type { ObsMatch, ObsMetadata } from './obs-session'
 import { ALLOWED_VIDEO_EXTS, isSafeLocalDirPath } from '../safe-path'
-import { MATCH_POST_PAD_SEC, MATCH_PRE_PAD_SEC, inOutputDir, liveMatches, outputBase, readOptional, reserveOutput,
-  resumeMatchPart, writeJson, type SessionSnapshot } from './finalize'
+import { addRecorded, MATCH_POST_PAD_SEC, MATCH_PRE_PAD_SEC, inOutputDir, liveMatches, outputBase, readOptional, reserveOutput,
+  resumeMatchPart, writeJson, gameMetadataArgs, type SessionSnapshot } from './finalize'
 import { isTrusted, writeLiveCache, type LiveCacheRange, type LiveFile } from './live-cache'
 import { createCutLookup, createMediaEndProbe } from '../export/keyframe'
 import { ObsClient } from './obs-client'
@@ -34,14 +34,13 @@ async function localFile(file: unknown): Promise<boolean> {
  * and the MP4 edit list hides the gap. Chromium playback can then drift by one keyframe interval,
  * so find the keyframe first and cut from there, as the export path does.
  */
-async function copyMatch(ffmpeg: string, source: string, part: string, start: number, end: number, gameAspect?: string | null): Promise<number> {
+async function copyMatch(ffmpeg: string, source: string, part: string, start: number, end: number, config: SessionSnapshot): Promise<number> {
   const cut = await createCutLookup(ffprobePath(ffmpeg))({ source, start, end })
   const aligned = cut && Number.isFinite(cut.keyframe) && cut.keyframe <= start && cut.keyframe >= 0 ? cut.keyframe : null
   const args = copyCutArgs({ source, start, end } as ProjectItem, cut, part)
     // Preserve all OBS audio tracks; move the MP4 index to the front for faster playback during download and faster studio opening.
     .map((arg) => (arg === '0:a:0?' ? '0:a?' : arg))
-  const metadata = gameAspect ? ['-metadata', `aditor_game_aspect=${gameAspect}`] : []
-  args.splice(args.lastIndexOf('-y'), 0, ...metadata, '-movflags', gameAspect ? '+faststart+use_metadata_tags' : '+faststart')
+  args.splice(args.lastIndexOf('-y'), 0, ...gameMetadataArgs(config))
   await new Promise<void>((resolve, reject) => {
     const proc = spawn(ffmpeg, ['-hide_banner', '-loglevel', 'error', ...args],
     { windowsHide: true, stdio: ['ignore', 'ignore', 'pipe'] })
@@ -116,11 +115,11 @@ export async function finalizeObsSession(dir: string, deps: RecordingDeps, confi
       const start = Math.max(0, match.start - offset - MATCH_PRE_PAD_SEC)
       const end = Math.min(duration, (match.end === null ? duration : match.end - offset) + MATCH_POST_PAD_SEC)
       if (end <= start) continue
-      const { output, part } = await reserveOutput(outputDir, outputBase(meta.recordStartedAt + start * 1000), meta.recordStartedAt + start * 1000)
+      const { output, part } = await reserveOutput(outputDir, outputBase(meta.recordStartedAt + start * 1000, config.game), meta.recordStartedAt + start * 1000)
       let recorded = false
       try {
         await writeJson(path.join(dir, 'match-part.json'), { output, part })
-        const actualStart = await copyMatch(deps.ffmpegPath, meta.outputPath, part, start, end, config.gameAspect)
+        const actualStart = await copyMatch(deps.ffmpegPath, meta.outputPath, part, start, end, config)
         if (fs.existsSync(output)) throw new Error(tr('逐局輸出路徑已存在'))
         // Limit the cache to the actual duration; stream-copy cuts land on a nearby keyframe.
         const cutDuration = await probe(part)
@@ -149,7 +148,7 @@ export async function finalizeObsSession(dir: string, deps: RecordingDeps, confi
   for (const cut of marker.cuts) {
     const original = cut.outputPath === meta.outputPath
     if ((!original && !inOutputDir(cut.outputPath, outputDir)) || !await localFile(cut.outputPath)) throw new Error(tr('OBS 收尾影片路徑無效'))
-    deps.addToLibrary([cut.outputPath])
+    addRecorded(deps, [cut.outputPath], config.game)
     if (!cut.liveCached) {
       try {
         const summary = await writeLiveCache(dir, cut.outputPath, deps, cut)
@@ -221,7 +220,7 @@ export async function finalizeObsMatches(dir: string, deps: RecordingDeps, confi
         ? deps.probeVideo(file) : { duration: await createMediaEndProbe(ffprobePath(deps.ffmpegPath))(file) }, deps.obsFileSettleMs ?? OBS_FILE_SETTLE_STEP_MS)
       if (!info.duration) throw new Error(tr('無法取得 OBS 影片長度'))
       if (!match.added) {
-        deps.addToLibrary([file])
+        addRecorded(deps, [file], config.game)
         match.added = true
         await persist()
         outputs.push(file)

@@ -15,6 +15,8 @@ from .models import AutoClipParams, Event, SpecInterval
 from .probe import ProbeError, probe
 from .layout import Layout, LayoutError, parse_aspect
 from .profile import ProfileError, load_profile
+from .game_detect import UnknownGame
+from .games import UnsupportedGame
 
 
 class BadRequest(Exception):
@@ -36,6 +38,10 @@ def _code(exc: Exception) -> str:
         return "bad_request"
     if isinstance(exc, Cancelled):
         return "cancelled"
+    if isinstance(exc, UnknownGame):
+        return "unknown_game"
+    if isinstance(exc, UnsupportedGame):
+        return "unsupported_game"
     return "internal"
 
 
@@ -177,7 +183,8 @@ class Server:
 
         return analyze(path, profile, cache_dir=cache_dir, beside=bool(args.get("beside", False)),
                        force=bool(args.get("force", False)), on_progress=progress, cancel=cancel,
-                       hwaccel=bool(args.get("hwaccel", True)), jobs=_jobs(args.get("jobs")), layout=layout)
+                       hwaccel=bool(args.get("hwaccel", True)), jobs=_jobs(args.get("jobs")), layout=layout,
+                       game=args.get("game"))
 
     def _derive(self, rid, args, cancel):
         try:

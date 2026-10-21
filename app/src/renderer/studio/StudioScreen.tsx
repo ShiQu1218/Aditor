@@ -51,7 +51,7 @@ import { StudioHeader } from './StudioHeader'
 import { SameDayVideos } from './SameDayVideos'
 import { StudioBlockedView, StudioLoadErrorView, StudioLoadingView } from './StudioStates'
 import { TransportBar } from './TransportBar'
-import { chipCounts, nearCount, toggleFilter } from './chips'
+import { chipCounts, nearCount, toggleFilter, chipTypesFor } from './chips'
 import { createMode, currentItem, reconcileMode, reduceMode } from './mode'
 import { NoticeAction, proxyBusyNotice, studioNotice, StudioNotice } from './notices'
 import { createAnnouncer } from './liveAnnouncer'
@@ -79,7 +79,7 @@ interface StudioScreenProps {
   preloadedDoc?: CacheDoc
 }
 
-const DEFAULT_FILTER = new Set<EventType>(['knock', 'assist_knock', 'assist_elim', 'elim', 'squad_wipe'])
+const DEFAULT_FILTER = new Set<EventType>(['knock', 'assist_knock', 'assist_elim', 'elim', 'squad_wipe', 'kill', 'death', 'multikill', 'ace'])
 const DEFAULT_PLAYABILITY: PlayabilityResult = { supported: true, smooth: true, powerEfficient: true }
 
 function baseName(p: string): string {
@@ -1537,6 +1537,7 @@ export function StudioScreen({ videoPath, onBack, onOpenVideo, playbackRequest, 
               ? changePreviewAudio(100, false)
               : changePreviewAudio(cfg.previewVolume, !cfg.previewMuted)}
             counts={counts}
+            chipTypes={chipTypesFor(state.doc.game)}
             filter={state.filter}
             onTogglePlay={togglePlay}
             onCycleSpeed={cycleSpeed}
@@ -1557,6 +1558,7 @@ export function StudioScreen({ videoPath, onBack, onOpenVideo, playbackRequest, 
               currentTime={currentTime}
               events={state.doc.events}
               spectating={state.doc.spectating}
+              rounds={state.doc.rounds}
               clips={shownClips}
               filter={state.filter}
               onSeek={seekTo}
@@ -1653,6 +1655,7 @@ export function StudioScreen({ videoPath, onBack, onOpenVideo, playbackRequest, 
       {addEventAt !== null && (
         <AddEventDialog
           time={addEventAt}
+          types={chipTypesFor(state.doc.game)}
           onCancel={() => setAddEventAt(null)}
           onConfirm={(type) => {
             // If project mode is entered while this dialog is open (not expected), do not write to the source document.
