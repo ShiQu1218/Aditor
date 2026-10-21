@@ -101,6 +101,9 @@ pub struct EncodeConfig {
     pub codec: Codec,
     /// `"auto"` or an explicit ffmpeg encoder name (for example, `"hevc_nvenc"`).
     pub encoder: String,
+    /// `"auto"` or an adapter ID reported by `hello`.
+    #[serde(default = "auto_gpu")]
+    pub gpu: String,
     pub fps: u32,
     /// Output height; 0 = native resolution. Width is proportional and rounded to an even number.
     pub height: u32,
@@ -109,6 +112,10 @@ pub struct EncodeConfig {
     pub preset: EncodePreset,
     #[serde(default)]
     pub aspect: EncodeAspect,
+}
+
+fn auto_gpu() -> String {
+    "auto".into()
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

@@ -8,11 +8,11 @@ use crate::{
         Capture, CaptureMethod, CaptureNotice, CaptureOptions, CapturedFrame, FrameConsumer,
     },
     clock::{self, TICKS_PER_SEC},
-    encode::{EncodeStats, SegmentInfo, SegmentWriter, VideoParams},
-    gpu::Gpu,
+    encode::{candidate_names, EncodeStats, SegmentInfo, SegmentWriter, VideoParams, ENCODERS},
+    gpu::{auto_order, AdapterDesc, Gpu, Vendor},
     index::{self, IndexWriter, SessionMeta},
     ipc::{Backend, BackendError, EventSink},
-    protocol::{ErrorCode, Event, HelloInfo, StartArgs},
+    protocol::{ErrorCode, Event, GpuInfo, HelloInfo, StartArgs},
     shm::{self, ShmLayout, ShmWriter},
     types::{Codec, EncodeAspect, Rect, AUDIO_CHANNELS, SEGMENT_SECS, THUMB_H, THUMB_W},
 };
@@ -44,6 +44,7 @@ use windows::{
 
 const DISK_RESERVE: u64 = 1024 * 1024 * 1024;
 const STATS_INTERVAL: Duration = Duration::from_secs(5);
+const AUTO_GPU: &str = "auto";
 
 // Preserve the scaffold's unit struct constructor; each IPC control thread owns only one recording job.
 thread_local! {
@@ -115,11 +116,40 @@ impl Drop for WorkerGuard {
 
 impl Backend for Recorder {
     fn hello(&mut self) -> HelloInfo {
+        let (gpus, encoders) = match Gpu::enumerate() {
+            Ok(adapters) => {
+                let gpus: Vec<GpuInfo> = adapters
+                    .iter()
+                    .filter(|adapter| !adapter.desc.software)
+                    .filter_map(|adapter| {
+                        let gpu = adapter.create_gpu().ok()?;
+                        let vendor = Vendor::from_vendor_id(adapter.desc.vendor_id);
+                        Some(GpuInfo {
+                            id: adapter.id.clone(),
+                            name: adapter.desc.name.clone(),
+                            vendor: vendor.as_str().into(),
+                            encoders: SegmentWriter::probe_encoders_for_family(
+                                &gpu,
+                                vendor.encoder_family(),
+                            ),
+                        })
+                    })
+                    .collect();
+                let encoders = encoder_union(&gpus);
+                (gpus, encoders)
+            }
+            // Older behavior: the default adapter with a full probe, so all adapters that fail enumeration still work.
+            Err(_) => (
+                Vec::new(),
+                Gpu::create()
+                    .map(|gpu| SegmentWriter::probe_encoders(&gpu))
+                    .unwrap_or_default(),
+            ),
+        };
         HelloInfo {
             version: env!("CARGO_PKG_VERSION").to_owned(),
-            encoders: Gpu::create()
-                .map(|gpu| SegmentWriter::probe_encoders(&gpu))
-                .unwrap_or_default(),
+            encoders,
+            gpus,
             audio: audio::list_devices().unwrap_or_default(),
         }
     }
@@ -201,6 +231,87 @@ impl Drop for Recorder {
     fn drop(&mut self) {
         if let Err((_, message)) = self.stop() {
             eprintln!("Recording shutdown failed: {message}");
+        }
+    }
+}
+
+/// Whether an adapter must be used explicitly or auto-selected in vendor order.
+#[derive(Debug, PartialEq, Eq)]
+enum GpuChoice {
+    Explicit(usize),
+    Auto(Vec<usize>),
+}
+
+/// Resolve an explicit adapter ID first, otherwise return hardware adapters in automatic order.
+fn choose_adapters(preference: &str, ids: &[String], descs: &[AdapterDesc]) -> GpuChoice {
+    if preference != AUTO_GPU {
+        if let Some(index) = ids.iter().position(|id| id == preference) {
+            return GpuChoice::Explicit(index);
+        }
+    }
+    GpuChoice::Auto(auto_order(descs))
+}
+
+/// Encoder names whose suffix matches the adapter's vendor family; unknown vendors cannot encode.
+fn names_for_adapter(names: &[&'static str], family: Option<&str>) -> Vec<&'static str> {
+    let Some(family) = family else {
+        return Vec::new();
+    };
+    let suffix = format!("_{family}");
+    names
+        .iter()
+        .copied()
+        .filter(|name| name.ends_with(&suffix))
+        .collect()
+}
+
+/// Union of per-GPU encoders in the automatic selection order.
+fn encoder_union(gpus: &[GpuInfo]) -> Vec<String> {
+    ENCODERS
+        .iter()
+        .filter(|name| {
+            gpus.iter()
+                .any(|gpu| gpu.encoders.iter().any(|encoder| encoder == *name))
+        })
+        .map(|name| (*name).to_owned())
+        .collect()
+}
+
+/// Choose the D3D11 device for window capture: an explicit adapter, or the first adapter with a working encoder for the codec.
+fn resolve_gpu(preference: &str, codec: Codec, encoder: &str) -> Result<Gpu> {
+    let adapters = match Gpu::enumerate() {
+        Ok(adapters) => adapters,
+        // Fall back to the default adapter so the existing no_hw_encoder error path stays unchanged.
+        Err(_) => return Gpu::create(),
+    };
+    let ids: Vec<String> = adapters.iter().map(|adapter| adapter.id.clone()).collect();
+    let descs: Vec<AdapterDesc> = adapters
+        .iter()
+        .map(|adapter| adapter.desc.clone())
+        .collect();
+    let names = candidate_names(codec, encoder);
+    match choose_adapters(preference, &ids, &descs) {
+        GpuChoice::Explicit(index) => adapters[index].create_gpu(),
+        GpuChoice::Auto(order) => {
+            if preference != AUTO_GPU {
+                eprintln!("Recording GPU {preference} was not found; selecting automatically");
+            }
+            for index in order {
+                let family =
+                    Vendor::from_vendor_id(adapters[index].desc.vendor_id).encoder_family();
+                let names = names_for_adapter(&names, family);
+                if names.is_empty() {
+                    continue;
+                }
+                let Ok(gpu) = adapters[index].create_gpu() else {
+                    continue;
+                };
+                if SegmentWriter::supports_any(&gpu, &names) {
+                    return Ok(gpu);
+                }
+            }
+            // No probed adapter has a working encoder; let the encoder report the detailed no_hw_encoder error.
+            Gpu::create()
         }
     }
 }
@@ -319,7 +430,11 @@ impl Session {
         prepare().map_err(|e| failure(ErrorCode::Internal, e))?;
         let fps = args.encode.as_ref().map_or(60, |cfg| cfg.fps);
         let gpu = match args.capture {
-            CaptureMethod::Wgc => Gpu::create(),
+            CaptureMethod::Wgc => match &args.encode {
+                // Window capture may run on any adapter; screen capture must use the adapter driving the game monitor.
+                Some(cfg) => resolve_gpu(&cfg.gpu, cfg.codec, &cfg.encoder),
+                None => Gpu::create(),
+            },
             CaptureMethod::Dda => dda::gpu_for_pid(args.pid),
         }
         .map_err(|e| failure(ErrorCode::CaptureFailed, e))?;
@@ -992,5 +1107,82 @@ mod tests {
     fn disk_reserve_stops_below_one_gib_and_accepts_the_boundary() {
         assert!(check_available(DISK_RESERVE).is_ok());
         assert!(check_available(DISK_RESERVE - 1).is_err());
+    }
+
+    fn adapter(vendor_id: u32, device_id: u32, software: bool) -> AdapterDesc {
+        AdapterDesc {
+            name: format!("GPU {vendor_id:04x}:{device_id:04x}"),
+            vendor_id,
+            device_id,
+            software,
+        }
+    }
+
+    #[test]
+    fn adapter_names_are_filtered_by_vendor_family() {
+        let names = ENCODERS;
+        for (vendor, expected) in [
+            (
+                Vendor::Nvidia,
+                ["hevc_nvenc", "h264_nvenc", "av1_nvenc"].as_slice(),
+            ),
+            (Vendor::Amd, ["hevc_amf", "h264_amf", "av1_amf"].as_slice()),
+            (
+                Vendor::Intel,
+                ["hevc_qsv", "h264_qsv", "av1_qsv"].as_slice(),
+            ),
+        ] {
+            assert_eq!(
+                names_for_adapter(&names, vendor.encoder_family()),
+                expected,
+                "{vendor:?}"
+            );
+        }
+        assert!(names_for_adapter(&names, None).is_empty());
+        assert!(names_for_adapter(&names, Vendor::Other.encoder_family()).is_empty());
+    }
+
+    #[test]
+    fn explicit_gpu_lookup_falls_back_to_automatic_vendor_order() {
+        let descs = [
+            adapter(0x8086, 1, false),
+            adapter(0x10de, 2, false),
+            adapter(0x1414, 3, true),
+        ];
+        let ids = vec!["8086:0001".into(), "10de:0002".into(), "1414:0003".into()];
+        assert_eq!(
+            choose_adapters("10de:0002", &ids, &descs),
+            GpuChoice::Explicit(1)
+        );
+        assert_eq!(
+            choose_adapters("auto", &ids, &descs),
+            GpuChoice::Auto(vec![1, 0])
+        );
+        assert_eq!(
+            choose_adapters("dead:beef", &ids, &descs),
+            GpuChoice::Auto(vec![1, 0])
+        );
+    }
+
+    #[test]
+    fn hello_encoder_union_is_deduplicated_in_automatic_order() {
+        let gpus = [
+            GpuInfo {
+                id: "8086:0001".into(),
+                name: "Intel".into(),
+                vendor: "intel".into(),
+                encoders: vec!["av1_qsv".into()],
+            },
+            GpuInfo {
+                id: "10de:0002".into(),
+                name: "NVIDIA".into(),
+                vendor: "nvidia".into(),
+                encoders: vec!["h264_nvenc".into(), "hevc_nvenc".into()],
+            },
+        ];
+        assert_eq!(
+            encoder_union(&gpus),
+            ["hevc_nvenc", "h264_nvenc", "av1_qsv"]
+        );
     }
 }

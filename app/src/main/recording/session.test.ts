@@ -119,6 +119,7 @@ describe('recording service state machine', () => {
     const value = rig()
     value.settings.height = 1080; value.settings.micEnabled = false; value.settings.micGain = 0.4
     value.settings.renderDevice = 'speaker'; value.settings.captureDevice = 'mic'; value.settings.captureMethod = 'dda'
+    value.settings.gpu = '10de:2684'
     value.service.start()
     await waitFor(() => value.service.status().segments === 2)
     const snapshot = value.service.status()
@@ -127,7 +128,7 @@ describe('recording service state machine', () => {
     expect(snapshot.sessionId).toMatch(/^\d{8}-\d{6}-[0-9a-f]{4}$/)
     const [start] = commands(value, 'start')
     expect(start.frames).toEqual({ banner: [560, 700, 800, 180], spec: [60, 1028, 480, 40], base: [1920, 1080] })
-    expect(start.encode).toMatchObject({ height: 1080, codec: 'hevc', bitrate_kbps: 10000, preset: 'speed', aspect: 'native' })
+    expect(start.encode).toMatchObject({ height: 1080, codec: 'hevc', gpu: '10de:2684', bitrate_kbps: 10000, preset: 'speed', aspect: 'native' })
     expect(start.audio).toEqual({ render: 'speaker', capture: 'mic', mic_enabled: false, mic_gain: 0.4,
       render_enabled: true, render_gain: 1, render_source: 'device', mic_mono: false })
     expect(start.capture).toBe('dda')

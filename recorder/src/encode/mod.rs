@@ -31,7 +31,8 @@ pub(crate) use ffmpeg::check_version;
 use ffmpeg::{Encoder, Frame};
 use hardware::{Copier, Hardware};
 
-const ENCODERS: [&str; 9] = [
+/// Hardware encoders in automatic selection order; the IPC protocol reports unions in this order.
+pub(crate) const ENCODERS: [&str; 9] = [
     "hevc_nvenc",
     "h264_nvenc",
     "av1_nvenc",
@@ -133,20 +134,21 @@ struct AudioJob {
     pts: i64,
 }
 
-fn candidates(video: &VideoParams) -> Vec<&str> {
-    if video.encoder != "auto" {
+/// Encoder names tried for a codec and encoder setting, in automatic selection order.
+pub(crate) fn candidate_names(codec: Codec, encoder: &str) -> Vec<&'static str> {
+    if encoder != "auto" {
         return ENCODERS
             .iter()
             .copied()
-            .filter(|name| *name == video.encoder && codec_of(name) == video.codec)
+            .filter(|name| *name == encoder && codec_of(name) == codec)
             .collect();
     }
     let mut names: Vec<_> = ENCODERS
         .iter()
         .copied()
-        .filter(|name| codec_of(name) == video.codec)
+        .filter(|name| codec_of(name) == codec)
         .collect();
-    if video.codec == Codec::Hevc {
+    if codec == Codec::Hevc {
         names.extend(
             ENCODERS
                 .iter()
@@ -155,6 +157,9 @@ fn candidates(video: &VideoParams) -> Vec<&str> {
         );
     }
     names
+}
+fn candidates(video: &VideoParams) -> Vec<&'static str> {
+    candidate_names(video.codec, &video.encoder)
 }
 fn codec_of(name: &str) -> Codec {
     if name.starts_with("hevc_") {
@@ -237,9 +242,27 @@ fn no_hw_encoder_message(
 impl SegmentWriter {
     /// Tries each hardware encoder with a small test frame and returns available names, such as hevc_nvenc and h264_nvenc.
     pub fn probe_encoders(gpu: &Gpu) -> Vec<String> {
+        Self::probe_encoders_where(gpu, |_| true)
+    }
+
+    /// Tries only encoders in `family` (for example, `nvenc`); `None` probes nothing.
+    pub fn probe_encoders_for_family(gpu: &Gpu, family: Option<&str>) -> Vec<String> {
+        let Some(family) = family else {
+            return Vec::new();
+        };
+        let suffix = format!("_{family}");
+        Self::probe_encoders_where(gpu, |name| name.ends_with(&suffix))
+    }
+
+    /// Whether any of `names` passes a trial encode; stops at the first success.
+    pub fn supports_any(gpu: &Gpu, names: &[&str]) -> bool {
+        names.iter().any(|name| probe(gpu, name).is_ok())
+    }
+
+    fn probe_encoders_where(gpu: &Gpu, keep: impl Fn(&str) -> bool) -> Vec<String> {
         ENCODERS
             .iter()
-            .filter(|name| probe(gpu, name).is_ok())
+            .filter(|name| keep(name) && probe(gpu, name).is_ok())
             .map(|name| (*name).to_owned())
             .collect()
     }

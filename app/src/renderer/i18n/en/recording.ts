@@ -44,6 +44,7 @@ export const recordingI18n: Messages['recordingI18n'] = {
     forceAspect: { title: 'Force 16:9', desc: 'Adjusts the recording output to 16:9. Does not affect live analysis.' },
     aspectMode: { title: 'Scaling mode', desc: 'Fit keeps the full picture and adds black bars. Stretch fills the frame.' },
     codec: { title: 'Codec', desc: 'Uses hardware encoding only. No recording is made if no encoder is available.' },
+    gpu: { title: 'Recording GPU', desc: 'Choose the GPU used for capture and encoding. Auto picks a GPU with a working hardware encoder (NVIDIA preferred); applies to window capture only, screen capture always uses the GPU driving the game monitor.' },
     encoder: { title: 'Recording encoder', desc: 'Lists the hardware encoders the recorder can use for the current codec.' },
     preset: { title: 'Encoding preset', desc: 'Higher quality uses more GPU.' },
     captureMethod: { title: 'Capture method', desc: 'Window capture (WGC, default) records only the game window, but adds mouse latency in the lobby. Screen capture (DDA) does not cause mouse latency, but records the entire screen, including windows covering the game, and outputs a black screen when the game is not in the foreground. Takes effect the next time recording starts.' },

@@ -15,9 +15,16 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
       process.stderr.write('x'.repeat(70000) + '最後的錯誤')
       return process.exit(7)
     }
-    const hello = () => send({ id: req.id, ok: true, version: '0.1.0', encoders: ['hevc_nvenc', 'h264_nvenc'],
+    const gpus = [
+      { id: '10de:2684', name: 'NVIDIA GeForce RTX 5080', vendor: 'nvidia', encoders: ['hevc_nvenc', 'h264_nvenc'] },
+      { id: '8086:46a6', name: 'Intel Iris Xe Graphics', vendor: 'intel', encoders: ['av1_qsv'] }
+    ]
+    const hello = (reported = gpus) => send({ id: req.id, ok: true, version: '0.1.0', encoders: ['hevc_nvenc', 'h264_nvenc', 'av1_qsv'],
+      ...(reported === null ? {} : { gpus: reported }),
       audio: { render: [{ id: 'default', name: '系統聲音', default: true }], capture: [] } })
     if (mode === 'slow-hello') return setTimeout(hello, 200)
+    if (mode === 'hello-legacy') return hello(null)
+    if (mode === 'hello-bad-gpus') return hello([{ id: '10de:2684', name: 'NVIDIA GeForce RTX 5080', vendor: 'nvidia' }])
     return hello()
   }
   if (req.cmd === 'start') {

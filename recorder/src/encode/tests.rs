@@ -208,27 +208,54 @@ fn concatenate(dir: &Path, segments: &[SegmentInfo], path: &Path) {
 }
 
 #[test]
-fn encoder_selection_preserves_vendor_order_and_hevc_fallback() {
-    let mut video = params(Codec::Hevc);
-    assert_eq!(
-        candidates(&video),
-        [
-            "hevc_nvenc",
-            "hevc_amf",
-            "hevc_qsv",
-            "h264_nvenc",
-            "h264_amf",
-            "h264_qsv"
-        ]
-    );
-    video.codec = Codec::Av1;
-    assert_eq!(candidates(&video), ["av1_nvenc", "av1_amf", "av1_qsv"]);
-    video.encoder = "libx264".into();
-    assert!(candidates(&video).is_empty());
-    video.encoder = "h264_nvenc".into();
-    assert!(candidates(&video).is_empty());
-    video.codec = Codec::H264;
-    assert_eq!(candidates(&video), ["h264_nvenc"]);
+fn encoder_names_preserve_vendor_order_and_hevc_fallback_for_every_codec() {
+    for (codec, expected) in [
+        (
+            Codec::Hevc,
+            [
+                "hevc_nvenc",
+                "hevc_amf",
+                "hevc_qsv",
+                "h264_nvenc",
+                "h264_amf",
+                "h264_qsv",
+            ]
+            .as_slice(),
+        ),
+        (
+            Codec::H264,
+            ["h264_nvenc", "h264_amf", "h264_qsv"].as_slice(),
+        ),
+        (
+            Codec::Av1,
+            ["av1_nvenc", "av1_amf", "av1_qsv"].as_slice(),
+        ),
+    ] {
+        assert_eq!(candidate_names(codec, "auto"), expected, "{codec:?}");
+        assert_eq!(candidates(&params(codec)), expected, "{codec:?}");
+    }
+}
+
+#[test]
+fn explicit_encoder_names_are_kept_only_when_their_codec_matches() {
+    for (codec, name) in [
+        (Codec::Hevc, "hevc_amf"),
+        (Codec::H264, "h264_qsv"),
+        (Codec::Av1, "av1_nvenc"),
+    ] {
+        assert_eq!(candidate_names(codec, name), [name], "{codec:?}");
+    }
+    for (codec, name) in [
+        (Codec::Hevc, "h264_nvenc"),
+        (Codec::H264, "hevc_nvenc"),
+        (Codec::Av1, "h264_amf"),
+    ] {
+        assert!(candidate_names(codec, name).is_empty(), "{codec:?}");
+    }
+    for codec in [Codec::Hevc, Codec::H264, Codec::Av1] {
+        assert!(candidate_names(codec, "libx264").is_empty(), "{codec:?}");
+        assert!(candidate_names(codec, "").is_empty(), "{codec:?}");
+    }
 }
 
 #[test]

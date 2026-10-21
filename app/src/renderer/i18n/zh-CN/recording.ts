@@ -45,6 +45,7 @@ export const recordingI18n: Messages['recordingI18n'] = {
     forceAspect: { title: '强制 16:9', desc: '将录制输出调整为 16:9，不影响实时分析。' },
     aspectMode: { title: '裁切方式', desc: '适配会保留完整画面并补上黑边；拉伸会填满画面。' },
     codec: { title: '编码格式', desc: '仅使用硬件编码；没有可用编码器时不录制。' },
+    gpu: { title: '录制显示卡', desc: '选择负责捕获与编码的显示卡。自动会挑选检测到可用硬件编码器的显示卡（NVIDIA 优先）；仅对窗口捕获有效，屏幕捕获固定使用游戏所在显示器的显示卡。' },
     encoder: { title: '录制编码器', desc: '按当前编码格式列出录制器可用的硬件编码器。' },
     preset: { title: '编码预设', desc: '质量越高，GPU 使用量越高。' },
     captureMethod: { title: '捕获方式', desc: '窗口捕获（WGC，默认）只录游戏窗口，但大厅鼠标会有延迟；屏幕捕获（DDA）不会造成鼠标延迟，但会录下整个屏幕，盖在游戏上的窗口也会被录进去，游戏不在前台时为黑画面。下次开始录制时生效。' },

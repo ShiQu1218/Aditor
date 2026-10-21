@@ -38,6 +38,8 @@ export interface RecordingSettings {
   /** Recording folder; null uses the first watched folder, or `Aditor` under the Videos folder if none are watched. */
   outputDir: string | null
   codec: RecordingCodec
+  /** 'auto' or an adapter id reported by aditorrec `hello`; chooses the GPU used for window capture and encoding. */
+  gpu: string
   /** 'auto' or the encoder name reported by aditorrec `hello`. */
   encoder: string
   fps: 10 | 20 | 30 | 60 | 90 | 120
@@ -93,6 +95,7 @@ export const DEFAULT_RECORDING_SETTINGS: RecordingSettings = {
   mode: 'session',
   outputDir: null,
   codec: 'hevc',
+  gpu: 'auto',
   encoder: 'auto',
   fps: 60,
   preset: 'speed',
@@ -179,10 +182,23 @@ export const IDLE_RECORDING_STATUS: RecordingStatus = {
   matchIndex: null
 }
 
+/** A recording GPU reported by aditorrec `hello`. */
+export interface RecorderGpu {
+  /** Stable adapter id accepted by the `gpu` setting. */
+  id: string
+  name: string
+  /** Lower-case vendor name: nvidia, amd, intel, or other. */
+  vendor: string
+  /** Hardware encoders that work on this GPU. */
+  encoders: string[]
+}
+
 /** Capabilities from aditorrec `hello` (used by the settings menu). */
 export interface RecorderCapabilities {
   version: string
   encoders: string[]
+  /** Empty for older recorders that do not report per-GPU information. */
+  gpus: RecorderGpu[]
   audio: {
     render: { id: string; name: string; default: boolean }[]
     capture: { id: string; name: string; default: boolean }[]

@@ -276,6 +276,7 @@ mod tests {
             HelloInfo {
                 version: "測試版".into(),
                 encoders: vec!["hevc_nvenc".into()],
+                gpus: Vec::new(),
                 audio: AudioDevices::default(),
             }
         }

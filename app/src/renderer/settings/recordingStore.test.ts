@@ -101,6 +101,12 @@ describe('Recording settings validation and migration', () => {
     for (const value of ['', '  ', '\0', 'x'.repeat(4097), null, 2, {}]) expect(migrate({ [field]: value })[field]).toBe('default')
   })
 
+  test('Recording GPU preserves adapter IDs including duplicates and defaults to auto for invalid values', () => {
+    for (const value of ['auto', '10de:2684', '8086:46a6#2']) expect(migrate({ gpu: value }).gpu).toBe(value)
+    for (const value of ['', '  ', '\0', 'x'.repeat(4097), null, 2, {}]) expect(migrate({ gpu: value }).gpu).toBe('auto')
+    expect(defaults.gpu).toBe('auto')
+  })
+
   test('Disk stop threshold is clamped to the warning threshold', () => {
     expect(migrate({ diskStopGb: 50, diskWarnGb: 5 })).toMatchObject({ diskStopGb: 5, diskWarnGb: 5 })
     const store = new SettingsStore(file)

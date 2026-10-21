@@ -59,7 +59,21 @@ pub enum ReplyBody {
 pub struct HelloInfo {
     pub version: String,
     pub encoders: Vec<String>,
+    pub gpus: Vec<GpuInfo>,
     pub audio: AudioDevices,
+}
+
+/// One DXGI adapter and the hardware encoders that work on it.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct GpuInfo {
+    /// Stable adapter ID (`{vendor_id:04x}:{device_id:04x}`) accepted by `EncodeConfig.gpu`.
+    pub id: String,
+    /// Adapter name reported by DXGI.
+    pub name: String,
+    /// Lower-case vendor name: `nvidia`, `amd`, `intel`, or `other`.
+    pub vendor: String,
+    /// Encoder names available on this adapter.
+    pub encoders: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Default)]
@@ -201,7 +215,9 @@ mod tests {
         let Command::Start(args) = req.cmd else {
             panic!("not start")
         };
-        assert_eq!(args.encode.unwrap().codec, Codec::Hevc);
+        let encode = args.encode.unwrap();
+        assert_eq!(encode.codec, Codec::Hevc);
+        assert_eq!(encode.gpu, "auto");
 
         let obs = r#"{"id":3,"cmd":"start","pid":1,"session_dir":"x","session_id":"x","encode":null,"audio":null,"frames":{"banner":[1,2,3,4],"spec":[5,6,7,8],"base":[1920,1080]}}"#;
         let Command::Start(args) = parse_request(obs).unwrap().cmd else {
@@ -209,6 +225,43 @@ mod tests {
         };
         assert!(args.encode.is_none());
         assert_eq!(args.capture, CaptureMethod::Wgc);
+    }
+
+    #[test]
+    fn parses_explicit_encode_gpu_id() {
+        let line = r#"{"id":5,"cmd":"start","pid":1,"session_dir":"x","session_id":"x",
+            "encode":{"codec":"h264","encoder":"h264_nvenc","gpu":"10de:2684","fps":60,"height":0,"bitrate_kbps":40000},
+            "audio":null,"frames":{"banner":[1,2,3,4],"spec":[5,6,7,8],"base":[1920,1080]}}"#;
+        let Command::Start(args) = parse_request(&line.replace('\n', "")).unwrap().cmd else {
+            panic!("not start")
+        };
+        assert_eq!(args.encode.unwrap().gpu, "10de:2684");
+    }
+
+    #[test]
+    fn hello_serialization_includes_per_gpu_info() {
+        let hello = HelloInfo {
+            version: "0.1.0".into(),
+            encoders: vec!["hevc_nvenc".into()],
+            gpus: vec![GpuInfo {
+                id: "10de:2684".into(),
+                name: "NVIDIA GeForce RTX 5080".into(),
+                vendor: "nvidia".into(),
+                encoders: vec!["hevc_nvenc".into(), "h264_nvenc".into()],
+            }],
+            audio: AudioDevices::default(),
+        };
+        let value = serde_json::to_value(hello).unwrap();
+        assert_eq!(
+            value["gpus"],
+            serde_json::json!([{
+                "id": "10de:2684",
+                "name": "NVIDIA GeForce RTX 5080",
+                "vendor": "nvidia",
+                "encoders": ["hevc_nvenc", "h264_nvenc"]
+            }])
+        );
+        assert_eq!(value["encoders"], serde_json::json!(["hevc_nvenc"]));
     }
 
     #[test]

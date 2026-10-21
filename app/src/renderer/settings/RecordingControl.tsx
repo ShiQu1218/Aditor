@@ -71,6 +71,8 @@ export function RecordingControl({ field, ids, state, settings, controller }: {
       describedBy={describedBy(ids)} unit="GB" onCommit={(v) => controller.setRecording(field, v)} />
   }
   const caps = state.recordingCapabilities
+  // Screen capture uses the adapter driving the game monitor, so the GPU picker does not apply.
+  const ddaCapture = settings.captureMethod === 'dda'
   let options: Array<{ value: string; label: string; disabled?: boolean }>
   switch (field) {
     case 'backend':
@@ -82,10 +84,17 @@ export function RecordingControl({ field, ids, state, settings, controller }: {
     case 'codec':
       options = [{ value: 'hevc', label: 'HEVC' }, { value: 'h264', label: 'H.264' }, { value: 'av1', label: 'AV1' }]
       break
-    case 'encoder':
-      options = [{ value: 'auto', label: t.auto }, ...(caps.value?.encoders ?? [])
+    case 'gpu':
+      options = [{ value: 'auto', label: t.auto }, ...(caps.value?.gpus ?? [])
+        .map((gpu) => ({ value: gpu.id, label: gpu.name }))]
+      break
+    case 'encoder': {
+      const selectedGpu = ddaCapture ? undefined : caps.value?.gpus.find((gpu) => gpu.id === settings.gpu)
+      const encoders = selectedGpu ? selectedGpu.encoders : caps.value?.encoders ?? []
+      options = [{ value: 'auto', label: t.auto }, ...encoders
         .filter((name) => name.startsWith(`${settings.codec}_`)).map((name) => ({ value: name, label: name }))]
       break
+    }
     case 'renderDevice':
     case 'captureDevice':
       options = [{ value: 'default', label: t.defaultDevice }, ...(caps.value?.audio[field === 'renderDevice' ? 'render' : 'capture'] ?? [])
@@ -109,20 +118,29 @@ export function RecordingControl({ field, ids, state, settings, controller }: {
     default:
       return null
   }
-  const current = String(settings[field])
+  // An explicit GPU that is no longer reported is treated as auto for display without changing saved settings.
+  const gpuUnavailable = field === 'gpu' && caps.value !== null && settings.gpu !== 'auto' &&
+    !caps.value.gpus.some((gpu) => gpu.id === settings.gpu)
+  const current = gpuUnavailable ? 'auto' : String(settings[field])
   // Keep saved values when no device is connected; a failed capability probe must not write defaults.
   const missing = !options.some((o) => o.value === current)
   if (missing) options.push({ value: current, label: fillTemplate(t.currentUnavailable, { value: current }), disabled: true })
-  const hint = field === 'encoder' && !caps.value ? caps.loading ? t.capabilitiesLoading : t.capabilitiesUnavailable : undefined
+  const hint = (field === 'encoder' || field === 'gpu') && !caps.value ? caps.loading ? t.capabilitiesLoading : t.capabilitiesUnavailable : undefined
   return (
     <div className="set-inline set-recording-select">
       <SelectControl ids={{ ...ids, reason: hint ? `${ids.ctl}-capabilities` : ids.reason }} value={current} options={options}
-        disabled={field === 'renderDevice' ? !settings.systemAudioEnabled || settings.gameAudioOnly : field === 'captureDevice' && !settings.micEnabled}
+        disabled={field === 'gpu' && ddaCapture ? true
+          : field === 'renderDevice' ? !settings.systemAudioEnabled || settings.gameAudioOnly
+            : field === 'captureDevice' && !settings.micEnabled}
         onChange={(v) => {
           if (field === 'height' || field === 'bitrateKbps') set(field, Number(v) as RecordingSettings[typeof field])
           else if (field === 'codec') {
             set('codec', v as RecordingSettings['codec'])
             set('encoder', 'auto')
+          } else if (field === 'gpu') {
+            set('gpu', v as RecordingSettings['gpu'])
+            const gpuEncoders = ddaCapture ? undefined : caps.value?.gpus.find((gpu) => gpu.id === v)?.encoders
+            if (gpuEncoders && settings.encoder !== 'auto' && !gpuEncoders.includes(settings.encoder)) set('encoder', 'auto')
           } else set(field, v as RecordingSettings[typeof field])
         }} />
       {hint && <small id={`${ids.ctl}-capabilities`} className="set-desc" role="status">{hint}</small>}

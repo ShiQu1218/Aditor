@@ -10,6 +10,10 @@ import { cleanupMounted, click, flush, installDomShims, mount } from '../../../t
 
 const capabilities: RecorderCapabilities = {
   version: '0.1.0', encoders: ['hevc_nvenc', 'h264_nvenc', 'av1_qsv'],
+  gpus: [
+    { id: '10de:2684', name: 'NVIDIA GeForce RTX 5080', vendor: 'nvidia', encoders: ['hevc_nvenc', 'h264_nvenc'] },
+    { id: '8086:46a6', name: 'Intel Iris Xe Graphics', vendor: 'intel', encoders: ['av1_qsv'] }
+  ],
   audio: { render: [{ id: 'speakers', name: '喇叭', default: true }], capture: [{ id: 'mic', name: '桌上型麥克風', default: true }] }
 }
 
@@ -128,7 +132,7 @@ describe('Recording settings screen and controller', () => {
     const fields = [
       'autoRecord', 'mode', 'postAnalysis',
       'backend',
-      'height', 'bitrateKbps', 'fps', 'forceAspect', 'aspectMode', 'codec', 'encoder', 'preset', 'captureMethod',
+      'height', 'bitrateKbps', 'fps', 'forceAspect', 'aspectMode', 'codec', 'gpu', 'encoder', 'preset', 'captureMethod',
       'systemAudioEnabled', 'renderDevice', 'systemGain', 'micEnabled', 'captureDevice', 'micGain', 'gameAudioOnly', 'micMono',
       'diskWarnGb', 'diskStopGb', 'notifyMatch', 'openOnGameExit'
     ]
@@ -145,6 +149,7 @@ describe('Recording settings screen and controller', () => {
     expect(match.disabled).toBe(false)
     expect(match.textContent).toBe('一局一個檔')
     expect(options('encoder')).toEqual(['auto', 'hevc_nvenc'])
+    expect(options('gpu')).toEqual(['auto', '10de:2684', '8086:46a6'])
     expect(options('renderDevice')).toEqual(['default', 'speakers'])
     expect(options('captureDevice')).toEqual(['default', 'mic'])
     expect(options('height')).toEqual(['0', '720', '1080', '1440'])
@@ -193,6 +198,7 @@ describe('Recording settings screen and controller', () => {
   test('When capabilities are null or loading fails, shows only default options and a notice without submitting settings', async () => {
     const r = await show(null)
     expect(options('encoder')).toEqual(['auto'])
+    expect(options('gpu')).toEqual(['auto'])
     expect(options('renderDevice')).toEqual(['default'])
     expect(options('captureDevice')).toEqual(['default'])
     expect(document.body.textContent).toContain(t.capabilitiesUnavailable)
@@ -258,6 +264,76 @@ describe('Recording settings screen and controller', () => {
     await flush()
     expect(control('gameAudioOnly')).not.toBeNull()
     expect(document.querySelector('details')?.open).toBe(true)
+  })
+
+  test('Recording GPU selection filters encoders and a missing saved GPU displays as automatic', async () => {
+    const r = await show()
+    expect(options('gpu')).toEqual(['auto', '10de:2684', '8086:46a6'])
+    select('gpu', '10de:2684')
+    await flush()
+    expect(r.controller.getState().settings?.recording.gpu).toBe('10de:2684')
+    expect(options('encoder')).toEqual(['auto', 'hevc_nvenc'])
+    select('codec', 'h264')
+    await flush()
+    expect(options('encoder')).toEqual(['auto', 'h264_nvenc'])
+    select('gpu', '8086:46a6')
+    await flush()
+    expect(options('encoder')).toEqual(['auto'])
+    select('codec', 'av1')
+    await flush()
+    expect(options('encoder')).toEqual(['auto', 'av1_qsv'])
+    const saved = { ...structuredClone(DEFAULT_SETTINGS), recording: { ...DEFAULT_SETTINGS.recording, gpu: 'dead:beef', encoder: 'hevc_nvenc' } }
+    act(() => r.emit(saved))
+    await flush()
+    expect(control<HTMLSelectElement>('gpu').value).toBe('auto')
+    expect(options('encoder')).toEqual(['auto', 'hevc_nvenc'])
+    r.set.mockClear()
+    expect(r.set).not.toHaveBeenCalled()
+  })
+
+  test('Changing the GPU resets an incompatible encoder but keeps compatible and automatic selections', async () => {
+    const r = await show()
+    select('encoder', 'hevc_nvenc')
+    await flush()
+    // The newly selected GPU still supports the saved encoder, so it is kept.
+    select('gpu', '10de:2684')
+    await flush()
+    expect(r.controller.getState().settings?.recording).toMatchObject({ gpu: '10de:2684', encoder: 'hevc_nvenc' })
+    // The new GPU does not support the saved encoder, so it resets to automatic.
+    select('gpu', '8086:46a6')
+    await flush()
+    expect(r.controller.getState().settings?.recording).toMatchObject({ gpu: '8086:46a6', encoder: 'auto' })
+    // Selecting the automatic GPU keeps an explicit encoder.
+    select('gpu', '10de:2684')
+    await flush()
+    select('encoder', 'hevc_nvenc')
+    await flush()
+    select('gpu', 'auto')
+    await flush()
+    expect(r.controller.getState().settings?.recording).toMatchObject({ gpu: 'auto', encoder: 'hevc_nvenc' })
+  })
+
+  test('Screen capture disables the GPU picker and lists encoders from the global capabilities', async () => {
+    const r = await show()
+    const saved: Settings = {
+      ...structuredClone(DEFAULT_SETTINGS),
+      recording: { ...DEFAULT_SETTINGS.recording, captureMethod: 'dda', gpu: '8086:46a6', codec: 'hevc' }
+    }
+    act(() => r.emit(saved))
+    await flush()
+    // DDA ignores the saved GPU, so the picker is disabled and the saved value is kept.
+    expect(control<HTMLSelectElement>('gpu').disabled).toBe(true)
+    expect(control<HTMLSelectElement>('gpu').value).toBe('8086:46a6')
+    expect(options('encoder')).toEqual(['auto', 'hevc_nvenc'])
+    expect(r.set).not.toHaveBeenCalled()
+
+    // Window capture re-enables the picker and filters encoders by the saved GPU as before.
+    select('captureMethod', 'wgc')
+    await flush()
+    expect(control<HTMLSelectElement>('gpu').disabled).toBe(false)
+    expect(control<HTMLSelectElement>('gpu').value).toBe('8086:46a6')
+    expect(options('encoder')).toEqual(['auto'])
+    expect(r.controller.getState().settings?.recording).toMatchObject({ captureMethod: 'wgc', gpu: '8086:46a6' })
   })
 
   test('Capture selection persists after remount and surfaces save failures', async () => {

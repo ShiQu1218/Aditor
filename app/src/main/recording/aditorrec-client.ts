@@ -1,11 +1,13 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'child_process'
 import { EventEmitter } from 'events'
 import { StringDecoder } from 'string_decoder'
-import type { RecorderCapabilities } from '../../shared/recording'
+import type { RecorderCapabilities, RecorderGpu } from '../../shared/recording'
 import type { RecorderCommand } from './index'
 import { tr } from '../../shared/locale'
 
 const MAX_BYTES = 64 * 1024
+/** `hello` may probe several GPUs and legitimately take a few seconds on some machines. */
+export const HELLO_TIMEOUT_MS = 30_000
 export type RecorderEvent = Record<string, unknown> & { ev: string }
 
 export class RecorderError extends Error {
@@ -35,16 +37,22 @@ export class AditorrecClient extends EventEmitter {
 
   async hello(): Promise<RecorderCapabilities> {
     if (!this.proc) this.launch()
-    const reply = await this.request('hello', {}, 10000)
+    const reply = await this.request('hello', {}, HELLO_TIMEOUT_MS)
     const audio = reply.audio as RecorderCapabilities['audio'] | undefined
     const validDevices = (devices: unknown): boolean => Array.isArray(devices) && devices.every(
       (d) => d && typeof d.id === 'string' && typeof d.name === 'string' && typeof d.default === 'boolean')
+    // Older recorders do not report gpus; default to an empty list so the GPU picker stays usable.
+    const gpus = reply.gpus === undefined ? [] : reply.gpus
+    const validGpus = (value: unknown): value is RecorderGpu[] => Array.isArray(value) && value.every(
+      (gpu) => gpu && typeof gpu === 'object' && typeof gpu.id === 'string' && typeof gpu.name === 'string' &&
+        typeof gpu.vendor === 'string' && Array.isArray(gpu.encoders) &&
+        gpu.encoders.every((encoder: unknown) => typeof encoder === 'string'))
     if (typeof reply.version !== 'string' || !Array.isArray(reply.encoders) ||
-        !reply.encoders.every((e) => typeof e === 'string') || !audio ||
+        !reply.encoders.every((e) => typeof e === 'string') || !validGpus(gpus) || !audio ||
         !validDevices(audio.render) || !validDevices(audio.capture)) {
       throw new RecorderError('bad_reply', tr('錄影程序的能力回覆格式錯誤'))
     }
-    return { version: reply.version, encoders: reply.encoders, audio }
+    return { version: reply.version, encoders: reply.encoders, gpus, audio }
   }
 
   private launch(): void {

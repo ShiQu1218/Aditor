@@ -496,7 +496,7 @@ export class RecordingSessionService implements RecordingService {
       await client.hello()
       if (!this.running || this.manualStopped || this.gamePid !== pid || this.game !== game) throw new RecorderError('cancelled', tr('錄影啟動已取消'))
       await client.startRecording({ pid, session_dir: dir, session_id: id,
-        encode: current.backend === 'obs' ? null : { codec: settings.codec, encoder: settings.encoder, fps: settings.fps, height: settings.height, bitrate_kbps: settings.bitrateKbps,
+        encode: current.backend === 'obs' ? null : { codec: settings.codec, gpu: settings.gpu, encoder: settings.encoder, fps: settings.fps, height: settings.height, bitrate_kbps: settings.bitrateKbps,
           preset: settings.preset, aspect: settings.forceAspect ? settings.aspectMode : 'native' },
         audio: current.backend === 'obs' ? null : { render: settings.renderDevice, capture: settings.captureDevice, mic_gain: settings.micGain, mic_enabled: settings.micEnabled,
           render_enabled: settings.systemAudioEnabled, render_gain: settings.systemGain, render_source: settings.gameAudioOnly ? 'game' : 'device',

@@ -88,6 +88,7 @@ function pickRecording(v: unknown, base: RecordingSettings): RecordingSettings {
     mode: pickEnum(s.mode, ['session', 'match'] as const, base.mode),
     outputDir: pickStringOrNull(s.outputDir, base.outputDir),
     codec,
+    gpu: pickDevice(s.gpu, base.gpu),
     encoder,
     fps: s.fps === 144 ? 120 : [10, 20, 30, 60, 90, 120].includes(s.fps as number) ? s.fps as RecordingSettings['fps'] : base.fps,
     preset: pickEnum(s.preset, ['speed', 'balanced', 'quality'] as const, base.preset),

@@ -36,6 +36,7 @@ fn executable_replies_with_json_only_and_exits_on_stdin_eof() {
     assert_eq!(lines[0]["ok"], true);
     assert_eq!(lines[0]["version"], env!("CARGO_PKG_VERSION"));
     assert!(lines[0]["encoders"].is_array());
+    assert!(lines[0]["gpus"].is_array());
     assert!(lines[0]["audio"]["render"].is_array());
     assert!(lines[0]["audio"]["capture"].is_array());
     assert_eq!(lines[1], json!({"id":2,"ok":true}));

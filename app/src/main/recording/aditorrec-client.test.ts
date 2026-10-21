@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import fs from 'fs'
 import path from 'path'
-import { AditorrecClient, RecorderError } from './aditorrec-client'
+import { AditorrecClient, HELLO_TIMEOUT_MS, RecorderError } from './aditorrec-client'
 import { fakeCommand, tempRoot } from './test-support'
 
 const clients: AditorrecClient[] = []
@@ -25,7 +25,12 @@ describe('aditorrec JSON-lines client', () => {
     clients.push(value)
     const events: string[] = []
     value.on('event', (ev) => events.push(ev.ev))
-    expect((await value.hello()).audio.render[0].name).toBe('系統聲音')
+    const caps = await value.hello()
+    expect(caps.audio.render[0].name).toBe('系統聲音')
+    expect(caps.gpus).toEqual([
+      { id: '10de:2684', name: 'NVIDIA GeForce RTX 5080', vendor: 'nvidia', encoders: ['hevc_nvenc', 'h264_nvenc'] },
+      { id: '8086:46a6', name: 'Intel Iris Xe Graphics', vendor: 'intel', encoders: ['av1_qsv'] }
+    ])
     const first = value.request('ping', { value: 'first', delay: 50 })
     const second = value.request('ping', { value: 'second' })
     expect((await second).value).toBe('second')
@@ -50,12 +55,17 @@ describe('aditorrec JSON-lines client', () => {
     expect(Buffer.byteLength(error.message)).toBeLessThan(65640)
   })
 
-  it('times out hello after 10 seconds and closes the child process', async () => {
+  it('times out hello after 30 seconds and closes the child process', async () => {
     vi.useFakeTimers()
     const value = client('hello-timeout')
     const result = value.hello().catch((error) => error)
-    await vi.advanceTimersByTimeAsync(10000)
+    await vi.advanceTimersByTimeAsync(HELLO_TIMEOUT_MS)
     expect(await result).toMatchObject({ code: 'recorder_timeout' })
+  })
+
+  it('accepts older recorders without gpus and rejects malformed gpu lists', async () => {
+    expect((await client('hello-legacy').hello()).gpus).toEqual([])
+    await expect(client('hello-bad-gpus').hello()).rejects.toMatchObject({ code: 'bad_reply' })
   })
 
   it('closes after stop times out at 15 seconds and allows pending startup-event waits to be cancelled', async () => {
