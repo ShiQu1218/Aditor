@@ -4,6 +4,7 @@
 //!
 //! The scaffold defines the interface; implementations must preserve signatures and add new types in this module.
 
+mod color;
 pub mod dda;
 pub mod small;
 
@@ -334,6 +335,8 @@ struct CallbackState {
     gate: FrameGate,
     origin: i64,
     probe: LumaProbe,
+    color: color::SdrConverter,
+    hwnd: HWND,
     black: BlackStreak,
     notices: Sender<CaptureNotice>,
 }
@@ -390,13 +393,14 @@ impl ActiveCapture {
             let mut state = shared
                 .lock()
                 .map_err(|_| anyhow::anyhow!("capture_failed: Capture state is poisoned"))?;
+            state.hwnd = hwnd;
             state.black = BlackStreak::default();
             state.probe.reset();
             state.device.clone()
         };
         let pool = Direct3D11CaptureFramePool::CreateFreeThreaded(
             &device,
-            DirectXPixelFormat::B8G8R8A8UIntNormalized,
+            DirectXPixelFormat::R16G16B16A16Float,
             2,
             size,
         )?;
@@ -516,6 +520,10 @@ impl CallbackState {
             // SAFETY: texture is valid while the Frame guard lives; desc is a writable descriptor.
             unsafe { texture.GetDesc(&mut desc) };
             if desc.Width >= size.Width as u32 && desc.Height >= size.Height as u32 {
+                // SAFETY: Querying the capture window monitor does not mutate the window.
+                let monitor_handle =
+                    unsafe { MonitorFromWindow(self.hwnd, MONITOR_DEFAULTTONEAREST) };
+                let texture = self.color.convert(&texture, monitor_handle)?;
                 self.consumer.on_frame(&CapturedFrame {
                     texture: &texture,
                     width: size.Width as u32,
@@ -540,12 +548,7 @@ impl CallbackState {
         // Return the old frame before recreating the pool; when growing, do not pass an old texture to consumers with new dimensions.
         drop(frame);
         if resized {
-            pool.Recreate(
-                &self.device,
-                DirectXPixelFormat::B8G8R8A8UIntNormalized,
-                2,
-                size,
-            )?;
+            pool.Recreate(&self.device, DirectXPixelFormat::R16G16B16A16Float, 2, size)?;
             signals.size.store(pack_size(size), Ordering::Release);
             let _ = self.notices.send(CaptureNotice::WindowFound {
                 width: size.Width as u32,
@@ -577,6 +580,8 @@ fn run(
         gate: FrameGate::new(opts.max_fps),
         origin: opts.origin_ticks,
         probe,
+        color: color::SdrConverter::new(&gpu)?,
+        hwnd,
         black: BlackStreak::default(),
         notices: notices.clone(),
     }));

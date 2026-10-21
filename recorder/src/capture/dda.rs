@@ -8,8 +8,7 @@
 //! - Cursor: DDA desktop images do not include the cursor; as with WGC, it is not composited here.
 //! - When the foreground window does not belong to the target PID or is minimized, continuously sends GPU black frames to avoid recording another app.
 //! - DXGI_ERROR_ACCESS_LOST (resolution change, fullscreen transition, UAC secure desktop): discard and recreate duplication.
-//! - Limitation: rotated monitors are recorded in the panel native orientation with a warning; HDR monitors request BGRA and are converted to SDR.
-//!   HDR monitors request BGRA through DuplicateOutput1; the system converts to SDR and colors may appear washed out.
+//! - Rotated monitors retain panel native orientation. FP16 HDR desktops are tone-mapped to SDR on the GPU.
 
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread;
@@ -22,8 +21,8 @@ use windows::Win32::Graphics::Direct3D11::{
     ID3D11Texture2D, D3D11_BIND_RENDER_TARGET, D3D11_TEXTURE2D_DESC, D3D11_USAGE_DEFAULT,
 };
 use windows::Win32::Graphics::Dxgi::Common::{
-    DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_MODE_ROTATION, DXGI_MODE_ROTATION_IDENTITY,
-    DXGI_MODE_ROTATION_UNSPECIFIED, DXGI_SAMPLE_DESC,
+    DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_FORMAT_R16G16B16A16_FLOAT, DXGI_MODE_ROTATION,
+    DXGI_MODE_ROTATION_IDENTITY, DXGI_MODE_ROTATION_UNSPECIFIED, DXGI_SAMPLE_DESC,
 };
 use windows::Win32::Graphics::Dxgi::{
     CreateDXGIFactory1, IDXGIAdapter, IDXGIDevice, IDXGIFactory1, IDXGIOutput, IDXGIOutput1,
@@ -303,6 +302,8 @@ struct Output {
     gate: SlotGate,
     visibility: Visibility,
     black: BlackFrame,
+    color: super::color::SdrConverter,
+    monitor: HMONITOR,
     notices: Sender<CaptureNotice>,
 }
 
@@ -440,12 +441,20 @@ impl Duplication {
 }
 
 fn duplicate(output: &IDXGIOutput, gpu: &Gpu) -> Result<IDXGIOutputDuplication> {
-    // Prefer DuplicateOutput1 to request BGRA (the system converts HDR/FP16 desktops); fall back to DuplicateOutput on older systems.
+    // Preserve HDR values until our SDR tone mapping; SDR desktops remain BGRA.
     if let Ok(output5) = output.cast::<IDXGIOutput5>() {
         // SAFETY: The device belongs to this output adapter; the format array remains valid for the call.
-        match unsafe { output5.DuplicateOutput1(&gpu.device, 0, &[DXGI_FORMAT_B8G8R8A8_UNORM]) } {
+        match unsafe {
+            output5.DuplicateOutput1(
+                &gpu.device,
+                0,
+                &[DXGI_FORMAT_R16G16B16A16_FLOAT, DXGI_FORMAT_B8G8R8A8_UNORM],
+            )
+        } {
             Ok(dup) => return Ok(dup),
-            Err(error) => eprintln!("DDA: DuplicateOutput1 failed ({error}); falling back to DuplicateOutput"),
+            Err(error) => {
+                eprintln!("DDA: DuplicateOutput1 failed ({error}); falling back to DuplicateOutput")
+            }
         }
     }
     let output1: IDXGIOutput1 = output
@@ -574,14 +583,22 @@ fn deliver(
     let Some(pts) = output.gate.accept(pts) else {
         return Ok(None);
     };
-    let texture: ID3D11Texture2D = resource.cast().context("DDA frame is not a D3D11 texture")?;
+    let texture: ID3D11Texture2D = resource
+        .cast()
+        .context("DDA frame is not a D3D11 texture")?;
     let mut desc = D3D11_TEXTURE2D_DESC::default();
     // SAFETY: texture remains valid while the Acquired guard lives; desc is writable.
     unsafe { texture.GetDesc(&mut desc) };
-    if desc.Format != DXGI_FORMAT_B8G8R8A8_UNORM || desc.SampleDesc.Count != 1 {
-        bail!("DDA desktop image format {} is not BGRA; skipping", desc.Format.0);
+    if ![DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_FORMAT_R16G16B16A16_FLOAT].contains(&desc.Format)
+        || desc.SampleDesc.Count != 1
+    {
+        bail!(
+            "DDA desktop image format {} is not BGRA/scRGB; skipping",
+            desc.Format.0
+        );
     }
     if output.visible(pts) {
+        let texture = output.color.convert(&texture, output.monitor)?;
         consumer.on_frame(&CapturedFrame {
             texture: &texture,
             width: desc.Width,
@@ -609,12 +626,16 @@ pub(super) fn run(
     let freq = qpc_frequency();
     let hwnd = find_window(opts.pid)?;
     let monitor = monitor_of(hwnd);
-    let dup = Duplication::open(&gpu, monitor).context("capture_failed: Failed to initialize DDA capture")?;
+    let dup = Duplication::open(&gpu, monitor)
+        .context("capture_failed: Failed to initialize DDA capture")?;
     let mut output = Output {
         pid: opts.pid,
         gate: SlotGate::new(opts.max_fps),
         visibility: Visibility::new(),
-        black: BlackFrame::new(&gpu, dup.size).context("capture_failed: Failed to create DDA black frame")?,
+        color: super::color::SdrConverter::new(&gpu)?,
+        monitor,
+        black: BlackFrame::new(&gpu, dup.size)
+            .context("capture_failed: Failed to create DDA black frame")?,
         notices: notices.clone(),
     };
     let mut tracker = Tracker {
@@ -642,6 +663,7 @@ pub(super) fn run(
         if Instant::now() >= next_check {
             next_check = Instant::now() + WINDOW_CHECK;
             tracker.check_window();
+            output.monitor = tracker.monitor;
         }
         if tracker.dup.is_none() {
             tracker.reopen(&gpu)?;
@@ -825,6 +847,8 @@ mod tests {
                 pid: u32::MAX,
                 gate: SlotGate::new(60),
                 visibility: Visibility::new(),
+                color: crate::capture::color::SdrConverter::new(&gpu).unwrap(),
+                monitor: HMONITOR::default(),
                 black: BlackFrame::new(&gpu, size).unwrap(),
                 notices,
             };
