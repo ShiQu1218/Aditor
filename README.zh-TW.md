@@ -4,12 +4,14 @@
 
 [English](README.md) ｜ **繁體中文**
 
-> **Apex Legends 精彩片段自動錄影、分析與剪輯工具**
+> **Apex Legends 與 VALORANT 精彩片段自動錄影、分析與剪輯工具**
 >
-> 錄下你的 *Apex Legends* 對局，或直接拖入手上已有的遊戲影片。Aditor 會自動標出每一次擊倒與助攻，讓你在時間軸上挑選精彩片段並匯出。全部在你的電腦上完成，只看畫面像素——不上雲端、不注入遊戲。
+> 錄下你的 *Apex Legends* 或 *VALORANT* 對局，或直接拖入手上已有的遊戲影片。Aditor 會自動標出 Apex 的每一次擊倒與助攻，或 VALORANT 的每一次擊殺與死亡，讓你在時間軸上挑選精彩片段並匯出。全部在你的電腦上完成，只看畫面像素——不上雲端、不注入遊戲。
 
 > [!IMPORTANT]
-> **目前只支援「快速對戰」與「積分」模式。** 不支援外卡、死鬥等其他模式。
+> **Apex Legends：目前只支援「快速對戰」與「積分」模式。** 不支援外卡、死鬥等其他模式。
+>
+> **VALORANT：** 支援擊殺、死亡、回合、多殺與 Ace。死鬥會記錄擊殺與死亡，但沒有回合。建議的視窗模式與其他注意事項請見[已知限制](#已知限制)。
 
 **下載：** [Releases](https://github.com/ShiQu1218/Aditor/releases)（Windows 10 / 11 64 位元）
 
@@ -17,7 +19,7 @@
 
 ## 介面預覽
 
-以下使用實際錄影與已儲存的分析結果，介面語言為繁體中文。
+以下使用 Apex Legends 的實際錄影與已儲存的分析結果，介面語言為繁體中文。
 
 ### 影片庫
 
@@ -43,9 +45,12 @@
 
 | 功能 | 說明 |
 |---|---|
-| 離線分析 | 拖入錄影檔（MP4 / MKV / MOV / WebM），自動標出擊倒與助攻 |
-| 觀戰過濾 | 陣亡後觀戰隊友時，隊友的擊殺不會算成你的 |
-| 內建錄影 | 偵測到 Apex 啟動就開始錄；可選「一局一個檔」或「從頭錄到尾」 |
+| 多遊戲支援 | 支援 Apex Legends 與 VALORANT；自動辨識遊戲，也可在影片卡上手動選擇，或改用另一個遊戲重新分析 |
+| 離線分析 | 拖入錄影檔（MP4 / MKV / MOV / WebM），自動標出 Apex 的擊倒與助攻，或 VALORANT 的擊殺與死亡 |
+| VALORANT 回合 | 時間軸上的回合勝負色帶，以及多殺與 Ace 精華 |
+| 觀戰過濾 | Apex：陣亡後觀戰隊友時，隊友的擊殺不會算成你的 |
+| 內建錄影 | 偵測到支援的遊戲啟動就開始錄；可選「一局一個檔」或「從頭錄到尾」 |
+| 錄影顯示卡 | 有多張顯示卡的電腦可選擇由哪一張負責擷取與編碼（預設自動） |
 | OBS 模式 | 由 OBS 錄影，Aditor 只負責偵測與切檔 |
 | AI 自動剪輯 | 把密集擊殺自動組成多殺團戰片段 |
 | 剪輯與匯出 | 分割、修剪、排序、復原、自動儲存；快速無損或硬體精準重新編碼 |
@@ -70,6 +75,15 @@
 ### 對局切分
 
 <p align="center"><img src="docs/diagrams/match-state.zh-TW.png" alt="對局狀態機" width="720"></p>
+
+### VALORANT 偵測
+
+上面的流程是 Apex Legends。VALORANT 同樣只看畫面像素，以影像處理完成偵測，不使用機器學習：
+
+- **擊殺與死亡：** 看右上擊殺列表中本機玩家那一列的黃色標記，並依被殺者那側的隊伍底色判斷。死亡不會算成擊殺。
+- **回合、多殺與 Ace：** 回合由上方比分數字的變化判斷；一個回合 2 到 4 殺為多殺，5 殺為 Ace。死鬥沒有回合。
+- **錄影時的對局邊界：** 讀取 Riot Client 的本機 API（唯讀，Aditor 不碰遊戲記憶體）。連不上時會通知你，並將整段錄成一個檔。
+- **畫面比例：** 支援 16:9、16:10、4:3、5:4，拉伸與加黑邊皆可。
 
 ### 錄影
 
@@ -103,9 +117,13 @@
 
 ## 已知限制
 
-- 只支援快速對戰與積分；外卡、死鬥等模式不支援。
-- 只偵測**擊倒**與**助攻**，不偵測單獨淘汰與滅隊。
-- 觀戰過濾只認得繁中、簡中、英文、日文、韓文的提示列。
+- **Apex Legends：** 只支援快速對戰與積分；外卡、死鬥等模式不支援。
+- **Apex Legends：** 只偵測**擊倒**與**助攻**，不偵測單獨淘汰與滅隊。
+- **Apex Legends：** 觀戰過濾只認得繁中、簡中、英文、日文、韓文的提示列。
+- **VALORANT：** 偵測假設 HUD 位於預設位置；有疊加物蓋住右上角的擊殺列表時，可能漏抓擊殺。
+- **VALORANT：** 建議使用**無邊框視窗**（視窗化全螢幕）遊玩；獨佔全螢幕時，遊戲視窗可能不斷跳出或被最小化而干擾錄影。4:3 等非 16:9 比例通常只能在獨佔全螢幕下使用。
+- **VALORANT：** 逐局切檔依賴 Riot Client 的非官方本機 API，Riot 改版後可能失效，失效時會整段錄成一個檔。匯入的影片若不是 16:9 且沒有 Aditor 的比例標記，會被當成 16:9 分析。
+- 部分介面文案仍寫「Apex」，即使影片屬於另一個遊戲。
 - 錄影需要硬體編碼器（NVENC / AMF / QSV），沒有就不錄。
 - 偵測依賴遊戲介面外觀，遊戲改版後可能需要更新樣板。
 - 準確率報告：[`docs/accuracy-report-icon.md`](docs/accuracy-report-icon.md)、[`docs/accuracy-report-matches.md`](docs/accuracy-report-matches.md)。
@@ -133,4 +151,4 @@ powershell -ExecutionPolicy Bypass -File scripts\build.ps1
 
 [GNU GPL v3.0 授權](LICENSE)。隨附的 FFmpeg 為 LGPL v3 版本，詳見 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 
-*Apex Legends* 為 Electronic Arts Inc. 的註冊商標。Aditor 為獨立開發的開源工具，與 Electronic Arts Inc. 及 Respawn Entertainment 無任何關聯，亦未獲其授權或贊助。
+*Apex Legends* 為 Electronic Arts Inc. 的註冊商標。*VALORANT* 與 Riot Games 為 Riot Games, Inc. 的商標或註冊商標。Aditor 為獨立開發的開源工具，與 Electronic Arts Inc.、Respawn Entertainment 及 Riot Games, Inc. 無任何關聯，亦未獲其授權或贊助。

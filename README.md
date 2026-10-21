@@ -4,12 +4,14 @@
 
 **English** ｜ [繁體中文](README.zh-TW.md)
 
-> **Automatic highlight recording, analysis and editing for Apex Legends**
+> **Automatic highlight recording, analysis and editing for Apex Legends and VALORANT**
 >
-> Record your *Apex Legends* matches, or drag in videos you already have. Aditor marks every knockdown and assist automatically, then lets you pick highlights on a timeline and export them. Everything runs locally on your PC from on-screen pixels only — no cloud, no game injection.
+> Record your *Apex Legends* or *VALORANT* matches, or drag in videos you already have. Aditor marks every Apex knockdown and assist, or every VALORANT kill and death, automatically, then lets you pick highlights on a timeline and export them. Everything runs locally on your PC from on-screen pixels only — no cloud, no game injection.
 
 > [!IMPORTANT]
-> **Supported modes: Battle Royale (casual) and Ranked only.** Wildcard, Team Deathmatch and other modes are not supported.
+> **Apex Legends: Battle Royale (casual) and Ranked only.** Wildcard, Team Deathmatch and other modes are not supported.
+>
+> **VALORANT:** kills, deaths, rounds, multi-kills and aces. Deathmatch records kills and deaths but has no rounds. See [Known limitations](#known-limitations) for the recommended window mode and other caveats.
 
 **Download:** [Releases](https://github.com/ShiQu1218/Aditor/releases) (Windows 10 / 11, 64-bit)
 
@@ -17,7 +19,7 @@
 
 ## Screenshots
 
-Real recordings and saved analysis results, shown in the Traditional Chinese UI.
+Real Apex Legends recordings and saved analysis results, shown in the Traditional Chinese UI.
 
 ### Video library
 
@@ -43,9 +45,12 @@ Zoom in to see individual knockdown and assist markers, then add a suggested hig
 
 | Feature | Description |
 |---|---|
-| Offline analysis | Drop in a recording (MP4 / MKV / MOV / WebM); knockdowns and assists are marked automatically |
-| Spectate filter | Teammates' kills while you spectate after dying are not counted as yours |
-| Built-in recording | Starts when Apex launches; "one file per match" or "start to finish" |
+| Multiple games | Apex Legends and VALORANT; the game is recognized automatically, or you can pick it, or re-analyze a video as another game, from the video card |
+| Offline analysis | Drop in a recording (MP4 / MKV / MOV / WebM); Apex knockdowns and assists, or VALORANT kills and deaths, are marked automatically |
+| VALORANT rounds | Round win/loss strip on the timeline, plus multi-kill and ace highlights |
+| Spectate filter | Apex: teammates' kills while you spectate after dying are not counted as yours |
+| Built-in recording | Starts when a supported game launches; "one file per match" or "start to finish" |
+| Recording GPU | On PCs with more than one GPU, choose which one captures and encodes (automatic by default) |
 | OBS mode | OBS records, Aditor only detects and splits files |
 | AI auto-compilation | Groups dense kills into multi-kill fight clips |
 | Editing & export | Split, trim, reorder, undo, autosave; fast lossless or precise hardware re-encode |
@@ -70,6 +75,15 @@ No machine learning — just template matching on the kill-banner icons, so it w
 ### Match segmentation
 
 <p align="center"><img src="docs/diagrams/match-state.en.png" alt="Match state machine" width="720"></p>
+
+### VALORANT detection
+
+The pipeline above is Apex Legends. VALORANT is also detected from on-screen pixels with image processing, without machine learning:
+
+- **Kills and deaths:** the local player's yellow marker in the top-right kill feed, together with the victim's team color. Deaths are never counted as kills.
+- **Rounds, multi-kills and aces:** rounds come from changes in the scoreboard digits at the top; two to four kills in a round form a multi-kill and five an ace. Deathmatch has no rounds.
+- **Match boundaries while recording:** read from the Riot Client's local API (read-only; Aditor never touches game memory). If it is unreachable, Aditor tells you and records the whole session as one file.
+- **Screen layouts:** 16:9, 16:10, 4:3 and 5:4, stretched or letterboxed.
 
 ### Recording
 
@@ -103,9 +117,13 @@ Working-set sums can double-count shared pages. Private committed memory include
 
 ## Known limitations
 
-- Only Battle Royale (casual) and Ranked are supported; Wildcard, Team Deathmatch and other modes are not.
-- Only **knockdowns** and **assists** are detected; solo eliminations and squad wipes are not.
-- The spectate filter recognizes the hint bar in Traditional/Simplified Chinese, English, Japanese and Korean only.
+- **Apex Legends:** only Battle Royale (casual) and Ranked are supported; Wildcard, Team Deathmatch and other modes are not.
+- **Apex Legends:** only **knockdowns** and **assists** are detected; solo eliminations and squad wipes are not.
+- **Apex Legends:** the spectate filter recognizes the hint bar in Traditional/Simplified Chinese, English, Japanese and Korean only.
+- **VALORANT:** detection assumes the default HUD position; overlays that cover the top-right kill feed can cause missed kills.
+- **VALORANT:** playing in **borderless window** (windowed fullscreen) is recommended; in exclusive fullscreen the game window can pop up or minimize and disturb recording. Non-16:9 layouts such as 4:3 normally require exclusive fullscreen.
+- **VALORANT:** per-match splitting relies on the Riot Client's unofficial local API, which a Riot update may break; when that happens the session is recorded as one file. An imported video that is not 16:9 and carries no Aditor aspect tag is analyzed as 16:9.
+- Some interface text still says "Apex" even when the video is another game.
 - Recording needs a hardware encoder (NVENC / AMF / QSV); without one nothing is recorded.
 - Detection relies on the game's UI; a game update may require updated templates.
 - Accuracy reports (Traditional Chinese): [`docs/accuracy-report-icon.md`](docs/accuracy-report-icon.md), [`docs/accuracy-report-matches.md`](docs/accuracy-report-matches.md).
@@ -133,4 +151,4 @@ The installer and portable build are written to `dist\`. Tests: `engine\.venv\Sc
 
 [GNU General Public License v3.0](LICENSE). The bundled FFmpeg is an LGPL v3 build; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
-*Apex Legends* is a registered trademark of Electronic Arts Inc. Aditor is an independent open-source tool, not affiliated with or endorsed by Electronic Arts Inc. or Respawn Entertainment.
+*Apex Legends* is a registered trademark of Electronic Arts Inc. *VALORANT* and Riot Games are trademarks or registered trademarks of Riot Games, Inc. Aditor is an independent open-source tool, not affiliated with or endorsed by Electronic Arts Inc., Respawn Entertainment or Riot Games, Inc.

@@ -178,4 +178,5 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
 ## 9. Disclaimer & Trademark Notice
 
 *Apex Legends* is a registered trademark of Electronic Arts Inc.
-Aditor is an independent open-source desktop utility designed for local gameplay video analysis. It is **not** affiliated with, endorsed, sponsored, or supported by Electronic Arts Inc., Respawn Entertainment, or any of their affiliates.
+*VALORANT* and Riot Games are trademarks or registered trademarks of Riot Games, Inc.
+Aditor is an independent open-source desktop utility designed for local gameplay video analysis. It is **not** affiliated with, endorsed, sponsored, or supported by Electronic Arts Inc., Respawn Entertainment, Riot Games, Inc., or any of their affiliates.
