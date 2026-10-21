@@ -266,3 +266,37 @@ def test_narrower_render_aspects_read_the_same_kill_feed(aspect_text, letterbox)
     restored, restored_spec = profile.restore(banner, spec)
     assert restored.shape == ref.shape and restored_spec.shape[1] == 460
     assert [(r.slot, r.type) for r in FeedDetector(profile).rows(restored)] == [(0, "kill"), (2, "death")]
+
+
+def test_the_same_victim_killed_again_after_the_entry_left_is_a_new_kill():
+    tr = FeedTracker()
+    sig = [1, 0, 0]
+    for t in (250.0, 251.0, 252.0, 253.0, 254.0, 255.0):
+        tr.feed(t, [row(0, "kill", sig)])
+    tr.feed(260.0, [row(3, "kill", sig)])               # Looks alike, but the first entry has left the feed.
+    assert [e.t for e in tr.events] == [250.0, 260.0]
+
+
+def test_a_stray_row_in_the_slot_above_does_not_split_an_entry():
+    tr = FeedTracker()
+    a = [1, 0, 0]
+    tr.feed(10.0, [row(2, "kill", a)])
+    tr.feed(10.25, [row(1, "kill", [0, 1, 0]), row(2, "kill", a)])  # A one-frame copy while the row slides.
+    tr.feed(10.5, [row(2, "kill", a)])
+    assert [e.t for e in tr.events] == [10.0]
+
+
+def test_a_short_box_counts_only_with_the_outline_along_the_row():
+    def short_box(outline):
+        img = feed((1, TEAL, RED, None))
+        right = RIGHT_EDGE - CX
+        cy = ROW_Y0 + ROW_STEP - CY
+        y0, y1 = cy - ROW_H // 2, cy + ROW_H // 2
+        left = right - 330
+        cv2.rectangle(img, (left, y0 + 3), (left + 23, y0 + 25), YELLOW, -1)  # 23 px tall: below MIN_BOX_H.
+        if outline:
+            cv2.line(img, (left + 26, y0), (right - 180, y0), YELLOW, 2)
+        return img
+
+    assert kinds(short_box(outline=True)) == [(1, "kill")]
+    assert kinds(short_box(outline=False)) == []

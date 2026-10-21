@@ -37,6 +37,10 @@ GAME = "valorant"
 ROW_Y0, ROW_STEP, ROW_H, ROWS = 112, 40, 30, 6
 RIGHT_EDGE = 1902
 MIN_BOX_H = 28
+# With the yellow outline along the row as well, a shorter box suffices: in some recordings (a 4:3 deathmatch) the box
+# thresholds to 21-27 px, the range of other players' assist mini-portraits, which carry no outline.
+MIN_OUTLINED_BOX_H = 18
+MIN_OUTLINED_BOX_W = 19  # Assist mini-portraits are ~15 px wide; the player's box 21-25.
 MIN_ROW_EDGE = 45.0
 MIN_TEAM_FILL = 0.30
 # Newer clients mark the player's row with a thin yellow outline along their half and a chevron outside the row end
@@ -45,6 +49,7 @@ MIN_TEAM_FILL = 0.30
 # graphs soften the row edges).
 MIN_OUTLINE = 40
 MIN_CHEVRON_ROW_EDGE = 25.0
+KILL_CHEVRON_MIN_OFFSET = 200
 
 # Tracking: one kill-feed entry may flicker while fading and moves up a slot when an older row expires.
 SAME_ENTRY = 0.80   # Row signature correlation above which two sightings are the same entry.
@@ -179,6 +184,11 @@ class FeedRow:
     signature: np.ndarray
 
 
+def _pale_yellow(hsv: np.ndarray) -> np.ndarray:
+    """The thin outline washes out over bright scenery (saturation ~70); tan walls stay below hue 26."""
+    return cv2.inRange(hsv, (26, 55, 140), (40, 255, 255))
+
+
 class FeedDetector:
     def __init__(self, profile: ValorantProfile):
         self.cx, self.cy = profile.origin
@@ -207,16 +217,17 @@ class FeedDetector:
 
     def _self_boxes(self, hsv: np.ndarray, gray: np.ndarray) -> dict[int, set[str]]:
         """slot -> sides ('kill' = killer end, 'death' = victim end) holding a portrait-sized yellow box."""
-        yellow = cv2.inRange(hsv, (20, 90, 150), (38, 255, 255))
+        raw = cv2.inRange(hsv, (20, 90, 150), (38, 255, 255))
+        outline = raw | _pale_yellow(hsv)
         # The player's rows also carry a thin yellow outline that joins the box into one long component; opening
         # removes 1-2 px lines and keeps the box.
-        yellow = cv2.morphologyEx(yellow, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
+        yellow = cv2.morphologyEx(raw, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
         n, _, stats, _ = cv2.connectedComponentsWithStats(yellow, connectivity=8)
         sides: dict[int, set[str]] = {}
         for i in range(1, n):
             x, y, w, h, area = (int(v) for v in stats[i])
             # Portrait boxes span the row height; assist mini-portraits and stray blobs are ~18-24 px.
-            if not MIN_BOX_H <= h <= ROW_H + 6:
+            if not MIN_OUTLINED_BOX_H <= h <= ROW_H + 6:
                 continue
             at_right = x + w >= self.right - 26
             # At the right end the victim box merges with the chevron outside it: wider and sparser than a bare box.
@@ -229,9 +240,14 @@ class FeedDetector:
             b0, b1 = self.band(slot)
             if y < b0 - 4 or y + h > b1 + 4:  # Effect streaks cross the band; a portrait box stays inside it.
                 continue
-            if self._row_edge(gray, slot) < MIN_ROW_EDGE:  # Yellow scenery with no row behind it.
+            side = "death" if at_right else "kill"
+            outlined = self._outline(outline, slot, x, x + w, side) >= MIN_OUTLINE
+            # Yellow scenery with no row behind it has no crisp row edges; the outline already shows a row is there.
+            if self._row_edge(gray, slot) < (MIN_CHEVRON_ROW_EDGE if outlined else MIN_ROW_EDGE):
                 continue
-            sides.setdefault(slot, set()).add("death" if at_right else "kill")
+            if h < MIN_BOX_H and (not outlined or w < MIN_OUTLINED_BOX_W):
+                continue
+            sides.setdefault(slot, set()).add(side)
         return sides
 
     def _chevrons(self, hsv: np.ndarray, gray: np.ndarray) -> dict[int, set[str]]:
@@ -250,12 +266,28 @@ class FeedDetector:
             if y < b0 - 2 or y + h > b1 + 2 or self._row_edge(gray, slot) < MIN_CHEVRON_ROW_EDGE:
                 continue
             side = "death" if x >= self.right - 4 else "kill"
-            span = slice(max(0, x - 170), max(0, x - 2)) if side == "death" else slice(x + w + 2, x + w + 170)
-            outline = max(int((yellow[max(0, b0 - 3):b0 + 3, span] > 0).any(axis=0).sum()),
-                          int((yellow[b1 - 3:b1 + 3, span] > 0).any(axis=0).sum()))
-            if outline >= MIN_OUTLINE:
+            # A kill chevron sits outside the row's left end, far from the right edge; one in between belongs to a
+            # death row still sliding in.
+            if side == "kill" and x > self.right - KILL_CHEVRON_MIN_OFFSET:
+                continue
+            # The player's own half of the row (teal, washed out over bright scenery) follows the chevron, past their
+            # portrait; scenery that merely looks like a chevron has none.
+            near = slice(x + w + 40, x + w + 140) if side == "kill" else slice(max(0, x - 140), max(0, x - 40))
+            region = hsv[b0 + 5:b1 - 5, near]
+            pale_teal = (region[..., 0] >= 55) & (region[..., 0] <= 100) & (region[..., 1] >= 25) & (region[..., 2] >= 110)
+            if not region.size or pale_teal.mean() < MIN_TEAM_FILL:
+                continue
+            if self._outline(yellow, slot, x, x + w, side) >= MIN_OUTLINE:
                 sides.setdefault(slot, set()).add(side)
         return sides
+
+    def _outline(self, outline: np.ndarray, k: int, x0: int, x1: int, side: str) -> int:
+        """Columns of yellow outline along the row's top or bottom edge, running from a mark at x0..x1 into the row.
+        The line can sit a few pixels outside the band (rows drawn slightly taller)."""
+        b0, b1 = self.band(k)
+        span = slice(max(0, x0 - 170), max(0, x0 - 2)) if side == "death" else slice(x1 + 2, x1 + 170)
+        return max(int((outline[max(0, b0 - 6):b0 + 3, span] > 0).any(axis=0).sum()),
+                   int((outline[b1 - 3:b1 + 5, span] > 0).any(axis=0).sum()))
 
     def rows(self, feed: np.ndarray) -> list[FeedRow]:
         hsv = cv2.cvtColor(feed, cv2.COLOR_BGR2HSV)
@@ -288,7 +320,7 @@ class FeedTracker:
     """Turns per-frame self rows into kill/death events, one per kill-feed entry."""
 
     def __init__(self):
-        self._seen: list[tuple[float, str, int, np.ndarray]] = []  # (last_t, type, slot, signature)
+        self._seen: list[list] = []  # [first_t, last_t, type, slot, signature]
         self._last_death = -1e9
         self.events: list[Event] = []
 
@@ -304,15 +336,33 @@ class FeedTracker:
         return ident
 
     def feed(self, t: float, rows: Iterable[FeedRow]) -> list[Event]:
+        # An entry leaves the feed a few seconds after it appears, so the same victim killed again later is a new entry
+        # even if it looks alike.
         self._seen = [s for s in self._seen if t - s[0] <= ENTRY_LIFE]
+        rows = list(rows)
+        taken: set[int] = set()
+        unmatched = []
+        # Rows that look like a known entry claim it first, so a stray row in the slot above cannot steal it.
+        for row in sorted(rows, key=lambda r: -max((float(s[4] @ r.signature) for s in self._seen if s[2] == r.type),
+                                                    default=0.0)):
+            best = max(((float(s[4] @ row.signature), i) for i, s in enumerate(self._seen)
+                        if s[2] == row.type and i not in taken), default=(0.0, None))
+            if best[1] is not None and best[0] >= SAME_ENTRY:
+                taken.add(best[1])
+                self._seen[best[1]][1:] = [t, row.type, row.slot, row.signature]
+            else:
+                unmatched.append(row)
         new = []
-        for row in rows:
-            match = next((i for i, (lt, kind, slot, sig) in enumerate(self._seen) if kind == row.type and (
-                float(sig @ row.signature) >= SAME_ENTRY or (slot in (row.slot, row.slot + 1) and t - lt <= FLICKER))), None)
-            if match is not None:
-                self._seen[match] = (t, row.type, row.slot, row.signature)
+        for row in sorted(unmatched, key=lambda r: r.slot):
+            # A fading or moving row at its slot (or one below, before shifting up) moments after the last sighting.
+            near = next((i for i, s in enumerate(self._seen)
+                         if s[2] == row.type and s[3] in (row.slot, row.slot + 1) and t - s[1] <= FLICKER), None)
+            if near is not None:
+                if near not in taken:  # Already claimed this frame: this row is a stray copy of that entry.
+                    taken.add(near)
+                    self._seen[near][1:] = [t, row.type, row.slot, row.signature]
                 continue
-            self._seen.append((t, row.type, row.slot, row.signature))
+            self._seen.append([t, t, row.type, row.slot, row.signature])
             if row.type == "death":
                 if t - self._last_death < DEATH_GAP:  # A death row that fades and returns looking different.
                     continue
