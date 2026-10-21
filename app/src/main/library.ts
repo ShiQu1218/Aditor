@@ -142,7 +142,7 @@ export class Library {
     return n
   }
 
-  add(paths: string[], source: 'recording' | 'external' = 'external'): LibraryEntry[] {
+  add(paths: string[], source: 'recording' | 'external' = 'external', game?: GameId): LibraryEntry[] {
     const existing = new Set(this.entries.map((e) => normalizePath(e.path)))
     const added: LibraryEntry[] = []
     let changed = false
@@ -160,6 +160,10 @@ export class Library {
           entry.source = source
           changed = true
         }
+        if (game && !entry.game) {
+          entry.game = game
+          changed = true
+        }
         continue
       }
       existing.add(norm)
@@ -169,7 +173,8 @@ export class Library {
         addedAt: Date.now(),
         favorite: false,
         status: 'pending',
-        progress: 0
+        progress: 0,
+        ...(game ? { game } : {})
       }
       this.entries.push(entry)
       added.push(entry)

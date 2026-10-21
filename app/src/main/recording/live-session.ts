@@ -92,6 +92,8 @@ export class LiveSession extends EventEmitter {
   private restartedAt = -Infinity
   /** Wall time (ms) when aditorrec reported capture started; recording time 0 is about then. */
   private capturedAt: number | null = null
+  /** The game client's last match boundary before capture started; an open match is replayed at time 0. */
+  private earlyClientMatch: 'match_start' | 'match_end' | null = null
 
   constructor(private options: LiveSessionOptions) { super() }
 
@@ -102,6 +104,8 @@ export class LiveSession extends EventEmitter {
     this.width = width
     this.height = height
     this.capturedAt = Date.now()
+    if (this.earlyClientMatch === 'match_start') this.clientMatch('match_start', this.capturedAt)
+    this.earlyClientMatch = null
     const { command } = this.options
     if (!command || this.engine) return
     if (path.isAbsolute(command.command) && !fs.existsSync(command.command)) {
@@ -215,7 +219,10 @@ export class LiveSession extends EventEmitter {
 
   /** Match boundaries from the game client (Valorant's Riot Client), at wall time `at` (ms). */
   clientMatch(ev: 'match_start' | 'match_end', at: number): void {
-    if (this.capturedAt === null) return
+    if (this.capturedAt === null) {
+      this.earlyClientMatch = ev
+      return
+    }
     this.onMatch({ ev, t: Math.max(0, (at - this.capturedAt) / 1000), reason: 'game_client' })
   }
 

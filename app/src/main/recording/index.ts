@@ -47,7 +47,8 @@ export interface RecordingDeps {
   /** Apex `templates/icons`; other games use `gameProfileDir`. Read `capture_rois` (or `banner_roi`/`spec_roi`) from `profile.json` and pass them to aditorrec. */
   profileDir: string
   /** Add an item to the library (`Library.add`). */
-  addToLibrary: (paths: string[]) => void
+  /** `game` is the game recorded, so analysis need not recognise it again from footage that may carry no tag (OBS). */
+  addToLibrary: (paths: string[], game?: GameId) => void
   /** Enqueue a full analysis (`AnalysisQueue.enqueue`). */
   enqueueAnalysis: (videoPath: string) => void
   /** Windows notification/tray notice (implemented by task A3; visibility follows its settings). */

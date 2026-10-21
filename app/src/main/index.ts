@@ -217,8 +217,8 @@ async function initEngineAndServices(): Promise<void> {
     recorderCommand: aditorrecCommand(app.isPackaged),
     ffmpegPath: ffmpegExecutable(app.isPackaged),
     profileDir: templateProfileDir,
-    addToLibrary: (paths) => {
-      library!.add(paths, 'recording')
+    addToLibrary: (paths, game) => {
+      library!.add(paths, 'recording', game)
       pushLibrary()
     },
     enqueueAnalysis: (videoPath) => queue!.enqueue(videoPath),

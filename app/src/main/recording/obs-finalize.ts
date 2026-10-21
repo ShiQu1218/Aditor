@@ -4,7 +4,7 @@ import { spawn } from 'child_process'
 import type { RecordingDeps } from './index'
 import type { ObsMatch, ObsMetadata } from './obs-session'
 import { ALLOWED_VIDEO_EXTS, isSafeLocalDirPath } from '../safe-path'
-import { MATCH_POST_PAD_SEC, MATCH_PRE_PAD_SEC, inOutputDir, liveMatches, outputBase, readOptional, reserveOutput,
+import { addRecorded, MATCH_POST_PAD_SEC, MATCH_PRE_PAD_SEC, inOutputDir, liveMatches, outputBase, readOptional, reserveOutput,
   resumeMatchPart, writeJson, gameMetadataArgs, type SessionSnapshot } from './finalize'
 import { isTrusted, writeLiveCache, type LiveCacheRange, type LiveFile } from './live-cache'
 import { createCutLookup, createMediaEndProbe } from '../export/keyframe'
@@ -148,7 +148,7 @@ export async function finalizeObsSession(dir: string, deps: RecordingDeps, confi
   for (const cut of marker.cuts) {
     const original = cut.outputPath === meta.outputPath
     if ((!original && !inOutputDir(cut.outputPath, outputDir)) || !await localFile(cut.outputPath)) throw new Error(tr('OBS 收尾影片路徑無效'))
-    deps.addToLibrary([cut.outputPath])
+    addRecorded(deps, [cut.outputPath], config.game)
     if (!cut.liveCached) {
       try {
         const summary = await writeLiveCache(dir, cut.outputPath, deps, cut)
@@ -220,7 +220,7 @@ export async function finalizeObsMatches(dir: string, deps: RecordingDeps, confi
         ? deps.probeVideo(file) : { duration: await createMediaEndProbe(ffprobePath(deps.ffmpegPath))(file) }, deps.obsFileSettleMs ?? OBS_FILE_SETTLE_STEP_MS)
       if (!info.duration) throw new Error(tr('無法取得 OBS 影片長度'))
       if (!match.added) {
-        deps.addToLibrary([file])
+        addRecorded(deps, [file], config.game)
         match.added = true
         await persist()
         outputs.push(file)

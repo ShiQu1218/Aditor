@@ -246,7 +246,7 @@ async function completeCut(dir: string, deps: RecordingDeps, config: SessionSnap
   cut: MatchCut, entries: IndexEntry[], finishing: boolean, trusted: boolean
 ): Promise<void> {
   await validateCut(cut, path.dirname(path.dirname(dir)))
-  deps.addToLibrary([cut.outputPath])
+  addRecorded(deps, [cut.outputPath], config.game)
   if (!cut.liveCached || (finishing && trusted && !cut.liveTrusted)) {
     try {
       const summary = await writeLiveCache(dir, cut.outputPath, deps, entries, {
@@ -360,6 +360,12 @@ export async function reserveOutput(outputDir: string, base: string, startedAt: 
       if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
     }
   }
+}
+
+/** Add finished outputs with the recorded game; Apex stays untagged, as its MP4s do. */
+export function addRecorded(deps: RecordingDeps, paths: string[], game?: GameId): void {
+  if (game && game !== DEFAULT_GAME) deps.addToLibrary(paths, game)
+  else deps.addToLibrary(paths)
 }
 
 /** MP4 tags the engine reads back for offline analysis; Apex recordings stay untagged for the game, as before. */
