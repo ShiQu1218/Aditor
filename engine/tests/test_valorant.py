@@ -6,11 +6,12 @@ import pytest
 
 from aditor.live import LiveEngine, ShmLayout, ShmReader, run as run_live
 from aditor.valorant import (ValorantLiveKills, ALLY_STRIP, ENEMY_STRIP, SCORE_BOX, ROW_H, ROW_STEP, ROW_Y0, RIGHT_EDGE, FeedDetector,
-                             FeedRow, FeedTracker, ValorantProfileError, load_valorant_profile, scoreboard_visible)
+                             BANNER_REF, FeedRow, FeedTracker, ValorantProfileError, load_valorant_profile,
+                             scoreboard_visible)
 
 TEMPLATES = Path(__file__).resolve().parents[2] / "templates" / "valorant" / "icons"
 PROFILE = load_valorant_profile(TEMPLATES)
-CX, CY, CW, CH = PROFILE.capture_banner
+CX, CY, CW, CH = BANNER_REF  # feed() draws the reference crop the detector reads.
 
 RED = (70, 80, 240)      # BGR
 TEAL = (170, 200, 90)
@@ -126,8 +127,16 @@ def test_profile_must_cover_the_kill_feed(tmp_path):
     (tmp_path / "profile.json").write_text(
         '{"templates_version": "x", "capture_rois": {"banner": [1436, 300, 480, 100], "spec": [0, 0, 10, 10]}}',
         encoding="utf-8")
-    with pytest.raises(ValorantProfileError, match="kill feed"):
+    with pytest.raises(ValorantProfileError, match="every aspect"):
         load_valorant_profile(tmp_path)
+
+
+def captured(ref: np.ndarray) -> np.ndarray:
+    """A reference feed crop placed in the wider capture crop aditorrec hands over (16:9 game)."""
+    bx, _, bw, _ = PROFILE.capture_banner
+    img = np.full((CH, bw, 3), BACKGROUND, np.uint8)
+    img[:, CX - bx:CX - bx + CW] = ref
+    return img
 
 
 def _live_frames():
@@ -135,13 +144,13 @@ def _live_frames():
     for k in range(64):
         t = k * 0.25
         rows = [(0, TEAL, RED, "left")] if 1 <= t < 5 else [(0, RED, TEAL, "right")] if 10 <= t < 14 else []
-        yield t, feed(*rows)
+        yield t, captured(feed(*rows))
 
 
 def test_live_engine_reports_valorant_kills_and_deaths():
     from test_live import FakeClock, ShmTestWriter, _name, _pts
 
-    lay = ShmLayout((CW, CH), tuple(PROFILE.capture_spec[2:]), (640, 360))
+    lay = ShmLayout(tuple(PROFILE.capture_banner[2:]), tuple(PROFILE.capture_spec[2:]), (640, 360))
     spec = np.zeros((lay.spec[1], lay.spec[0], 3), np.uint8)
     name, out, clock = _name(), [], FakeClock()
     w = ShmTestWriter(name, lay)
@@ -167,7 +176,7 @@ def test_live_run_accepts_valorant_shared_memory():
     import json as _json
     from test_live import ShmTestWriter, _name, _pts
 
-    lay = ShmLayout((CW, CH), tuple(PROFILE.capture_spec[2:]), (640, 360))
+    lay = ShmLayout(tuple(PROFILE.capture_banner[2:]), tuple(PROFILE.capture_spec[2:]), (640, 360))
     name = _name()
     w = ShmTestWriter(name, lay)
     try:
@@ -195,3 +204,65 @@ def test_derive_never_counts_a_death_as_a_kill():
     out = derive(events, [], load_profile(ICON_DIR))
     assert [(e.type, e.counted, e.counted_reason) for e in out] == [
         ("kill", True, "first"), ("kill", True, "first"), ("death", False, "death")]
+
+
+def test_two_kills_in_one_frame_get_distinct_ids():
+    tr = FeedTracker()
+    tr.feed(5.0, [row(0, "kill", [1, 0, 0]), row(1, "kill", [0, 1, 0])])
+    assert len({e.id for e in tr.events}) == 2
+
+
+def test_reanalysis_recomputes_multikills_from_the_users_kill_edits():
+    from dataclasses import replace
+
+    from aditor.models import Event
+    from aditor.valorant import merge_events
+    from aditor.valorant_rounds import Round, round_highlights
+
+    def kill(t):
+        return Event(id=f"k{t}", t=t, type="kill", score=1.0, damage_line=False, name_sig=None, counted=True,
+                     counted_reason="first")
+
+    rounds = [Round(0, 100, "ally", 1, 0)]
+    detected = [kill(10.0), kill(20.0)]
+    first = detected + round_highlights(detected, rounds)
+    assert [e.type for e in first].count("multikill") == 1
+    edited = [replace(e, deleted=True) if e.t == 20.0 and e.type == "kill" else e for e in first]
+    events, _ = merge_events(edited, [kill(10.0), kill(20.0)], rounds)
+    assert [e.type for e in events if not e.deleted] == ["kill"]
+
+    hidden = [replace(e, deleted=True) if e.type == "multikill" else e for e in first]
+    events, _ = merge_events(hidden, [kill(10.0), kill(20.0)], rounds)
+    assert [(e.type, e.deleted) for e in events if e.type == "multikill"] == [("multikill", True)]
+
+
+def _frame_strip(ref: np.ndarray, aspect: float, letterbox: bool) -> np.ndarray:
+    """The banner capture of a game rendered at `aspect`: its HUD keeps the 1080p pixel size in a canvas 1080 * aspect
+    wide, which is stretched to 1920 or centred between black bars."""
+    full = np.full((CH, 1920, 3), BACKGROUND, np.uint8)
+    full[:, CX:CX + CW] = ref
+    canvas_w = round(1080 * aspect)
+    canvas = full[:, 1920 - canvas_w:]
+    if letterbox:
+        frame = np.zeros_like(full)
+        left = (1920 - canvas_w) // 2
+        frame[:, left:left + canvas_w] = canvas
+    else:
+        frame = cv2.resize(canvas, (1920, CH), interpolation=cv2.INTER_LINEAR)
+    bx, _, bw, _ = PROFILE.capture_banner
+    return frame[:, bx:bx + bw]
+
+
+@pytest.mark.parametrize("letterbox", [False, True])
+@pytest.mark.parametrize("aspect_text", ["4:3", "16:10", "5:4"])
+def test_narrower_render_aspects_read_the_same_kill_feed(aspect_text, letterbox):
+    from aditor.layout import parse_aspect
+
+    profile = PROFILE.with_layout(parse_aspect(aspect_text))
+    ref = feed((0, TEAL, RED, "left"), (2, RED, TEAL, "right"))
+    banner = _frame_strip(ref, profile.aspect, letterbox)
+    spec = np.zeros((PROFILE.capture_spec[3], PROFILE.capture_spec[2], 3), np.uint8)
+    assert profile.letterboxed(banner) is letterbox
+    restored, restored_spec = profile.restore(banner, spec)
+    assert restored.shape == ref.shape and restored_spec.shape[1] == 460
+    assert [(r.slot, r.type) for r in FeedDetector(profile).rows(restored)] == [(0, "kill"), (2, "death")]

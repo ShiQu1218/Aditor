@@ -13,8 +13,9 @@ Clove's ability, is a death). Tuned on a 1080p60 stream VOD: 3 matches, 53 kills
 from __future__ import annotations
 
 import json
+import math
 import threading
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Callable, Iterable
 
@@ -25,7 +26,7 @@ from . import ENGINE_VERSION
 from .cache import cache_path, load_cache, merge_clips, merge_reanalysis, needs_reanalysis, save_cache
 from .decode import FrameStream
 from .errors import Cancelled
-from .layout import Layout
+from .layout import BASE_H, BASE_W, REFERENCE_ASPECT, SUPPORTED_ASPECTS, Layout, LayoutError
 from .models import Clip, Event, VideoInfo
 from .probe import keyframes
 from .valorant_rounds import Round, RoundTracker, round_highlights
@@ -56,9 +57,48 @@ class ValorantProfileError(Exception):
     pass
 
 
+# Reference rects (1920x1080, 16:9) the detectors read: the kill feed hangs from the top right, the scoreboard sits at
+# the top centre.
+BANNER_REF = (1316, 84, 600, 256)
+SPEC_REF = (740, 20, 460, 64)
+
+# Valorant sizes its HUD by the screen height, so at a narrower render aspect the HUD keeps its pixel size inside a
+# canvas 1080 * aspect wide. That canvas reaches the 1920x1080 frame either stretched (a 4:3 swap chain scaled to 16:9
+# by the display, the capture or the decoder: x scales by 16:9 / aspect) or letterboxed (black side bars, the canvas
+# centred at its own size). Black bars show which one a frame is, so the game's letterbox setting is not needed.
+LETTERBOX_DARK = 12  # Mean grey level of a black bar (encoded black lands a few levels above 0).
+LETTERBOX_PEAK = 40  # Brightest pixel a black bar may hold.
+
+
+def _canvas_width(aspect: float) -> float:
+    return BASE_H * aspect
+
+
+def _source_x(x: float, anchor: str, aspect: float, letterbox: bool) -> float:
+    """Where reference x (anchored right or centre) lands in the 1920x1080 frame of a game rendered at `aspect`."""
+    if letterbox:
+        return (BASE_W + _canvas_width(aspect)) / 2 - (BASE_W - x) if anchor == "right" else x
+    k = REFERENCE_ASPECT / aspect
+    return BASE_W - (BASE_W - x) * k if anchor == "right" else BASE_W / 2 + (x - BASE_W / 2) * k
+
+
+def _source_span(rect, anchor: str, aspect: float, letterbox: bool) -> tuple[float, float]:
+    x, _, w, _ = rect
+    return _source_x(x, anchor, aspect, letterbox), _source_x(x + w, anchor, aspect, letterbox)
+
+
+def capture_rect(rect, anchor: str) -> tuple[int, int, int, int]:
+    """Smallest rect holding `rect`'s content at every supported aspect, stretched or letterboxed."""
+    spans = [_source_span(rect, anchor, a, lb) for a in SUPPORTED_ASPECTS.values() for lb in (False, True)]
+    x0 = math.floor(min(s[0] for s in spans))
+    x1 = math.ceil(max(s[1] for s in spans))
+    return (x0, rect[1], x1 - x0, rect[3])
+
+
 @dataclass(frozen=True)
 class ValorantProfile:
-    """Crop rects in the shape FrameStream expects of a Profile; restore() keeps the crops unchanged (16:9 only)."""
+    """Crop rects in the shape FrameStream expects of a Profile. The capture rects cover every aspect; restore() cuts
+    the reference rects back out of them for the render aspect in `layout`."""
     templates_version: str
     capture_banner: tuple[int, int, int, int]
     capture_spec: tuple[int, int, int, int]
@@ -67,10 +107,39 @@ class ValorantProfile:
 
     @property
     def origin(self) -> tuple[int, int]:
-        return self.capture_banner[0], self.capture_banner[1]
+        return BANNER_REF[0], BANNER_REF[1]
 
-    def restore(self, banner, spec):
-        return banner, spec
+    @property
+    def spec_origin(self) -> tuple[int, int]:
+        return SPEC_REF[0], SPEC_REF[1]
+
+    @property
+    def aspect(self) -> float:
+        return self.layout.squash * REFERENCE_ASPECT
+
+    def with_layout(self, layout: Layout) -> "ValorantProfile":
+        return replace(self, layout=layout)
+
+    def letterboxed(self, banner: np.ndarray) -> bool:
+        """Whether the banner crop is black where a letterboxed frame has its right bar."""
+        if self.layout.identity:
+            return False
+        bar = int((BASE_W + _canvas_width(self.aspect)) / 2) + 4 - self.capture_banner[0]
+        region = banner[:, bar:self.capture_banner[2] - 4]
+        return region.size > 0 and float(region.mean()) < LETTERBOX_DARK and int(region.max()) < LETTERBOX_PEAK
+
+    def _cut(self, img: np.ndarray, capture, rect, anchor: str, letterbox: bool) -> np.ndarray:
+        x0, x1 = _source_span(rect, anchor, self.aspect, letterbox)
+        a, b = round(x0) - capture[0], round(x1) - capture[0]
+        if a < 0 or b > img.shape[1]:
+            raise LayoutError(f"Capture rect {capture} does not contain {rect} at aspect {self.aspect:.3f}")
+        part = img[:, a:b]
+        return part if part.shape[1] == rect[2] else cv2.resize(part, (rect[2], rect[3]), interpolation=cv2.INTER_AREA)
+
+    def restore(self, banner: np.ndarray, spec: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        letterbox = self.letterboxed(banner)
+        return (self._cut(banner, self.capture_banner, BANNER_REF, "right", letterbox),
+                self._cut(spec, self.capture_spec, SPEC_REF, "centre", letterbox))
 
 
 def load_valorant_profile(dir: Path) -> ValorantProfile:
@@ -89,11 +158,10 @@ def load_valorant_profile(dir: Path) -> ValorantProfile:
         raise ValorantProfileError(f"profile.json is missing a field: {e}") from e
     if not isinstance(version, str) or not version or len(banner) != 4 or len(spec) != 4:
         raise ValorantProfileError("profile.json has an invalid templates_version or capture_rois")
-    bx, by, bw, bh = banner
-    # The feed crop must contain every row band and the right edge the rules measure against.
-    if bx > RIGHT_EDGE - 220 or bx + bw < RIGHT_EDGE or by > ROW_Y0 - ROW_H // 2 - 4 or \
-            by + bh < ROW_Y0 + ROW_STEP * (ROWS - 1) + ROW_H // 2 + 4:
-        raise ValorantProfileError(f"capture_rois.banner {banner} does not cover the kill feed")
+    want = capture_rect(BANNER_REF, "right"), capture_rect(SPEC_REF, "centre")
+    if (banner, spec) != want:
+        raise ValorantProfileError(f"capture_rois {banner}/{spec} must be {want[0]}/{want[1]} (the reference rects at "
+                                   "every aspect)")
     return ValorantProfile(version, banner, spec, Path(dir))  # type: ignore[arg-type]
 
 
@@ -224,6 +292,17 @@ class FeedTracker:
         self._last_death = -1e9
         self.events: list[Event] = []
 
+    def _new_id(self, t: float) -> str:
+        """Two entries can appear in the same frame; ids must stay unique (autoclip maps events by id)."""
+        base = f"v{int(round(t * 1000))}"
+        taken = {e.id for e in self.events}
+        n = 1
+        ident = base
+        while ident in taken:
+            ident = f"{base}-{n}"
+            n += 1
+        return ident
+
     def feed(self, t: float, rows: Iterable[FeedRow]) -> list[Event]:
         self._seen = [s for s in self._seen if t - s[0] <= ENTRY_LIFE]
         new = []
@@ -240,7 +319,7 @@ class FeedTracker:
                 self._last_death = t
             # "Counted" means a kill of the player's; a death is shown but never counted (as derive marks it).
             kill = row.type == "kill"
-            ev = Event(id=f"v{int(round(t * 1000))}", t=round(t, 3), type=row.type, score=1.0, damage_line=False,
+            ev = Event(id=self._new_id(t), t=round(t, 3), type=row.type, score=1.0, damage_line=False,
                        name_sig=None, counted=kill, counted_reason="first" if kill else "death")
             self.events.append(ev)
             new.append(ev)
@@ -254,7 +333,7 @@ class ValorantLiveKills:
     def __init__(self, profile: ValorantProfile):
         self.detector = FeedDetector(profile)
         self.tracker = FeedTracker()
-        self.round_tracker = RoundTracker(profile.capture_spec[:2])
+        self.round_tracker = RoundTracker(profile.spec_origin)
         self.revision = 0      # Bumped when an event or round is added, so snapshots are rebuilt only then.
         self.degraded: list[str] = []
         self.h_scale = 1.0
@@ -305,15 +384,27 @@ def scoreboard_visible(frame: np.ndarray) -> bool:
 
 # ---- Offline analysis ----
 
+HIGHLIGHT_TYPES = ("multikill", "ace")
+
+
+def merge_events(base: list[Event], detected: list[Event], rounds: list[Round]) -> tuple[list[Event], list[Event]]:
+    """Carry the user's kill/death edits onto the new detections first, so multi-kills follow kills they deleted or
+    added; then carry their edits on the highlights themselves. Returns (events, old edits that matched nothing)."""
+    is_auto_highlight = lambda e: e.type in HIGHLIGHT_TYPES and e.source != "manual"  # noqa: E731
+    events, unmatched = merge_reanalysis([e for e in base if not is_auto_highlight(e)], detected)
+    highlights, lost = merge_reanalysis([e for e in base if is_auto_highlight(e)], round_highlights(events, rounds))
+    return sorted(events + highlights, key=lambda e: e.t), unmatched + lost
+
+
 def _make_doc(info: VideoInfo, profile: ValorantProfile, status: str, progress_t: float, events: list[Event],
-              clips: list[Clip]) -> dict:
+              clips: list[Clip], aspect_source: str) -> dict:
     return {
         "version": 1,
         "game": GAME,
         "video": info.to_dict(),
         "analysis": {"status": status, "progress_t": progress_t, "engine_version": ENGINE_VERSION,
-                     "templates_version": profile.templates_version, "h_scale": 1.0, "aspect_squash": 1.0,
-                     "aspect_source": "default"},
+                     "templates_version": profile.templates_version, "h_scale": 1.0,
+                     "aspect_squash": profile.layout.squash, "aspect_source": aspect_source},
         "events": [e.to_dict() for e in events],
         "spectating": [],
         "clips": [c.to_dict() for c in clips],
@@ -330,11 +421,12 @@ def _save(cp: Path, doc: dict, fallback: Path) -> None:
 
 def analyze_valorant(path: str, info: VideoInfo, profile: ValorantProfile, *, cache_dir: Path, beside: bool = False,
                      force: bool = False, on_progress: Callable[[float, float], None] = lambda t, d: None,
-                     cancel: threading.Event | None = None, hwaccel: bool = True) -> dict:
+                     cancel: threading.Event | None = None, hwaccel: bool = True, aspect_source: str = "default") -> dict:
     cache_dir = Path(cache_dir)
     cp = cache_path(path, cache_dir, beside)
     old = load_cache(cp)
-    if not force and old is not None and not needs_reanalysis(old, info, profile.templates_version, 1.0, game=GAME):
+    if not force and old is not None and not needs_reanalysis(old, info, profile.templates_version, profile.layout.squash,
+                                                    game=GAME):
         old["cache_path"] = str(cp)
         return old
     # Keep the user's edits (deletions, overrides, manual events and clips) across reanalysis, as for Apex.
@@ -344,7 +436,7 @@ def analyze_valorant(path: str, info: VideoInfo, profile: ValorantProfile, *, ca
 
     detector = FeedDetector(profile)
     tracker = FeedTracker()
-    rounds = RoundTracker(profile.capture_spec[:2])
+    rounds = RoundTracker(profile.spec_origin)
     # Software decoding: the player's yellow kill-feed marker is only faintly saturated in some clients, and hardware
     # decoding's slightly different chroma pushes it under the yellow threshold (a deathmatch recording lost 4 of 34
     # kills). Live detection is unaffected: aditorrec crops the captured RGB frames directly.
@@ -359,11 +451,8 @@ def analyze_valorant(path: str, info: VideoInfo, profile: ValorantProfile, *, ca
         if t - last_report >= 1.0:
             on_progress(t, info.duration)
             last_report = t
-    events = sorted(tracker.events + round_highlights(tracker.events, rounds.rounds), key=lambda e: e.t)
-    unmatched: list[Event] = []
-    if base_events:
-        events, unmatched = merge_reanalysis(base_events, events)
-    doc = _make_doc(info, profile, "done", info.duration, events, clips)
+    events, unmatched = merge_events(base_events, tracker.events, rounds.rounds)
+    doc = _make_doc(info, profile, "done", info.duration, events, clips, aspect_source)
     doc["rounds"] = [r.to_dict() for r in rounds.rounds]
     try:
         doc["keyframes"] = keyframes(path)

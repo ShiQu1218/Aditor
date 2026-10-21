@@ -21,7 +21,7 @@ from .derive import derive
 from .detect import Detector, Keywords, Pending
 from .events import EventTracker
 from .games import DEFAULT_GAME, profile_dir_for, require_analyzable, resolve_game
-from .layout import Layout
+from .layout import Layout, tagged_layout
 from .models import Clip, Event, FrameResult, SpecInterval
 from .probe import keyframes, probe
 from .profile import Profile
@@ -322,9 +322,11 @@ def analyze(path: str, profile: Profile, *, cache_dir: Path, beside: bool = Fals
     if game == "valorant":
         from .valorant import analyze_valorant, load_valorant_profile
 
-        vprofile = load_valorant_profile(profile_dir_for(profile.dir, game))
+        tagged = tagged_layout(info.game_aspect)
+        vlayout, source = (layout, "explicit") if layout else (tagged, "tag") if tagged else (Layout(1.0), "default")
+        vprofile = load_valorant_profile(profile_dir_for(profile.dir, game)).with_layout(vlayout)
         return analyze_valorant(path, info, vprofile, cache_dir=Path(cache_dir), beside=beside, force=force,
-                                on_progress=on_progress, cancel=cancel, hwaccel=hwaccel)
+                                on_progress=on_progress, cancel=cancel, hwaccel=hwaccel, aspect_source=source)
     scene_dir = profile.dir.parent / "scene"
     scene_dir = scene_dir if scene_dir.is_dir() else None
     if layout is None and not profile.layout.identity:

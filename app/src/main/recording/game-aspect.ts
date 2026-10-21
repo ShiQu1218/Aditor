@@ -3,10 +3,8 @@ import os from 'os'
 import path from 'path'
 import { DEFAULT_GAME, type GameId } from '../../shared/games'
 
-/** Render aspects Apex offers; the engine maps the HUD layout from them (engine/aditor/layout.py). */
+/** Render aspects Apex and Valorant offer; the engine maps each game's HUD layout from them (engine/aditor/layout.py, valorant.py). */
 const SUPPORTED_ASPECTS = [16 / 9, 16 / 10, 4 / 3, 5 / 4]
-/** The Valorant layout is only mapped for 16:9 so far; other aspects keep the 16:9 layout. */
-const VALORANT_ASPECTS = [16 / 9]
 const ASPECT_TOLERANCE = 0.01
 
 function supported(width: number, height: number, aspects: number[]): string | null {
@@ -26,10 +24,10 @@ export function parseVideoConfig(text: string): string | null {
   return supported(value('defaultres'), value('defaultresheight'), SUPPORTED_ASPECTS)
 }
 
-/** `GameUserSettings.ini` from `%LOCALAPPDATA%\VALORANT\Saved\Config\<account>\Windows`. */
+/** `GameUserSettings.ini` from `%LOCALAPPDATA%\VALORANT\Saved\Config\<account>\WindowsClient`. */
 export function parseValorantSettings(text: string): string | null {
   const value = (key: string): number => Number(new RegExp(`^\\s*${key}\\s*=\\s*(\\d+)\\s*$`, 'mi').exec(text)?.[1] ?? NaN)
-  return supported(value('ResolutionSizeX'), value('ResolutionSizeY'), VALORANT_ASPECTS)
+  return supported(value('ResolutionSizeX'), value('ResolutionSizeY'), SUPPORTED_ASPECTS)
 }
 
 /** Each Riot account has its own config folder; the most recently written one belongs to the current account. */
@@ -38,7 +36,7 @@ async function latestValorantSettings(localAppData: string): Promise<string> {
   let best: { file: string; mtime: number } | null = null
   for (const entry of await fs.promises.readdir(root, { withFileTypes: true })) {
     if (!entry.isDirectory()) continue
-    const file = path.join(root, entry.name, 'Windows', 'GameUserSettings.ini')
+    const file = path.join(root, entry.name, 'WindowsClient', 'GameUserSettings.ini')
     const stat = await fs.promises.stat(file).catch(() => null)
     if (stat?.isFile() && (!best || stat.mtimeMs > best.mtime)) best = { file, mtime: stat.mtimeMs }
   }

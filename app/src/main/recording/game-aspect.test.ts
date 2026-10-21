@@ -38,9 +38,10 @@ describe('Valorant render aspect', () => {
   const ini = (width: string, height: string): string =>
     `[/Script/ShooterGame.ShooterGameUserSettings]\r\nbShouldLetterbox=False\r\nResolutionSizeX=${width}\r\nResolutionSizeY=${height}\r\n`
 
-  it('accepts only 16:9 resolutions for now', () => {
+  it('accepts the aspects the engine maps: 16:9, 16:10, 4:3 and 5:4', () => {
     expect(parseValorantSettings(ini('2560', '1440'))).toBe('2560x1440')
-    expect(parseValorantSettings(ini('1440', '1080'))).toBeNull()
+    expect(parseValorantSettings(ini('1440', '1080'))).toBe('1440x1080')
+    expect(parseValorantSettings(ini('2560', '1080'))).toBeNull()
     expect(parseValorantSettings('[x]\r\nFoo=1\r\n')).toBeNull()
   })
 
@@ -48,7 +49,7 @@ describe('Valorant render aspect', () => {
     const local = fs.mkdtempSync(path.join(os.tmpdir(), 'aditor-valorant-'))
     expect(await readGameAspect('valorant', local, local)).toBeNull()
     const write = (account: string, text: string, mtime: number): void => {
-      const file = path.join(local, 'VALORANT', 'Saved', 'Config', account, 'Windows', 'GameUserSettings.ini')
+      const file = path.join(local, 'VALORANT', 'Saved', 'Config', account, 'WindowsClient', 'GameUserSettings.ini')
       fs.mkdirSync(path.dirname(file), { recursive: true })
       fs.writeFileSync(file, text)
       fs.utimesSync(file, mtime, mtime)

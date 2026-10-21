@@ -83,7 +83,9 @@ def _has_state(e: Event) -> bool:
 
 def _family(t: str) -> str:
     """Event type families used for matching: assist_knock and assist_elim are interchangeable because engine updates may reclassify assist subtypes, and must not discard user state."""
-    return "assist" if t in ("assist_knock", "assist_elim") else t
+    if t in ("assist_knock", "assist_elim"):
+        return "assist"
+    return "highlight" if t in ("multikill", "ace") else t  # A Valorant multikill becomes an ace when a kill is added.
 
 
 def merge_reanalysis(old_events: list[Event], new_auto: list[Event]) -> tuple[list[Event], list[Event]]:

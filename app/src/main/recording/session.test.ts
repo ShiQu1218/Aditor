@@ -90,7 +90,7 @@ describe('recording service state machine', () => {
     fs.copyFileSync(path.join(value.root, 'profile.json'), path.join(icons, 'profile.json'))
     fs.mkdirSync(path.join(value.root, 'valorant', 'icons'), { recursive: true })
     fs.writeFileSync(path.join(value.root, 'valorant', 'icons', 'profile.json'),
-      JSON.stringify({ templates_version: 'v', capture_rois: { banner: [1316, 84, 600, 256], spec: [740, 20, 460, 64] } }))
+      JSON.stringify({ templates_version: 'v', capture_rois: { banner: [1031, 84, 885, 256], spec: [647, 20, 655, 64] } }))
     value.deps.profileDir = icons
     value.deps.findGame = vi.fn(async () => ({ game: 'valorant' as const, pid: 4321 }))
     const client = Object.assign(new EventEmitter(), { probe: async () => true, start: vi.fn(), stop: vi.fn() })

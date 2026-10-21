@@ -696,7 +696,8 @@ def run(shm: str, profile_dir: Path, scene_dir: Path | None = None, *, stdin=Non
         if g == "valorant":
             # Matches and rounds come from the Riot client later; the kill feed needs no scene templates.
             from .valorant import ValorantLiveKills, load_valorant_profile
-            profile = load_valorant_profile(Path(profile_dir))
+            layout = parse_aspect(aspect) if aspect else Layout(1.0)
+            profile = load_valorant_profile(Path(profile_dir)).with_layout(layout)
             scene, kills = None, ValorantLiveKills(profile)
         else:
             layout = parse_aspect(aspect) if aspect else Layout(1.0)
