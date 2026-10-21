@@ -217,8 +217,8 @@ async function initEngineAndServices(): Promise<void> {
     recorderCommand: aditorrecCommand(app.isPackaged),
     ffmpegPath: ffmpegExecutable(app.isPackaged),
     profileDir: templateProfileDir,
-    addToLibrary: (paths) => {
-      library!.add(paths, 'recording')
+    addToLibrary: (paths, game) => {
+      library!.add(paths, 'recording', game)
       pushLibrary()
     },
     enqueueAnalysis: (videoPath) => queue!.enqueue(videoPath),
@@ -229,7 +229,7 @@ async function initEngineAndServices(): Promise<void> {
     liveCachePath: (videoPath) => cacheFilePath(videoPath, cacheDir(), settingsStore!.get().cacheLocation === 'besideVideo'),
     // Live cache is already done, so the library entry can open immediately; if full analysis is queued next, the queue returns it to pending and replaces it when complete.
     onLiveAnalysis: (videoPath, summary) => {
-      library!.update(videoPath, { status: 'done', progress: 1, counts: summary.counts, durationSec: summary.durationSec, codec: summary.codec || undefined, hl: undefined })
+      library!.update(videoPath, { status: 'done', progress: 1, counts: summary.counts, game: summary.game, durationSec: summary.durationSec, codec: summary.codec || undefined, hl: undefined })
       pushLibrary()
       void generateThumbnail(videoPath, summary.durationSec).then((thumb) => {
         if (!thumb || library!.get(videoPath)?.status !== 'done') return

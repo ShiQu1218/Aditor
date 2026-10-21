@@ -1,7 +1,9 @@
 import { EventEmitter } from 'events'
-import { EngineClient } from './engine'
+import { EngineClient, EngineError } from './engine'
+import { tr } from '../shared/locale'
 import { Library, normalizePath } from './library'
-import { CacheDoc, isCounted } from '../shared/types'
+import { CacheDoc, countEvents } from '../shared/types'
+import { gameOf } from '../shared/games'
 import type { QueuePayload, QueueSnapshot } from '../shared/queueState'
 import { analyzeSettingArgs, AnalyzeSettings } from './settings-derived'
 import { capturePriorCache, preserveClipsAfterReanalysis } from './reanalysis'
@@ -105,6 +107,7 @@ export class AnalysisQueue extends EventEmitter {
       status: 'analyzing',
       progress: 0,
       error: undefined,
+      errorCode: undefined,
       analyzingSince: Date.now()
     })
     this.emit('update')
@@ -121,7 +124,9 @@ export class AnalysisQueue extends EventEmitter {
           profile_dir: this.opts.profileDir,
           cache_dir: this.opts.cacheDir,
           hwaccel: extra.hwaccel,
-          beside: extra.beside
+          beside: extra.beside,
+          // A game the user chose, or one recognised before; absent means the engine recognises it.
+          game: this.library.get(videoPath)?.game
         },
         (progress) => {
           if (run.cancelled) {
@@ -146,18 +151,6 @@ export class AnalysisQueue extends EventEmitter {
         console.error('[Queue] failed to preserve clips after re-analysis:', err)
       }
 
-      let knock = 0
-      let assist = 0
-      for (const ev of doc.events || []) {
-        if (isCounted(ev)) {
-          if (ev.type === 'knock') {
-            knock++
-          } else if (ev.type === 'assist_knock' || ev.type === 'assist_elim') {
-            assist++
-          }
-        }
-      }
-
       const duration = doc.video?.duration || 0
       const thumb = await this._generateThumbnail(videoPath, duration).catch(() => undefined)
 
@@ -165,7 +158,8 @@ export class AnalysisQueue extends EventEmitter {
         status: 'done',
         progress: 1,
         analyzingSince: undefined,
-        counts: { knock, assist },
+        counts: countEvents(doc.events || []),
+        game: gameOf(doc.game),
         durationSec: duration,
         thumb,
         codec: doc.video?.codec,
@@ -177,8 +171,13 @@ export class AnalysisQueue extends EventEmitter {
         // User cancelled: keep idle (already updated by cancel()), not an error.
         this.library.update(videoPath, { status: 'pending', progress: 0, error: undefined, analyzingSince: undefined })
       } else {
-        const msg = err instanceof Error ? err.message : String(err)
-        this.library.update(videoPath, { status: 'error', error: msg, analyzingSince: undefined })
+        if (err instanceof EngineError && err.code === 'unknown_game') {
+          this.library.update(videoPath, { status: 'error', errorCode: 'unknown_game', analyzingSince: undefined,
+            error: tr('認不出這支影片是哪個遊戲，請在卡片上選擇 Apex 或 Valorant。') })
+        } else {
+          const msg = err instanceof Error ? err.message : String(err)
+          this.library.update(videoPath, { status: 'error', error: msg, analyzingSince: undefined })
+        }
       }
     } finally {
       this.current = null

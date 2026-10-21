@@ -233,6 +233,7 @@
 .vbadge { font-size: var(--fs-caption); font-weight: var(--fw-bold); padding: 2px 6px; border-radius: var(--r-xs); background: var(--bg-scrim); color: var(--text-1); }
 .vbadge.knock { color: var(--ev-knock); }
 .vbadge.assist { color: var(--ev-assist-knock); }
+.vbadge.death { color: var(--ev-death); }
 .vbadge.hl { color: var(--text-1); }
 .vcard-dur { position: absolute; right: 8px; bottom: 8px; z-index: 3; font-size: var(--fs-caption); padding: 2px 6px; border-radius: var(--r-xs); background: var(--bg-scrim); color: var(--text-1); }
 

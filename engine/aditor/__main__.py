@@ -9,8 +9,10 @@ from pathlib import Path
 
 def _cmd_analyze(a) -> int:
     from aditor.analyze import analyze
+    from aditor.games import parse_game
     from aditor.profile import load_profile
 
+    parse_game(a.game)  # Reject an unknown game before loading templates.
     profile = load_profile(Path(a.profile_dir))
 
     def progress(t: float, duration: float) -> None:
@@ -18,7 +20,7 @@ def _cmd_analyze(a) -> int:
         print(f"\rAnalyzing {t:8.1f} / {duration:.1f} seconds ({pct:5.1f}%)", end="", file=sys.stderr, flush=True)
 
     doc = analyze(a.video, profile, cache_dir=Path(a.cache_dir), force=a.force,
-                  on_progress=progress, hwaccel=not a.no_hwaccel, jobs=a.jobs, layout=_layout(a))
+                  on_progress=progress, hwaccel=not a.no_hwaccel, jobs=a.jobs, layout=_layout(a), game=a.game)
     print(file=sys.stderr)
     if a.out:
         Path(a.out).write_text(json.dumps(doc, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -43,6 +45,7 @@ def _layout(a):
     return parse_aspect(a.aspect) if a.aspect else None
 
 
+GAME_HELP = "Game: apex or valorant (default: the video's aditor_game tag, otherwise apex)"
 ASPECT_HELP = "Game render aspect or resolution (16:9, 16:10, 4:3, 5:4, or WxH); offline default: video metadata, otherwise 16:9"
 
 
@@ -58,6 +61,7 @@ def main(argv: list[str] | None = None) -> int:
     an.add_argument("--jobs", type=int, default=None, help="Number of segments to decode in parallel (automatic by default)")
     an.add_argument("--out")
     an.add_argument("--aspect", default=None, help=ASPECT_HELP)
+    an.add_argument("--game", default=None, help=GAME_HELP)
     ma = sub.add_parser("matches", help="Detect match start and end times in a video")
     ma.add_argument("video")
     ma.add_argument("--fps", type=float, default=1.0)
@@ -71,6 +75,7 @@ def main(argv: list[str] | None = None) -> int:
     li.add_argument("--profile-dir", required=True, help="Icon template directory (templates/icons)")
     li.add_argument("--scene-dir", default=None, help="Scene template directory (default: templates/scene)")
     li.add_argument("--aspect", default=None, help=ASPECT_HELP)
+    li.add_argument("--game", default=None, help="Game being recorded: apex (default) or valorant")
     for s in (sys.stdout, sys.stderr):
         s.reconfigure(encoding="utf-8")
     a = ap.parse_args(argv)
@@ -79,7 +84,8 @@ def main(argv: list[str] | None = None) -> int:
         return run()
     if a.cmd == "live":
         from aditor.live import run as run_live
-        return run_live(a.shm, Path(a.profile_dir), Path(a.scene_dir) if a.scene_dir else None, aspect=a.aspect)
+        return run_live(a.shm, Path(a.profile_dir), Path(a.scene_dir) if a.scene_dir else None, aspect=a.aspect,
+                        game=a.game)
     try:
         if a.cmd == "matches":
             return _cmd_matches(a)

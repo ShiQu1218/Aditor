@@ -7,14 +7,16 @@ interface EventFilterChipsProps {
   counts: Record<EventType, number>
   filter: Set<EventType>
   onToggle: (t: EventType) => void
+  /** Types shown for this video's game (defaults to Apex's). */
+  types?: EventType[]
 }
 
 /** Event-type filter chips with counts: icon swatch and count; click to toggle that type. */
-export function EventFilterChips({ counts, filter, onToggle }: EventFilterChipsProps): JSX.Element {
+export function EventFilterChips({ counts, filter, onToggle, types: shown = CHIP_TYPES }: EventFilterChipsProps): JSX.Element {
   const types = i18n.timeline.types
   return (
     <div className="chips" role="group" aria-label={i18n.studio.transport.filterLabel}>
-      {CHIP_TYPES.map((type) => {
+      {shown.map((type) => {
         const active = filter.has(type)
         const label = (types as Record<string, string>)[type] ?? type
         return (

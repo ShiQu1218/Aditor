@@ -16,6 +16,8 @@ interface TransportBarProps {
   onVolumeChange: (volume: number) => void
   onToggleMute: () => void
   counts: Record<EventType, number>
+  /** Event types shown as filter chips for this video's game. */
+  chipTypes?: EventType[]
   filter: Set<EventType>
   onTogglePlay: () => void
   onCycleSpeed: () => void
@@ -41,6 +43,7 @@ export function TransportBar({
   onVolumeChange,
   onToggleMute,
   counts,
+  chipTypes,
   filter,
   onTogglePlay,
   onCycleSpeed,
@@ -101,7 +104,7 @@ export function TransportBar({
       >
         <Sparkles className="ic sm" /> {i18n.studio.autoClip}
       </button>
-      <EventFilterChips counts={counts} filter={filter} onToggle={onToggleFilter} />
+      <EventFilterChips counts={counts} filter={filter} onToggle={onToggleFilter} types={chipTypes} />
       <button type="button" className="btn-ghost" onClick={onAddEvent}>
         {t.addEvent} <kbd>M</kbd>
       </button>

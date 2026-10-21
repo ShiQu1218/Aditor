@@ -103,7 +103,7 @@ describe('live.json to analysis cache', () => {
     const { dir, output } = finishedSession(base, postAnalysis, LIVE)
     expect(await finalizeSession(dir, deps)).toEqual([output])
     expect(order).toEqual(postAnalysis === 'none' ? ['library', 'live'] : ['library', 'live', 'analysis'])
-    expect(deps.onLiveAnalysis).toHaveBeenCalledWith(output, { counts: { knock: 1, assist: 1 }, durationSec: 6, codec: 'h264', trusted: false })
+    expect(deps.onLiveAnalysis).toHaveBeenCalledWith(output, { counts: { knock: 1, assist: 1 }, durationSec: 6, codec: 'h264', trusted: false, game: 'apex' })
     const doc = JSON.parse(fs.readFileSync(cacheFilePath(output, cacheDir), 'utf8'))
     expect(doc.video).toMatchObject({ path: output, size: 11, duration: 6, width: 2560, height: 1440, codec: 'h264' })
     expect(doc.video.mtime).toBeCloseTo(fs.statSync(output).mtimeMs / 1000, 3)

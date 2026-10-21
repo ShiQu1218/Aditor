@@ -1,8 +1,12 @@
 /**
- * Recording service (phase 2, task A1): detect Apex → drive aditorrec → finalize to MP4 → add to the library/enqueue analysis.
+ * Recording service (phase 2, task A1): detect a supported game → drive aditorrec → finalize to MP4 → add to the library/enqueue analysis.
  * The interface is fixed by the skeleton (`RecordingDeps` and `createRecordingService` signatures); implementations live in the other files in this directory.
  */
+import type { GameId } from '../../shared/games'
+import type { EventCounts } from '../../shared/types'
 import type { RecordingService, RecordingSettings } from '../../shared/recording'
+import type { GameProcess } from './game-watcher'
+import type { ValorantClient } from './valorant-client'
 import { RecordingSessionService } from './session'
 import type { StorageKind } from './storage-location'
 
@@ -26,6 +30,8 @@ export interface RecordingDeps {
   obsStopGraceMs?: number
   /** Delay in milliseconds between detecting a newly launched Apex and starting capture; skipped when Apex is already running at startup (defaults to 20000; tests inject 0). */
   gameStartDelayMs?: number
+  /** Test injection: the Riot Client local API client used for Valorant match boundaries. */
+  createValorantClient?: () => ValorantClient
   /** Diagnostic log, flushed line by line so recorder activity remains visible after a system crash. */
   log?: (message: string) => void
   probeVideo?: (file: string) => Promise<{ duration: number; width?: number; height?: number; codec?: string }>
@@ -38,20 +44,23 @@ export interface RecordingDeps {
   recorderCommand: RecorderCommand
   /** ffmpeg.exe used to concatenate segments during finalization. */
   ffmpegPath: string
-  /** `templates/icons`: read `capture_rois` (or `banner_roi`/`spec_roi`) from `profile.json` and pass them to aditorrec. */
+  /** Apex `templates/icons`; other games use `gameProfileDir`. Read `capture_rois` (or `banner_roi`/`spec_roi`) from `profile.json` and pass them to aditorrec. */
   profileDir: string
   /** Add an item to the library (`Library.add`). */
-  addToLibrary: (paths: string[]) => void
+  /** `game` is the game recorded, so analysis need not recognise it again from footage that may carry no tag (OBS). */
+  addToLibrary: (paths: string[], game?: GameId) => void
   /** Enqueue a full analysis (`AnalysisQueue.enqueue`). */
   enqueueAnalysis: (videoPath: string) => void
   /** Windows notification/tray notice (implemented by task A3; visibility follows its settings). */
   notify: (kind: RecordingNoticeKind, message: string) => void
-  /** Test injection: list Apex process PIDs (defaults to querying r5apex*.exe with tasklist every 3 seconds). */
+  /** Test injection: find a running supported game (defaults to findGameProcess, polled every 3 seconds). */
+  findGame?: () => Promise<GameProcess | null>
+  /** Test injection kept for older tests: an Apex PID, used when findGame is not given. */
   findApexPid?: () => Promise<number | null>
   /** Test injection: classify the output folder as cloud-synced or network storage (defaults to probeStorageKind). */
   probeStorage?: (dir: string) => Promise<StorageKind | null>
-  /** Test injection: read the Apex render resolution (`WxH`, defaults to readGameAspect); null keeps the 16:9 layout. */
-  readGameAspect?: () => Promise<string | null>
+  /** Test injection: read the game's render resolution (`WxH`, defaults to readGameAspect); null keeps the 16:9 layout. */
+  readGameAspect?: (game: GameId) => Promise<string | null>
   /** Test injection: polling interval in milliseconds. */
   pollMs?: number
   /** Phase 3: how to launch the live engine (`aditor live`); when omitted, skip live detection and provide segment playback only. */
@@ -69,7 +78,8 @@ export interface RecordingDeps {
 }
 
 export interface LiveAnalysisSummary {
-  counts: { knock: number; assist: number }
+  counts: EventCounts
+  game: GameId
   durationSec: number
   codec: string
   /** Live results are equivalent to offline analysis (the cache has the official version), so a full analysis is unnecessary. */

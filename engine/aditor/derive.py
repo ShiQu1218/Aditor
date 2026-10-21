@@ -65,6 +65,9 @@ def derive(
         if e.deleted:
             counted = False
             counted_reason = "deleted"
+        elif e.type == "death":  # The player's own death (Valorant) is shown on the timeline but is never a kill.
+            counted = False
+            counted_reason = "death"
         elif e.type not in COUNTING_TYPES:
             counted = False
             counted_reason = "not_counting_type"

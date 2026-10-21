@@ -68,6 +68,20 @@ it('does not duplicate a match start after the engine restarts mid-match and kee
   expect(JSON.parse(fs.readFileSync(path.join(dir, 'live.json'), 'utf8')).matches).toEqual([{ start: 0.5, end: 3.5 }])
 })
 
+it('keeps a match the game client reported before capture started, opening it at time 0', async () => {
+  const dir = root()
+  const live = new LiveSession({ sessionId: 'early', dir, profileDir: dir, recordEvent: vi.fn(), notice: vi.fn() })
+  live.clientMatch('match_start', Date.now() - 5000)
+  live.startEngine('Local\\x', 1920, 1080)
+  expect((await live.state()).matches).toEqual([{ start: 0, end: null }])
+
+  const ended = new LiveSession({ sessionId: 'ended', dir, profileDir: dir, recordEvent: vi.fn(), notice: vi.fn() })
+  ended.clientMatch('match_start', Date.now() - 9000)
+  ended.clientMatch('match_end', Date.now() - 5000)
+  ended.startEngine('Local\\x', 1920, 1080)
+  expect((await ended.state()).matches).toEqual([])
+})
+
 describe('LiveSession file reads', () => {
   function session(dir: string): LiveSession {
     return new LiveSession({ sessionId: '20261018-123456-abcd', dir, profileDir: dir, recordEvent: vi.fn(), notice: vi.fn() })

@@ -1,20 +1,31 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { ApexWatcher, parseApexPid } from './apex-watcher'
+import { GameWatcher, parseGameProcess, sameProcess } from './game-watcher'
 
 afterEach(() => vi.useRealTimers())
 
-describe('Apex process detection', () => {
-  it('accepts only two exact filenames and valid PIDs, returning the first matching process', () => {
-    expect(parseApexPid('INFO: 沒有符合的工作')).toBeNull()
-    expect(parseApexPid('"r5apex_launcher.exe","55","Console"\n"r5apex.exe","0","Console"')).toBeNull()
-    expect(parseApexPid('"R5APEX_DX12.EXE","123","Console","1","10,000 K"\r\n"r5apex.exe","456"')).toBe(123)
+describe('Game process detection', () => {
+  it('accepts only exact game filenames and valid PIDs, returning the first matching process', () => {
+    expect(parseGameProcess('INFO: 沒有符合的工作')).toBeNull()
+    expect(parseGameProcess('"r5apex_launcher.exe","55","Console"\n"r5apex.exe","0","Console"')).toBeNull()
+    expect(parseGameProcess('"R5APEX_DX12.EXE","123","Console","1","10,000 K"\r\n"r5apex.exe","456"')).toEqual({ game: 'apex', pid: 123 })
+    expect(parseGameProcess('"VALORANT.exe","70","Console"\n"VALORANT-Win64-Shipping.exe","71","Console"'))
+      .toEqual({ game: 'valorant', pid: 71 })
+    expect(parseGameProcess('"svchost.exe","4","Services"\n"VALORANT-Win64-Shipping.exe","8","Console"\n"r5apex.exe","9","Console"'))
+      .toEqual({ game: 'valorant', pid: 8 })
+  })
+
+  it('treats the same PID under another game as a different process', () => {
+    expect(sameProcess({ game: 'apex', pid: 1 }, { game: 'apex', pid: 1 })).toBe(true)
+    expect(sameProcess({ game: 'apex', pid: 1 }, { game: 'valorant', pid: 1 })).toBe(false)
+    expect(sameProcess(null, null)).toBe(true)
+    expect(sameProcess(null, { game: 'apex', pid: 1 })).toBe(false)
   })
 
   it.each([null, 123])('reports the first successful poll immediately for %s', async (pid) => {
     vi.useFakeTimers()
     const find = vi.fn().mockResolvedValue(pid)
     const changed = vi.fn()
-    const watcher = new ApexWatcher(find, 3000, changed, vi.fn())
+    const watcher = new GameWatcher(find, 3000, changed, vi.fn())
     watcher.start()
     await vi.advanceTimersByTimeAsync(0)
     expect(find).toHaveBeenCalledOnce()
@@ -26,7 +37,7 @@ describe('Apex process detection', () => {
     vi.useFakeTimers()
     const find = vi.fn().mockResolvedValue(123)
     const changed = vi.fn()
-    const watcher = new ApexWatcher(find, 3000, changed, vi.fn())
+    const watcher = new GameWatcher(find, 3000, changed, vi.fn())
     watcher.start()
     await vi.advanceTimersByTimeAsync(0)
     changed.mockClear()
@@ -42,7 +53,7 @@ describe('Apex process detection', () => {
     vi.useFakeTimers()
     const find = vi.fn().mockResolvedValue(initial)
     const changed = vi.fn()
-    const watcher = new ApexWatcher(find, 3000, changed, vi.fn())
+    const watcher = new GameWatcher(find, 3000, changed, vi.fn())
     watcher.start()
     await vi.advanceTimersByTimeAsync(0)
     changed.mockClear()
@@ -62,7 +73,7 @@ describe('Apex process detection', () => {
     const find = vi.fn().mockResolvedValue(initial)
     const changed = vi.fn()
     const failed = vi.fn()
-    const watcher = new ApexWatcher(find, 3000, changed, failed)
+    const watcher = new GameWatcher(find, 3000, changed, failed)
     watcher.start()
     await vi.advanceTimersByTimeAsync(0)
     changed.mockClear()
@@ -87,7 +98,7 @@ describe('Apex process detection', () => {
     const find = vi.fn().mockRejectedValueOnce(new Error('tasklist failed')).mockResolvedValue(123)
     const changed = vi.fn()
     const failed = vi.fn()
-    const watcher = new ApexWatcher(find, 3000, changed, failed)
+    const watcher = new GameWatcher(find, 3000, changed, failed)
     watcher.start()
     await vi.advanceTimersByTimeAsync(0)
     expect(failed).toHaveBeenCalledOnce()
@@ -101,7 +112,7 @@ describe('Apex process detection', () => {
     vi.useFakeTimers()
     const find = vi.fn().mockResolvedValue(123)
     const changed = vi.fn()
-    const watcher = new ApexWatcher(find, 3000, changed, vi.fn())
+    const watcher = new GameWatcher(find, 3000, changed, vi.fn())
     watcher.start()
     await vi.advanceTimersByTimeAsync(0)
     find.mockResolvedValue(null)
@@ -120,7 +131,7 @@ describe('Apex process detection', () => {
     let resolve!: (pid: number | null) => void
     const find = vi.fn(() => new Promise<number | null>((r) => { resolve = r }))
     const changed = vi.fn()
-    const watcher = new ApexWatcher(find, 3000, changed, vi.fn())
+    const watcher = new GameWatcher(find, 3000, changed, vi.fn())
     watcher.start()
     await vi.advanceTimersByTimeAsync(15000)
     expect(find).toHaveBeenCalledOnce()

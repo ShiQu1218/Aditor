@@ -15,6 +15,7 @@ import { ProjectStore } from './projects'
 import { registerProjectHandlers } from './project-ipc'
 import { fileExistsSafe, isSafeLocalDirPath, isSafeLocalVideoPath } from './safe-path'
 import { planCacheSave } from './ipc-guards'
+import { isGameId } from '../shared/games'
 import { DEFAULT_SETTINGS } from '../shared/settings'
 import { currentE2EConfig } from './e2e'
 import { appDataDir, cacheDir, noticesFile } from '../shared/paths'
@@ -104,6 +105,15 @@ export function registerIpcHandlers(
     const res = library.remove(videoPath)
     broadcastUpdated()
     return res
+  })
+
+  /** The user says which game a video shows (after recognition failed, or to correct it); analyze it as that game. */
+  ipcMain.handle('library:setGame', (_, videoPath: unknown, game: unknown) => {
+    if (typeof videoPath !== 'string' || !isGameId(game) || !library.get(videoPath)) return false
+    library.update(videoPath, { game, status: 'pending', progress: 0, error: undefined, errorCode: undefined })
+    queue.enqueue(videoPath)
+    broadcastUpdated()
+    return true
   })
 
   ipcMain.handle('library:toggleFavorite', (_, videoPath: string) => {
