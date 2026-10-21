@@ -10,7 +10,7 @@ import { nextTrapIndex } from '../a11y/focusTrap'
 import { rovingStep } from '../a11y/roving'
 import { AlertTriangle, ImageOff, MoreHorizontal, RefreshCw, Star, Trash2 } from '../components/icons'
 import { cardStatusText, fileName, thumbnailUrl } from './cardLogic'
-import { GAMES, GAME_IDS, type GameId } from '../../shared/games'
+import { GAMES, GAME_IDS, gameOf, type GameId } from '../../shared/games'
 
 export { fileName } from './cardLogic'
 
@@ -327,6 +327,21 @@ function VideoCardView({ entry, onOpen, onToggleFavorite, onRemove, onRetry, onS
                 {t.reanalyze}
               </button>
             )}
+            {(done || error) && onSetGame && !unknownGame && GAME_IDS.filter((game) => game !== gameOf(entry.game)).map((game) => (
+              <button
+                key={game}
+                type="button"
+                role="menuitem"
+                tabIndex={-1}
+                onClick={() => {
+                  setMenuOpen(false)
+                  onSetGame(entry.path, game)
+                }}
+              >
+                <RefreshCw className="ic sm" />
+                {t.analyzeAs.replace('{game}', GAMES[game].displayName)}
+              </button>
+            ))}
             <button
               type="button"
               role="menuitem"

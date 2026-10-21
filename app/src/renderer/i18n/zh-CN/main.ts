@@ -76,6 +76,7 @@ export const i18n: Messages['i18n'] = {
       remove: '从视频库移除',
       more: '更多操作',
       reanalyze: '重新分析',
+      analyzeAs: '改用 {game} 重新分析',
       favoriteAdd: '加入收藏',
       favoriteRemove: '取消收藏',
       hlCount: '{n} 精华',

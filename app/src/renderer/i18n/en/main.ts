@@ -74,6 +74,7 @@ export const i18n: Messages['i18n'] = {
       remove: 'Remove from library',
       more: 'More actions',
       reanalyze: 'Re-analyze',
+      analyzeAs: 'Re-analyze as {game}',
       favoriteAdd: 'Add to favorites',
       favoriteRemove: 'Remove from favorites',
       hlCount: 'Highlights {n}',

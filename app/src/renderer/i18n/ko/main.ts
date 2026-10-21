@@ -77,6 +77,7 @@ export const i18n: Messages['i18n'] = {
       remove: '라이브러리에서 제거',
       more: '더 많은 작업',
       reanalyze: '다시 분석',
+      analyzeAs: '{game}(으)로 다시 분석',
       favoriteAdd: '즐겨찾기에 추가',
       favoriteRemove: '즐겨찾기에서 제거',
       hlCount: '하이라이트 {n}',
