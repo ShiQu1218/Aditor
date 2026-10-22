@@ -157,8 +157,8 @@ export function projectShapeError(data: unknown): ProjectShapeError | null {
     return { kind: 'unsupported', message: tr('不支援的專案版本 {version}（unsupported version）', { version: d.version }) }
   }
   if (d.version !== 1) return { kind: 'format', message: tr('版本欄位無效') }
-  if (typeof d.name !== 'string') return { kind: 'format', message: 'name 必須是字串' }
-  if (!Array.isArray(d.items)) return { kind: 'format', message: 'items 必須是陣列' }
+  if (typeof d.name !== 'string') return { kind: 'format', message: tr('name 必須是字串') }
+  if (!Array.isArray(d.items)) return { kind: 'format', message: tr('items 必須是陣列') }
   for (const [i, it] of d.items.entries()) {
     const x = it as Partial<ProjectItem> | null
     const ok =

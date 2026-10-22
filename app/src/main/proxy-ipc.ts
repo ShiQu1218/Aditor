@@ -1,3 +1,4 @@
+import { tr } from '../shared/locale'
 /** IPC handler for proxy:generate (accepts fake sender/generateProxy dependencies for tests). */
 import { isSafeLocalVideoPath } from './safe-path'
 
@@ -25,7 +26,7 @@ export async function handleProxyGenerate(
   deps: ProxyIpcDeps
 ): Promise<string> {
   if (!isSafeLocalVideoPath(videoPath)) {
-    throw new Error('proxy:generate 需要本機影片路徑')
+    throw new Error(tr('proxy:generate 需要本機影片路徑'))
   }
   const now = deps.now ?? Date.now
   let finished = false

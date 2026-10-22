@@ -1,3 +1,4 @@
+import { tr } from '../shared/locale'
 // Storage-root creation and suggested values: pure filesystem logic with no Electron dependency, so it can be unit tested.
 // Structure is defined in shared/storage.ts: <root>/Recordings, <root>/Exports/Merged, <root>/Exports/Clips.
 import fs from 'fs'
@@ -22,7 +23,7 @@ export interface PreparedStorageRoot {
  */
 export function prepareStorageRoot(input: unknown, fsApi: typeof fs = fs): PreparedStorageRoot {
   if (!isSafeLocalDirPath(input)) {
-    throw new Error(`儲存位置必須是本機絕對路徑：${typeof input === 'string' ? input : String(input)}`)
+    throw new Error(tr('儲存位置必須是本機絕對路徑：{path}', { path: typeof input === 'string' ? input : String(input) }))
   }
   const root = path.resolve(input)
   const recordingsDir = path.join(root, RECORDINGS_DIRNAME)
@@ -41,7 +42,7 @@ export function prepareStorageRoot(input: unknown, fsApi: typeof fs = fs): Prepa
     fsApi.writeFileSync(probe, '')
     fsApi.rmSync(probe, { force: true })
   } catch (err) {
-    throw new Error(`無法建立或寫入儲存位置：${root}（${(err as Error).message}）`)
+    throw new Error(tr('無法建立或寫入儲存位置：{path}（{error}）', { path: root, error: (err as Error).message }))
   }
   return { root, recordingsDir, exportsDir }
 }

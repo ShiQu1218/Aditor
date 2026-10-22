@@ -11,12 +11,12 @@ const SESSION_ID = /^\d{8}-\d{6}-[0-9a-f]{4}$/
 
 /** Recording job IDs must match `YYYYMMDD-HHMMSS-xxxx` (cannot contain path separators). */
 export function requireSessionId(value: unknown): string {
-  if (typeof value !== 'string' || !SESSION_ID.test(value)) throw new Error('錄影工作 ID 無效')
+  if (typeof value !== 'string' || !SESSION_ID.test(value)) throw new Error(tr('錄影工作 ID 無效'))
   return value
 }
 
 export function requireSegmentSeq(value: unknown): number {
-  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value <= 0) throw new Error('段落序號無效')
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value <= 0) throw new Error(tr('段落序號無效'))
   return value
 }
 
@@ -27,19 +27,19 @@ export function registerRecordingIpc(service: RecordingService, windows: () => B
   ipcMain.handle(RECORDING_CHANNELS.startManual, () => service.startManual())
   ipcMain.handle(RECORDING_CHANNELS.stopManual, () => service.stopManual())
   ipcMain.handle(RECORDING_CHANNELS.setPaused, (_event, paused: unknown) => {
-    if (typeof paused !== 'boolean') throw new Error('暫停自動錄影必須是布林值')
+    if (typeof paused !== 'boolean') throw new Error(tr('暫停自動錄影必須是布林值'))
     service.setPaused(paused)
   })
   ipcMain.handle(RECORDING_CHANNELS.getLive, async () => (service.live ? service.live() : null))
   ipcMain.handle(RECORDING_CHANNELS.readInit, (_event, sessionId: unknown) => {
     const id = requireSessionId(sessionId)
-    if (!service.readInit) throw new Error('錄影服務不支援錄影中觀看')
+    if (!service.readInit) throw new Error(tr('錄影服務不支援錄影中觀看'))
     return service.readInit(id)
   })
   ipcMain.handle(RECORDING_CHANNELS.readSegment, (_event, sessionId: unknown, seq: unknown) => {
     const id = requireSessionId(sessionId)
     const n = requireSegmentSeq(seq)
-    if (!service.readSegment) throw new Error('錄影服務不支援錄影中觀看')
+    if (!service.readSegment) throw new Error(tr('錄影服務不支援錄影中觀看'))
     return service.readSegment(id, n)
   })
   const broadcast = (channel: string, payload: unknown): void => {
