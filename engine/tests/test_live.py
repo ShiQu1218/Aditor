@@ -611,3 +611,16 @@ def test_live_restores_stretched_4_3_capture_like_offline(tmp_path, profile, sce
     assert [(e["type"], e["t"], e["counted"]) for e in final["events"]] == \
         [(e["type"], e["t"], e["counted"]) for e in doc["events"]]
     assert final["quality"]["aspect_squash"] == 0.75
+
+
+def test_run_limits_opencv_to_one_thread(monkeypatch, tmp_path):
+    """Live detection runs beside a game, so it must not wake a full OpenCV thread pool."""
+    import io
+
+    import aditor.live as live_mod
+    calls = []
+    monkeypatch.setattr(live_mod.cv2, "setNumThreads", calls.append)
+    out = io.BytesIO()
+    assert live_mod.run("unused", tmp_path, game="unknown-game", stdin=io.BytesIO(), stdout=out) == 1
+    assert calls == [live_mod.LIVE_CV_THREADS]
+    assert live_mod.LIVE_CV_THREADS == 1

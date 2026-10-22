@@ -1,3 +1,4 @@
+import os from 'os'
 import { spawn, ChildProcess } from 'child_process'
 import { EventEmitter } from 'events'
 import { emitChildDiagnostic, type ChildDiagnosticHandler } from '../shared/child-diagnostics'
@@ -23,6 +24,8 @@ export interface EngineClientOptions {
   command: string
   args: string[]
   env?: Record<string, string>
+  /** Test injection: set process priority. */
+  setPriority?: (pid: number) => void
 }
 
 export class EngineClient extends EventEmitter {
@@ -65,6 +68,18 @@ export class EngineClient extends EventEmitter {
           stdio: ['pipe', 'pipe', 'pipe']
         })
         this.proc = p
+
+        // Analysis can start while a game is running (per-match analysis, watched folders). Below-normal lets the game
+        // keep its CPU time; FFmpeg processes spawned by the engine inherit this priority class on Windows.
+        p.once('spawn', () => {
+          if (p.pid === undefined) return
+          try {
+            if (this.opts.setPriority) this.opts.setPriority(p.pid)
+            else os.setPriority(p.pid, os.constants.priority.PRIORITY_BELOW_NORMAL)
+          } catch (err) {
+            emitChildDiagnostic(this.opts.onDiagnostic, { component: 'python-engine', code: 'engine_priority', message: String(err) })
+          }
+        })
 
         p.stdout?.on('data', (chunk: Buffer) => {
           this._onData(chunk)

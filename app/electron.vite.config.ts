@@ -21,10 +21,13 @@ const sentryPlugins = (target: string) => uploadMaps ? [sentryVitePlugin({
   sourcemaps: { assets: [`./out/${target}/**/*.js`, `./out/${target}/**/*.map`] }
 })] : []
 
+// Sentry and its OpenTelemetry tree are bundled so app.asar does not carry ~35MB of node_modules.
+const SENTRY_BUNDLED = ['@sentry/electron', '@sentry/browser-utils']
+
 export default defineConfig({
   main: {
     build: { sourcemap: 'hidden' },
-    plugins: [externalizeDepsPlugin(), ...sentryPlugins('main')],
+    plugins: [externalizeDepsPlugin({ exclude: SENTRY_BUNDLED }), ...sentryPlugins('main')],
     resolve: {
       alias: {
         '@shared': resolve('src/shared')
@@ -33,7 +36,7 @@ export default defineConfig({
   },
   preload: {
     build: { sourcemap: 'hidden' },
-    plugins: [externalizeDepsPlugin(), ...sentryPlugins('preload')],
+    plugins: [externalizeDepsPlugin({ exclude: SENTRY_BUNDLED }), ...sentryPlugins('preload')],
     resolve: {
       alias: {
         '@shared': resolve('src/shared')

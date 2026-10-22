@@ -65,6 +65,7 @@ START_BACKLOG_SLOTS = 8     # On startup, read at most this many written slots (
 POLL_INTERVAL = 0.05        # Wait this many seconds when there is no new slot (slots are about 0.25 seconds apart).
 SNAPSHOT_INTERVAL = 1.0     # Emit snapshots at most once per second of wall-clock time.
 STATS_INTERVAL = 5.0        # Emit stats every 5 seconds of wall-clock time.
+LIVE_CV_THREADS = 1         # Runs beside a game: 4 fps thumbnails do not need OpenCV waking a worker per core.
 
 # ---- Buffer limits for incremental processing ----
 CALIB_MAX_SCAN_SECONDS = 600.0          # Same as calibrate()'s max_scan_seconds: if WANTED_HITS is not reached, choose from existing hits.
@@ -684,6 +685,7 @@ def _watch_stdin(stdin, stop: threading.Event) -> None:
 
 def run(shm: str, profile_dir: Path, scene_dir: Path | None = None, *, stdin=None, stdout=None,
         poll_interval: float = POLL_INTERVAL, aspect: str | None = None, game: str | None = None) -> int:
+    cv2.setNumThreads(LIVE_CV_THREADS)
     out = _Out(stdout if stdout is not None else sys.stdout.buffer)
     stdin = stdin if stdin is not None else sys.stdin.buffer
     try:

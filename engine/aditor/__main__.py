@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -83,6 +84,8 @@ def main(argv: list[str] | None = None) -> int:
         from aditor.ipc import run
         return run()
     if a.cmd == "live":
+        # OpenBLAS reads its thread count when numpy is first imported, so set it before importing live.
+        os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
         from aditor.live import run as run_live
         return run_live(a.shm, Path(a.profile_dir), Path(a.scene_dir) if a.scene_dir else None, aspect=a.aspect,
                         game=a.game)
