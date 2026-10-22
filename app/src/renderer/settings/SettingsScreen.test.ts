@@ -110,21 +110,39 @@ describe('SettingsScreen markup (renderToString + fake window.api data)', () => 
     expect(html).toContain('開啟下載頁面')
   })
 
-  test('update row follows the status pushed by main: downloading → downloaded offers restart-and-update', async () => {
+  test('update row: available offers an explicit download, then downloaded offers restart-and-update', async () => {
     let push: (s: UpdateStatus) => void = () => undefined
+    const download = vi.fn(async () => true)
     const install = vi.fn(async () => true)
     const api = fakeApi()
     api.update = {
       getStatus: async () => ({ state: 'latest' }),
       check: async () => ({ state: 'latest' }),
+      download,
       install,
       openReleases: async () => true,
       onStatus: (cb) => { push = cb; return () => undefined }
     }
     expect(await render({ initialCategory: 'about' }, api)).toContain('已是最新版本')
-    const downloading = await render({ initialCategory: 'about' }, api, async () => push({ state: 'downloading', version: '0.2.0', percent: 40 }))
+
+    const available = await render({ initialCategory: 'about' }, api, async () => {
+      push({ state: 'available', version: '0.2.0' })
+    })
+    expect(available).toContain('有新版本 0.2.0 可供下載')
+    expect(available).toContain('下載更新')
+    expect(available).not.toMatch(/<button[^>]*id="set-updateStatus"[^>]*disabled/)
+    expect(download).not.toHaveBeenCalled()
+    expect(install).not.toHaveBeenCalled()
+
+    const downloading = await render({ initialCategory: 'about' }, api, async (c) => {
+      push({ state: 'downloading', version: '0.2.0', percent: 40 })
+      await c.downloadUpdate()
+    })
     expect(downloading).toContain('正在下載 0.2.0（40%）')
     expect(downloading).toMatch(/<button[^>]*id="set-updateStatus"[^>]*disabled/)
+    expect(download).toHaveBeenCalledTimes(1)
+    expect(install).not.toHaveBeenCalled()
+
     const done = await render({ initialCategory: 'about' }, api, async (c) => {
       push({ state: 'downloaded', version: '0.2.0' })
       await c.installUpdate()

@@ -17,6 +17,7 @@ export function broadcastUpdateStatus(status: UpdateStatus): void {
 export function registerUpdateIpc(service: AppUpdaterService): () => void {
   ipcMain.handle(UPDATE_CHANNELS.getStatus, () => service.status())
   ipcMain.handle(UPDATE_CHANNELS.check, () => service.check())
+  ipcMain.handle(UPDATE_CHANNELS.download, () => service.download())
   ipcMain.handle(UPDATE_CHANNELS.install, () => service.install())
   // Open only the fixed Releases URL; do not accept a URL from the renderer.
   ipcMain.handle(UPDATE_CHANNELS.openReleases, async () => {
@@ -24,7 +25,7 @@ export function registerUpdateIpc(service: AppUpdaterService): () => void {
     return true
   })
   return () => {
-    for (const channel of [UPDATE_CHANNELS.getStatus, UPDATE_CHANNELS.check, UPDATE_CHANNELS.install, UPDATE_CHANNELS.openReleases]) {
+    for (const channel of [UPDATE_CHANNELS.getStatus, UPDATE_CHANNELS.check, UPDATE_CHANNELS.download, UPDATE_CHANNELS.install, UPDATE_CHANNELS.openReleases]) {
       ipcMain.removeHandler(channel)
     }
   }

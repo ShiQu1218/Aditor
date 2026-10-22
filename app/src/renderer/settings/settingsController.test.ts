@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 import { DEFAULT_SETTINGS, type Settings, type SettingsSetResult } from '../../shared/settings'
 import { SettingsController, type SettingsApi } from './settingsController'
 
@@ -236,6 +236,39 @@ describe('SettingsController', () => {
     api.export!.detectEncoders = async () => ['h264_qsv', 'h264_nvenc']
     await c.refreshEncoders()
     expect(c.getState().encoders.list).toEqual(['h264_qsv', 'h264_nvenc'])
+  })
+
+  test('update actions are separate: check never downloads, and install waits for the explicit call', async () => {
+    let push: (status: { state: 'latest' | 'available' | 'downloading' | 'downloaded'; version?: string; percent?: number }) => void = () => undefined
+    const check = async () => ({ state: 'latest' as const })
+    const download = vi.fn(async () => true)
+    const install = vi.fn(async () => true)
+    const rig = makeApi()
+    rig.api.update = {
+      getStatus: async () => ({ state: 'latest' }),
+      check,
+      download,
+      install,
+      openReleases: async () => true,
+      onStatus: (cb) => { push = cb; return () => undefined }
+    }
+    const c = new SettingsController(rig.api)
+    await c.start()
+    expect(c.getState().update).toEqual({ state: 'latest' })
+
+    await c.checkUpdate()
+    expect(c.getState().update).toEqual({ state: 'latest' })
+    expect(download).not.toHaveBeenCalled()
+
+    push({ state: 'available', version: '0.2.0' })
+    expect(c.getState().update).toEqual({ state: 'available', version: '0.2.0' })
+    await c.downloadUpdate()
+    expect(c.getState().update).toEqual({ state: 'downloading', version: '0.2.0', percent: 0 })
+    expect(install).not.toHaveBeenCalled()
+
+    push({ state: 'downloaded', version: '0.2.0' })
+    await c.installUpdate()
+    expect(install).toHaveBeenCalledTimes(1)
   })
 
   test('missing optional api parts degrade gracefully (no throw)', async () => {

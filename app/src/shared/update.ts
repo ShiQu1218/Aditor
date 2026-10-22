@@ -3,6 +3,8 @@
 export const UPDATE_CHANNELS = {
   getStatus: 'update:getStatus',
   check: 'update:check',
+  /** Explicit user action: download an available update; checks never download. */
+  download: 'update:download',
   install: 'update:install',
   openReleases: 'update:openReleases',
   status: 'update:status'
@@ -19,6 +21,8 @@ export type UpdateState =
   | 'checking'
   /** Already up to date. */
   | 'latest'
+  /** A newer version was found; nothing is downloaded until the user chooses Download update. */
+  | 'available'
   | 'downloading'
   /** Downloaded and ready; the installer starts only when the user explicitly installs. */
   | 'downloaded'
@@ -26,7 +30,7 @@ export type UpdateState =
 
 export interface UpdateStatus {
   state: UpdateState
-  /** New version number (downloading/downloaded). */
+  /** New version number (available/downloading/downloaded). */
   version?: string
   /** Download progress, 0–100 (downloading). */
   percent?: number

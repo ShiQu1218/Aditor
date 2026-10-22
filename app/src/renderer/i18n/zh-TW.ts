@@ -738,22 +738,24 @@ const settingsI18n = {
     },
     updateStatus: {
       title: '軟體更新',
-      desc: '從 GitHub 下載新版本；只有選擇「立即重新啟動並更新」才會安裝。',
+      desc: '從 GitHub 檢查新版本；只有選擇「下載更新」才會下載，且只有選擇「立即重新啟動並更新」才會安裝。',
       keywords: ['更新', '新版本', '版本', 'update', 'github', '下載'],
       unsupported: '免安裝版與開發版不支援自動更新',
       idle: '尚未檢查',
       checking: '正在檢查…',
       latest: '已是最新版本',
+      available: '有新版本 {version} 可供下載',
       downloading: '正在下載 {version}（{pct}%）',
       downloaded: '{version} 已下載，選擇「立即重新啟動並更新」安裝',
       error: '檢查更新失敗：{msg}',
       check: '檢查更新',
+      download: '下載更新',
       install: '立即重新啟動並更新',
       openReleases: '開啟下載頁面'
     },
     autoUpdate: {
       title: '自動檢查更新',
-      desc: '啟動後與每 6 小時檢查一次，有新版本就在背景下載。',
+      desc: '啟動後與每 6 小時檢查一次；不會自動下載或安裝。',
       keywords: ['更新', '自動', 'update', 'github']
     },
     telemetryEnabled: {

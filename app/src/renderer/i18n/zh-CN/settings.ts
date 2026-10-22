@@ -181,22 +181,24 @@ export const settingsI18n: Messages['settingsI18n'] = {
     },
     updateStatus: {
       title: '软件更新',
-      desc: '从 GitHub 下载新版本；只有选择“立即重启并更新”才会安装。',
+      desc: '从 GitHub 检查新版本；只有选择“下载更新”才会下载，且只有选择“立即重启并更新”才会安装。',
       keywords: ['更新', '新版本', '版本', 'update', 'github', '下载'],
       unsupported: '便携版与开发版不支持自动更新',
       idle: '尚未检查',
       checking: '正在检查…',
       latest: '已是最新版本',
+      available: '有新版本 {version} 可供下载',
       downloading: '正在下载 {version}（{pct}%）',
       downloaded: '{version} 已下载，选择“立即重启并更新”安装',
       error: '检查更新失败：{msg}',
       check: '检查更新',
+      download: '下载更新',
       install: '立即重启并更新',
       openReleases: '打开下载页面'
     },
     autoUpdate: {
       title: '自动检查更新',
-      desc: '启动后及每 6 小时检查一次，有新版本就在后台下载。',
+      desc: '启动后及每 6 小时检查一次；不会自动下载或安装。',
       keywords: ['更新', '自动', 'update', 'github']
     },
     telemetryEnabled: {

@@ -181,22 +181,24 @@ export const settingsI18n: Messages['settingsI18n'] = {
     },
     updateStatus: {
       title: 'ソフトウェアのアップデート',
-      desc: '新しいバージョンを GitHub からダウンロードします。インストールは「今すぐ再起動してアップデート」を選んだときだけ行われます。',
+      desc: 'GitHub で新しいバージョンを確認します。「アップデートをダウンロード」を選んだときだけダウンロードし、「今すぐ再起動してアップデート」を選んだときだけインストールします。',
       keywords: ['アップデート', '更新', '新バージョン', 'バージョン', 'update', 'github', 'ダウンロード'],
       unsupported: 'ポータブル版と開発版は自動アップデートに対応していません',
       idle: '未確認',
       checking: '確認中…',
       latest: '最新バージョンです',
+      available: '新しいバージョン {version} を利用できます',
       downloading: '{version} をダウンロード中（{pct}%）',
       downloaded: '{version} をダウンロードしました。「今すぐ再起動してアップデート」でインストールします',
       error: 'アップデートの確認に失敗しました：{msg}',
       check: 'アップデートを確認',
+      download: 'アップデートをダウンロード',
       install: '今すぐ再起動してアップデート',
       openReleases: 'ダウンロードページを開く'
     },
     autoUpdate: {
       title: 'アップデートを自動で確認',
-      desc: '起動時と 6 時間ごとに確認し、新しいバージョンがあればバックグラウンドでダウンロードします。',
+      desc: '起動時と 6 時間ごとに確認します。自動でのダウンロードやインストールは行いません。',
       keywords: ['アップデート', '更新', '自動', 'update', 'github']
     },
     telemetryEnabled: {

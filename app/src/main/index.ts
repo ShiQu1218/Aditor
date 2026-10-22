@@ -267,7 +267,7 @@ async function initEngineAndServices(): Promise<void> {
   appUpdater = createAppUpdater({
     updater: !e2e && canAutoUpdate(app.isPackaged) ? await loadAutoUpdater() : null,
     isEnabled: () => settingsStore!.get().autoUpdate,
-    notifyDownloaded: (version) => notify('finalized', tr('Aditor {version} 已下載完成，可在設定中選擇「立即重新啟動並更新」安裝。', { version })),
+    notifyAvailable: (version) => notify('finalized', tr('Aditor {version} 有新版本可用，可在設定中選擇「下載更新」。', { version })),
     broadcast: broadcastUpdateStatus,
     // A manual install only requests quitting here; the quit guard starts the installer after finalization.
     requestQuit: () => app.quit()

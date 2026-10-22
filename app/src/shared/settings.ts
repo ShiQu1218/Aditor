@@ -46,7 +46,7 @@ export interface Settings {
   autoSuggestOnOpen: boolean
   /** Automatically save projects (when disabled, restore the "unsaved changes" prompt behavior). */
   projectAutosave: boolean
-  /** Automatically check GitHub for updates and download in the background (installed builds only; manual checks are unaffected). */
+  /** Automatically check GitHub for updates; discovery never downloads or installs (installed builds only; manual checks are unaffected). */
   autoUpdate: boolean
   /** Sentry diagnostics are on by default; an explicit opt-out is preserved. Enabling takes effect after restart. */
   telemetryEnabled: boolean

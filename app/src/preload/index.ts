@@ -129,6 +129,8 @@ const api = {
   update: {
     getStatus: (): Promise<UpdateStatus> => ipcRenderer.invoke(UPDATE_CHANNELS.getStatus),
     check: (): Promise<UpdateStatus> => ipcRenderer.invoke(UPDATE_CHANNELS.check),
+    /** Explicitly download the available update; checks never download automatically. */
+    download: (): Promise<boolean> => ipcRenderer.invoke(UPDATE_CHANNELS.download),
     /** Explicitly install the downloaded update; the quit guard starts the installer after finalization. */
     install: (): Promise<boolean> => ipcRenderer.invoke(UPDATE_CHANNELS.install),
     /** Open GitHub Releases in a browser (manual download for portable builds). */

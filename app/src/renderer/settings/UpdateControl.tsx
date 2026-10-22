@@ -18,6 +18,8 @@ function statusText(s: UpdateStatus): string {
       return t.checking
     case 'latest':
       return t.latest
+    case 'available':
+      return fillTemplate(t.available, { version: s.version ?? '' })
     case 'downloading':
       return fillTemplate(t.downloading, { version: s.version ?? '', pct: s.percent ?? 0 })
     case 'downloaded':
@@ -27,15 +29,20 @@ function statusText(s: UpdateStatus): string {
   }
 }
 
-/** Update status and actions: check or restart and install; portable builds open the download page instead. */
+/** Update status and actions: check, download, or restart and install; portable builds open the download page instead. */
 export function UpdateControl({ ids, status, controller }: { ids: ControlIds; status: UpdateStatus; controller: SettingsController }): JSX.Element {
   const statusId = `${ids.ctl}-status`
-  const busy = status.state === 'checking' || status.state === 'downloading'
   let action: JSX.Element
   if (status.state === 'unsupported') {
     action = (
       <button id={ids.ctl} type="button" className="set-btn sm" aria-describedby={describedBy(ids, statusId)} onClick={() => void controller.openReleases()}>
         {t.openReleases}
+      </button>
+    )
+  } else if (status.state === 'available') {
+    action = (
+      <button id={ids.ctl} type="button" className="set-btn sm" aria-describedby={describedBy(ids, statusId)} onClick={() => void controller.downloadUpdate()}>
+        {t.download}
       </button>
     )
   } else if (status.state === 'downloaded') {
@@ -44,9 +51,15 @@ export function UpdateControl({ ids, status, controller }: { ids: ControlIds; st
         {t.install}
       </button>
     )
+  } else if (status.state === 'downloading') {
+    action = (
+      <button id={ids.ctl} type="button" className="set-btn sm" disabled aria-describedby={describedBy(ids, statusId)}>
+        {t.download}
+      </button>
+    )
   } else {
     action = (
-      <button id={ids.ctl} type="button" className="set-btn sm" disabled={busy} aria-describedby={describedBy(ids, statusId)} onClick={() => void controller.checkUpdate()}>
+      <button id={ids.ctl} type="button" className="set-btn sm" disabled={status.state === 'checking'} aria-describedby={describedBy(ids, statusId)} onClick={() => void controller.checkUpdate()}>
         <RefreshCw className="ic sm" />
         {t.check}
       </button>

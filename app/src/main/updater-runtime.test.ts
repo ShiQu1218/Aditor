@@ -22,11 +22,13 @@ test('native Node import loads the real CommonJS updater and keeps install-on-qu
       ${source}
       const updater = await loadAutoUpdater();
       assert.equal(typeof updater.checkForUpdates, 'function');
+      assert.equal(typeof updater.downloadUpdate, 'function');
       assert.equal(typeof updater.quitAndInstall, 'function');
-      const service = createAppUpdater({ updater, isEnabled: () => true, notifyDownloaded: () => {}, broadcast: () => {}, requestQuit: () => {} });
+      const service = createAppUpdater({ updater, isEnabled: () => true, notifyAvailable: () => {}, broadcast: () => {}, requestQuit: () => {} });
       assert.equal(service.status().state, 'idle');
-      assert.equal(updater.autoDownload, true);
+      assert.equal(updater.autoDownload, false);
       assert.equal(updater.autoInstallOnAppQuit, false);
+      assert.equal(service.download(), false);
     `
   })
   expect(result.error).toBeUndefined()

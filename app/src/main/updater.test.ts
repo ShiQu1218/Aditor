@@ -5,77 +5,113 @@ import type { UpdateStatus } from '../shared/update'
 
 type Listener = (arg?: unknown) => void
 
-function fakeUpdater(check: () => Promise<unknown> = async () => undefined) {
+function fakeUpdater(check: () => Promise<unknown> = async () => undefined, download: () => Promise<unknown> = async () => []) {
   const listeners = new Map<string, Listener>()
   const updater = {
     autoDownload: false,
     autoInstallOnAppQuit: false,
     on: (event: string, fn: Listener) => { listeners.set(event, fn) },
     checkForUpdates: vi.fn(check),
+    downloadUpdate: vi.fn(download),
     quitAndInstall: vi.fn()
   }
   const emit = (event: string, arg?: unknown): void => listeners.get(event)?.(arg)
   return { updater: updater as unknown as UpdaterLike & typeof updater, emit }
 }
 
-function rig(opts: { enabled?: boolean; check?: () => Promise<unknown>; supported?: boolean; requestQuit?: () => void } = {}) {
-  const f = fakeUpdater(opts.check)
+function rig(opts: {
+  enabled?: boolean
+  check?: () => Promise<unknown>
+  download?: () => Promise<unknown>
+  supported?: boolean
+  requestQuit?: () => void
+} = {}) {
+  const f = fakeUpdater(opts.check, opts.download)
   const broadcasts: UpdateStatus[] = []
-  const notifyDownloaded = vi.fn()
+  const notifyAvailable = vi.fn()
   const requestQuit = opts.requestQuit ?? vi.fn()
   const timers: Array<() => void> = []
   const repeats: Array<() => void> = []
   const svc = createAppUpdater({
     updater: opts.supported === false ? null : f.updater,
     isEnabled: () => opts.enabled ?? true,
-    notifyDownloaded,
+    notifyAvailable,
     broadcast: (s) => broadcasts.push(s),
     requestQuit,
     setTimer: (fn) => timers.push(fn),
     setRepeat: (fn) => repeats.push(fn),
     clearTimers: () => undefined
   })
-  return { ...f, svc, broadcasts, notifyDownloaded, requestQuit, timers, repeats }
+  return { ...f, svc, broadcasts, notifyAvailable, requestQuit, timers, repeats }
 }
 
 const tick = (): Promise<void> => new Promise((resolve) => setImmediate(resolve))
 
 const deferred = () => {
   let resolve!: () => void
-  const promise = new Promise<void>((res) => { resolve = res })
-  return { promise, resolve }
+  let reject!: (error: Error) => void
+  const promise = new Promise<void>((res, rej) => { resolve = res; reject = rej })
+  return { promise, resolve, reject }
 }
 
 const beforeQuit = () => ({ preventDefault: () => undefined })
 
 describe('createAppUpdater', () => {
-  test('unsupported builds never check and never install', async () => {
+  test('unsupported builds never check, download, or install', async () => {
     const r = rig({ supported: false })
     expect(r.svc.status()).toEqual({ state: 'unsupported' })
     r.svc.start()
     expect(r.timers).toHaveLength(0)
     expect(await r.svc.check()).toEqual({ state: 'unsupported' })
+    expect(r.svc.download()).toBe(false)
     expect(r.svc.install()).toBe(false)
   })
 
-  test('enables background download but leaves installer startup to the explicit install action', () => {
+  test('disables automatic download and automatic install-on-quit', () => {
     const r = rig()
-    expect(r.updater.autoDownload).toBe(true)
+    expect(r.updater.autoDownload).toBe(false)
     // electron-updater's own quit handler must not turn an ordinary quit into an install.
     expect(r.updater.autoInstallOnAppQuit).toBe(false)
   })
 
-  test('available → progress → downloaded, notifying once per version', async () => {
+  test('check discovers an available version without starting a download', async () => {
     const r = rig()
-    await r.svc.check()
+    r.updater.checkForUpdates.mockImplementation(async () => r.emit('update-available', { version: '0.2.0' }))
+    expect(await r.svc.check()).toEqual({ state: 'available', version: '0.2.0' })
+    expect(r.updater.downloadUpdate).not.toHaveBeenCalled()
+    expect(r.notifyAvailable).toHaveBeenCalledTimes(1)
+    expect(r.notifyAvailable).toHaveBeenCalledWith('0.2.0')
+    expect(r.broadcasts.map((s) => s.state)).toEqual(['checking', 'available'])
+  })
+
+  test('available → explicit download → progress → downloaded, notifying once per version', async () => {
+    const r = rig()
     r.emit('update-available', { version: '0.2.0' })
+    expect(r.svc.status()).toEqual({ state: 'available', version: '0.2.0' })
+    expect(r.notifyAvailable).toHaveBeenCalledTimes(1)
+
+    expect(r.svc.download()).toBe(true)
+    expect(r.updater.downloadUpdate).toHaveBeenCalledTimes(1)
+    expect(r.svc.status()).toEqual({ state: 'downloading', version: '0.2.0', percent: 0 })
+
     r.emit('download-progress', { percent: 42.4 })
     expect(r.svc.status()).toEqual({ state: 'downloading', version: '0.2.0', percent: 42 })
     r.emit('update-downloaded', { version: '0.2.0' })
     r.emit('update-downloaded', { version: '0.2.0' })
     expect(r.svc.status()).toEqual({ state: 'downloaded', version: '0.2.0' })
-    expect(r.notifyDownloaded).toHaveBeenCalledTimes(1)
-    expect(r.broadcasts.map((s) => s.state)).toEqual(['checking', 'downloading', 'downloading', 'downloaded', 'downloaded'])
+    expect(r.notifyAvailable).toHaveBeenCalledTimes(1)
+    expect(r.broadcasts.map((s) => s.state)).toEqual(['available', 'downloading', 'downloading', 'downloaded', 'downloaded'])
+  })
+
+  test('download does nothing before a version is available and ignores duplicate requests', () => {
+    const r = rig()
+    expect(r.svc.download()).toBe(false)
+    expect(r.updater.downloadUpdate).not.toHaveBeenCalled()
+
+    r.emit('update-available', { version: '0.2.0' })
+    expect(r.svc.download()).toBe(true)
+    expect(r.svc.download()).toBe(false)
+    expect(r.updater.downloadUpdate).toHaveBeenCalledTimes(1)
   })
 
   test('no update → latest', async () => {
@@ -87,6 +123,40 @@ describe('createAppUpdater', () => {
   test('a rejected check becomes an error status with the message', async () => {
     const r = rig({ check: async () => { throw new Error('offline') } })
     expect(await r.svc.check()).toEqual({ state: 'error', error: 'offline' })
+    expect(r.updater.downloadUpdate).not.toHaveBeenCalled()
+  })
+
+  test('a rejected download becomes an error status and can be retried after checking again', async () => {
+    const r = rig({ download: async () => { throw new Error('download offline') } })
+    r.emit('update-available', { version: '0.2.0' })
+    expect(r.svc.download()).toBe(true)
+    await tick()
+    expect(r.svc.status()).toEqual({ state: 'error', error: 'download offline' })
+
+    r.updater.checkForUpdates.mockImplementation(async () => r.emit('update-available', { version: '0.2.0' }))
+    r.updater.downloadUpdate.mockImplementation(async () => [])
+    expect(await r.svc.check()).toEqual({ state: 'available', version: '0.2.0' })
+    expect(r.svc.download()).toBe(true)
+    expect(r.updater.downloadUpdate).toHaveBeenCalledTimes(2)
+  })
+
+  test('an updater error during download is shown instead of leaving the download stuck', () => {
+    const r = rig()
+    r.emit('update-available', { version: '0.2.0' })
+    expect(r.svc.download()).toBe(true)
+    r.emit('error', new Error('network reset'))
+    expect(r.svc.status()).toEqual({ state: 'error', error: 'network reset' })
+  })
+
+  test('a late download rejection does not hide a completed download', async () => {
+    const pending = deferred()
+    const r = rig({ download: () => pending.promise })
+    r.emit('update-available', { version: '0.2.0' })
+    expect(r.svc.download()).toBe(true)
+    r.emit('update-downloaded', { version: '0.2.0' })
+    pending.reject(new Error('late failure'))
+    await tick()
+    expect(r.svc.status()).toEqual({ state: 'downloaded', version: '0.2.0' })
   })
 
   test('errors after a download do not hide the downloaded update', async () => {
@@ -96,18 +166,52 @@ describe('createAppUpdater', () => {
     expect(r.svc.status().state).toBe('downloaded')
   })
 
-  test('does not re-check while downloading or after download', async () => {
+  test('does not re-check while available, downloading, or after download', async () => {
     const r = rig()
     r.emit('update-available', { version: '0.2.0' })
     await r.svc.check()
+    expect(r.updater.checkForUpdates).not.toHaveBeenCalled()
+    r.svc.download()
+    await r.svc.check()
+    expect(r.updater.checkForUpdates).not.toHaveBeenCalled()
     r.emit('update-downloaded', { version: '0.2.0' })
     await r.svc.check()
     expect(r.updater.checkForUpdates).not.toHaveBeenCalled()
   })
 
+  test('scheduled and manual checks never download; scheduled checks obey the setting', async () => {
+    const off = rig({ enabled: false })
+    off.updater.checkForUpdates.mockImplementation(async () => off.emit('update-available', { version: '0.2.0' }))
+    off.svc.start()
+    off.timers[0]()
+    off.repeats[0]()
+    expect(off.updater.checkForUpdates).not.toHaveBeenCalled()
+    await off.svc.check()
+    expect(off.updater.checkForUpdates).toHaveBeenCalledTimes(1)
+    expect(off.svc.status()).toEqual({ state: 'available', version: '0.2.0' })
+    expect(off.updater.downloadUpdate).not.toHaveBeenCalled()
+
+    const on = rig({ enabled: true })
+    on.updater.checkForUpdates.mockImplementation(async () => on.emit('update-available', { version: '0.2.0' }))
+    on.svc.start()
+    on.svc.start() // Repeated calls do not schedule another check.
+    expect(on.timers).toHaveLength(1)
+    on.timers[0]()
+    await tick()
+    expect(on.updater.checkForUpdates).toHaveBeenCalledTimes(1)
+    expect(on.svc.status()).toEqual({ state: 'available', version: '0.2.0' })
+    expect(on.updater.downloadUpdate).not.toHaveBeenCalled()
+  })
+})
+
+describe('manual update install sequencing', () => {
   test('install only after download, requesting a graceful quit before the installer starts', () => {
     const r = rig()
     expect(r.svc.install()).toBe(false)
+    // An available version is not downloaded yet, so it cannot be installed.
+    r.emit('update-available', { version: '0.2.0' })
+    expect(r.svc.install()).toBe(false)
+    expect(r.svc.download()).toBe(true)
     r.emit('update-downloaded', { version: '0.2.0' })
     expect(r.svc.install()).toBe(true)
     expect(r.requestQuit).toHaveBeenCalledTimes(1)
@@ -117,25 +221,6 @@ describe('createAppUpdater', () => {
     expect(r.updater.quitAndInstall).toHaveBeenCalledWith(false, true)
   })
 
-  test('scheduled checks run only while the setting is on; manual checks always run', async () => {
-    const off = rig({ enabled: false })
-    off.svc.start()
-    off.timers[0]()
-    off.repeats[0]()
-    expect(off.updater.checkForUpdates).not.toHaveBeenCalled()
-    await off.svc.check()
-    expect(off.updater.checkForUpdates).toHaveBeenCalledTimes(1)
-
-    const on = rig({ enabled: true })
-    on.svc.start()
-    on.svc.start() // Repeated calls do not schedule another check.
-    expect(on.timers).toHaveLength(1)
-    on.timers[0]()
-    expect(on.updater.checkForUpdates).toHaveBeenCalledTimes(1)
-  })
-})
-
-describe('manual update install sequencing', () => {
   test('slow recording finalization and cleanup block installer spawn until they finish', async () => {
     const finalize = deferred()
     const order: string[] = []
@@ -196,7 +281,7 @@ describe('manual update install sequencing', () => {
       stopEngine: async () => undefined,
       cancelExport: async () => undefined,
       cancelProxies: async () => undefined,
-      stopWatcher: () => undefined,
+      stopWatcher: async () => undefined,
       installUpdate: () => r.svc.installIfRequested(),
       quit,
       timeoutMs: 5000
@@ -254,7 +339,7 @@ describe('manual update install sequencing', () => {
       stopEngine: async () => undefined,
       cancelExport: async () => undefined,
       cancelProxies: async () => undefined,
-      stopWatcher: () => undefined,
+      stopWatcher: async () => undefined,
       installUpdate: () => r.svc.installIfRequested(),
       quit,
       timeoutMs: 5000
