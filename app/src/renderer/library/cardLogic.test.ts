@@ -19,19 +19,22 @@ describe('resolveCardActivation', () => {
 })
 
 describe('resolveLibraryEscape', () => {
-  test('open menu wins: closes only the menu even with a query', () => {
-    expect(resolveLibraryEscape({ menuOpen: true, query: 'abc' })).toBe('close-menu')
+  test('open menu wins: closes only the menu even with a query and a selection', () => {
+    expect(resolveLibraryEscape({ menuOpen: true, selecting: true, query: 'abc' })).toBe('close-menu')
   })
-  test('no menu: clears the query', () => {
-    expect(resolveLibraryEscape({ menuOpen: false, query: 'abc' })).toBe('clear-query')
+  test('selection mode wins over the query', () => {
+    expect(resolveLibraryEscape({ menuOpen: false, selecting: true, query: 'abc' })).toBe('exit-selection')
+  })
+  test('no menu or selection: clears the query', () => {
+    expect(resolveLibraryEscape({ menuOpen: false, selecting: false, query: 'abc' })).toBe('clear-query')
   })
   test('nothing open: no action', () => {
-    expect(resolveLibraryEscape({ menuOpen: false, query: '' })).toBe('none')
+    expect(resolveLibraryEscape({ menuOpen: false, selecting: false, query: '' })).toBe('none')
   })
 })
 
 /** Verify the full keymap path with a minimal mock window: Esc → closeOverlay → resolveLibraryEscape. */
-function harness(menuOpen: boolean, query: string) {
+function harness(menuOpen: boolean, query: string, selecting = false) {
   const log: string[] = []
   let listener: ((e: KeyboardEvent) => void) | null = null
   const target = {
@@ -46,8 +49,9 @@ function harness(menuOpen: boolean, query: string) {
     overlayOpen: false,
     handlers: {
       closeOverlay: () => {
-        const a = resolveLibraryEscape({ menuOpen, query })
+        const a = resolveLibraryEscape({ menuOpen, selecting, query })
         if (a === 'close-menu') log.push('menu')
+        else if (a === 'exit-selection') log.push('selection')
         else if (a === 'clear-query') log.push('query')
       }
     }
@@ -86,5 +90,10 @@ describe('library Esc through the keymap', () => {
     const h = harness(false, 'abc')
     h.press({})
     expect(h.log).toEqual(['query'])
+  })
+  test('Esc in selection mode exits selection before clearing the search', () => {
+    const h = harness(false, 'abc', true)
+    h.press({})
+    expect(h.log).toEqual(['selection'])
   })
 })

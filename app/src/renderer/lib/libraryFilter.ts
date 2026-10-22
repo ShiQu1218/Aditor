@@ -1,12 +1,24 @@
-// Library filters (pure functions): search, favorites only, and event/highlight type.
+// Library filters (pure functions): search, favorites only, event/highlight type, and game.
 import type { LibraryEntry } from '../../main/library'
+import type { GameId } from '../../shared/games'
 
 export type LibraryKind = 'all' | 'knock' | 'assist' | 'hl'
+export type LibraryGame = GameId | 'all'
 
 export interface LibraryFilter {
   query: string
   favoriteOnly: boolean
   kind: LibraryKind
+  game: LibraryGame
+}
+
+/**
+ * Which game an entry belongs to, or null while it is still unknown.
+ * Legacy entries analyzed before multi-game support have no `game`; completed ones were Apex (see `gameOf`).
+ */
+export function entryGame(entry: LibraryEntry): GameId | null {
+  if (entry.game) return entry.game
+  return entry.status === 'done' ? 'apex' : null
 }
 
 export function filterEntries(entries: LibraryEntry[], f: LibraryFilter): LibraryEntry[] {
@@ -20,6 +32,9 @@ export function filterEntries(entries: LibraryEntry[], f: LibraryFilter): Librar
       if (!filename.includes(needle)) {
         return false
       }
+    }
+    if (f.game !== 'all' && entryGame(entry) !== f.game) {
+      return false
     }
     switch (f.kind) {
       case 'knock':

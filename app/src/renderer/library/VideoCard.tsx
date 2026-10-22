@@ -8,13 +8,15 @@ import { useQueueEta, useQueueItemState } from '../queue/QueueProvider'
 import { i18n } from '../i18n'
 import { nextTrapIndex } from '../a11y/focusTrap'
 import { rovingStep } from '../a11y/roving'
-import { AlertTriangle, ImageOff, MoreHorizontal, RefreshCw, Star, Trash2 } from '../components/icons'
+import { AlertTriangle, Check, ImageOff, MoreHorizontal, RefreshCw, Star, Trash2 } from '../components/icons'
 import { cardStatusText, fileName, thumbnailUrl } from './cardLogic'
 import { GAMES, GAME_IDS, gameOf, type GameId } from '../../shared/games'
+import { entryGame } from '../lib/libraryFilter'
 
 export { fileName } from './cardLogic'
 
 const t = i18n.library.card
+const sel = i18n.library.selection
 
 export interface VideoCardProps {
   entry: LibraryEntry
@@ -34,6 +36,12 @@ export interface VideoCardProps {
    * Defaults to true when used without a grid.
    */
   active?: boolean
+  /** Multi-select mode: the main button toggles selection instead of opening, and conflicting controls are hidden. */
+  selectionMode?: boolean
+  /** Whether this card is currently selected (only meaningful in selection mode). */
+  selected?: boolean
+  /** Provide to render the top-left selection checkbox; clicking it selects this card and enters selection mode. */
+  onToggleSelect?: (path: string) => void
 }
 
   /**
@@ -71,7 +79,7 @@ export function sameCardEntry(a: LibraryEntry, b: LibraryEntry): boolean {
   )
 }
 
-function VideoCardView({ entry, onOpen, onToggleFavorite, onRemove, onRetry, onSetGame, onMenuChange, proxySuggest = true, active = true }: VideoCardProps): JSX.Element {
+function VideoCardView({ entry, onOpen, onToggleFavorite, onRemove, onRetry, onSetGame, onMenuChange, proxySuggest = true, active = true, selectionMode = false, selected = false, onToggleSelect }: VideoCardProps): JSX.Element {
   const [menuOpen, setMenuOpen] = useState(false)
   const rootRef = useRef<HTMLElement>(null)
   const moreRef = useRef<HTMLButtonElement>(null)
@@ -86,11 +94,17 @@ function VideoCardView({ entry, onOpen, onToggleFavorite, onRemove, onRetry, onS
   const done = entry.status === 'done'
   const error = entry.status === 'error'
   const unknownGame = error && entry.errorCode === 'unknown_game'
+  const gameTag = entryGame(entry)
   // Waiting refers only to main's real queue; pending items not in the queue (imported but not queued, or canceled) are not analyzed yet.
   const queueState = useQueueItemState(entry.path)
   const notQueued = entry.status === 'pending' && queueState === 'idle'
   const statusText = cardStatusText(entry, queueState)
   const eta = useQueueEta(entry.path)
+
+  // Entering selection mode hides the menu; make sure its Esc/outside-click state does not linger invisibly.
+  useEffect(() => {
+    if (selectionMode) setMenuOpen(false)
+  }, [selectionMode])
 
   useEffect(() => {
     if (!menuOpen) return
@@ -168,16 +182,24 @@ function VideoCardView({ entry, onOpen, onToggleFavorite, onRemove, onRetry, onS
   const label = statusText ? `${title} · ${statusText}` : title
 
 // Structure: the <article> (no role or keyboard handling) contains one main .vcard-open button (thumbnail and text, used to open),
-// with all other controls (favorite, ⋯, analyze, retry, remove) as siblings, never nested; native <button> handles Enter/Space.
+// with all other controls (selection checkbox, favorite, ⋯, analyze, retry, remove) as siblings, never nested; native <button> handles Enter/Space.
   return (
-    <article ref={rootRef} className={`vcard${error ? ' err' : ''}${done ? '' : ' busy'}`} data-vcard-path={entry.path}>
+    <article
+      ref={rootRef}
+      className={`vcard${error ? ' err' : ''}${done ? '' : ' busy'}${selected ? ' selected' : ''}${selectionMode ? ' selecting' : ''}`}
+      data-vcard-path={entry.path}
+    >
       <button
         type="button"
         className="vcard-open"
         aria-label={label}
-        aria-disabled={!done}
+        aria-disabled={selectionMode ? false : !done}
+        aria-pressed={selectionMode ? selected : undefined}
         tabIndex={tab}
-        onClick={() => onOpen(entry)}
+        onClick={() => {
+          if (selectionMode) onToggleSelect?.(entry.path)
+          else onOpen(entry)
+        }}
       >
         <span className="vcard-thumb">
           {entry.thumb ? (
@@ -254,6 +276,7 @@ function VideoCardView({ entry, onOpen, onToggleFavorite, onRemove, onRetry, onS
             </span>
           ) : (
             <span className="vcard-meta">
+              {gameTag && <span className={`vcard-game ${gameTag}`}>{GAMES[gameTag].displayName}</span>}
               <span>{new Date(entry.addedAt).toLocaleString('zh-TW', { hour12: false })}</span>
               {entry.codec ? <span className="vcard-codec">{entry.codec.toUpperCase()}</span> : null}
             </span>
@@ -261,24 +284,41 @@ function VideoCardView({ entry, onOpen, onToggleFavorite, onRemove, onRetry, onS
         </span>
       </button>
 
-      <button
-        type="button"
-        className={`vcard-fav${entry.favorite ? ' on' : ''}`}
-        aria-label={entry.favorite ? t.favoriteRemove : t.favoriteAdd}
-        aria-pressed={entry.favorite}
-        tabIndex={tab}
-        onClick={() => onToggleFavorite(entry.path)}
-      >
-        <Star className="ic" fill={entry.favorite ? 'currentColor' : 'none'} />
-      </button>
+      {/* After the main button in DOM order, so Tab enters a card on .vcard-open; CSS still pins it top-left. */}
+      {onToggleSelect && (
+        <button
+          type="button"
+          className={`vcard-select${selected ? ' on' : ''}`}
+          role="checkbox"
+          aria-checked={selected}
+          aria-label={sel.select.replace('{name}', name)}
+          tabIndex={tab}
+          onClick={() => onToggleSelect(entry.path)}
+        >
+          {selected && <Check className="ic sm" />}
+        </button>
+      )}
 
-      {notQueued && (
+      {!selectionMode && (
+        <button
+          type="button"
+          className={`vcard-fav${entry.favorite ? ' on' : ''}`}
+          aria-label={entry.favorite ? t.favoriteRemove : t.favoriteAdd}
+          aria-pressed={entry.favorite}
+          tabIndex={tab}
+          onClick={() => onToggleFavorite(entry.path)}
+        >
+          <Star className="ic" fill={entry.favorite ? 'currentColor' : 'none'} />
+        </button>
+      )}
+
+      {!selectionMode && notQueued && (
         <button type="button" className="lib-btn sm primary vcard-analyze" tabIndex={tab} onClick={() => onRetry(entry.path)}>
           {t.analyze}
         </button>
       )}
 
-      {error && (
+      {!selectionMode && error && (
         <div className="vcard-error-actions">
           {unknownGame && onSetGame ? (
             GAME_IDS.map((game) => (
@@ -297,68 +337,78 @@ function VideoCardView({ entry, onOpen, onToggleFavorite, onRemove, onRetry, onS
         </div>
       )}
 
-      <div className="vcard-menu-wrap">
-        <button
-          type="button"
-          ref={moreRef}
-          id={moreId}
-          className="vcard-more"
-          aria-label={t.more}
-          aria-haspopup="menu"
-          aria-expanded={menuOpen}
-          tabIndex={tab}
-          onClick={() => setMenuOpen((v) => !v)}
-        >
-          <MoreHorizontal className="ic" />
-        </button>
-        {menuOpen && (
-          <div className="vcard-menu" role="menu" aria-labelledby={moreId} ref={menuRef} onKeyDown={onMenuKeyDown}>
-            {(done || error) && (
+      {!selectionMode && (
+        <div className="vcard-menu-wrap">
+          <button
+            type="button"
+            ref={moreRef}
+            id={moreId}
+            className="vcard-more"
+            aria-label={t.more}
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
+            tabIndex={tab}
+            onClick={() => setMenuOpen((v) => !v)}
+          >
+            <MoreHorizontal className="ic" />
+          </button>
+          {menuOpen && (
+            <div className="vcard-menu" role="menu" aria-labelledby={moreId} ref={menuRef} onKeyDown={onMenuKeyDown}>
+              {(done || error) && (
+                <button
+                  type="button"
+                  role="menuitem"
+                  tabIndex={-1}
+                  onClick={() => {
+                    setMenuOpen(false)
+                    onRetry(entry.path)
+                  }}
+                >
+                  <RefreshCw className="ic sm" />
+                  {t.reanalyze}
+                </button>
+              )}
+              {(done || error) && onSetGame && !unknownGame && GAME_IDS.filter((game) => game !== gameOf(entry.game)).map((game) => (
+                <button
+                  key={game}
+                  type="button"
+                  role="menuitem"
+                  tabIndex={-1}
+                  onClick={() => {
+                    setMenuOpen(false)
+                    onSetGame(entry.path, game)
+                  }}
+                >
+                  <RefreshCw className="ic sm" />
+                  {t.analyzeAs.replace('{game}', GAMES[game].displayName)}
+                </button>
+              ))}
               <button
                 type="button"
                 role="menuitem"
                 tabIndex={-1}
                 onClick={() => {
                   setMenuOpen(false)
-                  onRetry(entry.path)
+                  onRemove(entry.path)
                 }}
               >
-                <RefreshCw className="ic sm" />
-                {t.reanalyze}
+                <Trash2 className="ic sm" />
+                {t.remove}
               </button>
-            )}
-            {(done || error) && onSetGame && !unknownGame && GAME_IDS.filter((game) => game !== gameOf(entry.game)).map((game) => (
-              <button
-                key={game}
-                type="button"
-                role="menuitem"
-                tabIndex={-1}
-                onClick={() => {
-                  setMenuOpen(false)
-                  onSetGame(entry.path, game)
-                }}
-              >
-                <RefreshCw className="ic sm" />
-                {t.analyzeAs.replace('{game}', GAMES[game].displayName)}
-              </button>
-            ))}
-            <button
-              type="button"
-              role="menuitem"
-              tabIndex={-1}
-              onClick={() => {
-                setMenuOpen(false)
-                onRemove(entry.path)
-              }}
-            >
-              <Trash2 className="ic sm" />
-              {t.remove}
-            </button>
-          </div>
-        )}
-      </div>
+            </div>
+          )}
+        </div>
+      )}
     </article>
   )
 }
 
-export const VideoCard = React.memo(VideoCardView, (a, b) => sameCardEntry(a.entry, b.entry) && (a.proxySuggest ?? true) === (b.proxySuggest ?? true) && (a.active ?? true) === (b.active ?? true))
+export const VideoCard = React.memo(
+  VideoCardView,
+  (a, b) =>
+    sameCardEntry(a.entry, b.entry) &&
+    (a.proxySuggest ?? true) === (b.proxySuggest ?? true) &&
+    (a.active ?? true) === (b.active ?? true) &&
+    (a.selectionMode ?? false) === (b.selectionMode ?? false) &&
+    (a.selected ?? false) === (b.selected ?? false)
+)

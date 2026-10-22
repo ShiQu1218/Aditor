@@ -5,11 +5,19 @@ import { CARD, cardGeomStyle, cardRowHeight, computeGrid, gridColumns, type Grid
 import { revealScrollTarget } from '../lib/listCursor'
 import { gridStep, type GridPos } from '../a11y/roving'
 import { i18n } from '../i18n'
+import { CopyCheck } from '../components/icons'
+import { isAllSelected } from './selection'
 
 interface VirtualGridProps {
   groups: DateGroup[]
   /** active is the current roving-tabindex card (the only card in the grid's Tab order). */
   renderCard: (entry: LibraryEntry, active: boolean) => React.ReactNode
+  /** Multi-select mode: every date header shows its group selection button. */
+  selectionMode?: boolean
+  /** Currently selected paths (used by the per-group select/deselect button). */
+  selected?: ReadonlySet<string>
+  /** Toggle every entry of the date group at groupIndex. */
+  onToggleGroup?: (groupIndex: number) => void
 }
 
 const NAV_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'])
@@ -22,7 +30,7 @@ const NAV_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Ho
    * When the main card button is focused, ←→↑↓/Home/End moves the cursor (using the actual column count from computeGrid across date groups).
    * If virtualization has scrolled the cursor card out, scroll it into view before focusing it; keep the focused row rendered so wheel scrolling does not drop focus to body.
    */
-export function VirtualGrid({ groups, renderCard }: VirtualGridProps): JSX.Element {
+export function VirtualGrid({ groups, renderCard, selectionMode = false, selected, onToggleGroup }: VirtualGridProps): JSX.Element {
   const scrollRef = useRef<HTMLDivElement>(null)
   const [size, setSize] = useState({ width: 0, height: 0 })
   const [scrollTop, setScrollTop] = useState(0)
@@ -157,6 +165,9 @@ export function VirtualGrid({ groups, renderCard }: VirtualGridProps): JSX.Eleme
         {rendered.map((row) => {
           if (row.type === 'header') {
             const group = groups[row.group]
+            const groupPaths = group.entries.map((entry) => entry.path)
+            const allSelected = selected !== undefined && isAllSelected(selected, groupPaths)
+            const groupLabel = allSelected ? i18n.library.selection.deselectGroup : i18n.library.selection.selectGroup
             return (
               <div
                 key={`h-${group.key}`}
@@ -168,6 +179,18 @@ export function VirtualGrid({ groups, renderCard }: VirtualGridProps): JSX.Eleme
                 <span className="lib-group-count">
                   {i18n.library.videoCount.replace('{n}', String(group.entries.length))}
                 </span>
+                {onToggleGroup && (
+                  <button
+                    type="button"
+                    className="lib-group-select"
+                    title={groupLabel}
+                    aria-label={groupLabel}
+                    aria-pressed={allSelected}
+                    onClick={() => onToggleGroup(row.group)}
+                  >
+                    <CopyCheck className="ic sm" />
+                  </button>
+                )}
               </div>
             )
           }

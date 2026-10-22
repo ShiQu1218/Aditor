@@ -25,6 +25,7 @@ const i18n = {
     importFiles: '匯入影片',
     importFolder: '匯入資料夾',
     searchPlaceholder: '依檔名搜尋',
+    gameFilter: '遊戲',
     chips: {
       all: '全部',
       favorite: '收藏',
@@ -89,6 +90,19 @@ const i18n = {
       removeConfirm: '確定要從影片庫移除「{name}」嗎？（不會刪除影片檔案）',
       removeSourceConfirm: '確定要從影片庫移除「{name}」並刪除來源影片檔案嗎？此操作無法復原。',
       removeFailed: '移除失敗，無法刪除來源影片檔案，請確認檔案權限或是否正被使用。'
+    },
+    selection: {
+      select: '選取 {name}',
+      selectGroup: '選取此群組',
+      deselectGroup: '取消選取此群組',
+      selectAll: '全選',
+      selectedItems: '已選取項目',
+      deleteItems: '刪除項目',
+      exit: '結束選取',
+      toolbar: '選取',
+      deleteConfirm: '確定要從影片庫移除 {n} 部影片嗎？（不會刪除影片檔案）',
+      deleteSourceConfirm: '確定要從影片庫移除 {n} 部影片嗎？錄製的來源影片檔案也會一併刪除，此操作無法復原。',
+      deleteFailed: '有 {n} 部影片無法移除，請檢查檔案權限或是否正在使用中。'
     }
   },
   queue: {

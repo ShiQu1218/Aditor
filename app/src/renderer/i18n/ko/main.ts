@@ -27,6 +27,7 @@ export const i18n: Messages['i18n'] = {
     importFiles: '영상 가져오기',
     importFolder: '폴더 가져오기',
     searchPlaceholder: '파일 이름으로 검색',
+    gameFilter: '게임',
     chips: {
       all: '전체',
       favorite: '즐겨찾기',
@@ -91,6 +92,19 @@ export const i18n: Messages['i18n'] = {
       removeConfirm: '‘{name}’을(를) 라이브러리에서 제거할까요? (영상 파일은 삭제되지 않습니다)',
       removeSourceConfirm: '‘{name}’을(를) 라이브러리에서 제거하고 원본 영상 파일도 삭제할까요? 이 작업은 취소할 수 없습니다.',
       removeFailed: '원본 영상 파일을 삭제하지 못했습니다. 파일 권한이나 사용 중인지 확인하세요.'
+    },
+    selection: {
+      select: '{name} 선택',
+      selectGroup: '그룹 선택',
+      deselectGroup: '그룹 선택 해제',
+      selectAll: '모두 선택',
+      selectedItems: '선택된 항목',
+      deleteItems: '항목 삭제',
+      exit: '선택 종료',
+      toolbar: '선택',
+      deleteConfirm: '라이브러리에서 동영상 {n}개를 제거할까요? (영상 파일은 삭제되지 않습니다)',
+      deleteSourceConfirm: '라이브러리에서 동영상 {n}개를 제거할까요? 녹화 원본 영상 파일도 함께 삭제되며 이 작업은 취소할 수 없습니다.',
+      deleteFailed: '동영상 {n}개를 제거하지 못했습니다. 파일 권한이나 사용 중인지 확인하세요.'
     }
   },
   queue: {

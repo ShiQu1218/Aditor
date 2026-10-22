@@ -25,6 +25,7 @@ export const i18n: Messages['i18n'] = {
     importFiles: 'Import videos',
     importFolder: 'Import folder',
     searchPlaceholder: 'Search by file name',
+    gameFilter: 'Game',
     chips: {
       all: 'All',
       favorite: 'Favorites',
@@ -88,6 +89,19 @@ export const i18n: Messages['i18n'] = {
       removeConfirm: 'Remove "{name}" from the library? The video file will not be deleted.',
       removeSourceConfirm: 'Remove "{name}" from the library and delete the source video file? This cannot be undone.',
       removeFailed: 'Removal failed. Could not delete the source video file. Check its permissions or whether it is in use.'
+    },
+    selection: {
+      select: 'Select {name}',
+      selectGroup: 'Select group',
+      deselectGroup: 'Deselect group',
+      selectAll: 'Select all',
+      selectedItems: 'Selected items',
+      deleteItems: 'Delete items',
+      exit: 'Exit selection',
+      toolbar: 'Selection',
+      deleteConfirm: 'Remove {n} videos from the library? The video files will not be deleted.',
+      deleteSourceConfirm: 'Remove {n} videos from the library? Source video files of recordings will also be deleted. This cannot be undone.',
+      deleteFailed: '{n} videos could not be removed. Check file permissions or whether they are in use.'
     }
   },
   queue: {

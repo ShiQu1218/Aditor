@@ -42,6 +42,10 @@
 .lib-chip.on { background: var(--text-1); color: var(--bg-app); border-color: var(--text-1); }
 .lib-chip .n { opacity: 0.7; font-weight: var(--fw-regular); }
 .lib-chip kbd { font-size: 10px; padding: 0 4px; }
+.lib-game-group { display: inline-flex; align-items: center; gap: 8px; }
+.lib-game-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--text-3); }
+.lib-game-dot.apex { background: var(--lib-game-apex); }
+.lib-game-dot.valorant { background: var(--lib-game-valorant); }
 .lib-pill {
   display: inline-flex;
   align-items: center;
@@ -101,9 +105,70 @@
 .lib-group-head { position: absolute; left: 0; right: 0; display: flex; align-items: baseline; gap: 8px; padding-top: 12px; }
 .lib-group-label { font-weight: var(--fw-bold); font-size: var(--fs-body-lg); }
 .lib-group-count { color: var(--text-3); font-size: var(--fs-small); }
+/* Per-date "Select group": visible on header hover/focus and always while selecting. */
+.lib-group-select {
+  align-self: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-xs);
+  background: transparent;
+  color: var(--text-3);
+  display: inline-grid;
+  place-items: center;
+  opacity: 0;
+  transition: opacity var(--dur-fast), color var(--dur-fast), background var(--dur-fast);
+}
+.lib-group-head:hover .lib-group-select,
+.lib-group-head:focus-within .lib-group-select,
+.lib-screen.selecting .lib-group-select { opacity: 1; }
+.lib-group-select:hover { color: var(--text-1); background: var(--bg-hover); }
+.lib-group-select:focus-visible { box-shadow: var(--focus-ring); }
 .lib-row { position: absolute; left: 0; right: 0; display: grid; align-items: stretch; }
 .lib-noresults { flex: 1; display: grid; place-items: center; text-align: center; padding: 40px; }
 .lib-noresults h2 { font-size: var(--fs-title); margin-bottom: 6px; }
+
+/* ---- Selection bar (flex:none sibling after the grid, so the grid shrinks instead of being covered) ---- */
+.lib-selection-bar {
+  flex: none;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 var(--sp-6);
+  background: var(--bg-surface);
+  border-top: 1px solid var(--line);
+}
+.lib-selection-summary { display: inline-flex; align-items: center; gap: 10px; min-width: 0; }
+.lib-selection-count {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--bg-active);
+  color: var(--text-1);
+  display: inline-grid;
+  place-items: center;
+  font-weight: var(--fw-bold);
+  font-size: var(--fs-body);
+  flex: none;
+}
+.lib-selection-label { color: var(--text-2); font-size: var(--fs-body); white-space: nowrap; }
+.lib-selection-icon {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--text-2);
+  display: inline-grid;
+  place-items: center;
+  transition: background var(--dur-fast), color var(--dur-fast);
+}
+.lib-selection-icon:hover { background: var(--bg-hover); color: var(--text-1); }
+.lib-selection-icon:disabled { color: var(--text-disabled); background: transparent; cursor: default; }
+.lib-selection-icon:focus-visible { box-shadow: var(--focus-ring); }
 
 /* ---- Empty state ---- */
 .lib-empty { flex: 1; display: grid; place-items: center; padding: var(--sp-8); }
@@ -172,6 +237,10 @@
 .vcard:hover { border-color: var(--line-strong); transform: translateY(-2px); }
 .vcard.err { border-color: var(--danger); }
 .vcard.err:hover { transform: none; }
+/* Selection mode: a selected card gets a 2px accent border (1px border plus a 1px ring, so the content does not shift). */
+.vcard.selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.vcard.selected:hover { border-color: var(--accent-bright); box-shadow: 0 0 0 1px var(--accent-bright); }
+.vcard.selecting { cursor: default; }
 
 /* Primary button: thumbnail and text area that opens the video; other interactive elements are siblings positioned absolutely on the card. */
 .vcard-open {
@@ -206,7 +275,30 @@
 .vcard-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .vcard-nothumb { display: flex; flex-direction: column; align-items: center; gap: 6px; color: var(--text-3); font-size: var(--fs-small); }
 
-.vcard-badge { position: absolute; left: 8px; top: 8px; z-index: 3; }
+.vcard-badge { position: absolute; left: 40px; top: 8px; z-index: 3; }
+/* Selection checkbox: a sibling of .vcard-open, above the thumbnail overlays; hidden until hover/focus or selection mode. */
+.vcard-select {
+  position: absolute;
+  left: 8px;
+  top: 8px;
+  z-index: 6;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border-radius: var(--r-xs);
+  border: 1px solid var(--line-strong);
+  background: var(--bg-scrim);
+  color: var(--on-accent);
+  display: grid;
+  place-items: center;
+  opacity: 0;
+  transition: opacity var(--dur-fast), background var(--dur-fast), border-color var(--dur-fast);
+}
+.vcard:hover .vcard-select,
+.vcard:focus-within .vcard-select,
+.vcard.selecting .vcard-select { opacity: 1; }
+.vcard-select.on { background: var(--accent); border-color: var(--accent); opacity: 1; }
+.vcard-select:focus-visible { box-shadow: var(--focus-ring); }
 .vcard-fav {
   position: absolute;
   top: 6px;
@@ -271,6 +363,18 @@
 .vcard-name { font-weight: var(--fw-bold); font-size: var(--fs-body); line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* Reserve space on the right for the ellipsis button (26px plus margin) so it does not cover text. */
 .vcard-meta { color: var(--text-3); font-size: var(--fs-small); line-height: 18px; display: flex; gap: 8px; white-space: nowrap; overflow: hidden; padding-right: 32px; }
+.vcard-game {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 6px;
+  border-radius: var(--r-xs);
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-bold);
+  line-height: 16px;
+}
+.vcard-game.apex { color: var(--lib-game-apex); background: color-mix(in srgb, var(--lib-game-apex) 18%, transparent); }
+.vcard-game.valorant { color: var(--lib-game-valorant); background: color-mix(in srgb, var(--lib-game-valorant) 18%, transparent); }
 .vcard-codec { text-transform: uppercase; }
 
 .vcard-error-reason { color: var(--danger); font-size: var(--fs-small); line-height: 18px; display: flex; align-items: center; gap: 4px; white-space: nowrap; overflow: hidden; }

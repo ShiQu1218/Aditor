@@ -33,6 +33,7 @@ import {
   Save,
   Check,
   Copy,
+  CopyCheck,
   Globe,
   Info
 } from 'lucide-react'
@@ -69,6 +70,7 @@ export {
   Save,
   Check,
   Copy,
+  CopyCheck,
   Globe,
   Info
 }
