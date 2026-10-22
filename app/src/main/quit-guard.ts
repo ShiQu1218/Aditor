@@ -72,6 +72,8 @@ export interface AppQuitGuardDeps {
   cancelExport: () => Promise<unknown> | undefined | void
   cancelProxies: () => Promise<unknown> | undefined | void
   stopWatcher: () => void
+  /** Start a manually requested update after finalization; return true when it has taken over quitting. */
+  installUpdate?: () => boolean
   quit: () => void
   timeoutMs: number
 }
@@ -98,7 +100,11 @@ export function createAppQuitGuard(deps: AppQuitGuardDeps): QuitGuard {
     ],
     // The engine is stopped after recording finalization, and its timeout starts here rather than while waiting for the remux.
     tasks: [() => deps.stopEngine()],
-    quit: deps.quit,
+    quit: () => {
+      // A manual update installer replaces Aditor's files and may terminate the process, so spawn it only after every
+      // finalization/cleanup step above has settled. Ordinary quits keep the existing app.quit()/auto-install path.
+      if (!deps.installUpdate?.()) deps.quit()
+    },
     timeoutMs: deps.timeoutMs
   })
 }

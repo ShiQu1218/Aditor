@@ -25,7 +25,7 @@ import { createRecordingNotifier } from './notify'
 import type { RecordingService } from '../shared/recording'
 import { obsPassword } from './settings-ipc'
 import { createDiagnosticLog } from './recording/diagnostic-log'
-import { canAutoUpdate, createAppUpdater, loadAutoUpdater } from './updater'
+import { canAutoUpdate, createAppUpdater, loadAutoUpdater, type AppUpdaterService } from './updater'
 import { broadcastUpdateStatus, registerUpdateIpc } from './update-ipc'
 
 // E2E hooks (ADITOR_E2E=1 only): use temporary appData/userData so tests do not touch user data; null in production.
@@ -46,6 +46,7 @@ let recordingService: RecordingService | null = null
 let tray: ReturnType<typeof createRecordingTray> | null = null
 let unregisterRecordingIpc: (() => void) | null = null
 let unsubscribeSettings: (() => void) | null = null
+let appUpdater: AppUpdaterService | null = null
 let quitting = false
 /** Currently active interface language (from the `language` setting; `auto` follows the Windows display language). */
 let locale: Locale = 'zh-TW'
@@ -263,12 +264,15 @@ async function initEngineAndServices(): Promise<void> {
   updateLoginItem()
   const unsubscribeLogin = settingsStore.onChange(updateLoginItem)
   // Auto-update is enabled only in installed builds; E2E does not connect to GitHub.
-  const updater = createAppUpdater({
+  appUpdater = createAppUpdater({
     updater: !e2e && canAutoUpdate(app.isPackaged) ? await loadAutoUpdater() : null,
     isEnabled: () => settingsStore!.get().autoUpdate,
     notifyDownloaded: (version) => notify('finalized', tr('Aditor {version} 已下載完成，結束 Aditor 時會自動安裝。', { version })),
-    broadcast: broadcastUpdateStatus
+    broadcast: broadcastUpdateStatus,
+    // A manual install only requests quitting here; the quit guard starts the installer after finalization.
+    requestQuit: () => app.quit()
   })
+  const updater = appUpdater
   const unregisterUpdateIpc = registerUpdateIpc(updater)
   updater.start()
   const unsubscribeLanguage = settingsStore.onChange(() => {
@@ -313,6 +317,7 @@ async function initEngineAndServices(): Promise<void> {
 
 // Before quitting, start export/proxy cancellation and folder-watching shutdown immediately, then always wait for recording
 // finalization (including FFmpeg remux), flush the library and stop the engine (I7). Finalization is critical; remaining cleanup keeps its 5-second bound.
+// A manual update install uses this same path and only spawns the NSIS installer after this guard finishes.
 const quitGuard = createAppQuitGuard({
   stopRecording: () => recordingService?.stop(),
   flushLibrary: () => library?.flush(),
@@ -320,6 +325,7 @@ const quitGuard = createAppQuitGuard({
   cancelExport: () => cancelExport?.(),
   cancelProxies: async () => (await import('./proxy')).cancelAllProxies(),
   stopWatcher: () => watchManager?.stop(),
+  installUpdate: () => appUpdater?.installIfRequested() ?? false,
   quit: () => app.quit(),
   timeoutMs: 5000
 })

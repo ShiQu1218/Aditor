@@ -29,6 +29,11 @@ export interface UpdaterDeps {
   notifyDownloaded: (version: string) => void
   /** Broadcast status changes to all windows. */
   broadcast: (status: UpdateStatus) => void
+  /**
+   * Quit through the normal shutdown path (app.quit), which runs the quit guard. Manual installs start the
+   * installer only after that guard has finished recording finalization, library flush and bounded cleanup.
+   */
+  requestQuit: () => void
   initialDelayMs?: number
   intervalMs?: number
   setTimer?: (fn: () => void, ms: number) => unknown
@@ -40,8 +45,10 @@ export interface AppUpdaterService {
   status(): UpdateStatus
   /** Check immediately (manual or scheduled); return the resulting status. */
   check(): Promise<UpdateStatus>
-  /** Quit and install immediately when an update is downloaded; return whether installation started. */
+  /** Request an immediate install and quit gracefully; the installer starts after the quit guard finishes finalization. */
   install(): boolean
+  /** Called by the quit guard after finalization; start a requested install once and report whether it did. */
+  installIfRequested(): boolean
   start(): void
   stop(): void
 }
@@ -59,6 +66,11 @@ export function createAppUpdater(deps: UpdaterDeps): AppUpdaterService {
   let current: UpdateStatus = { state: updater ? 'idle' : 'unsupported' }
   let notifiedVersion: string | null = null
   let handles: unknown[] = []
+  /** A manual install is requested while the app is still finalizing recording work; start the installer only once. */
+  let installRequested = false
+  let installerStarted = false
+  /** Set when electron-updater reports a synchronous installer-start failure from quitAndInstall(). */
+  let installerFailed = false
 
   const set = (next: UpdateStatus): void => {
     current = next
@@ -80,8 +92,12 @@ export function createAppUpdater(deps: UpdaterDeps): AppUpdaterService {
       deps.notifyDownloaded(info.version)
     })
     updater.on('error', (error) => {
+      // electron-updater reports an installer that cannot start synchronously from quitAndInstall(). Remember it so the
+      // quit guard can fall back to app.quit() instead of leaving Aditor stuck after before-quit was already prevented.
+      if (installRequested && installerStarted) installerFailed = true
       // Errors after download completion (for example, a later scheduled check failure) must not overwrite the "downloaded" state.
-      if (current.state !== 'downloaded') set({ state: 'error', error: error.message })
+      // Once the user has requested installation, an installer-start failure must be visible in the UI instead.
+      if (current.state !== 'downloaded' || installRequested) set({ state: 'error', error: error.message })
     })
   }
 
@@ -104,9 +120,27 @@ export function createAppUpdater(deps: UpdaterDeps): AppUpdaterService {
     status: () => current,
     check,
     install: () => {
-      if (!updater || current.state !== 'downloaded') return false
-      updater.quitAndInstall(false, true)
+      if (!updater || current.state !== 'downloaded' || installRequested) return false
+      installRequested = true
+      // Do not call quitAndInstall here: electron-updater spawns the NSIS installer synchronously, which can terminate
+      // Aditor while recording finalization/remux is still running. The quit guard calls installIfRequested afterwards.
+      deps.requestQuit()
       return true
+    },
+    installIfRequested: () => {
+      if (!updater || !installRequested || installerStarted) return false
+      // Mark before the call so a synchronous throw or a repeated quit cannot spawn a second installer.
+      installerStarted = true
+      try {
+        // Keep the original manual-install behavior: visible installer, then relaunch after updating.
+        updater.quitAndInstall(false, true)
+        // electron-updater dispatches 'error' synchronously and skips app.quit() when no installer can start. Report
+        // failure to the quit guard so it falls back to a normal quit instead of leaving the app half-quitting.
+        return !installerFailed
+      } catch (error) {
+        set({ state: 'error', error: error instanceof Error ? error.message : String(error) })
+        return false
+      }
     },
     start: () => {
       if (!updater || handles.length > 0) return

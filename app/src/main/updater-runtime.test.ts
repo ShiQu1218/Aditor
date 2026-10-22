@@ -23,7 +23,7 @@ test('native Node import loads the real CommonJS updater and enables installed b
       const updater = await loadAutoUpdater();
       assert.equal(typeof updater.checkForUpdates, 'function');
       assert.equal(typeof updater.quitAndInstall, 'function');
-      const service = createAppUpdater({ updater, isEnabled: () => true, notifyDownloaded: () => {}, broadcast: () => {} });
+      const service = createAppUpdater({ updater, isEnabled: () => true, notifyDownloaded: () => {}, broadcast: () => {}, requestQuit: () => {} });
       assert.equal(service.status().state, 'idle');
       assert.equal(updater.autoDownload, true);
       assert.equal(updater.autoInstallOnAppQuit, true);
