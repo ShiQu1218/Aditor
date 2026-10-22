@@ -7,11 +7,46 @@ files:
   - out/**/*
   - '!out/**/*.map'
   - package.json
+  - '!node_modules/**/*.map'
+  - '!node_modules/**/*.d.ts'
+  - '!node_modules/**/*.d.mts'
+  - '!node_modules/**/*.d.cts'
 extraResources:
+  # Replay resolves this from the app root; electron-builder keeps only Browser's nested copy in app.asar.
+  # Ship only what the runtime loads: the CJS/ESM builds, the package metadata that drives the exports map,
+  # and the nested @sentry/core and @sentry/conventions copies that those builds require.
+  - from: node_modules/@sentry/browser-utils
+    to: node_modules/@sentry/browser-utils
+    filter:
+      - package.json
+      - LICENSE
+      - build/cjs
+      - build/esm
+      - node_modules/@sentry/core/package.json
+      - node_modules/@sentry/core/LICENSE
+      - node_modules/@sentry/core/browser.js
+      - node_modules/@sentry/core/server.js
+      - node_modules/@sentry/core/build/cjs
+      - node_modules/@sentry/core/build/esm
+      - node_modules/@sentry/conventions/package.json
+      - node_modules/@sentry/conventions/LICENSE
+      - node_modules/@sentry/conventions/attributes.js
+      - node_modules/@sentry/conventions/op.js
+      - node_modules/@sentry/conventions/dist
+      - '!**/*.map'
+      - '!**/*.d.ts'
+      - '!**/*.d.mts'
+      - '!**/*.d.cts'
   - from: ../build/engine/aditor
     to: engine/aditor
   - from: ../build/ffmpeg
     to: ffmpeg
+    filter:
+      - bin/*.dll
+      - bin/ffmpeg.exe
+      - bin/ffprobe.exe
+      - bin/aditorrec.exe
+      - LICENSE.txt
   - from: resources
     to: resources
     filter:
@@ -32,6 +67,12 @@ win:
     - target: portable
       arch:
         - x64
+electronLanguages:
+  - en-US
+  - zh-TW
+  - zh-CN
+  - ja
+  - ko
 # Auto-update source: each release must upload the installer, .blockmap, and latest.yml (build.ps1 only generates them; it does not upload).
 publish:
   provider: github

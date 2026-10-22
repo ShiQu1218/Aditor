@@ -36,7 +36,7 @@ This project, Aditor, incorporates or interacts with several third-party open-so
 
 ### 3a. OpenCV bundled FFmpeg (opencv_videoio_ffmpeg)
 
-- The Python wheel of OpenCV includes `cv2/opencv_videoio_ffmpeg*.dll`, an FFmpeg build licensed under **LGPL v2.1 or later** (source: [https://github.com/opencv/opencv-python](https://github.com/opencv/opencv-python) and [https://ffmpeg.org](https://ffmpeg.org)). The analysis engine does not use OpenCV video I/O (frames are decoded by the separate FFmpeg described in section 1), but the DLL is packaged together with OpenCV by PyInstaller. Users may replace it with a compatible build.
+- The Python wheel of OpenCV includes `cv2/opencv_videoio_ffmpeg*.dll`, an FFmpeg build licensed under **LGPL v2.1 or later** (source: [https://github.com/opencv/opencv-python](https://github.com/opencv/opencv-python) and [https://ffmpeg.org](https://ffmpeg.org)). Aditor excludes this unused OpenCV video I/O DLL from the packaged engine; frames are decoded by the separate FFmpeg described in section 1.
 
 ### 3b. Python and PyInstaller
 
