@@ -50,9 +50,16 @@ pub trait AudioSink: Send {
 pub fn list_devices() -> Result<AudioDevices> {
     let _apartment = Apartment::enter()?;
     let enumerator = enumerator()?;
+    // Each flow is listed on its own so one broken endpoint list cannot hide the other.
     Ok(AudioDevices {
-        render: devices(&enumerator, eRender)?,
-        capture: devices(&enumerator, eCapture)?,
+        render: devices(&enumerator, eRender).unwrap_or_else(|error| {
+            eprintln!("Failed to list audio output devices: {error:#}");
+            Vec::new()
+        }),
+        capture: devices(&enumerator, eCapture).unwrap_or_else(|error| {
+            eprintln!("Failed to list audio input devices: {error:#}");
+            Vec::new()
+        }),
     })
 }
 
@@ -323,33 +330,52 @@ fn devices(enumerator: &IMMDeviceEnumerator, flow: EDataFlow) -> Result<Vec<Audi
             enumerator.GetDefaultAudioEndpoint(flow, eConsole).ok(),
         )
     };
-    let default = default.as_ref().map(device_id).transpose()?;
+    // A default endpoint whose ID cannot be read only loses its default mark.
+    let default = default.as_ref().and_then(|device| device_id(device).ok());
     // SAFETY: collection is a valid COM collection.
     let count = unsafe { collection.GetCount() }?;
-    (0..count)
-        .map(|index| {
-            // SAFETY: index is within the collection; properties are opened read-only.
-            let (device, mut name) = unsafe {
-                let device = collection.Item(index)?;
-                let properties = device.OpenPropertyStore(STGM_READ)?;
-                let name = properties.GetValue(&PKEY_Device_FriendlyName)?;
-                (device, name)
-            };
-            // SAFETY: GetValue initializes name, which is cleared after string conversion regardless of success.
-            let text = unsafe { PropVariantToStringAlloc(&name) }
-                .map_err(anyhow::Error::from)
-                .and_then(task_string);
-            // SAFETY: This PROPVARIANT has not been cleared and will not be read again.
-            unsafe { PropVariantClear(&mut name) }.context("Failed to release audio device property")?;
-            let name = text.context("Failed to read audio device name")?;
-            let id = device_id(&device)?;
-            Ok(AudioDevice {
-                default: default.as_ref() == Some(&id),
-                id,
-                name,
-            })
-        })
-        .collect()
+    let mut listed = Vec::with_capacity(count as usize);
+    for index in 0..count {
+        // SAFETY: index is within the collection.
+        let read = unsafe { collection.Item(index) }
+            .map_err(anyhow::Error::from)
+            .and_then(|device| endpoint(&device, default.as_deref()));
+        // Skip only the endpoint that failed; drivers with incomplete properties must not empty the whole list.
+        match read {
+            Ok(device) => listed.push(device),
+            Err(error) => eprintln!("Skipping audio device {index}: {error:#}"),
+        }
+    }
+    Ok(listed)
+}
+
+fn endpoint(device: &IMMDevice, default: Option<&str>) -> Result<AudioDevice> {
+    let id = device_id(device)?;
+    // Some drivers leave the friendly name empty or untyped; fall back to the ID so the device stays selectable.
+    let name = friendly_name(device)
+        .ok()
+        .filter(|name| !name.trim().is_empty())
+        .unwrap_or_else(|| id.clone());
+    Ok(AudioDevice {
+        default: default == Some(id.as_str()),
+        id,
+        name,
+    })
+}
+
+fn friendly_name(device: &IMMDevice) -> Result<String> {
+    // SAFETY: device is a valid COM interface; properties are opened read-only.
+    let mut name = unsafe {
+        let properties = device.OpenPropertyStore(STGM_READ)?;
+        properties.GetValue(&PKEY_Device_FriendlyName)?
+    };
+    // SAFETY: GetValue initializes name, which is cleared after string conversion regardless of success.
+    let text = unsafe { PropVariantToStringAlloc(&name) }
+        .map_err(anyhow::Error::from)
+        .and_then(task_string);
+    // SAFETY: This PROPVARIANT has not been cleared and will not be read again.
+    unsafe { PropVariantClear(&mut name) }.context("Failed to release audio device property")?;
+    text.context("Failed to read audio device name")
 }
 
 struct Event(HANDLE);
