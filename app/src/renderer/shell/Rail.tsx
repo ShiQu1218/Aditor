@@ -4,6 +4,7 @@ import { QueueRing } from './QueueRing'
 import { shellI18n } from '../i18n'
 import { recordingI18n } from '../i18n'
 import type { RecordingPhase } from '../../shared/recording'
+import type { UpdateNotice } from './updateNotice'
 import './recording.css'
 
 export type RailView = 'library' | 'studio' | 'settings'
@@ -21,12 +22,18 @@ interface RailProps {
   queueButtonRef?: React.Ref<HTMLButtonElement>
   recordingPhase?: RecordingPhase
   onRecording?: () => void
-  /** Version of a newer release that was found (downloading or downloaded); null when none. */
-  updateVersion?: string | null
+  /** A newer version available/downloading/downloaded, or an update that failed after one was seen; null when none. */
+  updateNotice?: UpdateNotice
 }
 
-export function Rail({ active, projectCount, onNavigate, onShortcuts, onQueue, queueOpen = false, queueButtonRef, recordingPhase = 'idle', onRecording, updateVersion = null }: RailProps): JSX.Element {
+export function Rail({ active, projectCount, onNavigate, onShortcuts, onQueue, queueOpen = false, queueButtonRef, recordingPhase = 'idle', onRecording, updateNotice = null }: RailProps): JSX.Element {
   const t = shellI18n.rail
+  const updateFailed = updateNotice?.kind === 'failed'
+  const updateLabel = updateNotice === null
+    ? null
+    : updateNotice.kind === 'available'
+      ? t.updateAvailable.replace('{version}', updateNotice.version)
+      : t.updateFailed
   const btn = (view: RailView, tip: string, label: string, icon: JSX.Element, badge?: number) => (
     <button
       className={`rail-btn${active === view ? ' active' : ''}`}
@@ -51,16 +58,16 @@ export function Rail({ active, projectCount, onNavigate, onShortcuts, onQueue, q
         {(recordingPhase === 'recording' || recordingPhase === 'error') && <span className={`rec-dot${recordingPhase === 'error' ? ' error' : ''}`} aria-hidden="true" />}
       </button>
       <div className="rail-spacer" />
-      {updateVersion !== null && (
+      {updateLabel !== null && (
         <button
           type="button"
-          className="rail-btn update-available"
-          data-tip={t.updateAvailable.replace('{version}', updateVersion)}
-          aria-label={t.updateAvailable.replace('{version}', updateVersion)}
+          className="rail-btn"
+          data-tip={updateLabel}
+          aria-label={updateLabel}
           onClick={() => onNavigate('settings')}
         >
           <Download className="ic lg" />
-          <span className="rec-dot" aria-hidden="true" />
+          <span className={`update-dot${updateFailed ? ' failed' : ''}`} aria-hidden="true" />
         </button>
       )}
       <button

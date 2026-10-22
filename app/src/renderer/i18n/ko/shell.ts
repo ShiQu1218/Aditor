@@ -8,6 +8,7 @@ export const shellI18n: Messages['shellI18n'] = {
     studioLabel: '스튜디오',
     queue: '분석 대기열',
     updateAvailable: '새 버전 {version}이(가) 있습니다. 설정 열기',
+    updateFailed: '업데이트에 실패했습니다. 설정 열기',
     shortcuts: '단축키 (?)',
     shortcutsLabel: '단축키',
     settings: '설정',

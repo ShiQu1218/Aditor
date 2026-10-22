@@ -7,6 +7,7 @@ export const shellI18n: Messages['shellI18n'] = {
     studioLabel: '工作室',
     queue: '分析队列',
     updateAvailable: '发现新版本 {version}，前往设置',
+    updateFailed: '更新失败，前往设置',
     shortcuts: '快捷键 (?)',
     shortcutsLabel: '快捷键',
     settings: '设置',

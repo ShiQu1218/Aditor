@@ -453,6 +453,7 @@ const shellI18n = {
     studioLabel: '工作室',
     queue: '分析佇列',
     updateAvailable: '發現新版本 {version}，前往設定',
+    updateFailed: '更新失敗，前往設定',
     shortcuts: '快捷鍵 (?)',
     shortcutsLabel: '快捷鍵',
     settings: '設定',

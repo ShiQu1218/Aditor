@@ -9,6 +9,9 @@
 .rail-btn.active { color: var(--text-1); background: var(--bg-active); }
 .rail-btn.active::before { content: ''; position: absolute; left: -6px; top: 10px; bottom: 10px; width: 3px; border-radius: 0 3px 3px 0; background: var(--accent); }
 .rail-btn .badge { position: absolute; top: 4px; right: 3px; min-width: 16px; height: 16px; padding: 0 4px; border-radius: var(--r-pill); background: var(--accent); color: var(--on-accent); font-size: 10px; font-weight: 700; display: grid; place-items: center; }
+/* Newer version available/downloading/downloaded, or an update that failed after one was found. */
+.rail-btn .update-dot { position: absolute; top: 6px; right: 5px; width: 8px; height: 8px; border-radius: var(--r-pill); background: var(--success); }
+.rail-btn .update-dot.failed { background: var(--warning); }
 .rail-spacer { flex: 1; }
 
 /* Live tooltip (CSS only). */

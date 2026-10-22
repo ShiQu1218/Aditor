@@ -7,6 +7,7 @@ export const shellI18n: Messages['shellI18n'] = {
     studioLabel: 'Studio',
     queue: 'Analysis queue',
     updateAvailable: 'New version {version} available, open Settings',
+    updateFailed: 'Update failed, open Settings',
     shortcuts: 'Keyboard shortcuts (?)',
     shortcutsLabel: 'Shortcuts',
     settings: 'Settings',
