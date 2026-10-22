@@ -32,6 +32,15 @@ export function sanitizeAutoclipArgs(raw: unknown): Record<string, unknown> {
 }
 
 /**
+ * `library:remove` / `library:removeMany`: the renderer may only ask for the source file to be deleted.
+ * Anything that is not a plain object with `deleteSource: true` keeps the files.
+ */
+export function sanitizeRemoveOptions(raw: unknown): { deleteSource: boolean } {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { deleteSource: false }
+  return { deleteSource: (raw as Record<string, unknown>).deleteSource === true }
+}
+
+/**
  * `cache:save`: ignore the renderer's `cache_path` and derive the destination from the video path; the video must already be in the library.
  * Return null to reject the request.
  */

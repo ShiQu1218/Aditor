@@ -86,8 +86,13 @@ export const i18n: Messages['i18n'] = {
       unknownGame: 'Could not tell which game this is. Choose one:',
       av1: 'AV1 · Proxy recommended',
       proxySuggest: 'Proxy recommended',
-      removeConfirm: 'Remove "{name}" from the library? The video file will not be deleted.',
+      importedTag: 'Imported',
       removeSourceConfirm: 'Remove "{name}" from the library and delete the source video file? This cannot be undone.',
+      removeChoiceTitle: 'Remove imported video',
+      removeChoiceMessage: '"{name}" is an imported video. Delete the source video file, or remove it from the library only? Deleting the source file cannot be undone.',
+      deleteSource: 'Delete source file',
+      removeFromLibrary: 'Remove from library',
+      cancel: 'Cancel',
       removeFailed: 'Removal failed. Could not delete the source video file. Check its permissions or whether it is in use.'
     },
     selection: {
@@ -99,8 +104,12 @@ export const i18n: Messages['i18n'] = {
       deleteItems: 'Delete items',
       exit: 'Exit selection',
       toolbar: 'Selection',
-      deleteConfirm: 'Remove {n} videos from the library? The video files will not be deleted.',
       deleteSourceConfirm: 'Remove {n} videos from the library? Source video files of recordings will also be deleted. This cannot be undone.',
+      deleteChoiceTitle: 'Remove {n} videos',
+      deleteChoiceMessage: '{n} videos are selected, {m} of them imported. Delete the source files of the imported videos as well, or remove them from the library only? Deleting source files cannot be undone.',
+      deleteChoiceRecordingNote: 'Source files of recordings are always deleted.',
+      deleteSources: 'Delete source files',
+      removeFromLibraryOnly: 'Remove from library only',
       deleteFailed: '{n} videos could not be removed. Check file permissions or whether they are in use.'
     }
   },

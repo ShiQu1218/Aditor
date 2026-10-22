@@ -16,6 +16,7 @@ import { Providers } from '../../../test/harness'
 import { mountStudio } from '../../../test/studioHarness'
 import { DISABLED_RULES, formatFindings, runAxe } from '../../../test/axe'
 import { buttonByText, cleanupMounted, click, flush, installDomShims, mount, press } from '../../../test/dom'
+import { i18n } from '../i18n'
 
 beforeAll(() => {
   // Read document-level attributes (lang, title) from index.html so the test and page use the same values.
@@ -82,6 +83,29 @@ describe('axe-core (jsdom) — no serious/critical violations', () => {
       )
       await flush()
       await expectNoSeriousViolations('library empty')
+    } finally {
+      restore()
+    }
+  })
+
+  test('Library: removal choice dialog (imported video)', async () => {
+    const restore = installFakeApi(createFakeApi({ entries: makeLibraryFixture(3, Date.now()) }))
+    try {
+      mount(
+        <Providers>
+          <LibraryScreen onSelectVideo={() => undefined} onOpenSettings={() => undefined} />
+        </Providers>
+      )
+      await flush()
+      click(document.querySelector('.vcard-more')!)
+      await flush()
+      const item = Array.from(document.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')).find(
+        (b) => b.textContent === i18n.library.card.remove
+      )
+      click(item!)
+      await flush()
+      expect(document.querySelector('.lib-dlg')).not.toBeNull()
+      await expectNoSeriousViolations('library / removal choice dialog')
     } finally {
       restore()
     }

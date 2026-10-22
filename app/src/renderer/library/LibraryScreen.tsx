@@ -5,6 +5,7 @@ import { EmptyState } from './EmptyState'
 import { LibraryToolbar } from './LibraryToolbar'
 import { QueueStrip } from './QueueStrip'
 import { VideoCard, fileName } from './VideoCard'
+import { RemoveChoiceDialog } from './RemoveChoiceDialog'
 import { GAME_IDS, type GameId } from '../../shared/games'
 import { resolveCardActivation, resolveLibraryEscape } from './cardLogic'
 import { VirtualGrid } from './VirtualGrid'
@@ -22,6 +23,14 @@ import { subscribeStudioSettings } from '../studio/studioSettings'
 import { library500Requested } from '../dev/libraryFixtureFlag'
 
 const t = i18n.library
+
+/**
+ * A pending removal whose source file is not owned by the app (imported or legacy videos): the user chooses
+ * between deleting the file and only dropping the library entry.
+ */
+type RemoveChoice =
+  | { kind: 'single'; path: string }
+  | { kind: 'many'; paths: string[]; imported: number; hasRecording: boolean }
 
 interface LibraryScreenProps {
   onSelectVideo: (path: string) => void
@@ -42,6 +51,8 @@ export function LibraryScreen({ onSelectVideo, onOpenSettings }: LibraryScreenPr
   const [selected, setSelected] = useState<Set<string>>(() => new Set())
   /** A bulk removal is in flight; blocks a second Delete click from sending the same paths again. */
   const [deleting, setDeleting] = useState(false)
+  /** A removal waiting for the user's choice (delete the source file or keep it). */
+  const [removeChoice, setRemoveChoice] = useState<RemoveChoice | null>(null)
   const searchRef = useRef<HTMLInputElement>(null)
   const queryRef = useRef(query)
   queryRef.current = query
@@ -99,7 +110,8 @@ export function LibraryScreen({ onSelectVideo, onOpenSettings }: LibraryScreenPr
         else if (action === 'clear-query') setQuery('')
       }
     },
-    { screen: 'library' }
+    // While the removal dialog is open it owns the keyboard: the screen must not act on Esc or any other shortcut.
+    { screen: 'library', enabled: removeChoice === null }
   )
 
   const filtered = useMemo(
@@ -150,28 +162,48 @@ export function LibraryScreen({ onSelectVideo, onOpenSettings }: LibraryScreenPr
     setSelected((prev) => selectAll(prev, shownPaths))
   }, [shownPaths])
 
+  /** Run a bulk removal and report the result; entries that failed stay selected. */
+  const finishManyRemove = useCallback(
+    async (paths: string[], request: () => Promise<{ failed?: string[] } | undefined>) => {
+      setDeleting(true)
+      try {
+        const result = await request()
+        const failed: string[] = Array.isArray(result?.failed) ? result.failed : []
+        if (failed.length > 0) {
+          toast({ message: t.selection.deleteFailed.replace('{n}', String(failed.length)) })
+          setSelected(new Set(failed))
+        } else {
+          exitSelection()
+        }
+      } catch {
+        toast({ message: t.selection.deleteFailed.replace('{n}', String(paths.length)) })
+      } finally {
+        setDeleting(false)
+      }
+    },
+    [toast, exitSelection]
+  )
+
   const handleDeleteSelected = useCallback(async () => {
     const paths = Array.from(selected)
     if (paths.length === 0) return
-    const hasRecording = entries.some((entry) => selected.has(entry.path) && entry.source === 'recording')
-    const template = hasRecording ? t.selection.deleteSourceConfirm : t.selection.deleteConfirm
-    if (!window.confirm(template.replace('{n}', String(paths.length)))) return
-    setDeleting(true)
-    try {
-      const result = await window.api.library.removeMany(paths)
-      const failed: string[] = Array.isArray(result?.failed) ? result.failed : []
-      if (failed.length > 0) {
-        toast({ message: t.selection.deleteFailed.replace('{n}', String(failed.length)) })
-        setSelected(new Set(failed))
-      } else {
-        exitSelection()
-      }
-    } catch {
-      toast({ message: t.selection.deleteFailed.replace('{n}', String(paths.length)) })
-    } finally {
-      setDeleting(false)
+    const chosen = entries.filter((entry) => selected.has(entry.path))
+    const imported = chosen.filter((entry) => entry.source !== 'recording').length
+    if (imported === 0) {
+      // Only recordings are selected: they always delete their source file, so one confirmation is enough.
+      const confirmed = window.confirm(t.selection.deleteSourceConfirm.replace('{n}', String(paths.length)))
+      if (!confirmed) return
+      await finishManyRemove(paths, () => window.api.library.removeMany(paths))
+      return
     }
-  }, [entries, selected, toast, exitSelection])
+    // Imported (or legacy) videos are selected: ask whether their source files should be deleted as well.
+    setRemoveChoice({
+      kind: 'many',
+      paths,
+      imported,
+      hasRecording: chosen.some((entry) => entry.source === 'recording')
+    })
+  }, [entries, selected, finishManyRemove])
 
   const handleImportFiles = useCallback(() => {
     void window.api?.library?.selectFiles?.()
@@ -195,17 +227,47 @@ export function LibraryScreen({ onSelectVideo, onOpenSettings }: LibraryScreenPr
     void window.api?.library?.toggleFavorite?.(path)
   }, [])
 
-  const handleRemove = useCallback(async (path: string) => {
-    const entry = entries.find((entry) => entry.path === path)
-    const message = entry?.source === 'recording' ? t.card.removeSourceConfirm : t.card.removeConfirm
-    const confirmed = window.confirm(message.replace('{name}', fileName(path)))
-    if (!confirmed) return
-    try {
-      await window.api.library.remove(path)
-    } catch {
-      toast({ message: t.card.removeFailed })
-    }
-  }, [entries, toast])
+  const handleRemove = useCallback(
+    async (path: string) => {
+      const entry = entries.find((entry) => entry.path === path)
+      if (entry?.source === 'recording') {
+        // Recordings own their source file: one confirmation is enough.
+        const confirmed = window.confirm(t.card.removeSourceConfirm.replace('{name}', fileName(path)))
+        if (!confirmed) return
+        try {
+          await window.api.library.remove(path)
+        } catch {
+          toast({ message: t.card.removeFailed })
+        }
+        return
+      }
+      // Imported (or legacy) videos do not own their file: ask whether it should be deleted.
+      setRemoveChoice({ kind: 'single', path })
+    },
+    [entries, toast]
+  )
+
+  /** Remove one entry after the user chose what to do with its source file. */
+  const removeSingle = useCallback(
+    async (path: string, deleteSource: boolean) => {
+      setRemoveChoice(null)
+      try {
+        await window.api.library.remove(path, { deleteSource })
+      } catch {
+        toast({ message: t.card.removeFailed })
+      }
+    },
+    [toast]
+  )
+
+  /** Remove the selected entries after the user chose what to do with the imported source files. */
+  const removeMany = useCallback(
+    async (paths: string[], deleteSource: boolean) => {
+      setRemoveChoice(null)
+      await finishManyRemove(paths, () => window.api.library.removeMany(paths, { deleteSource }))
+    },
+    [finishManyRemove]
+  )
 
   const handleRetry = useCallback((path: string) => {
     void window.api?.queue?.enqueue?.(path)
@@ -226,6 +288,33 @@ export function LibraryScreen({ onSelectVideo, onOpenSettings }: LibraryScreenPr
     },
     []
   )
+
+  /** Texts of the removal dialog for the pending request (single video or a whole selection). */
+  const removeDialog = useMemo<{
+    title: string
+    message: string
+    note?: string
+    deleteLabel: string
+    removeLabel: string
+  } | null>(() => {
+    if (!removeChoice) return null
+    if (removeChoice.kind === 'single') {
+      return {
+        title: t.card.removeChoiceTitle,
+        message: t.card.removeChoiceMessage.replace('{name}', fileName(removeChoice.path)),
+        deleteLabel: t.card.deleteSource,
+        removeLabel: t.card.removeFromLibrary
+      }
+    }
+    const count = String(removeChoice.paths.length)
+    return {
+      title: t.selection.deleteChoiceTitle.replace('{n}', count),
+      message: t.selection.deleteChoiceMessage.replace('{n}', count).replace('{m}', String(removeChoice.imported)),
+      note: removeChoice.hasRecording ? t.selection.deleteChoiceRecordingNote : undefined,
+      deleteLabel: t.selection.deleteSources,
+      removeLabel: t.selection.removeFromLibraryOnly
+    }
+  }, [removeChoice])
 
   const renderCard = useCallback(
     (entry: LibraryEntry, active: boolean) => (
@@ -357,6 +446,26 @@ export function LibraryScreen({ onSelectVideo, onOpenSettings }: LibraryScreenPr
       )}
 
       <DropOverlay show={dragging} />
+
+      {removeChoice && removeDialog && (
+        <RemoveChoiceDialog
+          title={removeDialog.title}
+          message={removeDialog.message}
+          note={removeDialog.note}
+          deleteLabel={removeDialog.deleteLabel}
+          removeLabel={removeDialog.removeLabel}
+          cancelLabel={t.card.cancel}
+          onDeleteSource={() => {
+            if (removeChoice.kind === 'single') void removeSingle(removeChoice.path, true)
+            else void removeMany(removeChoice.paths, true)
+          }}
+          onRemoveOnly={() => {
+            if (removeChoice.kind === 'single') void removeSingle(removeChoice.path, false)
+            else void removeMany(removeChoice.paths, false)
+          }}
+          onCancel={() => setRemoveChoice(null)}
+        />
+      )}
     </div>
   )
 }

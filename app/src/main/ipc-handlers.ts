@@ -14,7 +14,7 @@ import { WatchManager } from './watch'
 import { ProjectStore } from './projects'
 import { registerProjectHandlers } from './project-ipc'
 import { fileExistsSafe, isSafeLocalDirPath, isSafeLocalVideoPath } from './safe-path'
-import { planCacheSave } from './ipc-guards'
+import { planCacheSave, sanitizeRemoveOptions } from './ipc-guards'
 import { isGameId } from '../shared/games'
 import { DEFAULT_SETTINGS } from '../shared/settings'
 import { currentE2EConfig } from './e2e'
@@ -100,19 +100,19 @@ export function registerIpcHandlers(
     return added
   })
 
-  ipcMain.handle('library:remove', (_, videoPath: string) => {
+  ipcMain.handle('library:remove', (_, videoPath: string, options?: unknown) => {
     queue.cancel(videoPath)
-    const res = library.remove(videoPath)
+    const res = library.remove(videoPath, sanitizeRemoveOptions(options))
     broadcastUpdated()
     return res
   })
 
   // Bulk removal for selection mode: one broadcast and one save; invalid arguments are a no-op.
-  ipcMain.handle('library:removeMany', (_, paths: unknown) => {
+  ipcMain.handle('library:removeMany', (_, paths: unknown, options?: unknown) => {
     if (!Array.isArray(paths) || !paths.every((p): p is string => typeof p === 'string')) {
       return { removed: [], failed: [] }
     }
-    const res = library.removeMany(paths)
+    const res = library.removeMany(paths, sanitizeRemoveOptions(options))
     // Cancel analysis only for entries that are really gone; a failed removal keeps its entry and its queue slot.
     for (const videoPath of res.removed) queue.cancel(videoPath)
     broadcastUpdated()

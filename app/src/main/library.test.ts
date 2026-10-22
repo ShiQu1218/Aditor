@@ -86,6 +86,91 @@ describe('Library', () => {
     expect(lib.resetStaleAnalyzing()).toBe(0)
   })
 
+  describe('remove', () => {
+    it('deletes the source file of external and legacy entries when deleteSource is set', () => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'aditor-lib-remove-'))
+      try {
+        const external = path.join(dir, 'external.mp4')
+        const legacy = path.join(dir, 'legacy.mp4')
+        fs.writeFileSync(external, 'external')
+        fs.writeFileSync(legacy, 'legacy')
+        lib.add([external, legacy], 'external')
+        lib.update(legacy, { source: undefined })
+
+        expect(lib.remove(external, { deleteSource: true })).toBe(true)
+        expect(lib.remove(legacy, { deleteSource: true })).toBe(true)
+        expect(fs.existsSync(external)).toBe(false)
+        expect(fs.existsSync(legacy)).toBe(false)
+        expect(lib.getEntries()).toEqual([])
+      } finally {
+        fs.rmSync(dir, { recursive: true, force: true })
+      }
+    })
+
+    it('keeps the source file of external and legacy entries by default', () => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'aditor-lib-remove-'))
+      try {
+        const external = path.join(dir, 'external.mp4')
+        const legacy = path.join(dir, 'legacy.mp4')
+        fs.writeFileSync(external, 'external')
+        fs.writeFileSync(legacy, 'legacy')
+        lib.add([external, legacy], 'external')
+        lib.update(legacy, { source: undefined })
+
+        expect(lib.remove(external)).toBe(true)
+        expect(lib.remove(legacy)).toBe(true)
+        expect(fs.existsSync(external)).toBe(true)
+        expect(fs.existsSync(legacy)).toBe(true)
+        expect(lib.getEntries()).toEqual([])
+      } finally {
+        fs.rmSync(dir, { recursive: true, force: true })
+      }
+    })
+
+    it('always deletes the source file of a recording, with and without deleteSource', () => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'aditor-lib-remove-'))
+      try {
+        const recording = path.join(dir, 'recording.mp4')
+        const kept = path.join(dir, 'kept.mp4')
+        fs.writeFileSync(recording, 'recording')
+        fs.writeFileSync(kept, 'recording')
+        lib.add([recording, kept], 'recording')
+
+        expect(lib.remove(recording)).toBe(true)
+        expect(lib.remove(kept, { deleteSource: false })).toBe(true)
+        expect(fs.existsSync(recording)).toBe(false)
+        expect(fs.existsSync(kept)).toBe(false)
+      } finally {
+        fs.rmSync(dir, { recursive: true, force: true })
+      }
+    })
+
+    it('tolerates a missing source file and keeps the entry when the deletion fails', () => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'aditor-lib-remove-'))
+      try {
+        const missing = path.join(dir, 'missing.mp4')
+        const locked = path.join(dir, 'locked.mp4')
+        fs.writeFileSync(locked, 'external')
+        lib.add([missing, locked], 'external')
+
+        // A file that is already gone is still removed from the library.
+        expect(lib.remove(missing, { deleteSource: true })).toBe(true)
+        expect(lib.get(missing)).toBeUndefined()
+
+        const realUnlink = fs.unlinkSync
+        vi.spyOn(fs, 'unlinkSync').mockImplementation((file) => {
+          if (String(file) === locked) throw Object.assign(new Error('file is busy'), { code: 'EBUSY' })
+          realUnlink(file)
+        })
+        expect(() => lib.remove(locked, { deleteSource: true })).toThrow('file is busy')
+        expect(lib.get(locked)).toBeDefined()
+        expect(fs.existsSync(locked)).toBe(true)
+      } finally {
+        fs.rmSync(dir, { recursive: true, force: true })
+      }
+    })
+  })
+
   describe('removeMany', () => {
     it('removes every entry, unlinks recording sources (ENOENT tolerated), keeps external files and saves once', () => {
       const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'aditor-lib-many-'))
@@ -139,6 +224,47 @@ describe('Library', () => {
         removed: ['D:/Videos/a.mp4'],
         failed: []
       })
+    })
+
+    it('unlinks external and legacy sources with deleteSource and keeps them without it', () => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'aditor-lib-many-'))
+      try {
+        const external = path.join(dir, 'external.mp4')
+        const legacy = path.join(dir, 'legacy.mp4')
+        const kept = path.join(dir, 'kept.mp4')
+        fs.writeFileSync(external, 'external')
+        fs.writeFileSync(legacy, 'legacy')
+        fs.writeFileSync(kept, 'kept')
+        lib.add([external, legacy, kept], 'external')
+        lib.update(legacy, { source: undefined })
+
+        expect(lib.removeMany([external, legacy], { deleteSource: true })).toEqual({ removed: [external, legacy], failed: [] })
+        expect(fs.existsSync(external)).toBe(false)
+        expect(fs.existsSync(legacy)).toBe(false)
+
+        expect(lib.removeMany([kept])).toEqual({ removed: [kept], failed: [] })
+        expect(fs.existsSync(kept)).toBe(true)
+      } finally {
+        fs.rmSync(dir, { recursive: true, force: true })
+      }
+    })
+
+    it('reports a source that cannot be deleted as failed and keeps its entry', () => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'aditor-lib-many-'))
+      try {
+        const locked = path.join(dir, 'locked.mp4')
+        fs.writeFileSync(locked, 'external')
+        lib.add([locked], 'external')
+        vi.spyOn(fs, 'unlinkSync').mockImplementation(() => {
+          throw Object.assign(new Error('file is busy'), { code: 'EBUSY' })
+        })
+
+        expect(lib.removeMany([locked], { deleteSource: true })).toEqual({ removed: [], failed: [locked] })
+        expect(lib.get(locked)).toBeDefined()
+        expect(fs.existsSync(locked)).toBe(true)
+      } finally {
+        fs.rmSync(dir, { recursive: true, force: true })
+      }
     })
   })
 })

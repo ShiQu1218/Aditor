@@ -48,8 +48,8 @@ const api = {
       const paths = files.map((file) => webUtils.getPathForFile(file)).filter(Boolean)
       return paths.length > 0 ? ipcRenderer.invoke('library:add', paths) : Promise.resolve([])
     },
-    remove: (path: string) => ipcRenderer.invoke('library:remove', path),
-    removeMany: (paths: string[]) => ipcRenderer.invoke('library:removeMany', paths),
+    remove: (path: string, opts?: { deleteSource?: boolean }) => ipcRenderer.invoke('library:remove', path, opts),
+    removeMany: (paths: string[], opts?: { deleteSource?: boolean }) => ipcRenderer.invoke('library:removeMany', paths, opts),
     toggleFavorite: (path: string) => ipcRenderer.invoke('library:toggleFavorite', path),
     setGame: (path: string, game: string) => ipcRenderer.invoke('library:setGame', path, game),
     selectFiles: () => ipcRenderer.invoke('library:selectFiles'),
