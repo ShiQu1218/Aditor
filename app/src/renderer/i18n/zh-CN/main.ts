@@ -88,8 +88,13 @@ export const i18n: Messages['i18n'] = {
       unknownGame: '无法识别是哪个游戏，请选择：',
       av1: 'AV1 · 建议代理文件',
       proxySuggest: '建议代理文件',
-      removeConfirm: '确定要从视频库移除“{name}”吗？（不会删除视频文件）',
+      importedTag: '外部导入',
       removeSourceConfirm: '确定要从视频库移除“{name}”并删除源视频文件吗？此操作无法撤销。',
+      removeChoiceTitle: '移除外部导入视频',
+      removeChoiceMessage: '“{name}”是外部导入的视频。要删除源视频文件，还是只从视频库移除？删除源文件无法恢复。',
+      deleteSource: '删除源文件',
+      removeFromLibrary: '从视频库移除',
+      cancel: '取消',
       removeFailed: '移除失败，无法删除源视频文件，请检查文件权限或是否正在使用。'
     },
     selection: {
@@ -101,8 +106,12 @@ export const i18n: Messages['i18n'] = {
       deleteItems: '删除项目',
       exit: '退出选择',
       toolbar: '选择',
-      deleteConfirm: '确定要从视频库移除 {n} 个视频吗？（不会删除视频文件）',
       deleteSourceConfirm: '确定要从视频库移除 {n} 个视频吗？录制的源视频文件也会一并删除，此操作无法撤销。',
+      deleteChoiceTitle: '移除 {n} 个视频',
+      deleteChoiceMessage: '已选取 {n} 个视频，其中 {m} 个是外部导入。要一并删除外部导入视频的源文件，还是只从视频库移除？删除源文件无法恢复。',
+      deleteChoiceRecordingNote: '录制视频的源文件一律会删除。',
+      deleteSources: '删除源文件',
+      removeFromLibraryOnly: '仅从视频库移除',
       deleteFailed: '有 {n} 个视频无法移除，请检查文件权限或是否正在使用中。'
     }
   },

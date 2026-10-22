@@ -94,6 +94,25 @@ describe('proxySuggest setting → “Proxy suggested” card badge', () => {
   })
 })
 
+describe('imported tag (external entries)', () => {
+  test('an imported entry shows the tag in the card meta line', () => {
+    const out = html(entry({ source: 'external' }))
+    expect(out).toContain('vcard-imported')
+    expect(out).toContain('外部匯入')
+    // The tag sits next to the game tag.
+    expect(out.indexOf('vcard-game')).toBeLessThan(out.indexOf('vcard-imported'))
+  })
+  test('recordings and legacy entries have no imported tag', () => {
+    expect(html(entry({ source: 'recording' }))).not.toContain('vcard-imported')
+    expect(html(entry())).not.toContain('vcard-imported')
+  })
+  test('the memo comparator rerenders the card when the source changes', () => {
+    const base = entry()
+    expect(sameCardEntry(base, { ...base, source: 'external' })).toBe(false)
+    expect(sameCardEntry({ ...base, source: 'external' }, { ...base, source: 'external' })).toBe(true)
+  })
+})
+
 describe('LibraryScreen wiring (source scan)', () => {
   test('Subscribes to settings and passes proxySuggest to each card', async () => {
     const { readFileSync } = await import('fs')

@@ -89,8 +89,13 @@ export const i18n: Messages['i18n'] = {
       unknownGame: '어떤 게임인지 알 수 없습니다. 선택하세요:',
       av1: 'AV1 · 프록시 파일 권장',
       proxySuggest: '프록시 파일 권장',
-      removeConfirm: '‘{name}’을(를) 라이브러리에서 제거할까요? (영상 파일은 삭제되지 않습니다)',
+      importedTag: '가져온 영상',
       removeSourceConfirm: '‘{name}’을(를) 라이브러리에서 제거하고 원본 영상 파일도 삭제할까요? 이 작업은 취소할 수 없습니다.',
+      removeChoiceTitle: '가져온 동영상 제거',
+      removeChoiceMessage: '‘{name}’은(는) 가져온 동영상입니다. 원본 동영상 파일을 삭제할까요, 아니면 라이브러리에서만 제거할까요? 원본 파일 삭제는 되돌릴 수 없습니다.',
+      deleteSource: '원본 파일 삭제',
+      removeFromLibrary: '라이브러리에서 제거',
+      cancel: '취소',
       removeFailed: '원본 영상 파일을 삭제하지 못했습니다. 파일 권한이나 사용 중인지 확인하세요.'
     },
     selection: {
@@ -102,8 +107,12 @@ export const i18n: Messages['i18n'] = {
       deleteItems: '항목 삭제',
       exit: '선택 종료',
       toolbar: '선택',
-      deleteConfirm: '라이브러리에서 동영상 {n}개를 제거할까요? (영상 파일은 삭제되지 않습니다)',
       deleteSourceConfirm: '라이브러리에서 동영상 {n}개를 제거할까요? 녹화 원본 영상 파일도 함께 삭제되며 이 작업은 취소할 수 없습니다.',
+      deleteChoiceTitle: '동영상 {n}개 제거',
+      deleteChoiceMessage: '동영상 {n}개를 선택했습니다. 그중 {m}개는 가져온 동영상입니다. 가져온 동영상의 원본 파일도 삭제할까요, 아니면 라이브러리에서만 제거할까요? 원본 파일 삭제는 되돌릴 수 없습니다.',
+      deleteChoiceRecordingNote: '녹화한 동영상의 원본 파일은 항상 삭제됩니다.',
+      deleteSources: '원본 파일 삭제',
+      removeFromLibraryOnly: '라이브러리에서만 제거',
       deleteFailed: '동영상 {n}개를 제거하지 못했습니다. 파일 권한이나 사용 중인지 확인하세요.'
     }
   },

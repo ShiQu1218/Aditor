@@ -88,8 +88,13 @@ export const i18n: Messages['i18n'] = {
       unknownGame: 'どのゲームか判別できません。選択してください：',
       av1: 'AV1 · プロキシファイル推奨',
       proxySuggest: 'プロキシファイルを推奨',
-      removeConfirm: '「{name}」をライブラリから削除しますか？（動画ファイルは削除されません）',
+      importedTag: 'インポート',
       removeSourceConfirm: '「{name}」をライブラリから削除し、元の動画ファイルも削除しますか？この操作は取り消せません。',
+      removeChoiceTitle: 'インポートした動画を削除',
+      removeChoiceMessage: '「{name}」はインポートされた動画です。元動画ファイルを削除しますか、それともライブラリから削除するだけですか？元ファイルの削除は取り消せません。',
+      deleteSource: '元ファイルを削除',
+      removeFromLibrary: 'ライブラリから削除',
+      cancel: 'キャンセル',
       removeFailed: '元の動画ファイルを削除できませんでした。アクセス権限や使用中でないかを確認してください。'
     },
     selection: {
@@ -101,8 +106,12 @@ export const i18n: Messages['i18n'] = {
       deleteItems: '項目を削除',
       exit: '選択を終了',
       toolbar: '選択',
-      deleteConfirm: 'ライブラリから {n} 本の動画を削除しますか？（動画ファイルは削除されません）',
       deleteSourceConfirm: 'ライブラリから {n} 本の動画を削除しますか？録画の元動画ファイルも削除されます。この操作は取り消せません。',
+      deleteChoiceTitle: '{n} 本の動画を削除',
+      deleteChoiceMessage: '{n} 本の動画を選択中です。そのうち {m} 本はインポートされています。インポートした動画の元ファイルも削除しますか、それともライブラリから削除するだけですか？元ファイルの削除は取り消せません。',
+      deleteChoiceRecordingNote: '録画した動画の元ファイルは常に削除されます。',
+      deleteSources: '元ファイルを削除',
+      removeFromLibraryOnly: 'ライブラリからのみ削除',
       deleteFailed: '{n} 本の動画を削除できませんでした。ファイルのアクセス権限や使用中でないかを確認してください。'
     }
   },

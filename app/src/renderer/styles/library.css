@@ -21,6 +21,9 @@
 .lib-btn.primary:hover { background: var(--accent-hover); }
 .lib-btn.ghost { background: transparent; border-color: transparent; color: var(--text-2); }
 .lib-btn.ghost:hover { background: var(--bg-hover); color: var(--text-1); }
+/* Destructive action (delete a file): the danger token is a light pink, so the label uses the dark app color for contrast. */
+.lib-btn.danger { background: var(--danger); border-color: var(--danger); color: var(--bg-app); }
+.lib-btn.danger:hover { background: color-mix(in srgb, var(--danger) 85%, var(--bg-app)); border-color: color-mix(in srgb, var(--danger) 85%, var(--bg-app)); }
 .lib-btn.sm { height: 26px; padding: 0 10px; font-size: var(--fs-small); }
 .lib-btn:disabled { color: var(--text-disabled); background: var(--bg-surface); border-color: var(--line); cursor: default; }
 
@@ -363,7 +366,8 @@
 .vcard-name { font-weight: var(--fw-bold); font-size: var(--fs-body); line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* Reserve space on the right for the ellipsis button (26px plus margin) so it does not cover text. */
 .vcard-meta { color: var(--text-3); font-size: var(--fs-small); line-height: 18px; display: flex; gap: 8px; white-space: nowrap; overflow: hidden; padding-right: 32px; }
-.vcard-game {
+.vcard-game,
+.vcard-imported {
   flex: none;
   display: inline-flex;
   align-items: center;
@@ -375,6 +379,8 @@
 }
 .vcard-game.apex { color: var(--lib-game-apex); background: color-mix(in srgb, var(--lib-game-apex) 18%, transparent); }
 .vcard-game.valorant { color: var(--lib-game-valorant); background: color-mix(in srgb, var(--lib-game-valorant) 18%, transparent); }
+/* Imported tag: neutral, so it is not mistaken for a game tag. */
+.vcard-imported { color: var(--text-2); background: var(--bg-active); }
 .vcard-codec { text-transform: uppercase; }
 
 .vcard-error-reason { color: var(--danger); font-size: var(--fs-small); line-height: 18px; display: flex; align-items: center; gap: 4px; white-space: nowrap; overflow: hidden; }
@@ -427,3 +433,26 @@
   text-align: left;
 }
 .vcard-menu button:hover { background: var(--bg-hover); }
+
+/* ---- Removal choice dialog (delete the source file or only drop the library entry) ---- */
+.lib-dlg-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: var(--bg-scrim);
+  display: grid;
+  place-items: center;
+  padding: var(--sp-4);
+}
+.lib-dlg {
+  width: min(460px, 100%);
+  padding: var(--sp-5);
+  background: var(--bg-popover);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-pop);
+}
+.lib-dlg h3 { font-size: var(--fs-subtitle); font-weight: var(--fw-bold); margin-bottom: var(--sp-3); }
+.lib-dlg p { color: var(--text-2); font-size: var(--fs-body); line-height: var(--lh-body); }
+.lib-dlg .lib-dlg-note { margin-top: var(--sp-2); }
+.lib-dlg-foot { display: flex; justify-content: flex-end; gap: var(--sp-2); margin-top: var(--sp-4); padding-top: var(--sp-3); border-top: 1px solid var(--line); }

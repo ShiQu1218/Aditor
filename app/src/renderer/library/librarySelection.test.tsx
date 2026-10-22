@@ -85,6 +85,11 @@ function bar(container: ParentNode): HTMLElement | null {
   return container.querySelector('.lib-selection-bar')
 }
 
+/** The open removal dialog (multi-item mode). */
+function dialog(container: ParentNode): HTMLElement {
+  return container.querySelector('.lib-dlg') as HTMLElement
+}
+
 describe('library selection mode', () => {
   test('a card checkbox enters selection mode, marks the card and shows the bar with count 1', async () => {
     const { container } = await setup()
@@ -128,7 +133,6 @@ describe('library selection mode', () => {
 
   test('entries hidden by a filter leave the selection, so Delete never removes unseen videos', async () => {
     const { container, fake } = await setup()
-    vi.spyOn(window, 'confirm').mockReturnValue(true)
     click(checkbox(container, 'a'))
     click(checkbox(container, 'b'))
     expect(count(container)).toBe('2')
@@ -140,7 +144,10 @@ describe('library selection mode', () => {
 
     click(container.querySelector<HTMLButtonElement>('.lib-selection-delete')!)
     await flush()
-    expect(fake.api.library.removeMany).toHaveBeenCalledWith(['D:/v/a.mp4'])
+    // Imported videos ask first: keep the source file.
+    click(buttonByText(dialog(container), t.removeFromLibraryOnly)!)
+    await flush()
+    expect(fake.api.library.removeMany).toHaveBeenCalledWith(['D:/v/a.mp4'], { deleteSource: false })
   })
 
   test('selection mode hides the favorite, menu, analyze and error action buttons', async () => {
@@ -197,46 +204,104 @@ describe('library selection mode', () => {
     expect(card(container, 'b').classList.contains('selected')).toBe(true)
   })
 
-  test('"Delete items" confirms once with the non-recording message and calls removeMany with the selected paths', async () => {
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+  test('"Delete items" asks about the imported source files and calls removeMany with the selected paths', async () => {
+    const confirm = vi.spyOn(window, 'confirm')
     const { container, fake, entries } = await setup()
     click(groupButton(container))
     click(buttonByText(container, t.deleteItems)!)
     await flush()
 
-    expect(confirm).toHaveBeenCalledWith(t.deleteConfirm.replace('{n}', '4'))
-    expect(fake.api.library.removeMany).toHaveBeenCalledWith(entries.map((e) => e.path))
+    // Imported videos ask first: the browser confirmation is not used.
+    expect(confirm).not.toHaveBeenCalled()
+    const box = dialog(container)
+    expect(box.textContent).toContain(t.deleteChoiceTitle.replace('{n}', '4'))
+    expect(box.textContent).toContain(t.deleteChoiceMessage.replace('{n}', '4').replace('{m}', '4'))
+    click(buttonByText(box, t.deleteSources)!)
+    await flush()
+
+    expect(fake.api.library.removeMany).toHaveBeenCalledWith(entries.map((e) => e.path), { deleteSource: true })
     expect(bar(container)).toBeNull() // A successful delete exits selection mode.
   })
 
-  test('the confirmation warns about recording source files when any selected entry is a recording', async () => {
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+  test('a mixed selection notes that recording source files are always deleted', async () => {
+    const confirm = vi.spyOn(window, 'confirm')
     const { container, fake, entries } = await setup({ recordings: ['a'] })
     click(checkbox(container, 'a'))
     click(checkbox(container, 'b'))
     click(buttonByText(container, t.deleteItems)!)
+    await flush()
+
+    expect(confirm).not.toHaveBeenCalled()
+    const box = dialog(container)
+    expect(box.textContent).toContain(t.deleteChoiceRecordingNote)
+    expect(box.textContent).toContain(t.deleteChoiceMessage.replace('{n}', '2').replace('{m}', '1'))
+    click(buttonByText(box, t.removeFromLibraryOnly)!)
+    await flush()
+
+    expect(fake.api.library.removeMany).toHaveBeenCalledWith([entries[0].path, entries[1].path], { deleteSource: false })
+  })
+
+  test('a selection of recordings only is confirmed once and removed without options', async () => {
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const { container, fake, entries } = await setup({ recordings: ['a', 'b'] })
+    click(checkbox(container, 'a'))
+    click(checkbox(container, 'b'))
+    click(buttonByText(container, t.deleteItems)!)
+    await flush()
 
     expect(confirm).toHaveBeenCalledWith(t.deleteSourceConfirm.replace('{n}', '2'))
+    expect(container.querySelector('.lib-dlg')).toBeNull()
     expect(fake.api.library.removeMany).toHaveBeenCalledWith([entries[0].path, entries[1].path])
   })
 
   test('a cancelled confirmation does not call removeMany', async () => {
     vi.spyOn(window, 'confirm').mockReturnValue(false)
-    const { container, fake } = await setup()
+    const { container, fake } = await setup({ recordings: ['a'] })
     click(checkbox(container, 'a'))
     click(buttonByText(container, t.deleteItems)!)
+    await flush()
 
     expect(fake.api.library.removeMany).not.toHaveBeenCalled()
     expect(bar(container)).not.toBeNull()
     expect(count(container)).toBe('1')
   })
 
+  test('cancelling the removal dialog keeps the selection and removes nothing', async () => {
+    const { container, fake } = await setup()
+    click(checkbox(container, 'a'))
+    click(buttonByText(container, t.deleteItems)!)
+    await flush()
+
+    click(buttonByText(dialog(container), i18n.library.card.cancel)!)
+    await flush()
+    expect(fake.api.library.removeMany).not.toHaveBeenCalled()
+    expect(container.querySelector('.lib-dlg')).toBeNull()
+    expect(bar(container)).not.toBeNull()
+    expect(count(container)).toBe('1')
+  })
+
+  test('Esc closes the removal dialog without exiting selection mode', async () => {
+    const { container, fake } = await setup()
+    click(checkbox(container, 'a'))
+    click(buttonByText(container, t.deleteItems)!)
+    await flush()
+    expect(container.querySelector('.lib-dlg')).not.toBeNull()
+
+    press(document.body, 'Escape')
+    await flush()
+    expect(container.querySelector('.lib-dlg')).toBeNull()
+    expect(fake.api.library.removeMany).not.toHaveBeenCalled()
+    expect(bar(container)).not.toBeNull()
+    expect(count(container)).toBe('1')
+  })
+
   test('partial failures keep only the failed paths selected and show a toast', async () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(true)
     const { container, fake, entries } = await setup()
     fake.api.library.removeMany.mockResolvedValueOnce({ removed: entries.slice(0, 3).map((e) => e.path), failed: [entries[3].path] })
     click(groupButton(container))
     click(buttonByText(container, t.deleteItems)!)
+    await flush()
+    click(buttonByText(dialog(container), t.deleteSources)!)
     await flush()
 
     expect(document.querySelector('.toast')?.textContent).toContain(t.deleteFailed.replace('{n}', '1'))

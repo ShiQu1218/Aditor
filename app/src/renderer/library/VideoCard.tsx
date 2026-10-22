@@ -62,6 +62,7 @@ export function sameCardEntry(a: LibraryEntry, b: LibraryEntry): boolean {
   return (
     a.path === b.path &&
     a.status === b.status &&
+    a.source === b.source &&
     a.progress === b.progress &&
     a.analyzingSince === b.analyzingSince &&
     a.favorite === b.favorite &&
@@ -277,6 +278,7 @@ function VideoCardView({ entry, onOpen, onToggleFavorite, onRemove, onRetry, onS
           ) : (
             <span className="vcard-meta">
               {gameTag && <span className={`vcard-game ${gameTag}`}>{GAMES[gameTag].displayName}</span>}
+              {entry.source === 'external' && <span className="vcard-imported">{t.importedTag}</span>}
               <span>{new Date(entry.addedAt).toLocaleString('zh-TW', { hour12: false })}</span>
               {entry.codec ? <span className="vcard-codec">{entry.codec.toUpperCase()}</span> : null}
             </span>

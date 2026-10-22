@@ -26,8 +26,11 @@ test('smoke: app launches, library empty state visible, rail navigable by keyboa
   await page.getByRole('button', { name: rail.library, exact: true }).focus()
   await page.keyboard.press('Enter')
   await expect(page.locator('.lib-screen')).toBeVisible()
-  // When no video is selected, Studio returns to the library.
+  // With an empty library, Studio shows its empty state with a way back to the library.
   await page.getByRole('button', { name: rail.studioLabel, exact: true }).focus()
+  await page.keyboard.press('Enter')
+  await expect(page.locator('.studio-blocked')).toContainText(i18n.studio.empty)
+  await page.getByRole('button', { name: i18n.studio.back, exact: true }).focus()
   await page.keyboard.press('Enter')
   await expect(page.locator('.lib-screen')).toBeVisible()
 })

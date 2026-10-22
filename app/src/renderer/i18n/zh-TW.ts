@@ -87,8 +87,13 @@ const i18n = {
       unknownGame: '認不出是哪個遊戲，請選擇：',
       av1: 'AV1 · 建議代理檔',
       proxySuggest: '建議代理檔',
-      removeConfirm: '確定要從影片庫移除「{name}」嗎？（不會刪除影片檔案）',
+      importedTag: '外部匯入',
       removeSourceConfirm: '確定要從影片庫移除「{name}」並刪除來源影片檔案嗎？此操作無法復原。',
+      removeChoiceTitle: '移除外部匯入影片',
+      removeChoiceMessage: '「{name}」是外部匯入的影片。要刪除來源影片檔案，還是只從影片庫移除？刪除來源檔案無法復原。',
+      deleteSource: '刪除來源檔案',
+      removeFromLibrary: '從影片庫移除',
+      cancel: '取消',
       removeFailed: '移除失敗，無法刪除來源影片檔案，請確認檔案權限或是否正被使用。'
     },
     selection: {
@@ -100,8 +105,12 @@ const i18n = {
       deleteItems: '刪除項目',
       exit: '結束選取',
       toolbar: '選取',
-      deleteConfirm: '確定要從影片庫移除 {n} 部影片嗎？（不會刪除影片檔案）',
       deleteSourceConfirm: '確定要從影片庫移除 {n} 部影片嗎？錄製的來源影片檔案也會一併刪除，此操作無法復原。',
+      deleteChoiceTitle: '移除 {n} 部影片',
+      deleteChoiceMessage: '已選取 {n} 部影片，其中 {m} 部是外部匯入。要一併刪除外部匯入影片的來源檔案，還是只從影片庫移除？刪除來源檔案無法復原。',
+      deleteChoiceRecordingNote: '錄製影片的來源檔案一律會刪除。',
+      deleteSources: '刪除來源檔案',
+      removeFromLibraryOnly: '僅從影片庫移除',
       deleteFailed: '有 {n} 部影片無法移除，請檢查檔案權限或是否正在使用中。'
     }
   },

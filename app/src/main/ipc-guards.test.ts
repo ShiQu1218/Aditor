@@ -7,6 +7,7 @@ import {
   sanitizeProbeArgs,
   sanitizeDeriveArgs,
   sanitizeAutoclipArgs,
+  sanitizeRemoveOptions,
   planCacheSave
 } from './ipc-guards'
 import { cacheFilePath } from './cache-io'
@@ -38,6 +39,18 @@ describe('engine argument sanitizing (I1 / Minor 13)', () => {
   it('autoclip passes only events/params/duration', () => {
     expect(sanitizeAutoclipArgs({ events: [], params: {}, duration: 3, extra: 1 })).toEqual({ events: [], params: {}, duration: 3 })
   })
+})
+
+describe('library:remove options (source file deletion)', () => {
+  it('enables deletion only for deleteSource === true on a plain object', () => {
+    expect(sanitizeRemoveOptions({ deleteSource: true })).toEqual({ deleteSource: true })
+  })
+  it.each([undefined, null, 'true', 1, [], [{ deleteSource: true }], {}, { deleteSource: 'true' }, { deleteSource: 1 }])(
+    'keeps the files for %s',
+    (raw) => {
+      expect(sanitizeRemoveOptions(raw)).toEqual({ deleteSource: false })
+    }
+  )
 })
 
 describe('cache:save target (I1)', () => {

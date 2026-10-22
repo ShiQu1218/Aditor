@@ -30,6 +30,14 @@ export interface LibraryEntry {
   analyzingSince?: number
 }
 
+export interface RemoveOptions {
+  /**
+   * Also delete the source file of entries that do not own it (imported or legacy entries).
+   * Recordings always delete their source file, regardless of this flag.
+   */
+  deleteSource?: boolean
+}
+
 export const SUPPORTED_EXTS = new Set(['.mp4', '.mkv', '.mov', '.webm'])
 
 export function normalizePath(p: string): string {
@@ -186,10 +194,14 @@ export class Library {
     return added
   }
 
-  remove(videoPath: string): boolean {
+  /**
+   * Remove one entry. The source file is unlinked for recordings (they own it) and for every other entry only when
+   * `opts.deleteSource` is true. A missing file is tolerated; any other failure keeps the entry (the error is thrown).
+   */
+  remove(videoPath: string, opts: RemoveOptions = {}): boolean {
     const entry = this.get(videoPath)
     if (!entry) return false
-    if (entry.source === 'recording') {
+    if (entry.source === 'recording' || opts.deleteSource === true) {
       try {
         fs.unlinkSync(entry.path)
       } catch (err) {
@@ -209,9 +221,10 @@ export class Library {
 
   /**
    * Remove several entries with the same per-entry rules as remove(): recording sources are unlinked (ENOENT tolerated),
-   * and a path whose source file cannot be deleted stays in the library and is reported as failed. Persists once.
+   * and other sources are unlinked only when `opts.deleteSource` is true. A path whose source file cannot be deleted
+   * stays in the library and is reported as failed. Persists once.
    */
-  removeMany(paths: string[]): { removed: string[]; failed: string[] } {
+  removeMany(paths: string[], opts: RemoveOptions = {}): { removed: string[]; failed: string[] } {
     const removed: string[] = []
     const failed: string[] = []
     const removedNorms = new Set<string>()
@@ -220,7 +233,7 @@ export class Library {
       if (!entry) continue // Already gone (e.g. removed elsewhere): nothing to remove, not a failure.
       const norm = normalizePath(entry.path)
       if (removedNorms.has(norm)) continue // Duplicate path in the same request.
-      if (entry.source === 'recording') {
+      if (entry.source === 'recording' || opts.deleteSource === true) {
         try {
           fs.unlinkSync(entry.path)
         } catch (err) {
