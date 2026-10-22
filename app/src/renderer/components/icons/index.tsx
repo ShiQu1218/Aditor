@@ -1,5 +1,4 @@
 // Unified icon entry point: branded feature icons and lucide-react share the existing interface.
-import React from 'react'
 import logoUrl from '../../../../resources/icon.png'
 import {
   ListVideo,

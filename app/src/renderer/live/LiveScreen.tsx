@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { isCounted } from '../../shared/types'
 import { formatTime } from '../../shared/time'
 import { ChevronLeft, Pause, Play, SkipBack, SkipForward } from '../components/icons'

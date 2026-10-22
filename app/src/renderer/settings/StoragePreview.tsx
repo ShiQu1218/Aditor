@@ -1,4 +1,3 @@
-import React from 'react'
 import { settingsI18n } from '../i18n'
 import {
   EXPORTS_DIRNAME,

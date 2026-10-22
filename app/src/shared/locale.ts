@@ -2,6 +2,7 @@ import en from './messages/en'
 import ja from './messages/ja'
 import ko from './messages/ko'
 import zhCN from './messages/zh-CN'
+import { fillTemplate } from './template'
 
 export const LOCALES = ['zh-TW', 'zh-CN', 'en', 'ja', 'ko'] as const
 export type Locale = (typeof LOCALES)[number]
@@ -50,5 +51,5 @@ export function getActiveLocale(): Locale { return active }
 
 export function tr(text: string, vars?: Readonly<Record<string, string | number | null | undefined>>): string {
   const template = TABLES[active]?.[text] ?? text
-  return vars ? template.replace(/\{(\w+)\}/g, (whole, name: string) => (name in vars ? String(vars[name]) : whole)) : template
+  return vars ? fillTemplate(template, vars) : template
 }

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { RECORDING_RANGES, type RecordingSettings } from '../../shared/recording'
 import { useFocusTrap } from '../a11y/useFocusTrap'
 import { recordingI18n as t } from '../i18n'

@@ -1,5 +1,4 @@
 // @vitest-environment jsdom
-import React from 'react'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { LibraryScreen } from './LibraryScreen'
 import type { LibraryEntry } from '../../main/library'

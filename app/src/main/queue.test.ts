@@ -57,7 +57,7 @@ describe('AnalysisQueue', () => {
   it('queue runs one analyze at a time', async () => {
     const activeRequests: string[] = []
     const engineMock = {
-      request: (cmd: string, args: { path: string }) => {
+      request: (_cmd: string, args: { path: string }) => {
         activeRequests.push(args.path)
         let resolveReq!: (v: unknown) => void
         const promise = new Promise((resolve) => {

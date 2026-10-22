@@ -370,7 +370,7 @@ export async function cutMatches(dir: string, deps: RecordingDeps, options: Matc
 export function outputBase(startedAt: number, game?: GameId): string {
   const date = new Date(startedAt)
   const pad = (n: number): string => String(n).padStart(2, '0')
-  return `${GAMES[gameOf(game)].filePrefix}_${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}_${pad(date.getHours())}-${pad(date.getMinutes())}`
+  return `${GAMES[gameOf(game)].filePrefix}_${dayFolderName(startedAt)}_${pad(date.getHours())}-${pad(date.getMinutes())}`
 }
 
 /** Place output in `<outputDir>/<local start date>/`; check `_2`, `_3`, and similar collisions within that date folder. */

@@ -1,4 +1,3 @@
-import React from 'react'
 import { EventType } from '../../shared/types'
 import { i18n } from '../i18n'
 import { Scissors, Sparkles } from '../components/icons'

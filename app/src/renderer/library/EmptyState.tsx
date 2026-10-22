@@ -1,4 +1,3 @@
-import React from 'react'
 import { Film, FolderInput, Plus } from '../components/icons'
 import { i18n } from '../i18n'
 

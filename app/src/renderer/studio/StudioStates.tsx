@@ -1,4 +1,3 @@
-import React from 'react'
 import { i18n } from '../i18n'
 
 /** Full-page states before studio loading, when blocked, or after load failure (never show fabricated data). */

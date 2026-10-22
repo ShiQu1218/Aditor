@@ -1,5 +1,4 @@
 // @vitest-environment jsdom
-import React from 'react'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { ProjectManagerDialog, type StoredProjectSummary } from './ProjectManagerDialog'
 import { buttonByText, cleanupMounted, click, flush, installDomShims, mount, press } from '../../../test/dom'

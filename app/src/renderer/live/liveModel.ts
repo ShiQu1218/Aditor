@@ -1,5 +1,6 @@
 // Pure functions for watching an active recording: apply main-process updates, find new events, and convert timeline coordinates. No React/DOM dependency.
 import type { LiveEvent, LiveMatch, LiveState, LiveUpdate } from '../../shared/recording'
+import { fillTemplate } from '../../shared/template'
 import { isCounted } from '../../shared/types'
 
 /** Apply a `recording:live` update (ignore updates from other recording jobs); return a new object. */
@@ -41,7 +42,7 @@ export function pct(t: number, end: number): number {
 
 /** Substitute `{key}` placeholders in a string template. */
 export function fill(template: string, vars: Record<string, string | number>): string {
-  return template.replace(/\{(\w+)\}/g, (m, key: string) => (key in vars ? String(vars[key]) : m))
+  return fillTemplate(template, vars)
 }
 
 /** Clicking an event in the list seeks to 3 seconds before it. */

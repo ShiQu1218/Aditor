@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, safeStorage } from 'electron'
+import { app, BrowserWindow, ipcMain, safeStorage } from 'electron'
 import { createAppQuitGuard } from './quit-guard'
 import { delimiter, join, resolve } from 'path'
 import { EngineClient } from './engine'

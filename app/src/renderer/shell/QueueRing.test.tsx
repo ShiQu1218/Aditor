@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import React, { act } from 'react'
+import { act } from 'react'
 import { afterEach, expect, test, vi } from 'vitest'
 import { cleanupMounted, mount } from '../../../test/dom'
 import { createQueueStore } from '../queue/queueStore'

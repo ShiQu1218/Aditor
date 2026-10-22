@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import React, { act } from 'react'
+import { act } from 'react'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import type { LibraryEntry } from '../../main/library'
 import { SameDayVideos } from './SameDayVideos'

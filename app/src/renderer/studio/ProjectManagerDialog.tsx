@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { i18n } from '../i18n'
 import { useFocusTrap } from '../a11y/useFocusTrap'
 

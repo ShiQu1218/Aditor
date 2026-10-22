@@ -1,6 +1,5 @@
 // @vitest-environment jsdom
 // Run axe-core (jsdom) once for the library, studio, settings, all four export drawer states plus the consent dialog, and shortcut help; no serious or critical violations are allowed.
-import React from 'react'
 import fs from 'fs'
 import path from 'path'
 import { act } from 'react'

@@ -1,6 +1,5 @@
 // @vitest-environment jsdom
 // I12: show a notice when startup restoration finds a corrupted or newer-version project file (main has preserved the .bak and created an empty project).
-import React from 'react'
 import { afterEach, expect, test } from 'vitest'
 import { createFakeApi, installFakeApi } from '../../../test/fakeApi'
 import { Providers } from '../../../test/harness'

@@ -1,4 +1,3 @@
-import React from 'react'
 import { settingsI18n } from '../i18n'
 import { Globe } from '../components/icons'
 import { SettingControl, type ControlIds } from './SettingControls'

@@ -1,5 +1,5 @@
 import { tr } from '../shared/locale'
-import React, { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { LibraryScreen } from './library/LibraryScreen'
 import { StudioScreen, type ProjectPlaybackRequest } from './studio/StudioScreen'
 import { StudioLanding } from './studio/StudioLanding'

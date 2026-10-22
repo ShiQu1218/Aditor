@@ -1,4 +1,4 @@
-import React, { useId, useRef } from 'react'
+import { useId, useRef } from 'react'
 import { useFocusTrap } from '../a11y/useFocusTrap'
 import { Trash2 } from '../components/icons'
 

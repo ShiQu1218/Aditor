@@ -1,8 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
   Project,
-  ProjectItem,
-  createProject,
   addItems,
   removeItem,
   splitItem,

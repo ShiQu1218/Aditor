@@ -117,7 +117,7 @@ export async function finalizeObsSession(dir: string, deps: RecordingDeps, confi
   const source = await fs.promises.realpath(meta.outputPath)
   const relative = path.relative(await fs.promises.realpath(dir), source)
   if (!relative.startsWith('..') && !path.isAbsolute(relative)) throw new Error(tr('OBS 原檔位於錄影工作目錄內，已保留原檔與工作目錄'))
-  const probe = createMediaEndProbe(path.join(path.dirname(deps.ffmpegPath), `ffprobe${process.platform === 'win32' ? '.exe' : ''}`))
+  const probe = createMediaEndProbe(ffprobePath(deps.ffmpegPath))
   const info = await settledProbe(meta.outputPath, async () => deps.probeVideo
     ? await deps.probeVideo(meta.outputPath!) : { duration: await probe(meta.outputPath!) }, deps.obsFileSettleMs ?? OBS_FILE_SETTLE_STEP_MS)
   const { duration, ...video } = info

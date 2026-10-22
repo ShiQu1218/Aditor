@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore } from 'react'
 import '../styles/studio.css'
 import '../styles/projectTrack.css'
 import { CacheDoc } from '../../shared/types'

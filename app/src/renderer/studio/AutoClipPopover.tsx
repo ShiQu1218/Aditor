@@ -1,4 +1,4 @@
-import React, { useEffect, useId, useLayoutEffect, useReducer, useRef, useState } from 'react'
+import { useEffect, useId, useLayoutEffect, useReducer, useRef, useState } from 'react'
 import { useFocusTrap } from '../a11y/useFocusTrap'
 import type { AutoClipParams, Clip, EngineEvent } from '../../shared/types'
 import { formatTime } from '../../shared/time'

@@ -1,4 +1,4 @@
-import React, { forwardRef } from 'react'
+import { forwardRef } from 'react'
 import type { Clip, EngineEvent } from '../../shared/types'
 import { formatTime } from '../../shared/time'
 import { Check, Play, Plus, Undo2 } from '../components/icons'
