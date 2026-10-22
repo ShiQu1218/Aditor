@@ -63,6 +63,8 @@ export interface RecordingDeps {
   probeStorage?: (dir: string) => Promise<StorageKind | null>
   /** Test injection: read the game's render resolution (`WxH`, defaults to readGameAspect); null keeps the 16:9 layout. */
   readGameAspect?: (game: GameId) => Promise<string | null>
+  /** Test injection: whether window capture can hide its yellow border (defaults to supportsBorderlessCapture). */
+  borderlessCapture?: boolean
   /** Test injection: polling interval in milliseconds. */
   pollMs?: number
   /** Phase 3: how to launch the live engine (`aditor live`); when omitted, skip live detection and provide segment playback only. */

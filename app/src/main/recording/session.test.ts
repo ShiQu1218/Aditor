@@ -179,7 +179,7 @@ describe('recording service state machine', () => {
     expect(commands(value, 'stop')).toHaveLength(0)
   })
 
-  it('defaults to wgc and uses dda after changing the capture setting', async () => {
+  it('auto resolves to wgc on borderless builds and an explicit dda is used after changing the setting', async () => {
     const value = rig()
     value.service.start()
     await waitFor(() => value.service.status().phase === 'recording')
@@ -188,6 +188,15 @@ describe('recording service state machine', () => {
     value.settings.captureMethod = 'dda'
     expect(await value.service.startManual()).toBe(true)
     expect(commands(value, 'start')[1].capture).toBe('dda')
+  })
+
+  it('auto resolves to dda on Windows builds that cannot hide the window capture border', async () => {
+    const value = rig()
+    value.deps.borderlessCapture = false
+    value.service = createRecordingService(value.deps)
+    value.service.start()
+    await waitFor(() => value.service.status().phase === 'recording')
+    expect(commands(value, 'start')[0].capture).toBe('dda')
   })
 
   it('waits for Apex startup to stabilize before capture when the game launches while Aditor runs', async () => {

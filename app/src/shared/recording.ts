@@ -67,13 +67,16 @@ export interface RecordingSettings {
   diskStopGb: number
   /** Whether to show Windows notifications when a match starts or ends (errors always notify). */
   notifyMatch: boolean
-  /** Capture method: 'wgc' = window capture (default); 'dda' = screen capture (DXGI Desktop Duplication). */
+  /**
+   * Capture method: 'auto' (default) = 'dda' on Windows 10, whose window capture always shows a yellow border, and 'wgc'
+   * elsewhere; 'wgc' = window capture; 'dda' = screen capture (DXGI Desktop Duplication).
+   */
   captureMethod: RecordingCaptureMethod
   /** Show the Aditor window automatically when Apex exits. */
   openOnGameExit: boolean
 }
 
-export type RecordingCaptureMethod = 'wgc' | 'dda'
+export type RecordingCaptureMethod = 'auto' | 'wgc' | 'dda'
 
 export const RECORDING_RANGES = {
   bitrateKbps: { min: 2_000, max: 150_000 },
@@ -115,7 +118,7 @@ export const DEFAULT_RECORDING_SETTINGS: RecordingSettings = {
   diskWarnGb: 10,
   diskStopGb: 2,
   notifyMatch: false,
-  captureMethod: 'wgc',
+  captureMethod: 'auto',
   openOnGameExit: true
 }
 
@@ -199,6 +202,8 @@ export interface RecorderCapabilities {
   encoders: string[]
   /** Empty for older recorders that do not report per-GPU information. */
   gpus: RecorderGpu[]
+  /** What the 'auto' capture method resolves to on this machine; added by the main process, not by aditorrec. */
+  autoCaptureMethod?: 'wgc' | 'dda'
   audio: {
     render: { id: string; name: string; default: boolean }[]
     capture: { id: string; name: string; default: boolean }[]

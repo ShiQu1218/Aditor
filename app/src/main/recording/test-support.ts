@@ -29,7 +29,7 @@ export function makeDeps(root: string): RecordingDeps {
     getWatchFolders: () => [], defaultOutputDir: path.join(root, 'videos'),
     recorderCommand: fakeCommand(), ffmpegPath: 'missing-ffmpeg', profileDir: root,
     addToLibrary: () => {}, enqueueAnalysis: () => {}, notify: () => {},
-    findApexPid: async () => 1234, pollMs: 20, gameStartDelayMs: 0, probeStorage: async () => null,
+    findApexPid: async () => 1234, pollMs: 20, gameStartDelayMs: 0, probeStorage: async () => null, borderlessCapture: true,
     readGameAspect: async () => null
   }
 }

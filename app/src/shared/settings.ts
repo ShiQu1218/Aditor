@@ -3,14 +3,14 @@ import { DEFAULT_RECORDING_SETTINGS, type RecordingSettings } from './recording'
 import type { LanguageSetting } from './locale'
 
 /** Settings file format version; increment when the format changes and handle older versions in `migrateSettings`. */
-export const SETTINGS_VERSION = 1
+export const SETTINGS_VERSION = 2
 
 /**
  * Application settings (`%APPDATA%\Aditor\settings.json`).
  * See spec §3.3 for field meanings; main's `set`/`migrateSettings` validate value ranges (spec §3.2).
  */
 export interface Settings {
-  version: 1
+  version: typeof SETTINGS_VERSION
   /** UI language: 'auto' follows the system (Windows display language); unsupported system languages use English. */
   language: LanguageSetting
   /**

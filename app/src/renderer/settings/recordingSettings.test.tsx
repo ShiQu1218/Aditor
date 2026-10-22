@@ -154,7 +154,7 @@ describe('Recording settings screen and controller', () => {
     expect(options('captureDevice')).toEqual(['default', 'mic'])
     expect(options('height')).toEqual(['0', '720', '1080', '1440'])
     expect(Array.from(control('fps').querySelectorAll('input')).map((el) => el.value)).toEqual(['10', '20', '30', '60', '90', '120'])
-    expect(options('captureMethod')).toEqual(['dda', 'wgc'])
+    expect(options('captureMethod')).toEqual(['auto', 'wgc', 'dda'])
   })
 
   test('Toggles, format, device, and numeric units are submitted and updated from the result; values persist after remount', async () => {
@@ -336,9 +336,28 @@ describe('Recording settings screen and controller', () => {
     expect(r.controller.getState().settings?.recording).toMatchObject({ captureMethod: 'wgc', gpu: '8086:46a6' })
   })
 
+  test('Automatic capture disables the GPU picker only where it resolves to screen capture', async () => {
+    const saved: Settings = {
+      ...structuredClone(DEFAULT_SETTINGS),
+      recording: { ...DEFAULT_SETTINGS.recording, captureMethod: 'auto', gpu: '8086:46a6', codec: 'hevc' }
+    }
+    const win10 = await show({ ...capabilities, autoCaptureMethod: 'dda' })
+    act(() => win10.emit(saved))
+    await flush()
+    expect(control<HTMLSelectElement>('gpu').disabled).toBe(true)
+    expect(options('encoder')).toEqual(['auto', 'hevc_nvenc'])
+    cleanupMounted()
+
+    const win11 = await show({ ...capabilities, autoCaptureMethod: 'wgc' })
+    act(() => win11.emit(saved))
+    await flush()
+    expect(control<HTMLSelectElement>('gpu').disabled).toBe(false)
+    expect(options('encoder')).toEqual(['auto'])
+  })
+
   test('Capture selection persists after remount and surfaces save failures', async () => {
     const r = await show()
-    expect(options('captureMethod')).toEqual(['dda', 'wgc'])
+    expect(options('captureMethod')).toEqual(['auto', 'wgc', 'dda'])
     select('captureMethod', 'dda')
     await flush()
     expect(r.controller.getState().settings?.recording.captureMethod).toBe('dda')
