@@ -1,5 +1,5 @@
 import { app, BrowserWindow, dialog, ipcMain, safeStorage } from 'electron'
-import { createQuitGuard } from './quit-guard'
+import { createAppQuitGuard } from './quit-guard'
 import { delimiter, join, resolve } from 'path'
 import { EngineClient } from './engine'
 import { Library } from './library'
@@ -311,21 +311,15 @@ async function initEngineAndServices(): Promise<void> {
   })
 }
 
-// Before quitting, wait for recording finalization, export/proxy ffmpeg termination, and engine shutdown (I7); still exit after a 5-second timeout.
-const quitGuard = createQuitGuard({
-  tasks: [
-    () => library?.flush(),
-    async () => {
-      try { await recordingService?.stop() }
-      finally {
-        library?.flush()
-        await engineClient?.stop()
-      }
-    },
-    () => cancelExport?.(),
-    async () => (await import('./proxy')).cancelAllProxies(),
-    () => watchManager?.stop()
-  ],
+// Before quitting, start export/proxy cancellation and folder-watching shutdown immediately, then always wait for recording
+// finalization (including FFmpeg remux), flush the library and stop the engine (I7). Finalization is critical; remaining cleanup keeps its 5-second bound.
+const quitGuard = createAppQuitGuard({
+  stopRecording: () => recordingService?.stop(),
+  flushLibrary: () => library?.flush(),
+  stopEngine: () => engineClient?.stop(),
+  cancelExport: () => cancelExport?.(),
+  cancelProxies: async () => (await import('./proxy')).cancelAllProxies(),
+  stopWatcher: () => watchManager?.stop(),
   quit: () => app.quit(),
   timeoutMs: 5000
 })

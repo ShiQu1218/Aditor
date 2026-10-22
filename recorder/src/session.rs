@@ -8,13 +8,13 @@ use crate::{
         Capture, CaptureMethod, CaptureNotice, CaptureOptions, CapturedFrame, FrameConsumer,
     },
     clock::{self, TICKS_PER_SEC},
-    encode::{candidate_names, EncodeStats, SegmentInfo, SegmentWriter, VideoParams, ENCODERS},
+    encode::{candidate_names, codec_of, EncodeStats, SegmentInfo, SegmentWriter, VideoParams, ENCODERS},
     gpu::{auto_order, AdapterDesc, Gpu, Vendor},
     index::{self, IndexWriter, SessionMeta},
     ipc::{Backend, BackendError, EventSink},
     protocol::{ErrorCode, Event, GpuInfo, HelloInfo, StartArgs},
     shm::{self, ShmLayout, ShmWriter},
-    types::{Codec, EncodeAspect, Rect, AUDIO_CHANNELS, SEGMENT_SECS, THUMB_H, THUMB_W},
+    types::{Codec, EncodeAspect, EncodeConfig, Rect, AUDIO_CHANNELS, SEGMENT_SECS, THUMB_H, THUMB_W},
 };
 use anyhow::{bail, ensure, Context, Result};
 use std::{
@@ -316,6 +316,46 @@ fn resolve_gpu(preference: &str, codec: Codec, encoder: &str) -> Result<Gpu> {
     }
 }
 
+/// Choose a working hardware encoder for the same codec as `requested`, excluding the requested name.
+/// The DDA adapter may differ from the adapter the global encoder list was probed on, so only names
+/// proven by a trial encode are returned; callers must never cross codec boundaries here.
+fn same_codec_fallback<'a>(
+    codec: Codec,
+    requested: &str,
+    available: &[&'a str],
+) -> Option<&'a str> {
+    available
+        .iter()
+        .copied()
+        .find(|name| *name != requested && codec_of(name) == codec)
+}
+
+/// DDA must encode on the adapter driving the game monitor. If the user selected an encoder that is
+/// not available there, warn and fall back to a working hardware encoder with the same codec.
+/// WGC keeps its explicit-encoder semantics and never goes through this path.
+fn dda_encoder(gpu: &Gpu, cfg: &EncodeConfig, events: &EventSink) -> String {
+    if cfg.encoder == "auto" {
+        return cfg.encoder.clone();
+    }
+    let available = SegmentWriter::probe_encoders_for_family(gpu, gpu.vendor().encoder_family());
+    if available.iter().any(|name| name == &cfg.encoder) {
+        return cfg.encoder.clone();
+    }
+    let names: Vec<&str> = available.iter().map(String::as_str).collect();
+    let Some(fallback) = same_codec_fallback(cfg.codec, &cfg.encoder, &names) else {
+        // No same-codec fallback exists; let SegmentWriter::open report the detailed no_hw_encoder error.
+        return cfg.encoder.clone();
+    };
+    events.emit(&Event::Warning {
+        code: "encoder_fallback".into(),
+        message: format!(
+            "The selected encoder {} is not available on the GPU used for desktop capture; using {} instead",
+            cfg.encoder, fallback
+        ),
+    });
+    fallback.to_owned()
+}
+
 #[derive(Default)]
 struct Counts {
     input: AtomicU64,
@@ -400,6 +440,7 @@ struct Session {
     events: EventSink,
     last_stats: Instant,
     previous: EncodeStats,
+    audio_stall_warned: bool,
 }
 /// Whether the directory contains aditorrec output (init, index, session.json, or segments).
 fn has_recorder_output(dir: &Path) -> Result<bool> {
@@ -489,6 +530,7 @@ impl Session {
             events,
             last_stats: Instant::now(),
             previous: EncodeStats::default(),
+            audio_stall_warned: false,
         };
         let (source_w, source_h) = match session.notices.recv_timeout(Duration::from_secs(5)) {
             Ok(CaptureNotice::WindowFound { width, height, .. }) => (width, height),
@@ -503,6 +545,12 @@ impl Session {
         if let Some(cfg) = &args.encode {
             session.index =
                 Some(IndexWriter::create(dir).map_err(|e| failure(ErrorCode::Internal, e))?);
+            let encoder_name = if args.capture == CaptureMethod::Dda {
+                dda_encoder(&gpu, cfg, &session.events)
+            } else {
+                // WGC keeps the user's explicit encoder semantics; only DDA falls back to the capture adapter.
+                cfg.encoder.clone()
+            };
             session.writer = Some(Arc::new(
                 SegmentWriter::open(
                     &gpu,
@@ -512,7 +560,7 @@ impl Session {
                         height,
                         fps,
                         codec: cfg.codec,
-                        encoder: cfg.encoder.clone(),
+                        encoder: encoder_name,
                         bitrate_kbps: cfg.bitrate_kbps,
                         preset: cfg.preset,
                         aspect: cfg.aspect,
@@ -550,10 +598,15 @@ impl Session {
                 )
                 .map_err(|e| failure(ErrorCode::AudioFailed, e))?,
             );
-            if let Some(message) = session.audio.as_mut().and_then(AudioCapture::take_warning) {
+            let warnings = session
+                .audio
+                .as_mut()
+                .map(AudioCapture::drain_warnings)
+                .unwrap_or_default();
+            for warning in warnings {
                 session.events.emit(&Event::Warning {
-                    code: "game_audio_unavailable".into(),
-                    message,
+                    code: warning.code.into(),
+                    message: warning.message,
                 });
             }
         }
@@ -599,11 +652,17 @@ impl Session {
             if self.last_stats.elapsed() >= STATS_INTERVAL {
                 self.stats()?;
                 if self.audio.is_some()
+                    && !self.audio_stall_warned
                     && clock::ticks_to_secs(
                         clock::now_ticks() - self.counts.last_audio.load(Ordering::Relaxed),
                     ) > 5.0
                 {
-                    return Err((ErrorCode::AudioFailed, "Audio capture has produced no output for over five seconds".into()));
+                    // Audio loss is a degraded mode, never a reason to stop the video recording.
+                    self.audio_stall_warned = true;
+                    self.events.emit(&Event::Warning {
+                        code: "audio_capture_stalled".into(),
+                        message: "Audio capture has produced no output for over five seconds; continuing to record video with silence".into(),
+                    });
                 }
             }
             if disk_checked.elapsed() >= Duration::from_secs(30) {
@@ -671,6 +730,17 @@ impl Session {
                 }
                 Err(mpsc::TryRecvError::Disconnected) => break,
             }
+        }
+        let warnings = self
+            .audio
+            .as_mut()
+            .map(AudioCapture::drain_warnings)
+            .unwrap_or_default();
+        for warning in warnings {
+            self.events.emit(&Event::Warning {
+                code: warning.code.into(),
+                message: warning.message,
+            });
         }
         if let Some(writer) = &self.writer {
             writer
@@ -1161,6 +1231,33 @@ mod tests {
         assert_eq!(
             choose_adapters("dead:beef", &ids, &descs),
             GpuChoice::Auto(vec![1, 0])
+        );
+    }
+
+    #[test]
+    fn dda_encoder_fallback_never_crosses_the_requested_codec() {
+        let available = ["hevc_amf", "h264_amf"];
+        assert_eq!(
+            same_codec_fallback(Codec::H264, "h264_nvenc", &available),
+            Some("h264_amf")
+        );
+        assert_eq!(
+            same_codec_fallback(Codec::Hevc, "hevc_nvenc", &available),
+            Some("hevc_amf")
+        );
+        assert_eq!(
+            same_codec_fallback(Codec::Hevc, "hevc_nvenc", &["h264_amf"]),
+            None,
+            "falling back to H.264 would silently change the codec"
+        );
+        assert_eq!(
+            same_codec_fallback(Codec::Av1, "av1_nvenc", &available),
+            None
+        );
+        assert_eq!(
+            same_codec_fallback(Codec::H264, "h264_amf", &available),
+            None,
+            "the requested encoder must not be selected again as its own fallback"
         );
     }
 

@@ -99,6 +99,65 @@ fn locate(adapters: &[Vec<isize>], monitor: isize) -> Option<(usize, usize)> {
     })
 }
 
+/// Stable key for a DXGI adapter LUID. Adapter identity is the only safe way to tell "the monitor
+/// moved to another adapter" apart from "the monitor is temporarily absent or enumeration changed".
+fn luid_key(high: i32, low: u32) -> u64 {
+    (u64::from(high as u32) << 32) | u64::from(low)
+}
+
+/// Returns the index of an adapter that owns `monitor` and whose LUID differs from `own_luid`.
+/// A single adapter snapshot is used so a moving display topology cannot create a false positive.
+/// `None` means the monitor is on the recording adapter or absent (lock, mode switch, display sleep);
+/// both cases must stay retryable.
+fn monitor_on_other_adapter_snapshot(
+    own_luid: u64,
+    adapters: &[(u64, Vec<isize>)],
+    monitor: isize,
+) -> Option<usize> {
+    adapters
+        .iter()
+        .enumerate()
+        .find_map(|(index, (luid, monitors))| {
+            (*luid != own_luid && monitors.contains(&monitor)).then_some(index)
+        })
+}
+
+/// Confirms that the game monitor is now driven by a different DXGI adapter. Only a positive LUID
+/// match is reported; failed or transient enumeration is treated as "not confirmed" so DDA retries.
+fn monitor_on_other_adapter(gpu: &Gpu, monitor: HMONITOR) -> Option<usize> {
+    let monitor = monitor.0 as isize;
+    let dxgi: IDXGIDevice = gpu.device.cast().ok()?;
+    // SAFETY: dxgi is the shared device's DXGI interface; only its adapter is queried.
+    let own_adapter = unsafe { dxgi.GetAdapter() }.ok()?;
+    // SAFETY: own_adapter is the adapter that created the shared device; GetDesc only reads it.
+    let own_desc = unsafe { own_adapter.GetDesc() }.ok()?;
+    let own_luid = luid_key(own_desc.AdapterLuid.HighPart, own_desc.AdapterLuid.LowPart);
+    // SAFETY: Creating a DXGI factory has no additional preconditions.
+    let factory: IDXGIFactory1 = unsafe { CreateDXGIFactory1() }.ok()?;
+    let mut adapters = Vec::new();
+    for index in 0.. {
+        // SAFETY: Enumerate in order; an out-of-range index returns DXGI_ERROR_NOT_FOUND.
+        match unsafe { factory.EnumAdapters1(index) } {
+            Ok(adapter) => {
+                let adapter: IDXGIAdapter = adapter.cast().ok()?;
+                // SAFETY: adapter was just enumerated; GetDesc only reads its description.
+                let desc = unsafe { adapter.GetDesc() }.ok()?;
+                let luid = luid_key(desc.AdapterLuid.HighPart, desc.AdapterLuid.LowPart);
+                let monitors: Vec<isize> = output_monitors(&adapter)
+                    .ok()?
+                    .into_iter()
+                    .map(|(_, monitor)| monitor)
+                    .collect();
+                adapters.push((luid, monitors));
+            }
+            Err(error) if error.code() == DXGI_ERROR_NOT_FOUND => break,
+            // A transient enumeration failure must not be mistaken for a confirmed cross-adapter move.
+            Err(_) => return None,
+        }
+    }
+    monitor_on_other_adapter_snapshot(own_luid, &adapters, monitor)
+}
+
 /// Enumerates all adapter outputs and their HMONITOR values (outputs not connected to the desktop have HMONITOR 0).
 fn output_monitors(adapter: &IDXGIAdapter) -> Result<Vec<(IDXGIOutput, isize)>> {
     let mut outputs = Vec::new();
@@ -544,6 +603,13 @@ impl Tracker {
             }
             Err(error) => {
                 check_device(gpu)?;
+                if let Some(adapter) = monitor_on_other_adapter(gpu, self.monitor) {
+                    // DDA cannot duplicate an output owned by another adapter; rebuilding the whole GPU
+                    // pipeline is out of scope, so stop cleanly instead of retrying forever.
+                    bail!(
+                        "capture_failed: The game window moved to a monitor driven by a different graphics adapter (adapter {adapter}); DDA cannot continue on the original adapter. Restart with window capture to record across adapters. ({error:#})"
+                    );
+                }
                 let since = *self.failing_since.get_or_insert_with(|| {
                     eprintln!("DDA recreation failed; continuing to retry: {error:#}");
                     Instant::now()
@@ -891,6 +957,31 @@ mod tests {
                     .all(|&v| v == 0));
             }
         }
+    }
+
+    #[test]
+    fn cross_adapter_requires_a_positive_luid_match_on_another_adapter() {
+        let snapshot = [(1, vec![0x10]), (2, vec![0x20]), (3, vec![])];
+        assert_eq!(monitor_on_other_adapter_snapshot(1, &snapshot, 0x20), Some(1));
+        assert_eq!(
+            monitor_on_other_adapter_snapshot(1, &snapshot, 0x10),
+            None,
+            "the monitor is still driven by the recording adapter"
+        );
+        assert_eq!(
+            monitor_on_other_adapter_snapshot(1, &snapshot, 0x99),
+            None,
+            "a monitor that is temporarily absent must stay retryable"
+        );
+        assert_eq!(
+            monitor_on_other_adapter_snapshot(1, &[(2, vec![0x10])], 0x10),
+            Some(0),
+            "a same-numbered monitor on a different adapter is a confirmed move"
+        );
+        assert_eq!(
+            monitor_on_other_adapter_snapshot(1, &[(1, vec![]), (2, vec![])], 0x99),
+            None
+        );
     }
 
     #[test]
