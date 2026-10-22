@@ -8,7 +8,7 @@ mod process;
 
 use std::marker::PhantomData;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::mpsc::{self, Receiver, SyncSender, TryRecvError, TrySendError};
+use std::sync::mpsc::{self, Receiver, Sender, SyncSender, TryRecvError, TrySendError};
 use std::sync::Arc;
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
@@ -59,7 +59,40 @@ pub fn list_devices() -> Result<AudioDevices> {
 pub struct AudioCapture {
     stop: Arc<AtomicBool>,
     workers: Vec<JoinHandle<()>>,
-    warning: Option<String>,
+    warnings: Receiver<AudioWarning>,
+    warning_tx: Sender<AudioWarning>,
+}
+
+/// A user-visible audio degradation. The session turns these into one warning event each.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AudioWarning {
+    pub code: &'static str,
+    pub message: String,
+}
+
+/// Missing default endpoints are expected when a device is disabled; explicit bad IDs are not.
+fn missing_endpoint(error: &anyhow::Error) -> bool {
+    format!("{error:#}").contains("audio_device_missing:")
+}
+
+fn missing_endpoint_warning(mic: bool, error: &anyhow::Error) -> AudioWarning {
+    let source = if mic { "Microphone" } else { "System audio" };
+    AudioWarning {
+        code: "audio_device_missing",
+        message: format!(
+            "{source} is enabled but no matching audio device was found; recording will continue with silence for that source: {error:#}"
+        ),
+    }
+}
+
+fn source_lost_warning(mic: bool, error: &anyhow::Error) -> AudioWarning {
+    let source = if mic { "Microphone" } else { "System audio" };
+    AudioWarning {
+        code: "audio_source_lost",
+        message: format!(
+            "{source} capture stopped unexpectedly; continuing to record video with silence for that source: {error:#}"
+        ),
+    }
 }
 
 impl AudioCapture {
@@ -76,10 +109,12 @@ impl AudioCapture {
         sink: Box<dyn AudioSink>,
     ) -> Result<Self> {
         cfg.validate().context("audio_failed: Invalid audio parameters")?;
+        let (warning_tx, warnings) = mpsc::channel();
         let mut capture = Self {
             stop: Arc::new(AtomicBool::new(false)),
             workers: Vec::new(),
-            warning: None,
+            warnings,
+            warning_tx,
         };
         let system = if cfg.render_enabled {
             capture.optional_endpoint(
@@ -100,17 +135,34 @@ impl AudioCapture {
         }
         let config = cfg.clone();
         let stop = capture.stop.clone();
+        let warning_tx = capture.warning_tx.clone();
         // Mix on a separate worker; WASAPI threads only copy packets and try_send without waiting for consumers.
         let worker = thread::Builder::new()
             .name("aditorrec-audio-mix".into())
-            .spawn(move || mix_loop(system, mic, origin_ticks, &config, &stop, sink))
+            .spawn(move || {
+                mix_loop(
+                    system,
+                    mic,
+                    origin_ticks,
+                    &config,
+                    &stop,
+                    sink,
+                    warning_tx,
+                )
+            })
             .context("audio_failed: Failed to create mixing thread")?;
         capture.workers.push(worker);
         Ok(capture)
     }
 
+    /// Returns pending warnings in order; startup warnings are queued before this returns.
+    pub fn drain_warnings(&mut self) -> Vec<AudioWarning> {
+        self.warnings.try_iter().collect()
+    }
+
+    /// Legacy single-warning accessor used by the device integration tests.
     pub fn take_warning(&mut self) -> Option<String> {
-        self.warning.take()
+        self.warnings.try_recv().ok().map(|warning| warning.message)
     }
 
     pub fn stop(mut self) {
@@ -125,7 +177,13 @@ impl AudioCapture {
     ) -> Result<Option<Source>> {
         match self.spawn_endpoint(id, mic, pid) {
             Ok(source) => Ok(Some(source)),
-            Err(error) if format!("{error:#}").contains("audio_device_missing:") => Ok(None),
+            Err(error) if missing_endpoint(&error) => {
+                // Keep the silent AAC track and audio=true metadata; only surface the missing source to the user.
+                let _ = self
+                    .warning_tx
+                    .send(missing_endpoint_warning(mic, &error));
+                Ok(None)
+            }
             Err(error) => Err(error),
         }
     }
@@ -134,6 +192,7 @@ impl AudioCapture {
         let (packets_tx, packets_rx) = mpsc::sync_channel(PACKET_CAPACITY);
         let (ready_tx, ready_rx) = mpsc::sync_channel(1);
         let stop = Arc::clone(&self.stop);
+        let warning_tx = self.warning_tx.clone();
         let worker = thread::Builder::new()
             .name(
                 if mic {
@@ -144,10 +203,12 @@ impl AudioCapture {
                 .into(),
             )
             .spawn(move || {
-                let mut warning = None;
                 let opened = if let Some(pid) = pid {
                     EndpointStream::open_process(pid).or_else(|error| {
-                        warning = Some(format!("Game-only audio unavailable; switched to system audio: {error:#}"));
+                        let _ = warning_tx.send(AudioWarning {
+                            code: "game_audio_unavailable",
+                            message: format!("Game-only audio unavailable; switched to system audio: {error:#}"),
+                        });
                         EndpointStream::open(&id, false)
                     })
                 } else {
@@ -156,17 +217,18 @@ impl AudioCapture {
                 let stream = match opened {
                     Ok(stream) => stream,
                     Err(error) => {
-                        let _ = ready_tx.send((Err(format!("{error:#}")), warning));
+                        let _ = ready_tx.send(Err(format!("{error:#}")));
                         return;
                     }
                 };
-                if ready_tx.send((Ok(stream.format.clone()), warning)).is_err() {
+                if ready_tx.send(Ok(stream.format.clone())).is_err() {
                     return;
                 }
                 let dropped = AtomicU64::new(0);
                 if let Err(error) = stream.run(&packets_tx, &stop, &dropped) {
-                    eprintln!("audio_failed: Audio capture interrupted: {error:#}");
-                    stop.store(true, Ordering::Release);
+                    // A single endpoint failure only loses that source; the mixer keeps producing silence and video continues.
+                    eprintln!("audio_source_lost: Audio capture interrupted: {error:#}");
+                    let _ = warning_tx.send(source_lost_warning(mic, &error));
                 }
                 let dropped = dropped.load(Ordering::Relaxed);
                 if dropped != 0 {
@@ -175,13 +237,10 @@ impl AudioCapture {
             })
             .context("audio_failed: Failed to create audio capture thread")?;
         self.workers.push(worker);
-        let (format, warning) = ready_rx
+        let format = ready_rx
             .recv_timeout(Duration::from_secs(5))
-            .context("audio_failed: Failed to wait for audio device startup")?;
-        if warning.is_some() {
-            self.warning = warning;
-        }
-        let format = format.map_err(|message| anyhow::anyhow!("audio_failed: {message}"))?;
+            .context("audio_failed: Failed to wait for audio device startup")?
+            .map_err(|message| anyhow::anyhow!("audio_failed: {message}"))?;
         Ok(Source::new(format, packets_rx))
     }
 
@@ -529,7 +588,6 @@ struct Source {
     anchor: Option<i64>,
     input_frames: i64,
     output_frames: i64,
-    disconnected: bool,
 }
 
 impl Source {
@@ -541,7 +599,6 @@ impl Source {
             anchor: None,
             input_frames: 0,
             output_frames: 0,
-            disconnected: false,
         }
     }
 
@@ -550,10 +607,7 @@ impl Source {
             let packet = match self.packets.try_recv() {
                 Ok(packet) => packet,
                 Err(TryRecvError::Empty) => break,
-                Err(TryRecvError::Disconnected) => {
-                    self.disconnected = true;
-                    break;
-                }
+                Err(TryRecvError::Disconnected) => break,
             };
             self.convert(packet, timeline, origin)?;
         }
@@ -601,28 +655,30 @@ fn mix_loop(
     config: &AudioConfig,
     stop: &AtomicBool,
     mut sink: Box<dyn AudioSink>,
+    warnings: Sender<AudioWarning>,
 ) {
     let cursor = frames_from_ticks(now_ticks() - origin).max(0);
     let mut system_audio = Timeline::new(cursor);
     let mut mic_audio = Timeline::new(cursor);
     loop {
-        let result: Result<()> = (|| {
-            if let Some(system) = &mut system {
-                system.drain(&mut system_audio, origin)?;
-            }
-            if let Some(mic) = &mut mic {
-                mic.drain(&mut mic_audio, origin)?;
-            }
-            Ok(())
-        })();
-        if let Err(error) = result {
-            eprintln!("audio_failed: Audio format conversion failed: {error:#}");
-            return;
+        let system_error = system
+            .as_mut()
+            .and_then(|source| source.drain(&mut system_audio, origin).err());
+        if let Some(error) = system_error {
+            eprintln!("audio_source_lost: System audio conversion failed: {error:#}");
+            let _ = warnings.send(source_lost_warning(false, &error));
+            system = None;
         }
-        let finished = stop.load(Ordering::Acquire)
-            || ((system.is_some() || mic.is_some())
-                && system.as_ref().is_none_or(|source| source.disconnected)
-                && mic.as_ref().is_none_or(|source| source.disconnected));
+        let mic_error = mic
+            .as_mut()
+            .and_then(|source| source.drain(&mut mic_audio, origin).err());
+        if let Some(error) = mic_error {
+            eprintln!("audio_source_lost: Microphone conversion failed: {error:#}");
+            let _ = warnings.send(source_lost_warning(true, &error));
+            mic = None;
+        }
+        // Continue until the session stops: when all sources are gone we still emit silence so audio and video stay aligned.
+        let finished = stop.load(Ordering::Acquire);
         let now = frames_from_ticks(now_ticks() - origin);
         while now > system_audio.cursor {
             let frames = if finished {
@@ -657,12 +713,22 @@ fn mix_loop(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
 
     fn packet(pts: i64, flags: u32, value: f32, frames: u32) -> Packet {
         Packet {
             bytes: (0..frames * 2).flat_map(|_| value.to_le_bytes()).collect(),
             frames,
             flags,
+            pts,
+        }
+    }
+
+    fn broken_packet(pts: i64) -> Packet {
+        Packet {
+            bytes: vec![0; 4],
+            frames: 1,
+            flags: 0,
             pts,
         }
     }
@@ -753,5 +819,200 @@ mod tests {
         assert!(!microphone.ready(480, 10_079, 9600));
         assert!(microphone.ready(480, 10_080, 9600));
         assert!(source.anchor.is_none());
+    }
+
+    #[test]
+    fn missing_default_endpoint_warns_but_explicit_missing_device_stays_fatal() {
+        let default = anyhow::anyhow!("audio_failed: audio_device_missing: No default audio device");
+        assert!(missing_endpoint(&default));
+        let warning = missing_endpoint_warning(false, &default);
+        assert_eq!(warning.code, "audio_device_missing");
+        assert!(warning.message.contains("System audio"));
+        assert!(missing_endpoint_warning(true, &default)
+            .message
+            .contains("Microphone"));
+
+        let explicit = anyhow::anyhow!("audio_failed: Specified audio device not found: 0x80070002");
+        assert!(!missing_endpoint(&explicit));
+    }
+
+    #[test]
+    fn runtime_source_loss_warning_names_the_failed_source() {
+        let error = anyhow::anyhow!("WASAPI GetBuffer failed");
+        let system = source_lost_warning(false, &error);
+        assert_eq!(system.code, "audio_source_lost");
+        assert!(system.message.contains("System audio"));
+        assert!(system.message.contains("continuing to record video"));
+        assert!(source_lost_warning(true, &error)
+            .message
+            .contains("Microphone"));
+    }
+
+    struct Collect(Arc<Mutex<Vec<Vec<f32>>>>);
+
+    impl AudioSink for Collect {
+        fn on_audio(&mut self, interleaved: &[f32], _pts: i64) {
+            self.0.lock().unwrap().push(interleaved.to_vec());
+        }
+    }
+
+    #[test]
+    fn source_loss_keeps_emitting_silence_until_the_session_stops() {
+        let (sender, packets) = mpsc::sync_channel(PACKET_CAPACITY);
+        let format = Format::new(48_000, 2, 8, Sample::Float(32), 3).unwrap();
+        let source = Source::new(format, packets);
+        let origin = now_ticks();
+        // Cover startup scheduling delay; once these packets are consumed the producer is gone.
+        for slot in 0..10 {
+            let pts = origin + slot * TICKS_PER_SEC / 100;
+            sender.send(packet(pts, 0, 0.25, 480)).unwrap();
+        }
+        drop(sender);
+
+        let stop = Arc::new(AtomicBool::new(false));
+        let worker_stop = stop.clone();
+        let blocks = Arc::new(Mutex::new(Vec::new()));
+        let worker_blocks = blocks.clone();
+        let (warnings, observed) = mpsc::channel();
+        let worker = thread::spawn(move || {
+            mix_loop(
+                Some(source),
+                None,
+                origin,
+                &AudioConfig::default(),
+                &worker_stop,
+                Box::new(Collect(worker_blocks)),
+                warnings,
+            );
+        });
+        thread::sleep(Duration::from_millis(250));
+        stop.store(true, Ordering::Release);
+        worker.join().unwrap();
+
+        let blocks = blocks.lock().unwrap();
+        assert!(blocks.len() >= 4, "expected continued mixing, got {}", blocks.len());
+        assert!(
+            blocks.iter().any(|block| block.iter().any(|sample| *sample != 0.0)),
+            "the packet received before the loss must still be audible"
+        );
+        assert!(
+            blocks.last().unwrap().iter().all(|sample| *sample == 0.0),
+            "the mixer must fill the lost source with silence"
+        );
+        assert!(
+            observed.try_recv().is_err(),
+            "normal sender teardown is not an audio failure"
+        );
+    }
+
+    #[test]
+    fn one_lost_source_keeps_the_other_source_audible() {
+        let format = Format::new(48_000, 2, 8, Sample::Float(32), 3).unwrap();
+        let (system_sender, system_packets) = mpsc::sync_channel(PACKET_CAPACITY);
+        let (mic_sender, mic_packets) = mpsc::sync_channel(PACKET_CAPACITY);
+        let origin = now_ticks();
+        system_sender
+            .send(packet(origin, 0, 0.25, 480))
+            .unwrap();
+        system_sender
+            .send(broken_packet(origin + TICKS_PER_SEC / 100))
+            .unwrap();
+        drop(system_sender);
+        // Keep the microphone alive long enough to prove it still reaches the mixer after the system source dies.
+        for slot in 0..20 {
+            let pts = origin + slot * TICKS_PER_SEC / 100;
+            mic_sender
+                .send(packet(pts, 0, 0.5, 480))
+                .unwrap();
+        }
+        drop(mic_sender);
+
+        let stop = Arc::new(AtomicBool::new(false));
+        let worker_stop = stop.clone();
+        let blocks = Arc::new(Mutex::new(Vec::new()));
+        let worker_blocks = blocks.clone();
+        let (warnings, observed) = mpsc::channel();
+        let worker = thread::spawn(move || {
+            mix_loop(
+                Some(Source::new(format.clone(), system_packets)),
+                Some(Source::new(format, mic_packets)),
+                origin,
+                &AudioConfig::default(),
+                &worker_stop,
+                Box::new(Collect(worker_blocks)),
+                warnings,
+            );
+        });
+        thread::sleep(Duration::from_millis(300));
+        stop.store(true, Ordering::Release);
+        worker.join().unwrap();
+
+        let warnings: Vec<_> = observed.try_iter().collect();
+        assert_eq!(warnings.len(), 1, "only the broken system source must warn");
+        assert_eq!(warnings[0].code, "audio_source_lost");
+        assert!(warnings[0].message.contains("System audio"));
+
+        let blocks = blocks.lock().unwrap();
+        assert!(
+            blocks.len() >= 10,
+            "expected the microphone to keep mixing, got {} blocks",
+            blocks.len()
+        );
+        assert!(
+            blocks
+                .iter()
+                .any(|block| block.iter().any(|sample| (*sample - 0.5).abs() < 1e-6)),
+            "the surviving microphone source must remain audible"
+        );
+        assert!(
+            blocks.last().unwrap().iter().all(|sample| *sample == 0.0),
+            "after its buffer is exhausted the lost source must be filled with silence"
+        );
+    }
+
+    #[test]
+    fn both_lost_sources_keep_emitting_silence_until_stop() {
+        let format = Format::new(48_000, 2, 8, Sample::Float(32), 3).unwrap();
+        let (system_sender, system_packets) = mpsc::sync_channel(PACKET_CAPACITY);
+        let (mic_sender, mic_packets) = mpsc::sync_channel(PACKET_CAPACITY);
+        let origin = now_ticks();
+        system_sender.send(broken_packet(origin)).unwrap();
+        drop(system_sender);
+        mic_sender.send(broken_packet(origin)).unwrap();
+        drop(mic_sender);
+
+        let stop = Arc::new(AtomicBool::new(false));
+        let worker_stop = stop.clone();
+        let blocks = Arc::new(Mutex::new(Vec::new()));
+        let worker_blocks = blocks.clone();
+        let (warnings, observed) = mpsc::channel();
+        let worker = thread::spawn(move || {
+            mix_loop(
+                Some(Source::new(format.clone(), system_packets)),
+                Some(Source::new(format, mic_packets)),
+                origin,
+                &AudioConfig::default(),
+                &worker_stop,
+                Box::new(Collect(worker_blocks)),
+                warnings,
+            );
+        });
+        thread::sleep(Duration::from_millis(250));
+        stop.store(true, Ordering::Release);
+        worker.join().unwrap();
+
+        let warnings: Vec<_> = observed.try_iter().collect();
+        assert_eq!(warnings.len(), 2);
+        assert!(warnings.iter().all(|warning| warning.code == "audio_source_lost"));
+        assert!(warnings.iter().any(|warning| warning.message.contains("System audio")));
+        assert!(warnings.iter().any(|warning| warning.message.contains("Microphone")));
+
+        let blocks = blocks.lock().unwrap();
+        assert!(
+            blocks.len() >= 10,
+            "the mixer must keep advancing after every source is lost, got {} blocks",
+            blocks.len()
+        );
+        assert!(blocks.iter().all(|block| block.iter().all(|sample| *sample == 0.0)));
     }
 }

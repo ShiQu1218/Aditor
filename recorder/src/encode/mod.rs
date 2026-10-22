@@ -161,7 +161,7 @@ pub(crate) fn candidate_names(codec: Codec, encoder: &str) -> Vec<&'static str> 
 fn candidates(video: &VideoParams) -> Vec<&'static str> {
     candidate_names(video.codec, &video.encoder)
 }
-fn codec_of(name: &str) -> Codec {
+pub(crate) fn codec_of(name: &str) -> Codec {
     if name.starts_with("hevc_") {
         Codec::Hevc
     } else if name.starts_with("av1_") {

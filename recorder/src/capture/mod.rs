@@ -26,7 +26,7 @@ use windows::Graphics::SizeInt32;
 use windows::Win32::Foundation::{HWND, LPARAM, RECT};
 use windows::Win32::Graphics::Direct3D11::{ID3D11Texture2D, D3D11_TEXTURE2D_DESC};
 use windows::Win32::Graphics::Dxgi::IDXGIDevice;
-use windows::Win32::Graphics::Gdi::{MonitorFromWindow, MONITOR_DEFAULTTONEAREST};
+use windows::Win32::Graphics::Gdi::{MonitorFromWindow, HMONITOR, MONITOR_DEFAULTTONEAREST};
 use windows::Win32::System::WinRT::Direct3D11::{
     CreateDirect3D11DeviceFromDXGIDevice, IDirect3DDxgiInterfaceAccess,
 };
@@ -360,12 +360,20 @@ fn pack_size(size: SizeInt32) -> u64 {
 struct ActiveCapture {
     hwnd: HWND,
     monitor: bool,
+    /// Actual monitor of a fallback display capture; `None` for window captures.
+    monitor_target: Option<HMONITOR>,
     item: GraphicsCaptureItem,
     pool: Direct3D11CaptureFramePool,
     session: GraphicsCaptureSession,
     frame_token: Option<i64>,
     closed_token: Option<i64>,
     signals: Arc<Signals>,
+}
+
+/// Whether a monitor-fallback capture must be rebuilt because the window now sits on another display.
+/// Window captures follow the window themselves and never need this check.
+fn monitor_moved(captured: Option<HMONITOR>, current: HMONITOR) -> bool {
+    captured.is_some_and(|captured| captured != current)
 }
 
 impl ActiveCapture {
@@ -377,12 +385,18 @@ impl ActiveCapture {
     ) -> Result<Self> {
         let interop: IGraphicsCaptureItemInterop =
             factory::<GraphicsCaptureItem, IGraphicsCaptureItemInterop>()?;
+        // Resolve the monitor once so the item and the change detector always reference the same display.
+        let monitor_target = if monitor {
+            // SAFETY: HWND is a visible top-level window for this PID; the monitor is only queried.
+            Some(unsafe { MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST) })
+        } else {
+            None
+        };
         // SAFETY: HWND is a visible top-level window for this PID; display capture uses its valid HMONITOR.
         let item: GraphicsCaptureItem = unsafe {
-            if monitor {
-                interop.CreateForMonitor(MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST))?
-            } else {
-                interop.CreateForWindow(hwnd)?
+            match monitor_target {
+                Some(monitor) => interop.CreateForMonitor(monitor)?,
+                None => interop.CreateForWindow(hwnd)?,
             }
         };
         let size = item.Size()?;
@@ -405,7 +419,10 @@ impl ActiveCapture {
             size,
         )?;
         let session = pool.CreateCaptureSession(&item)?;
-        session.SetIsCursorCaptureEnabled(false)?;
+        if let Err(error) = session.SetIsCursorCaptureEnabled(false) {
+            // The cursor property needs Windows 10 2004+; failing to disable it must not abort capture.
+            eprintln!("WGC: Could not disable cursor capture; the cursor may appear in the recording: {error}");
+        }
         // Older Windows versions lack these two interfaces; capture still works without them.
         let _ = session.SetIsBorderRequired(false);
         let _ = session.SetMinUpdateInterval(TimeSpan {
@@ -421,6 +438,7 @@ impl ActiveCapture {
         let mut active = Self {
             hwnd,
             monitor,
+            monitor_target,
             item,
             pool,
             session,
@@ -599,6 +617,19 @@ fn run(
             Ok(()) | Err(mpsc::RecvTimeoutError::Disconnected) => break,
             Err(mpsc::RecvTimeoutError::Timeout) => {}
         }
+        if Instant::now() < next_check {
+            continue;
+        }
+        next_check = Instant::now() + Duration::from_secs(1);
+        // A closed item or an HWND that no longer belongs to the target PID invalidates the capture.
+        // Check this before any rebuild so a reused HWND owned by another process is never captured.
+        if active.as_ref().is_some_and(|capture| {
+            capture.signals.closed.load(Ordering::Acquire)
+                || !window_matches(capture.hwnd, opts.pid)
+        }) {
+            drop(active.take());
+            let _ = notices.send(CaptureNotice::WindowLost);
+        }
         if let Some(capture) = &active {
             if !capture.monitor && capture.signals.fallback.load(Ordering::Acquire) {
                 let hwnd = capture.hwnd;
@@ -615,16 +646,26 @@ fn run(
                 }
             }
         }
-        if Instant::now() < next_check {
-            continue;
-        }
-        next_check = Instant::now() + Duration::from_secs(1);
-        if active.as_ref().is_some_and(|capture| {
-            capture.signals.closed.load(Ordering::Acquire)
-                || !window_matches(capture.hwnd, opts.pid)
-        }) {
+        let moved = active.as_ref().and_then(|capture| {
+            let captured = capture.monitor_target?;
+            // SAFETY: The HWND belongs to the target PID and is only queried for its current monitor.
+            let current = unsafe { MonitorFromWindow(capture.hwnd, MONITOR_DEFAULTTONEAREST) };
+            monitor_moved(Some(captured), current).then_some(capture.hwnd)
+        });
+        if let Some(hwnd) = moved {
+            // Stop the old monitor capture before creating the new item; on failure `active` stays
+            // None, so the old desktop can never keep being recorded.
             drop(active.take());
-            let _ = notices.send(CaptureNotice::WindowLost);
+            match ActiveCapture::new(hwnd, true, &opts, &shared) {
+                Ok(capture) => {
+                    capture.announce(&notices);
+                    active = Some(capture);
+                }
+                Err(error) => {
+                    eprintln!("Failed to move display capture to the new monitor: {error:#}");
+                    let _ = notices.send(CaptureNotice::WindowLost);
+                }
+            }
         }
         if active.is_none() {
             if let Ok(hwnd) = find_window(opts.pid) {
@@ -699,6 +740,14 @@ mod tests {
         assert!(!gate.accept(0));
         assert!(gate.accept(10 * TICKS_PER_SEC));
         assert!(!gate.accept(10 * TICKS_PER_SEC));
+    }
+
+    #[test]
+    fn monitor_fallback_rebuilds_only_when_the_window_moves_to_another_display() {
+        let monitor = |value: usize| HMONITOR(value as *mut core::ffi::c_void);
+        assert!(!monitor_moved(None, monitor(2)));
+        assert!(!monitor_moved(Some(monitor(1)), monitor(1)));
+        assert!(monitor_moved(Some(monitor(1)), monitor(2)));
     }
 
     #[test]
