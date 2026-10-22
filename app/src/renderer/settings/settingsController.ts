@@ -53,6 +53,7 @@ export interface SettingsApi {
   update?: {
     getStatus(): Promise<UpdateStatus>
     check(): Promise<UpdateStatus>
+    download(): Promise<boolean>
     install(): Promise<boolean>
     openReleases(): Promise<boolean>
     onStatus(cb: (status: UpdateStatus) => void): () => void
@@ -180,6 +181,20 @@ export class SettingsController {
     this.patch({ update: { state: 'checking' } })
     try {
       this.patch({ update: await this.api.update.check() })
+    } catch (e) {
+      this.patch({ update: { state: 'error', error: e instanceof Error ? e.message : String(e) } })
+    }
+  }
+
+  async downloadUpdate(): Promise<void> {
+    if (!this.api.update) return
+    // Show progress immediately when starting from "available"; main remains authoritative and broadcasts the result.
+    if (this.state.update.state === 'available') {
+      this.patch({ update: { state: 'downloading', version: this.state.update.version, percent: 0 } })
+    }
+    try {
+      const started = await this.api.update.download()
+      if (!started) await this.refreshUpdate()
     } catch (e) {
       this.patch({ update: { state: 'error', error: e instanceof Error ? e.message : String(e) } })
     }

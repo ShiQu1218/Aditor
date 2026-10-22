@@ -6,7 +6,7 @@
 
 > **Automatic highlight recording, analysis and editing for Apex Legends and VALORANT**
 >
-> Record your *Apex Legends* or *VALORANT* matches, or drag in videos you already have. Aditor marks every Apex knockdown and assist, or every VALORANT kill and death, automatically, then lets you pick highlights on a timeline and export them. Everything runs locally on your PC from on-screen pixels only — no cloud, no game injection.
+> Record your *Apex Legends* or *VALORANT* matches, or drag in videos you already have. Aditor marks every Apex knockdown and assist, or every VALORANT kill and death, automatically, then lets you pick highlights on a timeline and export them. Video processing runs locally on your PC from on-screen pixels only, without game injection. Filtered Sentry error and performance diagnostics are on by default and can be turned off in Settings; see [diagnostics details](docs/sentry.md).
 
 > [!IMPORTANT]
 > **Apex Legends: Battle Royale (casual) and Ranked only.** Wildcard, Team Deathmatch and other modes are not supported.

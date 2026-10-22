@@ -246,7 +246,7 @@ export class RecordingSessionService implements RecordingService {
   }
 
   async capabilities(): Promise<RecorderCapabilities | null> {
-    const client = new AditorrecClient(this.deps.recorderCommand)
+    const client = new AditorrecClient(this.deps.recorderCommand, this.deps.onDiagnostic)
     this.capabilityRequests.add(client)
     try { return await client.hello() }
     catch { return null }
@@ -304,6 +304,7 @@ export class RecordingSessionService implements RecordingService {
       sessionId: id, dir, command: this.deps.liveEngineCommand, profileDir: gameProfileDir(this.deps.profileDir, game),
       sceneDir: game === DEFAULT_GAME ? this.deps.sceneDir : gameSceneDir(this.deps.profileDir, game), aspect, game,
       restartBaseMs: this.deps.liveRestartBaseMs,
+      onDiagnostic: this.deps.onDiagnostic,
       recordEvent: (event) => { if (this.active?.live === live) this.recordEvent(this.active, event) },
       notice: (message) => this.notice('error', message)
     })
@@ -448,7 +449,7 @@ export class RecordingSessionService implements RecordingService {
         startedAt, postAnalysis: settings.postAnalysis, mode: settings.mode, backend: session?.backend ?? settings.backend, gameAspect, game
       })
       await writeSnapshot()
-      const client = new AditorrecClient(this.deps.recorderCommand)
+      const client = new AditorrecClient(this.deps.recorderCommand, this.deps.onDiagnostic)
       const live = this.createLive(id, dir, gameAspect, game)
       session = { pid, game, id, dir, outputDir, client, ending: false, warned: false, writes: Promise.resolve(), sequences: new Set(), live,
         mode: settings.mode, cuts: Promise.resolve(), cutPending: false, cutting: false, failedCuts: new Set(), backend: settings.backend, obs: null, obsWork: Promise.resolve(), captured: false,

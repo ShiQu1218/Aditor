@@ -9,6 +9,7 @@ import type { GameProcess } from './game-watcher'
 import type { ValorantClient } from './valorant-client'
 import { RecordingSessionService } from './session'
 import type { StorageKind } from './storage-location'
+import type { ChildDiagnosticHandler } from '../../shared/child-diagnostics'
 
 export interface RecorderCommand {
   command: string
@@ -19,6 +20,7 @@ export interface RecorderCommand {
 export type RecordingNoticeKind = 'matchStart' | 'matchEnd' | 'matchCancel' | 'finalized' | 'diskWarn' | 'warning' | 'error'
 
 export interface RecordingDeps {
+  onDiagnostic?: ChildDiagnosticHandler
   /** Decrypt the password with safeStorage in the main process; never return it through status or settings IPC. */
   getObsPassword?: () => string | undefined
   /** Test injection: milliseconds to retain OBS recording after each match (defaults to MATCH_POST_PAD_SEC). */

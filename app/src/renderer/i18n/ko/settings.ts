@@ -181,23 +181,30 @@ export const settingsI18n: Messages['settingsI18n'] = {
     },
     updateStatus: {
       title: '소프트웨어 업데이트',
-      desc: '새 버전을 GitHub에서 내려받아 Aditor를 종료할 때 자동으로 설치합니다. 바로 다시 시작해 설치할 수도 있습니다.',
+      desc: 'GitHub에서 새 버전을 확인합니다. "업데이트 다운로드"를 선택할 때만 내려받고, "지금 다시 시작하고 업데이트"를 선택할 때만 설치합니다.',
       keywords: ['업데이트', '새 버전', '버전', 'update', 'github', '다운로드'],
       unsupported: '포터블 버전과 개발 버전은 자동 업데이트를 지원하지 않습니다',
       idle: '아직 확인하지 않음',
       checking: '확인 중…',
       latest: '최신 버전입니다',
+      available: '새 버전 {version}을(를) 사용할 수 있습니다',
       downloading: '{version} 다운로드 중 ({pct}%)',
-      downloaded: '{version} 다운로드 완료, Aditor 종료 시 설치',
+      downloaded: '{version} 다운로드 완료, "지금 다시 시작하고 업데이트"로 설치',
       error: '업데이트 확인 실패: {msg}',
       check: '업데이트 확인',
+      download: '업데이트 다운로드',
       install: '지금 다시 시작하고 업데이트',
       openReleases: '다운로드 페이지 열기'
     },
     autoUpdate: {
       title: '업데이트 자동 확인',
-      desc: '시작할 때와 6시간마다 확인하고, 새 버전이 있으면 백그라운드에서 내려받습니다.',
+      desc: '시작할 때와 6시간마다 확인하며, 자동으로 내려받거나 설치하지 않습니다.',
       keywords: ['업데이트', '자동', 'update', 'github']
+    },
+    telemetryEnabled: {
+      title: '오류 및 성능 진단 공유',
+      desc: '기본적으로 필터링된 앱, 분석, 녹화 오류 및 성능 데이터를 Sentry로 전송합니다. 언제든지 끌 수 있습니다. 동영상, 스크린샷, 전체 작업 기록은 포함하지 않습니다. 다시 켠 후에는 재시작하세요.',
+      keywords: ['sentry', 'diagnostics', 'privacy']
     },
     trademark: {
       title: '상표 고지',

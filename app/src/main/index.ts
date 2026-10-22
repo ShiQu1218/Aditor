@@ -1,10 +1,11 @@
 import { app, BrowserWindow, dialog, ipcMain, safeStorage } from 'electron'
-import { createQuitGuard } from './quit-guard'
+import { createAppQuitGuard } from './quit-guard'
 import { delimiter, join, resolve } from 'path'
 import { EngineClient } from './engine'
 import { Library } from './library'
 import { AnalysisQueue } from './queue'
-import { SettingsStore } from './settings'
+import { SettingsStore, loadSettings } from './settings'
+import { initializeTelemetry, updateTelemetryConsent, reportChildDiagnostic } from './telemetry'
 import { WatchManager } from './watch'
 import { ProjectStore } from './projects'
 import { registerIpcHandlers } from './ipc-handlers'
@@ -24,7 +25,7 @@ import { createRecordingNotifier } from './notify'
 import type { RecordingService } from '../shared/recording'
 import { obsPassword } from './settings-ipc'
 import { createDiagnosticLog } from './recording/diagnostic-log'
-import { canAutoUpdate, createAppUpdater, loadAutoUpdater } from './updater'
+import { canAutoUpdate, createAppUpdater, loadAutoUpdater, type AppUpdaterService } from './updater'
 import { broadcastUpdateStatus, registerUpdateIpc } from './update-ipc'
 
 // E2E hooks (ADITOR_E2E=1 only): use temporary appData/userData so tests do not touch user data; null in production.
@@ -45,6 +46,7 @@ let recordingService: RecordingService | null = null
 let tray: ReturnType<typeof createRecordingTray> | null = null
 let unregisterRecordingIpc: (() => void) | null = null
 let unsubscribeSettings: (() => void) | null = null
+let appUpdater: AppUpdaterService | null = null
 let quitting = false
 /** Currently active interface language (from the `language` setting; `auto` follows the Windows display language). */
 let locale: Locale = 'zh-TW'
@@ -161,7 +163,7 @@ async function initEngineAndServices(): Promise<void> {
   }
 
   const cmd = e2e?.fakeEngine ?? engineCommand(app.isPackaged)
-  engineClient = new EngineClient(cmd)
+  engineClient = new EngineClient({ ...cmd, onDiagnostic: reportChildDiagnostic })
   try {
     const res = await engineClient.start()
     console.log(`[Engine] Ready, version: ${res.engineVersion}`)
@@ -178,6 +180,7 @@ async function initEngineAndServices(): Promise<void> {
   // Reset leftover "analyzing" entries from the previous interrupted run; no queue is processing them.
   library.resetStaleAnalyzing()
   settingsStore = new SettingsStore(join(appDataDir(), 'settings.json'))
+  settingsStore.onChange((settings) => updateTelemetryConsent(settings.telemetryEnabled))
   syncLocale()
   queue = new AnalysisQueue(engineClient, library, {
     profileDir: templateProfileDir,
@@ -208,6 +211,7 @@ async function initEngineAndServices(): Promise<void> {
     }
   }
   recordingService = createRecordingService({
+    onDiagnostic: reportChildDiagnostic,
     log: createDiagnosticLog(join(appDataDir(), 'recording.log')),
     getSettings: () => settingsStore!.get().recording,
     getObsPassword: () => obsPassword(settingsStore!.get().recording, safeStorage),
@@ -260,12 +264,15 @@ async function initEngineAndServices(): Promise<void> {
   updateLoginItem()
   const unsubscribeLogin = settingsStore.onChange(updateLoginItem)
   // Auto-update is enabled only in installed builds; E2E does not connect to GitHub.
-  const updater = createAppUpdater({
+  appUpdater = createAppUpdater({
     updater: !e2e && canAutoUpdate(app.isPackaged) ? await loadAutoUpdater() : null,
     isEnabled: () => settingsStore!.get().autoUpdate,
-    notifyDownloaded: (version) => notify('finalized', tr('Aditor {version} 已下載完成，結束 Aditor 時會自動安裝。', { version })),
-    broadcast: broadcastUpdateStatus
+    notifyAvailable: (version) => notify('finalized', tr('Aditor {version} 有新版本可用，可在設定中選擇「下載更新」。', { version })),
+    broadcast: broadcastUpdateStatus,
+    // A manual install only requests quitting here; the quit guard starts the installer after finalization.
+    requestQuit: () => app.quit()
   })
+  const updater = appUpdater
   const unregisterUpdateIpc = registerUpdateIpc(updater)
   updater.start()
   const unsubscribeLanguage = settingsStore.onChange(() => {
@@ -308,21 +315,17 @@ async function initEngineAndServices(): Promise<void> {
   })
 }
 
-// Before quitting, wait for recording finalization, export/proxy ffmpeg termination, and engine shutdown (I7); still exit after a 5-second timeout.
-const quitGuard = createQuitGuard({
-  tasks: [
-    () => library?.flush(),
-    async () => {
-      try { await recordingService?.stop() }
-      finally {
-        library?.flush()
-        await engineClient?.stop()
-      }
-    },
-    () => cancelExport?.(),
-    async () => (await import('./proxy')).cancelAllProxies(),
-    () => watchManager?.stop()
-  ],
+// Before quitting, start export/proxy cancellation and folder-watching shutdown immediately, then always wait for recording
+// finalization (including FFmpeg remux), flush the library and stop the engine (I7). Finalization is critical; remaining cleanup keeps its 5-second bound.
+// A manual update install uses this same path and only spawns the NSIS installer after this guard finishes.
+const quitGuard = createAppQuitGuard({
+  stopRecording: () => recordingService?.stop(),
+  flushLibrary: () => library?.flush(),
+  stopEngine: () => engineClient?.stop(),
+  cancelExport: () => cancelExport?.(),
+  cancelProxies: async () => (await import('./proxy')).cancelAllProxies(),
+  stopWatcher: () => watchManager?.stop(),
+  installUpdate: () => appUpdater?.installIfRequested() ?? false,
   quit: () => app.quit(),
   timeoutMs: 5000
 })
@@ -330,11 +333,17 @@ const quitGuard = createQuitGuard({
 if (!app.requestSingleInstanceLock()) {
   app.quit()
 } else {
+  initializeTelemetry(loadSettings(join(appDataDir(), 'settings.json')).telemetryEnabled)
   app.on('second-instance', showMainWindow)
   app.whenReady().then(async () => {
     await initEngineAndServices()
     servicesReady = true
     if (openRequested) showMainWindow()
+    if (e2e && process.env.ADITOR_SENTRY_VERIFY === '1') {
+      const { verifyTelemetry } = await import('./telemetry-verification')
+      const { writeFileSync } = await import('fs')
+      writeFileSync(join(appDataDir(), 'sentry-verification.json'), JSON.stringify(await verifyTelemetry()))
+    }
     app.on('activate', showMainWindow)
   })
   app.on('before-quit', (e) => {

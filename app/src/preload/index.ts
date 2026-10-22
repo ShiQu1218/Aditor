@@ -3,6 +3,7 @@ import { RECORDING_CHANNELS, type LiveState, type LiveUpdate, type RecordingStat
 import { UPDATE_CHANNELS, type UpdateStatus } from '../shared/update'
 
 const api = {
+  telemetry: { enabled: (): Promise<boolean> => ipcRenderer.invoke('telemetry:enabled') },
   recording: {
     testObs: () => ipcRenderer.invoke(RECORDING_CHANNELS.testObs),
     getStatus: (): Promise<RecordingStatus> => ipcRenderer.invoke(RECORDING_CHANNELS.getStatus),
@@ -128,7 +129,9 @@ const api = {
   update: {
     getStatus: (): Promise<UpdateStatus> => ipcRenderer.invoke(UPDATE_CHANNELS.getStatus),
     check: (): Promise<UpdateStatus> => ipcRenderer.invoke(UPDATE_CHANNELS.check),
-    /** Quit and install immediately when an update has downloaded. */
+    /** Explicitly download the available update; checks never download automatically. */
+    download: (): Promise<boolean> => ipcRenderer.invoke(UPDATE_CHANNELS.download),
+    /** Explicitly install the downloaded update; the quit guard starts the installer after finalization. */
     install: (): Promise<boolean> => ipcRenderer.invoke(UPDATE_CHANNELS.install),
     /** Open GitHub Releases in a browser (manual download for portable builds). */
     openReleases: (): Promise<boolean> => ipcRenderer.invoke(UPDATE_CHANNELS.openReleases),

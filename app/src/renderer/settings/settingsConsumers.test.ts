@@ -34,6 +34,7 @@ const FIELD_CONSUMERS: Record<string, Array<[string, RegExp]>> = {
   autoSuggestOnOpen: [['renderer/studio/highlights.ts', /settings\.autoSuggestOnOpen/]],
   projectAutosave: [['renderer/editor/ProjectProvider.tsx', /projectAutosave/]],
   autoUpdate: [['main/index.ts', /\.autoUpdate/]],
+  telemetryEnabled: [['main/index.ts', /\.telemetryEnabled/]],
   defaultOutDir: [['renderer/studio/StudioScreen.tsx', /defaultOutDir/]],
   projectTrackCollapsed: [['renderer/studio/StudioScreen.tsx', /cfg\.projectTrackCollapsed/]],
   sameDayVideosCollapsed: [['renderer/studio/SameDayVideos.tsx', /settings\.sameDayVideosCollapsed/]],
@@ -61,6 +62,7 @@ const ROW_TARGETS: Record<string, { fields?: string[]; consumers?: Array<[string
   openh264: { consumers: [['main/ipc-handlers.ts', /hasOpenH264/]] },
   about: { consumers: [['renderer/settings/SettingControls.tsx', /__APP_VERSION__/]] },
   autoUpdate: { fields: ['autoUpdate'] },
+  telemetryEnabled: { fields: ['telemetryEnabled'] },
   updateStatus: { consumers: [['main/update-ipc.ts', /UPDATE_CHANNELS\.check/], ['renderer/settings/settingsController.ts', /update\.check/]] },
   trademark: { consumers: [['renderer/i18n/zh-TW.ts', /trademark/]] },
   ...Object.fromEntries(Object.keys(recordingI18n.rows).map((field) => [

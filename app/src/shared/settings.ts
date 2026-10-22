@@ -46,8 +46,10 @@ export interface Settings {
   autoSuggestOnOpen: boolean
   /** Automatically save projects (when disabled, restore the "unsaved changes" prompt behavior). */
   projectAutosave: boolean
-  /** Automatically check GitHub for updates and download in the background (installed builds only; manual checks are unaffected). */
+  /** Automatically check GitHub for updates; discovery never downloads or installs (installed builds only; manual checks are unaffected). */
   autoUpdate: boolean
+  /** Sentry diagnostics are on by default; an explicit opt-out is preserved. Enabling takes effect after restart. */
+  telemetryEnabled: boolean
   /** Default export folder (null prompts each time). */
   defaultOutDir: string | null
   /** Whether project tracks are collapsed by default: 'auto' collapses when the window is ≤800px tall, or use a fixed boolean. */
@@ -110,6 +112,7 @@ export const DEFAULT_SETTINGS: Settings = {
   autoSuggestOnOpen: true,
   projectAutosave: true,
   autoUpdate: true,
+  telemetryEnabled: true,
   defaultOutDir: null,
   projectTrackCollapsed: 'auto',
   sameDayVideosCollapsed: false,

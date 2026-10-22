@@ -21,6 +21,7 @@ a = Analysis(
         'aditor.cache',
         'aditor.calibrate',
         'aditor.decode',
+        'aditor.diagnostics',
         'aditor.derive',
         'aditor.detect',
         'aditor.errors',

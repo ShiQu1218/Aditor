@@ -4,6 +4,7 @@ import { StringDecoder } from 'string_decoder'
 import type { RecorderCapabilities, RecorderGpu } from '../../shared/recording'
 import type { RecorderCommand } from './index'
 import { tr } from '../../shared/locale'
+import { emitChildDiagnostic, type ChildDiagnosticHandler } from '../../shared/child-diagnostics'
 
 const MAX_BYTES = 64 * 1024
 /** `hello` may probe several GPUs and legitimately take a few seconds on some machines. */
@@ -33,7 +34,9 @@ export class AditorrecClient extends EventEmitter {
   private closing = false
   private closed: Promise<void> = Promise.resolve()
 
-  constructor(private command: RecorderCommand) { super() }
+  constructor(private command: RecorderCommand, private onDiagnostic?: ChildDiagnosticHandler) { super() }
+
+  get pid(): number | undefined { return this.proc?.pid }
 
   async hello(): Promise<RecorderCapabilities> {
     if (!this.proc) this.launch()
@@ -159,7 +162,10 @@ export class AditorrecClient extends EventEmitter {
           this.settle(msg.id, msg.ok === true ? msg : this.error(
             typeof msg.code === 'string' ? msg.code : 'bad_reply',
             typeof msg.message === 'string' ? msg.message : tr('錄影指令失敗')))
-        } else if (typeof msg.ev === 'string') this.emit('event', msg)
+        } else if (typeof msg.ev === 'string') {
+          if (msg.ev === 'error') this.error(String(msg.code ?? 'internal'), String(msg.message ?? 'Recorder error'))
+          this.emit('event', msg)
+        }
         else throw new Error()
       } catch { this.protocolError(); return }
     }
@@ -172,6 +178,7 @@ export class AditorrecClient extends EventEmitter {
   }
 
   private error(code: string, message: string): RecorderError {
+    if (!this.closing) emitChildDiagnostic(this.onDiagnostic, { component: 'rust-recorder', code, message })
     const log = this.stderr.toString('utf8').trim()
     return new RecorderError(code, log ? `${message}\n${log}` : message)
   }

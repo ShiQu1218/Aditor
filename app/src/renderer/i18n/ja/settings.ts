@@ -181,23 +181,30 @@ export const settingsI18n: Messages['settingsI18n'] = {
     },
     updateStatus: {
       title: 'ソフトウェアのアップデート',
-      desc: '新しいバージョンを GitHub からダウンロードし、Aditor の終了時に自動でインストールします。すぐに再起動してインストールすることもできます。',
+      desc: 'GitHub で新しいバージョンを確認します。「アップデートをダウンロード」を選んだときだけダウンロードし、「今すぐ再起動してアップデート」を選んだときだけインストールします。',
       keywords: ['アップデート', '更新', '新バージョン', 'バージョン', 'update', 'github', 'ダウンロード'],
       unsupported: 'ポータブル版と開発版は自動アップデートに対応していません',
       idle: '未確認',
       checking: '確認中…',
       latest: '最新バージョンです',
+      available: '新しいバージョン {version} を利用できます',
       downloading: '{version} をダウンロード中（{pct}%）',
-      downloaded: '{version} をダウンロードしました。Aditor の終了時にインストールします',
+      downloaded: '{version} をダウンロードしました。「今すぐ再起動してアップデート」でインストールします',
       error: 'アップデートの確認に失敗しました：{msg}',
       check: 'アップデートを確認',
+      download: 'アップデートをダウンロード',
       install: '今すぐ再起動してアップデート',
       openReleases: 'ダウンロードページを開く'
     },
     autoUpdate: {
       title: 'アップデートを自動で確認',
-      desc: '起動時と 6 時間ごとに確認し、新しいバージョンがあればバックグラウンドでダウンロードします。',
+      desc: '起動時と 6 時間ごとに確認します。自動でのダウンロードやインストールは行いません。',
       keywords: ['アップデート', '更新', '自動', 'update', 'github']
+    },
+    telemetryEnabled: {
+      title: 'エラーとパフォーマンス診断を共有',
+      desc: '初期設定でフィルタリング済みのアプリ・分析・録画エラーと性能データを Sentry に送信します。いつでも無効にできます。動画・スクリーンショット・操作履歴は含みません。再有効化後は再起動してください。',
+      keywords: ['sentry', 'diagnostics', 'privacy']
     },
     trademark: {
       title: '商標について',

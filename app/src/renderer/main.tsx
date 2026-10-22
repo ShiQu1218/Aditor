@@ -13,6 +13,7 @@ import './styles/lowperf.css'
 import App from './App'
 import { installGlobalDropGuard } from './lib/dropGuard'
 import { installPauseOnHide } from './lib/pauseOnHide'
+import { initializeRendererTelemetry } from './telemetry'
 
 // Prevent Chromium from navigating away from the app when files are dropped (I2).
 installGlobalDropGuard()
@@ -20,8 +21,8 @@ installGlobalDropGuard()
 const onWindowHidden = window.api?.app?.onWindowHidden
 if (typeof onWindowHidden === 'function') installPauseOnHide(onWindowHidden)
 
-ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
+void initializeRendererTelemetry().finally(() => ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
   <React.StrictMode>
     <App />
   </React.StrictMode>
-)
+))

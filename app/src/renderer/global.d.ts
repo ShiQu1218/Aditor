@@ -18,6 +18,6 @@ export interface RecordingApi {
 
 declare global {
   interface Window {
-    api: { recording: RecordingApi } & Record<'engine' | 'library' | 'queue' | 'cache' | 'proxy' | 'projects' | 'app' | 'settings' | 'export' | 'update', any>
+    api: { recording: RecordingApi; telemetry?: { enabled(): Promise<boolean> } } & Record<'engine' | 'library' | 'queue' | 'cache' | 'proxy' | 'projects' | 'app' | 'settings' | 'export' | 'update', any>
   }
 }

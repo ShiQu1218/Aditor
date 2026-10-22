@@ -4,7 +4,7 @@ import { resolve } from 'path'
 import ts from 'typescript'
 import { expect, test } from 'vitest'
 
-test('native Node import loads the real CommonJS updater and enables installed builds', () => {
+test('native Node import loads the real CommonJS updater and keeps install-on-quit disabled', () => {
   // Preserve native import(): Vite's module interop would hide the production regression.
   const source = ts.transpileModule(readFileSync(resolve(__dirname, 'updater.ts'), 'utf-8'), {
     compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext }
@@ -22,11 +22,13 @@ test('native Node import loads the real CommonJS updater and enables installed b
       ${source}
       const updater = await loadAutoUpdater();
       assert.equal(typeof updater.checkForUpdates, 'function');
+      assert.equal(typeof updater.downloadUpdate, 'function');
       assert.equal(typeof updater.quitAndInstall, 'function');
-      const service = createAppUpdater({ updater, isEnabled: () => true, notifyDownloaded: () => {}, broadcast: () => {} });
+      const service = createAppUpdater({ updater, isEnabled: () => true, notifyAvailable: () => {}, broadcast: () => {}, requestQuit: () => {} });
       assert.equal(service.status().state, 'idle');
-      assert.equal(updater.autoDownload, true);
-      assert.equal(updater.autoInstallOnAppQuit, true);
+      assert.equal(updater.autoDownload, false);
+      assert.equal(updater.autoInstallOnAppQuit, false);
+      assert.equal(service.download(), false);
     `
   })
   expect(result.error).toBeUndefined()

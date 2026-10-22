@@ -180,23 +180,30 @@ export const settingsI18n: Messages['settingsI18n'] = {
     },
     updateStatus: {
       title: 'Software update',
-      desc: 'New versions are downloaded from GitHub and installed when you exit Aditor. You can also restart and install right away.',
+      desc: 'Checks GitHub for new versions. A new version is downloaded only when you choose "Download update", and installed only when you choose "Restart and update now".',
       keywords: ['update', 'new version', 'version', 'github', 'download'],
       unsupported: 'Automatic updates are not available in the portable or development build',
       idle: 'Not checked yet',
       checking: 'Checking…',
       latest: 'You have the latest version',
+      available: 'Version {version} is available',
       downloading: 'Downloading {version} ({pct}%)',
-      downloaded: '{version} downloaded; installs when you exit Aditor',
+      downloaded: '{version} downloaded; choose "Restart and update now" to install',
       error: 'Update check failed: {msg}',
       check: 'Check for updates',
+      download: 'Download update',
       install: 'Restart and update now',
       openReleases: 'Open download page'
     },
     autoUpdate: {
       title: 'Check for updates automatically',
-      desc: 'Checks at startup and every 6 hours, and downloads new versions in the background.',
+      desc: 'Checks at startup and every 6 hours; never downloads or installs automatically.',
       keywords: ['update', 'automatic', 'github']
+    },
+    telemetryEnabled: {
+      title: 'Share error and performance diagnostics',
+      desc: 'Enabled by default: send filtered app, analysis and recording errors and performance data to Sentry. You can turn this off immediately. No videos, screenshots or full interaction history. Restart after re-enabling.',
+      keywords: ['sentry', 'diagnostics', 'privacy']
     },
     trademark: {
       title: 'Trademark notice',

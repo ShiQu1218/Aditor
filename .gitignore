@@ -13,3 +13,4 @@ build/
 recorder/target/
 .worktrees/
 .claude/worktrees/
+.env.sentry-build-plugin

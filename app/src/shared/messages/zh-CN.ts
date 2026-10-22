@@ -30,7 +30,7 @@ const messages: MessageTable = {
   'OpenH264 檔案大小超過預期': 'OpenH264 文件大小超出预期',
   'OpenH264 檔案雜湊校驗失敗，已拒絕使用': 'OpenH264 文件哈希校验失败，已拒绝使用',
   '無法更新開機啟動設定：{error}': '无法更新开机启动设置：{error}',
-  'Aditor {version} 已下載完成，結束 Aditor 時會自動安裝。': 'Aditor {version} 已下载完成，退出 Aditor 时会自动安装。',
+  'Aditor {version} 有新版本可用，可在設定中選擇「下載更新」。': 'Aditor {version} 有新版本可用，可在设置中选择“下载更新”。',
   '影片路徑不正確': '视频路径不正确',
   'OpenH264 正在下載中': 'OpenH264 正在下载中',
   '無效的專案 id：{id}': '无效的项目 id：{id}',

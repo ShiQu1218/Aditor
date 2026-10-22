@@ -13,6 +13,7 @@ import { StringDecoder } from 'string_decoder'
 import type { LiveEvent } from '../../shared/recording'
 import type { RecorderCommand } from './index'
 import { tr } from '../../shared/locale'
+import { emitChildDiagnostic, type ChildDiagnosticHandler } from '../../shared/child-diagnostics'
 
 /** A snapshot contains the full event list and may exceed aditorrec's 64 KB line limit. */
 const MAX_LINE_BYTES = 8 * 1024 * 1024
@@ -32,6 +33,7 @@ export interface LiveSnapshot { t: number; events: LiveEvent[]; spectating: Live
 export interface LiveMatchEvent { ev: 'match_start' | 'match_end' | 'match_pending' | 'match_cancel'; t: number; reason: string }
 
 export interface LiveEngineOptions {
+  onDiagnostic?: ChildDiagnosticHandler
   command: RecorderCommand
   /** Live arguments appended after command.args. */
   args: string[]
@@ -175,6 +177,7 @@ export class LiveEngine extends EventEmitter {
   }
 
   private crashed(message: string): void {
+    emitChildDiagnostic(this.options.onDiagnostic, { component: 'python-live', code: 'engine_crashed', message: 'Live Python engine exited unexpectedly' })
     // Archive current events; the new process starts at the latest frame, so accept only events after lastT.
     this.archived = this.current
     this.resumeT = this.lastT
@@ -250,6 +253,7 @@ export class LiveEngine extends EventEmitter {
         if (finite(msg.t) && finite(msg.frames) && msg.frames > 0) this.emit('progress', msg.t)
         break
       case 'error':
+        emitChildDiagnostic(this.options.onDiagnostic, { component: 'python-live', code: String(msg.code ?? 'internal'), message: String(msg.message ?? 'Live engine error'), exception: msg.exception })
         this.emit('warning', tr('即時偵測錯誤（{code}）：{message}', { code: String(msg.code), message: String(msg.message) }))
         break
     }

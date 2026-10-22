@@ -99,36 +99,55 @@ describe('SettingsScreen markup (renderToString + fake window.api data)', () => 
     expect(html).not.toContain('data-row="defaultOutDir"')
   })
 
-  test('category about: version, update, auto-update switch and trademark (4 rows)', async () => {
+  test('category about includes a diagnostics switch enabled by default', async () => {
     const html = await render({ initialCategory: 'about' })
-    expect(rowIds(html)).toEqual(['about', 'updateStatus', 'autoUpdate', 'trademark'])
+    expect(rowIds(html)).toEqual(['about', 'updateStatus', 'autoUpdate', 'telemetryEnabled', 'trademark'])
     expect(html).toContain('Apex Legends 為 Electronic Arts／Respawn 之商標')
     expect(html).toMatch(/id="set-autoUpdate"[^>]*checked/)
+    expect(html).toMatch(/id="set-telemetryEnabled"[^>]*checked/)
     // Without an update API (old preload or development), show the unsupported state and provide the download page.
     expect(html).toContain('免安裝版與開發版不支援自動更新')
     expect(html).toContain('開啟下載頁面')
   })
 
-  test('update row follows the status pushed by main: downloading → downloaded offers restart-and-update', async () => {
+  test('update row: available offers an explicit download, then downloaded offers restart-and-update', async () => {
     let push: (s: UpdateStatus) => void = () => undefined
+    const download = vi.fn(async () => true)
     const install = vi.fn(async () => true)
     const api = fakeApi()
     api.update = {
       getStatus: async () => ({ state: 'latest' }),
       check: async () => ({ state: 'latest' }),
+      download,
       install,
       openReleases: async () => true,
       onStatus: (cb) => { push = cb; return () => undefined }
     }
     expect(await render({ initialCategory: 'about' }, api)).toContain('已是最新版本')
-    const downloading = await render({ initialCategory: 'about' }, api, async () => push({ state: 'downloading', version: '0.2.0', percent: 40 }))
+
+    const available = await render({ initialCategory: 'about' }, api, async () => {
+      push({ state: 'available', version: '0.2.0' })
+    })
+    expect(available).toContain('有新版本 0.2.0 可供下載')
+    expect(available).toContain('下載更新')
+    expect(available).not.toMatch(/<button[^>]*id="set-updateStatus"[^>]*disabled/)
+    expect(download).not.toHaveBeenCalled()
+    expect(install).not.toHaveBeenCalled()
+
+    const downloading = await render({ initialCategory: 'about' }, api, async (c) => {
+      push({ state: 'downloading', version: '0.2.0', percent: 40 })
+      await c.downloadUpdate()
+    })
     expect(downloading).toContain('正在下載 0.2.0（40%）')
     expect(downloading).toMatch(/<button[^>]*id="set-updateStatus"[^>]*disabled/)
+    expect(download).toHaveBeenCalledTimes(1)
+    expect(install).not.toHaveBeenCalled()
+
     const done = await render({ initialCategory: 'about' }, api, async (c) => {
       push({ state: 'downloaded', version: '0.2.0' })
       await c.installUpdate()
     })
-    expect(done).toContain('0.2.0 已下載，結束 Aditor 時安裝')
+    expect(done).toContain('0.2.0 已下載，選擇「立即重新啟動並更新」安裝')
     expect(done).toContain('立即重新啟動並更新')
     expect(install).toHaveBeenCalledTimes(1)
   })
