@@ -5,7 +5,7 @@ import path from 'path'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { SettingsStore, migrateSettings } from '../../main/settings'
 import { registerSettingsHandlers } from '../../main/settings-ipc'
-import { DEFAULT_SETTINGS, type Settings } from '../../shared/settings'
+import { DEFAULT_SETTINGS, SETTINGS_VERSION, type Settings } from '../../shared/settings'
 import { DEFAULT_RECORDING_SETTINGS as defaults, RECORDING_RANGES, type RecordingSettings } from '../../shared/recording'
 
 let dir: string
@@ -55,25 +55,27 @@ describe('Recording settings validation and migration', () => {
     ['fps', [10, 20, 30, 60, 90, 120]],
     ['height', [0, 720, 1080, 1440]],
     ['postAnalysis', ['none', 'afterExit', 'perMatch']],
-    ['captureMethod', ['wgc', 'dda']]
+    ['captureMethod', ['auto', 'dda']]
   ] as const)('%s accepts only allowed enum values', (field, allowed) => {
     for (const value of allowed) expect(migrate({ [field]: value })[field]).toBe(value)
     for (const value of ['invalid', null, false, {}, [], -1, 999]) expect(migrate({ [field]: value })[field]).toBe(defaults[field])
   })
 
-  test('Capture defaults to wgc; removed capture settings migrate safely and remain valid after saving and reloading', () => {
-    expect(defaults.captureMethod).toBe('wgc')
-    expect(migrate({}).captureMethod).toBe('wgc')
-    expect(migrate({ captureMethod: 'hook' }).captureMethod).toBe('wgc')
+  test('Capture defaults to auto; legacy WGC and removed capture settings migrate safely and remain valid after saving and reloading', () => {
+    expect(defaults.captureMethod).toBe('auto')
+    expect(migrate({}).captureMethod).toBe('auto')
+    expect(migrate({ captureMethod: 'hook' }).captureMethod).toBe('auto')
     expect(migrate({ captureMethod: 'dda' }).captureMethod).toBe('dda')
-    expect(migrate({ captureMethod: 'wgc' }).captureMethod).toBe('wgc')
+    // Unversioned (legacy) files saved WGC as the old default, so it becomes auto; a current-version WGC is a choice.
+    expect(migrate({ captureMethod: 'wgc' }).captureMethod).toBe('auto')
+    expect(migrateSettings({ version: SETTINGS_VERSION, recording: { captureMethod: 'wgc' } }).recording.captureMethod).toBe('wgc')
     fs.writeFileSync(file, JSON.stringify({ recording: { captureMethod: 'hook', bitrateKbps: 23456 } }))
     const store = new SettingsStore(file)
-    expect(store.get().recording).toMatchObject({ captureMethod: 'wgc', bitrateKbps: 23456 })
+    expect(store.get().recording).toMatchObject({ captureMethod: 'auto', bitrateKbps: 23456 })
     expect(store.set(patch({ fps: 30 })).persisted).toBe(true)
-    expect(JSON.parse(fs.readFileSync(file, 'utf8')).recording.captureMethod).toBe('wgc')
+    expect(JSON.parse(fs.readFileSync(file, 'utf8')).recording.captureMethod).toBe('auto')
     const reloaded = new SettingsStore(file)
-    expect(reloaded.get().recording).toMatchObject({ captureMethod: 'wgc', bitrateKbps: 23456, fps: 30 })
+    expect(reloaded.get().recording).toMatchObject({ captureMethod: 'auto', bitrateKbps: 23456, fps: 30 })
     expect(reloaded.set(patch({ captureMethod: 'dda' })).persisted).toBe(true)
     expect(reloaded.set(patch({ captureMethod: 'hook' })).settings.recording.captureMethod).toBe('dda')
     expect(new SettingsStore(file).get().recording.captureMethod).toBe('dda')

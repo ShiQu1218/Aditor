@@ -20,6 +20,7 @@ import { LiveSession } from './live-session'
 import { ObsClient } from './obs-client'
 import { finalizeObsMatches } from './obs-finalize'
 import { ObsRecording } from './obs-session'
+import { resolveCaptureMethod } from './capture-method'
 import type { RecordingDeps, RecordingNoticeKind } from './index'
 import { tr } from '../../shared/locale'
 
@@ -259,7 +260,7 @@ export class RecordingSessionService implements RecordingService {
   async capabilities(): Promise<RecorderCapabilities | null> {
     const client = new AditorrecClient(this.deps.recorderCommand, this.deps.onDiagnostic)
     this.capabilityRequests.add(client)
-    try { return await client.hello() }
+    try { return { ...await client.hello(), autoCaptureMethod: resolveCaptureMethod('auto', this.deps.borderlessCapture) } }
     catch { return null }
     finally {
       await client.close()
@@ -420,7 +421,7 @@ export class RecordingSessionService implements RecordingService {
   private async begin(pid: number, builtin = false): Promise<boolean> {
     const settings = { ...this.deps.getSettings() }
     if (builtin || this.builtinFallbackPid === pid) settings.backend = 'builtin'
-    const capture = settings.backend === 'obs' ? 'dda' : settings.captureMethod
+    const capture = settings.backend === 'obs' ? 'dda' : resolveCaptureMethod(settings.captureMethod, this.deps.borderlessCapture)
     const game = this.game
     // Valorant's match boundaries come from the Riot Client; Apex detection finds its own.
     const gameClient = game === 'valorant' ? (this.deps.createValorantClient ?? (() => new ValorantClient()))() : undefined

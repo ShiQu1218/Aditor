@@ -2,8 +2,8 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
-import { DEFAULT_SETTINGS } from '../shared/settings'
-import { loadSettings, saveSettings, SettingsStore } from './settings'
+import { DEFAULT_SETTINGS, SETTINGS_VERSION } from '../shared/settings'
+import { loadSettings, migrateSettings, saveSettings, SettingsStore } from './settings'
 
 describe('settings store', () => {
   let dir: string
@@ -93,7 +93,7 @@ describe('settings store', () => {
       'utf-8'
     )
     const s = loadSettings(file)
-    expect(s.version).toBe(1)
+    expect(s.version).toBe(SETTINGS_VERSION)
     expect(s.before).toBe(12)
     expect(s.after).toBe(2)
     expect(s.watchFolders).toEqual(['D:/rec'])
@@ -103,7 +103,7 @@ describe('settings store', () => {
     // Older versions also go through migration.
     fs.writeFileSync(file, JSON.stringify({ version: 0, before: 6 }), 'utf-8')
     const s2 = loadSettings(file)
-    expect(s2.version).toBe(1)
+    expect(s2.version).toBe(SETTINGS_VERSION)
     expect(s2.before).toBe(6)
     expect(s2.after).toBe(DEFAULT_SETTINGS.after)
   })
@@ -170,7 +170,7 @@ describe('settings store', () => {
     expect(renameSpy).toHaveBeenCalledTimes(1)
     expect(fs.existsSync(`${file}.tmp`)).toBe(false)
     const onDisk = JSON.parse(fs.readFileSync(file, 'utf-8'))
-    expect(onDisk.version).toBe(1)
+    expect(onDisk.version).toBe(SETTINGS_VERSION)
     expect(onDisk.before).toBe(12)
     expect(onDisk.autoclip.n).toBe(5)
 
@@ -281,5 +281,21 @@ describe('settings store', () => {
     expect(r.settings.before).toBe(4)
     expect(seen).toEqual([4])
     expect(JSON.parse(fs.readFileSync(file, 'utf-8')).before).toBe(4)
+  })
+})
+
+describe('capture method setting', () => {
+  it('defaults to auto and accepts every capture method', () => {
+    expect(DEFAULT_SETTINGS.recording.captureMethod).toBe('auto')
+    for (const captureMethod of ['auto', 'wgc', 'dda'] as const) {
+      expect(migrateSettings({ version: SETTINGS_VERSION, recording: { captureMethod } }).recording.captureMethod).toBe(captureMethod)
+    }
+  })
+
+  it('moves the WGC that version 1 saved by default to auto once', () => {
+    expect(migrateSettings({ version: 1, recording: { captureMethod: 'wgc' } }).recording.captureMethod).toBe('auto')
+    expect(migrateSettings({ recording: { captureMethod: 'wgc' } }).recording.captureMethod).toBe('auto')
+    // DDA was never the default, so a version 1 DDA is a deliberate choice.
+    expect(migrateSettings({ version: 1, recording: { captureMethod: 'dda' } }).recording.captureMethod).toBe('dda')
   })
 })

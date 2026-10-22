@@ -13,6 +13,8 @@ import { validateOutDir } from './settings-ipc'
 import { LANGUAGE_SETTINGS } from '../shared/locale'
 
 const RANGES = SETTINGS_RANGES
+/** First settings version with the 'auto' capture method. */
+const CAPTURE_AUTO_VERSION = 2
 
 function isPlainObject(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v)
@@ -108,7 +110,7 @@ function pickRecording(v: unknown, base: RecordingSettings): RecordingSettings {
     diskWarnGb,
     diskStopGb: Math.min(diskWarnGb, clampRecordingNumber(s.diskStopGb, RECORDING_RANGES.diskStopGb, base.diskStopGb)),
     notifyMatch: pickBool(s.notifyMatch, base.notifyMatch),
-    captureMethod: pickEnum(s.captureMethod, ['wgc', 'dda'] as const, base.captureMethod),
+    captureMethod: pickEnum(s.captureMethod, ['auto', 'wgc', 'dda'] as const, base.captureMethod),
     openOnGameExit: pickBool(s.openOnGameExit, base.openOnGameExit)
   }
 }
@@ -158,7 +160,12 @@ function applySettings(base: Settings, src: unknown): Settings {
  * treat a missing or older `version` as legacy, preserve known valid values, and fall back to defaults for other fields individually.
  */
 export function migrateSettings(raw: unknown): Settings {
-  const migrated = applySettings(cloneSettings(DEFAULT_SETTINGS), raw)
+  let migrated = applySettings(cloneSettings(DEFAULT_SETTINGS), raw)
+  const rawVersion = isPlainObject(raw) && typeof raw.version === 'number' ? raw.version : 0
+  // Version 1 saved the then-default WGC whether or not the user chose it; DDA was never the default, so it is kept.
+  if (rawVersion < CAPTURE_AUTO_VERSION && migrated.recording.captureMethod === 'wgc') {
+    migrated = { ...migrated, recording: { ...migrated.recording, captureMethod: 'auto' } }
+  }
   if (migrated.recording.outputDir !== null) {
     try {
       migrated.recording.outputDir = validateOutDir(migrated.recording.outputDir)

@@ -72,7 +72,7 @@ export function RecordingControl({ field, ids, state, settings, controller }: {
   }
   const caps = state.recordingCapabilities
   // Screen capture uses the adapter driving the game monitor, so the GPU picker does not apply.
-  const ddaCapture = settings.captureMethod === 'dda'
+  const ddaCapture = settings.captureMethod === 'dda' || (settings.captureMethod === 'auto' && caps.value?.autoCaptureMethod === 'dda')
   let options: Array<{ value: string; label: string; disabled?: boolean }>
   switch (field) {
     case 'backend':
@@ -110,7 +110,7 @@ export function RecordingControl({ field, ids, state, settings, controller }: {
       options = [{ value: 'speed', label: t.speed }, { value: 'balanced', label: t.balanced }, { value: 'quality', label: t.quality }]
       break
     case 'captureMethod':
-      options = [{ value: 'dda', label: t.captureDda }, { value: 'wgc', label: t.captureWgc }]
+      options = [{ value: 'auto', label: t.captureAuto }, { value: 'wgc', label: t.captureWgc }, { value: 'dda', label: t.captureDda }]
       break
     case 'postAnalysis':
       options = [{ value: 'none', label: t.analysisNone }, { value: 'afterExit', label: t.analysisAfterExit }, { value: 'perMatch', label: t.analysisPerMatch }]
