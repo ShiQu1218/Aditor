@@ -201,6 +201,87 @@ describe('LiveScreen', () => {
     expect(buttonByText(document.body, t.atLive)!.disabled).toBe(true)
   })
 
+  test('Dragging follows the pointer during live updates and seeks once on release', async () => {
+    const r = rig(RECORDING, LIVE)
+    screen()
+    await settle()
+    const slider = document.querySelector<HTMLElement>('[role="slider"]')!
+    vi.spyOn(slider, 'getBoundingClientRect').mockReturnValue({ left: 0, width: 100 } as DOMRect)
+    const pointer = (type: string, x: number): void => {
+      const event = new MouseEvent(type, { bubbles: true, clientX: x, buttons: 1 })
+      Object.defineProperty(event, 'pointerId', { value: 1 })
+      act(() => { slider.dispatchEvent(event) })
+    }
+    const before = timeText()
+    pointer('pointerdown', 20)
+    expect(slider.getAttribute('aria-valuenow')).toBe('4')
+    r.push({ sessionId: ID, segment: { seq: 11, pts: 20, dur: 2 } })
+    expect(document.querySelector<HTMLElement>('.live-playhead')!.style.left).toBe('20%')
+    pointer('pointermove', 90)
+    expect(slider.getAttribute('aria-valuenow')).toBe('20')
+    expect(document.querySelector<HTMLElement>('.live-playhead')!.style.left).toBe('90%')
+    expect(timeText()).toBe(before.replace('0:20', '0:22'))
+    pointer('pointerup', 90)
+    expect(timeText()).toMatch(/^0:20/)
+  })
+
+  test('A drag that lost its pointerup ends on the next move instead of following the mouse', async () => {
+    rig(RECORDING, LIVE)
+    screen()
+    await settle()
+    const slider = document.querySelector<HTMLElement>('[role="slider"]')!
+    vi.spyOn(slider, 'getBoundingClientRect').mockReturnValue({ left: 0, width: 100 } as DOMRect)
+    const pointer = (type: string, x: number, buttons = 1): void => {
+      const event = new MouseEvent(type, { bubbles: true, clientX: x, buttons })
+      Object.defineProperty(event, 'pointerId', { value: 1 })
+      act(() => { slider.dispatchEvent(event) })
+    }
+    pointer('pointerdown', 80)
+    expect(slider.getAttribute('aria-valuenow')).toBe('16')
+    expect(document.querySelector<HTMLElement>('.live-playhead')!.style.left).toBe('80%')
+    // The button was released outside the window, so no pointerup reached the element.
+    pointer('pointermove', 90, 0)
+    expect(slider.getAttribute('aria-valuenow')).toBe('0')
+    expect(document.querySelector<HTMLElement>('.live-playhead')!.style.left).toBe('0%')
+  })
+
+  test('The drag preview is clamped to the retained range so it matches where the player lands', async () => {
+    const retained: LiveState = { ...LIVE, segments: segs(10).map((s, i) => ({ ...s, pts: 100 + i * 2 })),
+      matches: [{ start: 100, end: null }] }
+    rig(RECORDING, retained)
+    screen()
+    await settle()
+    const slider = document.querySelector<HTMLElement>('[role="slider"]')!
+    vi.spyOn(slider, 'getBoundingClientRect').mockReturnValue({ left: 0, width: 100 } as DOMRect)
+    const pointer = (type: string, x: number): void => {
+      const event = new MouseEvent(type, { bubbles: true, clientX: x, buttons: 1 })
+      Object.defineProperty(event, 'pointerId', { value: 1 })
+      act(() => { slider.dispatchEvent(event) })
+    }
+    // The released part of the timeline is no longer playable, so the preview shows the retained range start.
+    pointer('pointerdown', 0)
+    expect(slider.getAttribute('aria-valuenow')).toBe('100')
+    pointer('pointerup', 0)
+    expect(timeText()).toMatch(/^1:40/)
+  })
+
+  test('A timeline without width does not seek', async () => {
+    rig(RECORDING, LIVE)
+    screen()
+    await settle()
+    const slider = document.querySelector<HTMLElement>('[role="slider"]')!
+    vi.spyOn(slider, 'getBoundingClientRect').mockReturnValue({ left: 0, width: 0 } as DOMRect)
+    const pointer = (type: string, x: number): void => {
+      const event = new MouseEvent(type, { bubbles: true, clientX: x, buttons: 1 })
+      Object.defineProperty(event, 'pointerId', { value: 1 })
+      act(() => { slider.dispatchEvent(event) })
+    }
+    const before = timeText()
+    pointer('pointerdown', 10)
+    pointer('pointerup', 10)
+    expect(timeText()).toBe(before)
+  })
+
   test('After recording ends, confirms the file was added to the library and opens it in the studio', async () => {
     const r = rig(RECORDING, LIVE)
     const { onOpenVideo } = screen()

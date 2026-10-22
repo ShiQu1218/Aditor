@@ -23,11 +23,11 @@ HUD_CONFIRM_SECONDS = 180.0
 HUD_RESUME_CONFIRM_SECONDS = 3.0
 # Keep within the app's 15 s prune buffer minus its 5 s pre-pad.
 INITIAL_RECOVERY_SECONDS = 10.0
-# A lobby visible continuously for this long tentatively ends the match (using the first lobby timestamp).
-# Rewards, bundles, or the store often appear soon after returning to the lobby, so do not require a long lobby dwell.
-LOBBY_CONFIRM_SECONDS = 1.0  # At 1 fps, two consecutive samples must show the lobby.
-# Confirm the tentative end only if the in-match HUD does not return within this interval (avoids splitting a match after a lobby false positive).
-LOBBY_SETTLE_SECONDS = 30.0
+# A lobby sample tentatively ends the match (using the first lobby timestamp of that lobby run).
+# Rewards, bundles, or the store often appear right after returning to the lobby, so a single lobby sample is
+# enough; a returning HUD cancels the tentative end, so a brief lobby false positive does not split the match.
+# Allow a brief return to the match after a false lobby hit, then release the match promptly for per-match cutting.
+LOBBY_SETTLE_SECONDS = 3.0
 PRE_MATCH_REARM_SECONDS = 10.0
 # A fully black frame during a match (DDA: game not in foreground) persisting this long means the player left the match;
 # use the start of the black interval as the end time. If the player switches away after a match and returns only for
@@ -66,6 +66,7 @@ class MatchTracker:
         self._lobby_first: float | None = None
         self._blank_first: float | None = None
         self._end_pending: float | None = None
+        self._end_pending_left = False
         self._recover_initial = True
         self._finished = False
         self._matches: list[Match] = []
@@ -95,6 +96,7 @@ class MatchTracker:
         if self._end_pending is not None:
             self._end(self._end_pending, "lobby")
             self._end_pending = None
+            self._end_pending_left = False
 
     def feed(self, t: float, scene: SceneFrame) -> list[MatchEvent]:
         if self._finished:
@@ -117,8 +119,6 @@ class MatchTracker:
         if self._pending is not None and t - self._pending > HUD_CONFIRM_SECONDS:
             self._events.append(MatchEvent("match_cancel", t, "timeout"))
             self._pending = None
-        if self._end_pending is not None and t - self._end_pending >= LOBBY_SETTLE_SECONDS:
-            self._settle_lobby()
         if scene.blank:
             if self._blank_first is None:
                 self._blank_first = t
@@ -147,11 +147,14 @@ class MatchTracker:
             self._pre_last = None
             if self._lobby_first is None:
                 self._lobby_first = t
-            if (t - self._lobby_first >= LOBBY_CONFIRM_SECONDS and self._active is not None
-                    and self._end_pending is None):
+            if self._active is not None:
+                # One lobby sample is enough: the match ends at the first lobby sample of this lobby run unless
+                # the HUD comes back. A dropout resets the run, so a later lobby run backdates the end again.
                 self._end_pending = self._lobby_first
+                self._end_pending_left = False
         elif scene.kind == "in_match_hud":
             self._end_pending = None  # Back in the match: the prior lobby was a false positive or a transient frame.
+            self._end_pending_left = False
             if self._pending is not None:
                 self._start(self._pending, "opening_confirmed")
                 self._pending = None
@@ -164,6 +167,13 @@ class MatchTracker:
                     self._start(self._hud_first, "hud_resume")
         elif scene.match_context and self._active is None and self._recover_initial:
             self._start(self._first, "initial_summary")
+        # A scene that is neither the lobby nor the HUD means the game left the match view (reward menus, the
+        # store, a hidden game). Only that evidence may end a match at the end of the recording.
+        if self._end_pending is not None and scene.kind not in ("lobby", "in_match_hud"):
+            self._end_pending_left = True
+        # Process a returning HUD first, including on the settle deadline, so a transient lobby does not split a match.
+        if self._end_pending is not None and t - self._end_pending >= LOBBY_SETTLE_SECONDS:
+            self._settle_lobby()
         return self._events[n:]
 
     def finish(self, end: float) -> list[MatchEvent]:
@@ -172,7 +182,9 @@ class MatchTracker:
         if self._finished:
             return []
         n = len(self._events)
-        if self._end_pending is not None:
+        # At the end of the recording only a lobby the game actually left may backdate the match end; a lone
+        # lobby sample after a frame gap stays inside the match so a data gap cannot rewrite the boundary.
+        if self._end_pending is not None and self._end_pending_left:
             self._settle_lobby()
         self._end(end, "eof")
         if self._pending is not None:

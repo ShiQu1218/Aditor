@@ -36,6 +36,17 @@ function driverHint(code: string, error: unknown): string | null {
   return tr('NVIDIA 顯示卡驅動版本過舊，無法使用硬體編碼。請更新 NVIDIA 驅動後再試一次；較舊的顯示卡（例如多數 GTX 600/700 系列）已無法安裝所需的驅動版本。詳細資訊：{details}', { details })
 }
 
+function unavailableAudioDevice(code: string, error: unknown): boolean {
+  if (code !== 'audio_failed') return false
+  const message = error instanceof Error ? error.message : String(error)
+  return message.includes('0x88890004') || message.includes('Specified audio device not found')
+}
+
+function audioDeviceHint(error: unknown): string {
+  const details = error instanceof Error ? error.message : String(error)
+  return tr('錄影音訊裝置無法使用，已停止自動重試。請在「設定 → 錄影」重新選擇系統聲音裝置或麥克風裝置，再手動開始錄影。詳細資訊：{details}', { details })
+}
+
 interface ActiveSession {
   pid: number
   game: GameId
@@ -522,8 +533,9 @@ export class RecordingSessionService implements RecordingService {
       }
       const code = error instanceof RecorderError ? error.code : 'recording_start_failed'
       if (!this.running || this.manualStopped || code === 'cancelled') { this.idle(); return false }
-      this.fail(code, driverHint(code, error) ?? tr('無法開始錄影：{error}', { error: String(error) }))
-      if (code === 'no_hw_encoder' || code === 'disk_full' || code === 'profile_invalid' || code === 'output_invalid') this.blocked = true
+      const audioUnavailable = unavailableAudioDevice(code, error)
+      this.fail(code, audioUnavailable ? audioDeviceHint(error) : driverHint(code, error) ?? tr('無法開始錄影：{error}', { error: String(error) }))
+      if (audioUnavailable || code === 'no_hw_encoder' || code === 'disk_full' || code === 'profile_invalid' || code === 'output_invalid') this.blocked = true
       else this.scheduleRestart()
       return false
     }
@@ -638,8 +650,9 @@ export class RecordingSessionService implements RecordingService {
     const code = error instanceof RecorderError ? error.code : 'recorder_crashed'
     if (!finalized) return
     if (!this.running) return
-    this.fail(code, driverHint(code, error) ?? error.message)
-    if (code === 'no_hw_encoder') this.blocked = true
+    const audioUnavailable = unavailableAudioDevice(code, error)
+    this.fail(code, audioUnavailable ? audioDeviceHint(error) : driverHint(code, error) ?? error.message)
+    if (audioUnavailable || code === 'no_hw_encoder') this.blocked = true
     else this.scheduleRestart()
   }
 

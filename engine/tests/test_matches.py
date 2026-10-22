@@ -49,22 +49,46 @@ def test_opening_flicker_does_not_split_one_sequence():
     assert tr.matches == [Match(0, 51)]
 
 
-def test_brief_lobby_before_reward_menus_ends_after_settle_and_backdates():
+def test_brief_lobby_before_reward_menus_ends_promptly_and_backdates():
     tr = MatchTracker()
     tr.feed(0, SceneFrame("in_match_hud"))
     for t in range(10, 13):
         assert not tr.feed(t, SceneFrame("lobby"))
-    for t in range(13, 40):
-        assert not tr.feed(t, SceneFrame("other"))  # Open a pack/reward screen.
-    events = tr.feed(40, SceneFrame("other"))
+    events = tr.feed(13, SceneFrame("other"))  # Open a pack/reward screen.
     assert [(e.type, e.t, e.reason) for e in events] == [("match_end", 10, "lobby")]
     tr.finish(60)
     assert tr.matches == [Match(0, 10)]
 
 
-def test_single_lobby_frame_is_not_enough():
-    tr = run([(0, 9, "in_match_hud"), (10, 10, "lobby"), (11, 60, "other")])
-    assert tr.matches == [Match(0, 61)]
+def test_single_lobby_sample_then_reward_menu_ends_the_match_promptly():
+    # One sampled lobby frame is enough: the reward menu right after it ends the match at the lobby timestamp,
+    # so the per-match clip is released instead of waiting for the next opening or the end of the recording.
+    tr = MatchTracker()
+    tr.feed(0, SceneFrame("in_match_hud"))
+    tr.feed(10, SceneFrame("lobby"))
+    assert tr.feed(11, SceneFrame("other")) == []  # Open a pack/reward screen.
+    events = tr.feed(13, SceneFrame("other"))
+    assert [(e.type, e.t, e.reason) for e in events] == [("match_end", 10, "lobby")]
+    tr.finish(60)
+    assert tr.matches == [Match(0, 10)]
+
+
+def test_transient_lobby_sample_does_not_split_an_active_match():
+    # A single false lobby frame during a match is cancelled by the HUD that comes back, so the match continues.
+    tr = run([(0, 9, "in_match_hud"), (10, 10, "lobby"), (11, 20, "in_match_hud"),
+              (21, 80, "other")])
+    assert tr.matches == [Match(0, 81)]
+    assert [(e.type, e.t, e.reason) for e in tr.events] == [
+        ("match_start", 0, "initial_match"), ("match_end", 81, "eof")]
+
+
+def test_lobby_sample_without_a_leaving_scene_keeps_the_eof_boundary():
+    # Only a lobby the game actually left may backdate the end; a lone last sample stays inside the match.
+    tr = MatchTracker()
+    tr.feed(0, SceneFrame("in_match_hud"))
+    tr.feed(10, SceneFrame("lobby"))
+    tr.finish(11)
+    assert tr.matches == [Match(0, 11)]
 
 
 def test_hud_after_brief_lobby_cancels_tentative_end():
@@ -73,6 +97,16 @@ def test_hud_after_brief_lobby_cancels_tentative_end():
     assert tr.matches == [Match(0, 81)]
     assert [(e.type, e.t, e.reason) for e in tr.events] == [
         ("match_start", 0, "initial_match"), ("match_end", 81, "eof")]
+
+
+def test_hud_on_lobby_settle_deadline_cancels_tentative_end():
+    tr = MatchTracker()
+    tr.feed(0, SceneFrame("in_match_hud"))
+    tr.feed(10, SceneFrame("lobby"))
+    tr.feed(11, SceneFrame("lobby"))
+    assert tr.feed(13, SceneFrame("in_match_hud")) == []
+    assert [(e.type, e.t, e.reason) for e in tr.finish(14)] == [("match_end", 14, "eof")]
+    assert tr.matches == [Match(0, 14)]
 
 
 def test_lobby_then_next_opening_ends_at_lobby():

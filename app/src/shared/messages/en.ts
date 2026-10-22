@@ -216,6 +216,7 @@ const messages: MessageTable = {
   '本次僅執行即時偵測': 'Only live detection will run for this session.',
   '錄影啟動已取消': 'Recording start was canceled.',
   '無法開始錄影：{error}': 'Could not start recording: {error}',
+  '錄影音訊裝置無法使用，已停止自動重試。請在「設定 → 錄影」重新選擇系統聲音裝置或麥克風裝置，再手動開始錄影。詳細資訊：{details}': 'The recording audio device is unavailable, so automatic retries have stopped. Re-select the system audio device or the microphone device under "Settings → Recording", then start recording manually. Details: {details}',
   'NVIDIA 顯示卡驅動版本過舊，無法使用硬體編碼。請更新 NVIDIA 驅動後再試一次；較舊的顯示卡（例如多數 GTX 600/700 系列）已無法安裝所需的驅動版本。詳細資訊：{details}': 'The NVIDIA graphics driver is too old for hardware encoding. Update the NVIDIA driver and try again; older graphics cards (such as most GTX 600/700 series) can no longer install the required driver version. Details: {details}',
   '錄影意外停止：{reason}': 'Recording stopped unexpectedly: {reason}',
   '逐局剪檔失敗，錄影繼續，收尾時將重試：{error}': 'Per-match cut failed. Recording continues and will be retried when finalizing: {error}',

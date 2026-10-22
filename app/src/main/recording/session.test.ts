@@ -322,6 +322,29 @@ describe('recording service state machine', () => {
     expect(commands(value, 'start')).toHaveLength(1)
   })
 
+  it.each(['audio-device-invalidated', 'audio-device-missing'])('warns about an unavailable audio device without repeatedly starting: %s', async (mode) => {
+    vi.useFakeTimers()
+    const value = rig(mode)
+    value.service.start()
+    await waitFor(() => value.service.status().error?.code === 'audio_failed')
+    expect(value.service.status().error?.message).toContain('重新選擇系統聲音裝置或麥克風裝置')
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(commands(value, 'start')).toHaveLength(1)
+    expect(value.service.status().error?.code).toBe('audio_failed')
+    expect(await value.service.startManual()).toBe(false)
+    expect(commands(value, 'start')).toHaveLength(2)
+  })
+
+  it('keeps recording with a warning when the default audio device is missing', async () => {
+    // The recorder downgrades a missing default endpoint to a warning and keeps recording with silence.
+    const value = rig('audio-default-missing')
+    value.service.start()
+    await waitFor(() => value.service.status().phase === 'recording')
+    await waitFor(() => vi.mocked(value.deps.notify).mock.calls.some(([level]) => level === 'warning'))
+    expect(value.service.status().error).toBeNull()
+    expect(commands(value, 'start')).toHaveLength(1)
+  })
+
   it('uses 1/2/4/8/16-second crash backoff and allows at most 5 restarts within 10 minutes', async () => {
     vi.useFakeTimers()
     const value = rig('crash')

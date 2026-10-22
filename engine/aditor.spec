@@ -43,6 +43,10 @@ a = Analysis(
     noarchive=False,
 )
 
+# Frames are decoded by the bundled FFmpeg executable; OpenCV's VideoCapture/VideoWriter plugin is unused.
+a.binaries = [entry for entry in a.binaries
+              if not Path(entry[0]).name.lower().startswith('opencv_videoio_ffmpeg')]
+
 pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 
 exe = EXE(
