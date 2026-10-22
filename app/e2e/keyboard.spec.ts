@@ -85,14 +85,18 @@ test('Esc during a timeline drag cancels the drag and does not leave project mod
   await page.keyboard.press('Enter')
   await expect(page.locator('.mode-pill.is-project')).toBeVisible()
 
+  await page.evaluate(() => (document.querySelector('video') as HTMLVideoElement).pause())
+  const before = await videoTime(page)
   const box = (await page.locator('.tl-wrap').boundingBox())!
   const y = box.y + 14
   await page.mouse.move(box.x + 60, y)
   await page.mouse.down()
   await page.mouse.move(box.x + 200, y, { steps: 6 })
-  await expect(page.locator('.tl-boxsel')).toBeVisible()
+  // Dragging scrubs the playhead away from where it was.
+  await expect.poll(() => videoTime(page)).not.toBeCloseTo(before, 1)
   await page.keyboard.press('Escape')
-  await expect(page.locator('.tl-boxsel')).toHaveCount(0)
+  // Esc cancels the scrub and puts the playhead back.
+  await expect.poll(() => videoTime(page)).toBeCloseTo(before, 1)
   await expect(page.locator('.mode-pill.is-project')).toBeVisible() // This Esc only cancels the gesture.
   await page.mouse.up()
   await expect(page.locator('.mode-pill.is-project')).toBeVisible()

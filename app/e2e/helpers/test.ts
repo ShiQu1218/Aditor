@@ -102,3 +102,10 @@ export async function waitProjectFile(app: AppHandle, items: number): Promise<St
 export function readSettings(app: AppHandle): Record<string, unknown> {
   return JSON.parse(fs.readFileSync(app.settingsPath, 'utf-8'))
 }
+
+/** Files under an export folder, relative to it; exports land in a mode subfolder (Merged or Clips), so search recursively. */
+export function listFilesDeep(dir: string): string[] {
+  return fs.readdirSync(dir, { recursive: true, withFileTypes: true })
+    .filter((e) => e.isFile())
+    .map((e) => path.relative(dir, path.join(e.parentPath, e.name)))
+}

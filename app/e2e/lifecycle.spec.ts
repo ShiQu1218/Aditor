@@ -1,23 +1,24 @@
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
-import { test, expect, importAndAnalyze, openStudio, card, waitProjectFile, readSettings } from './helpers/test'
+import { test, expect, importAndAnalyze, openStudio, card, waitProjectFile, readSettings, listFilesDeep } from './helpers/test'
 import { isAlive } from './helpers/launch'
 import { i18n, shellI18n } from '../src/renderer/i18n'
 
 type AnyApi = { queue: { enqueue: (p: string) => Promise<unknown>; cancel: (p: string) => Promise<unknown> }; export: { start: (o: unknown) => Promise<{ ok: boolean; code?: string }> } }
 
 test('closing the window within 500 ms of an edit still restores the project after relaunch', async ({ launch, videos }) => {
-  const app = await launch()
+  // Closing must quit the app rather than hide it in the tray (the default), so the close handshake is what saves the edit.
+  const app = await launch({ settings: { recording: { closeToTray: false } } })
   const { page } = app
   await importAndAnalyze(page, [videos.videos[0].path], ['E2E clip A'])
   await openStudio(page, 'E2E clip A')
   await page.keyboard.press('Enter')
   const t0 = Date.now()
   await expect(page.locator('.pclip')).toHaveCount(1)
-  await app.closeWindow() // Close immediately: debounce has not fired, so persistence relies on flushSync/the close handshake.
   // The interval between editing and the close command is far shorter than the 500 ms debounce (otherwise this case is meaningless).
   expect(Date.now() - t0).toBeLessThan(450)
+  await app.closeWindow() // Close immediately: debounce has not fired, so persistence relies on flushSync/the close handshake.
   const saved = await waitProjectFileOffline(app.projectsDir, 1)
   expect(saved.id).toMatch(/^p_/)
   const app2 = await launch({ root: app.root })
@@ -104,7 +105,7 @@ test('export cancel kills the fake-ffmpeg process tree and removes .partial; a s
     await expect(drawer).toHaveAttribute('data-phase', 'done')
     await expect.poll(() => isAlive(pids.ffmpeg), { timeout: 10_000 }).toBe(false)
     await expect.poll(() => isAlive(pids.grandchild), { timeout: 10_000 }).toBe(false)
-    expect(fs.readdirSync(outDir)).toEqual([])
+    expect(listFilesDeep(outDir)).toEqual([])
   } finally {
     fs.rmSync(outDir, { recursive: true, force: true })
     fs.rmSync(pidDir, { recursive: true, force: true })
@@ -185,7 +186,7 @@ test('export with the real ffmpeg: quick lossless export finishes and leaves one
     await drawer.getByRole('button', { name: i18n.export.startExport }).click()
     await expect(drawer).toHaveAttribute('data-phase', 'done', { timeout: 60_000 })
     await expect(drawer.getByRole('heading', { name: i18n.export.doneTitle })).toBeVisible()
-    const files = fs.readdirSync(outDir)
+    const files = listFilesDeep(outDir)
     expect(files.filter((n) => n.endsWith('.mp4') && !n.includes('.partial'))).toHaveLength(1)
     expect(files.filter((n) => n.includes('.partial'))).toEqual([])
     expect(fs.statSync(path.join(outDir, files[0])).size).toBeGreaterThan(1000)

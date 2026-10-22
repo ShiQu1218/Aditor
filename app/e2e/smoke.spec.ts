@@ -1,7 +1,7 @@
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
-import { test, expect, importAndAnalyze, card, openStudio, shot, waitProjectFile, readSettings } from './helpers/test'
+import { test, expect, importAndAnalyze, card, openStudio, shot, waitProjectFile, readSettings, listFilesDeep } from './helpers/test'
 import { i18n, settingsI18n, shellI18n } from '../src/renderer/i18n'
 
 const T = i18n.studio
@@ -111,12 +111,16 @@ test('keyboard matrix: Enter on a focused button does not accept suggestion', as
   await expect(page.locator('.toast', { hasText: '已加入專案' })).toHaveCount(0)
 })
 
-test('Ctrl+Q in project mode splits; in source mode adds a quick clip with undo toast', async ({ launch, videos }) => {
+test('Ctrl+Q in project mode splits; in source mode toggles blade mode, whose two clicks add a clip with undo toast', async ({ launch, videos }) => {
   const { page } = await launch()
   await importAndAnalyze(page, [videos.videos[0].path], ['E2E clip A'])
   await openStudio(page, 'E2E clip A')
-  // Source mode: quick clip plus undo.
+  // Source mode: Ctrl+Q turns on blade mode; two clicks on the timeline mark the clip's start and end.
   await page.keyboard.press('Control+q')
+  await expect(page.locator(`.transport button[title="${i18n.timeline.bladeHint}"]`)).toHaveAttribute('aria-pressed', 'true')
+  const box = (await page.locator('.tl-wrap').boundingBox())!
+  await page.mouse.click(box.x + box.width * 0.2, box.y + box.height / 2)
+  await page.mouse.click(box.x + box.width * 0.6, box.y + box.height / 2)
   await expect(page.locator('.pclip')).toHaveCount(1)
   await expect(page.locator('.hl-card')).toHaveCount(4)
   const t = page.locator('.toast', { hasText: '已加入專案' })
@@ -181,11 +185,11 @@ test('export drawer: start export with fake ffmpeg, cancel, partial file removed
     await start.click()
     await expect(drawer).toHaveAttribute('data-phase', 'running')
     // The fake ffmpeg has started and written a partial output.
-    await expect.poll(() => fs.readdirSync(outDir).some((n) => n.endsWith('.partial.mp4'))).toBe(true)
+    await expect.poll(() => listFilesDeep(outDir).some((n) => n.endsWith('.partial.mp4'))).toBe(true)
     await drawer.getByRole('button', { name: i18n.export.cancelExport }).click()
     await expect(drawer).toHaveAttribute('data-phase', 'done')
     await expect(drawer.getByRole('heading', { name: i18n.export.cancelledTitle })).toBeVisible()
-    expect(fs.readdirSync(outDir)).toEqual([])
+    expect(listFilesDeep(outDir)).toEqual([])
   } finally {
     fs.rmSync(outDir, { recursive: true, force: true })
     fs.rmSync(pidDir, { recursive: true, force: true })
