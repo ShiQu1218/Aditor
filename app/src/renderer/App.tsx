@@ -1,3 +1,4 @@
+import { tr } from '../shared/locale'
 import React, { useEffect, useRef, useState } from 'react'
 import { LibraryScreen } from './library/LibraryScreen'
 import { StudioScreen, type ProjectPlaybackRequest } from './studio/StudioScreen'
@@ -55,7 +56,7 @@ function AppContent(): JSX.Element {
     if (!import.meta.env.DEV || !projectFixtureRequested() || fixtureDoneRef.current) return
     fixtureDoneRef.current = true
     void import('./dev/projectFixture').then((m) => {
-      apply({ ...projectRef.current, name: '示範專案', items: m.fixtureProjectItems() })
+      apply({ ...projectRef.current, name: tr('示範專案'), items: m.fixtureProjectItems() })
     })
   }, [apply])
 

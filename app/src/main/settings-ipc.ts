@@ -1,3 +1,4 @@
+import { tr } from '../shared/locale'
 import fs from 'fs'
 import path from 'path'
 import type { Settings, SettingsSetResult } from '../shared/settings'
@@ -23,9 +24,9 @@ export function publicSettings(settings: Settings): Settings {
 
 export function obsPassword(settings: Settings['recording'], storage: PasswordStorage): string | undefined {
   if (!settings.obsPasswordEnc) return undefined
-  if (!storage.isEncryptionAvailable()) throw new Error('系統加密服務無法使用，無法讀取 OBS 密碼')
+  if (!storage.isEncryptionAvailable()) throw new Error(tr('系統加密服務無法使用，無法讀取 OBS 密碼'))
   try { return storage.decryptString(Buffer.from(settings.obsPasswordEnc, 'base64')) }
-  catch { throw new Error('無法解密 OBS 密碼，請重新設定') }
+  catch { throw new Error(tr('無法解密 OBS 密碼，請重新設定')) }
 }
 
 /** Minimal ipcMain subset (for dependency injection in tests). */
@@ -45,17 +46,17 @@ export interface WindowLike {
  */
 export function validateOutDir(dir: unknown): string {
   if (!isSafeLocalDirPath(dir)) {
-    throw new Error(`資料夾必須是本機絕對路徑：${typeof dir === 'string' ? dir : String(dir)}`)
+    throw new Error(tr('資料夾必須是本機絕對路徑：{path}', { path: typeof dir === 'string' ? dir : String(dir) }))
   }
   const resolved = path.resolve(dir)
   let stat: fs.Stats
   try {
     stat = fs.statSync(resolved)
   } catch {
-    throw new Error(`資料夾不存在：${resolved}`)
+    throw new Error(tr('資料夾不存在：{path}', { path: resolved }))
   }
   if (!stat.isDirectory()) {
-    throw new Error(`路徑不是資料夾：${resolved}`)
+    throw new Error(tr('路徑不是資料夾：{path}', { path: resolved }))
   }
   return resolved
 }
@@ -123,12 +124,12 @@ export function registerSettingsHandlers(
       const password = recording.obsPassword
       delete recording.obsPassword
       if (password !== undefined) {
-        if (typeof password !== 'string' || password.length > 4096) errors.obsPassword = 'OBS 密碼格式無效或過長'
+        if (typeof password !== 'string' || password.length > 4096) errors.obsPassword = tr('OBS 密碼格式無效或過長')
         else if (password === '') recording.obsPasswordEnc = null
-        else if (!storage?.isEncryptionAvailable()) errors.obsPassword = '系統加密服務無法使用，無法儲存 OBS 密碼'
+        else if (!storage?.isEncryptionAvailable()) errors.obsPassword = tr('系統加密服務無法使用，無法儲存 OBS 密碼')
         else {
           try { recording.obsPasswordEnc = storage.encryptString(password).toString('base64') }
-          catch { errors.obsPassword = 'OBS 密碼加密失敗，未儲存密碼' }
+          catch { errors.obsPassword = tr('OBS 密碼加密失敗，未儲存密碼') }
         }
       }
       partial.recording = recording

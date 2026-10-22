@@ -249,8 +249,8 @@ export class SettingsController {
     // Wait for host, port, and password to be written to main before testing the persisted settings.
     await this.recordingWrites
     let result: ObsTestResult
-    try { result = await this.api.recording?.testObs?.() ?? { ok: false, error: 'OBS 連線測試無法使用' } }
-    catch { result = { ok: false, error: 'OBS 連線測試失敗，請檢查設定' } }
+    try { result = await this.api.recording?.testObs?.() ?? { ok: false, error: tr('OBS 連線測試無法使用') } }
+    catch { result = { ok: false, error: tr('OBS 連線測試失敗，請檢查設定') } }
     this.patch({ obsConnection: { testing: false, result } })
   }
 
@@ -343,7 +343,7 @@ export class SettingsController {
     try {
       const res = await this.api.library.addWatchFolder()
       this.applyWatch(res)
-      this.setRowError('watchFolders', res.ok || res.canceled ? undefined : (res.error ?? '無法新增資料夾'))
+      this.setRowError('watchFolders', res.ok || res.canceled ? undefined : (res.error ?? tr('無法新增資料夾')))
     } catch (err) {
       this.setRowError('watchFolders', (err as Error).message)
     }
@@ -354,7 +354,7 @@ export class SettingsController {
     try {
       const res = await this.api.library.removeWatchFolder(dir)
       this.applyWatch(res)
-      this.setRowError('watchFolders', res.ok === false ? (res.error ?? '無法移除資料夾') : undefined)
+      this.setRowError('watchFolders', res.ok === false ? (res.error ?? tr('無法移除資料夾')) : undefined)
     } catch (err) {
       this.setRowError('watchFolders', (err as Error).message)
     }
