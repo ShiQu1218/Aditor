@@ -207,6 +207,40 @@ export class Library {
     return false
   }
 
+  /**
+   * Remove several entries with the same per-entry rules as remove(): recording sources are unlinked (ENOENT tolerated),
+   * and a path whose source file cannot be deleted stays in the library and is reported as failed. Persists once.
+   */
+  removeMany(paths: string[]): { removed: string[]; failed: string[] } {
+    const removed: string[] = []
+    const failed: string[] = []
+    const removedNorms = new Set<string>()
+    for (const videoPath of paths) {
+      const entry = this.get(videoPath)
+      if (!entry) continue // Already gone (e.g. removed elsewhere): nothing to remove, not a failure.
+      const norm = normalizePath(entry.path)
+      if (removedNorms.has(norm)) continue // Duplicate path in the same request.
+      if (entry.source === 'recording') {
+        try {
+          fs.unlinkSync(entry.path)
+        } catch (err) {
+          // Already-missing files can still be removed from the library; other failures keep the entry.
+          if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+            failed.push(entry.path)
+            continue
+          }
+        }
+      }
+      removedNorms.add(norm)
+      removed.push(entry.path)
+    }
+    if (removedNorms.size > 0) {
+      this.entries = this.entries.filter((e) => !removedNorms.has(normalizePath(e.path)))
+      this.save()
+    }
+    return { removed, failed }
+  }
+
   toggleFavorite(videoPath: string): boolean {
     const norm = normalizePath(videoPath)
     const entry = this.entries.find((e) => normalizePath(e.path) === norm)

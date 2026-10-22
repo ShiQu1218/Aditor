@@ -1,6 +1,7 @@
 import React from 'react'
 import { Search, Star } from '../components/icons'
-import type { LibraryKind } from '../lib/libraryFilter'
+import type { LibraryGame, LibraryKind } from '../lib/libraryFilter'
+import { GAMES, GAME_IDS, type GameId } from '../../shared/games'
 import { i18n } from '../i18n'
 
 const t = i18n.library
@@ -12,8 +13,10 @@ export interface LibraryToolbarProps {
   onToggleFavorite: () => void
   kind: LibraryKind
   onKindChange: (k: LibraryKind) => void
+  game: LibraryGame
+  onGameChange: (g: LibraryGame) => void
   /** Video counts for each filter, excluding the search query. */
-  counts: Record<LibraryKind, number>
+  counts: Record<LibraryKind, number> & Record<GameId, number>
   searchRef: React.RefObject<HTMLInputElement>
 }
 
@@ -24,6 +27,8 @@ export function LibraryToolbar({
   onToggleFavorite,
   kind,
   onKindChange,
+  game,
+  onGameChange,
   counts,
   searchRef
 }: LibraryToolbarProps): JSX.Element {
@@ -57,11 +62,12 @@ export function LibraryToolbar({
       <span className="sep" />
       <button
         type="button"
-        className={`lib-chip${kind === 'all' && !favoriteOnly ? ' on' : ''}`}
-        aria-pressed={kind === 'all' && !favoriteOnly}
+        className={`lib-chip${kind === 'all' && !favoriteOnly && game === 'all' ? ' on' : ''}`}
+        aria-pressed={kind === 'all' && !favoriteOnly && game === 'all'}
         onClick={() => {
           onKindChange('all')
           if (favoriteOnly) onToggleFavorite()
+          if (game !== 'all') onGameChange('all')
         }}
       >
         {t.chips.all}
@@ -80,6 +86,22 @@ export function LibraryToolbar({
       {chip('knock', t.chips.knock)}
       {chip('assist', t.chips.assist)}
       {chip('hl', t.chips.hl, <span className="lib-pill accent lib-slant">{t.chips.isNew}</span>)}
+      <span className="sep" />
+      <span className="lib-game-group" role="group" aria-label={t.gameFilter}>
+        {GAME_IDS.map((id) => (
+          <button
+            key={id}
+            type="button"
+            className={`lib-chip${game === id ? ' on' : ''}`}
+            aria-pressed={game === id}
+            onClick={() => onGameChange(game === id ? 'all' : id)}
+          >
+            <span className={`lib-game-dot ${id}`} />
+            {GAMES[id].displayName}
+            <span className="n">{counts[id]}</span>
+          </button>
+        ))}
+      </span>
     </div>
   )
 }

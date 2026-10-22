@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { Library } from './library'
 import path from 'path'
 import fs from 'fs'
@@ -11,6 +11,10 @@ describe('Library', () => {
   beforeEach(() => {
     tmpFile = path.join(os.tmpdir(), `aditor_lib_test_${Date.now()}_${Math.random()}.json`)
     lib = new Library(tmpFile)
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
   })
 
   it('keeps the recorded game, also for a file a folder watcher imported first', () => {
@@ -80,5 +84,61 @@ describe('Library', () => {
     expect(lib.get('D:/Videos/b.mp4')?.status).toBe('done')
     expect(new Library(tmpFile).get('D:/Videos/a.mp4')?.status).toBe('pending')
     expect(lib.resetStaleAnalyzing()).toBe(0)
+  })
+
+  describe('removeMany', () => {
+    it('removes every entry, unlinks recording sources (ENOENT tolerated), keeps external files and saves once', () => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'aditor-lib-many-'))
+      try {
+        const recording = path.join(dir, 'recording.mp4')
+        const missing = path.join(dir, 'missing.mp4')
+        const external = path.join(dir, 'external.mp4')
+        fs.writeFileSync(recording, 'recording')
+        fs.writeFileSync(external, 'external')
+        lib.add([recording, missing, external], 'recording')
+        lib.update(external, { source: 'external' })
+        const save = vi.spyOn(lib, 'save')
+
+        expect(lib.removeMany([recording, missing, external])).toEqual({ removed: [recording, missing, external], failed: [] })
+        expect(fs.existsSync(recording)).toBe(false)
+        expect(fs.existsSync(external)).toBe(true)
+        expect(lib.getEntries()).toEqual([])
+        expect(save).toHaveBeenCalledTimes(1)
+        expect(new Library(tmpFile).getEntries()).toEqual([])
+      } finally {
+        fs.rmSync(dir, { recursive: true, force: true })
+      }
+    })
+
+    it('keeps entries whose source file cannot be deleted and reports only those as failed', () => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'aditor-lib-many-'))
+      try {
+        const removable = path.join(dir, 'removable.mp4')
+        const locked = path.join(dir, 'locked.mp4')
+        fs.writeFileSync(removable, 'recording')
+        fs.writeFileSync(locked, 'recording')
+        lib.add([removable, locked], 'recording')
+        const realUnlink = fs.unlinkSync
+        vi.spyOn(fs, 'unlinkSync').mockImplementation((file) => {
+          if (String(file) === locked) throw Object.assign(new Error('file is busy'), { code: 'EBUSY' })
+          realUnlink(file)
+        })
+
+        expect(lib.removeMany([removable, locked])).toEqual({ removed: [removable], failed: [locked] })
+        expect(lib.get(removable)).toBeUndefined()
+        expect(lib.get(locked)).toBeDefined()
+        expect(fs.existsSync(locked)).toBe(true)
+      } finally {
+        fs.rmSync(dir, { recursive: true, force: true })
+      }
+    })
+
+    it('skips paths that are no longer in the library and de-duplicates repeated paths', () => {
+      lib.add(['D:/Videos/a.mp4'])
+      expect(lib.removeMany(['D:/Videos/a.mp4', 'd:/videos/A.mp4', 'D:/Videos/unknown.mp4'])).toEqual({
+        removed: ['D:/Videos/a.mp4'],
+        failed: []
+      })
+    })
   })
 })

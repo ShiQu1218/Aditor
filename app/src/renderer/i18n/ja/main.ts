@@ -26,6 +26,7 @@ export const i18n: Messages['i18n'] = {
     importFiles: '動画を取り込む',
     importFolder: 'フォルダーを取り込む',
     searchPlaceholder: 'ファイル名で検索',
+    gameFilter: 'ゲーム',
     chips: {
       all: 'すべて',
       favorite: 'お気に入り',
@@ -90,6 +91,19 @@ export const i18n: Messages['i18n'] = {
       removeConfirm: '「{name}」をライブラリから削除しますか？（動画ファイルは削除されません）',
       removeSourceConfirm: '「{name}」をライブラリから削除し、元の動画ファイルも削除しますか？この操作は取り消せません。',
       removeFailed: '元の動画ファイルを削除できませんでした。アクセス権限や使用中でないかを確認してください。'
+    },
+    selection: {
+      select: '{name} を選択',
+      selectGroup: 'このグループを選択',
+      deselectGroup: 'このグループの選択を解除',
+      selectAll: 'すべて選択',
+      selectedItems: '選択中の項目',
+      deleteItems: '項目を削除',
+      exit: '選択を終了',
+      toolbar: '選択',
+      deleteConfirm: 'ライブラリから {n} 本の動画を削除しますか？（動画ファイルは削除されません）',
+      deleteSourceConfirm: 'ライブラリから {n} 本の動画を削除しますか？録画の元動画ファイルも削除されます。この操作は取り消せません。',
+      deleteFailed: '{n} 本の動画を削除できませんでした。ファイルのアクセス権限や使用中でないかを確認してください。'
     }
   },
   queue: {

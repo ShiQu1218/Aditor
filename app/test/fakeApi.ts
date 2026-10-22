@@ -42,6 +42,7 @@ export function createFakeApi(opts: FakeApiOptions = {}) {
       add: vi.fn(async () => undefined),
       addDroppedFiles: vi.fn(async (_files: File[]) => []),
       remove: vi.fn(async () => undefined),
+      removeMany: vi.fn(async (paths: string[]) => ({ removed: paths, failed: [] as string[] })),
       toggleFavorite: vi.fn(async () => undefined),
       selectFiles: vi.fn(async () => [] as string[]),
       selectFolder: vi.fn(async () => undefined),

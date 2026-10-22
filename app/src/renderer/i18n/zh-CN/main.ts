@@ -26,6 +26,7 @@ export const i18n: Messages['i18n'] = {
     importFiles: '导入视频',
     importFolder: '导入文件夹',
     searchPlaceholder: '按文件名搜索',
+    gameFilter: '游戏',
     chips: {
       all: '全部',
       favorite: '收藏',
@@ -90,6 +91,19 @@ export const i18n: Messages['i18n'] = {
       removeConfirm: '确定要从视频库移除“{name}”吗？（不会删除视频文件）',
       removeSourceConfirm: '确定要从视频库移除“{name}”并删除源视频文件吗？此操作无法撤销。',
       removeFailed: '移除失败，无法删除源视频文件，请检查文件权限或是否正在使用。'
+    },
+    selection: {
+      select: '选择 {name}',
+      selectGroup: '选择此组',
+      deselectGroup: '取消选择此组',
+      selectAll: '全选',
+      selectedItems: '已选项目',
+      deleteItems: '删除项目',
+      exit: '退出选择',
+      toolbar: '选择',
+      deleteConfirm: '确定要从视频库移除 {n} 个视频吗？（不会删除视频文件）',
+      deleteSourceConfirm: '确定要从视频库移除 {n} 个视频吗？录制的源视频文件也会一并删除，此操作无法撤销。',
+      deleteFailed: '有 {n} 个视频无法移除，请检查文件权限或是否正在使用中。'
     }
   },
   queue: {

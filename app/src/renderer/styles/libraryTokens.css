@@ -2,4 +2,11 @@
 :root {
   /* 14% tint of --warning (#ffd500), used by the suggested-proxy badge. */
   --lib-warn-soft: color-mix(in srgb, var(--warning) 14%, transparent);
+  /* Game identity colors, used by the library game filter chips and card tags. */
+  --lib-game-apex: #e5484d;
+  --lib-game-valorant: #14b8a6;
+}
+:root[data-theme='light'] {
+  /* Darker teal keeps the VALORANT tag readable on light surfaces. */
+  --lib-game-valorant: #0d9488;
 }

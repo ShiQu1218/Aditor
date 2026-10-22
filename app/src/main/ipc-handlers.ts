@@ -107,6 +107,18 @@ export function registerIpcHandlers(
     return res
   })
 
+  // Bulk removal for selection mode: one broadcast and one save; invalid arguments are a no-op.
+  ipcMain.handle('library:removeMany', (_, paths: unknown) => {
+    if (!Array.isArray(paths) || !paths.every((p): p is string => typeof p === 'string')) {
+      return { removed: [], failed: [] }
+    }
+    const res = library.removeMany(paths)
+    // Cancel analysis only for entries that are really gone; a failed removal keeps its entry and its queue slot.
+    for (const videoPath of res.removed) queue.cancel(videoPath)
+    broadcastUpdated()
+    return res
+  })
+
   /** The user says which game a video shows (after recognition failed, or to correct it); analyze it as that game. */
   ipcMain.handle('library:setGame', (_, videoPath: unknown, game: unknown) => {
     if (typeof videoPath !== 'string' || !isGameId(game) || !library.get(videoPath)) return false

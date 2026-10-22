@@ -49,6 +49,7 @@ const api = {
       return paths.length > 0 ? ipcRenderer.invoke('library:add', paths) : Promise.resolve([])
     },
     remove: (path: string) => ipcRenderer.invoke('library:remove', path),
+    removeMany: (paths: string[]) => ipcRenderer.invoke('library:removeMany', paths),
     toggleFavorite: (path: string) => ipcRenderer.invoke('library:toggleFavorite', path),
     setGame: (path: string, game: string) => ipcRenderer.invoke('library:setGame', path, game),
     selectFiles: () => ipcRenderer.invoke('library:selectFiles'),

@@ -36,11 +36,12 @@ export function resolveCardActivation(
   return queueState === 'idle' ? 'toast-not-analyzed' : 'toast-blocked'
 }
 
-export type EscapeAction = 'close-menu' | 'clear-query' | 'none'
+export type EscapeAction = 'close-menu' | 'exit-selection' | 'clear-query' | 'none'
 
-/** Handle Esc (after keymap's IME check) by topmost priority: card menu → search text → no action. */
-export function resolveLibraryEscape(state: { menuOpen: boolean; query: string }): EscapeAction {
+/** Handle Esc (after keymap's IME check) by topmost priority: card menu → selection mode → search text → no action. */
+export function resolveLibraryEscape(state: { menuOpen: boolean; selecting: boolean; query: string }): EscapeAction {
   if (state.menuOpen) return 'close-menu'
+  if (state.selecting) return 'exit-selection'
   if (state.query !== '') return 'clear-query'
   return 'none'
 }
