@@ -18,6 +18,14 @@ afterEach(async () => {
 })
 
 describe('aditorrec JSON-lines client', () => {
+  it('reports abnormal exits without forwarding stderr logs to monitoring', async () => {
+    const onDiagnostic = vi.fn()
+    const value = new AditorrecClient(fakeCommand('stderr-exit'), onDiagnostic)
+    clients.push(value)
+    await expect(value.hello()).rejects.toMatchObject({ code: 'recorder_crashed' })
+    expect(onDiagnostic).toHaveBeenCalledWith(expect.objectContaining({ component: 'rust-recorder', code: 'recorder_crashed' }))
+    expect(JSON.stringify(onDiagnostic.mock.calls)).not.toContain('最後的錯誤')
+  })
   it('handshakes, handles out-of-order replies with increasing IDs and events, and stops cleanly', async () => {
     const root = tempRoot(); roots.push(root)
     const trace = path.join(root, 'trace.jsonl')

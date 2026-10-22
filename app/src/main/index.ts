@@ -4,7 +4,8 @@ import { delimiter, join, resolve } from 'path'
 import { EngineClient } from './engine'
 import { Library } from './library'
 import { AnalysisQueue } from './queue'
-import { SettingsStore } from './settings'
+import { SettingsStore, loadSettings } from './settings'
+import { initializeTelemetry, updateTelemetryConsent, reportChildDiagnostic } from './telemetry'
 import { WatchManager } from './watch'
 import { ProjectStore } from './projects'
 import { registerIpcHandlers } from './ipc-handlers'
@@ -161,7 +162,7 @@ async function initEngineAndServices(): Promise<void> {
   }
 
   const cmd = e2e?.fakeEngine ?? engineCommand(app.isPackaged)
-  engineClient = new EngineClient(cmd)
+  engineClient = new EngineClient({ ...cmd, onDiagnostic: reportChildDiagnostic })
   try {
     const res = await engineClient.start()
     console.log(`[Engine] Ready, version: ${res.engineVersion}`)
@@ -178,6 +179,7 @@ async function initEngineAndServices(): Promise<void> {
   // Reset leftover "analyzing" entries from the previous interrupted run; no queue is processing them.
   library.resetStaleAnalyzing()
   settingsStore = new SettingsStore(join(appDataDir(), 'settings.json'))
+  settingsStore.onChange((settings) => updateTelemetryConsent(settings.telemetryEnabled))
   syncLocale()
   queue = new AnalysisQueue(engineClient, library, {
     profileDir: templateProfileDir,
@@ -208,6 +210,7 @@ async function initEngineAndServices(): Promise<void> {
     }
   }
   recordingService = createRecordingService({
+    onDiagnostic: reportChildDiagnostic,
     log: createDiagnosticLog(join(appDataDir(), 'recording.log')),
     getSettings: () => settingsStore!.get().recording,
     getObsPassword: () => obsPassword(settingsStore!.get().recording, safeStorage),
@@ -330,11 +333,17 @@ const quitGuard = createQuitGuard({
 if (!app.requestSingleInstanceLock()) {
   app.quit()
 } else {
+  initializeTelemetry(loadSettings(join(appDataDir(), 'settings.json')).telemetryEnabled)
   app.on('second-instance', showMainWindow)
   app.whenReady().then(async () => {
     await initEngineAndServices()
     servicesReady = true
     if (openRequested) showMainWindow()
+    if (e2e && process.env.ADITOR_SENTRY_VERIFY === '1') {
+      const { verifyTelemetry } = await import('./telemetry-verification')
+      const { writeFileSync } = await import('fs')
+      writeFileSync(join(appDataDir(), 'sentry-verification.json'), JSON.stringify(await verifyTelemetry()))
+    }
     app.on('activate', showMainWindow)
   })
   app.on('before-quit', (e) => {

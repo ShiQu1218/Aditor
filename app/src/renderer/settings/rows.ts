@@ -27,7 +27,7 @@ export const CATEGORIES: readonly CategoryDef[] = [
   { id: 'about', label: t.cat.about, desc: t.catDesc.about, icon: 'Info' }
 ]
 
-export type BoolField = 'autoAnalyze' | 'lowPerfMode' | 'proxySuggest' | 'autoSuggestOnOpen' | 'projectAutosave' | 'autoUpdate'
+export type BoolField = 'autoAnalyze' | 'lowPerfMode' | 'proxySuggest' | 'autoSuggestOnOpen' | 'projectAutosave' | 'autoUpdate' | 'telemetryEnabled'
 
 export type ControlSpec =
   | { kind: 'recording'; field: keyof RecordingSettings }
@@ -300,6 +300,15 @@ export const SETTING_ROWS: SettingRow[] = [
     keywords: [...t.row.autoUpdate.keywords],
     isNew: true,
     control: { kind: 'switch', field: 'autoUpdate' }
+  },
+  {
+    id: 'telemetryEnabled',
+    category: 'about',
+    card: t.card.about,
+    title: t.row.telemetryEnabled.title,
+    desc: t.row.telemetryEnabled.desc,
+    keywords: [...t.row.telemetryEnabled.keywords],
+    control: { kind: 'switch', field: 'telemetryEnabled' }
   },
   {
     id: 'trademark',

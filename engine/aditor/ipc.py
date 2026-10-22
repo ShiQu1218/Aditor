@@ -17,6 +17,7 @@ from .layout import Layout, LayoutError, parse_aspect
 from .profile import ProfileError, load_profile
 from .game_detect import UnknownGame
 from .games import UnsupportedGame
+from .diagnostics import exception_details
 
 
 class BadRequest(Exception):
@@ -88,7 +89,8 @@ class Server:
             self._out.flush()
 
     def _error(self, rid, exc: Exception, code: str | None = None) -> None:
-        self.send({"id": rid, "type": "error", "code": code or _code(exc), "message": str(exc)})
+        self.send({"id": rid, "type": "error", "code": code or _code(exc), "message": str(exc),
+                   "exception": exception_details(exc)})
 
     # --- Main loop ---
     def serve(self) -> None:

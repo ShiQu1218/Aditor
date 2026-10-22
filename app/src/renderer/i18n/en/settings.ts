@@ -198,6 +198,11 @@ export const settingsI18n: Messages['settingsI18n'] = {
       desc: 'Checks at startup and every 6 hours, and downloads new versions in the background.',
       keywords: ['update', 'automatic', 'github']
     },
+    telemetryEnabled: {
+      title: 'Share error and performance diagnostics',
+      desc: 'Enabled by default: send filtered app, analysis and recording errors and performance data to Sentry. You can turn this off immediately. No videos, screenshots or full interaction history. Restart after re-enabling.',
+      keywords: ['sentry', 'diagnostics', 'privacy']
+    },
     trademark: {
       title: 'Trademark notice',
       desc: 'Apex Legends is a trademark of Electronic Arts / Respawn. This project is not affiliated with EA or Respawn.',

@@ -16,6 +16,7 @@ import { initMimeType } from './mp4-codec'
 import { LIVE_COMPLETE_FILE, writeJson } from './finalize'
 import type { RecorderCommand } from './index'
 import { tr } from '../../shared/locale'
+import type { ChildDiagnosticHandler } from '../../shared/child-diagnostics'
 
 const MAX_INIT_BYTES = 4 * 1024 * 1024
 /** A 2-second segment at the 150 Mbps limit is about 38 MB; allow headroom but reject abnormally large files. */
@@ -58,6 +59,7 @@ async function readConfined(dir: string, name: string, limit: number): Promise<U
 }
 
 export interface LiveSessionOptions {
+  onDiagnostic?: ChildDiagnosticHandler
   sessionId: string
   dir: string
   command?: RecorderCommand
@@ -116,7 +118,7 @@ export class LiveSession extends EventEmitter {
     if (this.options.sceneDir) args.push('--scene-dir', this.options.sceneDir)
     if (this.options.aspect) args.push('--aspect', this.options.aspect)
     if (this.options.game && this.options.game !== DEFAULT_GAME) args.push('--game', this.options.game)
-    const engine = new LiveEngine({ command, args, restartBaseMs: this.options.restartBaseMs })
+    const engine = new LiveEngine({ command, args, restartBaseMs: this.options.restartBaseMs, onDiagnostic: this.options.onDiagnostic })
     this.engine = engine
     this.listen(engine)
     engine.start()

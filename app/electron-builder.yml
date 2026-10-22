@@ -5,6 +5,7 @@ directories:
   buildResources: build
 files:
   - out/**/*
+  - '!out/**/*.map'
   - package.json
 extraResources:
   - from: ../build/engine/aditor

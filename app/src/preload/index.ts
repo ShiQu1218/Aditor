@@ -3,6 +3,7 @@ import { RECORDING_CHANNELS, type LiveState, type LiveUpdate, type RecordingStat
 import { UPDATE_CHANNELS, type UpdateStatus } from '../shared/update'
 
 const api = {
+  telemetry: { enabled: (): Promise<boolean> => ipcRenderer.invoke('telemetry:enabled') },
   recording: {
     testObs: () => ipcRenderer.invoke(RECORDING_CHANNELS.testObs),
     getStatus: (): Promise<RecordingStatus> => ipcRenderer.invoke(RECORDING_CHANNELS.getStatus),

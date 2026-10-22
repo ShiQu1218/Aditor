@@ -1,5 +1,6 @@
 /**
  * Content Security Policy (I2): allow only our own scripts; load images/video only from local files and data:; disallow eval, inline scripts, and external connections.
+ * sentry-ipc: is an in-process Electron protocol; only main can send diagnostics while reporting is enabled.
  * Also allow blob: for video (live viewing uses MediaSource, and `URL.createObjectURL(mediaSource)` returns a blob: URL).
  * Styles require 'unsafe-inline' (React style attributes). A Vite plugin injects the policy into index.html in **production builds**
  * (not in development, where HMR requires inline scripts).
@@ -11,7 +12,7 @@ export const CSP = [
   "img-src 'self' file: data:",
   "media-src 'self' file: blob:",
   "font-src 'self' data:",
-  "connect-src 'self'",
+  "connect-src 'self' sentry-ipc:",
   "object-src 'none'",
   "base-uri 'none'",
   "form-action 'none'",

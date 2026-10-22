@@ -21,6 +21,7 @@ scale (calibrate), then learns keywords while decoding (analyze._Learner); live 
    offline results. Stop extended learning (degraded mode) if logs exceed LATE_REPLAY_MAX_BYTES.
 """
 from __future__ import annotations
+from .diagnostics import exception_details
 
 import json
 import struct
@@ -704,7 +705,7 @@ def run(shm: str, profile_dir: Path, scene_dir: Path | None = None, *, stdin=Non
             profile = load_profile(Path(profile_dir)).with_layout(layout)
             scene = SceneDetector(Path(scene_dir) if scene_dir else None, layout=layout)
     except Exception as e:  # noqa: BLE001
-        out.send({"ev": "error", "code": "internal", "message": f"Failed to load templates: {e}"})
+        out.send({"ev": "error", "code": "internal", "message": f"Failed to load templates: {e}", "exception": exception_details(e)})
         return 1
     try:
         reader = ShmReader.open(shm)
@@ -712,7 +713,7 @@ def run(shm: str, profile_dir: Path, scene_dir: Path | None = None, *, stdin=Non
         out.send({"ev": "error", "code": "bad_layout", "message": str(e)})
         return 1
     except OSError as e:
-        out.send({"ev": "error", "code": "shm_open_failed", "message": f"Could not open shared memory {shm}: {e}"})
+        out.send({"ev": "error", "code": "shm_open_failed", "message": "Could not open recording shared memory", "exception": exception_details(e)})
         return 1
     try:
         try:
@@ -733,7 +734,7 @@ def run(shm: str, profile_dir: Path, scene_dir: Path | None = None, *, stdin=Non
             engine.poll()  # Process slots written before shutdown.
             engine.finish()
         except Exception as e:  # noqa: BLE001
-            out.send({"ev": "error", "code": "internal", "message": f"{type(e).__name__}: {e}"})
+            out.send({"ev": "error", "code": "internal", "message": f"{type(e).__name__}: {e}", "exception": exception_details(e)})
             return 1
         return 0
     finally:

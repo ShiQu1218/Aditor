@@ -756,6 +756,11 @@ const settingsI18n = {
       desc: '啟動後與每 6 小時檢查一次，有新版本就在背景下載。',
       keywords: ['更新', '自動', 'update', 'github']
     },
+    telemetryEnabled: {
+      title: '分享錯誤與效能診斷',
+      desc: '預設將過濾後的應用程式、分析與錄影錯誤及效能資料傳送至 Sentry，可隨時關閉。不含影片、截圖與完整操作紀錄。重新啟用後請重新啟動。',
+      keywords: ['sentry', 'diagnostics', 'privacy']
+    },
     trademark: {
       title: '商標聲明',
       desc: 'Apex Legends 為 Electronic Arts／Respawn 之商標，與本專案無關。',

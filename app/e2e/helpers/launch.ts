@@ -24,6 +24,7 @@ export interface LaunchOpts {
 
 /** Test defaults: low-performance prompt already answered (no notification), one second before/after events, and AI clip gap=5 to generate multiple suggestions from synthetic videos. */
 export const TEST_SETTINGS = {
+  telemetryEnabled: false,
   onboardingDone: true,
   version: 1,
   lowPerfAsked: true,

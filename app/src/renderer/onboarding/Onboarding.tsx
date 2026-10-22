@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { LOCALES, LOCALE_NAMES, recordingI18n, shellI18n } from '../i18n'
+import { LOCALES, LOCALE_NAMES, recordingI18n, shellI18n, settingsI18n } from '../i18n'
 import type { LanguageSetting } from '../../shared/locale'
 import type { RecordingSettings } from '../../shared/recording'
 import type { Settings } from '../../shared/settings'
@@ -51,6 +51,7 @@ function WelcomeStep({ language, onLanguage }: { language: LanguageSetting; onLa
   return (
     <>
       <p className="ob-text">{t.welcome.body}</p>
+      <p className="ob-text">{settingsI18n.row.telemetryEnabled.desc}</p>
       <div className="ob-field">
         <label id={ids.title} htmlFor={ids.ctl} className="ob-label">{t.welcome.languageLabel}</label>
         <SelectControl ids={ids} value={language} options={options} onChange={(v) => onLanguage(v as LanguageSetting)} />

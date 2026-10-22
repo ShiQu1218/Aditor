@@ -1,5 +1,6 @@
 import { spawn, ChildProcess } from 'child_process'
 import { EventEmitter } from 'events'
+import { emitChildDiagnostic, type ChildDiagnosticHandler } from '../shared/child-diagnostics'
 
 export class EngineError extends Error {
   code: string
@@ -18,6 +19,7 @@ interface PendingRequest {
 }
 
 export interface EngineClientOptions {
+  onDiagnostic?: ChildDiagnosticHandler
   command: string
   args: string[]
   env?: Record<string, string>
@@ -77,6 +79,7 @@ export class EngineClient extends EventEmitter {
         })
 
         p.on('error', (err) => {
+          emitChildDiagnostic(this.opts.onDiagnostic, { component: 'python-engine', code: 'engine_spawn', message: err.message })
           if (this.readyReject) {
             this.readyReject(err)
             this.readyResolve = null
@@ -140,6 +143,7 @@ export class EngineClient extends EventEmitter {
       this.pending.delete(id)
       req.resolve(msg.data)
     } else if (msg.type === 'error') {
+      emitChildDiagnostic(this.opts.onDiagnostic, { component: 'python-engine', code: String(msg.code || 'internal'), message: String(msg.message || 'Unknown engine error'), exception: msg.exception })
       this.pending.delete(id)
       req.reject(new EngineError(String(msg.code || 'internal'), String(msg.message || 'unknown error')))
     }
@@ -165,6 +169,7 @@ export class EngineClient extends EventEmitter {
     if (this.isStopping) {
       return
     }
+    emitChildDiagnostic(this.opts.onDiagnostic, { component: 'python-engine', code: 'engine_crashed', message: `Python engine exited unexpectedly (${_code ?? 'signal'})` })
 
     // Record crash
     const now = Date.now()

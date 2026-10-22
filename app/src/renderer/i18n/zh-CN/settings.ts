@@ -199,6 +199,11 @@ export const settingsI18n: Messages['settingsI18n'] = {
       desc: '启动后及每 6 小时检查一次，有新版本就在后台下载。',
       keywords: ['更新', '自动', 'update', 'github']
     },
+    telemetryEnabled: {
+      title: '分享错误与性能诊断',
+      desc: '默认将过滤后的应用、分析与录制错误及性能数据发送至 Sentry，可随时关闭。不含视频、截图与完整操作记录。重新启用后请重启。',
+      keywords: ['sentry', 'diagnostics', 'privacy']
+    },
     trademark: {
       title: '商标声明',
       desc: 'Apex Legends 是 Electronic Arts／Respawn 的商标，与本软件无关。',

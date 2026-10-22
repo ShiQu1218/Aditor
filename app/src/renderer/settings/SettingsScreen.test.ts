@@ -99,11 +99,12 @@ describe('SettingsScreen markup (renderToString + fake window.api data)', () => 
     expect(html).not.toContain('data-row="defaultOutDir"')
   })
 
-  test('category about: version, update, auto-update switch and trademark (4 rows)', async () => {
+  test('category about includes a diagnostics switch enabled by default', async () => {
     const html = await render({ initialCategory: 'about' })
-    expect(rowIds(html)).toEqual(['about', 'updateStatus', 'autoUpdate', 'trademark'])
+    expect(rowIds(html)).toEqual(['about', 'updateStatus', 'autoUpdate', 'telemetryEnabled', 'trademark'])
     expect(html).toContain('Apex Legends 為 Electronic Arts／Respawn 之商標')
     expect(html).toMatch(/id="set-autoUpdate"[^>]*checked/)
+    expect(html).toMatch(/id="set-telemetryEnabled"[^>]*checked/)
     // Without an update API (old preload or development), show the unsupported state and provide the download page.
     expect(html).toContain('免安裝版與開發版不支援自動更新')
     expect(html).toContain('開啟下載頁面')

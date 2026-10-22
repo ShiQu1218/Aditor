@@ -199,6 +199,11 @@ export const settingsI18n: Messages['settingsI18n'] = {
       desc: '起動時と 6 時間ごとに確認し、新しいバージョンがあればバックグラウンドでダウンロードします。',
       keywords: ['アップデート', '更新', '自動', 'update', 'github']
     },
+    telemetryEnabled: {
+      title: 'エラーとパフォーマンス診断を共有',
+      desc: '初期設定でフィルタリング済みのアプリ・分析・録画エラーと性能データを Sentry に送信します。いつでも無効にできます。動画・スクリーンショット・操作履歴は含みません。再有効化後は再起動してください。',
+      keywords: ['sentry', 'diagnostics', 'privacy']
+    },
     trademark: {
       title: '商標について',
       desc: 'Apex Legends は Electronic Arts／Respawn の商標であり、本プロジェクトとは無関係です。',
