@@ -23,6 +23,22 @@ describe('EngineClient', () => {
     expect(res.engineVersion).toBe('0.1.0')
   })
 
+  it('lowers the engine process priority after spawn', async () => {
+    const setPriority = vi.fn()
+    client = new EngineClient({ command: process.execPath, args: [FAKE_ENGINE], setPriority })
+    await client.start()
+    expect(setPriority).toHaveBeenCalledWith(expect.any(Number))
+  })
+
+  it('reports a priority failure as a diagnostic without failing start', async () => {
+    const onDiagnostic = vi.fn()
+    const setPriority = vi.fn(() => { throw new Error('Access denied') })
+    client = new EngineClient({ command: process.execPath, args: [FAKE_ENGINE], setPriority, onDiagnostic })
+    const res = await client.start()
+    expect(res.engineVersion).toBe('0.1.0')
+    expect(onDiagnostic).toHaveBeenCalledWith(expect.objectContaining({ component: 'python-engine', code: 'engine_priority' }))
+  })
+
   it('forwards child diagnostics without affecting request rejection or normal shutdown', async () => {
     const onDiagnostic = vi.fn(() => { throw new Error('Monitoring unavailable') })
     client = new EngineClient({ command: process.execPath, args: [FAKE_ENGINE], onDiagnostic })
