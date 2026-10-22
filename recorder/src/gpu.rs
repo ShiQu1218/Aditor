@@ -11,7 +11,7 @@ use windows::Win32::Graphics::Direct3D11::{
     D3D11_CREATE_DEVICE_BGRA_SUPPORT, D3D11_CREATE_DEVICE_VIDEO_SUPPORT, D3D11_SDK_VERSION,
 };
 use windows::Win32::Graphics::Dxgi::{
-    CreateDXGIFactory1, IDXGIAdapter, IDXGIFactory1, DXGI_ADAPTER_FLAG_SOFTWARE,
+    CreateDXGIFactory1, IDXGIAdapter, IDXGIDevice, IDXGIFactory1, DXGI_ADAPTER_FLAG_SOFTWARE,
     DXGI_ERROR_NOT_FOUND,
 };
 
@@ -191,6 +191,22 @@ impl Gpu {
     pub fn create_on(adapter: &IDXGIAdapter) -> Result<Self> {
         // The driver type must be UNKNOWN when specifying an adapter.
         Self::create_with(Some(adapter), D3D_DRIVER_TYPE_UNKNOWN)
+    }
+
+    /// Vendor of the DXGI adapter backing this device; unknown if the adapter cannot be queried.
+    pub fn vendor(&self) -> Vendor {
+        let Ok(dxgi) = self.device.cast::<IDXGIDevice>() else {
+            return Vendor::Other;
+        };
+        // SAFETY: dxgi is a valid DXGI device interface for this device; the adapter is only queried.
+        let Ok(adapter) = (unsafe { dxgi.GetAdapter() }) else {
+            return Vendor::Other;
+        };
+        // SAFETY: adapter is a valid DXGI adapter; GetDesc only reads its description.
+        let Ok(desc) = (unsafe { adapter.GetDesc() }) else {
+            return Vendor::Other;
+        };
+        Vendor::from_vendor_id(desc.VendorId)
     }
 
     fn create_with(adapter: Option<&IDXGIAdapter>, driver: D3D_DRIVER_TYPE) -> Result<Self> {
