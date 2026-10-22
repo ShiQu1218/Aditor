@@ -10,6 +10,7 @@ import { i18n } from '../i18n'
 import { RecordingPanel } from './RecordingPanel'
 import { useRecordingStatus } from './useRecordingStatus'
 import { useAppSettings } from './useAppSettings'
+import { useUpdateStatus } from './useUpdateStatus'
 import { OnboardingHost } from '../onboarding/Onboarding'
 
 /** Show a toast once when startup recovery encounters a corrupt or newer-version project (I12). */
@@ -82,6 +83,8 @@ function ShellFrame({
   const recording = useRecordingStatus()
   // First-run onboarding: overlay the entire app after settings load when onboardingDone is false.
   const settings = useAppSettings()
+  const update = useUpdateStatus()
+  const updateVersion = (update.state === 'downloading' || update.state === 'downloaded') && update.version ? update.version : null
   return (
     <div className="app">
       <RestoreNotice />
@@ -94,6 +97,7 @@ function ShellFrame({
         onShortcuts={overlay.openShortcuts}
         queueButtonRef={queueButtonRef}
         recordingPhase={recording.status.phase}
+        updateVersion={updateVersion}
         onRecording={() => {
           onCloseQueue()
           const watchLive = onOpenLive ? (): void => { overlay.close(); onOpenLive() } : undefined

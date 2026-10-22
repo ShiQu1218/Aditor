@@ -452,6 +452,7 @@ const shellI18n = {
     studio: '工作室（精華＋專案）',
     studioLabel: '工作室',
     queue: '分析佇列',
+    updateAvailable: '發現新版本 {version}，前往設定',
     shortcuts: '快捷鍵 (?)',
     shortcutsLabel: '快捷鍵',
     settings: '設定',

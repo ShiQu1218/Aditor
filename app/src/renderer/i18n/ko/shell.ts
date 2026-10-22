@@ -7,6 +7,7 @@ export const shellI18n: Messages['shellI18n'] = {
     studio: '스튜디오(하이라이트 + 프로젝트)',
     studioLabel: '스튜디오',
     queue: '분석 대기열',
+    updateAvailable: '새 버전 {version}이(가) 있습니다. 설정 열기',
     shortcuts: '단축키 (?)',
     shortcutsLabel: '단축키',
     settings: '설정',

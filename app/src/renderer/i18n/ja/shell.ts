@@ -6,6 +6,7 @@ export const shellI18n: Messages['shellI18n'] = {
     studio: 'Studio（ハイライト＋プロジェクト）',
     studioLabel: 'Studio',
     queue: '分析キュー',
+    updateAvailable: '新しいバージョン {version} があります。設定を開く',
     shortcuts: 'ショートカット (?)',
     shortcutsLabel: 'ショートカット',
     settings: '設定',

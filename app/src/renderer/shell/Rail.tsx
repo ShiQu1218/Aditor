@@ -1,5 +1,5 @@
 import React from 'react'
-import { LayoutGrid, Film, Video, Keyboard, SlidersHorizontal, LogoMark } from '../components/icons'
+import { LayoutGrid, Film, Video, Keyboard, SlidersHorizontal, Download, LogoMark } from '../components/icons'
 import { QueueRing } from './QueueRing'
 import { shellI18n } from '../i18n'
 import { recordingI18n } from '../i18n'
@@ -21,9 +21,11 @@ interface RailProps {
   queueButtonRef?: React.Ref<HTMLButtonElement>
   recordingPhase?: RecordingPhase
   onRecording?: () => void
+  /** Version of a newer release that was found (downloading or downloaded); null when none. */
+  updateVersion?: string | null
 }
 
-export function Rail({ active, projectCount, onNavigate, onShortcuts, onQueue, queueOpen = false, queueButtonRef, recordingPhase = 'idle', onRecording }: RailProps): JSX.Element {
+export function Rail({ active, projectCount, onNavigate, onShortcuts, onQueue, queueOpen = false, queueButtonRef, recordingPhase = 'idle', onRecording, updateVersion = null }: RailProps): JSX.Element {
   const t = shellI18n.rail
   const btn = (view: RailView, tip: string, label: string, icon: JSX.Element, badge?: number) => (
     <button
@@ -49,6 +51,18 @@ export function Rail({ active, projectCount, onNavigate, onShortcuts, onQueue, q
         {(recordingPhase === 'recording' || recordingPhase === 'error') && <span className={`rec-dot${recordingPhase === 'error' ? ' error' : ''}`} aria-hidden="true" />}
       </button>
       <div className="rail-spacer" />
+      {updateVersion !== null && (
+        <button
+          type="button"
+          className="rail-btn update-available"
+          data-tip={t.updateAvailable.replace('{version}', updateVersion)}
+          aria-label={t.updateAvailable.replace('{version}', updateVersion)}
+          onClick={() => onNavigate('settings')}
+        >
+          <Download className="ic lg" />
+          <span className="rec-dot" aria-hidden="true" />
+        </button>
+      )}
       <button
         className="rail-btn"
         data-tip={t.queue}
