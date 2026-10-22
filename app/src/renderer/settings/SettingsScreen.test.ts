@@ -129,7 +129,7 @@ describe('SettingsScreen markup (renderToString + fake window.api data)', () => 
       push({ state: 'downloaded', version: '0.2.0' })
       await c.installUpdate()
     })
-    expect(done).toContain('0.2.0 已下載，結束 Aditor 時安裝')
+    expect(done).toContain('0.2.0 已下載，選擇「立即重新啟動並更新」安裝')
     expect(done).toContain('立即重新啟動並更新')
     expect(install).toHaveBeenCalledTimes(1)
   })

@@ -58,10 +58,11 @@ describe('createAppUpdater', () => {
     expect(r.svc.install()).toBe(false)
   })
 
-  test('enables background download and install-on-quit', () => {
+  test('enables background download but leaves installer startup to the explicit install action', () => {
     const r = rig()
     expect(r.updater.autoDownload).toBe(true)
-    expect(r.updater.autoInstallOnAppQuit).toBe(true)
+    // electron-updater's own quit handler must not turn an ordinary quit into an install.
+    expect(r.updater.autoInstallOnAppQuit).toBe(false)
   })
 
   test('available → progress → downloaded, notifying once per version', async () => {
@@ -185,7 +186,7 @@ describe('manual update install sequencing', () => {
     expect(r.updater.quitAndInstall).toHaveBeenCalledWith(false, true)
   })
 
-  test('ordinary quit still quits normally and leaves auto-install-on-quit enabled', async () => {
+  test('ordinary quit after a download quits normally without starting the installer', async () => {
     const quit = vi.fn()
     const r = rig()
     r.emit('update-downloaded', { version: '0.2.0' })
@@ -205,8 +206,8 @@ describe('manual update install sequencing', () => {
     await tick()
     expect(quit).toHaveBeenCalledTimes(1)
     expect(r.updater.quitAndInstall).not.toHaveBeenCalled()
-    // A normal quit is still handled by electron-updater's autoInstallOnAppQuit path after the guard releases app.quit().
-    expect(r.updater.autoInstallOnAppQuit).toBe(true)
+    // electron-updater's autoInstallOnAppQuit hook must stay off so releasing app.quit() does not install the download.
+    expect(r.updater.autoInstallOnAppQuit).toBe(false)
   })
 
   test('repeated install requests spawn the installer exactly once', () => {

@@ -20,7 +20,7 @@ export type UpdateState =
   /** Already up to date. */
   | 'latest'
   | 'downloading'
-  /** Downloaded; install when Aditor exits. */
+  /** Downloaded and ready; the installer starts only when the user explicitly installs. */
   | 'downloaded'
   | 'error'
 

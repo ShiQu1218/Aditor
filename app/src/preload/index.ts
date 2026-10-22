@@ -129,7 +129,7 @@ const api = {
   update: {
     getStatus: (): Promise<UpdateStatus> => ipcRenderer.invoke(UPDATE_CHANNELS.getStatus),
     check: (): Promise<UpdateStatus> => ipcRenderer.invoke(UPDATE_CHANNELS.check),
-    /** Quit and install immediately when an update has downloaded. */
+    /** Explicitly install the downloaded update; the quit guard starts the installer after finalization. */
     install: (): Promise<boolean> => ipcRenderer.invoke(UPDATE_CHANNELS.install),
     /** Open GitHub Releases in a browser (manual download for portable builds). */
     openReleases: (): Promise<boolean> => ipcRenderer.invoke(UPDATE_CHANNELS.openReleases),

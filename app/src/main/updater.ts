@@ -1,4 +1,4 @@
-// Auto-update: use electron-updater to check GitHub Releases, download in the background, and install when Aditor exits.
+// Auto-update: use electron-updater to check GitHub Releases and download in the background; only the explicit install action starts the installer.
 // Only installed (NSIS) builds support updates; development and portable builds report unsupported, and Settings links to the download page.
 import type { UpdateStatus } from '../shared/update'
 
@@ -79,7 +79,9 @@ export function createAppUpdater(deps: UpdaterDeps): AppUpdaterService {
 
   if (updater) {
     updater.autoDownload = true
-    updater.autoInstallOnAppQuit = true
+    // Keep scheduled checks and background downloads, but never let an ordinary quit install a downloaded update.
+    // Only the explicit install action may start the installer, after the quit guard has finalized recording work.
+    updater.autoInstallOnAppQuit = false
     updater.on('update-available', (info) => set({ state: 'downloading', version: info.version, percent: 0 }))
     updater.on('update-not-available', () => set({ state: 'latest' }))
     updater.on('download-progress', (p) => {

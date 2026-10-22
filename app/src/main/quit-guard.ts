@@ -102,7 +102,7 @@ export function createAppQuitGuard(deps: AppQuitGuardDeps): QuitGuard {
     tasks: [() => deps.stopEngine()],
     quit: () => {
       // A manual update installer replaces Aditor's files and may terminate the process, so spawn it only after every
-      // finalization/cleanup step above has settled. Ordinary quits keep the existing app.quit()/auto-install path.
+      // finalization/cleanup step above has settled. Ordinary quits, including after a download, call app.quit() without installing.
       if (!deps.installUpdate?.()) deps.quit()
     },
     timeoutMs: deps.timeoutMs
