@@ -63,6 +63,8 @@ import { isAnyOverlayOpen, OverlayState, topOverlay } from './overlays'
 import { fileUrl, onVideoError, planSeek, routeTimeUpdate } from './seekPlan'
 import { loadStudioDoc } from './studioLoader'
 import { tr } from '../../shared/locale'
+import { RemoveChoiceDialog } from '../library/RemoveChoiceDialog'
+import type { LibraryEntry } from '../../main/library'
 
 export interface ProjectPlaybackRequest {
   playItemId: string
@@ -72,6 +74,8 @@ export interface ProjectPlaybackRequest {
 interface StudioScreenProps {
   videoPath: string
   onBack: () => void
+  /** Notify the owner even if deletion finishes after leaving the studio. */
+  onVideoRemoved?: (path: string) => void
   onOpenVideo: (path: string, request?: ProjectPlaybackRequest) => void
   playbackRequest?: ProjectPlaybackRequest
   onPlaybackRequestConsumed?: () => void
@@ -133,7 +137,7 @@ function initViewerState(init: { videoPath: string; doc?: CacheDoc }): ViewerSta
  * Mode pill/context banner, status bar (engine errors and proxy suggestions), and counted event-filter chips.
  * Project track (Task 13): clip cards, drag reordering, handle trimming, track-head actions, and the new-project dialog.
  */
-export function StudioScreen({ videoPath, onBack, onOpenVideo, playbackRequest, onPlaybackRequestConsumed, preloadedDoc }: StudioScreenProps): JSX.Element {
+export function StudioScreen({ videoPath, onBack, onVideoRemoved, onOpenVideo, playbackRequest, onPlaybackRequestConsumed, preloadedDoc }: StudioScreenProps): JSX.Element {
   const {
     project,
     apply,
@@ -152,7 +156,6 @@ export function StudioScreen({ videoPath, onBack, onOpenVideo, playbackRequest, 
   const exportCtl = useMemo(() => createExportController(windowExportApi, 'highlight'), [])
   const exportState = useSyncExternalStore(exportCtl.subscribe, exportCtl.getState, exportCtl.getState)
   const exporting = exportState.phase === 'running'
-  useEditorLock(exporting)
   const [exportOpen, setExportOpen] = useState(false)
   const exportOpenRef = useRef(false)
   exportOpenRef.current = exportOpen
@@ -200,6 +203,11 @@ export function StudioScreen({ videoPath, onBack, onOpenVideo, playbackRequest, 
   const [proxyState, setProxyState] = useState<'none' | 'available' | 'generating'>('none')
   const [proxyDismissed, setProxyDismissed] = useState(false)
   const [live, setLive] = useState('')
+  const [removeChoice, setRemoveChoice] = useState<string | null>(null)
+  const [removingVideo, setRemovingVideo] = useState(false)
+  const removalPending = useRef(false)
+  const removalInFlight = useRef(false)
+  useEditorLock(exporting || removingVideo)
 
   const duration = state.doc.video?.duration || 100
   const displayedProject = useMemo(() => sourceTrim
@@ -646,7 +654,7 @@ export function StudioScreen({ videoPath, onBack, onOpenVideo, playbackRequest, 
 
   /** Same-day selection and cross-source projects share saving and export protection, then App remounts the studio. */
   const openSource = useCallback((path: string, request?: ProjectPlaybackRequest): void => {
-    if (switchingSourceRef.current || normPath(path) === normPath(videoPath)) return
+    if (removalPending.current || switchingSourceRef.current || normPath(path) === normPath(videoPath)) return
     if (exportCtl.getState().phase === 'running') {
       videoRef.current?.pause()
       toast({ message: i18n.export.backBlocked })
@@ -901,12 +909,90 @@ export function StudioScreen({ videoPath, onBack, onOpenVideo, playbackRequest, 
 
   /** Return to the library; while export is running, stay in the studio and show a Toast instead. */
   const requestBack = useCallback((): void => {
+    if (removalPending.current) return
     if (exportCtl.getState().phase === 'running') {
       toast({ message: i18n.export.backBlocked })
       return
     }
     onBack()
   }, [exportCtl, toast, onBack])
+
+  const removeVideo = async (path: string, deleteSource?: boolean): Promise<void> => {
+    if (!mountedRef.current || removalInFlight.current || exportCtl.getState().phase === 'running') return
+    removalInFlight.current = true
+    setRemoveChoice(null)
+    setRemovingVideo(true)
+    const current = normPath(path) === normPath(videoPath)
+    if (current) {
+      videoRef.current?.pause()
+      cacheSaver.current!.setHeld(true)
+    }
+    try {
+      if (current && deleteSource === false && stateRef.current.dirty) {
+        // Keeping the source also keeps its edits; stop removal if they cannot be saved.
+        try {
+          if (window.api.cache.saveSync(stateRef.current.doc) === false) throw new Error('Source save failed')
+          cacheSaver.current!.cancelPending()
+        } catch {
+          toast({ message: i18n.studio.toast.sourceSaveFailed })
+          return
+        }
+      }
+      if (deleteSource === undefined) await window.api.library.remove(path)
+      else await window.api.library.remove(path, { deleteSource })
+      onVideoRemoved?.(path)
+      if (current) {
+        // Only discard pending edits when the source file itself was deleted.
+        if (deleteSource !== false) cacheSaver.current!.setEnabled(false)
+        if (mountedRef.current) onBack()
+      }
+    } catch {
+      if (mountedRef.current) toast({ message: i18n.library.card.removeFailed })
+    } finally {
+      if (current) cacheSaver.current!.setHeld(false)
+      removalPending.current = false
+      removalInFlight.current = false
+      if (mountedRef.current) setRemovingVideo(false)
+    }
+  }
+
+  const requestRemoveVideo = async (path: string): Promise<void> => {
+    if (removalPending.current || switchingSourceRef.current || exportCtl.getState().phase === 'running') return
+    removalPending.current = true
+    setRemovingVideo(true)
+    try {
+      const entries: LibraryEntry[] = await window.api.library.getEntries()
+      if (!mountedRef.current) return
+      const entry = entries.find((entry) => normPath(entry.path) === normPath(path))
+      if (!entry) throw new Error('Video is no longer in the library')
+      const t = i18n.library.card
+      if (entry.source === 'recording') {
+        if (window.confirm(t.removeSourceConfirm.replace('{name}', baseName(path)))) {
+          await removeVideo(path)
+          return
+        }
+        removalPending.current = false
+      } else {
+        setRemoveChoice(path)
+      }
+    } catch {
+      removalPending.current = false
+      if (mountedRef.current) toast({ message: i18n.library.card.removeFailed })
+    }
+    if (mountedRef.current) setRemovingVideo(false)
+  }
+
+  const removeDialog = removeChoice !== null && <RemoveChoiceDialog
+    title={i18n.library.card.removeChoiceTitle}
+    message={i18n.library.card.removeChoiceMessage.replace('{name}', baseName(removeChoice))}
+    deleteLabel={i18n.library.card.deleteSource}
+    removeLabel={i18n.library.card.removeFromLibrary}
+    cancelLabel={i18n.library.card.cancel}
+    onDeleteSource={() => { void removeVideo(removeChoice, true) }}
+    onRemoveOnly={() => { void removeVideo(removeChoice, false) }}
+    onCancel={() => { setRemoveChoice(null); removalPending.current = false }}
+  />
+  const removeDisabled = exporting || removingVideo || removeChoice !== null
 
   const handleNoticeAction = useCallback(
     (a: NoticeAction): void => {
@@ -1371,7 +1457,7 @@ export function StudioScreen({ videoPath, onBack, onOpenVideo, playbackRequest, 
     queuePopover: overlay.queueOpen,
     shortcuts: overlay.kind === 'shortcuts'
   }
-  const overlayOpen = isAnyOverlayOpen(overlayState)
+  const overlayOpen = isAnyOverlayOpen(overlayState) || removeChoice !== null || removingVideo
   const overlayStateRef = useRef(overlayState)
   overlayStateRef.current = overlayState
 
@@ -1474,7 +1560,8 @@ export function StudioScreen({ videoPath, onBack, onOpenVideo, playbackRequest, 
   if (loadError || blocked || !loaded) {
     return (
       <div className="studio">
-        <SameDayVideos videoPath={videoPath} onOpenVideo={openSource} />
+        <SameDayVideos videoPath={videoPath} onOpenVideo={openSource} onRemove={requestRemoveVideo} removeDisabled={removeDisabled} />
+        {removeDialog}
         {loadError ? <StudioLoadErrorView
           code={loadError.code}
           onRetry={() => handleNoticeAction('resume')}
@@ -1501,11 +1588,13 @@ export function StudioScreen({ videoPath, onBack, onOpenVideo, playbackRequest, 
         asideOpen={asideOpen}
         onBack={handleBack}
         onToggleAside={() => setAsideOpen((v) => !v)}
+        onRemove={() => { void requestRemoveVideo(videoPath) }}
+        removeDisabled={removeDisabled}
       />
 
       <div className="studio-body">
         <div className="studio-main">
-          <SameDayVideos videoPath={videoPath} onOpenVideo={openSource} />
+          <SameDayVideos videoPath={videoPath} onOpenVideo={openSource} onRemove={requestRemoveVideo} removeDisabled={removeDisabled} />
           {shownNotice && <NoticeBar notice={shownNotice} busy={proxyState === 'generating'} onAction={handleNoticeAction} />}
           <PlayerStage
             videoRef={videoRef}
@@ -1640,6 +1729,7 @@ export function StudioScreen({ videoPath, onBack, onOpenVideo, playbackRequest, 
         )}
       </div>
 
+      {removeDialog}
       {exportOpen && <ExportDrawer controller={exportCtl} project={project} base={exportBase} onClose={handleCloseExport} />}
 
       {autoClipOpen && (

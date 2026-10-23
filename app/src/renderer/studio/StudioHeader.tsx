@@ -1,6 +1,6 @@
 import React from 'react'
 import { i18n } from '../i18n'
-import { ChevronLeft, Menu } from '../components/icons'
+import { ChevronLeft, Menu, Trash2 } from '../components/icons'
 
 interface StudioHeaderProps {
   /** Video filename. */
@@ -11,6 +11,8 @@ interface StudioHeaderProps {
   asideOpen: boolean
   onBack: () => void
   onToggleAside: () => void
+  onRemove?: () => void
+  removeDisabled?: boolean
 }
 
   /** Studio header: back, filename and metadata, status, and sidebar toggle. */
@@ -20,7 +22,9 @@ export function StudioHeader({
   statusDone,
   asideOpen,
   onBack,
-  onToggleAside
+  onToggleAside,
+  onRemove,
+  removeDisabled
 }: StudioHeaderProps): JSX.Element {
   const t = i18n.studio
   return (
@@ -29,7 +33,14 @@ export function StudioHeader({
         <ChevronLeft className="ic" />
       </button>
       <div className="studio-title">
-        <div className="studio-file">{title}</div>
+        <div className="studio-file-row">
+          <div className="studio-file">{title}</div>
+          {onRemove && <button type="button" className="icon-btn studio-video-remove"
+            aria-label={`${i18n.library.card.remove}：${title}`} title={i18n.library.card.remove}
+            disabled={removeDisabled} onClick={onRemove}>
+            <Trash2 className="ic sm" aria-hidden="true" />
+          </button>}
+        </div>
         <div className="studio-meta dim mono">
           {meta}
           {statusDone && <span className="badge-status">{t.statusDone}</span>}

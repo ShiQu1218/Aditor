@@ -85,6 +85,8 @@ function AppContent(): JSX.Element {
         onOpenVideo={handleSelectVideo}
         playbackRequest={playbackRequest}
         onPlaybackRequestConsumed={() => setPlaybackRequest(undefined)}
+        onVideoRemoved={(path) => setCurrentVideo((current) =>
+          current?.replace(/\\/g, '/').toLowerCase() === path.replace(/\\/g, '/').toLowerCase() ? null : current)}
         onBack={() => { setPlaybackRequest(undefined); setView('library') }}
       />
     )

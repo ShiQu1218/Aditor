@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import React from 'react'
+import React, { act } from 'react'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import App from '../App'
 import type { LibraryEntry } from '../../main/library'
@@ -26,8 +26,43 @@ async function start(entries: LibraryEntry[]) {
   await flush()
 }
 const navigate = (view: 'studio' | 'library' | 'settings') => click(document.querySelector(`[aria-label="${view === 'studio' ? shellI18n.rail.studioLabel : shellI18n.rail[view]}"]`)!)
+const requestRemoval = async () => {
+  click(document.querySelector('.studio-file-row .studio-video-remove')!)
+  await flush()
+  await act(async () => {
+    click(buttonByText(document.querySelector('[role="dialog"]')!, i18n.library.card.removeFromLibrary)!)
+  })
+}
 
 describe('Studio navigation', () => {
+  test.each([true, false])('removing the current video clears its selection; another video exists: %s', async (hasOtherVideo) => {
+    await start([entry(A), ...(hasOtherVideo ? [entry(B)] : [])])
+    navigate('studio'); await flush()
+    const remaining = hasOtherVideo ? [entry(A)] : []
+    fake.api.library.remove.mockImplementation(async () => { fake.setEntries(remaining); return undefined })
+    await requestRemoval(); await flush()
+    expect(document.querySelector('.lib-screen')).not.toBeNull()
+    navigate('studio'); await flush()
+    if (hasOtherVideo) expect(document.querySelector('.studio-file')?.textContent).toBe(remaining[0].path.split('/').pop())
+    else expect(document.querySelector('.studio-blocked')?.textContent).toContain('尚未有影片')
+  })
+
+  test('a delayed removal preserves the settings page and clears the removed selection', async () => {
+    await start([entry(A)])
+    navigate('studio'); await flush()
+    let complete!: () => void
+    fake.api.library.remove.mockImplementation(() => new Promise<undefined>((resolve) => {
+      complete = () => { fake.setEntries([]); resolve(undefined) }
+    }))
+    await requestRemoval()
+    navigate('settings'); await flush()
+    await act(async () => complete()); await flush()
+    expect(document.querySelector('[aria-current="page"]')?.getAttribute('aria-label')).toBe(shellI18n.rail.settings)
+    expect(document.querySelector('.lib-screen')).toBeNull()
+    navigate('studio'); await flush()
+    expect(document.querySelector('.studio-blocked')?.textContent).toContain('尚未有影片')
+  })
+
   test('When no video is open, opens the most recently recorded item; returning to the studio keeps the current video', async () => {
     await start([entry(A, Date.now()), entry(B), entry('D:/舊影片.mp4', new Date(2026, 9, 17).getTime())])
     navigate('studio'); await flush()

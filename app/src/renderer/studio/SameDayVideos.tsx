@@ -1,7 +1,7 @@
 import React, { useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
 import type { LibraryEntry } from '../../main/library'
 import { formatTime } from '../../shared/time'
-import { ChevronDown, ImageOff, AlertTriangle, Loader2 } from '../components/icons'
+import { ChevronDown, ImageOff, AlertTriangle, Loader2, Trash2 } from '../components/icons'
 import { cardStatusText, thumbnailUrl } from '../library/cardLogic'
 import { recordedTime, studioVideoTitle } from '../library/recordedTime'
 import { useQueueItemState } from '../queue/QueueProvider'
@@ -17,8 +17,9 @@ const normalize = (path: string): string => path.replace(/\\/g, '/').toLowerCase
 /** Horizontal scroll of the strip, kept across studio remounts (switching source remounts the studio) so the strip does not jump. */
 let savedScroll: { day: string; left: number } | null = null
 
-function SameDayCard({ entry, current, activeRef, onOpenVideo }: {
+function SameDayCard({ entry, current, activeRef, onOpenVideo, onRemove, removeDisabled }: {
   entry: LibraryEntry; current: boolean; activeRef: React.Ref<HTMLButtonElement>; onOpenVideo: (path: string) => void
+  onRemove?: (path: string) => void; removeDisabled?: boolean
 }): JSX.Element {
   const queueState = useQueueItemState(entry.path)
   const status = cardStatusText(entry, queueState)
@@ -32,7 +33,8 @@ function SameDayCard({ entry, current, activeRef, onOpenVideo }: {
     entry.durationSec != null ? formatTime(entry.durationSec) : ''
   ].filter(Boolean).join(' · ')
   return (
-    <button type="button" className="same-day-card" aria-current={current ? 'true' : undefined}
+    <div className="same-day-card-wrap">
+    <button type="button" className={`same-day-card${onRemove ? ' has-remove' : ''}`} aria-current={current ? 'true' : undefined}
       ref={current ? activeRef : undefined} onClick={() => { if (!current) onOpenVideo(entry.path) }}>
       <span className="same-day-thumb">
         {entry.thumb ? <img src={thumbnailUrl(entry.thumb)} alt="" loading="lazy" decoding="async" /> : <ImageOff className="ic" aria-hidden="true" />}
@@ -47,11 +49,20 @@ function SameDayCard({ entry, current, activeRef, onOpenVideo }: {
         </span>}
       </span>
     </button>
+    {onRemove && <button type="button" className="icon-btn studio-video-remove same-day-remove"
+      aria-label={`${card.remove}：${studioVideoTitle(entry.path)}`} title={card.remove}
+      disabled={removeDisabled} onClick={() => onRemove(entry.path)}>
+      <Trash2 className="ic sm" aria-hidden="true" />
+    </button>}
+    </div>
   )
 }
 
 /** Same-day recordings above the player; reuse studio preferences and delegate clip selection to the existing source-switch flow. */
-export function SameDayVideos({ videoPath, onOpenVideo }: { videoPath: string; onOpenVideo: (path: string) => void }): JSX.Element | null {
+export function SameDayVideos({ videoPath, onOpenVideo, onRemove, removeDisabled }: {
+  videoPath: string; onOpenVideo: (path: string) => void
+  onRemove?: (path: string) => void; removeDisabled?: boolean
+}): JSX.Element | null {
   const { entries, failed, retry } = useStudioLibrary()
   const [collapsed, setCollapsed] = useState<boolean | null>(null)
   const [saving, setSaving] = useState(false)
@@ -112,7 +123,7 @@ export function SameDayVideos({ videoPath, onOpenVideo }: { videoPath: string; o
         </button>
       </div>
       <div id={listId} ref={listRef} onScroll={rememberScroll} className="same-day-list" role="group" aria-labelledby={headingId} hidden={collapsed === true}>
-        {!collapsed && videos.map((entry) => <SameDayCard key={entry.path} entry={entry} current={normalize(entry.path) === normalize(videoPath)} activeRef={activeRef} onOpenVideo={onOpenVideo} />)}
+        {!collapsed && videos.map((entry) => <SameDayCard key={entry.path} entry={entry} current={normalize(entry.path) === normalize(videoPath)} activeRef={activeRef} onOpenVideo={onOpenVideo} onRemove={onRemove} removeDisabled={removeDisabled} />)}
       </div>
     </section>
   )

@@ -21,6 +21,9 @@
   background: var(--bg-surface);
 }
 .studio-title { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.studio-file-row { display: flex; align-items: center; gap: var(--sp-1); min-width: 0; }
+.studio-file-row .studio-video-remove { flex: none; width: 24px; height: 24px; }
+.studio-video-remove:hover:not(:disabled) { color: var(--danger); }
 .studio-file {
   font-weight: var(--fw-bold);
   font-size: var(--fs-body-lg);
@@ -101,8 +104,12 @@
   scroll-padding-inline: 2px;
 }
 .same-day-list[hidden] { display: none; }
+.same-day-card-wrap { position: relative; flex: 0 0 288px; min-width: 0; }
+.same-day-remove { position: absolute; top: 4px; right: 4px; width: 24px; height: 24px; }
+.same-day-card.has-remove { padding-right: 32px; }
 .same-day-card {
-  flex: 0 0 288px;
+  width: 100%;
+  height: 100%;
   min-width: 0;
   display: flex;
   align-items: center;

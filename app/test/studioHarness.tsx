@@ -18,6 +18,7 @@ export interface StudioFixtureOptions {
   items?: ProjectItem[]
   api?: FakeApiOptions
   onBack?: () => void
+  onVideoRemoved?: (path: string) => void
   onOpenVideo?: React.ComponentProps<typeof StudioScreen>['onOpenVideo']
 }
 
@@ -57,7 +58,7 @@ export async function mountStudio(opts: StudioFixtureOptions = {}): Promise<Stud
   const restore = installFakeApi(fake)
   const m = mount(
     <Providers active="studio">
-      <StudioScreen videoPath={STUDIO_VIDEO} onBack={opts.onBack ?? (() => undefined)} onOpenVideo={opts.onOpenVideo ?? (() => undefined)} preloadedDoc={doc} />
+      <StudioScreen videoPath={STUDIO_VIDEO} onBack={opts.onBack ?? (() => undefined)} onVideoRemoved={opts.onVideoRemoved} onOpenVideo={opts.onOpenVideo ?? (() => undefined)} preloadedDoc={doc} />
     </Providers>
   )
   await flush(20)
