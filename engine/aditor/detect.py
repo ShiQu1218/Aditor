@@ -13,6 +13,7 @@ from pathlib import Path
 
 from .icon_detect import IconDetector, IconFrame, IconParams
 from .models import FrameResult, NameSig
+from .mixtape import MixtapeDetector
 from .profile import Profile
 
 TEXT_H = 22  # Height in pixels of the first banner text line at 1080p; used to detect whitespace after the name.
@@ -356,7 +357,7 @@ def knock_strip(banner_bgr: np.ndarray, f, profile: Profile) -> np.ndarray | Non
 
 # Banner types that do not indicate a kill but can appear alongside the current event (solo elimination, squad wipe, REVIVE/CRATE REVEAL, and other three-person score banners).
 _OTHER_KINDS = frozenset({"elim", "squad_wipe", "score_other"})
-PRODUCT_KINDS = frozenset({"knock", "assist_knock", "assist_elim"})
+PRODUCT_KINDS = frozenset({"knock", "assist_knock", "assist_elim", "kill"})
 
 
 @dataclass(frozen=True)
@@ -379,6 +380,7 @@ class Detector:
         self.icon_scale = icon_scale
         self.set_keywords(keywords)
         self.icons = IconDetector(Path(profile.dir), scales=(icon_scale,), params=params)
+        self.mixtape = MixtapeDetector(profile)
         # Group spectator templates by white-text threshold and compute one mask per group.
         groups: dict[tuple, list[tuple[np.ndarray, float]]] = {}
         for s in profile.spectating:
@@ -388,6 +390,14 @@ class Detector:
 
     def _spectating(self, spec_bgr: np.ndarray) -> bool:
         """A match from a spectator template in any language counts as spectating (see false-positive measurements in templates/icons/PROVENANCE.md)."""
+        # The expanded capture also includes the player's name. Keep spectator
+        # text matching in its original hint bar, not in that new HUD region.
+        # Legacy 40px fixture/caller images already contain only the hint bar.
+        _, sy, _, height = self.profile.spec_roi
+        if sy < 1028 and spec_bgr.shape[0] == height:
+            spec_bgr = spec_bgr[max(0, 1028 - sy):max(0, 1068 - sy)]
+            if not spec_bgr.size:
+                return False
         for white, tpls in self._spec_groups:
             sm = white_mask(spec_bgr, white)
             box = _ink_box(sm)
@@ -453,6 +463,9 @@ class Detector:
         if f.chev >= p.chev_min and f.plus >= p.plus_min:
             # Score arrow and "+" are present, but the person icon is uncertain (fade in/out): not a hit, but do not interrupt an in-progress event.
             return FrameResult(None, 0.0, 0, False, None, spectating, hint="cont"), f
+        plain = self.mixtape.detect(banner_bgr, spec_bgr)
+        if plain is not None and not spectating:
+            return plain, f
         return FrameResult(None, 0.0, 0, False, None, spectating), f
 
     def resolve(self, r: FrameResult | Pending) -> FrameResult:

@@ -2,10 +2,10 @@ import { isCounted, type EngineEvent, type EventType } from '../../shared/types'
 import type { GameId } from '../../shared/games'
 
 /**
- * Fixed order for event-type chips (spec §5.2). The engine outputs only knock and assist (assist knock/assist elimination);
+ * Fixed order for event-type chips (spec §5.2). Apex includes direct Mixtape kills, knocks and assists;
  * elim/squad_wipe no longer have filter chips. Existing events of these types in old projects/caches remain visible (the default filter set includes them), preserving type compatibility.
  */
-export const CHIP_TYPES: EventType[] = ['knock', 'assist_knock', 'assist_elim']
+export const CHIP_TYPES: EventType[] = ['knock', 'kill', 'assist_knock', 'assist_elim']
 /** Valorant analysis emits kills and deaths. */
 export const VALORANT_CHIP_TYPES: EventType[] = ['kill', 'death']
 

@@ -1,6 +1,7 @@
-"""Detection profile (templates/icons/profile.json): one language-independent profile.
+"""Detection profile (templates/icons/profile.json): shared icon/color settings.
 
-Event detection uses icon templates (icon_detect) and enemy-name color rules. The only language-dependent templates are spectator banners (`spectating`), listed for multiple languages; any match indicates spectating."""
+BR detection uses language-independent icons and enemy-name colors. Spectator banners (`spectating`) cover multiple languages;
+the additional text-only Mixtape keyword templates currently cover Traditional Chinese."""
 from __future__ import annotations
 
 import json

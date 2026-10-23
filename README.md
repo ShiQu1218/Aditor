@@ -9,7 +9,7 @@
 > Record your *Apex Legends* or *VALORANT* matches, or drag in videos you already have. Aditor marks every Apex knockdown and assist, or every VALORANT kill and death, automatically, then lets you pick highlights on a timeline and export them. Video processing runs locally on your PC from on-screen pixels only, without game injection. Filtered Sentry error and performance diagnostics are on by default and can be turned off in Settings; see [diagnostics details](docs/sentry.md).
 
 > [!IMPORTANT]
-> **Apex Legends: Battle Royale (casual) and Ranked only.** Wildcard, Team Deathmatch and other modes are not supported.
+> **Apex Legends:** Battle Royale (casual), Ranked and Wildcard; Traditional Chinese text-only Mixtape kills and assists are also detected and have been verified on Team Deathmatch footage. Other Mixtape modes and languages remain unverified; see [validation scope](docs/accuracy-report-mixtape.md).
 >
 > **VALORANT:** kills, deaths, rounds, multi-kills and aces. Deathmatch records kills and deaths but has no rounds. See [Known limitations](#known-limitations) for the recommended window mode and other caveats.
 
@@ -117,8 +117,8 @@ Working-set sums can double-count shared pages. Private committed memory include
 
 ## Known limitations
 
-- **Apex Legends:** only Battle Royale (casual) and Ranked are supported; Wildcard, Team Deathmatch and other modes are not.
-- **Apex Legends:** only **knockdowns** and **assists** are detected; solo eliminations and squad wipes are not.
+- **Apex Legends:** text-only Mixtape banners currently support Traditional Chinese and have been verified on Team Deathmatch footage; other languages and Mixtape modes remain unverified.
+- **Apex Legends:** Battle Royale and Wildcard detect **knockdowns** and **assists**; Mixtape also detects direct kills. BR solo eliminations and squad wipes do not produce additional kills.
 - **Apex Legends:** the spectate filter recognizes the hint bar in Traditional/Simplified Chinese, English, Japanese and Korean only.
 - **VALORANT:** detection assumes the default HUD position; overlays that cover the top-right kill feed can cause missed kills.
 - **VALORANT:** playing in **borderless window** (windowed fullscreen) is recommended; in exclusive fullscreen the game window can pop up or minimize and disturb recording. Non-16:9 layouts such as 4:3 normally require exclusive fullscreen.

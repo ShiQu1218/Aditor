@@ -32,6 +32,8 @@ def _family(kind: str | None) -> str | None:
     """Banner family: solo score (knock/assist-knock, same icon) = P; assist elimination (handshake) = H."""
     if kind in _P_KINDS:
         return "P"
+    if kind == "kill":
+        return "K"
     return "H" if kind == "assist_elim" else None
 
 
@@ -245,7 +247,9 @@ class EventTracker:
         if r.kind is None:
             if run is None:
                 return
-            if r.hint == "cont" and run.family == "P" and t - run.reach_t - STEP < GAP - _EPS:
+            continuation = ((r.hint == "cont" and run.family == "P")
+                            or (r.hint == "plain_cont" and run.family in ("K", "H")))
+            if continuation and t - run.reach_t - STEP < GAP - _EPS:
                 run.add_cont(t)
                 self._emit(run)
             return
@@ -300,6 +304,15 @@ class EventTracker:
         """Whether there is a discontinuity between the old run and the new name: an empty frame after the old name's last occurrence, or a clear icon-score dip."""
         if run.discontinuity:
             return True
+        # Text-only banners can replace the victim without fading the shared
+        # keyword. Two stable new-name frames suffice; its score need not dip.
+        if r.hint == pend[1].hint == run.frames[0][1].hint == "plain":
+            # A clear banner can be replaced quickly. Require adjacent old-name
+            # agreement, rather than a fixed duration or an accidental match
+            # between non-adjacent fingerprints during the initial fade-in.
+            old = run.frames[:-1]  # Exclude the pending new-name frame.
+            return any(tb - ta <= STEP + _EPS and same_name(a.name_sig, b.name_sig, run.threshold)
+                       for (ta, a), (tb, b) in zip(old, old[1:]))
         base = sorted(f.score for _, f in run.frames[:-1])
         if not base:
             return False
@@ -348,7 +361,9 @@ class EventTracker:
             run.event.score = run.score
             run.event.damage_line = run.damage
             rep = run.representative()
-            if rep is not None:
+            # Direct eliminations and assist eliminations can repeat after a
+            # respawn. Keep signatures for banner splitting, not BR deduplication.
+            if rep is not None and run.kind not in ("kill", "assist_elim"):
                 run.event.name_sig = rep.to_b64()
 
     # --- Spectating ---

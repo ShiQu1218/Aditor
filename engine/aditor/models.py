@@ -5,8 +5,8 @@ from dataclasses import asdict, dataclass, field, fields
 
 import numpy as np
 
-# Counted means "counts toward the player's kills". The engine emits knock/assist_knock/assist_elim for Apex and kill/death for
-# Valorant; a death is never counted (derive marks it "death"). Keep elim countable for older project files and manual events.
+# Counted means "counts toward the player's kills". Apex emits knock/assist_knock/assist_elim and Mixtape kill; Valorant emits kill/death.
+# A death is never counted (derive marks it "death"). Keep elim countable for older project files and manual events.
 COUNTING_TYPES = frozenset({"knock", "assist_knock", "assist_elim", "elim", "kill"})
 
 
@@ -61,7 +61,8 @@ class FrameResult:
     damage_line: bool
     name_sig: NameSig | None
     spectating: bool
-    # Hint when kind is None: cont means a score arrow and "+" are present, but the person icon is uncertain (fade in/out); continue the in-progress event (not a hit).
+    # cont = uncertain score icon; plain_cont = text keyword with unreadable name.
+    # plain marks a text-only hit, whose keyword may stay visible across victim changes.
     hint: str | None = None
 
 

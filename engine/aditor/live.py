@@ -308,7 +308,10 @@ class _Calibration:
         # Multi-scale feature scores are maxima across candidate scales: when all chevrons are < chev_min and (computed only
         # in that case) all skull/hand scores are < left_min, every candidate Detector classifies the frame as banner-free
         # with no cont hint (see IconDetector.features/classify).
-        if f.chev >= p.chev_min or max(f.skull, f.hand) >= p.left_min:
+        plain = self.spec_det.mixtape.detect(banner, spec)
+        if plain is not None and plain.kind is not None:
+            self.hits.append(1.0)  # Text-only banners have no score icon to calibrate.
+        if f.chev >= p.chev_min or max(f.skull, f.hand) >= p.left_min or plain is not None:
             b, s = _png(banner), _png(spec)
             self.bytes += len(b) + len(s)
             self.frames.append((t, False, b, s))

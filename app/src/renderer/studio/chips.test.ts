@@ -20,7 +20,7 @@ function ev(t: number, type: EventType, extra: Partial<EngineEvent> = {}): Engin
 
 describe('studio filter chips', () => {
   test('Chips include only kills and assists (the engine no longer produces elim/squad_wipe)', () => {
-    expect(CHIP_TYPES).toEqual(['knock', 'assist_knock', 'assist_elim'])
+    expect(CHIP_TYPES).toEqual(['knock', 'kill', 'assist_knock', 'assist_elim'])
   })
 
   test('chipCounts counts undeleted events by type', () => {

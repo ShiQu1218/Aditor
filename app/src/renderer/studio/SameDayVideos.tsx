@@ -26,6 +26,7 @@ function SameDayCard({ entry, current, activeRef, onOpenVideo }: {
   const meta = [
     ...(entry.status === 'done' && entry.counts ? [
       entry.counts.knock > 0 ? card.knockBadge.replace('{n}', String(entry.counts.knock)) : '',
+      (entry.counts.kill ?? 0) > 0 ? card.killBadge.replace('{n}', String(entry.counts.kill)) : '',
       entry.counts.assist > 0 ? card.assistBadge.replace('{n}', String(entry.counts.assist)) : ''
     ] : []),
     entry.durationSec != null ? formatTime(entry.durationSec) : ''

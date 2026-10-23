@@ -13,6 +13,7 @@ from .detect import (Detector, KW_THRESHOLD, Keywords, _consensus, _match_max, h
 from .errors import Cancelled
 from .icon_detect import DEFAULT_SCALES, IconDetector, IconFrame
 from .models import VideoInfo
+from .mixtape import MixtapeDetector
 from .profile import Profile
 
 WANTED_HITS = 5
@@ -33,6 +34,7 @@ def _collect(path: str, profile: Profile, probe: IconDetector, multi: IconDetect
     """Decode up to budget seconds from start (without exceeding the time limit); return (best scale for hit frames, actual seconds scanned)."""
     hits: list[float] = []
     scanned = 0.0
+    mixtape = MixtapeDetector(profile)
     stream = FrameStream(path, profile, start=start, codec=codec, hwaccel=hwaccel)
     try:
         for t, banner, spec in stream:
@@ -42,6 +44,11 @@ def _collect(path: str, profile: Profile, probe: IconDetector, multi: IconDetect
                 break
             scanned += 1.0 / FPS
             if probe.chev_best(banner)[0] < PROBE_MIN:
+                plain = mixtape.detect(banner, spec)
+                if plain is not None and plain.kind is not None:
+                    hits.append(1.0)
+                    if len(hits) >= WANTED_HITS:
+                        break
                 continue
             f = multi.score_features(banner)
             if f.chev >= multi.p.chev_min and f.plus >= multi.p.plus_min:

@@ -30,7 +30,7 @@ SPEC_ANCHOR: Anchor = "bottom"
 # Shipped banner_roi/spec_roi (templates/icons/profile.json) with their anchors; profile.json capture_rois must match.
 CAPTURE_SPEC: dict[str, tuple[Rect, Anchor]] = {
     "banner": ((560, 700, 800, 180), BANNER_ANCHOR),
-    "spec": ((60, 1028, 480, 40), SPEC_ANCHOR),
+    "spec": ((60, 950, 480, 118), SPEC_ANCHOR),
 }
 
 

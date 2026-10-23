@@ -1,8 +1,8 @@
 {
-  "templates_version": "icons@1",
+  "templates_version": "icons@2",
   "banner_roi": [560, 700, 800, 180],
-  "spec_roi": [60, 1028, 480, 40],
-  "capture_rois": {"banner": [560, 652, 800, 228], "spec": [60, 1028, 480, 44]},
+  "spec_roi": [60, 950, 480, 118],
+  "capture_rois": {"banner": [560, 652, 800, 228], "spec": [60, 950, 480, 122]},
   "white": {"v_min": 200, "s_max": 60},
   "red": {
     "r_min": 170, "g_max": 195, "b_max": 195, "r_diff_min": 40,
