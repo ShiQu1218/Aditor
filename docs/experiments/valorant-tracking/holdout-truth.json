@@ -1,0 +1,49 @@
+{
+  "windows": [
+    {
+      "id": "clean-holdout",
+      "filename": "Playing Duelist Without Fear in Immortal.._1080p60.mp4",
+      "start": 200,
+      "end": 230,
+      "kills": [
+        {
+          "t": 212.3,
+          "victim": "67 | Sarzka"
+        },
+        {
+          "t": 222.9,
+          "victim": "Sova"
+        }
+      ]
+    },
+    {
+      "id": "radiant-holdout",
+      "filename": "This Is What Perfect Gamesense + Mechanics Looks Like in Radiant _ VALORANT Visual Guide 2026_720p60.mp4",
+      "start": 150,
+      "end": 180,
+      "kills": [
+        {
+          "t": 153.3,
+          "victim": "Sova"
+        },
+        {
+          "t": 167.6,
+          "victim": "Phoenix"
+        },
+        {
+          "t": 170.8,
+          "victim": "palkia"
+        },
+        {
+          "t": 177.2,
+          "victim": "palkia"
+        }
+      ]
+    }
+  ],
+  "version": 1,
+  "annotation": "Assistant visual review of first visible kill HUD at 0.1 s intervals; no independent human review.",
+  "uncertainty_seconds": 0.1,
+  "selection": "Unused excerpts from the same two recordings; selected before reviewing detection results for these windows. Not independent-video validation.",
+  "scope": "POV kills only; exclude entries already visible at window start."
+}

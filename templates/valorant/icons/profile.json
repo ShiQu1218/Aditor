@@ -1,4 +1,4 @@
 {
-  "templates_version": "valorant-feed@6",
+  "templates_version": "valorant-feed@8",
   "capture_rois": {"banner": [1031, 84, 885, 256], "spec": [647, 20, 655, 64]}
 }

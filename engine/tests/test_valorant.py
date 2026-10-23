@@ -325,3 +325,139 @@ def test_one_second_timing_correction_preserves_the_users_event_edits():
     assert merged[0].t == 33.25
     assert merged[0].deleted is True
     assert merged[0].counted_override is False
+
+
+def test_unconfirmed_rows_never_create_events():
+    from dataclasses import replace
+
+    tr = FeedTracker()
+    for k in range(40):
+        assert tr.feed(k * 0.25, [replace(row(0, "kill", [1, 0, 0]), confirmed=False)]) == []
+    assert tr.events == []
+
+
+def test_late_self_marker_backdates_only_the_same_observed_row():
+    from dataclasses import replace
+
+    tr = FeedTracker()
+    weak = replace(row(2, "kill", [1, 0, 0]), confirmed=False)
+    tr.feed(10, [weak])
+    tr.feed(10.25, [weak])
+    assert tr.feed(10.5, [row(1, "kill", [1, 0, 0])])[0].t == 10
+
+
+def test_an_unrelated_weak_row_cannot_move_a_kill_earlier():
+    from dataclasses import replace
+
+    tr = FeedTracker()
+    tr.feed(10, [replace(row(0, "kill", [1, 0, 0]), confirmed=False)])
+    assert tr.feed(10.25, [row(0, "kill", [0, 1, 0])])[0].t == 10.25
+
+
+def test_a_gap_breaks_the_weak_timestamp_evidence_chain():
+    from dataclasses import replace
+
+    tr = FeedTracker()
+    tr.feed(10, [replace(row(0, "kill", [1, 0, 0]), confirmed=False)])
+    tr.feed(10.25, [])
+    tr.feed(10.5, [])
+    assert tr.feed(11, [row(0, "kill", [1, 0, 0])])[0].t == 11
+
+
+def test_a_new_victim_at_the_same_slot_is_not_discarded_as_flicker():
+    tr = FeedTracker()
+    tr.feed(10, [row(0, "kill", [1, 0, 0])])
+    assert tr.feed(10.25, [row(0, "kill", [0, 1, 0])]) == []
+    assert tr.feed(10.5, [row(0, "kill", [0, 1, 0])])[0].t == 10.25
+    assert [e.t for e in tr.events] == [10, 10.25]
+
+
+def test_a_one_frame_appearance_change_does_not_duplicate_a_kill():
+    tr = FeedTracker()
+    tr.feed(10, [row(0, "kill", [1, 0, 0])])
+    assert tr.feed(10.25, [row(0, "kill", [0, 1, 0])]) == []
+    assert tr.feed(10.5, [row(0, "kill", [1, 0, 0])]) == []
+    assert len(tr.events) == 1
+
+
+def test_identical_victim_in_a_new_lower_row_is_a_distinct_kill():
+    tr = FeedTracker()
+    tr.feed(10, [row(0, "kill", [1, 0, 0])])
+    assert tr.feed(10.25, [row(0, "kill", [1, 0, 0]), row(1, "kill", [1, 0, 0])])[0].t == 10.25
+    assert len(tr.events) == 2
+
+
+def test_glyph_identity_can_keep_a_row_through_background_changes():
+    from dataclasses import replace
+
+    tr = FeedTracker()
+    first = replace(row(1, "kill", [1, 0, 0]), identity=np.array([1, 0], np.float32))
+    changed = replace(row(0, "kill", [0, 1, 0]), identity=np.array([1, 0], np.float32))
+    tr.feed(10, [first])
+    assert tr.feed(10.25, [changed]) == []
+    assert len(tr.events) == 1
+
+
+def test_other_players_feed_rows_are_only_unconfirmed_observations():
+    detector = FeedDetector(PROFILE)
+    observations = detector.observations(feed((0, TEAL, RED, None), (1, RED, TEAL, None)))
+    assert [(r.slot, r.type, r.confirmed) for r in observations] == [(0, "kill", False), (1, "death", False)]
+    tr = FeedTracker()
+    tr.feed(10, observations)
+    assert tr.events == []
+
+
+def test_large_backdate_keeps_unmatched_user_edits_for_review():
+    from aditor.models import Event
+    from aditor.valorant import merge_events
+
+    old = Event(id="old", t=12, type="kill", score=1, damage_line=False,
+                name_sig=None, deleted=True)
+    detected = Event(id="new", t=10, type="kill", score=1, damage_line=False, name_sig=None)
+    merged, unmatched = merge_events([old], [detected], [])
+    assert [e.id for e in unmatched] == ["old"]
+    assert len(merged) == 1 and not merged[0].deleted
+
+
+def _recorded_feed(name):
+    strip = cv2.imread(str(Path(__file__).parent / "fixtures/valorant" / f"{name}.png"))
+    assert strip is not None
+    img = np.zeros((CH, CW, 3), np.uint8)
+    img[:strip.shape[0]] = strip
+    return img
+
+
+def test_yellow_clothes_and_bright_scenery_are_not_a_player_marker():
+    assert kinds(_recorded_feed("yellow-clothing-background")) == []
+    assert kinds(_recorded_feed("outlined-player-background")) == [(1, "kill")]
+    assert kinds(_recorded_feed("faint-player-chevron")) == [(1, "kill")]
+    assert kinds(_recorded_feed("sparse-player-chevrons")) == [(1, "kill"), (2, "kill")]
+
+
+def test_same_victim_after_sustained_empty_feed_starts_at_first_sighting():
+    detector = FeedDetector(PROFILE)
+    rows = detector.observations(_recorded_feed("same-victim-after-cut"))
+    assert [(r.slot, r.type, r.confirmed) for r in rows] == [(0, "kill", True)]
+    tr = FeedTracker()
+    tr.feed(170.75, rows)
+    tr.feed(174.5, rows)
+    for t in np.arange(174.75, 177.25, 0.25):
+        tr.feed(float(t), [])
+    assert tr.feed(177.25, rows)[0].t == 177.25
+    assert [e.t for e in tr.events] == [170.75, 177.25]
+
+
+def test_yellow_highlight_in_the_victim_half_is_not_a_kill_marker():
+    right = RIGHT_EDGE - CX
+    assert kinds(feed((0, TEAL, RED, None),
+                      blobs=[(right - 110, ROW_Y0 - CY - 15, 25, 30)])) == []
+
+
+def test_one_unreadable_row_among_visible_rows_keeps_its_track():
+    tr = FeedTracker()
+    first, second = row(0, "kill", [1, 0, 0]), row(1, "kill", [0, 1, 0])
+    tr.feed(10, [first, second])
+    for t in np.arange(10.25, 12.5, 0.25):
+        tr.feed(float(t), [first])
+    assert tr.feed(12.5, [first, second]) == []
+    assert len(tr.events) == 2

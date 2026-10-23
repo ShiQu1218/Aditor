@@ -53,14 +53,17 @@ MIN_OUTLINE = 40
 # row-edge contrast; keep the looser chevron/outlined-row path at 40 columns.
 MIN_COMPACT_OUTLINE = 36
 MIN_COMPACT_FILL = 0.60
+MIN_PORTRAIT_FILL = 0.45  # Sparse yellow needs a saturated outline or a projecting chevron tip.
 MIN_CHEVRON_ROW_EDGE = 25.0
 KILL_CHEVRON_MIN_OFFSET = 200
 
 # Tracking: one kill-feed entry may flicker while fading and moves up a slot when an older row expires.
 SAME_ENTRY = 0.80   # Row signature correlation above which two sightings are the same entry.
 ENTRY_LIFE = 7.0    # Seconds an entry can stay on screen.
-FLICKER = 1.5       # Seconds a row may vanish and return at its slot (or one below) as the same entry.
+FLICKER = 1.5       # Tolerated weak-row gap / sustained empty-feed interval.
 DEATH_GAP = 6.0     # Minimum seconds between two deaths (Clove can revive and die again within a round).
+BACKDATE_WINDOW = 3.0  # Keep actual sightings, never subtract a fixed delay from an event.
+IDENTITY_MATCH = 0.65
 
 
 class ValorantProfileError(Exception):
@@ -187,11 +190,22 @@ class FeedRow:
     slot: int
     type: str            # "kill" | "death"
     signature: np.ndarray
+    confirmed: bool = True  # Weak team-colored rows may be tracked but never create an event alone.
+    identity: np.ndarray | None = None
 
 
 def _pale_yellow(hsv: np.ndarray) -> np.ndarray:
     """The thin outline washes out over bright scenery (saturation ~70); tan walls stay below hue 26."""
     return cv2.inRange(hsv, (26, 55, 140), (40, 255, 255))
+
+
+def _projecting_tip(component: np.ndarray, side: str) -> bool:
+    """A chevron's tip projects beyond both wings; a vertical stripe does not."""
+    h, w = component.shape
+    boundary = np.array([float(points.min() if side == "kill" else w - 1 - points.max())
+                         if (points := np.flatnonzero(line)).size else float(w) for line in component])
+    wing = min(float(np.median(boundary[:h // 4])), float(np.median(boundary[-h // 4:])))
+    return wing - float(boundary[h // 4:3 * h // 4].min()) >= 3
 
 
 class FeedDetector:
@@ -227,7 +241,7 @@ class FeedDetector:
         # The player's rows also carry a thin yellow outline that joins the box into one long component; opening
         # removes 1-2 px lines and keeps the box.
         yellow = cv2.morphologyEx(raw, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
-        n, _, stats, _ = cv2.connectedComponentsWithStats(yellow, connectivity=8)
+        n, labels, stats, _ = cv2.connectedComponentsWithStats(yellow, connectivity=8)
         sides: dict[int, set[str]] = {}
         for i in range(1, n):
             x, y, w, h, area = (int(v) for v in stats[i])
@@ -246,7 +260,13 @@ class FeedDetector:
             if y < b0 - 4 or y + h > b1 + 4:  # Effect streaks cross the band; a portrait box stays inside it.
                 continue
             side = "death" if at_right else "kill"
+            if side == "kill" and x > self.right - KILL_CHEVRON_MIN_OFFSET:
+                continue  # A victim portrait/weapon highlight is not the killer's player marker.
             outline_columns = self._outline(outline, slot, x, x + w, side)
+            if (side == "kill" and area < MIN_PORTRAIT_FILL * w * h
+                    and self._outline(raw, slot, x, x + w, side) < MIN_OUTLINE
+                    and not _projecting_tip(labels[y:y + h, x:x + w] == i, side)):
+                continue  # Yellow clothes plus pale scenery can mimic a portrait-sized component.
             outlined = outline_columns >= MIN_OUTLINE
             edge = self._row_edge(gray, slot)
             compact = (w >= MIN_OUTLINED_BOX_W and outline_columns >= MIN_COMPACT_OUTLINE
@@ -259,14 +279,15 @@ class FeedDetector:
             sides.setdefault(slot, set()).add(side)
         return sides
 
-    def _chevrons(self, hsv: np.ndarray, gray: np.ndarray) -> dict[int, set[str]]:
+    def _chevrons(self, hsv: np.ndarray, gray: np.ndarray, *, faint: bool = False) -> dict[int, set[str]]:
         """slot -> sides with a yellow chevron outside the row end and the yellow outline running along the row."""
-        yellow = cv2.inRange(hsv, (20, 90, 150), (38, 255, 255))
-        n, _, stats, _ = cv2.connectedComponentsWithStats(yellow, connectivity=8)
+        yellow = _pale_yellow(hsv) if faint else cv2.inRange(hsv, (20, 90, 150), (38, 255, 255))
+        n, labels, stats, _ = cv2.connectedComponentsWithStats(yellow, connectivity=8)
         sides: dict[int, set[str]] = {}
         for i in range(1, n):
             x, y, w, h, area = (int(v) for v in stats[i])
-            if not (5 <= w <= 12 and 14 <= h <= 22 and h >= 1.5 * w and area >= 0.25 * w * h):
+            max_w, max_h, fill = (14, 26, 0.40) if faint else (12, 22, 0.25)
+            if not (5 <= w <= max_w and 14 <= h <= max_h and h >= 1.5 * w and area >= fill * w * h):
                 continue
             slot = round((y + h / 2 + self.cy - ROW_Y0) / ROW_STEP)
             if not 0 <= slot < ROWS:
@@ -275,6 +296,11 @@ class FeedDetector:
             if y < b0 - 2 or y + h > b1 + 2 or self._row_edge(gray, slot) < MIN_CHEVRON_ROW_EDGE:
                 continue
             side = "death" if x >= self.right - 4 else "kill"
+            if faint:
+                # The tip must project beyond BOTH wings. Thin vertical clothes
+                # and scenery fragments otherwise look like a pale chevron.
+                if not _projecting_tip(labels[y:y + h, x:x + w] == i, side):
+                    continue
             # A kill chevron sits outside the row's left end, far from the right edge; one in between belongs to a
             # death row still sliding in.
             if side == "kill" and x > self.right - KILL_CHEVRON_MIN_OFFSET:
@@ -284,7 +310,7 @@ class FeedDetector:
             near = slice(x + w + 40, x + w + 140) if side == "kill" else slice(max(0, x - 140), max(0, x - 40))
             region = hsv[b0 + 5:b1 - 5, near]
             pale_teal = (region[..., 0] >= 55) & (region[..., 0] <= 100) & (region[..., 1] >= 25) & (region[..., 2] >= 110)
-            if not region.size or pale_teal.mean() < MIN_TEAM_FILL:
+            if not region.size or pale_teal.mean() < (0.15 if faint else MIN_TEAM_FILL):
                 continue
             if self._outline(yellow, slot, x, x + w, side) >= MIN_OUTLINE:
                 sides.setdefault(slot, set()).add(side)
@@ -298,23 +324,48 @@ class FeedDetector:
         return max(int((outline[max(0, b0 - 6):b0 + 3, span] > 0).any(axis=0).sum()),
                    int((outline[b1 - 3:b1 + 5, span] > 0).any(axis=0).sum()))
 
-    def rows(self, feed: np.ndarray) -> list[FeedRow]:
+    def observations(self, feed: np.ndarray) -> list[FeedRow]:
+        """Track visible feed rows before the player's marker becomes readable.
+
+        A later confirmed self marker can validate that same row's earlier sightings.
+        Other players' rows remain unconfirmed and never count as kills/deaths.
+        """
         hsv = cv2.cvtColor(feed, cv2.COLOR_BGR2HSV)
         gray = cv2.cvtColor(feed, cv2.COLOR_BGR2GRAY).astype(np.float32)
         marks = self._self_boxes(hsv, gray)
-        for k, s in self._chevrons(hsv, gray).items():
-            marks.setdefault(k, set()).update(s)
+        for faint in (False, True):
+            for k, s in self._chevrons(hsv, gray, faint=faint).items():
+                marks.setdefault(k, set()).update(s)
         out = []
-        for k, sides in sorted(marks.items()):
+        for k in range(ROWS):
+            sides = marks.get(k, set())
             team = self._victim_team(hsv, k)
             if team == "ally" and "death" in sides:
                 kind = "death"
             elif team == "enemy" and sides == {"kill"}:
                 kind = "kill"
             else:
+                if team is None or self._row_edge(gray, k) < MIN_ROW_EDGE:
+                    continue
+                kind = "kill" if team == "enemy" else "death"
+                out.append(FeedRow(k, kind, self._signature(gray, k), False, self._identity(hsv, k)))
                 continue
-            out.append(FeedRow(k, kind, self._signature(gray, k)))
+            out.append(FeedRow(k, kind, self._signature(gray, k), True, self._identity(hsv, k)))
         return out
+
+    def rows(self, feed: np.ndarray) -> list[FeedRow]:
+        """Confirmed self rows; retained for callers inspecting one frame only."""
+        return [row for row in self.observations(feed) if row.confirmed]
+
+    def _identity(self, hsv: np.ndarray, k: int) -> np.ndarray | None:
+        """Victim-name glyphs, less affected by the translucent colored background."""
+        b0, b1 = self.band(k)
+        region = hsv[b0 + 5:b1 - 5, self.right - 146:self.right - 36]
+        white = cv2.inRange(region, (0, 0, 175), (180, 100, 255))
+        if np.count_nonzero(white) < 25 or np.count_nonzero(white) > white.size * 0.6:
+            return None
+        v = cv2.resize(white, (64, 12), interpolation=cv2.INTER_AREA).astype(np.float32).ravel()
+        return v / (np.linalg.norm(v) + 1e-6)
 
     def _signature(self, gray: np.ndarray, k: int) -> np.ndarray:
         """Normalised thumbnail of the row's victim side; stable while the entry stays on screen and moves up."""
@@ -325,11 +376,24 @@ class FeedDetector:
         return v / (np.linalg.norm(v) + 1e-6)
 
 
+@dataclass
+class _FeedTrack:
+    first_t: float
+    last_t: float
+    row: FeedRow
+    anchor: FeedRow
+    sightings: list[float]
+    event: Event | None = None
+    strong_hits: int = 0
+    defer: bool = False
+    missing_since: float | None = None
+
+
 class FeedTracker:
     """Turns per-frame self rows into kill/death events, one per kill-feed entry."""
 
     def __init__(self):
-        self._seen: list[list] = []  # [first_t, last_t, type, slot, signature]
+        self._seen: list[_FeedTrack] = []
         self._last_death = -1e9
         self.events: list[Event] = []
 
@@ -347,41 +411,84 @@ class FeedTracker:
     def feed(self, t: float, rows: Iterable[FeedRow]) -> list[Event]:
         # An entry leaves the feed a few seconds after it appears, so the same victim killed again later is a new entry
         # even if it looks alike.
-        self._seen = [s for s in self._seen if t - s[0] <= ENTRY_LIFE]
+        self._seen = [s for s in self._seen if t - s.first_t <= ENTRY_LIFE
+                      and (s.missing_since is None or t - s.missing_since <= FLICKER)
+                      and (s.event is not None or t - s.last_t <= FLICKER)]
         rows = list(rows)
-        taken: set[int] = set()
-        unmatched = []
-        # Rows that look like a known entry claim it first, so a stray row in the slot above cannot steal it.
-        for row in sorted(rows, key=lambda r: -max((float(s[4] @ r.signature) for s in self._seen if s[2] == r.type),
-                                                    default=0.0)):
-            best = max(((float(s[4] @ row.signature), i) for i, s in enumerate(self._seen)
-                        if s[2] == row.type and i not in taken), default=(0.0, None))
-            if best[1] is not None and best[0] >= SAME_ENTRY:
-                taken.add(best[1])
-                self._seen[best[1]][1:] = [t, row.type, row.slot, row.signature]
-            else:
-                unmatched.append(row)
-        new = []
-        for row in sorted(unmatched, key=lambda r: r.slot):
-            # A fading or moving row at its slot (or one below, before shifting up) moments after the last sighting.
-            near = next((i for i, s in enumerate(self._seen)
-                         if s[2] == row.type and s[3] in (row.slot, row.slot + 1) and t - s[1] <= FLICKER), None)
-            if near is not None:
-                if near not in taken:  # Already claimed this frame: this row is a stray copy of that entry.
-                    taken.add(near)
-                    self._seen[near][1:] = [t, row.type, row.slot, row.signature]
-                continue
-            self._seen.append([t, t, row.type, row.slot, row.signature])
-            if row.type == "death":
-                if t - self._last_death < DEATH_GAP:  # A death row that fades and returns looking different.
+        # Compare appearance AND plausible motion. Entries only move upward; a new
+        # row below an old row is not its flicker, even if the victim looks alike.
+        edges = []
+        for j, row in enumerate(rows):
+            for i, track in enumerate(self._seen):
+                if track.row.type != row.type or row.slot > track.row.slot:
                     continue
-                self._last_death = t
+                raw = max(float(track.row.signature @ row.signature), float(track.anchor.signature @ row.signature))
+                identities = [r.identity for r in (track.row, track.anchor) if r.identity is not None]
+                if row.identity is not None and identities:
+                    identity = max(float(v @ row.identity) for v in identities)
+                    score, threshold = 0.35 * raw + 0.65 * identity, IDENTITY_MATCH
+                else:
+                    score, threshold = raw, SAME_ENTRY
+                    # A recently seen confirmed entry moving up is stronger evidence
+                    # than an unconfirmed copy when compression erases its glyphs.
+                    if track.event is not None and row.slot < track.row.slot and t - track.last_t <= FLICKER:
+                        threshold = 0.72
+                if score >= threshold:
+                    edges.append((track.event is not None, score, j, i))
+        assigned: dict[int, int] = {}
+        taken: set[int] = set()
+        for _, _, j, i in sorted(edges, reverse=True):
+            if j not in assigned and i not in taken:
+                assigned[j] = i
+                taken.add(i)
+        new = []
+        for j, row in sorted(enumerate(rows), key=lambda item: item[1].slot):
+            if j in assigned:
+                track = self._seen[assigned[j]]
+                if track.event is None and t - track.last_t > 0.5:
+                    track.sightings.clear()
+                    track.strong_hits = 0
+                track.last_t, track.row = t, row
+                track.missing_since = None
+                track.sightings.append(t)
+                track.sightings = [seen for seen in track.sightings if t - seen <= BACKDATE_WINDOW]
+            else:
+                # A transient copy immediately above a still-visible entry should
+                # not count as a new kill. Require a second strong sighting there.
+                above_known = any(rows[other].type == row.type and rows[other].slot == row.slot + 1
+                                  for other in assigned)
+                replaced_known = any(s.event is not None and s.row.type == row.type
+                                     and s.row.slot == row.slot and t - s.last_t <= FLICKER
+                                     for s in self._seen)
+                track = _FeedTrack(t, t, row, row, [t], defer=above_known or replaced_known)
+                self._seen.append(track)
+            if not row.confirmed or track.event is not None:
+                continue
+            track.strong_hits += 1
+            if track.defer and track.strong_hits < 2:
+                continue
+            # Backdate only a row whose identity was actually observed earlier.
+            # One weak flash is insufficient evidence for an earlier timestamp.
+            event_t = track.sightings[0] if len(track.sightings) >= 2 else t
+            if row.type == "death" and event_t - self._last_death < DEATH_GAP:
+                continue
+            if row.type == "death":
+                self._last_death = event_t
             # "Counted" means a kill of the player's; a death is shown but never counted (as derive marks it).
             kill = row.type == "kill"
-            ev = Event(id=self._new_id(t), t=round(t, 3), type=row.type, score=1.0, damage_line=False,
+            ev = Event(id=self._new_id(event_t), t=round(event_t, 3), type=row.type, score=1.0, damage_line=False,
                        name_sig=None, counted=kill, counted_reason="first" if kill else "death")
             self.events.append(ev)
+            track.event = ev
+            track.anchor = row
             new.append(ev)
+        # A sustained empty feed ends old entries, including confirmed ones. A
+        # missing single row may instead be unreadable or sliding among other rows.
+        for track in self._seen:
+            if rows:
+                track.missing_since = None
+            elif track.missing_since is None:
+                track.missing_since = t
         return new
 
 
@@ -402,7 +509,7 @@ class ValorantLiveKills:
         return self.round_tracker.rounds
 
     def feed(self, t: float, banner: np.ndarray, spec: np.ndarray) -> None:
-        if self.tracker.feed(t, self.detector.rows(banner)):
+        if self.tracker.feed(t, self.detector.observations(banner)):
             self.revision += 1
         if self.round_tracker.feed(t, spec) is not None:
             self.revision += 1
@@ -505,7 +612,7 @@ def analyze_valorant(path: str, info: VideoInfo, profile: ValorantProfile, *, ca
         if cancel is not None and cancel.is_set():
             stream.close()
             raise Cancelled()
-        tracker.feed(t, detector.rows(feed))
+        tracker.feed(t, detector.observations(feed))
         rounds.feed(t, spec)
         if t - last_report >= 1.0:
             on_progress(t, info.duration)
