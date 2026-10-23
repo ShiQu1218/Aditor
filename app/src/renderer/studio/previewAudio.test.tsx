@@ -81,3 +81,49 @@ test('keeps preview audio applied when changing video sources', () => {
   expect(videoRef.current!.volume).toBe(0.2)
   expect(videoRef.current!.muted).toBe(true)
 })
+
+test('keeps playback controls inside the preview, hides after inactivity, and follows fullscreen changes', async () => {
+  s = await mountStudio()
+  const stage = document.querySelector<HTMLElement>('.stage')!
+  expect(stage.querySelector('.preview-volume')).not.toBeNull()
+  expect(stage.querySelector('.transport-time')).not.toBeNull()
+  expect(document.querySelector('.transport .play-btn')).toBeNull()
+  const button = stage.querySelector<HTMLButtonElement>('.stage-controls > button:last-child')!
+  const request = vi.fn(async () => {})
+  stage.requestFullscreen = request
+  const exit = vi.fn(async () => {})
+  const previousExit = Object.getOwnPropertyDescriptor(document, 'exitFullscreen')
+  const previousElement = Object.getOwnPropertyDescriptor(document, 'fullscreenElement')
+  Object.defineProperty(document, 'exitFullscreen', { configurable: true, value: exit })
+  try {
+    click(button)
+    await flush()
+    expect(request).toHaveBeenCalledOnce()
+    act(() => {
+      Object.defineProperty(document, 'fullscreenElement', { configurable: true, value: stage })
+      document.dispatchEvent(new Event('fullscreenchange'))
+    })
+    expect(button.getAttribute('aria-label')).toBe(i18n.studio.transport.exitFullscreen)
+    click(button)
+    await flush()
+    expect(exit).toHaveBeenCalledOnce()
+    act(() => {
+      Object.defineProperty(document, 'fullscreenElement', { configurable: true, value: null })
+      document.dispatchEvent(new Event('fullscreenchange'))
+    })
+    expect(button.getAttribute('aria-label')).toBe(i18n.studio.transport.fullscreen)
+    vi.useFakeTimers()
+    act(() => stage.dispatchEvent(new Event('pointermove', { bubbles: true })))
+    expect(stage.classList.contains('controls-visible')).toBe(true)
+    act(() => vi.advanceTimersByTime(2500))
+    expect(stage.classList.contains('controls-visible')).toBe(false)
+    act(() => button.focus())
+    expect(stage.classList.contains('controls-visible')).toBe(true)
+  } finally {
+    vi.useRealTimers()
+    if (previousExit) Object.defineProperty(document, 'exitFullscreen', previousExit)
+    else delete (document as Partial<Document>).exitFullscreen
+    if (previousElement) Object.defineProperty(document, 'fullscreenElement', previousElement)
+    else Reflect.deleteProperty(document, 'fullscreenElement')
+  }
+})

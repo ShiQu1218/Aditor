@@ -315,6 +315,8 @@ export const i18n: Messages['i18n'] = {
       apply: '应用（替换现有建议）'
     },
     transport: {
+      fullscreen: '全屏',
+      exitFullscreen: '退出全屏',
       volume: '预览音量',
       mute: '静音',
       unmute: '取消静音',

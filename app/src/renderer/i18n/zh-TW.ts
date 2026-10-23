@@ -314,6 +314,8 @@ const i18n = {
       apply: '套用（取代現有建議）'
     },
     transport: {
+      fullscreen: '全螢幕',
+      exitFullscreen: '離開全螢幕',
       volume: '預覽音量',
       mute: '靜音',
       unmute: '取消靜音',

@@ -313,6 +313,8 @@ export const i18n: Messages['i18n'] = {
       apply: 'Apply (replaces current suggestions)'
     },
     transport: {
+      fullscreen: 'Fullscreen',
+      exitFullscreen: 'Exit fullscreen',
       volume: 'Preview volume',
       mute: 'Mute',
       unmute: 'Unmute',

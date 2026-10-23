@@ -46,6 +46,7 @@ import {
 import { HighlightsTab } from './HighlightsTab'
 import { NoticeBar } from './NoticeBar'
 import { PlayerStage } from './PlayerStage'
+import { PlaybackControls } from './PlaybackControls'
 import { ProjectTrack } from './ProjectTrack'
 import { StudioHeader } from './StudioHeader'
 import { SameDayVideos } from './SameDayVideos'
@@ -1626,27 +1627,30 @@ export function StudioScreen({ videoPath, onBack, onRegisterLeaveGuard, onVideoR
             onPlayingChange={handlePlayingChange}
             onEnded={handleVideoEnded}
             onError={handleVideoError}
-          />
+          >
+            <PlaybackControls
+              playing={isPlaying}
+              currentTime={currentTime}
+              duration={duration}
+              speed={speed}
+              volume={cfg.previewVolume}
+              muted={cfg.previewMuted}
+              audioDisabled={settings === null}
+              onVolumeChange={(value) => changePreviewAudio(value, false)}
+              onToggleMute={() => cfg.previewVolume === 0
+                ? changePreviewAudio(100, false)
+                : changePreviewAudio(cfg.previewVolume, !cfg.previewMuted)}
+              onTogglePlay={togglePlay}
+              onCycleSpeed={cycleSpeed}
+              onPrevEvent={() => seekEvent(-1)}
+              onNextEvent={() => seekEvent(1)}
+            />
+          </PlayerStage>
 
           <TransportBar
-            playing={isPlaying}
-            currentTime={currentTime}
-            duration={duration}
-            speed={speed}
-            volume={cfg.previewVolume}
-            muted={cfg.previewMuted}
-            audioDisabled={settings === null}
-            onVolumeChange={(value) => changePreviewAudio(value, false)}
-            onToggleMute={() => cfg.previewVolume === 0
-              ? changePreviewAudio(100, false)
-              : changePreviewAudio(cfg.previewVolume, !cfg.previewMuted)}
             counts={counts}
             chipTypes={chipTypesFor(state.doc.game)}
             filter={state.filter}
-            onTogglePlay={togglePlay}
-            onCycleSpeed={cycleSpeed}
-            onPrevEvent={() => seekEvent(-1)}
-            onNextEvent={() => seekEvent(1)}
             onAddEvent={gAddEvent}
             onQuick={toggleBlade}
             bladeMode={bladeActive}

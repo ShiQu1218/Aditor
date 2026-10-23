@@ -315,6 +315,8 @@ export const i18n: Messages['i18n'] = {
       apply: '適用（既存の提案を置き換え）'
     },
     transport: {
+      fullscreen: '全画面表示',
+      exitFullscreen: '全画面表示を終了',
       volume: 'プレビュー音量',
       mute: 'ミュート',
       unmute: 'ミュート解除',

@@ -48,6 +48,24 @@ def test_fast_classification_matches_full_on_every_fixture(detector):
             assert value == full.scores[name], (item["file"], name)
 
 
+@pytest.mark.parametrize("prefix", ["ranked_16-54_", "ranked_17-30_"])
+def test_direct_ranked_requeue_splits_without_lobby(detector, prefix):
+    from aditor.matches import Match, MatchTracker
+    from aditor.scene import SceneFrame
+
+    tracker = MatchTracker()
+    tracker.feed(0, SceneFrame("in_match_hud"))
+    openings = sorted((s for s in SCREENS["frames"] if s["file"].startswith(prefix)),
+                      key=lambda s: int(Path(s["file"]).stem.rsplit("_", 1)[1]))
+    for t, item in zip((10, 20), openings):
+        events = tracker.feed(t, detector.classify(load_screen(item), full_scores=False))
+        assert [(e.type, e.reason) for e in events] == [
+            ("match_end", "next_match"), ("match_pending", "pre_match")]
+        tracker.feed(t + 1, SceneFrame("in_match_hud"))
+    tracker.finish(30)
+    assert tracker.matches == [Match(0, 10), Match(10, 20), Match(20, 30)]
+
+
 def test_fast_classification_short_circuits_template_matches(detector, monkeypatch):
     calls = []
     match_score = detector._match_score

@@ -8,7 +8,7 @@
       "mode_card",
       95,
       15,
-      70,
+      160,
       55
     ],
     [
@@ -369,6 +369,26 @@
       "t": 1096,
       "scene": "other",
       "evidence": "開組合包動畫，沒有大廳外框。"
+    },
+    {
+      "file": "ranked_16-54_590.png",
+      "scene": "pre_match",
+      "evidence": "2026-10-23 16-54 590s: wide ranked mode card and loading footer during direct requeue."
+    },
+    {
+      "file": "ranked_16-54_1510.png",
+      "scene": "pre_match",
+      "evidence": "2026-10-23 16-54 1510s: wide ranked mode card and loading footer during direct requeue."
+    },
+    {
+      "file": "ranked_17-30_675.png",
+      "scene": "pre_match",
+      "evidence": "2026-10-23 17-30 675s: wide ranked mode card and loading footer during direct requeue."
+    },
+    {
+      "file": "ranked_17-30_1730.png",
+      "scene": "pre_match",
+      "evidence": "2026-10-23 17-30 1730s: wide ranked mode card and loading footer during direct requeue."
     }
   ]
 }

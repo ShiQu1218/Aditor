@@ -17,7 +17,7 @@ BASE_SIZE = (1920, 1080)
 # Each ROI's min_size is the minimum pixel size required for transmission; fps is the minimum sampling rate; anchor is the
 # screen edge the element keeps its distance to when the game renders at a narrower aspect (see layout.py).
 SCENE_ROIS = {
-    "mode_card": {"rect": (285, 45, 210, 165), "min_size": (70, 55), "fps": 1, "anchor": "top"},
+    "mode_card": {"rect": (285, 45, 480, 165), "min_size": (160, 55), "fps": 1, "anchor": "top"},
     "loading_footer": {"rect": (711, 828, 498, 84), "min_size": (166, 28), "fps": 1, "anchor": "bottom"},
     "wildcard_footer": {"rect": (711, 471, 498, 84), "min_size": (166, 28), "fps": 1, "anchor": "center"},
     "ready_button": {"rect": (741, 891, 444, 165), "min_size": (148, 55), "fps": 1, "anchor": "bottom"},
@@ -40,9 +40,11 @@ class SceneFrame:
     blank: bool = False
 
 
+# Mode names change the card width; search far enough right for the ranked-mode chevron.
 # Templates use SCENE_SIZE coordinates; the search area allows for small position and scale errors.
 _TEMPLATES = {
-    "mode_chevron": ((95, 15, 70, 55), (132, 20)),
+    "mode_chevron": ((95, 15, 160, 55), (132, 20)),
+    "ranked_chevron": ((95, 15, 160, 55), (225, 23)),
     "loading_footer": ((237, 276, 166, 28), (242, 281)),
     "wildcard_footer": ((237, 157, 166, 28), (242, 162)),
     "ready_border": ((247, 297, 148, 55), (252, 302)),
@@ -117,6 +119,8 @@ class SceneDetector:
                 score(name)
         # Evaluate the same priority order as before, computing only the scores that can still affect the result.
         chevron = score("mode_chevron")
+        if chevron < PRE_MATCH_THRESHOLD:
+            chevron = score("ranked_chevron")
         if chevron >= PRE_MATCH_THRESHOLD:
             footer = score("loading_footer")
             if footer < PRE_MATCH_THRESHOLD:
