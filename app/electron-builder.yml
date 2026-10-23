@@ -22,6 +22,10 @@ extraResources:
       - bin/ffprobe.exe
       - bin/aditorrec.exe
       - LICENSE.txt
+      - third-party-licenses/**/*
+      - build-config/configure.txt
+      - build-config/ffmpeg-components.json
+      - build-config/build-recipe-commit.txt
   - from: resources
     to: resources
     filter:

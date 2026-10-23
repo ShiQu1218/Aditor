@@ -1,0 +1,65 @@
+{
+  "schemaVersion": 1,
+  "upstream": {
+    "repository": "https://github.com/BtbN/FFmpeg-Builds.git",
+    "commit": "63ac3265b0789ea16c7b1f8351cd2ad195a28722",
+    "ffmpegCommit": "46d899d7a02bc63237472cc4897258d5ddf274ac",
+    "nvCodecHeadersCommit": "ced4f8eba3ba5dd431932cba17928f0dffdaeb2b",
+    "nvencSdk": "13.0"
+  },
+  "configure": [
+    "--disable-everything", "--disable-network", "--disable-autodetect",
+    "--disable-doc", "--disable-ffplay", "--disable-debug", "--disable-static",
+    "--disable-gpl", "--disable-nonfree", "--enable-version3", "--enable-shared",
+    "--enable-ffmpeg", "--enable-ffprobe", "--enable-avcodec", "--enable-avformat",
+    "--enable-avfilter", "--enable-avdevice", "--enable-swscale", "--enable-swresample",
+    "--enable-x86asm", "--enable-w32threads", "--enable-d3d11va", "--enable-dxva2",
+    "--enable-libvpl", "--enable-ffnvcodec", "--enable-nvenc", "--enable-amf",
+    "--enable-libdav1d", "--enable-libopenh264", "--enable-zlib", "--enable-bsfs"
+  ],
+  "components": {
+    "encoders": [
+      {"names": ["h264_nvenc", "hevc_nvenc", "av1_nvenc", "h264_amf", "hevc_amf", "av1_amf", "h264_qsv", "hevc_qsv", "av1_qsv"], "purpose": "Hardware recording, export and proxy", "sources": ["recorder/src/encode/mod.rs", "app/src/main/export/encoders.ts", "app/src/main/proxy.ts"]},
+      {"names": ["libopenh264", "aac", "pcm_s16le"], "purpose": "Software fallback, export audio and lossless MOV intermediates", "sources": ["app/src/main/export/plan.ts", "app/src/main/export/encodeQuality.ts"]},
+      {"names": ["mjpeg", "rawvideo", "wrapped_avframe"], "purpose": "JPEG thumbnails, raw frame pipes and null output", "sources": ["app/src/main/thumbnail.ts", "engine/aditor/decode.py", "app/src/main/export/encoders.ts"]},
+      {"names": ["ffv1", "mpeg4", "pcm_f32le"], "purpose": "Lossless scene timing, B-frame/open-GOP export, fragmented recording fixtures and decoded audio sample assertions", "sources": ["engine/tests/test_matches.py", "app/src/main/export/export-real.test.ts", "app/src/main/recording/test-support.ts", "recorder/src/encode/tests.rs"]}
+    ],
+    "decoders": [
+      {"names": ["h264", "hevc", "av1", "libdav1d", "vp8", "vp9", "mpeg4", "mjpeg"], "purpose": "Imported MP4, MKV, MOV, WebM, M4V and AVI video", "sources": ["app/src/main/library.ts", "engine/aditor/decode.py", "engine/aditor/matches.py", "engine/aditor/aspect.py", "engine/aditor/game_detect.py"]},
+      {"names": ["aac", "aac_fixed", "aac_latm", "opus", "vorbis", "mp3", "mp3float", "mp3adu", "mp3adufloat", "mp3on4", "mp3on4float", "flac", "ac3", "ac3_fixed", "eac3"], "purpose": "Common imported audio; native decoders avoid libopus/libvorbis dependencies", "sources": ["app/src/main/export/plan.ts", "app/src/main/proxy.ts"]},
+      {"names": ["pcm_alaw", "pcm_bluray", "pcm_dvd", "pcm_f16le", "pcm_f24le", "pcm_f32be", "pcm_f32le", "pcm_f64be", "pcm_f64le", "pcm_lxf", "pcm_mulaw", "pcm_s16be", "pcm_s16be_planar", "pcm_s16le", "pcm_s16le_planar", "pcm_s24be", "pcm_s24daud", "pcm_s24le", "pcm_s24le_planar", "pcm_s32be", "pcm_s32le", "pcm_s32le_planar", "pcm_s64be", "pcm_s64le", "pcm_s8", "pcm_s8_planar", "pcm_sga", "pcm_u16be", "pcm_u16le", "pcm_u24be", "pcm_u24le", "pcm_u32be", "pcm_u32le", "pcm_u8", "pcm_vidc"], "purpose": "All PCM decoders in the pinned FFmpeg, including MOV intermediates", "sources": ["app/src/main/export/plan.ts"]},
+      {"names": ["rawvideo", "wrapped_avframe", "png", "ffv1"], "purpose": "lavfi frames, raw stdin, PNG overlays and lossless test fixtures", "sources": ["engine/tests/conftest.py", "engine/tests/test_aspect.py", "engine/tests/test_matches.py", "app/e2e/helpers/makeFixtures.ts"]}
+    ],
+    "hwaccels": [
+      {"names": ["h264_d3d11va", "h264_d3d11va2", "h264_dxva2", "hevc_d3d11va", "hevc_d3d11va2", "hevc_dxva2", "av1_d3d11va", "av1_d3d11va2", "av1_dxva2", "vp9_d3d11va", "vp9_d3d11va2", "vp9_dxva2"], "purpose": "Native decoders used by explicit D3D11VA and auto fallback", "sources": ["engine/aditor/decode.py", "engine/aditor/matches.py"]}
+    ],
+    "hwdevices": [
+      {"names": ["d3d11va", "dxva2", "qsv"], "purpose": "Compiled device APIs; runtime availability is tested separately", "sources": ["recorder/src/encode/hardware.rs", "engine/aditor/decode.py"]}
+    ],
+    "muxers": [
+      {"names": ["mp4", "mov", "rawvideo", "null", "image2"], "purpose": "Recording/finalization, export/intermediates, frame pipes and thumbnails", "sources": ["recorder/src/encode/mux.rs", "app/src/main/recording/finalize.ts", "app/src/main/recording/obs-finalize.ts", "app/src/main/export/plan.ts", "engine/aditor/decode.py", "app/src/main/thumbnail.ts"]},
+      {"names": ["matroska"], "purpose": "MKV timing and FFV1 test fixtures", "sources": ["engine/tests/test_probe.py", "engine/tests/test_matches.py"]},
+      {"names": ["s16le", "f32le"], "configureNames": ["pcm_s16le", "pcm_f32le"], "purpose": "Raw audio decoding for silence, waveform and recording sample assertions", "sources": ["app/src/main/export/export-real.test.ts", "recorder/src/encode/tests.rs"]}
+    ],
+    "demuxers": [
+      {"names": ["mov", "matroska", "avi", "concat"], "purpose": "Import containers (mov also covers mp4/m4v), WebM and concatenated exports", "sources": ["app/src/main/library.ts", "app/src/main/export/plan.ts", "app/src/main/recording/finalize.ts"]},
+      {"names": ["image2", "image2pipe", "rawvideo"], "purpose": "PNG overlays and raw frame fixture input", "sources": ["engine/tests/conftest.py", "engine/tests/test_aspect.py"]},
+      {"names": ["png_pipe"], "configureNames": ["image_png_pipe"], "purpose": "PNG probing: the CLI name differs from the configure component name", "sources": ["engine/tests/conftest.py"]}
+    ],
+    "filters": [
+      {"names": ["scale", "crop", "pad", "fps", "format", "split", "vstack", "hwdownload"], "purpose": "Decode sampling, scene/game/aspect detection, normalize export, proxy and thumbnails", "sources": ["engine/aditor/decode.py", "engine/aditor/matches.py", "engine/aditor/aspect.py", "engine/aditor/game_detect.py", "app/src/main/export/plan.ts", "app/src/main/proxy.ts", "app/src/main/thumbnail.ts"]},
+      {"names": ["aresample", "anullsrc", "color", "trim", "atrim", "select", "volume", "null", "anull", "aformat"], "purpose": "Audio normalization, silent tracks and encoder detection", "sources": ["app/src/main/export/plan.ts", "app/src/main/export/encoders.ts", "recorder/src/encode/tests.rs"]},
+      {"names": ["buffer", "buffersink", "abuffer", "abuffersink"], "configureNames": [], "purpose": "FFmpeg always inserts these API filters; they have no configure switch", "sources": ["engine/aditor/decode.py", "app/src/main/export/plan.ts"]},
+      {"names": ["testsrc2", "sine", "drawbox", "overlay", "setpts"], "purpose": "Synthetic media, HUD overlays and VFR timestamps", "sources": ["engine/tests/conftest.py", "engine/tests/test_probe.py", "engine/tests/test_matches.py", "app/e2e/helpers/makeFixtures.ts", "app/src/main/recording/test-support.ts"]}
+    ],
+    "indevs": [
+      {"names": ["lavfi"], "purpose": "Encoder probing, silence input and test sources (requires avdevice)", "sources": ["app/src/main/export/encoders.ts", "app/src/main/export/plan.ts", "engine/tests/conftest.py"]}
+    ],
+    "protocols": [
+      {"names": ["file", "pipe"], "purpose": "Local files and stdin/stdout; no network protocols", "sources": ["app/src/main/recording/finalize.ts", "app/src/main/export/plan.ts", "engine/aditor/decode.py"]}
+    ],
+    "parsers": [
+      {"names": ["h264", "hevc", "av1", "vp8", "vp9", "aac", "aac_latm", "opus", "vorbis", "mpegaudio", "mpeg4video", "mjpeg", "flac", "ac3", "png"], "purpose": "Imported bitstream framing and fixture PNG decoding", "sources": ["engine/aditor/probe.py", "app/src/main/export/plan.ts", "engine/tests/conftest.py"]}
+    ]
+  }
+}

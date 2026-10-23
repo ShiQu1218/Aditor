@@ -1,0 +1,111 @@
+name: Build Aditor FFmpeg
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Immutable release tag (leave empty for artifacts only)
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/cache@v4
+        with:
+          path: .cache
+          key: ffmpeg-aditor-win64-${{ hashFiles('aditor/prepare.py', 'scripts.d/**', 'images/base-win64/**') }}
+          restore-keys: ffmpeg-aditor-win64-
+      - name: Apply reviewed component manifest
+        run: |
+          python3 aditor/prepare.py . --manifest aditor/ffmpeg-components.json
+          python3 aditor/download-licenses.py
+      - name: Build using BtbN toolchain and dependency recipes
+        env:
+          QUICKBUILD: '1'
+        run: |
+          set -euo pipefail
+          export GITHUB_REPOSITORY=btbn/ffmpeg-builds
+          ./makeimage.sh win64 lgpl-shared-aditor 8.1
+          ./build.sh win64 lgpl-shared-aditor 8.1
+          cd artifacts
+          sha256sum *.zip > SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ffmpeg-win64-lgpl-shared-aditor
+          path: artifacts/*
+          if-no-files-found: error
+          retention-days: 14
+
+  verify:
+    needs: build
+    runs-on: windows-2022
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: ffmpeg-win64-lgpl-shared-aditor
+          path: artifacts
+      - name: Check package, LGPL, every component and 40 MB size gate
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $zip = @(Get-ChildItem artifacts/*.zip)
+          if ($zip.Count -ne 1) { throw 'Expected exactly one FFmpeg zip' }
+          $expected = ((Get-Content artifacts/SHA256SUMS -Raw).Trim() -split '\s+')[0]
+          if ((Get-FileHash $zip[0].FullName -Algorithm SHA256).Hash -ne $expected) { throw 'SHA256 mismatch' }
+          Expand-Archive $zip[0].FullName verified
+          $roots = @(Get-ChildItem verified -Directory)
+          if ($roots.Count -ne 1) { throw 'Expected exactly one archive root' }
+          $ffmpeg = Join-Path $roots[0].FullName 'bin/ffmpeg.exe'
+          & ./aditor/verify-ffmpeg-components.ps1 -FfmpegPath $ffmpeg -ManifestPath ./aditor/ffmpeg-components.json -Strict -CheckPackage
+          & ./aditor/smoke-test.ps1 -FfmpegPath $ffmpeg
+      - name: Verify MSVC import libraries by linking a real consumer
+        shell: cmd
+        run: |
+          call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
+          for /d %%R in (verified\*) do cl /nologo aditor\link-check.c /I"%%R\include" /link /LIBPATH:"%%R\lib" avcodec.lib avformat.lib avutil.lib /OUT:link-check.exe
+          if errorlevel 1 exit /b 1
+          for /d %%R in (verified\*) do copy /Y link-check.exe "%%R\bin\link-check.exe"
+          for /d %%R in (verified\*) do "%%R\bin\link-check.exe"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ffmpeg-validation
+          path: verified/*/build-config/*
+          if-no-files-found: error
+
+  release:
+    needs: verify
+    if: inputs.release_tag != ''
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: ffmpeg-win64-lgpl-shared-aditor
+          path: artifacts
+      - name: Publish verified immutable release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          RECIPE_COMMIT: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_TAG" =~ ^aditor-8\.1-[a-zA-Z0-9._-]+$ ]] || { echo 'Invalid release tag'; exit 1; }
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo 'Release already exists; choose a new immutable tag.'
+            exit 1
+          fi
+          printf 'Aditor LGPL v3 shared FFmpeg.\n\nBuild recipe commit: %s\nNVENC SDK: 13.0\nWindows component, software smoke, MSVC link and 40 MB checks passed.\nHardware and application acceptance are recorded in the Aditor repository.\n' "$RECIPE_COMMIT" > release-notes.txt
+          gh release create "$RELEASE_TAG" --repo "$GH_REPO" --target "$RECIPE_COMMIT" --title "$RELEASE_TAG" --notes-file release-notes.txt artifacts/*.zip artifacts/SHA256SUMS

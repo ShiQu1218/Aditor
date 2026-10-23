@@ -70,7 +70,7 @@ def make_video(tmp_path, name, duration, *, start_time=0.0, vfr=False, marks=(),
         fc += f";{last}scale=1920:1080[vs]"
         last = "[vs]"
     cmd = [_ffmpeg(), "-v", "error", "-y", *inputs, "-filter_complex", fc, "-map", last,
-           "-c:v", "libx264", "-preset", "ultrafast", "-g", "60", "-pix_fmt", "yuv420p"]
+           "-c:v", "libopenh264", "-b:v", "40M", "-allow_skip_frames", "0", "-g", "60", "-pix_fmt", "yuv420p"]
     if vfr:
         cmd += ["-fps_mode", "passthrough"]
     if start_time:

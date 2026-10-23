@@ -8,11 +8,12 @@ $ErrorActionPreference = "Stop"
 # Pin a named autobuild (do not use releases/download/latest, which changes to a different master snapshot every day).
 # Stay on the 8.1 release branch: BtbN builds it with NVENC SDK 13.0 (driver 570+, still available for GTX 10 series);
 # master and 9.x use SDK 13.1, which requires driver 610+ and drops Pascal/Maxwell GPUs.
+# Build recipe and upgrade instructions: ffmpeg-build/README.md.
 # To upgrade FFmpeg, update the three values below and the version notes in THIRD_PARTY_NOTICES.md (and recorder/src/encode/nvenc.rs REQUIRED_API/MIN_DRIVER when the NVENC SDK changes).
-$tag = "autobuild-2026-10-14-13-03"
-$asset = "ffmpeg-n8.1.3-18-g46d899d7a0-win64-lgpl-shared-8.1.zip"
-$expectedSha256 = "38DD3FB973C2E10723489E2173135D60F569953E70A04B885446175F9E9380D6"
-$url = "https://github.com/BtbN/FFmpeg-Builds/releases/download/$tag/$asset"
+$tag = "aditor-8.1-20261023.1"
+$asset = "ffmpeg-46d899d-win64-lgpl-shared-aditor-8.1.zip"
+$expectedSha256 = "087FDFD152EA5243CFFBF196BC488BCC9AF0F0898B81FD4A115F32167D489BEB"
+$url = "https://github.com/ShiQu1218/Aditor-FFmpeg/releases/download/$tag/$asset"
 
 $buildDir = [System.IO.Path]::GetFullPath("$PSScriptRoot\..\build")
 if (-not (Test-Path $buildDir)) {
@@ -63,7 +64,11 @@ Write-Host "Verifying FFmpeg license and features via buildconf..."
 $prevEAP = $ErrorActionPreference
 $ErrorActionPreference = "Continue"
 $buildconf = & $ffmpegExe -buildconf 2>&1 | Out-String
+$buildconfExitCode = $LASTEXITCODE
 $ErrorActionPreference = $prevEAP
+if ($buildconfExitCode -ne 0) {
+    throw "FFmpeg -buildconf failed (exit $buildconfExitCode)."
+}
 
 if ($buildconf -match "--enable-gpl") {
     throw "FATAL: FFmpeg binary contains --enable-gpl! Must be LGPL only."
@@ -74,5 +79,13 @@ if ($buildconf -match "--enable-nonfree") {
 if (-not ($buildconf -match "--enable-libdav1d")) {
     throw "FATAL: FFmpeg binary missing --enable-libdav1d for AV1 decoding."
 }
+if (-not ($buildconf -match "--enable-libopenh264")) {
+    throw "FATAL: FFmpeg binary missing --enable-libopenh264 for software H.264 fallback."
+}
 
-Write-Host "✓ FFmpeg LGPL verification passed: LGPL compliant with libdav1d."
+# Retain compatibility with the original BtbN pin for deliberate rollback. Custom
+# Aditor releases also require the compiled component metadata and 40 MB package gate.
+$minimal = $asset -match '-lgpl-shared-aditor-'
+& "$PSScriptRoot\verify-ffmpeg-components.ps1" -FfmpegPath $ffmpegExe -Strict:$minimal -CheckPackage:$minimal
+
+Write-Host "✓ FFmpeg LGPL and component verification passed: libdav1d and libopenh264 available."

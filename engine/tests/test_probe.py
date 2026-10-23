@@ -76,7 +76,7 @@ def test_keyframes_use_container_time_base_when_video_starts_late(tmp_path):
     r = subprocess.run([ffbin.ffmpeg(), "-v", "error", "-y",
                         "-f", "lavfi", "-i", "sine=frequency=440:duration=4",
                         "-itsoffset", "0.5", "-f", "lavfi", "-i", "testsrc2=size=320x180:rate=30:duration=3",
-                        "-map", "1:v", "-map", "0:a", "-c:v", "libx264", "-g", "30", "-c:a", "aac", str(out)],
+                        "-map", "1:v", "-map", "0:a", "-c:v", "libopenh264", "-b:v", "4M", "-allow_skip_frames", "0", "-g", "30", "-c:a", "aac", str(out)],
                        capture_output=True)
     assert r.returncode == 0, r.stderr.decode(errors="replace")
     kf = keyframes(str(out))

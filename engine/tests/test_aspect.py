@@ -42,7 +42,7 @@ def _encode(tmp_path, name, frames):
     """Encode grayscale 640×360 frames as a 1 fps 1280×720 H.264 video."""
     out = tmp_path / name
     cmd = [ffbin.ffmpeg(), "-y", "-v", "error", "-f", "rawvideo", "-pix_fmt", "gray", "-s", "640x360", "-r", "1",
-           "-i", "-", "-vf", "scale=1280:720", "-c:v", "libx264", "-crf", "12", "-pix_fmt", "yuv420p", str(out)]
+           "-i", "pipe:0", "-vf", "scale=1280:720", "-c:v", "libopenh264", "-b:v", "8M", "-allow_skip_frames", "0", "-pix_fmt", "yuv420p", str(out)]
     r = subprocess.run(cmd, input=b"".join(np.ascontiguousarray(f).tobytes() for f in frames), capture_output=True)
     assert r.returncode == 0, r.stderr.decode(errors="replace")
     return out

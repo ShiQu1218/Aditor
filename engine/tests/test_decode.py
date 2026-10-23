@@ -109,19 +109,12 @@ def test_build_input_args_av1_hwaccel_before_ss_when_start_positive():
     assert args.index("-c:v") < args.index("-ss")
 
 
-def _av1_clip(tmp_path, seconds=1.0):
-    """Encode an AV1 test video with libsvtav1; skip the test if no AV1 encoder is available."""
-    import subprocess
-    from aditor import ffbin
-    ff = ffbin.ffmpeg()
-    enc = subprocess.run([ff, "-hide_banner", "-encoders"], capture_output=True).stdout.decode(errors="replace")
-    if "libsvtav1" not in enc:
-        pytest.skip("ffmpeg does not have the libsvtav1 encoder; cannot create an AV1 test video")
+def _av1_clip(tmp_path):
+    """Copy the synthetic AV1 fixture; decoding must not depend on an AV1 encoder."""
+    import shutil
+    from pathlib import Path
     out = tmp_path / "av1.mp4"
-    subprocess.run([ff, "-v", "error", "-y", "-f", "lavfi", "-i",
-                    f"testsrc2=size=640x360:rate=60:duration={seconds}",
-                    "-c:v", "libsvtav1", "-preset", "12", "-g", "60", "-pix_fmt", "yuv420p", str(out)],
-                   check=True, capture_output=True)
+    shutil.copyfile(Path(__file__).parent / "fixtures" / "media" / "av1-1s-640x360-60.mp4", out)
     return out
 
 

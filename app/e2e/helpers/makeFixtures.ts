@@ -50,7 +50,7 @@ export function makeFixtures(): FixtureSet {
         '-f', 'lavfi', '-i', `testsrc2=size=640x360:rate=30:duration=${s.seconds}`,
         '-f', 'lavfi', '-i', `anullsrc=r=48000:cl=stereo`,
         '-t', String(s.seconds),
-        '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-preset', 'ultrafast', '-g', '30',
+        '-c:v', 'libopenh264', '-pix_fmt', 'yuv420p', '-b:v', '4M', '-allow_skip_frames', '0', '-g', '30',
         '-c:a', 'aac', '-shortest', out
       ],
       { encoding: 'utf-8', windowsHide: true }
