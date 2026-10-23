@@ -55,7 +55,7 @@ describe('cache:loadByVideo reads according to cacheLocation', () => {
     expect(await load({}, video)).toEqual({ where: 'appdata' })
     fs.writeFileSync(besideFile, JSON.stringify({ where: 'beside' }))
     expect(await load({}, video)).toEqual({ where: 'beside' })
-    expect(besideFile).toBe(path.join(path.dirname(video), 'm.aditor.json'))
+    expect(besideFile).toBe(path.join(path.dirname(video), 'm.mp4.aditor.json'))
 
     store.set({ cacheLocation: 'appdata' })
     expect(await load({}, video)).toEqual({ where: 'appdata' })

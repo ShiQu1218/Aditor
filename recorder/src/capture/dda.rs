@@ -254,7 +254,7 @@ impl SlotGate {
 }
 
 /// Queries only the window manager and never opens the target process; a failed query or missing foreground window is treated as hidden.
-fn foreground_state() -> (Option<u32>, bool) {
+pub(super) fn foreground_state() -> (Option<u32>, bool) {
     // SAFETY: HWND is used only for queries; if the window disappears, PID remains zero and no process handle is acquired.
     unsafe {
         let hwnd = GetForegroundWindow();
@@ -269,20 +269,20 @@ fn game_visible(pid: u32, foreground_pid: Option<u32>, iconic: bool) -> bool {
 }
 
 /// Query at most once per output interval; also poll static desktops to switch to black frames when no new DDA frame arrives.
-struct Visibility {
+pub(super) struct Visibility {
     checked: Option<i64>,
     visible: bool,
 }
 
 impl Visibility {
-    fn new() -> Self {
+    pub(super) fn new() -> Self {
         Self {
             checked: None,
             visible: true,
         }
     }
 
-    fn update(
+    pub(super) fn update(
         &mut self,
         pid: u32,
         pts: i64,
@@ -304,16 +304,20 @@ impl Visibility {
             CaptureNotice::GameHidden { pts }
         })
     }
+
+    pub(super) fn is_visible(&self) -> bool {
+        self.visible
+    }
 }
 
 /// Allocates only at initialization or size changes, clears to opaque black, then reuses the texture without reading back to the CPU.
-struct BlackFrame {
+pub(super) struct BlackFrame {
     texture: ID3D11Texture2D,
     size: (u32, u32),
 }
 
 impl BlackFrame {
-    fn new(gpu: &Gpu, size: (u32, u32)) -> Result<Self> {
+    pub(super) fn new(gpu: &Gpu, size: (u32, u32)) -> Result<Self> {
         let desc = D3D11_TEXTURE2D_DESC {
             Width: size.0,
             Height: size.1,
@@ -345,7 +349,7 @@ impl BlackFrame {
         Ok(Self { texture, size })
     }
 
-    fn deliver(&self, consumer: &mut dyn FrameConsumer, pts: i64) {
+    pub(super) fn deliver(&self, consumer: &mut dyn FrameConsumer, pts: i64) {
         consumer.on_frame(&CapturedFrame {
             texture: &self.texture,
             width: self.size.0,

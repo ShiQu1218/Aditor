@@ -20,9 +20,23 @@ def _normalize(path: str) -> str:
 def cache_path(video_path: str, cache_dir: Path, beside: bool = False) -> Path:
     if beside:
         v = Path(video_path)
-        return v.parent / (v.stem + ".aditor.json")
+        return v.parent / (v.name + ".aditor.json")
     key = hashlib.sha1(_normalize(video_path).encode("utf-8")).hexdigest()
     return Path(cache_dir) / (key + ".json")
+
+
+def legacy_cache_path(video_path: str, cache_dir: Path, beside: bool = False) -> Path:
+    """The pre-full-filename beside path, used only when its document names this video."""
+    if not beside:
+        return cache_path(video_path, cache_dir)
+    v = Path(video_path)
+    return v.parent / (v.stem + ".aditor.json")
+
+
+def _belongs_to_video(doc: dict | None, video_path: str) -> bool:
+    video = (doc or {}).get("video") if isinstance(doc, dict) else None
+    stored = video.get("path") if isinstance(video, dict) else None
+    return isinstance(stored, str) and _normalize(stored) == _normalize(video_path)
 
 
 def load_cache(p: Path) -> dict | None:
@@ -32,6 +46,49 @@ def load_cache(p: Path) -> dict | None:
     except (OSError, ValueError):
         return None
     return doc if isinstance(doc, dict) else None
+
+
+def resolve_cache_path(video_path: str, cache_dir: Path, beside: bool = False) -> Path:
+    """Find the newest valid copy, preferring the configured location when timestamps tie."""
+    preferred = cache_path(video_path, cache_dir, beside)
+    legacy = legacy_cache_path(video_path, cache_dir, True)
+    other = cache_path(video_path, cache_dir, not beside)
+    candidates = ((preferred, False), (legacy, True), (other, False)) if beside else ((preferred, False), (other, False), (legacy, True))
+    valid = []
+    for index, (candidate, old_name) in enumerate(candidates):
+        doc = load_cache(candidate) if candidate.is_file() else None
+        if doc is not None and (not old_name or _belongs_to_video(doc, video_path)):
+            valid.append((index, candidate, doc))
+    if not valid:
+        return preferred
+    same_video = [item for item in valid if _belongs_to_video(item[2], video_path)]
+    if not same_video:
+        return valid[0][1]
+    # shortcut: mtime orders copies; use explicit revisions if external sync must preserve conflicting edits.
+    def mtime(item):
+        try:
+            return item[1].stat().st_mtime_ns
+        except OSError:
+            return -1
+    return max(same_video, key=lambda item: (mtime(item), -item[0]))[1]
+
+
+def prepare_cache(video_path: str, cache_dir: Path, beside: bool = False) -> tuple[Path, dict | None]:
+    """Read the configured or compatible old cache and copy it to the new write path without deleting the source."""
+    target = cache_path(video_path, cache_dir, beside)
+    source = resolve_cache_path(video_path, cache_dir, beside)
+    old = load_cache(source)
+    if old is not None and source != target:
+        migrated = {**old, "cache_path": str(target)}
+        try:
+            written = save_cache(target, migrated, fallback_dir=cache_dir)
+        except OSError:
+            written = target
+        else:
+            target = written
+            migrated["cache_path"] = str(written)
+            old = migrated
+    return target, old
 
 
 def _write(p: Path, doc: dict) -> None:
@@ -50,7 +107,8 @@ def save_cache(p: Path, doc: dict, fallback_dir: Path | None = None) -> Path:
     except OSError:
         if fallback_dir is None:
             raise
-    fb = Path(fallback_dir) / p.name
+    video_path = (doc.get("video") or {}).get("path") if isinstance(doc, dict) else None
+    fb = cache_path(video_path, Path(fallback_dir)) if isinstance(video_path, str) else Path(fallback_dir) / p.name
     _write(fb, doc)
     return fb
 
@@ -95,6 +153,15 @@ def merge_reanalysis(old_events: list[Event], new_auto: list[Event]) -> tuple[li
     unmatched: list[Event] = []
     olds = sorted((e for e in old_events if e.source != "manual" and _has_state(e)),
                   key=lambda e: e.t)
+    pending = []
+    for o in olds:
+        match = next((i for i, n in enumerate(new) if i not in received and n.id == o.id), None)
+        if match is None:
+            pending.append(o)
+            continue
+        received.add(match)
+        new[match] = replace(new[match], deleted=o.deleted, counted_override=o.counted_override)
+    olds = pending
     for o in olds:
         best, best_d = None, None
         for i, n in enumerate(new):

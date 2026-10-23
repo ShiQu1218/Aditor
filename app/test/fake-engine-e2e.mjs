@@ -55,7 +55,7 @@ function runProbe(file) {
 export function cachePath(video, cacheDir, beside) {
   if (beside) {
     const p = path.parse(video)
-    return path.join(p.dir, p.name + '.aditor.json')
+    return path.join(p.dir, p.base + '.aditor.json')
   }
   const key = crypto.createHash('sha1').update(path.resolve(video).toLowerCase().replace(/\\/g, '/')).digest('hex')
   return path.join(cacheDir, key + '.json')

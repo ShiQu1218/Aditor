@@ -436,14 +436,13 @@ export async function finalizeSession(dir: string, deps: RecordingDeps): Promise
         await fs.promises.rm(dir, { recursive: true })
         return outputs
       }
+      // Only a healthy completion proves that no-match footage was lobby-only; pruning alone can precede an engine failure.
+      if (Array.isArray(live?.matches) && await readOptional(path.join(dir, LIVE_COMPLETE_FILE))) {
+        await fs.promises.rm(dir, { recursive: true })
+        return []
+      }
     }
-    // Nothing remains when lobby segments were pruned or healthy live detection saw no match (the user stayed in the lobby).
-    // If detection never started or failed partway through, neither marker exists; fall back to the full output to avoid losing footage.
-    if (config.mode === 'match' && (await readOptional(path.join(dir, 'pruned.json')) ||
-      await readOptional(path.join(dir, LIVE_COMPLETE_FILE)))) {
-      await fs.promises.rm(dir, { recursive: true })
-      return []
-    }
+    // Incomplete detection falls through to the available segments below.
     const { present, missing } = await presentEntries(dir, entries)
     if (!present.length) throw new Error(tr('錄影段落檔案全部遺失，無法輸出影片，已保留工作'))
     const { output, part } = await reserveOutput(outputDir, outputBase(config.startedAt, config.game), config.startedAt)

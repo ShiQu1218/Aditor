@@ -223,6 +223,7 @@ async function initEngineAndServices(): Promise<void> {
     profileDir: templateProfileDir,
     addToLibrary: (paths, game) => {
       library!.add(paths, 'recording', game)
+      if (!library!.flush()) throw new Error('Failed to save library')
       pushLibrary()
     },
     enqueueAnalysis: (videoPath) => queue!.enqueue(videoPath),

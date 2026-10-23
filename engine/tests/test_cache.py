@@ -1,4 +1,5 @@
 import json
+import os
 from pathlib import Path
 
 from aditor import ENGINE_VERSION, cache
@@ -36,7 +37,60 @@ def test_cache_key_path_only(tmp_path):
 def test_cache_beside_chinese_space(tmp_path):
     v = tmp_path / "Apex 影片" / "a b.mp4"
     p = cache.cache_path(str(v), tmp_path / "c", beside=True)
-    assert p == v.parent / "a b.aditor.json"
+    assert p == v.parent / "a b.mp4.aditor.json"
+
+
+def test_cache_beside_same_stem_containers_are_independent(tmp_path):
+    mp4 = tmp_path / "match.mp4"
+    mkv = tmp_path / "match.mkv"
+    assert cache.cache_path(str(mp4), tmp_path / "c", beside=True) != cache.cache_path(str(mkv), tmp_path / "c", beside=True)
+
+
+def test_resolve_cache_rejects_wrong_legacy_beside_file(tmp_path):
+    video = tmp_path / "match.mp4"
+    legacy = cache.legacy_cache_path(str(video), tmp_path / "c", beside=True)
+    appdata = cache.cache_path(str(video), tmp_path / "c")
+    legacy.parent.mkdir(parents=True, exist_ok=True)
+    legacy.write_text(json.dumps({"video": {"path": str(tmp_path / "other.mp4")}}), encoding="utf-8")
+    appdata.parent.mkdir(parents=True)
+    appdata.write_text(json.dumps({"video": {"path": str(video)}}), encoding="utf-8")
+    assert cache.resolve_cache_path(str(video), tmp_path / "c", beside=True) == appdata
+
+    appdata.unlink()
+    legacy.write_text(json.dumps({"video": {"path": str(video)}}), encoding="utf-8")
+    assert cache.resolve_cache_path(str(video), tmp_path / "c", beside=True) == legacy
+
+
+def test_resolve_cache_uses_newest_valid_location(tmp_path):
+    video = tmp_path / "match.mp4"
+    cdir = tmp_path / "c"
+    beside = cache.cache_path(str(video), cdir, beside=True)
+    appdata = cache.cache_path(str(video), cdir)
+    doc = {"video": {"path": str(video)}}
+    cache.save_cache(appdata, {**doc, "where": "appdata"})
+    cache.save_cache(beside, {**doc, "where": "beside"})
+    os.utime(appdata, (1000, 1000))
+    os.utime(beside, (2000, 2000))
+    assert cache.resolve_cache_path(str(video), cdir, beside=False) == beside
+
+    os.utime(appdata, (3000, 3000))
+    assert cache.resolve_cache_path(str(video), cdir, beside=True) == appdata
+
+    os.utime(appdata, (4000, 4000))
+    os.utime(beside, (4000, 4000))
+    assert cache.resolve_cache_path(str(video), cdir, beside=False) == appdata
+    assert cache.resolve_cache_path(str(video), cdir, beside=True) == beside
+
+
+def test_resolve_cache_skips_corrupt_preferred_file(tmp_path):
+    video = tmp_path / "match.mp4"
+    cdir = tmp_path / "c"
+    appdata = cache.cache_path(str(video), cdir)
+    beside = cache.cache_path(str(video), cdir, beside=True)
+    cdir.mkdir()
+    appdata.write_text("{broken", encoding="utf-8")
+    cache.save_cache(beside, {"video": {"path": str(video)}, "where": "beside"})
+    assert cache.resolve_cache_path(str(video), cdir, beside=False) == beside
 
 
 def test_atomic_save_and_load(tmp_path):
@@ -68,6 +122,32 @@ def test_readonly_dir_falls_back(tmp_path):
         pass
     else:
         raise AssertionError("expected OSError")
+
+
+def test_readonly_beside_fallback_uses_hashed_appdata_name(tmp_path):
+    afile = tmp_path / "afile"
+    afile.write_text("x")
+    video = tmp_path / "videos" / "match.mp4"
+    target = afile / "match.mp4.aditor.json"
+    fallback = tmp_path / "cache"
+    doc = {"video": {"path": str(video)}, "events": []}
+    out = cache.save_cache(target, doc, fallback_dir=fallback)
+    assert out == cache.cache_path(str(video), fallback)
+    assert cache.load_cache(out) == doc
+
+
+def test_prepare_cache_migrates_full_document_without_deleting_source(tmp_path):
+    video = tmp_path / "videos" / "match.mp4"
+    cache_dir = tmp_path / "cache"
+    source = cache.cache_path(str(video), cache_dir)
+    target = cache.cache_path(str(video), cache_dir, beside=True)
+    doc = {"video": {"path": str(video)}, "events": [{"id": "manual"}], "clips": [{"id": "accepted"}],
+           "analysis": {"status": "done"}, "cache_path": str(source)}
+    cache.save_cache(source, doc)
+    out, migrated = cache.prepare_cache(str(video), cache_dir, beside=True)
+    assert out == target and migrated["cache_path"] == str(target)
+    assert cache.load_cache(target) == migrated
+    assert cache.load_cache(source) == doc
 
 
 def test_needs_reanalysis_triggers():
@@ -143,3 +223,11 @@ def test_merge_reanalysis_matches_assist_subtypes():
     assert unmatched == [] and merged[0].deleted is True
     merged, unmatched = cache.merge_reanalysis([ev("o2", 10.0, "knock", deleted=True)], new)
     assert len(unmatched) == 1   # Different event families still do not match.
+
+
+def test_merge_reanalysis_prefers_event_id_and_applies_state_once():
+    old = [ev("same", 10.0, deleted=True)]
+    new = [ev("same", 30.0), ev("near", 10.2)]
+    merged, unmatched = cache.merge_reanalysis(old, new)
+    by = {e.id: e for e in merged}
+    assert unmatched == [] and by["same"].deleted is True and by["near"].deleted is False

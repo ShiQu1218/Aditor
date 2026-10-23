@@ -12,7 +12,7 @@ from typing import Callable
 from . import ENGINE_VERSION
 from .aspect import detect_aspect, resolve_layout
 from .cache import (cache_path, load_cache, merge_clips, merge_reanalysis,
-                    needs_reanalysis, save_cache)
+                    needs_reanalysis, prepare_cache, resolve_cache_path, save_cache)
 from .calibrate import (LEARN_SCAN_SECONDS, AnchorCollector, build_keywords, calibrate, extend_keywords,
                         keywords_complete, same_keywords)
 from .decode import FrameStream, is_gpu_path
@@ -315,8 +315,9 @@ def analyze(path: str, profile: Profile, *, cache_dir: Path, beside: bool = Fals
             cancel: threading.Event | None = None, hwaccel: bool = True,
             jobs: int | None = None, layout: Layout | None = None, game: str | None = None) -> dict:
     info = probe(path)
+    cache_dir = Path(cache_dir)
     apex_scene = profile.dir.parent / "scene"
-    game = _resolve_video_game(path, info, game, None if force else cache_path(path, Path(cache_dir), beside),
+    game = _resolve_video_game(path, info, game, None if force else resolve_cache_path(path, cache_dir, beside),
                                apex_scene if apex_scene.is_dir() else None, hwaccel, cancel)
     require_analyzable(game)
     if game == "valorant":
@@ -334,9 +335,7 @@ def analyze(path: str, profile: Profile, *, cache_dir: Path, beside: bool = Fals
     # Explicit > video tag > detection; legacy cache hits also need detection to validate their layout.
     layout, aspect_source = resolve_layout(layout, info)
     profile = profile.with_layout(layout or Layout(1.0))
-    cache_dir = Path(cache_dir)
-    cp = cache_path(path, cache_dir, beside)
-    old = load_cache(cp)
+    cp, old = prepare_cache(path, cache_dir, beside)
     # An untagged video's cache records the detected squash, so accept whichever it holds.
     squash = None if layout is None else profile.layout.squash
     if not force and old is not None and not needs_reanalysis(old, info, profile.templates_version, squash):

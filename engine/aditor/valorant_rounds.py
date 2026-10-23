@@ -190,10 +190,13 @@ class RoundTracker:
 def round_highlights(events: list[Event], rounds: list[Round]) -> list[Event]:
     """One multikill (2-4 kills) or ace (5) event per round, at the round's last kill; never counted as kills."""
     out = []
+    assigned_ids: set[str] = set()
     for rnd in rounds:
         kills = sorted((e for e in events if e.type == "kill" and not e.deleted and
                         (e.counted_override if e.counted_override is not None else e.counted) and
-                        rnd.start <= e.t < rnd.end + ROUND_TAIL), key=lambda e: e.t)
+                        e.id not in assigned_ids and rnd.start <= e.t < rnd.end + ROUND_TAIL), key=lambda e: e.t)
+        # Keep delayed kills on the earlier round without sharing the tail with the next round.
+        assigned_ids.update(e.id for e in kills)
         if len(kills) < 2:
             continue
         kind = "ace" if len(kills) >= ACE else "multikill"

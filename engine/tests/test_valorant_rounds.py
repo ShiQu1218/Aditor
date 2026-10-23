@@ -69,3 +69,33 @@ def test_multikills_and_aces_are_per_round_and_never_counted():
     events = [kill(10), kill(20), kill(110)] + [kill(210 + i) for i in range(5)]
     out = round_highlights(events, rounds)
     assert [(e.type, e.score, e.t, e.counted) for e in out] == [("multikill", 2.0, 20, False), ("ace", 5.0, 214, False)]
+
+
+def test_adjacent_round_tail_does_not_reuse_a_kill():
+    def kill(t):
+        return Event(id=f"k{t}", t=t, type="kill", score=1.0, damage_line=False, name_sig=None, counted=True)
+
+    rounds = [Round(0, 100, "ally", 1, 0), Round(100, 200, "enemy", 1, 1)]
+    out = round_highlights([kill(99), kill(101), kill(150)], rounds)
+    assert [(e.type, e.score, e.t) for e in out] == [("multikill", 2.0, 101)]
+
+
+def test_round_tail_end_is_exclusive():
+    def kill(t):
+        return Event(id=f"k{t}", t=t, type="kill", score=1.0, damage_line=False, name_sig=None, counted=True)
+
+    rounds = [Round(0, 100, "ally", 1, 0), Round(100, 200, "enemy", 1, 1)]
+    out = round_highlights([kill(99), kill(102.999), kill(103), kill(150)], rounds)
+    assert [(e.type, e.score, e.t) for e in out] == [
+        ("multikill", 2.0, 102.999),
+        ("multikill", 2.0, 150),
+    ]
+
+
+def test_non_adjacent_rounds_keep_delayed_kills_in_the_previous_round():
+    def kill(t):
+        return Event(id=f"k{t}", t=t, type="kill", score=1.0, damage_line=False, name_sig=None, counted=True)
+
+    rounds = [Round(0, 100, "ally", 1, 0), Round(150, 250, "enemy", 1, 1)]
+    out = round_highlights([kill(99), kill(102), kill(151), kill(160)], rounds)
+    assert [(e.type, e.score, e.t) for e in out] == [("multikill", 2.0, 102), ("multikill", 2.0, 160)]

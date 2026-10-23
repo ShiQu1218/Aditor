@@ -5,7 +5,7 @@ import path from 'path'
 import { AnalysisQueue } from './queue'
 import { Library } from './library'
 import type { EngineClient } from './engine'
-import { cacheFilePath, saveCacheDoc } from './cache-io'
+import { cacheFilePath, legacyCacheFilePath, saveCacheDoc } from './cache-io'
 import { capturePriorCache, clipsBackupPath, readClipsBackup } from './reanalysis'
 
 const V1 = path.join(os.tmpdir(), 'aditor-ra', 'v1.mp4')
@@ -41,16 +41,16 @@ describe('clips backup across cancelled re-analysis (F2)', () => {
     codec: 'h264',
     start_time: 0
   })
-  const doc = (status: string, mtime: number, clips: unknown[]): Record<string, unknown> => ({
+  const doc = (status: string, mtime: number, clips: unknown[], events: unknown[] = [], cachePath = cache()): Record<string, unknown> => ({
     version: 1,
     video: video(mtime),
     profile: 'zh-TW',
     analysis: analysis(status),
-    events: [],
+    events,
     spectating: [],
     clips,
     keyframes: [],
-    cache_path: cache()
+    cache_path: cachePath
   })
   const clip = (id: string, start: number, over: Record<string, unknown> = {}): Record<string, unknown> => ({
     id,
@@ -62,6 +62,19 @@ describe('clips backup across cancelled re-analysis (F2)', () => {
     ...over
   })
   const manual = clip('m1', 400, { origin: 'manual' })
+  const event = (id: string, t: number, over: Record<string, unknown> = {}): Record<string, unknown> => ({
+    id,
+    t,
+    type: 'knock',
+    score: 0.9,
+    damage_line: true,
+    name_sig: null,
+    counted: true,
+    counted_reason: 'score',
+    counted_override: null,
+    source: 'auto',
+    ...over
+  })
 
   /** Engine behavior: 'done' writes a completed document (manual clips only); 'fail' fails immediately. */
   function engine(mode: 'done' | 'fail', mtime = 2): EngineClient {
@@ -217,6 +230,85 @@ describe('clips backup across cancelled re-analysis (F2)', () => {
     await tick(60)
     expect(lib.get(V1)?.status).toBe('done')
   })
+
+  it('keeps deleted events, overrides, accepted AI clips, and manual clips when switching cache locations', async () => {
+    const besideDir = fs.mkdtempSync(path.join(os.tmpdir(), 'aditor-ra-switch-'))
+    const videoPath = path.join(besideDir, 'switch.mp4')
+    const appdataPath = cacheFilePath(videoPath, dir)
+    const besidePath = cacheFilePath(videoPath, dir, true)
+    const oldEvents = [
+      event('deleted-old', 10, { deleted: true }),
+      event('override-old', 20, { counted_override: false }),
+      event('manual-event', 30, { source: 'manual' })
+    ]
+    const freshEvents = [
+      event('deleted-fresh', 10.2),
+      event('override-fresh', 20.3),
+      event('override-duplicate', 20.8),
+      event('new-auto', 70)
+    ]
+    const oldClips = [clip('accepted-ai', 100), manual]
+    const switchDoc = (status: string, mtime: number, clips: unknown[], events: unknown[], target: string): Record<string, unknown> => ({
+      ...doc(status, mtime, clips, events, target),
+      video: { ...video(mtime), path: videoPath }
+    })
+    const old = switchDoc('done', 1, oldClips, oldEvents, appdataPath)
+    saveCacheDoc(old as { cache_path: string })
+    const switchedEngine = (target: string, events: Record<string, unknown>[], mtime = 2): EngineClient => ({
+      request: () => {
+        const result = switchDoc('done', mtime, [], events, target)
+        saveCacheDoc(result as { cache_path: string })
+        return { id: 'r', promise: Promise.resolve(result) }
+      },
+      cancel: () => {}
+    } as unknown as EngineClient)
+
+    try {
+      const q = new AnalysisQueue(switchedEngine(besidePath, freshEvents), lib, {
+        profileDir: '/p',
+        cacheDir: dir,
+        getSettings: () => ({ decode: 'auto', cacheLocation: 'besideVideo' })
+      })
+      lib.add([videoPath])
+      q.enqueue(videoPath)
+      await tick(60)
+
+      const besideDoc = JSON.parse(fs.readFileSync(besidePath, 'utf-8'))
+      expect(besideDoc.events.map((e: any) => [e.id, e.deleted ?? false, e.counted_override])).toEqual([
+        ['deleted-fresh', true, null],
+        ['override-fresh', false, false],
+        ['override-duplicate', false, null],
+        ['manual-event', false, null],
+        ['new-auto', false, null]
+      ])
+      expect(summary(besideDoc.clips)).toEqual([
+        ['accepted-ai', 'accepted', true],
+        ['m1', 'accepted', false]
+      ])
+
+      // A user can edit the newly selected location before switching back.
+      besideDoc.events.push(event('post-switch-manual', 80, { source: 'manual' }))
+      besideDoc.clips.push(clip('post-switch-clip', 500, { origin: 'manual' }))
+      fs.writeFileSync(besidePath, JSON.stringify(besideDoc))
+      fs.utimesSync(appdataPath, new Date(1000), new Date(1000))
+      fs.utimesSync(besidePath, new Date(2000), new Date(2000))
+      const backEngine = switchedEngine(appdataPath, freshEvents, 3)
+      const backQueue = new AnalysisQueue(backEngine, lib, {
+        profileDir: '/p',
+        cacheDir: dir,
+        getSettings: () => ({ decode: 'auto', cacheLocation: 'appdata' })
+      })
+      backQueue.enqueue(videoPath)
+      await tick(60)
+      const appdataDoc = JSON.parse(fs.readFileSync(appdataPath, 'utf-8'))
+      expect(appdataDoc.events.map((e: any) => [e.id, e.deleted ?? false, e.counted_override])).toEqual(
+        besideDoc.events.map((e: any) => [e.id, e.deleted ?? false, e.counted_override])
+      )
+      expect(summary(appdataDoc.clips)).toEqual(summary(besideDoc.clips))
+    } finally {
+      fs.rmSync(besideDir, { recursive: true, force: true })
+    }
+  })
 })
 
 describe('re-analysis with cacheLocation=besideVideo', () => {
@@ -233,13 +325,47 @@ describe('re-analysis with cacheLocation=besideVideo', () => {
       } as unknown as { cache_path: string })
     }
     mk(beside, 'beside-clip')
-    mk(cacheFilePath(video, path.join(dir, 'cache'), false), 'appdata-clip')
+    const appdata = cacheFilePath(video, path.join(dir, 'cache'), false)
+    mk(appdata, 'appdata-clip')
+    fs.utimesSync(beside, new Date(1000), new Date(1000))
+    fs.utimesSync(appdata, new Date(1000), new Date(1000))
     try {
       const prior = capturePriorCache(video, path.join(dir, 'cache'), true)
       expect(prior?.clips.map((c) => c.id)).toEqual(['beside-clip'])
       expect(fs.existsSync(clipsBackupPath(beside))).toBe(true)
       expect(path.dirname(clipsBackupPath(beside))).toBe(path.dirname(video))
       expect(capturePriorCache(video, path.join(dir, 'cache'))?.clips.map((c) => c.id)).toEqual(['appdata-clip'])
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('keeps a legacy partial cache and its v1 clips backup available after migrating its name', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'aditor-rb-legacy-'))
+    const video = path.join(dir, 'videos', 'same.mp4')
+    const cacheDir = path.join(dir, 'cache')
+    const legacy = legacyCacheFilePath(video, cacheDir, true)
+    const target = cacheFilePath(video, cacheDir, true)
+    const oldDoc = {
+      version: 1,
+      video: { path: video, mtime: 1 },
+      analysis: { status: 'partial' },
+      events: [],
+      clips: [{ id: 'manual', start: 1, end: 2, origin: 'manual', event_ids: [] }],
+      cache_path: legacy
+    }
+    try {
+      saveCacheDoc(oldDoc as unknown as { cache_path: string })
+      fs.writeFileSync(clipsBackupPath(legacy), JSON.stringify({ version: 1, clips: [
+        { id: 'accepted-ai', start: 3, end: 4, origin: 'ai', status: 'accepted', event_ids: [] }
+      ] }))
+      const prior = capturePriorCache(video, cacheDir, true)
+      expect(prior?.clips.map((c) => c.id)).toEqual(['accepted-ai'])
+      expect(prior?.backupPath).toBe(target)
+      expect(fs.existsSync(target)).toBe(true)
+      expect(fs.existsSync(legacy)).toBe(true)
+      expect(readClipsBackup(target)?.map((c) => c.id)).toEqual(['accepted-ai'])
+      expect(readClipsBackup(legacy)?.map((c) => c.id)).toEqual(['accepted-ai'])
     } finally {
       fs.rmSync(dir, { recursive: true, force: true })
     }

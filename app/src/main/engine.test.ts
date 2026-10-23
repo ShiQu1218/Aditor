@@ -1,6 +1,8 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
 import { EngineClient, EngineError } from './engine'
 import path from 'path'
+import os from 'os'
+import fs from 'fs'
 
 const FAKE_ENGINE = path.resolve(__dirname, '../../test/fake-engine.mjs')
 
@@ -175,5 +177,29 @@ describe('EngineClient', () => {
     const multiRes = await multiReq.promise
     expect(multiRes.multi).toBe(true)
     expect(prog).toEqual([{ t: 10, duration: 100 }])
+  })
+
+  it('keeps UTF-8 characters intact when a character crosses stdout chunks', async () => {
+    client = new EngineClient({ command: process.execPath, args: [FAKE_ENGINE] })
+    await client.start()
+    const result = await client.request<{ path: string }>('unicode_result', {}).promise
+    expect(result.path).toBe('D:/影片/中文.mp4')
+  })
+
+  it('drops an incomplete line when the engine restarts', async () => {
+    const marker = path.join(os.tmpdir(), `aditor-engine-partial-${Date.now()}-${Math.random()}.marker`)
+    client = new EngineClient({
+      command: process.execPath,
+      args: [FAKE_ENGINE],
+      env: { FAKE_ENGINE_PARTIAL_MARKER: marker }
+    })
+    try {
+      await client.start()
+      await expect(client.request('partial_unicode_crash', {}).promise).rejects.toMatchObject({ code: 'engine_crashed' })
+      const result = await client.request<{ path: string }>('probe', { path: 'D:/重啟.mp4' }).promise
+      expect(result.path).toBe('D:/重啟.mp4')
+    } finally {
+      fs.rmSync(marker, { force: true })
+    }
   })
 })

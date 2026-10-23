@@ -1,5 +1,5 @@
 import { tr } from '../shared/locale'
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { LibraryScreen } from './library/LibraryScreen'
 import { StudioScreen, type ProjectPlaybackRequest } from './studio/StudioScreen'
 import { StudioLanding } from './studio/StudioLanding'
@@ -49,6 +49,14 @@ function AppContent(): JSX.Element {
     longFixtureRequested() ? LONG_FIXTURE_PATH : null
   )
   const [playbackRequest, setPlaybackRequest] = useState<ProjectPlaybackRequest | undefined>()
+  const studioLeaveGuard = useRef<(() => boolean) | null>(null)
+
+  const registerStudioLeaveGuard = useCallback((guard: () => boolean): (() => void) => {
+    studioLeaveGuard.current = guard
+    return () => {
+      if (studioLeaveGuard.current === guard) studioLeaveGuard.current = null
+    }
+  }, [])
 
   // Development only: load the screenshot project fixture once; its data is dynamically imported and excluded from the production bundle.
   const fixtureDoneRef = useRef(false)
@@ -69,11 +77,17 @@ function AppContent(): JSX.Element {
   }
 
   const handleNavigate = (v: RailView, settingsCategory?: CategoryId) => {
+    if (view === 'studio' && v !== 'studio' && studioLeaveGuard.current && !studioLeaveGuard.current()) return
     if (v === 'settings') {
       // Remount even when already in Settings, clearing search and selecting the requested category.
       setSettingsDestination((previous) => ({ category: settingsCategory, request: previous.request + 1 }))
     }
     setView(v)
+  }
+
+  const handleOpenLive = () => {
+    if (view === 'studio' && studioLeaveGuard.current && !studioLeaveGuard.current()) return
+    setView('live')
   }
 
   let page: JSX.Element
@@ -87,6 +101,7 @@ function AppContent(): JSX.Element {
         onPlaybackRequestConsumed={() => setPlaybackRequest(undefined)}
         onVideoRemoved={(path) => setCurrentVideo((current) =>
           current?.replace(/\\/g, '/').toLowerCase() === path.replace(/\\/g, '/').toLowerCase() ? null : current)}
+        onRegisterLeaveGuard={registerStudioLeaveGuard}
         onBack={() => { setPlaybackRequest(undefined); setView('library') }}
       />
     )
@@ -115,7 +130,7 @@ function AppContent(): JSX.Element {
   }
 
   return (
-    <AppShell active={view === 'live' ? null : view} projectCount={project.items.length} onNavigate={handleNavigate} onOpenLive={() => setView('live')}>
+    <AppShell active={view === 'live' ? null : view} projectCount={project.items.length} onNavigate={handleNavigate} onOpenLive={handleOpenLive}>
       <LowPerfNotice />
       {page}
     </AppShell>

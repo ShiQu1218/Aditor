@@ -2,6 +2,25 @@ import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import { RECORDING_CHANNELS, type LiveState, type LiveUpdate, type RecordingStatus, type RecorderCapabilities } from '../shared/recording'
 import { UPDATE_CHANNELS, type UpdateStatus } from '../shared/update'
 
+type FlushResult = void | boolean | PromiseLike<unknown>
+const flushCallbacks = new Set<() => FlushResult>()
+const flushRequestHandler = (): void => {
+  let ok = true
+  for (const callback of [...flushCallbacks]) {
+    try {
+      const result = callback()
+      const thenable = result && typeof (result as PromiseLike<unknown>).then === 'function'
+      if (result === false || thenable) {
+        ok = false
+        if (thenable) void Promise.resolve(result as PromiseLike<unknown>).catch(() => undefined)
+      }
+    } catch {
+      ok = false
+    }
+  }
+  ipcRenderer.send('projects:flushDone', ok)
+}
+
 const api = {
   telemetry: { enabled: (): Promise<boolean> => ipcRenderer.invoke('telemetry:enabled') },
   recording: {
@@ -105,11 +124,12 @@ const api = {
     /** Used when closing the window: block until main writes the project to disk (and records lastProjectId). */
     flushSync: (project: unknown): boolean => ipcRenderer.sendSync('projects:flushSync', project) === true,
     /** Main requests an immediate flush before closing the window. */
-    onFlushRequest: (callback: () => void) => {
-      const handler = () => callback()
-      ipcRenderer.on('projects:flushRequest', handler)
+    onFlushRequest: (callback: () => FlushResult) => {
+      flushCallbacks.add(callback)
+      if (flushCallbacks.size === 1) ipcRenderer.on('projects:flushRequest', flushRequestHandler)
       return () => {
-        ipcRenderer.removeListener('projects:flushRequest', handler)
+        flushCallbacks.delete(callback)
+        if (flushCallbacks.size === 0) ipcRenderer.removeListener('projects:flushRequest', flushRequestHandler)
       }
     },
     /** Notify main that flush is complete and the window can close. */

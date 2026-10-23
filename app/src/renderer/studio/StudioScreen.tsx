@@ -74,6 +74,8 @@ export interface ProjectPlaybackRequest {
 interface StudioScreenProps {
   videoPath: string
   onBack: () => void
+  /** Register the same source-save/export guard used by the header for shell navigation. */
+  onRegisterLeaveGuard?: (guard: () => boolean) => () => void
   /** Notify the owner even if deletion finishes after leaving the studio. */
   onVideoRemoved?: (path: string) => void
   onOpenVideo: (path: string, request?: ProjectPlaybackRequest) => void
@@ -137,7 +139,7 @@ function initViewerState(init: { videoPath: string; doc?: CacheDoc }): ViewerSta
  * Mode pill/context banner, status bar (engine errors and proxy suggestions), and counted event-filter chips.
  * Project track (Task 13): clip cards, drag reordering, handle trimming, track-head actions, and the new-project dialog.
  */
-export function StudioScreen({ videoPath, onBack, onVideoRemoved, onOpenVideo, playbackRequest, onPlaybackRequestConsumed, preloadedDoc }: StudioScreenProps): JSX.Element {
+export function StudioScreen({ videoPath, onBack, onRegisterLeaveGuard, onVideoRemoved, onOpenVideo, playbackRequest, onPlaybackRequestConsumed, preloadedDoc }: StudioScreenProps): JSX.Element {
   const {
     project,
     apply,
@@ -320,26 +322,43 @@ export function StudioScreen({ videoPath, onBack, onVideoRemoved, onOpenVideo, p
   if (!cacheSaver.current) {
     cacheSaver.current = new AutosaveController<CacheDoc>({
       delayMs: 1000,
-      save: (doc) => void window.api?.cache?.save?.(doc),
-      saveSync: (doc) => void window.api?.cache?.saveSync?.(doc)
+      save: (doc) => window.api?.cache?.save?.(doc),
+      saveSync: (doc) => window.api?.cache?.saveSync?.(doc),
+      onError: () => toast({ message: i18n.studio.toast.sourceSaveFailed })
     })
   }
   useEffect(() => {
     const saver = cacheSaver.current!
-    const flush = (): void => saver.flushSync()
-    window.addEventListener('beforeunload', flush)
+    const flush = (): boolean => saver.flushSync()
+    const beforeUnload = (event: BeforeUnloadEvent): void => {
+      if (!flush()) {
+        event.preventDefault()
+        event.returnValue = ''
+      }
+    }
+    window.addEventListener('beforeunload', beforeUnload)
     const offRequest = window.api?.projects?.onFlushRequest?.(flush)
     return () => {
-      window.removeEventListener('beforeunload', flush)
+      window.removeEventListener('beforeunload', beforeUnload)
       offRequest?.()
-      saver.flushSync()
-      saver.dispose()
+      if (saver.flushSync()) saver.dispose()
     }
   }, [])
   useEffect(() => {
     if (!state.dirty) return
     cacheSaver.current!.update(state.doc)
   }, [state.dirty, state.doc])
+
+  const canLeaveStudio = useCallback((): boolean => {
+    if (exportCtl.getState().phase === 'running') {
+      toast({ message: i18n.export.backBlocked })
+      return false
+    }
+    if (stateRef.current.dirty && !cacheSaver.current!.flushSync()) return false
+    return true
+  }, [exportCtl, toast])
+
+  useEffect(() => onRegisterLeaveGuard?.(canLeaveStudio), [canLeaveStudio, onRegisterLeaveGuard])
 
   // Allow editing before source analysis completes; when the queue finishes, update only the document and preserve playback and unsaved edits.
   useEffect(() => {
@@ -909,13 +928,9 @@ export function StudioScreen({ videoPath, onBack, onVideoRemoved, onOpenVideo, p
 
   /** Return to the library; while export is running, stay in the studio and show a Toast instead. */
   const requestBack = useCallback((): void => {
-    if (removalPending.current) return
-    if (exportCtl.getState().phase === 'running') {
-      toast({ message: i18n.export.backBlocked })
-      return
-    }
+    if (removalPending.current || !canLeaveStudio()) return
     onBack()
-  }, [exportCtl, toast, onBack])
+  }, [canLeaveStudio, onBack])
 
   const removeVideo = async (path: string, deleteSource?: boolean): Promise<void> => {
     if (!mountedRef.current || removalInFlight.current || exportCtl.getState().phase === 'running') return

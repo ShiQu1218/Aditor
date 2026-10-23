@@ -17,10 +17,11 @@ let restore: (() => void) | undefined
 let studio: StudioMount | undefined
 beforeEach(() => { installDomShims() })
 afterEach(() => { cleanupMounted(); restore?.(); restore = undefined; studio?.restore(); studio = undefined; vi.restoreAllMocks() })
-async function start(entries: LibraryEntry[]) {
-  fake = createFakeApi({ entries, settings: { autoSuggestOnOpen: false }, overrides: { cache: {
-    loadByVideo: async (path: string) => ({ ...buildLongDoc(path), clips: [] })
-  } } })
+async function start(entries: LibraryEntry[], autoSuggestOnOpen = false) {
+  fake = createFakeApi({ entries, settings: { autoSuggestOnOpen }, overrides: {
+    cache: { loadByVideo: async (path: string) => ({ ...buildLongDoc(path), clips: [] }) },
+    engine: { autoclip: async () => ({ clips: [{ id: 'ai-test', start: 1, end: 3, origin: 'ai', event_ids: [] }] }) }
+  } })
   restore = installFakeApi(fake)
   mount(<App />)
   await flush()
@@ -120,5 +121,17 @@ describe('Studio navigation', () => {
     click(target)
     expect(onOpenVideo).toHaveBeenCalledWith('D:/另一場.mp4', undefined)
     expect(save.mock.invocationCallOrder.at(-1)).toBeLessThan(onOpenVideo.mock.invocationCallOrder[0])
+  })
+
+  test('sidebar navigation keeps Studio open when saving source edits fails', async () => {
+    await start([entry(A)], true)
+    navigate('studio'); await flush(20)
+    click(document.querySelector('.hl-card .hl-accept')!)
+    await flush()
+    fake.api.cache.saveSync.mockReturnValueOnce(false)
+    navigate('settings'); await flush()
+    expect(document.querySelector('[aria-current="page"]')?.getAttribute('aria-label')).toBe(shellI18n.rail.studioLabel)
+    navigate('settings'); await flush()
+    expect(document.querySelector('[aria-current="page"]')?.getAttribute('aria-label')).toBe(shellI18n.rail.settings)
   })
 })

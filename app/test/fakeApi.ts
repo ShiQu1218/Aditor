@@ -4,7 +4,7 @@ import { vi } from 'vitest'
 import { DEFAULT_SETTINGS, type Settings } from '../src/shared/settings'
 import type { LibraryEntry } from '../src/main/library'
 
-type Listener = (payload?: unknown) => void
+type Listener = (payload?: unknown) => unknown
 
 export interface FakeApiOptions {
   entries?: LibraryEntry[]
@@ -110,7 +110,21 @@ export function createFakeApi(opts: FakeApiOptions = {}) {
     api: ns,
     /** Trigger subscribers for a channel (for example, library:updated). */
     emit(channel: string, payload?: unknown): void {
-      for (const cb of [...(listeners.get(channel) ?? [])]) cb(payload)
+      const results: unknown[] = []
+      for (const cb of [...(listeners.get(channel) ?? [])]) {
+        try {
+          const result = cb(payload)
+          results.push(result)
+          if (result && typeof (result as PromiseLike<unknown>).then === 'function') {
+            void Promise.resolve(result as PromiseLike<unknown>).catch(() => undefined)
+          }
+        } catch {
+          results.push(false)
+        }
+      }
+      if (channel === 'projects:flushRequest' && results.length > 0) {
+        ns.projects.flushDone(results.every((result) => result !== false && !(result && typeof (result as PromiseLike<unknown>).then === 'function')))
+      }
     },
     setEntries(next: LibraryEntry[]): void {
       entries = next

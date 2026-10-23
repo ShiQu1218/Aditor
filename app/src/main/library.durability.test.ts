@@ -107,9 +107,23 @@ describe('Library durability (I3)', () => {
     const spy = vi.spyOn(fs, 'renameSync').mockImplementation(() => {
       throw new Error('EPERM')
     })
-    lib.add(['D:/Videos/b.mp4'])
+    expect(() => lib.add(['D:/Videos/b.mp4'])).not.toThrow()
     spy.mockRestore()
     expect(fs.readFileSync(file, 'utf-8')).toBe(before)
+    expect(lib.flush()).toBe(true)
+    expect(new Library(file).get('D:/Videos/b.mp4')).toBeDefined()
+  })
+
+  it('keeps a failed recording add dirty so duplicate import retries persistence', () => {
+    const video = 'D:/Videos/retry.mp4'
+    const lib = new Library(file)
+    const spy = vi.spyOn(fs, 'renameSync').mockImplementationOnce(() => {
+      throw new Error('EPERM')
+    })
+    expect(() => lib.add([video], 'recording')).not.toThrow()
+    spy.mockRestore()
+    expect(lib.add([video], 'recording')).toEqual([])
+    expect(new Library(file).get(video)?.source).toBe('recording')
   })
 
   it('progress-only updates are kept in memory and written at most once per 2 s; flush() writes immediately', () => {
@@ -137,5 +151,19 @@ describe('Library durability (I3)', () => {
     const saved = JSON.parse(fs.readFileSync(file, 'utf-8'))[0]
     expect(saved.status).toBe('done')
     expect(saved.progress).toBe(1)
+  })
+
+  it('keeps a failed progress write pending for an explicit flush without timer exceptions', () => {
+    vi.useFakeTimers()
+    const lib = new Library(file)
+    lib.add(['D:/Videos/a.mp4'])
+    const spy = vi.spyOn(fs, 'renameSync').mockImplementationOnce(() => {
+      throw new Error('EPERM')
+    })
+    lib.update('D:/Videos/a.mp4', { progress: 0.5 })
+    expect(() => vi.advanceTimersByTime(2100)).not.toThrow()
+    spy.mockRestore()
+    expect(lib.flush()).toBe(true)
+    expect(new Library(file).get('D:/Videos/a.mp4')?.progress).toBe(0.5)
   })
 })

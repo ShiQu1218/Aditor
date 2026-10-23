@@ -137,7 +137,7 @@ describe('live.json to analysis cache', () => {
     expect(fs.existsSync(broken.dir)).toBe(false)
   })
 
-  it('does not overwrite a full analysis completed during the write with a trusted live cache and uses a separate temporary file from the engine', async () => {
+  it('does not overwrite a full analysis completed while preparing a trusted live cache', async () => {
     const base = root()
     const deps = makeDeps(base)
     deps.liveCachePath = (output) => output + '.aditor.json'
@@ -145,16 +145,85 @@ describe('live.json to analysis cache', () => {
     const cachePath = deps.liveCachePath(output)
     fs.writeFileSync(cachePath, JSON.stringify({ analysis: { source: 'live' } }))
     const full = JSON.stringify({ analysis: { status: 'done', engine_version: '0.3.0' }, events: [ev('full', 2)] })
-    const write = fs.promises.writeFile.bind(fs.promises)
-    vi.spyOn(fs.promises, 'writeFile').mockImplementation(async (file, data, options) => {
-      if (String(file).startsWith(cachePath)) {
-        expect(String(file)).not.toBe(cachePath + '.tmp')
-        fs.writeFileSync(cachePath, full)
-      }
-      await write(file, data, options)
+    const read = fs.promises.readFile.bind(fs.promises)
+    const readFile = vi.spyOn(fs.promises, 'readFile').mockImplementation(async (...args: any[]) => {
+      const data = await (read as any)(...args)
+      if (String(args[0]) === path.join(dir, 'live.json')) fs.writeFileSync(cachePath, full)
+      return data
     })
-    expect(await writeLiveCache(dir, output, deps, undefined, { overwriteLive: true })).toBeNull()
-    expect(fs.readFileSync(cachePath, 'utf8')).toBe(full)
-    expect(fs.existsSync(cachePath + '.live.tmp')).toBe(false)
+    try {
+      expect(await writeLiveCache(dir, output, deps, undefined, { overwriteLive: true })).toBeNull()
+      expect(fs.readFileSync(cachePath, 'utf8')).toBe(full)
+      expect(fs.existsSync(cachePath + '.live.tmp')).toBe(false)
+    } finally { readFile.mockRestore() }
+  })
+
+  it('reads edits saved during preparation before committing the live cache', async () => {
+    const base = root()
+    const deps = makeDeps(base)
+    const cacheDir = path.join(base, 'cache')
+    deps.liveCachePath = (video) => cacheFilePath(video, cacheDir)
+    const { dir, output } = finishedSession(base, 'none', { ...LIVE, quality: { complete: true } })
+    const cachePath = deps.liveCachePath(output)
+    fs.mkdirSync(path.dirname(cachePath), { recursive: true })
+    fs.writeFileSync(cachePath, JSON.stringify({ analysis: { source: 'live' }, events: [{ ...ev('a1000', 1), counted_override: false }], clips: [] }))
+    const read = fs.promises.readFile.bind(fs.promises)
+    let saved = false
+    const readFile = vi.spyOn(fs.promises, 'readFile').mockImplementation(async (...args: any[]) => {
+      const data = await (read as any)(...args)
+      if (!saved && String(args[0]) === path.join(base, 'profile.json')) {
+        saved = true
+        const current = JSON.parse(fs.readFileSync(cachePath, 'utf8'))
+        current.events[0].counted_override = true
+        current.events.push({ ...ev('manual-edit', 4), source: 'manual' })
+        fs.writeFileSync(cachePath, JSON.stringify(current))
+      }
+      return data
+    })
+    try {
+      expect(await writeLiveCache(dir, output, deps, undefined, { overwriteLive: true })).not.toBeNull()
+    } finally { readFile.mockRestore() }
+    const updated = JSON.parse(fs.readFileSync(cachePath, 'utf8'))
+    expect(updated.events).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'manual-edit', source: 'manual' }),
+      expect.objectContaining({ id: 'a1000', counted_override: true })
+    ]))
+  })
+
+  it('matches saved event edits one-to-one, prioritizes IDs, and keeps deleted events and accepted AI clips', async () => {
+    const base = root()
+    const deps = makeDeps(base)
+    const cacheDir = path.join(base, 'cache')
+    deps.liveCachePath = (video) => cacheFilePath(video, cacheDir)
+    const live = { ...LIVE, events: [ev('assist-new', 0.6, 'assist_elim'), ev('highlight-new', 0.8, 'ace'),
+      ev('far-fresh', 1.1), ev('nearest-fresh', 2), ev('same-id', 3.8), ev('deleted-new', 5.1)] }
+    const { dir, output } = finishedSession(base, 'none', live)
+    const cachePath = deps.liveCachePath(output)
+    fs.mkdirSync(path.dirname(cachePath), { recursive: true })
+    fs.writeFileSync(cachePath, JSON.stringify({
+      analysis: { source: 'live' },
+      events: [
+        { ...ev('assist-old', 0.5, 'assist_knock'), counted_override: false },
+        { ...ev('highlight-old', 0.9, 'multikill'), counted_override: true },
+        { ...ev('near-old', 2), counted_override: false },
+        { ...ev('same-id', 3.8), counted_override: true },
+        { ...ev('deleted-old', 5), deleted: true }
+      ],
+      clips: [
+        { id: 'accepted-ai', start: 1, end: 2, origin: 'ai', event_ids: [], status: 'accepted' },
+        { id: 'suggested-ai', start: 3, end: 4, origin: 'ai', event_ids: [], status: 'suggested' }
+      ]
+    }))
+    await writeLiveCache(dir, output, deps, undefined, { overwriteLive: true })
+    const updated = JSON.parse(fs.readFileSync(cachePath, 'utf8'))
+    expect(updated.events).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'assist-new', counted_override: false }),
+      expect.objectContaining({ id: 'highlight-new', counted_override: true }),
+      expect.objectContaining({ id: 'far-fresh', counted_override: null }),
+      expect.objectContaining({ id: 'nearest-fresh', counted_override: false }),
+      expect.objectContaining({ id: 'same-id', counted_override: true }),
+      expect.objectContaining({ id: 'deleted-new', deleted: true })
+    ]))
+    expect(updated.clips).toEqual([expect.objectContaining({ id: 'accepted-ai', status: 'accepted', stale: true })])
   })
 })

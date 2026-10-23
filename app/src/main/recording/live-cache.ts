@@ -5,11 +5,13 @@
  * Set `analysis.status = "done"` (the studio and library recognize only `done`), but deliberately
  * write `engine_version` as `live-<version>`. The engine's `cache.needs_reanalysis` reruns analysis
  * when `engine_version != ENGINE_VERSION`, so queued and manual full analyses still run and replace
- * this cache, while preserving the usual merge behavior for user edits to events.
+ * this cache, while preserving the usual merge behavior for user edits to events and clips.
  */
 import fs from 'fs'
 import path from 'path'
-import { countEvents, type EngineEvent } from '../../shared/types'
+import { countEvents, type Clip, type EngineEvent } from '../../shared/types'
+import { mergeOnReanalyze } from '../../shared/clips'
+import { mergeSavedEvents } from '../reanalysis'
 import { DEFAULT_GAME, gameOf, gameProfileDir, type GameId } from '../../shared/games'
 import { readIndex, type IndexEntry } from './finalize'
 import { LIVE_FILE } from './live-session'
@@ -48,7 +50,7 @@ export function liveCounts(events: EngineEvent[]): LiveAnalysisSummary['counts']
 /** Build the cache document from live.json, shifting time to the output video (first segment = 0) and keeping only in-range events. */
 export function buildLiveCacheDoc(live: LiveFile, video: {
   path: string; size: number; mtime: number; duration: number; width: number; height: number; codec: string
-}, offset: number, templatesVersion: string, cachePath: string, game: GameId = DEFAULT_GAME): Record<string, unknown> & { events: EngineEvent[] } {
+}, offset: number, templatesVersion: string, cachePath: string, game: GameId = DEFAULT_GAME): Record<string, unknown> & { events: EngineEvent[]; clips: Clip[] } {
   const inRange = (t: number): boolean => t >= 0 && t <= video.duration
   const events = (Array.isArray(live.events) ? live.events : [])
     .filter((e): e is EngineEvent => !!e && typeof e === 'object' && typeof e.id === 'string' && finite(e.t) && typeof e.type === 'string')
@@ -109,17 +111,43 @@ async function recordedGame(dir: string): Promise<GameId> {
   catch { return DEFAULT_GAME }
 }
 
-async function canWriteLiveCache(cachePath: string, overwriteLive: boolean): Promise<boolean> {
-  if (!fs.existsSync(cachePath)) return true
-  if (!overwriteLive) return false
-  const existing = JSON.parse(await fs.promises.readFile(cachePath, 'utf8'))
-  return existing?.analysis?.source === 'live'
+function readCache(cachePath: string): unknown | undefined {
+  try { return JSON.parse(fs.readFileSync(cachePath, 'utf8')) }
+  catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined
+    throw error
+  }
+}
+
+function mergeSavedEdits(doc: Record<string, unknown> & { events: EngineEvent[]; clips: Clip[] }, existing: Record<string, unknown>) {
+  const oldEvents = Array.isArray(existing.events) ? existing.events as EngineEvent[] : []
+  const oldClips = Array.isArray(existing.clips) ? existing.clips as Clip[] : []
+  return {
+    ...doc,
+    events: mergeSavedEvents(oldEvents, doc.events),
+    clips: mergeOnReanalyze(oldClips, doc.clips)
+  }
+}
+
+function commitLiveCache(cachePath: string, doc: Record<string, unknown> & { events: EngineEvent[]; clips: Clip[] }, overwriteLive: boolean) {
+  const existing = readCache(cachePath)
+  if (existing !== undefined) {
+    if (!overwriteLive || (existing as { analysis?: { source?: unknown } } | null)?.analysis?.source !== 'live') return null
+    doc = mergeSavedEdits(doc, existing as Record<string, unknown>)
+  }
+  fs.mkdirSync(path.dirname(cachePath), { recursive: true })
+  const temp = `${cachePath}.live.tmp`
+  try {
+    fs.writeFileSync(temp, JSON.stringify(doc), 'utf8')
+    fs.renameSync(temp, cachePath)
+  } finally { try { fs.unlinkSync(temp) } catch {} }
+  return doc
 }
 
 /**
  * Write a live cache for the requested segment range (the full recording by default). Trusted
- * finalization may overwrite only its own live cache. Skip when live.json or a cache location is
- * unavailable; callers may force an untrusted result during recording. Return the written summary
+ * finalization may overwrite only its own live cache, merging saved user edits. Skip when live.json or
+ * a cache location is unavailable; callers may force an untrusted result during recording. Return the written summary
  * for the library, or null when skipped.
  */
 export async function writeLiveCache(dir: string, outputPath: string, deps: RecordingDeps,
@@ -134,7 +162,6 @@ export async function writeLiveCache(dir: string, outputPath: string, deps: Reco
   }
   if (options.forceUntrusted) live = { ...live, quality: null }
   const cachePath = deps.liveCachePath(outputPath)
-  if (!await canWriteLiveCache(cachePath, !!options.overwriteLive)) return null
   const explicit = range && 'offset' in range ? range : null
   const entries = explicit ? [] : (range as readonly IndexEntry[] | undefined) ?? await readIndex(dir)
   if (!explicit && entries.length === 0) return null
@@ -153,13 +180,8 @@ export async function writeLiveCache(dir: string, outputPath: string, deps: Reco
     path: outputPath, size: stat.size, mtime: stat.mtimeMs / 1000, duration,
     width: size(explicit?.width ?? live.width), height: size(explicit?.height ?? live.height), codec
   }, offset, await templatesVersion(gameProfileDir(deps.profileDir, game)), cachePath, game)
-  await fs.promises.mkdir(path.dirname(cachePath), { recursive: true })
-  // Full analysis uses .tmp; live cache uses a separate temporary file to avoid concurrent writes clobbering each other.
-  const temp = `${cachePath}.live.tmp`
-  try {
-    await fs.promises.writeFile(temp, JSON.stringify(doc), 'utf8')
-    if (!await canWriteLiveCache(cachePath, !!options.overwriteLive)) return null
-    await fs.promises.rename(temp, cachePath)
-  } finally { await fs.promises.unlink(temp).catch(() => {}) }
-  return { counts: liveCounts(doc.events), durationSec: duration, codec, trusted: isTrusted(live), game }
+  // Keep the final read/merge/write/rename synchronous so main-process cache IPC cannot interleave it.
+  const committed = commitLiveCache(cachePath, doc, !!options.overwriteLive)
+  if (!committed) return null
+  return { counts: liveCounts(committed.events), durationSec: duration, codec, trusted: isTrusted(live), game }
 }

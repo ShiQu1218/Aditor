@@ -144,6 +144,14 @@ describe('per-match clipping and recovery', () => {
     expect(remux.inputs).toEqual(['初始化|' + entries.map((e) => `${e.pts}|`).join('')])
   })
 
+  it('keeps remaining segments when pruning happened before incomplete live detection', async () => {
+    const r = rig()
+    r.saveLive({ ...r.live, matches: [] })
+    fs.writeFileSync(path.join(r.dir, 'pruned.json'), '{"version":1}')
+    expect(await finalizeSession(r.dir, r.deps)).toHaveLength(1)
+    expect(remux.inputs).toEqual(['初始化|' + entries.map((e) => `${e.pts}|`).join('')])
+  })
+
   it('produces no output when live detection stayed healthy but saw no matches (lobby only)', async () => {
     const r = rig()
     r.saveLive({ ...r.live, matches: [] })
@@ -317,6 +325,28 @@ describe('per-match clipping and recovery', () => {
     expect(await finalizeSession(r.dir, r.deps)).toEqual([])
   })
 
+  it('final trusted per-match upgrades preserve saved edits while replacing auto events', async () => {
+    const r = rig('afterExit')
+    const [output] = await cutMatches(r.dir, r.deps)
+    const cachePath = r.deps.liveCachePath!(output)
+    const cache = read(cachePath)
+    cache.events[0] = { ...cache.events[0], counted_override: false }
+    cache.events.push({ ...cache.events[0], id: 'manual-event', t: 4, source: 'manual', counted_override: null })
+    cache.clips = [{ id: 'manual-clip', start: 1, end: 3, origin: 'manual', event_ids: [], status: 'accepted' }]
+    fs.writeFileSync(cachePath, JSON.stringify(cache))
+    r.saveLive({ ...r.live, events: r.live.events.map((event: any) => event.id === 'a6' ? { ...event, id: 'final-auto', t: 6.5 } : event),
+      quality: { complete: true, hScale: 1.05 } })
+
+    await finalizeSession(r.dir, r.deps)
+    const upgraded = read(cachePath)
+    expect(upgraded.events).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'final-auto', t: 2.5, counted_override: false }),
+      expect.objectContaining({ id: 'manual-event', source: 'manual', t: 4 })
+    ]))
+    expect(upgraded.events.some((event: any) => event.id === 'a6')).toBe(false)
+    expect(upgraded.clips).toEqual([expect.objectContaining({ id: 'manual-clip', origin: 'manual' })])
+  })
+
   it('does not overwrite a full analysis cache with final trusted results', async () => {
     const r = rig('afterExit')
     const outputs = await cutMatches(r.dir, r.deps)
@@ -440,7 +470,7 @@ describe('per-match recording service', () => {
   })
 })
 
-it('recovers matches and preserves countdowns after cleanup, and produces no output when there are no matches', async () => {
+it('recovers matches and preserves countdowns after cleanup, and produces no output for healthy no-match detection', async () => {
   const r = rig()
   await pruneSegments(r.dir, entries, matches, null)
   const done = vi.fn(); const failed = vi.fn()
@@ -451,6 +481,7 @@ it('recovers matches and preserves countdowns after cleanup, and produces no out
   const empty = rig()
   empty.saveLive({ ...empty.live, matches: [] })
   await pruneSegments(empty.dir, entries, [], null)
+  fs.writeFileSync(path.join(empty.dir, 'live-complete.json'), '{"version":1}')
   const count = remux.inputs.length
   await recoverSessions(empty.deps, vi.fn(), failed)
   expect(failed).not.toHaveBeenCalled()

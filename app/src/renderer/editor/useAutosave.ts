@@ -1,10 +1,14 @@
+type SaveResult = void | boolean | PromiseLike<unknown>
+
 export interface AutosaveOptions<T> {
   /** Delay before writing after input stops (ms). */
   delayMs: number
   /** Write function, called after debounce. */
-  save: (state: T) => void
+  save: (state: T) => SaveResult
   /** Version that returns only after writing, used on window close (ipcRenderer.sendSync); falls back to save when omitted. */
-  saveSync?: (state: T) => void
+  saveSync?: (state: T) => SaveResult
+  /** Called when a write throws or explicitly returns false; the pending state remains available for retry. */
+  onError?: (error: unknown) => void
   /** When disabled, skip writes and cancel pending content (corresponds to settings.projectAutosave). */
   enabled?: boolean
   /** Settings have not loaded: retain pending content without writing; decide whether to write or discard it when `setHeld(false)` is called. */
@@ -19,18 +23,21 @@ export interface AutosaveOptions<T> {
  */
 export class AutosaveController<T> {
   private delayMs: number
-  private save: (state: T) => void
-  private saveSync: ((state: T) => void) | undefined
+  private save: (state: T) => SaveResult
+  private saveSync: ((state: T) => SaveResult) | undefined
+  private onError: ((error: unknown) => void) | undefined
   private enabled: boolean
   private held: boolean
   private timer: ReturnType<typeof setTimeout> | null = null
   private pending: T | null = null
   private hasPending = false
+  private pendingVersion = 0
 
   constructor(opts: AutosaveOptions<T>) {
     this.delayMs = opts.delayMs
     this.save = opts.save
     this.saveSync = opts.saveSync
+    this.onError = opts.onError
     this.enabled = opts.enabled !== false
     this.held = opts.held === true
   }
@@ -47,6 +54,7 @@ export class AutosaveController<T> {
     if (!this.enabled) return
     this.pending = state
     this.hasPending = true
+    this.pendingVersion++
     this.clearTimer()
     if (this.held) return
     this.timer = setTimeout(() => {
@@ -60,15 +68,9 @@ export class AutosaveController<T> {
     this.writePending(this.save)
   }
 
-  flushSync(): void {
+  flushSync(): boolean {
     this.clearTimer()
-    this.writePending((s) => {
-      try {
-        ;(this.saveSync ?? this.save)(s)
-      } catch {
-        /* Do not throw again if a write fails during close; the previous file remains intact. */
-      }
-    })
+    return this.writePending((s) => (this.saveSync ?? this.save)(s), true)
   }
 
   setHeld(held: boolean): void {
@@ -107,11 +109,45 @@ export class AutosaveController<T> {
     }
   }
 
-  private writePending(write: (state: T) => void): void {
-    if (!this.hasPending) return
+  private writePending(write: (state: T) => SaveResult, sync = false): boolean {
+    if (!this.hasPending) return true
     const state = this.pending as T
+    const version = this.pendingVersion
+    let result: SaveResult
+    try {
+      result = write(state)
+    } catch (error) {
+      this.failed(version, error)
+      return false
+    }
+    if (result && typeof (result as PromiseLike<unknown>).then === 'function') {
+      void Promise.resolve(result).then((value) => {
+        if (value === false) this.failed(version, new Error('Autosave failed'))
+        else this.completed(version)
+      }, (error) => this.failed(version, error))
+      // A synchronous close cannot wait for a Promise; keep the edit pending and let the caller block/retry.
+      return !sync
+    }
+    if (result === false) {
+      this.failed(version, new Error('Autosave failed'))
+      return false
+    }
+    this.completed(version)
+    return true
+  }
+
+  private completed(version: number): void {
+    if (version !== this.pendingVersion) return
     this.pending = null
     this.hasPending = false
-    write(state)
+  }
+
+  private failed(version: number, error: unknown): void {
+    if (version !== this.pendingVersion || !this.hasPending) return
+    try {
+      this.onError?.(error)
+    } catch {
+      // An error reporter must not interfere with retaining the pending edit.
+    }
   }
 }

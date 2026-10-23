@@ -147,10 +147,7 @@ export function ProjectProvider({ children }: { children: React.ReactNode }): JS
     }
     window.addEventListener('beforeunload', flush)
     window.addEventListener('pagehide', flush)
-    const offRequest = window.api?.projects?.onFlushRequest?.(() => {
-      const ok = session.flushSync()
-      window.api?.projects?.flushDone?.(ok)
-    })
+    const offRequest = window.api?.projects?.onFlushRequest?.(() => session.flushSync())
     return () => {
       window.removeEventListener('beforeunload', flush)
       window.removeEventListener('pagehide', flush)

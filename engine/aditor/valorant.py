@@ -23,7 +23,7 @@ import cv2
 import numpy as np
 
 from . import ENGINE_VERSION
-from .cache import cache_path, load_cache, merge_clips, merge_reanalysis, needs_reanalysis, save_cache
+from .cache import merge_clips, merge_reanalysis, needs_reanalysis, prepare_cache, save_cache
 from .decode import FrameStream
 from .errors import Cancelled
 from .layout import BASE_H, BASE_W, REFERENCE_ASPECT, SUPPORTED_ASPECTS, Layout, LayoutError
@@ -608,8 +608,7 @@ def analyze_valorant(path: str, info: VideoInfo, profile: ValorantProfile, *, ca
                      force: bool = False, on_progress: Callable[[float, float], None] = lambda t, d: None,
                      cancel: threading.Event | None = None, hwaccel: bool = True, aspect_source: str = "default") -> dict:
     cache_dir = Path(cache_dir)
-    cp = cache_path(path, cache_dir, beside)
-    old = load_cache(cp)
+    cp, old = prepare_cache(path, cache_dir, beside)
     if not force and old is not None and not needs_reanalysis(old, info, profile.templates_version, profile.layout.squash,
                                                     game=GAME):
         old["cache_path"] = str(cp)

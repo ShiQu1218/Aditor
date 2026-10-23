@@ -109,6 +109,51 @@ describe('AutosaveController flush and hold', () => {
     expect(save).not.toHaveBeenCalled()
   })
 
+  test('flushSync does not report an async fallback as persisted', async () => {
+    let resolve!: () => void
+    const save = vi.fn(() => new Promise<void>((done) => { resolve = done }))
+    const c = new AutosaveController({ delayMs: 500, save })
+    c.update(p1)
+    expect(c.flushSync()).toBe(false)
+    expect(c.hasPendingWrite).toBe(true)
+    resolve()
+    await Promise.resolve()
+    expect(c.hasPendingWrite).toBe(false)
+  })
+
+  test('a late async completion cannot clear a newer edit', async () => {
+    let resolveFirst!: () => void
+    const first = new Promise<void>((resolve) => { resolveFirst = resolve })
+    const save = vi.fn((state: typeof p1) => state === p1 ? first : true)
+    const c = new AutosaveController({ delayMs: 500, save })
+    c.update(p1)
+    c.flush()
+    c.update(p2)
+    resolveFirst()
+    await Promise.resolve()
+    expect(c.hasPendingWrite).toBe(true)
+    c.flush()
+    expect(save).toHaveBeenNthCalledWith(2, p2)
+    expect(c.hasPendingWrite).toBe(false)
+  })
+
+  test('a failed async write stays pending for a retry', async () => {
+    let rejectFirst!: (error: unknown) => void
+    const first = new Promise<void>((_resolve, reject) => { rejectFirst = reject })
+    const save = vi.fn().mockReturnValueOnce(first).mockReturnValueOnce(true)
+    const onError = vi.fn()
+    const c = new AutosaveController({ delayMs: 500, save, onError })
+    c.update(p1)
+    c.flush()
+    rejectFirst(new Error('disk full'))
+    await Promise.resolve()
+    expect(onError).toHaveBeenCalledOnce()
+    expect(c.hasPendingWrite).toBe(true)
+    c.flush()
+    expect(save).toHaveBeenCalledTimes(2)
+    expect(c.hasPendingWrite).toBe(false)
+  })
+
   test('flushSync swallows saveSync errors and falls back to save when no saveSync given', () => {
     const c = new AutosaveController({
       delayMs: 500,
@@ -124,6 +169,19 @@ describe('AutosaveController flush and hold', () => {
     d.update(p1)
     d.flushSync()
     expect(save).toHaveBeenCalledWith(p1)
+  })
+
+  test('a failed write keeps the pending edit so a later flush can retry it', () => {
+    const saveSync = vi.fn().mockReturnValueOnce(false).mockReturnValueOnce(true)
+    const onError = vi.fn()
+    const c = new AutosaveController({ delayMs: 500, save: vi.fn(), saveSync, onError })
+    c.update(p1)
+    expect(c.flushSync()).toBe(false)
+    expect(c.hasPendingWrite).toBe(true)
+    expect(onError).toHaveBeenCalledOnce()
+    expect(c.flushSync()).toBe(true)
+    expect(c.hasPendingWrite).toBe(false)
+    expect(saveSync).toHaveBeenCalledTimes(2)
   })
 
   test('while held, updates are kept but never written; release writes the latest once', () => {

@@ -79,13 +79,13 @@ afterEach(() => {
 })
 
 /** Fake watcher: records close calls and can trigger ready manually (simulates a slow startup). */
-function fakeFactory(): { factory: WatcherFactory; made: Array<{ dir: string; emitter: EventEmitter; close: ReturnType<typeof vi.fn>; opts: unknown }> } {
-  const made: Array<{ dir: string; emitter: EventEmitter; close: ReturnType<typeof vi.fn>; opts: unknown }> = []
-  const factory: WatcherFactory = (dir, _onAdd, opts) => {
+function fakeFactory(): { factory: WatcherFactory; made: Array<{ dir: string; emitter: EventEmitter; close: ReturnType<typeof vi.fn>; opts: unknown; onAdd: (paths: string[]) => void }> } {
+  const made: Array<{ dir: string; emitter: EventEmitter; close: ReturnType<typeof vi.fn>; opts: unknown; onAdd: (paths: string[]) => void }> = []
+  const factory: WatcherFactory = (dir, onAdd, opts) => {
     const emitter = new EventEmitter()
     const close = vi.fn(async () => {})
     ;(emitter as unknown as { close: unknown }).close = close
-    made.push({ dir, emitter, close, opts })
+    made.push({ dir, emitter, close, opts, onAdd })
     return emitter as unknown as FSWatcher
   }
   return { factory, made }
@@ -231,6 +231,24 @@ describe('missing / deleted folders', () => {
 })
 
 describe('stable-size window (lower bound)', () => {
+  test('watcher callback keeps running when a library save fails and retries a duplicate import', async () => {
+    const rig = makeRig()
+    const { factory, made } = fakeFactory()
+    const wm = manager(rig, { createWatcher: factory })
+    const pending = wm.add(rig.watchDir)
+    made[0].emitter.emit('ready')
+    await pending
+    const file = path.join(rig.watchDir, 'retry.mp4')
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const rename = vi.spyOn(fs, 'renameSync').mockImplementationOnce(() => {
+      throw new Error('EPERM')
+    })
+    expect(() => made[0].onAdd([file])).not.toThrow()
+    rename.mockRestore()
+    expect(() => made[0].onAdd([file])).not.toThrow()
+    expect(new Library(path.join(rig.root, 'library.json')).get(file)).toBeDefined()
+  })
+
   test('import happens no earlier than lastWrite + stabilityMs', async () => {
     const rig = makeRig()
     const wm = manager(rig)

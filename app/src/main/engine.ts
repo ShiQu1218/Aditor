@@ -1,6 +1,7 @@
 import os from 'os'
 import { spawn, ChildProcess } from 'child_process'
 import { EventEmitter } from 'events'
+import { StringDecoder } from 'string_decoder'
 import { emitChildDiagnostic, type ChildDiagnosticHandler } from '../shared/child-diagnostics'
 
 export class EngineError extends Error {
@@ -32,6 +33,7 @@ export class EngineClient extends EventEmitter {
   private opts: EngineClientOptions
   private proc: ChildProcess | null = null
   private stdoutBuf = ''
+  private stdoutDecoder = new StringDecoder('utf8')
   private pending = new Map<string, PendingRequest>()
   private reqSeq = 0
   private engineVersion = ''
@@ -68,6 +70,8 @@ export class EngineClient extends EventEmitter {
           stdio: ['pipe', 'pipe', 'pipe']
         })
         this.proc = p
+        this.stdoutBuf = ''
+        this.stdoutDecoder = new StringDecoder('utf8')
 
         // Analysis can start while a game is running (per-match analysis, watched folders). Below-normal lets the game
         // keep its CPU time; FFmpeg processes spawned by the engine inherit this priority class on Windows.
@@ -114,7 +118,7 @@ export class EngineClient extends EventEmitter {
   }
 
   private _onData(chunk: Buffer): void {
-    this.stdoutBuf += chunk.toString('utf-8')
+    this.stdoutBuf += this.stdoutDecoder.write(chunk)
     let nlIdx: number
     while ((nlIdx = this.stdoutBuf.indexOf('\n')) !== -1) {
       const line = this.stdoutBuf.slice(0, nlIdx).trim()
@@ -166,6 +170,8 @@ export class EngineClient extends EventEmitter {
 
   private _onClose(_code: number | null): void {
     this.proc = null
+    this.stdoutBuf = ''
+    this.stdoutDecoder = new StringDecoder('utf8')
     this.readyPromise = null
 
     if (this.readyReject) {

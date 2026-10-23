@@ -79,12 +79,12 @@ export class Library {
   }
 
   /** Atomic write (tmp + fsync + rename); the original file is unchanged on failure. */
-  save(): void {
+  save(): boolean {
     if (this.saveTimer) {
       clearTimeout(this.saveTimer)
       this.saveTimer = null
     }
-    this.dirty = false
+    this.dirty = true
     const tmp = `${this.file}.tmp`
     try {
       fs.mkdirSync(path.dirname(this.file), { recursive: true })
@@ -96,11 +96,14 @@ export class Library {
         fs.closeSync(fd)
       }
       fs.renameSync(tmp, this.file)
+      this.dirty = false
+      return true
     } catch (err) {
       console.error('Failed to save library:', err)
       try {
         fs.rmSync(tmp, { force: true })
       } catch {}
+      return false
     }
   }
 
@@ -116,8 +119,8 @@ export class Library {
   }
 
   /** Immediately persist pending changes (called before the app exits). */
-  flush(): void {
-    if (this.dirty) this.save()
+  flush(): boolean {
+    return !this.dirty || this.save()
   }
 
   getEntries(): LibraryEntry[] {
@@ -188,7 +191,7 @@ export class Library {
       added.push(entry)
     }
 
-    if (added.length > 0 || changed) {
+    if (added.length > 0 || changed || this.dirty) {
       this.save()
     }
     return added

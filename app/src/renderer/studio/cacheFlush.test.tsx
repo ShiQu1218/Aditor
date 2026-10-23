@@ -3,6 +3,7 @@
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { cleanupMounted, click, flush } from '../../../test/dom'
 import { mountStudio, type StudioMount } from '../../../test/studioHarness'
+import { i18n } from '../i18n'
 
 let s: StudioMount | null = null
 afterEach(() => {
@@ -51,6 +52,51 @@ describe('studio cache flush (I4)', () => {
     await editOnce()
     s.fake.emit?.('projects:flushRequest')
     expect(saveSync).toHaveBeenCalledTimes(1)
+    expect(s.fake.api.projects.flushDone).toHaveBeenLastCalledWith(true)
     expect(q('.studio')).not.toBeNull()
+  })
+
+  test('main flushRequest blocks close when the source cache save fails, then allows retry', async () => {
+    s = await mountStudio({ doc: (d) => ({ ...d, cache_path: 'C:/cache/x.json' }) })
+    const saveSync = s.fake.api.cache.saveSync as ReturnType<typeof vi.fn>
+    window.dispatchEvent(new Event('beforeunload'))
+    saveSync.mockClear()
+    await editOnce()
+    saveSync.mockReturnValueOnce(false)
+    s.fake.emit?.('projects:flushRequest')
+    expect(s.fake.api.projects.flushDone).toHaveBeenLastCalledWith(false)
+    s.fake.emit?.('projects:flushRequest')
+    expect(s.fake.api.projects.flushDone).toHaveBeenLastCalledWith(true)
+    expect(saveSync).toHaveBeenCalledTimes(2)
+  })
+
+  test('back navigation stays in Studio when the source cache save fails', async () => {
+    const onBack = vi.fn()
+    s = await mountStudio({ onBack, doc: (d) => ({ ...d, cache_path: 'C:/cache/x.json' }) })
+    const saveSync = s.fake.api.cache.saveSync as ReturnType<typeof vi.fn>
+    window.dispatchEvent(new Event('beforeunload'))
+    saveSync.mockClear()
+    await editOnce()
+    saveSync.mockReturnValueOnce(false)
+    click(document.querySelector('.studio-head .icon-btn')!)
+    expect(onBack).not.toHaveBeenCalled()
+    click(document.querySelector('.studio-head .icon-btn')!)
+    expect(onBack).toHaveBeenCalledOnce()
+  })
+
+  test('a failed close-time cache save is reported and retried with the same edit', async () => {
+    s = await mountStudio({ doc: (d) => ({ ...d, cache_path: 'C:/cache/x.json' }) })
+    const saveSync = s.fake.api.cache.saveSync as ReturnType<typeof vi.fn>
+    saveSync.mockReturnValueOnce(false)
+    await editOnce()
+    const first = new Event('beforeunload', { cancelable: true })
+    window.dispatchEvent(first)
+    await flush()
+    expect(first.defaultPrevented).toBe(true)
+    expect(document.querySelector('.toast-host')?.textContent).toContain(i18n.studio.toast.sourceSaveFailed)
+    const second = new Event('beforeunload', { cancelable: true })
+    window.dispatchEvent(second)
+    expect(second.defaultPrevented).toBe(false)
+    expect(saveSync).toHaveBeenCalledTimes(2)
   })
 })

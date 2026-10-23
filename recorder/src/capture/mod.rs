@@ -330,6 +330,8 @@ impl BlackStreak {
 }
 
 struct CallbackState {
+    pid: u32,
+    gpu: Gpu,
     device: IDirect3DDevice,
     consumer: Box<dyn FrameConsumer>,
     gate: FrameGate,
@@ -338,6 +340,8 @@ struct CallbackState {
     color: color::SdrConverter,
     hwnd: HWND,
     black: BlackStreak,
+    visibility: dda::Visibility,
+    monitor_black: Option<dda::BlackFrame>,
     notices: Sender<CaptureNotice>,
 }
 
@@ -410,6 +414,14 @@ impl ActiveCapture {
             state.hwnd = hwnd;
             state.black = BlackStreak::default();
             state.probe.reset();
+            state.monitor_black = if monitor {
+                Some(dda::BlackFrame::new(
+                    &state.gpu,
+                    (size.Width as u32, size.Height as u32),
+                )?)
+            } else {
+                None
+            };
             state.device.clone()
         };
         let pool = Direct3D11CaptureFramePool::CreateFreeThreaded(
@@ -531,31 +543,58 @@ impl CallbackState {
         let pts = frame.0.SystemRelativeTime()?.Duration - self.origin;
         let resized = signals.size.load(Ordering::Acquire) != pack_size(size);
         if self.gate.accept(pts) {
+            let visible = if monitor {
+                if let Some(notice) = self.visibility.update(self.pid, pts, dda::foreground_state) {
+                    let _ = self.notices.send(notice);
+                }
+                self.visibility.is_visible()
+            } else {
+                // A monitor fallback may have hidden the game before capture was rebuilt as a window.
+                if !self.visibility.is_visible() {
+                    if let Some(notice) = self.visibility.update(self.pid, pts, dda::foreground_state) {
+                        let _ = self.notices.send(notice);
+                    }
+                }
+                true
+            };
+            let mut desc = D3D11_TEXTURE2D_DESC::default();
             let access: IDirect3DDxgiInterfaceAccess = frame.0.Surface()?.cast()?;
             // SAFETY: WGC Surface implements IDirect3DDxgiInterfaceAccess to obtain the D3D11 texture on the same device.
             let texture: ID3D11Texture2D = unsafe { access.GetInterface()? };
-            let mut desc = D3D11_TEXTURE2D_DESC::default();
             // SAFETY: texture is valid while the Frame guard lives; desc is a writable descriptor.
             unsafe { texture.GetDesc(&mut desc) };
+            if resized && monitor {
+                self.monitor_black = Some(dda::BlackFrame::new(
+                    &self.gpu,
+                    (size.Width as u32, size.Height as u32),
+                )?);
+            }
             if desc.Width >= size.Width as u32 && desc.Height >= size.Height as u32 {
-                // SAFETY: Querying the capture window monitor does not mutate the window.
-                let monitor_handle =
-                    unsafe { MonitorFromWindow(self.hwnd, MONITOR_DEFAULTTONEAREST) };
-                let texture = self.color.convert(&texture, monitor_handle)?;
-                self.consumer.on_frame(&CapturedFrame {
-                    texture: &texture,
-                    width: size.Width as u32,
-                    height: size.Height as u32,
-                    pts,
-                });
-                if !monitor {
-                    if let Some((pts, black)) = self.probe.on_frame(
-                        &texture,
-                        (size.Width as u32, size.Height as u32),
+                if monitor && !visible {
+                    self.monitor_black
+                        .as_ref()
+                        .context("capture_failed: Missing monitor black frame")?
+                        .deliver(&mut *self.consumer, pts);
+                } else {
+                    // SAFETY: Querying the capture window monitor does not mutate the window.
+                    let monitor_handle =
+                        unsafe { MonitorFromWindow(self.hwnd, MONITOR_DEFAULTTONEAREST) };
+                    let texture = self.color.convert(&texture, monitor_handle)?;
+                    self.consumer.on_frame(&CapturedFrame {
+                        texture: &texture,
+                        width: size.Width as u32,
+                        height: size.Height as u32,
                         pts,
-                    )? {
-                        if self.black.observe(pts, black) {
-                            signals.fallback.store(true, Ordering::Release);
+                    });
+                    if !monitor {
+                        if let Some((pts, black)) = self.probe.on_frame(
+                            &texture,
+                            (size.Width as u32, size.Height as u32),
+                            pts,
+                        )? {
+                            if self.black.observe(pts, black) {
+                                signals.fallback.store(true, Ordering::Release);
+                            }
                         }
                     }
                 }
@@ -593,6 +632,8 @@ fn run(
     let device = unsafe { CreateDirect3D11DeviceFromDXGIDevice(&dxgi)? }.cast()?;
     let probe = LumaProbe::new(&gpu).context("capture_failed: Failed to create black-frame detector")?;
     let shared = Arc::new(Mutex::new(CallbackState {
+        pid: opts.pid,
+        gpu: gpu.clone(),
         device,
         consumer,
         gate: FrameGate::new(opts.max_fps),
@@ -601,6 +642,8 @@ fn run(
         color: color::SdrConverter::new(&gpu)?,
         hwnd,
         black: BlackStreak::default(),
+        visibility: dda::Visibility::new(),
+        monitor_black: None,
         notices: notices.clone(),
     }));
     let mut active = Some(
@@ -761,5 +804,26 @@ mod tests {
         assert!(!streak.observe(5 * TICKS_PER_SEC, true));
         assert!(!streak.observe(9 * TICKS_PER_SEC, true));
         assert!(!streak.observe(10 * TICKS_PER_SEC, false));
+    }
+
+    #[test]
+    fn monitor_fallback_visibility_hides_and_recovers_on_foreground_changes() {
+        let mut visibility = dda::Visibility::new();
+        assert!(visibility.is_visible());
+        assert_eq!(visibility.update(42, 0, || (Some(42), false)), None);
+        assert_eq!(
+            visibility.update(42, 1, || (Some(7), false)),
+            Some(CaptureNotice::GameHidden { pts: 1 })
+        );
+        assert!(!visibility.is_visible());
+        assert_eq!(
+            visibility.update(42, 1, || panic!("duplicate visibility query")),
+            None
+        );
+        assert_eq!(
+            visibility.update(42, 2, || (Some(42), false)),
+            Some(CaptureNotice::GameVisible { pts: 2 })
+        );
+        assert!(visibility.is_visible());
     }
 }

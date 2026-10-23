@@ -1,4 +1,5 @@
 import readline from 'readline'
+import fs from 'fs'
 import { createE2EHandler } from './fake-engine-e2e.mjs'
 
 const mode = process.env.FAKE_ENGINE_MODE || 'normal'
@@ -9,6 +10,14 @@ if (mode === 'crash_on_start') {
 
 function send(obj) {
   process.stdout.write(JSON.stringify(obj) + '\n')
+}
+
+function sendChunkedUtf8(obj) {
+  const bytes = Buffer.from(JSON.stringify(obj) + '\n', 'utf8')
+  const split = bytes.findIndex((byte, index) => byte >= 0x80 && index > 0)
+  const at = split > 0 ? split + 1 : Math.floor(bytes.length / 2)
+  process.stdout.write(bytes.subarray(0, at))
+  setTimeout(() => process.stdout.write(bytes.subarray(at)), 20)
 }
 
 // Initial ready message
@@ -73,6 +82,19 @@ rl.on('line', (line) => {
     const l1 = JSON.stringify({ id, type: 'progress', t: 10, duration: 100 }) + '\n'
     const l2 = JSON.stringify({ id, type: 'result', data: { multi: true } }) + '\n'
     process.stdout.write(l1 + l2)
+  } else if (cmd === 'unicode_result') {
+    sendChunkedUtf8({ id, type: 'result', data: { path: 'D:/影片/中文.mp4' } })
+  } else if (cmd === 'partial_unicode_crash') {
+    const marker = process.env.FAKE_ENGINE_PARTIAL_MARKER
+    if (marker && !fs.existsSync(marker)) {
+      fs.writeFileSync(marker, 'crashed')
+      const bytes = Buffer.from(JSON.stringify({ id, type: 'result', data: { path: 'D:/影片/中文.mp4' } }), 'utf8')
+      const split = bytes.findIndex((byte, index) => byte >= 0x80 && index > 0)
+      process.stdout.write(bytes.subarray(0, split + 1))
+      setTimeout(() => process.exit(1), 0)
+    } else {
+      send({ id, type: 'result', data: { path: args.path } })
+    }
   } else {
     send({ id, type: 'result', data: { echo: args } })
   }
