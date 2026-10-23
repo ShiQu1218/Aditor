@@ -1,6 +1,6 @@
 # templates/valorant/icons 範本來源
 
-Valorant 的偵測不用圖片樣板，`profile.json` 只描述裁切區（`templates_version = valorant-feed@5`）。
+Valorant 的偵測不用圖片樣板，`profile.json` 只描述裁切區與辨識版本（`templates_version = valorant-feed@6`）。
 偵測讀的是 1920×1080（16:9）參考座標上的兩塊區域：
 
 - `banner`：右上擊殺列表，1316,84 起、600×256，涵蓋 6 列；名字很長的列左端會延伸到 x≈1428。

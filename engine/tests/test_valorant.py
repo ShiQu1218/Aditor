@@ -300,3 +300,28 @@ def test_a_short_box_counts_only_with_the_outline_along_the_row():
 
     assert kinds(short_box(outline=True)) == [(1, "kill")]
     assert kinds(short_box(outline=False)) == []
+
+
+def test_compressed_player_row_is_recognized_before_its_outline_becomes_stronger():
+    # Real 33.25 s frame: dense 22x24 portrait, 36 outline columns and a clear
+    # row edge. The old 40-column gate postponed this kill until 34.25 s.
+    strip = cv2.imread(str(Path(__file__).parent / "fixtures/valorant/compact-player-row.png"))
+    assert strip is not None
+    img = np.zeros((CH, CW, 3), np.uint8)
+    img[80:140] = strip
+    assert kinds(img) == [(2, "kill")]
+
+
+def test_one_second_timing_correction_preserves_the_users_event_edits():
+    from aditor.models import Event
+    from aditor.valorant import merge_events
+
+    old = Event(id="old", t=34.25, type="kill", score=1, damage_line=False, name_sig=None,
+                deleted=True, counted_override=False)
+    detected = Event(id="new", t=33.25, type="kill", score=1, damage_line=False, name_sig=None)
+    merged, unmatched = merge_events([old], [detected], [])
+    assert unmatched == []
+    assert len(merged) == 1
+    assert merged[0].t == 33.25
+    assert merged[0].deleted is True
+    assert merged[0].counted_override is False

@@ -1,0 +1,43 @@
+{
+  "version": 1,
+  "annotation": "Manual visual review of first kill HUD appearance at 0.1 s intervals; not audio matches or detector output.",
+  "annotator": "Assistant visual inspection of contact sheets; no independent human review.",
+  "uncertainty_seconds": 0.1,
+  "scope": "POV player kills only; exclude persistent entries already visible at the window start. Broadcast footage is not included in labeled metrics.",
+  "selection": "Fixed contiguous excerpts selected before running the audio-filter arms. LFT is limited to 60-70 s because later feed rows overlap the face camera and cannot be verified reliably.",
+  "windows": [
+    {
+      "id": "clean",
+      "filename": "Playing Duelist Without Fear in Immortal.._1080p60.mp4",
+      "start": 70.0,
+      "end": 100.0,
+      "kills": [
+        {"t": 74.4, "victim": "ALLDAYEVERYDAY"},
+        {"t": 75.1, "victim": "Cypher"},
+        {"t": 80.3, "victim": "Gekko"},
+        {"t": 82.4, "victim": "Omen"},
+        {"t": 91.9, "victim": "Jett"},
+        {"t": 92.7, "victim": "Skye"},
+        {"t": 98.3, "victim": "Omen"}
+      ]
+    },
+    {
+      "id": "lft",
+      "filename": "LFT 👀_1080p60.mp4",
+      "start": 60.0,
+      "end": 70.0,
+      "kills": [{"t": 63.3, "victim": "Sova"}]
+    },
+    {
+      "id": "radiant",
+      "filename": "This Is What Perfect Gamesense + Mechanics Looks Like in Radiant _ VALORANT Visual Guide 2026_720p60.mp4",
+      "start": 85.0,
+      "end": 115.0,
+      "kills": [
+        {"t": 93.7, "victim": "IcyFlow"},
+        {"t": 94.2, "victim": "Sage"},
+        {"t": 111.2, "victim": "hyjinx"}
+      ]
+    }
+  ]
+}

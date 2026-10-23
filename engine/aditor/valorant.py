@@ -48,6 +48,11 @@ MIN_TEAM_FILL = 0.30
 # and the outline next to it shows a row is there, so a lower edge contrast suffices (overlays such as the performance
 # graphs soften the row edges).
 MIN_OUTLINE = 40
+# Compressed footage can erode a player's portrait to 20-24 px and its outline to
+# 36-39 columns. Accept that combination only with a dense portrait and the full
+# row-edge contrast; keep the looser chevron/outlined-row path at 40 columns.
+MIN_COMPACT_OUTLINE = 36
+MIN_COMPACT_FILL = 0.60
 MIN_CHEVRON_ROW_EDGE = 25.0
 KILL_CHEVRON_MIN_OFFSET = 200
 
@@ -241,11 +246,15 @@ class FeedDetector:
             if y < b0 - 4 or y + h > b1 + 4:  # Effect streaks cross the band; a portrait box stays inside it.
                 continue
             side = "death" if at_right else "kill"
-            outlined = self._outline(outline, slot, x, x + w, side) >= MIN_OUTLINE
+            outline_columns = self._outline(outline, slot, x, x + w, side)
+            outlined = outline_columns >= MIN_OUTLINE
+            edge = self._row_edge(gray, slot)
+            compact = (w >= MIN_OUTLINED_BOX_W and outline_columns >= MIN_COMPACT_OUTLINE
+                       and area >= MIN_COMPACT_FILL * w * h and edge >= MIN_ROW_EDGE)
             # Yellow scenery with no row behind it has no crisp row edges; the outline already shows a row is there.
-            if self._row_edge(gray, slot) < (MIN_CHEVRON_ROW_EDGE if outlined else MIN_ROW_EDGE):
+            if edge < (MIN_CHEVRON_ROW_EDGE if outlined else MIN_ROW_EDGE):
                 continue
-            if h < MIN_BOX_H and (not outlined or w < MIN_OUTLINED_BOX_W):
+            if h < MIN_BOX_H and (not (outlined or compact) or w < MIN_OUTLINED_BOX_W):
                 continue
             sides.setdefault(slot, set()).add(side)
         return sides
