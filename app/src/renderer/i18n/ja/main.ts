@@ -30,8 +30,8 @@ export const i18n: Messages['i18n'] = {
     chips: {
       all: 'すべて',
       favorite: 'お気に入り',
-      knock: 'ノックダウンあり',
-      assist: 'アシストあり',
+      recording: 'ローカル対戦',
+      external: '外部インポート',
       hl: 'ハイライトあり',
       isNew: '新着'
     },

@@ -83,8 +83,8 @@ export function LibraryToolbar({
         {t.chips.favorite}
         <kbd>Ctrl D</kbd>
       </button>
-      {chip('knock', t.chips.knock)}
-      {chip('assist', t.chips.assist)}
+      {chip('recording', t.chips.recording)}
+      {chip('external', t.chips.external)}
       {chip('hl', t.chips.hl, <span className="lib-pill accent lib-slant">{t.chips.isNew}</span>)}
       <span className="sep" />
       <span className="lib-game-group" role="group" aria-label={t.gameFilter}>

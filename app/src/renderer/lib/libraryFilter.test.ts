@@ -13,11 +13,13 @@ const entry = (path: string, over: Partial<LibraryEntry> = {}): LibraryEntry => 
 
 const list: LibraryEntry[] = [
   entry('D:/rec/Apex Legends_10-13-2026_16-45-41.mp4', {
+    source: 'recording',
     counts: { knock: 15, assist: 6 },
     hl: 4,
     favorite: true
   }),
   entry('D:/rec/Apex Legends_10-13-2026_22-41-18.mp4', {
+    source: 'external',
     counts: { knock: 0, assist: 3 },
     hl: 0
   }),
@@ -57,8 +59,8 @@ describe('filterEntries', () => {
     expect(filterEntries(list, { query: '', favoriteOnly: true, kind: 'all', game: 'all' })).toHaveLength(2)
 
     // kind
-    expect(filterEntries(list, { query: '', favoriteOnly: false, kind: 'knock', game: 'all' })).toHaveLength(2)
-    expect(filterEntries(list, { query: '', favoriteOnly: false, kind: 'assist', game: 'all' })).toHaveLength(2)
+    expect(filterEntries(list, { query: '', favoriteOnly: false, kind: 'recording', game: 'all' })).toEqual([list[0]])
+    expect(filterEntries(list, { query: '', favoriteOnly: false, kind: 'external', game: 'all' })).toEqual([list[1], list[2]])
     expect(
       filterEntries(list, { query: '', favoriteOnly: false, kind: 'hl', game: 'all' }).map((e) => e.path)
     ).toEqual([list[0].path])
@@ -68,16 +70,20 @@ describe('filterEntries', () => {
       filterEntries(list, { query: 'Apex', favoriteOnly: true, kind: 'hl', game: 'all' }).map((e) => e.path)
     ).toEqual([list[0].path])
 
-  // Unanalyzed videos (without counts/hl) are hidden by event/highlight filters but shown under All.
+  // Source filters also work before analysis; legacy entries are treated as imports.
     const pending: LibraryEntry[] = [entry('D:/rec/pending.mp4', { status: 'pending', progress: 0 })]
     expect(filterEntries(pending, { query: '', favoriteOnly: false, kind: 'all', game: 'all' })).toHaveLength(1)
-    expect(filterEntries(pending, { query: '', favoriteOnly: false, kind: 'knock', game: 'all' })).toHaveLength(0)
+    expect(filterEntries(pending, { query: '', favoriteOnly: false, kind: 'recording', game: 'all' })).toHaveLength(0)
+    expect(filterEntries(pending, { query: '', favoriteOnly: false, kind: 'external', game: 'all' })).toEqual(pending)
+    const recording = entry('D:/rec/local.mp4', { source: 'recording', status: 'pending', progress: 0 })
+    expect(filterEntries([recording], { query: '', favoriteOnly: false, kind: 'recording', game: 'all' })).toEqual([recording])
     expect(filterEntries(pending, { query: '', favoriteOnly: false, kind: 'hl', game: 'all' })).toHaveLength(0)
   })
 
   test('game filtering combines with kind and favorites', () => {
     const games: LibraryEntry[] = [
       entry('D:/rec/apex_explicit.mp4', {
+        source: 'recording',
         game: 'apex',
         counts: { knock: 2, assist: 0 },
         favorite: true
@@ -101,7 +107,7 @@ describe('filterEntries', () => {
       filterEntries(games, { query: '', favoriteOnly: false, kind: 'all', game: 'valorant' }).map((e) => e.path)
     ).toEqual([games[1].path])
     expect(
-      filterEntries(games, { query: '', favoriteOnly: false, kind: 'knock', game: 'apex' }).map((e) => e.path)
+      filterEntries(games, { query: '', favoriteOnly: false, kind: 'recording', game: 'apex' }).map((e) => e.path)
     ).toEqual([games[0].path])
     expect(
       filterEntries(games, { query: '', favoriteOnly: true, kind: 'hl', game: 'valorant' }).map((e) => e.path)

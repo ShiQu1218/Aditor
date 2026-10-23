@@ -29,8 +29,8 @@ const i18n = {
     chips: {
       all: '全部',
       favorite: '收藏',
-      knock: '含擊倒',
-      assist: '含助攻',
+      recording: '本地對戰',
+      external: '外部匯入',
       hl: '有精華',
       isNew: '新'
     },

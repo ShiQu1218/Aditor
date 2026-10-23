@@ -30,8 +30,8 @@ export const i18n: Messages['i18n'] = {
     chips: {
       all: '全部',
       favorite: '收藏',
-      knock: '含击倒',
-      assist: '含助攻',
+      recording: '本地对战',
+      external: '外部导入',
       hl: '有精华',
       isNew: '新'
     },

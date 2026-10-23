@@ -127,8 +127,8 @@ export function LibraryScreen({ onSelectVideo, onOpenSettings }: LibraryScreenPr
     ) as Record<GameId, number>
     return {
       all: entries.length,
-      knock: filterEntries(entries, { ...base, kind: 'knock' }).length,
-      assist: filterEntries(entries, { ...base, kind: 'assist' }).length,
+      recording: filterEntries(entries, { ...base, kind: 'recording' }).length,
+      external: filterEntries(entries, { ...base, kind: 'external' }).length,
       hl: filterEntries(entries, { ...base, kind: 'hl' }).length,
       ...gameCounts
     }

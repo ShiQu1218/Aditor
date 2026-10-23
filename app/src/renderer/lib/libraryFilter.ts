@@ -1,8 +1,8 @@
-// Library filters (pure functions): search, favorites only, event/highlight type, and game.
+// Library filters (pure functions): search, favorites only, source/highlight type, and game.
 import type { LibraryEntry } from '../../main/library'
 import type { GameId } from '../../shared/games'
 
-export type LibraryKind = 'all' | 'knock' | 'assist' | 'hl'
+export type LibraryKind = 'all' | 'recording' | 'external' | 'hl'
 export type LibraryGame = GameId | 'all'
 
 export interface LibraryFilter {
@@ -37,10 +37,11 @@ export function filterEntries(entries: LibraryEntry[], f: LibraryFilter): Librar
       return false
     }
     switch (f.kind) {
-      case 'knock':
-        return (entry.counts?.knock ?? 0) > 0
-      case 'assist':
-        return (entry.counts?.assist ?? 0) > 0
+      case 'recording':
+        return entry.source === 'recording'
+      case 'external':
+        // Legacy entries have unknown ownership and are treated like imports.
+        return entry.source !== 'recording'
       case 'hl':
         return (entry.hl ?? 0) > 0
       default:

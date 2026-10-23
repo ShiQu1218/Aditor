@@ -29,8 +29,8 @@ export const i18n: Messages['i18n'] = {
     chips: {
       all: 'All',
       favorite: 'Favorites',
-      knock: 'Has knockdowns',
-      assist: 'Has assists',
+      recording: 'Local matches',
+      external: 'External imports',
       hl: 'Has highlights',
       isNew: 'New'
     },

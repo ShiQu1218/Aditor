@@ -10,6 +10,7 @@ import { cleanupMounted, click, flush, installDomShims, mount } from '../../../t
 import { i18n } from '../i18n'
 
 const apex: LibraryEntry = {
+  source: 'recording',
   path: 'D:/rec/apex.mp4',
   addedAt: Date.now(),
   favorite: false,
@@ -18,6 +19,7 @@ const apex: LibraryEntry = {
   game: 'apex'
 }
 const valorant: LibraryEntry = {
+  source: 'external',
   path: 'D:/rec/valorant.mp4',
   addedAt: Date.now() - 1000,
   favorite: false,
@@ -76,6 +78,31 @@ function gameChip(root: ParentNode, game: GameId): HTMLButtonElement {
 }
 
 describe('library game filter', () => {
+  test('source chips count and filter recordings, imports and legacy entries', async () => {
+    const container = await setup()
+    const chip = (label: string): HTMLButtonElement =>
+      Array.from(container.querySelectorAll<HTMLButtonElement>('.lib-chip')).find((button) =>
+        (button.textContent ?? '').startsWith(label)
+      )!
+    const recording = chip(i18n.library.chips.recording)
+    const external = chip(i18n.library.chips.external)
+
+    expect(recording.querySelector('.n')?.textContent).toBe('1')
+    expect(external.querySelector('.n')?.textContent).toBe('2')
+    click(recording)
+    expect(recording.getAttribute('aria-pressed')).toBe('true')
+    expect(cardPaths(container)).toEqual([apex.path])
+    click(external)
+    expect(recording.getAttribute('aria-pressed')).toBe('false')
+    expect(external.getAttribute('aria-pressed')).toBe('true')
+    expect(cardPaths(container)).toEqual([valorant.path, legacy.path])
+    click(gameChip(container, 'apex'))
+    expect(cardPaths(container)).toEqual([legacy.path])
+    click(chip(i18n.library.chips.all))
+    expect(cardPaths(container)).toHaveLength(3)
+    expect(external.getAttribute('aria-pressed')).toBe('false')
+  })
+
   test('game chips show counts, filter the grid, and toggle back to all', async () => {
     const container = await setup()
 
