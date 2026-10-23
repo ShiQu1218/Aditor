@@ -365,11 +365,35 @@ def test_a_gap_breaks_the_weak_timestamp_evidence_chain():
 
 
 def test_a_new_victim_at_the_same_slot_is_not_discarded_as_flicker():
+    from dataclasses import replace
+
     tr = FeedTracker()
-    tr.feed(10, [row(0, "kill", [1, 0, 0])])
-    assert tr.feed(10.25, [row(0, "kill", [0, 1, 0])]) == []
-    assert tr.feed(10.5, [row(0, "kill", [0, 1, 0])])[0].t == 10.25
+    first = replace(row(0, "kill", [1, 0, 0]), identity=np.array([1, 0], np.float32))
+    second = replace(row(0, "kill", [0, 1, 0]), identity=np.array([0, 1], np.float32))
+    tr.feed(10, [first])
+    assert tr.feed(10.25, [second]) == []
+    assert tr.feed(10.5, [second])[0].t == 10.25
     assert [e.t for e in tr.events] == [10, 10.25]
+
+
+def test_unreadable_victim_with_a_changing_background_is_one_kill():
+    detector = FeedDetector(PROFILE)
+    b0, b1 = detector.band(0)
+    observations = []
+    for inverse in (False, True):
+        img = feed((0, TEAL, RED, "left"))
+        # Preserve the player marker, team hue and row edges while changing
+        # the scenery visible through the victim panel. No glyphs are readable.
+        for x in range(detector.right - 150, detector.right):
+            bright = ((x - detector.right + 150) < 75) ^ inverse
+            img[b0 + 3:b1 - 3, x] = (110, 120, 250) if bright else (5, 10, 120)
+        rows = detector.observations(img)
+        assert len(rows) == 1 and rows[0].confirmed and rows[0].identity is None
+        observations.append(rows)
+    tr = FeedTracker()
+    for t, index in ((10, 0), (10.25, 1), (10.5, 1), (10.75, 0)):
+        tr.feed(t, observations[index])
+    assert [e.t for e in tr.events] == [10]
 
 
 def test_a_one_frame_appearance_change_does_not_duplicate_a_kill():
@@ -378,6 +402,28 @@ def test_a_one_frame_appearance_change_does_not_duplicate_a_kill():
     assert tr.feed(10.25, [row(0, "kill", [0, 1, 0])]) == []
     assert tr.feed(10.5, [row(0, "kill", [1, 0, 0])]) == []
     assert len(tr.events) == 1
+
+
+def test_a_readable_new_victim_after_unreadable_frames_starts_a_new_kill():
+    from dataclasses import replace
+
+    tr = FeedTracker()
+    first = replace(row(0, "kill", [1, 0, 0]), identity=np.array([1, 0], np.float32))
+    unreadable = row(0, "kill", [0, 1, 0])
+    second = replace(row(0, "kill", [0, 0, 1]), identity=np.array([0, 1], np.float32))
+    tr.feed(10, [first])
+    assert tr.feed(10.25, [unreadable]) == []
+    assert tr.feed(10.5, [unreadable]) == []
+    assert tr.feed(10.75, [second]) == []
+    assert tr.feed(11, [second])[0].t == 10.75
+    assert [e.t for e in tr.events] == [10, 10.75]
+
+
+def test_unreadable_new_victim_after_a_gap_is_not_merged_by_slot():
+    tr = FeedTracker()
+    tr.feed(10, [row(0, "kill", [1, 0, 0])])
+    assert tr.feed(12, [row(0, "kill", [0, 1, 0])])[0].t == 12
+    assert [e.t for e in tr.events] == [10, 12]
 
 
 def test_identical_victim_in_a_new_lower_row_is_a_distinct_kill():

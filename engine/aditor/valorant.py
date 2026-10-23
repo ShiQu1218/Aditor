@@ -441,6 +441,25 @@ class FeedTracker:
             if j not in assigned and i not in taken:
                 assigned[j] = i
                 taken.add(i)
+        # With unreadable glyphs, a changed translucent background is not
+        # evidence of a new victim. Keep a recent, unclaimed self row at the
+        # same slot; appearance matches above still get first choice, and a
+        # readable identity change can still start a new entry.
+        for j, row in enumerate(rows):
+            if j in assigned or not row.confirmed:
+                continue
+            candidates = []
+            for i, track in enumerate(self._seen):
+                if (i in taken or track.event is None or track.row.type != row.type
+                        or track.row.slot != row.slot or t - track.last_t > FLICKER):
+                    continue
+                if row.identity is not None and any(r.identity is not None for r in (track.row, track.anchor)):
+                    continue
+                candidates.append(i)
+            if candidates:
+                i = max(candidates, key=lambda index: self._seen[index].last_t)
+                assigned[j] = i
+                taken.add(i)
         new = []
         for j, row in sorted(enumerate(rows), key=lambda item: item[1].slot):
             if j in assigned:
