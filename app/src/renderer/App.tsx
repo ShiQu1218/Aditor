@@ -9,6 +9,7 @@ import { FocusZoneProvider } from './input/FocusZoneProvider'
 import { AppShell } from './shell/AppShell'
 import { RailView } from './shell/Rail'
 import { SettingsScreen } from './settings/SettingsScreen'
+import type { CategoryId } from './settings/rows'
 import { LiveScreen } from './live/LiveScreen'
 import { setLowPerf, watchLowPerfSetting } from './perf/lowPerf'
 import { LowPerfNotice } from './perf/LowPerfNotice'
@@ -43,6 +44,7 @@ function AppContent(): JSX.Element {
     })
   }, [settingsFx])
   const [view, setView] = useState<View>(() => (settingsFx ? 'settings' : longFixtureRequested() ? 'studio' : 'library'))
+  const [settingsDestination, setSettingsDestination] = useState<{ category?: CategoryId; request: number }>({ request: 0 })
   const [currentVideo, setCurrentVideo] = useState<string | null>(() =>
     longFixtureRequested() ? LONG_FIXTURE_PATH : null
   )
@@ -66,7 +68,11 @@ function AppContent(): JSX.Element {
     setView('studio')
   }
 
-  const handleNavigate = (v: RailView) => {
+  const handleNavigate = (v: RailView, settingsCategory?: CategoryId) => {
+    if (v === 'settings') {
+      // Remount even when already in Settings, clearing search and selecting the requested category.
+      setSettingsDestination((previous) => ({ category: settingsCategory, request: previous.request + 1 }))
+    }
     setView(v)
   }
 
@@ -94,7 +100,11 @@ function AppContent(): JSX.Element {
     )
   } else if (view === 'settings') {
     page = fxReady ? (
-      <SettingsScreen initialQuery={settingsFx?.q} initialCategory={settingsFx?.cat} />
+      <SettingsScreen
+        key={settingsDestination.request}
+        initialQuery={settingsDestination.category ? '' : settingsFx?.q}
+        initialCategory={settingsDestination.category ?? settingsFx?.cat}
+      />
     ) : (
       <div />
     )

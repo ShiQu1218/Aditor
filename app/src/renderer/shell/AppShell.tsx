@@ -12,6 +12,7 @@ import { useRecordingStatus } from './useRecordingStatus'
 import { useAppSettings } from './useAppSettings'
 import { useUpdateNotice } from './useUpdateStatus'
 import { OnboardingHost } from '../onboarding/Onboarding'
+import type { CategoryId } from '../settings/rows'
 
 /** Show a toast once when startup recovery encounters a corrupt or newer-version project (I12). */
 function RestoreNotice(): null {
@@ -30,7 +31,7 @@ function RestoreNotice(): null {
 interface AppShellProps {
   active: RailView | null
   projectCount: number
-  onNavigate: (v: RailView) => void
+  onNavigate: (v: RailView, settingsCategory?: CategoryId) => void
   /** "Watch current match" in the recording panel: switch to the live recording view. */
   onOpenLive?: () => void
   children: React.ReactNode

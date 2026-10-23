@@ -2,11 +2,13 @@
 import React, { act } from 'react'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import type { UpdateStatus } from '../../shared/update'
-import { shellI18n } from '../i18n'
+import { settingsI18n, shellI18n } from '../i18n'
+import App from '../App'
 import { Rail } from './Rail'
 import { updateNoticeFor } from './updateNotice'
 import { useUpdateNotice, useUpdateStatus } from './useUpdateStatus'
-import { cleanupMounted, click, installDomShims, mount } from '../../../test/dom'
+import { cleanupMounted, click, flush, installDomShims, mount } from '../../../test/dom'
+import { createFakeApi, installFakeApi } from '../../../test/fakeApi'
 
 let previousApi: Window['api']
 beforeEach(() => { installDomShims(); previousApi = window.api })
@@ -135,7 +137,7 @@ describe('Rail update button', () => {
     expect(document.querySelector(`[aria-label="${t.updateFailed}"]`)).toBeNull()
   })
 
-  test('available notice shows the version in its label and opens Settings', () => {
+  test('available notice shows the version in its label and opens the About settings', () => {
     const onNavigate = vi.fn()
     mount(<Rail active="library" projectCount={0} onNavigate={onNavigate} updateNotice={{ kind: 'available', version: '1.4.0' }} />)
     const label = t.updateAvailable.replace('{version}', '1.4.0')
@@ -146,10 +148,10 @@ describe('Rail update button', () => {
     expect(trigger!.querySelector('.update-dot.failed')).toBeNull()
     expect(trigger!.querySelector('.rec-dot')).toBeNull()
     click(trigger!)
-    expect(onNavigate).toHaveBeenCalledWith('settings')
+    expect(onNavigate).toHaveBeenCalledWith('settings', 'about')
   })
 
-  test('failed notice uses the failed label and dot, and opens Settings', () => {
+  test('failed notice uses the failed label and dot, and opens the About settings', () => {
     const onNavigate = vi.fn()
     mount(<Rail active="library" projectCount={0} onNavigate={onNavigate} updateNotice={{ kind: 'failed' }} />)
     const trigger = document.querySelector<HTMLButtonElement>(`[aria-label="${t.updateFailed}"]`)
@@ -157,6 +159,44 @@ describe('Rail update button', () => {
     expect(trigger!.getAttribute('data-tip')).toBe(t.updateFailed)
     expect(trigger!.querySelector('.update-dot.failed')).not.toBeNull()
     click(trigger!)
-    expect(onNavigate).toHaveBeenCalledWith('settings')
+    expect(onNavigate).toHaveBeenCalledWith('settings', 'about')
+  })
+})
+
+describe('update settings navigation', () => {
+  test.each(['available', 'downloaded'] as const)('%s notice opens the update action and works again while in Settings', async (state) => {
+    const download = vi.fn(async () => true)
+    installFakeApi(createFakeApi())
+    window.api = { ...window.api, update: {
+      getStatus: vi.fn(async () => ({ state, version: '1.4.0' })),
+      onStatus: vi.fn(() => () => undefined),
+      download
+    } }
+    mount(<App />)
+    await flush()
+
+    const openUpdate = () => click(document.querySelector('.update-dot')!.closest('button')!)
+    const expectUpdate = () => {
+      expect(document.querySelector('#set-tab-about')?.getAttribute('aria-selected')).toBe('true')
+      expect(document.querySelector('#set-updateStatus')?.textContent).toContain(
+        state === 'available' ? settingsI18n.row.updateStatus.download : settingsI18n.row.updateStatus.install
+      )
+    }
+    openUpdate()
+    await flush()
+    expectUpdate()
+
+    click(document.querySelector('#set-tab-general')!)
+    const search = document.querySelector<HTMLInputElement>('input[type="search"]')!
+    act(() => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(search, 'no matching setting')
+      search.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    expect(document.querySelector<HTMLInputElement>('input[type="search"]')!.value).toBe('no matching setting')
+    openUpdate()
+    await flush()
+    expectUpdate()
+    expect(document.querySelector<HTMLInputElement>('input[type="search"]')!.value).toBe('')
+    expect(download).not.toHaveBeenCalled()
   })
 })

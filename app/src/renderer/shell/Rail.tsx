@@ -5,6 +5,7 @@ import { shellI18n } from '../i18n'
 import { recordingI18n } from '../i18n'
 import type { RecordingPhase } from '../../shared/recording'
 import type { UpdateNotice } from './updateNotice'
+import type { CategoryId } from '../settings/rows'
 import './recording.css'
 
 export type RailView = 'library' | 'studio' | 'settings'
@@ -13,7 +14,7 @@ interface RailProps {
   /** Current page. */
   active: RailView | null
   projectCount: number
-  onNavigate: (v: RailView) => void
+  onNavigate: (v: RailView, settingsCategory?: CategoryId) => void
   onShortcuts?: () => void
   onQueue?: () => void
   /** Whether the queue popover is open (aria-expanded). */
@@ -64,7 +65,7 @@ export function Rail({ active, projectCount, onNavigate, onShortcuts, onQueue, q
           className="rail-btn"
           data-tip={updateLabel}
           aria-label={updateLabel}
-          onClick={() => onNavigate('settings')}
+          onClick={() => onNavigate('settings', 'about')}
         >
           <Download className="ic lg" />
           <span className={`update-dot${updateFailed ? ' failed' : ''}`} aria-hidden="true" />
