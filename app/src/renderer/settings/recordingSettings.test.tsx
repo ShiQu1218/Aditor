@@ -68,6 +68,14 @@ async function slider(field: string, value: string): Promise<void> {
 }
 
 describe('Recording settings screen and controller', () => {
+  test('cursor recording defaults on and can be disabled in saved settings', async () => {
+    const r = await show()
+    expect(control<HTMLInputElement>('captureCursor').checked).toBe(true)
+    click(control('captureCursor'))
+    await flush()
+    expect(r.controller.getState().settings?.recording.captureCursor).toBe(false)
+    expect(r.set).toHaveBeenLastCalledWith(expect.objectContaining({ recording: expect.objectContaining({ captureCursor: false }) }))
+  })
   test('Selecting OBS shows connection settings, hides video/audio settings, preserves values on remount, and shows the test result', async () => {
     const r = await show()
     r.api.recording!.testObs = vi.fn(async () => ({ ok: true as const, obsVersion: '31.0.0', obsWebSocketVersion: '5.5.0' }))
@@ -132,7 +140,7 @@ describe('Recording settings screen and controller', () => {
     const fields = [
       'autoRecord', 'mode', 'postAnalysis',
       'backend',
-      'height', 'bitrateKbps', 'fps', 'forceAspect', 'aspectMode', 'codec', 'gpu', 'encoder', 'preset', 'captureMethod',
+      'height', 'bitrateKbps', 'fps', 'captureCursor', 'forceAspect', 'aspectMode', 'codec', 'gpu', 'encoder', 'preset', 'captureMethod',
       'systemAudioEnabled', 'renderDevice', 'systemGain', 'micEnabled', 'captureDevice', 'micGain', 'gameAudioOnly', 'micMono',
       'diskWarnGb', 'diskStopGb', 'notifyMatch', 'openOnGameExit'
     ]

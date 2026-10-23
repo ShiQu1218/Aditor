@@ -6,7 +6,7 @@ import type { SettingsController, SettingsState } from './settingsController'
 import { fillTemplate } from './settingsModel'
 import { bitrateOptions, fpsOptions, heightOptions } from './recordingOptions'
 
-const BOOL_FIELDS = ['autoRecord', 'launchAtLogin', 'closeToTray', 'micEnabled', 'notifyMatch', 'openOnGameExit', 'forceAspect', 'systemAudioEnabled', 'gameAudioOnly', 'micMono', 'obsFallbackBuiltin'] as const
+const BOOL_FIELDS = ['captureCursor', 'autoRecord', 'launchAtLogin', 'closeToTray', 'micEnabled', 'notifyMatch', 'openOnGameExit', 'forceAspect', 'systemAudioEnabled', 'gameAudioOnly', 'micMono', 'obsFallbackBuiltin'] as const
 
 function ObsTextControl({ field, ids, state, settings, controller }: {
   field: 'obsHost' | 'obsPassword'; ids: ControlIds; state: SettingsState; settings: RecordingSettings; controller: SettingsController

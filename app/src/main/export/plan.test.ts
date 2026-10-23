@@ -14,6 +14,13 @@ import {
 import { ProjectItem } from '../../renderer/editor/project'
 
 describe('export plan', () => {
+  it.each(['separate', 'concat'] as const)('%s exports use the same bounded video timescale in every output', (mode) => {
+    for (const quality of ['copy', 'precise'] as const) {
+      const items = [{ id: 'a', source: 'a.mp4', start: 0, end: 1 }, { id: 'b', source: 'a.mp4', start: 2, end: 3 }]
+      const { jobs } = buildJobs(items, { mode, quality, encoder: 'h264_nvenc', outDir: 'C:/out', baseName: 'test' }, new Map())
+      for (const job of jobs) expect(job.args[job.args.indexOf('-video_track_timescale') + 1]).toBe('90000')
+    }
+  })
   it('extraSecondsForCopy calculates difference to closest prior keyframe', () => {
     const keyframes = [0, 2, 4]
     expect(extraSecondsForCopy(3.1, keyframes)).toBeCloseTo(1.1, 4)

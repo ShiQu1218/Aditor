@@ -324,6 +324,7 @@ fn dda_captures_monitor_pixels_with_increasing_pts_and_reconnects() {
         CaptureMethod::Dda,
         &gpu,
         CaptureOptions {
+            capture_cursor: true,
             pid: std::process::id(),
             max_fps: 60,
             origin_ticks: origin,
@@ -448,6 +449,7 @@ fn dda_blacks_frames_and_emits_events_when_another_process_takes_foreground() {
         CaptureMethod::Dda,
         &gpu,
         CaptureOptions {
+            capture_cursor: true,
             pid: std::process::id(),
             max_fps: 60,
             origin_ticks: origin,
@@ -624,6 +626,7 @@ fn dda_rejects_device_on_adapter_without_the_monitor() {
         CaptureMethod::Dda,
         &gpu,
         CaptureOptions {
+            capture_cursor: true,
             pid: std::process::id(),
             max_fps: 60,
             origin_ticks: clock::now_ticks(),

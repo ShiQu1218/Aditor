@@ -48,6 +48,7 @@ export const recordingI18n: Messages['recordingI18n'] = {
     encoder: { title: 'Recording encoder', desc: 'Lists the hardware encoders the recorder can use for the current codec.' },
     preset: { title: 'Encoding preset', desc: 'Higher quality uses more GPU.' },
     captureMethod: { title: 'Capture method', desc: 'Automatic (default) uses screen capture on Windows 10, where window capture shows a yellow border around the game, and window capture elsewhere. Window capture (WGC) records only the game window, but adds mouse latency in the lobby. Screen capture (DDA) does not cause mouse latency, but records the entire screen, including windows covering the game, and outputs a black screen when the game is not in the foreground. Takes effect the next time recording starts.' },
+    captureCursor: { title: 'Record mouse cursor', desc: 'Enabled by default. Includes the mouse cursor in recordings. Takes effect the next time recording starts.' },
     systemAudioEnabled: { title: 'Record system audio', desc: 'Records system sound into the video.' },
     renderDevice: { title: 'System audio device', desc: 'Captures system sound played through this output device.' },
     systemGain: { title: 'System audio volume', desc: '100% is the original volume. Maximum is 200%.' },

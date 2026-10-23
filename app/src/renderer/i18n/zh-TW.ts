@@ -847,6 +847,7 @@ const recordingI18n = {
     encoder: { title: '錄影編碼器', desc: '依目前編碼格式列出錄影器可用的硬體編碼器。' },
     preset: { title: '編碼預設', desc: '品質越高，GPU 使用量越高。' },
     captureMethod: { title: '擷取方式', desc: '自動（預設）：Windows 10 用螢幕擷取，因為 Windows 10 的視窗擷取會在遊戲周圍顯示黃框；其他系統用視窗擷取。視窗擷取（WGC）只錄遊戲視窗，但大廳滑鼠會有延遲；螢幕擷取（DDA）不會造成滑鼠延遲，但會錄下整個螢幕，蓋在遊戲上的視窗也會被錄進去，遊戲不在前景時為黑畫面。下次開始錄影時生效。' },
+    captureCursor: { title: '錄製滑鼠游標', desc: '預設開啟，將滑鼠游標錄進影片。下次開始錄影時生效。' },
     systemAudioEnabled: { title: '錄製系統聲音', desc: '將系統聲音錄進影片。' },
     renderDevice: { title: '系統聲音裝置', desc: '擷取此輸出裝置播放的系統聲音。' },
     systemGain: { title: '系統聲音音量', desc: '100% 為原始音量，最高 200%。' },

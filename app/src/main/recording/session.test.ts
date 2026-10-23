@@ -132,6 +132,7 @@ describe('recording service state machine', () => {
     expect(start.audio).toEqual({ render: 'speaker', capture: 'mic', mic_enabled: false, mic_gain: 0.4,
       render_enabled: true, render_gain: 1, render_source: 'device', mic_mono: false })
     expect(start.capture).toBe('dda')
+    expect(start.capture_cursor).toBe(true)
     await waitFor(() => fs.existsSync(path.join(start.session_dir, 'events.jsonl')) &&
       fs.readFileSync(path.join(start.session_dir, 'events.jsonl'), 'utf8').includes('window_lost'))
     expect(fs.readFileSync(path.join(start.session_dir, 'events.jsonl'), 'utf8')).toContain('window_lost')
@@ -162,11 +163,12 @@ describe('recording service state machine', () => {
   it.each(['fit', 'stretch'] as const)('Pass all new video settings to start: %s', async (aspectMode) => {
     const value = rig()
     Object.assign(value.settings, { fps: 20, preset: 'quality', forceAspect: true, aspectMode,
-      systemAudioEnabled: false, systemGain: 0.35, gameAudioOnly: true, micMono: true })
+      systemAudioEnabled: false, systemGain: 0.35, gameAudioOnly: true, micMono: true, captureCursor: false })
     value.service.start()
     await waitFor(() => value.service.status().phase === 'recording')
     const [start] = commands(value, 'start')
     expect(start.encode).toMatchObject({ fps: 20, preset: 'quality', aspect: aspectMode })
+    expect(start.capture_cursor).toBe(false)
     expect(start.audio).toMatchObject({ render_enabled: false, render_gain: 0.35, render_source: 'game', mic_mono: true })
   })
 

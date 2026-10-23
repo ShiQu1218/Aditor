@@ -63,7 +63,7 @@ export interface SettingRow {
 
 type RecordingField = keyof typeof recordingI18n.rows
 
-const VIDEO_FIELDS = new Set<string>(['height', 'bitrateKbps', 'fps', 'forceAspect', 'aspectMode', 'codec', 'gpu', 'encoder', 'preset', 'captureMethod'])
+const VIDEO_FIELDS = new Set<string>(['height', 'bitrateKbps', 'fps', 'forceAspect', 'aspectMode', 'codec', 'gpu', 'encoder', 'preset', 'captureMethod', 'captureCursor'])
 const AUDIO_FIELDS = new Set<string>(['systemAudioEnabled', 'renderDevice', 'systemGain', 'micEnabled', 'captureDevice', 'micGain', 'gameAudioOnly', 'micMono'])
 const ADVANCED_FIELDS = new Set<string>(['forceAspect', 'aspectMode', 'codec', 'gpu', 'encoder', 'preset', 'captureMethod', 'gameAudioOnly', 'micMono'])
 
@@ -140,7 +140,7 @@ export const SETTING_ROWS: SettingRow[] = [
   // ── Recording ──
   ...recordingRows(rc.basics, ['autoRecord', 'mode', 'postAnalysis']),
   ...recordingRows(rc.recorder, ['backend', 'obsHost', 'obsPort', 'obsPassword', 'obsFallbackBuiltin']),
-  ...recordingRows(rc.video, ['height', 'bitrateKbps', 'fps', 'forceAspect', 'aspectMode', 'codec', 'gpu', 'encoder', 'preset', 'captureMethod']),
+  ...recordingRows(rc.video, ['height', 'bitrateKbps', 'fps', 'forceAspect', 'aspectMode', 'codec', 'gpu', 'encoder', 'preset', 'captureMethod', 'captureCursor']),
   ...recordingRows(rc.audio, ['systemAudioEnabled', 'renderDevice', 'systemGain', 'micEnabled', 'captureDevice', 'micGain', 'gameAudioOnly', 'micMono']),
   ...recordingRows(rc.disk, ['diskWarnGb', 'diskStopGb', 'notifyMatch', 'openOnGameExit']),
   // ── Import and analysis ──

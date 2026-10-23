@@ -5,6 +5,7 @@
 //! The scaffold defines the interface; implementations must preserve signatures and add new types in this module.
 
 mod color;
+mod cursor;
 pub mod dda;
 pub mod small;
 
@@ -81,6 +82,7 @@ pub struct CaptureOptions {
     pub pid: u32,
     /// Maximum fps delivered to the consumer (drop excess frames, throttled by pts).
     pub max_fps: u32,
+    pub capture_cursor: bool,
     /// QPC tick of the first frame (`clock::now_ticks()`); pts = frame system time − origin.
     pub origin_ticks: i64,
 }
@@ -431,9 +433,9 @@ impl ActiveCapture {
             size,
         )?;
         let session = pool.CreateCaptureSession(&item)?;
-        if let Err(error) = session.SetIsCursorCaptureEnabled(false) {
-            // The cursor property needs Windows 10 2004+; failing to disable it must not abort capture.
-            eprintln!("WGC: Could not disable cursor capture; the cursor may appear in the recording: {error}");
+        if let Err(error) = session.SetIsCursorCaptureEnabled(opts.capture_cursor) {
+            // The cursor property needs Windows 10 2004+; failing to set it must not abort capture.
+            eprintln!("WGC: Could not configure cursor capture: {error}");
         }
         // Older Windows versions lack these two interfaces; capture still works without them.
         let _ = session.SetIsBorderRequired(false);
@@ -765,7 +767,11 @@ mod tests {
         let (ready, receiver) = mpsc::sync_channel(1);
         drop(receiver);
         let (notices, received) = mpsc::channel();
-        report_failure(anyhow::anyhow!("Capture failed after initialization"), &ready, &notices);
+        report_failure(
+            anyhow::anyhow!("Capture failed after initialization"),
+            &ready,
+            &notices,
+        );
         assert!(matches!(
             received.recv().unwrap(),
             CaptureNotice::Failed { .. }

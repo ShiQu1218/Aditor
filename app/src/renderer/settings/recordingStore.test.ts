@@ -31,7 +31,7 @@ describe('Recording settings validation and migration', () => {
     expect(DEFAULT_SETTINGS.recording.autoRecord).toBe(true)
   })
 
-  test.each(['autoRecord', 'launchAtLogin', 'closeToTray', 'micEnabled', 'notifyMatch', 'openOnGameExit', 'forceAspect', 'systemAudioEnabled', 'gameAudioOnly', 'micMono'] as const)('%s accepts boolean values only', (field) => {
+  test.each(['captureCursor', 'autoRecord', 'launchAtLogin', 'closeToTray', 'micEnabled', 'notifyMatch', 'openOnGameExit', 'forceAspect', 'systemAudioEnabled', 'gameAudioOnly', 'micMono'] as const)('%s accepts boolean values only', (field) => {
     for (const value of [false, true]) expect(migrate({ [field]: value })[field]).toBe(value)
     for (const value of [null, 0, 1, 'true', {}, []]) expect(migrate({ [field]: value })[field]).toBe(defaults[field])
   })

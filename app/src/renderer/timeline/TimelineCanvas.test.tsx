@@ -145,6 +145,28 @@ describe('source timeline gestures', () => {
     mouse('mouseup', 1100)
   })
 
+  test.each([true, false])('handle drag previews and auto-scrolls at an edge; Escape restores time and viewport (project=%s)', (project) => {
+    const onSeek = vi.fn(), onProjectTrim = vi.fn(), onUpdateClip = vi.fn(), onScrubEnd = vi.fn()
+    mount(<TimelineCanvas {...props} onSeek={onSeek} onProjectTrim={onProjectTrim} onUpdateClip={onUpdateClip} onScrubEnd={onScrubEnd}
+      projectItem={project ? { id: 'p', source: 'v', start: 290, end: 310 } : null}
+      clips={project ? [] : [{ id: 'c', start: 290, end: 310, origin: 'ai', event_ids: [], status: 'suggested' }]} />)
+    click(modeButton('detail'))
+    mouse('mousedown', 1000 * 25 / 30, { clientY: 60 })
+    mouse('mousemove', 1000, { clientY: 60 })
+    nextFrame()
+    const first = start()
+    expect(first).toBeGreaterThan(285)
+    expect(onSeek.mock.calls.at(-1)![0]).toBeGreaterThan(315)
+    nextFrame()
+    expect(start()).toBeGreaterThan(first)
+    press(window, 'Escape')
+    expect(start()).toBe(285)
+    expect(onSeek).toHaveBeenLastCalledWith(300)
+    expect(onScrubEnd).toHaveBeenCalledWith(true)
+    if (project) expect(onProjectTrim).toHaveBeenLastCalledWith('p', 'end', 0, 'cancel')
+    else expect(onUpdateClip.mock.calls.at(-1)![0]).toMatchObject({ start: 290, end: 310 })
+  })
+
   test('project handles win over suggested clip handles and commit only on release', () => {
     const onProjectTrim = vi.fn()
     const onUpdateClip = vi.fn()
@@ -154,12 +176,14 @@ describe('source timeline gestures', () => {
       clips={[{ id: 'c', start: 60, end: 180, origin: 'ai', event_ids: [], status: 'suggested' }]} />)
     mouse('mousedown', 100, { clientY: 60 })
     mouse('mousemove', 150, { clientY: 60 })
+    nextFrame()
+    expect(onSeek).toHaveBeenLastCalledWith(90)
     expect(onProjectTrim).toHaveBeenLastCalledWith('p', 'start', 90, 'preview')
     expect(onProjectTrim.mock.calls.some((call) => call[3] === 'commit')).toBe(false)
     mouse('mouseup', 200, { clientY: 60 })
     expect(onProjectTrim).toHaveBeenLastCalledWith('p', 'start', 120, 'commit')
     expect(onUpdateClip).not.toHaveBeenCalled()
-    expect(onSeek).not.toHaveBeenCalled()
+    expect(onSeek).toHaveBeenLastCalledWith(120)
   })
 
   test('blade clicks never seek or trim; hover preview coalesces and leaving cancels pending preview', () => {

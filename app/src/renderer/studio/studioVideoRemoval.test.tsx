@@ -13,16 +13,17 @@ const entry = (path: string, source: LibraryEntry['source'] = 'recording'): Libr
 const headerRemove = () => document.querySelector<HTMLButtonElement>('.studio-file-row .studio-video-remove')!
 const t = i18n.library.card
 
-test('header deletion confirms a recording, removes it once, and returns to the library', async () => {
-  const onBack = vi.fn()
+test('header deletion confirms a recording, removes it once, and stays in the studio', async () => {
+  const onBack = vi.fn(), onVideoRemoved = vi.fn()
   vi.spyOn(window, 'confirm').mockReturnValue(true)
-  studio = await mountStudio({ onBack, api: { entries: [entry(STUDIO_VIDEO)] } })
+  studio = await mountStudio({ onBack, onVideoRemoved, api: { entries: [entry(STUDIO_VIDEO)] } })
   click(headerRemove()); click(headerRemove())
   await flush()
   expect(window.confirm).toHaveBeenCalledWith(t.removeSourceConfirm.replace('{name}', 'long'))
   expect(studio.fake.api.library.remove).toHaveBeenCalledTimes(1)
   expect(studio.fake.api.library.remove).toHaveBeenCalledWith(STUDIO_VIDEO)
-  expect(onBack).toHaveBeenCalledTimes(1)
+  expect(onVideoRemoved).toHaveBeenCalledWith(STUDIO_VIDEO)
+  expect(onBack).not.toHaveBeenCalled()
 })
 
 test('canceling recording deletion keeps the video and stays in the studio', async () => {
@@ -36,8 +37,8 @@ test('canceling recording deletion keeps the video and stays in the studio', asy
 })
 
 test.each([true, false])('imported videos offer a source-file choice: deleteSource=%s', async (deleteSource) => {
-  const onBack = vi.fn()
-  studio = await mountStudio({ onBack, api: { entries: [entry(STUDIO_VIDEO, 'external')] } })
+  const onBack = vi.fn(), onVideoRemoved = vi.fn()
+  studio = await mountStudio({ onBack, onVideoRemoved, api: { entries: [entry(STUDIO_VIDEO, 'external')] } })
   click(headerRemove()); await flush()
   const dialog = document.querySelector('[role="dialog"]')!
   expect(dialog).not.toBeNull()
@@ -46,7 +47,8 @@ test.each([true, false])('imported videos offer a source-file choice: deleteSour
   click(buttonByText(dialog, deleteSource ? t.deleteSource : t.removeFromLibrary)!)
   await flush()
   expect(studio.fake.api.library.remove).toHaveBeenCalledWith(STUDIO_VIDEO, { deleteSource })
-  expect(onBack).toHaveBeenCalledTimes(1)
+  expect(onVideoRemoved).toHaveBeenCalledWith(STUDIO_VIDEO)
+  expect(onBack).not.toHaveBeenCalled()
 })
 
 test('card deletion targets that video without opening it or leaving the current video', async () => {

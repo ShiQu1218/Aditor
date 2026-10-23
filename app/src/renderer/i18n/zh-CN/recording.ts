@@ -49,6 +49,7 @@ export const recordingI18n: Messages['recordingI18n'] = {
     encoder: { title: '录制编码器', desc: '按当前编码格式列出录制器可用的硬件编码器。' },
     preset: { title: '编码预设', desc: '质量越高，GPU 使用量越高。' },
     captureMethod: { title: '捕获方式', desc: '自动（默认）：Windows 10 用屏幕捕获，因为 Windows 10 的窗口捕获会在游戏周围显示黄框；其他系统用窗口捕获。窗口捕获（WGC）只录游戏窗口，但大厅鼠标会有延迟；屏幕捕获（DDA）不会造成鼠标延迟，但会录下整个屏幕，盖在游戏上的窗口也会被录进去，游戏不在前台时为黑画面。下次开始录制时生效。' },
+    captureCursor: { title: '录制鼠标指针', desc: '默认开启，将鼠标指针录入视频。下次开始录制时生效。' },
     systemAudioEnabled: { title: '录制系统声音', desc: '将系统声音录进视频。' },
     renderDevice: { title: '系统声音设备', desc: '捕获此输出设备播放的系统声音。' },
     systemGain: { title: '系统声音音量', desc: '100% 为原始音量，最高 200%。' },

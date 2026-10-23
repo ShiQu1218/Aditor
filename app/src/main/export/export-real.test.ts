@@ -109,6 +109,24 @@ describeReal('real ffmpeg export: clip junctions play cleanly', () => {
   })
   afterAll(() => fs.rmSync(root, { recursive: true, force: true }))
 
+  it('concat stream copy repairs INT_MAX source timescales and stays decodable', async () => {
+    const high = path.join(root, 'high-timescale.mp4')
+    const remux = run(FFMPEG!, ['-v', 'error', '-y', '-i', source, '-c', 'copy', '-video_track_timescale', '2147483641', high])
+    expect(remux.status, remux.stderr).toBe(0)
+    const r = await service().start(sender(), {
+      items: [{ id: 'high', source: high, start: 0, end: 8 }],
+      mode: 'concat', quality: 'copy', outDir, baseName: 'high-timescale'
+    })
+    expect(r.ok, JSON.stringify(r)).toBe(true)
+    const out = path.join(outDir, 'Merged', 'high-timescale.mp4')
+    const timing = JSON.parse(run(FFPROBE!, ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=time_base,r_frame_rate', '-of', 'json', out]).stdout)
+    expect(timing.streams[0]).toMatchObject({ time_base: '1/90000', r_frame_rate: '30/1' })
+    expectCleanTimeline(packets(out), 0, 1 / FPS)
+    const decoded = run(FFMPEG!, ['-v', 'error', '-i', out, '-f', 'null', '-'])
+    expect(decoded.status, decoded.stderr).toBe(0)
+    expect(decoded.stderr.trim()).toBe('')
+  })
+
   for (const quality of ['copy', 'precise'] as const) {
     it(`concat (${quality}): first frame is a keyframe at time 0, timestamps continuous at every junction, A/V lengths match`, async () => {
       const r = await service().start(sender(), { items: items(), mode: 'concat', quality, encoder: 'mpeg4', outDir, baseName: `joined-${quality}` })
@@ -118,6 +136,8 @@ describeReal('real ffmpeg export: clip junctions play cleanly', () => {
       expect(fs.readdirSync(path.join(outDir, 'Merged')).filter((f) => f.startsWith('.aditor-seg'))).toEqual([])
 
       const info = streamInfo(out)
+      const timing = JSON.parse(run(FFPROBE!, ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=time_base', '-of', 'json', out]).stdout)
+      expect(timing.streams[0].time_base).toBe('1/90000')
       const v = info.findIndex((s) => s.codec_type === 'video')
       const a = info.findIndex((s) => s.codec_type === 'audio')
       // Video starts at 0: no leading blank edit (which appears as a black first frame in editing software).

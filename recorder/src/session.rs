@@ -500,6 +500,7 @@ impl Session {
         let opts = CaptureOptions {
             pid: args.pid,
             max_fps: fps,
+            capture_cursor: args.capture_cursor,
             origin_ticks: 0,
         };
         let consumer = Box::new(Consumer {

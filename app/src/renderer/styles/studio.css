@@ -246,6 +246,8 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
+  /* Editing tools sit under the video's right edge. */
+  justify-content: flex-end;
   gap: var(--sp-2);
 }
 .transport-spacer { flex: 1; }

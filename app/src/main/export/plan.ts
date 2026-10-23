@@ -68,6 +68,8 @@ const KEYFRAME_SEEK_PAD_S = SEEK_DTS_HEURISTIC_S + SEEK_MARGIN_S
 /** One video stream plus the first audio stream (audio is optional); omit source chapters and metadata (MKV DURATION/title tags become invalid MP4 udta). */
 const STREAM_SELECT = ['-map', '0:v:0', '-map', '0:a:0?']
 const STRIP_METADATA = ['-map_metadata', '-1', '-map_chapters', '-1']
+// Bound the MP4/MOV timescale: inferred VFR rates can otherwise produce INT_MAX timescales that break editor compatibility.
+const VIDEO_TIMESCALE = ['-video_track_timescale', '90000']
 /**
  * In open-GOP sources, leading B-frames decoded after a keyframe but displayed before it reference the previous GOP (which was cut away) and cannot be decoded.
  * They are hidden by the edit list in a single file but can fall into the previous segment's time range after concatenation; drop them directly (closed GOPs have none, so this has no effect).
@@ -117,6 +119,7 @@ export function copyCutArgs(item: ProjectItem, cut: CopyCut | null | undefined, 
       '-copypriorss:a',
       '0',
       ...STRIP_METADATA,
+      ...VIDEO_TIMESCALE,
       '-y',
       output
     ]
@@ -135,6 +138,7 @@ export function copyCutArgs(item: ProjectItem, cut: CopyCut | null | undefined, 
     '-avoid_negative_ts',
     'make_zero',
     ...STRIP_METADATA,
+    ...VIDEO_TIMESCALE,
     '-y',
     output
   ]
@@ -177,7 +181,7 @@ export function buildJobs(
     if (quality === 'copy') return { args: copyCutArgs(item, opts.copyCuts?.[idx], output), output }
     // Put -ss before -i: precise seeking when transcoding, without decoding from the start of the file to the cut (I8).
     const video = videoEncodeArgs(opts.encoder!, sourceSpec(probes.get(item.source)))
-    const args = ['-ss', secs(item.start), '-i', item.source, '-t', durationOf(item), ...STREAM_SELECT, ...video, ...AUDIO_AAC, ...STRIP_METADATA, '-y', output]
+    const args = ['-ss', secs(item.start), '-i', item.source, '-t', durationOf(item), ...STREAM_SELECT, ...video, ...AUDIO_AAC, ...STRIP_METADATA, ...VIDEO_TIMESCALE, '-y', output]
     return { args, output }
   })
   return { jobs, notices }
@@ -226,7 +230,7 @@ function buildCopyConcat(
   const output = path.join(opts.outDir, `${opts.baseName}.mp4`)
   const final: FfmpegJob = {
     output,
-    args: [...CONCAT_INPUT, ...STREAM_SELECT, '-c', 'copy', '-y', output]
+    args: [...CONCAT_INPUT, ...STREAM_SELECT, '-c', 'copy', ...VIDEO_TIMESCALE, '-y', output]
   }
   return { jobs: [...segments, final], notices, concatListContent: listOf(segments) }
 }
@@ -262,14 +266,14 @@ function buildPreciseConcat(
     return {
       intermediate: true,
       output,
-      args: ['-ss', secs(item.start), '-i', item.source, ...audioInput, '-t', durationOf(item), ...streams, ...vf, ...video, '-c:a', 'pcm_s16le', '-ar', '48000', '-ac', '2', ...(silent ? ['-shortest'] : []), ...STRIP_METADATA, '-y', output]
+      args: ['-ss', secs(item.start), '-i', item.source, ...audioInput, '-t', durationOf(item), ...streams, ...vf, ...video, '-c:a', 'pcm_s16le', '-ar', '48000', '-ac', '2', ...(silent ? ['-shortest'] : []), ...STRIP_METADATA, ...VIDEO_TIMESCALE, '-y', output]
     }
   })
   const output = path.join(opts.outDir, `${opts.baseName}.mp4`)
   const final: FfmpegJob = {
     output,
     // Fill small gaps in audio timestamps; sources without audio already have silence in their intermediate files.
-    args: [...CONCAT_INPUT, ...STREAM_SELECT, '-c:v', 'copy', '-af', 'aresample=async=1:first_pts=0', ...AUDIO_AAC, '-y', output]
+    args: [...CONCAT_INPUT, ...STREAM_SELECT, '-c:v', 'copy', '-af', 'aresample=async=1:first_pts=0', ...AUDIO_AAC, ...VIDEO_TIMESCALE, '-y', output]
   }
   const allNotices = normalize ? [...notices, tr('來源規格不同，已先將每段轉成相同規格再合併')] : notices
   return { jobs: [...segments, final], notices: allNotices, concatListContent: listOf(segments) }

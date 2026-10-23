@@ -295,7 +295,7 @@ export function useTimelineInteractions(opts: InteractionOptions): InteractionRe
     frame.current = null
     lastFrame.current = null
   }, [])
-  const beginScrub = useCallback((): void => {
+  const beginScrub = useCallback((dragCursor = 'grabbing'): void => {
     if (scrubStart.current) return
     const cur = o.current
     scrubStart.current = {
@@ -304,8 +304,36 @@ export function useTimelineInteractions(opts: InteractionOptions): InteractionRe
     }
     lastSeek.current = null
     cur.onScrubStart?.()
-    setCursor('grabbing')
+    setCursor(dragCursor)
   }, [])
+  /** Preview the constrained edge while dragging, then commit at most one project edit on release. */
+  const updateHandle = (x: number, phase: 'preview' | 'commit', view = o.current.view): void => {
+    const cur = o.current
+    const h = st.current.handle
+    if (!h) return
+    let t = timeAt(x, view)
+    if (h.project) {
+      const item = cur.projectItem
+      if (!item) return
+      t = h.edge === 'start' ? Math.max(0, Math.min(t, item.end - 0.1))
+        : Math.max(item.start + 0.1, Math.min(t, cur.duration))
+      if (phase === 'preview' && t === lastSeek.current) return
+      cur.onProjectTrim?.(h.clipId, h.edge, t, phase)
+    } else {
+      const clip = originalClip.current
+      if (!clip) return
+      const next = resizeClip(clip, h.edge, t, cur.duration)
+      t = h.edge === 'start' ? next.start : next.end
+      if (phase === 'preview' && t === lastSeek.current) return
+      cur.onUpdateClip?.(next)
+    }
+    if (scrubStart.current && t !== lastSeek.current) {
+      cur.onSeek(t)
+      lastSeek.current = t
+    }
+  }
+  const updateHandleRef = useRef(updateHandle)
+  updateHandleRef.current = updateHandle
 
   const projectHandle = (x: number, y: number): HandleRef | null => {
     const cur = o.current
@@ -321,13 +349,16 @@ export function useTimelineInteractions(opts: InteractionOptions): InteractionRe
       const cur = o.current
       if (!pointer.current || cur.disabled) return
       const { x } = local(pointer.current.clientX, pointer.current.clientY)
-      if (st.current.phase === 'scrub') {
+      if (st.current.phase === 'scrub' || st.current.phase === 'handle') {
         const view = scrubAutoPan(cur.view, x, lastFrame.current === null ? 16 : now - lastFrame.current)
         lastFrame.current = now
         if (view.start !== cur.view.start) cur.onAutoScroll(() => view)
-        const t = timeAt(x, view)
-        if (t !== lastSeek.current) cur.onSeek(t)
-        lastSeek.current = t
+        if (st.current.phase === 'handle') updateHandleRef.current(x, 'preview', view)
+        else {
+          const t = timeAt(x, view)
+          if (t !== lastSeek.current) cur.onSeek(t)
+          lastSeek.current = t
+        }
         frame.current = requestAnimationFrame(tick)
       } else if (bladeRef.current.enabled && bladeRef.current.hover !== null) {
         cur.onHoverSeek?.(bladeRef.current.hover)
@@ -367,16 +398,6 @@ export function useTimelineInteractions(opts: InteractionOptions): InteractionRe
 
   // Attach dragging to window so it continues outside the timeline; Esc/blur restores the original state.
   useEffect(() => {
-    const updateHandle = (x: number, phase: 'preview' | 'commit'): void => {
-      const cur = o.current
-      const h = st.current.handle
-      if (!h) return
-      if (h.project) cur.onProjectTrim?.(h.clipId, h.edge, timeAt(x), phase)
-      else {
-        const clip = originalClip.current
-        if (clip) cur.onUpdateClip?.(resizeClip(clip, h.edge, timeAt(x), cur.duration))
-      }
-    }
     const cancelGesture = (): void => {
       stopFrame()
       const cur = o.current
@@ -409,8 +430,10 @@ export function useTimelineInteractions(opts: InteractionOptions): InteractionRe
         const dt = ((panStart.current.clientX - e.clientX) / Math.max(1, cur.view.width)) * cur.view.span
         const target = panStart.current.start + dt
         cur.setView((v) => pan(v, target - v.start))
-      } else if (st.current.phase === 'handle') updateHandle(x, 'preview')
-      else if (st.current.phase === 'scrub') {
+      } else if (st.current.phase === 'handle') {
+        beginScrub('ew-resize')
+        seekFrame()
+      } else if (st.current.phase === 'scrub') {
         beginScrub()
         seekFrame()
       }
@@ -421,14 +444,14 @@ export function useTimelineInteractions(opts: InteractionOptions): InteractionRe
       const { x, y } = local(e.clientX, e.clientY)
       const cur = o.current
       stopFrame()
-      if (s.phase === 'handle') updateHandle(x, 'commit')
+      if (s.phase === 'handle') updateHandleRef.current(x, 'commit')
       const outcome = apply({ type: 'up', x, y })
       panStart.current = null
       originalClip.current = null
       setInteracting(false)
       setCursor(bladeRef.current.enabled ? 'crosshair' : 'pointer')
-      if (outcome === 'scrub') {
-        cur.onSeek(timeAt(x))
+      if (outcome === 'scrub' || (outcome === 'handle' && scrubStart.current)) {
+        if (outcome === 'scrub') cur.onSeek(timeAt(x))
         scrubStart.current = null
         cur.onScrubEnd?.(false)
       } else if (outcome === 'click') {

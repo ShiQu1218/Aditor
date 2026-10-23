@@ -71,6 +71,7 @@ export interface RecordingSettings {
    * Capture method: 'auto' (default) = 'dda' on Windows 10, whose window capture always shows a yellow border, and 'wgc'
    * elsewhere; 'wgc' = window capture; 'dda' = screen capture (DXGI Desktop Duplication).
    */
+  captureCursor: boolean
   captureMethod: RecordingCaptureMethod
   /** Show the Aditor window automatically when Apex exits. */
   openOnGameExit: boolean
@@ -118,6 +119,7 @@ export const DEFAULT_RECORDING_SETTINGS: RecordingSettings = {
   diskWarnGb: 10,
   diskStopGb: 2,
   notifyMatch: false,
+  captureCursor: true,
   captureMethod: 'auto',
   openOnGameExit: true
 }

@@ -36,14 +36,14 @@ const requestRemoval = async () => {
 }
 
 describe('Studio navigation', () => {
-  test.each([true, false])('removing the current video clears its selection; another video exists: %s', async (hasOtherVideo) => {
+  test.each([true, false])('removing the current video stays in the studio and clears its selection; another video exists: %s', async (hasOtherVideo) => {
     await start([entry(A), ...(hasOtherVideo ? [entry(B)] : [])])
     navigate('studio'); await flush()
     const remaining = hasOtherVideo ? [entry(A)] : []
     fake.api.library.remove.mockImplementation(async () => { fake.setEntries(remaining); return undefined })
     await requestRemoval(); await flush()
-    expect(document.querySelector('.lib-screen')).not.toBeNull()
-    navigate('studio'); await flush()
+    expect(document.querySelector('.lib-screen')).toBeNull()
+    expect(document.querySelector('[aria-current="page"]')?.getAttribute('aria-label')).toBe(shellI18n.rail.studioLabel)
     if (hasOtherVideo) expect(document.querySelector('.studio-file')?.textContent).toBe(remaining[0].path.split('/').pop())
     else expect(document.querySelector('.studio-blocked')?.textContent).toContain('尚未有影片')
   })

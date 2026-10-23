@@ -36,6 +36,12 @@ pub struct StartArgs {
     /// Capture method; defaults to `wgc`, with unknown values treated as bad_request.
     #[serde(default)]
     pub capture: CaptureMethod,
+    #[serde(default = "cursor_enabled")]
+    pub capture_cursor: bool,
+}
+
+fn cursor_enabled() -> bool {
+    true
 }
 
 /// Response (with `id`).
@@ -225,6 +231,15 @@ mod tests {
         };
         assert!(args.encode.is_none());
         assert_eq!(args.capture, CaptureMethod::Wgc);
+        assert!(args.capture_cursor);
+        let disabled = obs.replace(
+            "\"encode\":null",
+            "\"capture_cursor\":false,\"encode\":null",
+        );
+        let Command::Start(args) = parse_request(&disabled).unwrap().cmd else {
+            panic!()
+        };
+        assert!(!args.capture_cursor);
     }
 
     #[test]
@@ -267,10 +282,7 @@ mod tests {
     #[test]
     fn parses_capture_method_and_rejects_unknown() {
         let base = r#"{"id":4,"cmd":"start","pid":1,"session_dir":"x","session_id":"x","encode":null,"audio":null,"frames":{"banner":[1,2,3,4],"spec":[5,6,7,8],"base":[1920,1080]}"#;
-        for (value, expected) in [
-            ("wgc", CaptureMethod::Wgc),
-            ("dda", CaptureMethod::Dda),
-        ] {
+        for (value, expected) in [("wgc", CaptureMethod::Wgc), ("dda", CaptureMethod::Dda)] {
             let line = format!(r#"{base},"capture":"{value}"}}"#);
             let Command::Start(args) = parse_request(&line).unwrap().cmd else {
                 panic!("not start")

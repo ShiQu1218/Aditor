@@ -956,12 +956,10 @@ export function StudioScreen({ videoPath, onBack, onRegisterLeaveGuard, onVideoR
       }
       if (deleteSource === undefined) await window.api.library.remove(path)
       else await window.api.library.remove(path, { deleteSource })
+      // Only discard pending edits when the source file itself was deleted.
+      if (current && deleteSource !== false) cacheSaver.current!.setEnabled(false)
+      // Stay in the studio: the owner clears the removed current video and the studio landing opens the next one.
       onVideoRemoved?.(path)
-      if (current) {
-        // Only discard pending edits when the source file itself was deleted.
-        if (deleteSource !== false) cacheSaver.current!.setEnabled(false)
-        if (mountedRef.current) onBack()
-      }
     } catch {
       if (mountedRef.current) toast({ message: i18n.library.card.removeFailed })
     } finally {

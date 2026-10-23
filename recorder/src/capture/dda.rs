@@ -5,7 +5,7 @@
 //!
 //! - Frames: pass the DDA desktop texture directly to the consumer, then release it after the consumer returns to avoid a full-frame copy.
 //!   Calls ReleaseFrame after the consumer returns, avoiding one full-frame copy.
-//! - Cursor: DDA desktop images do not include the cursor; as with WGC, it is not composited here.
+//! - Optionally composite the separately supplied desktop cursor after SDR conversion.
 //! - When the foreground window does not belong to the target PID or is minimized, continuously sends GPU black frames to avoid recording another app.
 //! - DXGI_ERROR_ACCESS_LOST (resolution change, fullscreen transition, UAC secure desktop): discard and recreate duplication.
 //! - Rotated monitors retain panel native orientation. FP16 HDR desktops are tone-mapped to SDR on the GPU.
@@ -78,14 +78,17 @@ pub fn gpu_for_pid(pid: u32) -> Result<Gpu> {
                 adapters.push((adapter, monitors));
             }
             Err(error) if error.code() == DXGI_ERROR_NOT_FOUND => break,
-            Err(error) => return Err(error).context("capture_failed: Failed to enumerate adapters"),
+            Err(error) => {
+                return Err(error).context("capture_failed: Failed to enumerate adapters")
+            }
         }
     }
     let monitors: Vec<Vec<isize>> = adapters.iter().map(|(_, m)| m.clone()).collect();
     let (adapter, _) = locate(&monitors, monitor.0 as isize)
         .context("capture_failed: Could not find the DXGI output for the game monitor")?;
-    Gpu::create_on(&adapters[adapter].0)
-        .context("capture_failed: Could not create a D3D11 device on the adapter driving the game monitor")
+    Gpu::create_on(&adapters[adapter].0).context(
+        "capture_failed: Could not create a D3D11 device on the adapter driving the game monitor",
+    )
 }
 
 /// Finds the target monitor in each adapter output HMONITOR list and returns (adapter index, output index).
@@ -171,7 +174,9 @@ fn output_monitors(adapter: &IDXGIAdapter) -> Result<Vec<(IDXGIOutput, isize)>> 
                 outputs.push((output, desc.Monitor.0 as isize));
             }
             Err(error) if error.code() == DXGI_ERROR_NOT_FOUND => break,
-            Err(error) => return Err(error).context("capture_failed: Failed to enumerate display outputs"),
+            Err(error) => {
+                return Err(error).context("capture_failed: Failed to enumerate display outputs")
+            }
         }
     }
     Ok(outputs)
@@ -366,6 +371,8 @@ struct Output {
     visibility: Visibility,
     black: BlackFrame,
     color: super::color::SdrConverter,
+    cursor: Option<super::cursor::CursorOverlay>,
+    cursor_visible: bool,
     monitor: HMONITOR,
     notices: Sender<CaptureNotice>,
 }
@@ -630,6 +637,14 @@ impl Tracker {
     }
 }
 
+fn pointer_visible(previous: bool, info: &DXGI_OUTDUPL_FRAME_INFO) -> bool {
+    if info.LastMouseUpdateTime != 0 {
+        info.PointerPosition.Visible.as_bool()
+    } else {
+        previous
+    }
+}
+
 /// Passes the acquired frame to the consumer; returns `Err` if the frame format does not match (logged only once).
 fn deliver(
     frame: &Acquired<'_>,
@@ -638,9 +653,18 @@ fn deliver(
     freq: i64,
     origin: i64,
 ) -> Result<Option<(u32, u32)>> {
+    // Pointer metadata is valid only on mouse updates; keep it even when the frame is throttled.
+    output.cursor_visible = pointer_visible(output.cursor_visible, &frame.info);
     let Some(pts) = frame_pts(
-        frame.info.LastPresentTime,
-        frame.info.AccumulatedFrames,
+        if output.cursor.is_some() && frame.info.AccumulatedFrames == 0 {
+            0
+        } else {
+            frame.info.LastPresentTime
+        },
+        frame
+            .info
+            .AccumulatedFrames
+            .max(u32::from(output.cursor.is_some())),
         clock::now_ticks(),
         freq,
         origin,
@@ -669,6 +693,24 @@ fn deliver(
     }
     if output.visible(pts) {
         let texture = output.color.convert(&texture, output.monitor)?;
+        let texture = if output.cursor_visible {
+            if let Some(cursor) = &mut output.cursor {
+                match cursor.draw(&texture, output.monitor) {
+                    Ok(texture) => texture,
+                    Err(error) => {
+                        eprintln!(
+                            "Could not draw cursor; continuing without cursor overlay: {error:#}"
+                        );
+                        output.cursor = None;
+                        texture
+                    }
+                }
+            } else {
+                texture
+            }
+        } else {
+            texture
+        };
         consumer.on_frame(&CapturedFrame {
             texture: &texture,
             width: desc.Width,
@@ -703,6 +745,10 @@ pub(super) fn run(
         gate: SlotGate::new(opts.max_fps),
         visibility: Visibility::new(),
         color: super::color::SdrConverter::new(&gpu)?,
+        cursor: opts
+            .capture_cursor
+            .then(|| super::cursor::CursorOverlay::new(&gpu)),
+        cursor_visible: false,
         monitor,
         black: BlackFrame::new(&gpu, dup.size)
             .context("capture_failed: Failed to create DDA black frame")?,
@@ -736,6 +782,7 @@ pub(super) fn run(
             output.monitor = tracker.monitor;
         }
         if tracker.dup.is_none() {
+            output.cursor_visible = false;
             tracker.reopen(&gpu)?;
         }
         if let Some(dup) = &tracker.dup {
@@ -806,6 +853,29 @@ pub(super) fn run(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn pointer_visibility_survives_desktop_only_and_throttled_mouse_updates() {
+        let mut info = DXGI_OUTDUPL_FRAME_INFO::default();
+        info.LastMouseUpdateTime = 1;
+        info.PointerPosition.Visible = true.into();
+        let mut visible = pointer_visible(false, &info);
+        assert!(visible);
+        info.LastMouseUpdateTime = 0;
+        info.PointerPosition.Visible = false.into();
+        visible = pointer_visible(visible, &info);
+        assert!(visible);
+
+        let mut gate = SlotGate::new(60);
+        assert!(gate.accept(0).is_some());
+        info.LastMouseUpdateTime = 2;
+        visible = pointer_visible(visible, &info);
+        assert!(gate.accept(1).is_none());
+        assert!(!visible);
+        info.LastMouseUpdateTime = 0;
+        info.PointerPosition.Visible = true.into();
+        assert!(!pointer_visible(visible, &info));
+    }
     use crate::clock::TICKS_PER_SEC;
     use windows::Win32::Graphics::Dxgi::Common::{
         DXGI_MODE_ROTATION_ROTATE180, DXGI_MODE_ROTATION_ROTATE270, DXGI_MODE_ROTATION_ROTATE90,
@@ -918,6 +988,8 @@ mod tests {
                 gate: SlotGate::new(60),
                 visibility: Visibility::new(),
                 color: crate::capture::color::SdrConverter::new(&gpu).unwrap(),
+                cursor: None,
+                cursor_visible: false,
                 monitor: HMONITOR::default(),
                 black: BlackFrame::new(&gpu, size).unwrap(),
                 notices,

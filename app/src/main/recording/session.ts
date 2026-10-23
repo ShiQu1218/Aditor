@@ -514,7 +514,7 @@ export class RecordingSessionService implements RecordingService {
         audio: current.backend === 'obs' ? null : { render: settings.renderDevice, capture: settings.captureDevice, mic_gain: settings.micGain, mic_enabled: settings.micEnabled,
           render_enabled: settings.systemAudioEnabled, render_gain: settings.systemGain, render_source: settings.gameAudioOnly ? 'game' : 'device',
           mic_mono: settings.micMono }, frames,
-        capture })
+        capture, capture_cursor: settings.captureCursor })
       await current.writes
       if (this.active !== current || current.ending) return false
       await this.checkDisk(current)
