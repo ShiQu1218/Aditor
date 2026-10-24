@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-fast:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: recorder
+
+      - uses: actions/cache@v4
+        with:
+          path: build/ffmpeg-lgpl-shared-*.zip
+          key: ffmpeg-${{ hashFiles('scripts/fetch-ffmpeg.ps1') }}
+
+      - name: Fetch FFmpeg
+        shell: pwsh
+        run: ./scripts/fetch-ffmpeg.ps1
+
+      - name: Install app dependencies
+        working-directory: app
+        run: npm ci
+
+      - name: Set up engine venv
+        shell: pwsh
+        run: |
+          python -m venv engine/.venv
+          engine/.venv/Scripts/python.exe -m pip install -e "engine[dev]"
+
+      # Same fast tier developers run before committing.
+      - name: Fast test tier
+        shell: pwsh
+        run: ./scripts/test.ps1 -Tier fast -KeepGoing
