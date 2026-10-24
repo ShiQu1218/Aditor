@@ -3,12 +3,14 @@
 use crate::{
     audio::{self, AudioCapture, AudioSink},
     capture::{
-        dda,
+        dda, hook,
         small::{SmallFrameExtractor, SmallFrames},
         Capture, CaptureMethod, CaptureNotice, CaptureOptions, CapturedFrame, FrameConsumer,
     },
     clock::{self, TICKS_PER_SEC},
-    encode::{candidate_names, codec_of, EncodeStats, SegmentInfo, SegmentWriter, VideoParams, ENCODERS},
+    encode::{
+        candidate_names, codec_of, EncodeStats, SegmentInfo, SegmentWriter, VideoParams, ENCODERS,
+    },
     gpu::{auto_order, AdapterDesc, Gpu, Vendor},
     index::{self, IndexWriter, SessionMeta},
     ipc::{Backend, BackendError, EventSink},
@@ -470,15 +472,33 @@ impl Session {
         };
         prepare().map_err(|e| failure(ErrorCode::Internal, e))?;
         let fps = args.encode.as_ref().map_or(60, |cfg| cfg.fps);
-        let gpu = match args.capture {
-            CaptureMethod::Wgc => match &args.encode {
-                // Window capture may run on any adapter; screen capture must use the adapter driving the game monitor.
-                Some(cfg) => resolve_gpu(&cfg.gpu, cfg.codec, &cfg.encoder),
-                None => Gpu::create(),
-            },
-            CaptureMethod::Dda => dda::gpu_for_pid(args.pid),
-        }
-        .map_err(|e| failure(ErrorCode::CaptureFailed, e))?;
+        let (gpu, prepared_hook) = match args.capture {
+            CaptureMethod::Wgc => (
+                match &args.encode {
+                    // Window capture may run on any adapter; screen capture must use the adapter driving the game monitor.
+                    Some(cfg) => resolve_gpu(&cfg.gpu, cfg.codec, &cfg.encoder),
+                    None => Gpu::create(),
+                }
+                .map_err(|e| failure(ErrorCode::CaptureFailed, e))?,
+                None,
+            ),
+            CaptureMethod::Dda => (
+                dda::gpu_for_pid(args.pid).map_err(|e| failure(ErrorCode::CaptureFailed, e))?,
+                None,
+            ),
+            CaptureMethod::Hook => {
+                let Some(hook_dir) = args.hook_dir.as_deref().filter(|s| !s.is_empty()) else {
+                    return Err((
+                        ErrorCode::HookUnavailable,
+                        "hook_unavailable: Missing hook_dir".into(),
+                    ));
+                };
+                let (prepared, gpu) =
+                    hook::prepare(args.pid, Path::new(hook_dir), fps, hook::PREPARE_BUDGET)
+                        .map_err(|e| failure(ErrorCode::CaptureFailed, e))?;
+                (gpu, Some(prepared))
+            }
+        };
         let extractor = SmallFrameExtractor::new(&gpu, args.frames)
             .map_err(|e| failure(ErrorCode::BadRequest, e))?;
         let name = shm::shm_name(&args.session_id);
@@ -512,8 +532,11 @@ impl Session {
             small_bucket: None,
             counts: counts.clone(),
         });
-        let capture = Capture::start_with(args.capture, &gpu, opts, consumer, notice_tx)
-            .map_err(|e| failure(ErrorCode::CaptureFailed, e))?;
+        let capture = match prepared_hook {
+            Some(prepared) => Capture::start_hook(prepared, &gpu, opts, consumer, notice_tx),
+            None => Capture::start_with(args.capture, &gpu, opts, consumer, notice_tx),
+        }
+        .map_err(|e| failure(ErrorCode::CaptureFailed, e))?;
         let mut session = Self {
             announced: false,
             capture_origin: 0,
@@ -546,10 +569,10 @@ impl Session {
         if let Some(cfg) = &args.encode {
             session.index =
                 Some(IndexWriter::create(dir).map_err(|e| failure(ErrorCode::Internal, e))?);
-            let encoder_name = if args.capture == CaptureMethod::Dda {
+            let encoder_name = if matches!(args.capture, CaptureMethod::Dda | CaptureMethod::Hook) {
                 dda_encoder(&gpu, cfg, &session.events)
             } else {
-                // WGC keeps the user's explicit encoder semantics; only DDA falls back to the capture adapter.
+                // WGC keeps the user's explicit encoder semantics; DDA and Hook fall back to the capture adapter.
                 cfg.encoder.clone()
             };
             session.writer = Some(Arc::new(
@@ -841,6 +864,8 @@ fn failure(default: ErrorCode, error: impl std::fmt::Display) -> BackendError {
         ErrorCode::NoHwEncoder
     } else if message.contains("window_not_found:") {
         ErrorCode::WindowNotFound
+    } else if message.contains("hook_unavailable:") {
+        ErrorCode::HookUnavailable
     } else if message.contains("disk_full:") {
         ErrorCode::DiskFull
     } else {
@@ -1166,6 +1191,10 @@ mod tests {
             ErrorCode::WindowNotFound
         );
         assert_eq!(
+            failure(ErrorCode::CaptureFailed, "hook_unavailable: 測試").0,
+            ErrorCode::HookUnavailable
+        );
+        assert_eq!(
             failure(ErrorCode::EncodeFailed, "no_hw_encoder: 測試").0,
             ErrorCode::NoHwEncoder
         );
@@ -1282,5 +1311,18 @@ mod tests {
             encoder_union(&gpus),
             ["hevc_nvenc", "h264_nvenc", "av1_qsv"]
         );
+    }
+
+    #[test]
+    fn hook_capture_without_hook_dir_returns_hook_unavailable() {
+        let dir = std::env::temp_dir().join(format!("aditorrec-hook-nodir-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        let mut args = start_args();
+        args.session_dir = dir.to_string_lossy().into_owned();
+        args.capture = CaptureMethod::Hook;
+        args.hook_dir = None;
+        let err = Recorder.start(args, Output::default().sink()).unwrap_err();
+        assert_eq!(err.0, ErrorCode::HookUnavailable);
+        let _ = fs::remove_dir_all(&dir);
     }
 }

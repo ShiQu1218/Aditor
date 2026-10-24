@@ -846,8 +846,8 @@ const recordingI18n = {
     gpu: { title: '錄影顯示卡', desc: '選擇負責擷取與編碼的顯示卡。自動會挑選偵測到可用硬體編碼器的顯示卡（NVIDIA 優先）；僅對視窗擷取有效，螢幕擷取固定使用遊戲所在螢幕的顯示卡。' },
     encoder: { title: '錄影編碼器', desc: '依目前編碼格式列出錄影器可用的硬體編碼器。' },
     preset: { title: '編碼預設', desc: '品質越高，GPU 使用量越高。' },
-    captureMethod: { title: '擷取方式', desc: '自動（預設）：Windows 10 用螢幕擷取，因為 Windows 10 的視窗擷取會在遊戲周圍顯示黃框；其他系統用視窗擷取。視窗擷取（WGC）只錄遊戲視窗，但大廳滑鼠會有延遲；螢幕擷取（DDA）不會造成滑鼠延遲，但會錄下整個螢幕，蓋在遊戲上的視窗也會被錄進去，遊戲不在前景時為黑畫面。下次開始錄影時生效。' },
-    captureCursor: { title: '錄製滑鼠游標', desc: '預設開啟，將滑鼠游標錄進影片。下次開始錄影時生效。' },
+    captureMethod: { title: '擷取方式', desc: '自動（預設）：Windows 10 用螢幕擷取，因為 Windows 10 的視窗擷取會在遊戲周圍顯示黃框；其他系統用視窗擷取。視窗擷取（WGC）只錄遊戲視窗，但大廳滑鼠會有延遲；螢幕擷取（DDA）不會造成滑鼠延遲，但會錄下整個螢幕，蓋在遊戲上的視窗也會被錄進去，遊戲不在前景時為黑畫面。下次開始錄影時生效。 Hook擷取需手動選用並確認風險，自動模式絕不使用；無法使用時會退回螢幕擷取（DDA）。' },
+    captureCursor: { title: '錄製滑鼠游標', desc: '預設開啟，將滑鼠游標錄進影片。下次開始錄影時生效。 Hook擷取不支援錄製系統滑鼠游標。' },
     systemAudioEnabled: { title: '錄製系統聲音', desc: '將系統聲音錄進影片。' },
     renderDevice: { title: '系統聲音裝置', desc: '擷取此輸出裝置播放的系統聲音。' },
     systemGain: { title: '系統聲音音量', desc: '100% 為原始音量，最高 200%。' },
@@ -865,9 +865,42 @@ const recordingI18n = {
   analysisNone: '不分析',
   analysisAfterExit: '關閉 Apex 後',
   analysisPerMatch: '每局結束後',
+  captureHook: 'Hook擷取',
   captureWgc: '視窗擷取（WGC）',
   captureDda: '螢幕擷取（DDA）',
   captureAuto: '自動（Windows 10 用螢幕擷取）',
+  captureHookWarning: {
+    title: '使用 Hook擷取前請注意',
+    sections: {
+      diff: {
+        heading: 'Hook擷取與視窗擷取（WGC）的差別',
+        items: [
+          '視窗擷取（WGC）：使用 Windows 內建的擷取功能錄下遊戲視窗，不會把任何東西放進遊戲程序；但遊戲畫面會改由 Windows 桌面合成器（DWM）處理，大廳等介面的滑鼠可能出現延遲。',
+          'Hook擷取：不會造成滑鼠延遲；遊戲在背景時可持續擷取；若遊戲停止輸出畫面，錄影會停留在最後一幀。'
+        ]
+      },
+      how: {
+        heading: '運作原理',
+        text: 'Hook擷取與 OBS Studio 的「遊戲擷取」使用同一個元件：Aditor 會把 OBS 官方發行、帶有 OBS Project 數位簽章的擷取元件（graphics-hook）載入 遊戲的程序，在遊戲每次輸出畫面時複製一份給 Aditor 錄影。Aditor 未修改這個元件；它只處理畫面輸出，不會讀取角色位置、血量等遊戲狀態。'
+      },
+      risk: {
+        heading: '風險',
+        items: [
+          '將外部元件載入遊戲程序，可能被 遊戲的反作弊系統視為可疑行為。',
+          'OBS 的遊戲擷取與 Aditor 載入同一元件，無法保證會被反作弊系統同樣看待；反作弊的偵測規則也可能隨時更新，現在可用不代表日後可用。',
+          '可能的結果包括：擷取失敗（Aditor 會自動改用螢幕擷取）、遊戲被反作弊中斷，最嚴重的是帳號遭到停權或封禁。',
+          '若不確定，請使用預設的自動模式。'
+        ]
+      },
+      disclaimer: {
+        heading: '聲明',
+        text: '按下「確認」即表示你已閱讀並了解上述內容，並自行承擔使用 Hook擷取的一切風險；若帳號因此遭到停權或封禁，本程式開發者一概不負責。'
+      }
+    },
+    cancel: '取消',
+    confirm: '確認',
+    confirmCountdown: '確認（{sec}）'
+  },
   capabilitiesUnavailable: '無法取得錄影器能力，請確認 aditorrec 已安裝；目前僅提供自動編碼器與預設裝置。',
   capabilitiesLoading: '正在取得錄影器能力…',
   currentUnavailable: '目前設定：{value}（未偵測到）',

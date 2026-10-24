@@ -55,29 +55,29 @@ describe('Recording settings validation and migration', () => {
     ['fps', [10, 20, 30, 60, 90, 120]],
     ['height', [0, 720, 1080, 1440]],
     ['postAnalysis', ['none', 'afterExit', 'perMatch']],
-    ['captureMethod', ['auto', 'dda']]
+    ['captureMethod', ['auto', 'dda', 'hook']]
   ] as const)('%s accepts only allowed enum values', (field, allowed) => {
     for (const value of allowed) expect(migrate({ [field]: value })[field]).toBe(value)
     for (const value of ['invalid', null, false, {}, [], -1, 999]) expect(migrate({ [field]: value })[field]).toBe(defaults[field])
   })
 
-  test('Capture defaults to auto; legacy WGC and removed capture settings migrate safely and remain valid after saving and reloading', () => {
+  test('Capture defaults to auto; legacy WGC and explicit capture settings migrate safely and remain valid after saving and reloading', () => {
     expect(defaults.captureMethod).toBe('auto')
     expect(migrate({}).captureMethod).toBe('auto')
-    expect(migrate({ captureMethod: 'hook' }).captureMethod).toBe('auto')
+    expect(migrate({ captureMethod: 'hook' }).captureMethod).toBe('hook')
     expect(migrate({ captureMethod: 'dda' }).captureMethod).toBe('dda')
     // Unversioned (legacy) files saved WGC as the old default, so it becomes auto; a current-version WGC is a choice.
     expect(migrate({ captureMethod: 'wgc' }).captureMethod).toBe('auto')
     expect(migrateSettings({ version: SETTINGS_VERSION, recording: { captureMethod: 'wgc' } }).recording.captureMethod).toBe('wgc')
     fs.writeFileSync(file, JSON.stringify({ recording: { captureMethod: 'hook', bitrateKbps: 23456 } }))
     const store = new SettingsStore(file)
-    expect(store.get().recording).toMatchObject({ captureMethod: 'auto', bitrateKbps: 23456 })
+    expect(store.get().recording).toMatchObject({ captureMethod: 'hook', bitrateKbps: 23456 })
     expect(store.set(patch({ fps: 30 })).persisted).toBe(true)
-    expect(JSON.parse(fs.readFileSync(file, 'utf8')).recording.captureMethod).toBe('auto')
+    expect(JSON.parse(fs.readFileSync(file, 'utf8')).recording.captureMethod).toBe('hook')
     const reloaded = new SettingsStore(file)
-    expect(reloaded.get().recording).toMatchObject({ captureMethod: 'auto', bitrateKbps: 23456, fps: 30 })
+    expect(reloaded.get().recording).toMatchObject({ captureMethod: 'hook', bitrateKbps: 23456, fps: 30 })
     expect(reloaded.set(patch({ captureMethod: 'dda' })).persisted).toBe(true)
-    expect(reloaded.set(patch({ captureMethod: 'hook' })).settings.recording.captureMethod).toBe('dda')
+    expect(reloaded.set(patch({ captureMethod: 'invalid' })).settings.recording.captureMethod).toBe('dda')
     expect(new SettingsStore(file).get().recording.captureMethod).toBe('dda')
   })
 

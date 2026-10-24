@@ -1,5 +1,6 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { RECORDING_RANGES, type RecordingSettings } from '../../shared/recording'
+import { useFocusTrap } from '../a11y/useFocusTrap'
 import { recordingI18n as t } from '../i18n'
 import { GainControl, NumberField, SegmentedControl, SelectControl, SwitchControl, describedBy, type ControlIds } from './SettingControls'
 import type { SettingsController, SettingsState } from './settingsController'
@@ -7,6 +8,85 @@ import { fillTemplate } from './settingsModel'
 import { bitrateOptions, fpsOptions, heightOptions } from './recordingOptions'
 
 const BOOL_FIELDS = ['captureCursor', 'autoRecord', 'launchAtLogin', 'closeToTray', 'micEnabled', 'notifyMatch', 'openOnGameExit', 'forceAspect', 'systemAudioEnabled', 'gameAudioOnly', 'micMono', 'obsFallbackBuiltin'] as const
+const HOOK_WARN_SECONDS = 5
+
+function CaptureHookWarningDialog({ selectId, onCancel, onConfirm }: {
+  selectId: string
+  onCancel: () => void
+  onConfirm: () => void
+}): JSX.Element {
+  const w = t.captureHookWarning
+  const [remaining, setRemaining] = useState(HOOK_WARN_SECONDS)
+  const boxRef = useRef<HTMLDivElement>(null)
+  const cancelRef = useRef<HTMLButtonElement>(null)
+  const sections = [w.sections.diff, w.sections.how, w.sections.risk, w.sections.disclaimer]
+
+  useFocusTrap(boxRef, {
+    onEscape: onCancel,
+    initialFocus: () => cancelRef.current,
+    returnFocusTo: () => document.getElementById(selectId)
+  })
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setRemaining((s) => {
+        if (s <= 1) {
+          clearInterval(timer)
+          return 0
+        }
+        return s - 1
+      })
+    }, 1000)
+    return () => clearInterval(timer)
+  }, [])
+
+  return (
+    <div className="set-dlg-scrim" onClick={onCancel}>
+      <div
+        ref={boxRef}
+        className="set-dlg"
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="set-capture-hook-warn-title"
+        aria-describedby="set-capture-hook-warn-desc"
+        tabIndex={-1}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h3 id="set-capture-hook-warn-title">{w.title}</h3>
+        <div id="set-capture-hook-warn-desc" className="set-dlg-body" tabIndex={0}>
+          {sections.map((sec) => (
+            <section key={sec.heading} className="set-dlg-sec">
+              <h4>{sec.heading}</h4>
+              {'items' in sec ? (
+                <ul>
+                  {sec.items.map((item, i) => <li key={i}>{item}</li>)}
+                </ul>
+              ) : (
+                <p>{sec.text}</p>
+              )}
+            </section>
+          ))}
+        </div>
+        <div className="set-dlg-foot">
+          <button id="set-recording-captureHook-cancel" ref={cancelRef} type="button" className="set-btn ghost" onClick={onCancel}>
+            {w.cancel}
+          </button>
+          <button
+            id="set-recording-captureHook-confirm"
+            type="button"
+            className="set-btn danger"
+            disabled={remaining > 0}
+            onClick={() => {
+              if (remaining <= 0) onConfirm()
+            }}
+          >
+            {remaining > 0 ? fillTemplate(w.confirmCountdown, { sec: remaining }) : w.confirm}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
 
 function ObsTextControl({ field, ids, state, settings, controller }: {
   field: 'obsHost' | 'obsPassword'; ids: ControlIds; state: SettingsState; settings: RecordingSettings; controller: SettingsController
@@ -44,6 +124,7 @@ export function RecordingControl({ field, ids, state, settings, controller }: {
   settings: RecordingSettings
   controller: SettingsController
 }): JSX.Element | null {
+  const [hookWarnOpen, setHookWarnOpen] = useState(false)
   const set = <K extends keyof RecordingSettings>(key: K, value: RecordingSettings[K]): void => {
     void controller.setRecording(key, value)
   }
@@ -52,7 +133,8 @@ export function RecordingControl({ field, ids, state, settings, controller }: {
     describedBy={describedBy(ids)} onCommit={(v) => controller.setRecording('obsPort', Math.round(v))} />
   if ((BOOL_FIELDS as readonly string[]).includes(field)) {
     const key = field as typeof BOOL_FIELDS[number]
-    return <SwitchControl ids={ids} checked={settings[key]} onChange={(v) => set(key, v)} />
+    const unsupported = key === 'captureCursor' && settings.captureMethod === 'hook'
+    return <SwitchControl ids={ids} checked={unsupported ? false : settings[key]} disabled={unsupported} onChange={(v) => set(key, v)} />
   }
   if (field === 'fps' || field === 'aspectMode') {
     const options = field === 'fps' ? fpsOptions()
@@ -71,8 +153,8 @@ export function RecordingControl({ field, ids, state, settings, controller }: {
       describedBy={describedBy(ids)} unit="GB" onCommit={(v) => controller.setRecording(field, v)} />
   }
   const caps = state.recordingCapabilities
-  // Screen capture uses the adapter driving the game monitor, so the GPU picker does not apply.
-  const ddaCapture = settings.captureMethod === 'dda' || (settings.captureMethod === 'auto' && caps.value?.autoCaptureMethod === 'dda')
+  // DDA and Hook use the capture adapter, so the saved GPU choice does not apply.
+  const captureAdapter = settings.captureMethod === 'hook' || settings.captureMethod === 'dda' || (settings.captureMethod === 'auto' && caps.value?.autoCaptureMethod === 'dda')
   let options: Array<{ value: string; label: string; disabled?: boolean }>
   switch (field) {
     case 'backend':
@@ -89,7 +171,7 @@ export function RecordingControl({ field, ids, state, settings, controller }: {
         .map((gpu) => ({ value: gpu.id, label: gpu.name }))]
       break
     case 'encoder': {
-      const selectedGpu = ddaCapture ? undefined : caps.value?.gpus.find((gpu) => gpu.id === settings.gpu)
+      const selectedGpu = captureAdapter ? undefined : caps.value?.gpus.find((gpu) => gpu.id === settings.gpu)
       const encoders = selectedGpu ? selectedGpu.encoders : caps.value?.encoders ?? []
       options = [{ value: 'auto', label: t.auto }, ...encoders
         .filter((name) => name.startsWith(`${settings.codec}_`)).map((name) => ({ value: name, label: name }))]
@@ -110,7 +192,7 @@ export function RecordingControl({ field, ids, state, settings, controller }: {
       options = [{ value: 'speed', label: t.speed }, { value: 'balanced', label: t.balanced }, { value: 'quality', label: t.quality }]
       break
     case 'captureMethod':
-      options = [{ value: 'auto', label: t.captureAuto }, { value: 'wgc', label: t.captureWgc }, { value: 'dda', label: t.captureDda }]
+      options = [{ value: 'auto', label: t.captureAuto }, { value: 'wgc', label: t.captureWgc }, { value: 'dda', label: t.captureDda }, { value: 'hook', label: t.captureHook }]
       break
     case 'postAnalysis':
       options = [{ value: 'none', label: t.analysisNone }, { value: 'afterExit', label: t.analysisAfterExit }, { value: 'perMatch', label: t.analysisPerMatch }]
@@ -129,7 +211,7 @@ export function RecordingControl({ field, ids, state, settings, controller }: {
   return (
     <div className="set-inline set-recording-select">
       <SelectControl ids={{ ...ids, reason: hint ? `${ids.ctl}-capabilities` : ids.reason }} value={current} options={options}
-        disabled={field === 'gpu' && ddaCapture ? true
+        disabled={field === 'gpu' && captureAdapter ? true
           : field === 'renderDevice' ? !settings.systemAudioEnabled || settings.gameAudioOnly
             : field === 'captureDevice' && !settings.micEnabled}
         onChange={(v) => {
@@ -139,12 +221,24 @@ export function RecordingControl({ field, ids, state, settings, controller }: {
             set('encoder', 'auto')
           } else if (field === 'gpu') {
             set('gpu', v as RecordingSettings['gpu'])
-            const gpuEncoders = ddaCapture ? undefined : caps.value?.gpus.find((gpu) => gpu.id === v)?.encoders
+            const gpuEncoders = captureAdapter ? undefined : caps.value?.gpus.find((gpu) => gpu.id === v)?.encoders
             if (gpuEncoders && settings.encoder !== 'auto' && !gpuEncoders.includes(settings.encoder)) set('encoder', 'auto')
+          } else if (field === 'captureMethod' && v === 'hook') {
+            if (settings.captureMethod !== 'hook') setHookWarnOpen(true)
           } else set(field, v as RecordingSettings[typeof field])
         }} />
       {hint && <small id={`${ids.ctl}-capabilities`} className="set-desc" role="status">{hint}</small>}
       {field === 'backend' && settings.backend === 'obs' && <small className="set-desc">{t.obsHint}</small>}
+      {field === 'captureMethod' && hookWarnOpen && (
+        <CaptureHookWarningDialog
+          selectId={ids.ctl}
+          onCancel={() => setHookWarnOpen(false)}
+          onConfirm={() => {
+            setHookWarnOpen(false)
+            set('captureMethod', 'hook')
+          }}
+        />
+      )}
     </div>
   )
 }

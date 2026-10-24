@@ -27,7 +27,7 @@ export function makeDeps(root: string): RecordingDeps {
   return {
     getSettings: () => ({ ...DEFAULT_RECORDING_SETTINGS, postAnalysis: 'none' }),
     getWatchFolders: () => [], defaultOutputDir: path.join(root, 'videos'),
-    recorderCommand: fakeCommand(), ffmpegPath: 'missing-ffmpeg', profileDir: root,
+    recorderCommand: fakeCommand(), ffmpegPath: 'missing-ffmpeg', profileDir: root, obsHookDir: path.join(root, 'obs-hook'),
     addToLibrary: () => {}, enqueueAnalysis: () => {}, notify: () => {},
     findApexPid: async () => 1234, pollMs: 20, gameStartDelayMs: 0, probeStorage: async () => null, borderlessCapture: true,
     readGameAspect: async () => null

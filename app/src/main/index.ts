@@ -14,7 +14,7 @@ import { buildAnalyzeArgs } from './settings-derived'
 import { currentE2EConfig } from './e2e'
 import { applyWindowSecurity } from './window-security'
 import { sanitizeAnalyzeArgs, sanitizeAutoclipArgs, sanitizeDeriveArgs, sanitizeProbeArgs } from './ipc-guards'
-import { aditorrecCommand, appDataDir, cacheDir, chromiumUserDataDir, engineCommand, ffmpegExecutable, liveEngineCommand, profileDir, sceneDir } from '../shared/paths'
+import { aditorrecCommand, appDataDir, cacheDir, chromiumUserDataDir, engineCommand, ffmpegExecutable, liveEngineCommand, obsHookDir, profileDir, sceneDir } from '../shared/paths'
 import { cacheFilePath } from './cache-io'
 import { generateThumbnail } from './thumbnail'
 import { createRecordingService } from './recording'
@@ -219,6 +219,7 @@ async function initEngineAndServices(): Promise<void> {
     getWatchFolders: () => settingsStore!.get().watchFolders,
     defaultOutputDir: join(app.getPath('videos'), 'Aditor'),
     recorderCommand: aditorrecCommand(app.isPackaged),
+    obsHookDir: obsHookDir(app.isPackaged),
     ffmpegPath: ffmpegExecutable(app.isPackaged),
     profileDir: templateProfileDir,
     addToLibrary: (paths, game) => {

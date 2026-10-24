@@ -98,6 +98,14 @@ export function aditorrecCommand(isPackaged: boolean): {
   }
 }
 
+/** OBS graphics-hook files (`hook_dir`): `build/obs-hook` in the repo during development and `obs-hook` under resources when packaged. */
+export function obsHookDir(isPackaged: boolean): string {
+  const root = isPackaged
+    ? (process as unknown as { resourcesPath?: string }).resourcesPath || path.join(__dirname, '..', '..')
+    : path.join(path.resolve(__dirname, '../../..'), 'build')
+  return path.join(root, 'obs-hook')
+}
+
 /** Third-party notices bundled with the installer: resources root when packaged, repo root in development. */
 export function noticesFile(isPackaged: boolean): string {
   return bundledDocFile(isPackaged, 'THIRD_PARTY_NOTICES.md')

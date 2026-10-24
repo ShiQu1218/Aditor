@@ -36,6 +36,9 @@ pub struct StartArgs {
     /// Capture method; defaults to `wgc`, with unknown values treated as bad_request.
     #[serde(default)]
     pub capture: CaptureMethod,
+    /// Hook files directory, required when `capture = "hook"`.
+    #[serde(default)]
+    pub hook_dir: Option<String>,
     #[serde(default = "cursor_enabled")]
     pub capture_cursor: bool,
 }
@@ -151,6 +154,7 @@ pub enum Event {
 pub enum ErrorCode {
     NoHwEncoder,
     WindowNotFound,
+    HookUnavailable,
     CaptureFailed,
     EncodeFailed,
     AudioFailed,
@@ -165,6 +169,7 @@ impl ErrorCode {
         match self {
             Self::NoHwEncoder => "no_hw_encoder",
             Self::WindowNotFound => "window_not_found",
+            Self::HookUnavailable => "hook_unavailable",
             Self::CaptureFailed => "capture_failed",
             Self::EncodeFailed => "encode_failed",
             Self::AudioFailed => "audio_failed",
@@ -199,6 +204,7 @@ mod tests {
         for code in [
             ErrorCode::NoHwEncoder,
             ErrorCode::WindowNotFound,
+            ErrorCode::HookUnavailable,
             ErrorCode::CaptureFailed,
             ErrorCode::EncodeFailed,
             ErrorCode::AudioFailed,
@@ -209,6 +215,7 @@ mod tests {
         ] {
             assert_eq!(serde_json::to_value(code).unwrap(), code.as_str());
         }
+        assert_eq!(ErrorCode::HookUnavailable.as_str(), "hook_unavailable");
     }
 
     #[test]
@@ -231,6 +238,7 @@ mod tests {
         };
         assert!(args.encode.is_none());
         assert_eq!(args.capture, CaptureMethod::Wgc);
+        assert_eq!(args.hook_dir, None);
         assert!(args.capture_cursor);
         let disabled = obs.replace(
             "\"encode\":null",
@@ -282,21 +290,36 @@ mod tests {
     #[test]
     fn parses_capture_method_and_rejects_unknown() {
         let base = r#"{"id":4,"cmd":"start","pid":1,"session_dir":"x","session_id":"x","encode":null,"audio":null,"frames":{"banner":[1,2,3,4],"spec":[5,6,7,8],"base":[1920,1080]}"#;
-        for (value, expected) in [("wgc", CaptureMethod::Wgc), ("dda", CaptureMethod::Dda)] {
+        for (value, expected) in [
+            ("wgc", CaptureMethod::Wgc),
+            ("dda", CaptureMethod::Dda),
+            ("hook", CaptureMethod::Hook),
+        ] {
             let line = format!(r#"{base},"capture":"{value}"}}"#);
             let Command::Start(args) = parse_request(&line).unwrap().cmd else {
                 panic!("not start")
             };
             assert_eq!(args.capture, expected);
+            assert_eq!(args.hook_dir, None);
         }
-        for bad in [
-            r#""hook""#,
-            r#""nvfbc""#,
-            r#""DDA""#,
-            r#""HOOK""#,
-            "1",
-            "null",
-        ] {
+        let with_hook_dir =
+            format!(r#"{base},"capture":"hook","hook_dir":"D:\\Aditor\\resources\\obs-hook"}}"#);
+        let Command::Start(args) = parse_request(&with_hook_dir).unwrap().cmd else {
+            panic!("not start")
+        };
+        assert_eq!(args.capture, CaptureMethod::Hook);
+        assert_eq!(
+            args.hook_dir.as_deref(),
+            Some(r"D:\Aditor\resources\obs-hook")
+        );
+
+        let null_hook_dir = format!(r#"{base},"capture":"wgc","hook_dir":null}}"#);
+        let Command::Start(args) = parse_request(&null_hook_dir).unwrap().cmd else {
+            panic!("not start")
+        };
+        assert_eq!(args.hook_dir, None);
+
+        for bad in [r#""nvfbc""#, r#""DDA""#, r#""HOOK""#, "1", "null"] {
             let line = format!(r#"{base},"capture":{bad}}}"#);
             assert_eq!(parse_request(&line).unwrap_err().0, Some(4), "{bad}");
         }

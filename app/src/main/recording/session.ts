@@ -139,6 +139,7 @@ export class RecordingSessionService implements RecordingService {
   /** Epoch time when this app last stopped an OBS recording (ms). */
   private obsStoppedAt = 0
   private builtinFallbackPid: number | null = null
+  private hookFallbackPid: number | null = null
   /** Time when the current PID was first confirmed. */
   private pidSeenAt = 0
   /** True until the first successful poll after start; a game already running then is past its startup phase. */
@@ -157,6 +158,7 @@ export class RecordingSessionService implements RecordingService {
         if (!sameProcess(found, this.current())) {
           this.manualStopped = false
           this.builtinFallbackPid = null
+          this.hookFallbackPid = null
           this.blocked = false
           this.cancelRetry()
           this.pidSeenAt = this.firstPoll ? -Infinity : Date.now()
@@ -228,6 +230,7 @@ export class RecordingSessionService implements RecordingService {
       const { pid } = found
       if (!sameProcess(found, this.current())) {
         this.builtinFallbackPid = null
+        this.hookFallbackPid = null
       }
       this.gamePid = pid
       this.game = found.game
@@ -421,7 +424,8 @@ export class RecordingSessionService implements RecordingService {
   private async begin(pid: number, builtin = false): Promise<boolean> {
     const settings = { ...this.deps.getSettings() }
     if (builtin || this.builtinFallbackPid === pid) settings.backend = 'builtin'
-    const capture = settings.backend === 'obs' ? 'dda' : resolveCaptureMethod(settings.captureMethod, this.deps.borderlessCapture)
+    const capture = settings.backend === 'obs' || (settings.captureMethod === 'hook' && (this.hookFallbackPid === pid || !this.deps.obsHookDir))
+      ? 'dda' : resolveCaptureMethod(settings.captureMethod, this.deps.borderlessCapture)
     const game = this.game
     // Valorant's match boundaries come from the Riot Client; Apex detection finds its own.
     const gameClient = game === 'valorant' ? (this.deps.createValorantClient ?? (() => new ValorantClient()))() : undefined
@@ -514,7 +518,7 @@ export class RecordingSessionService implements RecordingService {
         audio: current.backend === 'obs' ? null : { render: settings.renderDevice, capture: settings.captureDevice, mic_gain: settings.micGain, mic_enabled: settings.micEnabled,
           render_enabled: settings.systemAudioEnabled, render_gain: settings.systemGain, render_source: settings.gameAudioOnly ? 'game' : 'device',
           mic_mono: settings.micMono }, frames,
-        capture, capture_cursor: settings.captureCursor })
+        capture, ...(capture === 'hook' ? { hook_dir: this.deps.obsHookDir } : {}), capture_cursor: settings.captureCursor })
       await current.writes
       if (this.active !== current || current.ending) return false
       await this.checkDisk(current)
@@ -534,6 +538,13 @@ export class RecordingSessionService implements RecordingService {
       }
       const code = error instanceof RecorderError ? error.code : 'recording_start_failed'
       if (!this.running || this.manualStopped || code === 'cancelled') { this.idle(); return false }
+      const hookReason = this.hookUnavailableReason(code, error)
+      if (hookReason !== null && this.hookFallbackPid !== pid && this.gamePid === pid) {
+        this.hookFallbackPid = pid
+        this.log(`hook fallback pid=${pid} reason=${hookReason}`)
+        this.notice('warning', tr('Hook擷取無法使用，本次改用螢幕擷取（DDA）：{reason}', { reason: hookReason }))
+        return this.begin(pid, builtin)
+      }
       const audioUnavailable = unavailableAudioDevice(code, error)
       this.fail(code, audioUnavailable ? audioDeviceHint(error) : driverHint(code, error) ?? tr('無法開始錄影：{error}', { error: String(error) }))
       if (audioUnavailable || code === 'no_hw_encoder' || code === 'disk_full' || code === 'profile_invalid' || code === 'output_invalid') this.blocked = true
@@ -644,6 +655,12 @@ export class RecordingSessionService implements RecordingService {
     }).catch((error) => this.notice('error', tr('OBS 逐局影片入庫失敗，收尾時將重試：{error}', { error: String(error) })))
   }
 
+  private hookUnavailableReason(code: string, error: unknown): string | null {
+    const message = error instanceof Error ? error.message : String(error)
+    if (code !== 'hook_unavailable' && !message.includes('hook_unavailable:')) return null
+    return message.replace(/^[\s\S]*?hook_unavailable:\s*/, '').trim() || message
+  }
+
   private async crashed(session: ActiveSession, error: Error): Promise<void> {
     if (this.active !== session || session.ending) return
     this.recordEvent(session, { ev: 'gap', pts: this.state.durationSec, message: error.message })
@@ -651,6 +668,16 @@ export class RecordingSessionService implements RecordingService {
     const code = error instanceof RecorderError ? error.code : 'recorder_crashed'
     if (!finalized) return
     if (!this.running) return
+    const hookReason = this.hookUnavailableReason(code, error)
+    if (hookReason !== null && this.hookFallbackPid !== session.pid) {
+      this.hookFallbackPid = session.pid
+      this.log(`hook fallback pid=${session.pid} reason=${hookReason}`)
+      this.notice('warning', tr('Hook擷取無法使用，本次改用螢幕擷取（DDA）：{reason}', { reason: hookReason }))
+      if (this.gamePid === session.pid && !this.state.paused && !this.manualStopped) {
+        await this.begin(session.pid)
+      }
+      return
+    }
     const audioUnavailable = unavailableAudioDevice(code, error)
     this.fail(code, audioUnavailable ? audioDeviceHint(error) : driverHint(code, error) ?? error.message)
     if (audioUnavailable || code === 'no_hw_encoder') this.blocked = true

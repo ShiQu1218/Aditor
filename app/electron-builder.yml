@@ -26,6 +26,8 @@ extraResources:
       - build-config/configure.txt
       - build-config/ffmpeg-components.json
       - build-config/build-recipe-commit.txt
+  - from: ../build/obs-hook
+    to: obs-hook
   - from: resources
     to: resources
     filter:

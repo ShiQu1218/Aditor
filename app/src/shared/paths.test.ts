@@ -85,3 +85,21 @@ describe('aditorrecCommand', () => {
     }
   })
 })
+
+import { obsHookDir } from './paths'
+
+describe('obsHookDir', () => {
+  const root = path.resolve(__dirname, '../../..')
+  const resources = process as unknown as { resourcesPath?: string }
+  const originalResources = resources.resourcesPath
+  afterEach(() => {
+    if (originalResources === undefined) delete resources.resourcesPath
+    else resources.resourcesPath = originalResources
+  })
+
+  it('Development: uses build/obs-hook under the repo root; packaged: uses obs-hook under resources', () => {
+    expect(obsHookDir(false)).toBe(path.join(root, 'build', 'obs-hook'))
+    resources.resourcesPath = path.resolve('installed/resources')
+    expect(obsHookDir(true)).toBe(path.join(resources.resourcesPath, 'obs-hook'))
+  })
+})

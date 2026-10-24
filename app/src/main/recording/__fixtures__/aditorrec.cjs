@@ -32,6 +32,9 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
     if (mode === 'audio-device-invalidated') return send({ id: req.id, ok: false, code: 'audio_failed', message: 'audio_failed: Failed to activate audio device: The audio device has been invalidated. (0x88890004)' })
     if (mode === 'audio-device-missing') return send({ id: req.id, ok: false, code: 'audio_failed', message: 'audio_failed: Specified audio device not found: The system cannot find the file specified. (0x80070002)' })
     if (mode === 'no-hw-nvidia') return send({ id: req.id, ok: false, code: 'no_hw_encoder', message: 'no_hw_encoder: nvidia_driver_outdated: The NVIDIA driver supports NVENC API 12.2 but 13.0 is required; update the NVIDIA driver to 570.0 or newer and try again (GPUs whose newest driver is older cannot use NVENC); hevc_nvenc: Open encoder failed: Function not implemented (-40)' })
+    if (mode === 'hook-unavailable' && req.capture === 'hook') {
+      return send({ id: req.id, ok: false, code: 'hook_unavailable', message: 'hook_unavailable: 注入逾時' })
+    }
     if (mode === 'start-stall') return send({ id: req.id, ok: true })
     sessionDir = req.session_dir
     if (process.env.FAKE_SEGMENT_DIR) {
@@ -70,6 +73,10 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
     if (mode === 'crash') setTimeout(() => process.exit(9), 30)
     if (mode === 'async-no-hw') setTimeout(() => {
       send({ ev: 'error', code: 'no_hw_encoder', message: '沒有硬體編碼器' })
+      send({ ev: 'stopped', reason: 'error' })
+    }, 30)
+    if (mode === 'async-hook-unavailable' && req.capture === 'hook') setTimeout(() => {
+      send({ ev: 'error', code: 'hook_unavailable', message: 'hook_unavailable: 遊戲材質遺失' })
       send({ ev: 'stopped', reason: 'error' })
     }, 30)
     return

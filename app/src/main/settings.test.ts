@@ -287,7 +287,7 @@ describe('settings store', () => {
 describe('capture method setting', () => {
   it('defaults to auto and accepts every capture method', () => {
     expect(DEFAULT_SETTINGS.recording.captureMethod).toBe('auto')
-    for (const captureMethod of ['auto', 'wgc', 'dda'] as const) {
+    for (const captureMethod of ['auto', 'wgc', 'dda', 'hook'] as const) {
       expect(migrateSettings({ version: SETTINGS_VERSION, recording: { captureMethod } }).recording.captureMethod).toBe(captureMethod)
     }
   })

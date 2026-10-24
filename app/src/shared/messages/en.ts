@@ -214,6 +214,7 @@ const messages: MessageTable = {
   '{message}；{fallback}': '{message}; {fallback}',
   '本次改用內建錄影器': 'The built-in recorder will be used for this session.',
   '本次僅執行即時偵測': 'Only live detection will run for this session.',
+  'Hook擷取無法使用，本次改用螢幕擷取（DDA）：{reason}': 'Hook capture is unavailable, so screen capture (DDA) will be used for this session: {reason}',
   '錄影啟動已取消': 'Recording start was canceled.',
   '無法開始錄影：{error}': 'Could not start recording: {error}',
   '錄影音訊裝置無法使用，已停止自動重試。請在「設定 → 錄影」重新選擇系統聲音裝置或麥克風裝置，再手動開始錄影。詳細資訊：{details}': 'The recording audio device is unavailable, so automatic retries have stopped. Re-select the system audio device or the microphone device under "Settings → Recording", then start recording manually. Details: {details}',

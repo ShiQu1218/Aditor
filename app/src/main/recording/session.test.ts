@@ -181,15 +181,85 @@ describe('recording service state machine', () => {
     expect(commands(value, 'stop')).toHaveLength(0)
   })
 
-  it('auto resolves to wgc on borderless builds and an explicit dda is used after changing the setting', async () => {
+  it('auto never uses hook; an explicit hook passes hook_dir and missing files configuration falls back to dda', async () => {
     const value = rig()
     value.service.start()
     await waitFor(() => value.service.status().phase === 'recording')
-    expect(commands(value, 'start')[0].capture).toBe('wgc')
+    const [defaultStart] = commands(value, 'start')
+    expect(defaultStart.capture).toBe('wgc')
+    expect(defaultStart.hook_dir).toBeUndefined()
     await value.service.stopManual()
-    value.settings.captureMethod = 'dda'
+    value.settings.captureMethod = 'hook'
     expect(await value.service.startManual()).toBe(true)
-    expect(commands(value, 'start')[1].capture).toBe('dda')
+    const [, first] = commands(value, 'start')
+    expect(first).toMatchObject({ capture: 'hook', hook_dir: path.join(value.root, 'obs-hook') })
+    await value.service.stopManual()
+    value.deps.obsHookDir = undefined
+    expect(await value.service.startManual()).toBe(true)
+    const [, , second] = commands(value, 'start')
+    expect(second.capture).toBe('dda')
+    expect(second.hook_dir).toBeUndefined()
+  })
+
+  it('notifies once and switches to dda immediately on hook_unavailable from start, keeps dda for the same PID, and retries the hook for a new PID', async () => {
+    const value = rig('hook-unavailable')
+    value.settings.captureMethod = 'hook'
+    value.service.start()
+    await waitFor(() => value.service.status().phase === 'recording')
+    const starts = commands(value, 'start')
+    expect(starts).toHaveLength(2)
+    expect(starts[0]).toMatchObject({ pid: 1234, capture: 'hook', hook_dir: path.join(value.root, 'obs-hook') })
+    expect(starts[1]).toMatchObject({ pid: 1234, capture: 'dda' })
+    expect(starts[1].hook_dir).toBeUndefined()
+    const warnings = vi.mocked(value.deps.notify).mock.calls.filter(([kind]) => kind === 'warning')
+    expect(warnings).toEqual([['warning', 'Hook擷取無法使用，本次改用螢幕擷取（DDA）：注入逾時']])
+
+    // After manually stopping and restarting with the same PID, keep using DDA without retrying the hook or sending another notice.
+    await value.service.stopManual()
+    expect(await value.service.startManual()).toBe(true)
+    const afterManual = commands(value, 'start')
+    expect(afterManual).toHaveLength(3)
+    expect(afterManual[2]).toMatchObject({ pid: 1234, capture: 'dda' })
+    expect(vi.mocked(value.deps.notify).mock.calls.filter(([kind]) => kind === 'warning')).toHaveLength(1)
+
+    // Clear the fallback state after the PID changes and try the hook again.
+    value.pid = 5678
+    await waitFor(() => commands(value, 'start').length >= 5)
+    const afterNewPid = commands(value, 'start')
+    expect(afterNewPid[3]).toMatchObject({ pid: 5678, capture: 'hook', hook_dir: path.join(value.root, 'obs-hook') })
+    expect(afterNewPid[4]).toMatchObject({ pid: 5678, capture: 'dda' })
+  })
+
+  it('uses the current setting when restarting recording for the same PID after switching from hook to WGC', async () => {
+    const value = rig('hook-unavailable')
+    value.settings.captureMethod = 'hook'
+    value.service.start()
+    await waitFor(() => value.service.status().phase === 'recording')
+    await value.service.stopManual()
+
+    value.settings.captureMethod = 'wgc'
+    expect(await value.service.startManual()).toBe(true)
+    expect(commands(value, 'start').map((start) => start.capture)).toEqual(['hook', 'dda', 'wgc'])
+    expect(value.settings.captureMethod).toBe('wgc')
+    expect(commands(value, 'start').at(-1)!.hook_dir).toBeUndefined()
+
+    await value.service.stopManual()
+    value.settings.captureMethod = 'hook'
+    expect(await value.service.startManual()).toBe(true)
+    expect(commands(value, 'start').at(-1)!.capture).toBe('dda')
+  })
+
+  it('notifies once and immediately restarts with dda on a hook_unavailable error event during recording', async () => {
+    const value = rig('async-hook-unavailable')
+    value.settings.captureMethod = 'hook'
+    value.service.start()
+    await waitFor(() => commands(value, 'start').length === 2 && value.service.status().phase === 'recording')
+    const starts = commands(value, 'start')
+    expect(starts[0]).toMatchObject({ capture: 'hook', hook_dir: path.join(value.root, 'obs-hook') })
+    expect(starts[1]).toMatchObject({ capture: 'dda' })
+    expect(starts[1].hook_dir).toBeUndefined()
+    const warnings = vi.mocked(value.deps.notify).mock.calls.filter(([kind]) => kind === 'warning')
+    expect(warnings).toEqual([['warning', 'Hook擷取無法使用，本次改用螢幕擷取（DDA）：遊戲材質遺失']])
   })
 
   it('auto resolves to dda on Windows builds that cannot hide the window capture border', async () => {

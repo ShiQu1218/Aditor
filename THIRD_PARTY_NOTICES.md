@@ -176,7 +176,20 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
 
 ---
 
-## 9. Disclaimer & Trademark Notice
+## 9. OBS Studio (`win-capture` graphics-hook)
+
+- **Component & Files**: OBS Studio `win-capture` graphics-hook binaries (`graphics-hook64.dll`, `inject-helper64.exe`, `get-graphics-offsets64.exe`), packaged under `resources/obs-hook/`.
+- **Version**: OBS Studio 32.1.2
+- **License**: GNU General Public License, version 2 or (at your option) any later version (`GPL-2.0-or-later`), which is compatible with this project's GNU General Public License v3.0 (`GPL-3.0`).
+- **Source Code**:
+  - Repository tag `32.1.2`: [https://github.com/obsproject/obs-studio/tree/32.1.2](https://github.com/obsproject/obs-studio/tree/32.1.2) (specifically `plugins/win-capture/`)
+  - Release Sources tarball: [https://github.com/obsproject/obs-studio/releases/tag/32.1.2](https://github.com/obsproject/obs-studio/releases/tag/32.1.2) ([https://github.com/obsproject/obs-studio/archive/refs/tags/32.1.2.tar.gz](https://github.com/obsproject/obs-studio/archive/refs/tags/32.1.2.tar.gz))
+- **Purpose**: Used for game capture — injected into the target game process to capture rendered frames via shared Direct3D textures.
+- **Included Build & Integrity**: The three files are extracted **unmodified** from the official OBS Project release archive `OBS-Studio-32.1.2-Windows-x64.zip` (`data/obs-plugins/win-capture/`) and carry the official OBS Project Authenticode digital signature (`CN="OBS Project, LLC"`). Their SHA-256 digests and Authenticode signatures are pinned and verified by `scripts/fetch-obs-hook.ps1`.
+
+---
+
+## 10. Disclaimer & Trademark Notice
 
 *Apex Legends* is a registered trademark of Electronic Arts Inc.
 *VALORANT* and Riot Games are trademarks or registered trademarks of Riot Games, Inc.

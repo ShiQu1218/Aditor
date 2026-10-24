@@ -7,6 +7,7 @@
 mod color;
 mod cursor;
 pub mod dda;
+pub mod hook;
 pub mod small;
 
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -113,6 +114,9 @@ impl Capture {
         consumer: Box<dyn FrameConsumer>,
         notices: Sender<CaptureNotice>,
     ) -> Result<Self> {
+        if method == CaptureMethod::Hook {
+            bail!("capture_failed: Game capture requires start_hook");
+        }
         let gpu = gpu.clone();
         Self::spawn_worker(
             opts,
@@ -120,8 +124,25 @@ impl Capture {
             move |opts, notices, stopped, ready| match method {
                 CaptureMethod::Wgc => run(gpu, opts, consumer, notices, stopped, ready),
                 CaptureMethod::Dda => dda::run(gpu, opts, consumer, notices, stopped, ready),
+                CaptureMethod::Hook => Err(anyhow::anyhow!(
+                    "capture_failed: Game capture requires start_hook"
+                )),
             },
         )
+    }
+
+    /// Start capture with a prepared hook; `gpu` must be the device returned by `hook::prepare`.
+    pub fn start_hook(
+        prepared: hook::Prepared,
+        gpu: &Gpu,
+        opts: CaptureOptions,
+        consumer: Box<dyn FrameConsumer>,
+        notices: Sender<CaptureNotice>,
+    ) -> Result<Self> {
+        let gpu = gpu.clone();
+        Self::spawn_worker(opts, notices, move |opts, notices, stopped, ready| {
+            hook::run(prepared, gpu, opts, consumer, notices, stopped, ready)
+        })
     }
 
     fn spawn_worker(
@@ -869,5 +890,32 @@ mod tests {
             Some(CaptureNotice::GameVisible { pts: 2 })
         );
         assert!(visibility.is_visible());
+    }
+
+    struct NoopConsumer;
+    impl FrameConsumer for NoopConsumer {
+        fn on_frame(&mut self, _frame: &CapturedFrame<'_>) {}
+    }
+
+    #[test]
+    fn start_with_rejects_hook_method() {
+        let gpu = Gpu::create().unwrap();
+        let (notices, _rx) = mpsc::channel();
+        let err = match Capture::start_with(
+            CaptureMethod::Hook,
+            &gpu,
+            CaptureOptions {
+                pid: 1,
+                max_fps: 60,
+                capture_cursor: false,
+                origin_ticks: 0,
+            },
+            Box::new(NoopConsumer),
+            notices,
+        ) {
+            Ok(_) => panic!("CaptureMethod::Hook must not be started through start_with"),
+            Err(err) => err.to_string(),
+        };
+        assert_eq!(err, "capture_failed: Game capture requires start_hook");
     }
 }

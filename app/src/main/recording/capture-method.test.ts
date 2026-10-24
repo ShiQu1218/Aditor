@@ -17,6 +17,8 @@ describe('capture method', () => {
   })
 
   it('keeps an explicit choice on every Windows version', () => {
+    expect(resolveCaptureMethod('hook', false)).toBe('hook')
+    expect(resolveCaptureMethod('hook', true)).toBe('hook')
     expect(resolveCaptureMethod('wgc', false)).toBe('wgc')
     expect(resolveCaptureMethod('dda', true)).toBe('dda')
   })

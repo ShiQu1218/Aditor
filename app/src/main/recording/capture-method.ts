@@ -12,7 +12,9 @@ export function supportsBorderlessCapture(release: string = os.release(), platfo
 }
 
 /** `auto` uses screen capture (DDA) where window capture (WGC) would show the yellow border, and WGC elsewhere. */
-export function resolveCaptureMethod(method: RecordingCaptureMethod, borderless: boolean = supportsBorderlessCapture()): 'wgc' | 'dda' {
+export function resolveCaptureMethod(method: 'auto', borderless?: boolean): 'wgc' | 'dda'
+export function resolveCaptureMethod(method: RecordingCaptureMethod, borderless?: boolean): Exclude<RecordingCaptureMethod, 'auto'>
+export function resolveCaptureMethod(method: RecordingCaptureMethod, borderless: boolean = supportsBorderlessCapture()): Exclude<RecordingCaptureMethod, 'auto'> {
   if (method !== 'auto') return method
   return borderless ? 'wgc' : 'dda'
 }

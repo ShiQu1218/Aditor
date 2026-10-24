@@ -67,17 +67,18 @@ export interface RecordingSettings {
   diskStopGb: number
   /** Whether to show Windows notifications when a match starts or ends (errors always notify). */
   notifyMatch: boolean
+  captureCursor: boolean
   /**
    * Capture method: 'auto' (default) = 'dda' on Windows 10, whose window capture always shows a yellow border, and 'wgc'
-   * elsewhere; 'wgc' = window capture; 'dda' = screen capture (DXGI Desktop Duplication).
+   * elsewhere; 'wgc' = window capture; 'dda' = screen capture (DXGI Desktop Duplication);
+   * 'hook' = optional OBS graphics-hook, selected explicitly and never by auto.
    */
-  captureCursor: boolean
   captureMethod: RecordingCaptureMethod
   /** Show the Aditor window automatically when Apex exits. */
   openOnGameExit: boolean
 }
 
-export type RecordingCaptureMethod = 'auto' | 'wgc' | 'dda'
+export type RecordingCaptureMethod = 'auto' | 'wgc' | 'dda' | 'hook'
 
 export const RECORDING_RANGES = {
   bitrateKbps: { min: 2_000, max: 150_000 },

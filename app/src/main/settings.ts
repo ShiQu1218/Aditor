@@ -111,7 +111,7 @@ function pickRecording(v: unknown, base: RecordingSettings): RecordingSettings {
     diskStopGb: Math.min(diskWarnGb, clampRecordingNumber(s.diskStopGb, RECORDING_RANGES.diskStopGb, base.diskStopGb)),
     notifyMatch: pickBool(s.notifyMatch, base.notifyMatch),
     captureCursor: pickBool(s.captureCursor, base.captureCursor),
-    captureMethod: pickEnum(s.captureMethod, ['auto', 'wgc', 'dda'] as const, base.captureMethod),
+    captureMethod: pickEnum(s.captureMethod, ['auto', 'wgc', 'dda', 'hook'] as const, base.captureMethod),
     openOnGameExit: pickBool(s.openOnGameExit, base.openOnGameExit)
   }
 }
