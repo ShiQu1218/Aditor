@@ -133,6 +133,27 @@ describe('EngineClient', () => {
     expect(res.path).toBe('b.mp4')
   })
 
+  it('cancels a queued request before a restarting engine is ready without sending it', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'aditor-engine-cancel-'))
+    const script = path.join(dir, 'engine.cjs')
+    const trace = path.join(dir, 'trace')
+    fs.writeFileSync(script, `const fs=require('fs');const rl=require('readline').createInterface({input:process.stdin});setTimeout(()=>console.log(JSON.stringify({type:'ready'})),100);rl.on('line',line=>{const r=JSON.parse(line);fs.appendFileSync(process.argv[2],r.cmd+'\\n');if(r.cmd==='crash')process.exit(1);console.log(JSON.stringify({type:'result',id:r.id,data:true}));});`)
+    try {
+      client = new EngineClient({ command: process.execPath, args: [script, trace] })
+      await client.start()
+      await expect(client.request('crash', {}).promise).rejects.toMatchObject({ code: 'engine_crashed' })
+      const request = client.request('analyze', {})
+      client.cancel(request.id)
+      await expect(request.promise).rejects.toMatchObject({ code: 'cancelled' })
+      await expect(client.request('probe', {}).promise).resolves.toBe(true)
+      expect(fs.readFileSync(trace, 'utf8').trim().split('\n')).toEqual(['crash', 'probe'])
+    } finally {
+      await client?.stop()
+      client = null
+      fs.rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
   it('stops restarting after 3 crashes in 60s', async () => {
     client = new EngineClient({
       command: process.execPath,

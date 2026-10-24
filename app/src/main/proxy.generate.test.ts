@@ -4,6 +4,7 @@ import os from 'os'
 import path from 'path'
 import { generateProxy, proxyPath, cancelAllProxies, cleanStaleProxyPartials, orderEncoders } from './proxy'
 import { codecsDir, proxyDir } from '../shared/paths'
+import { mediaCacheIsCurrent } from './media-cache'
 
 const FAKE = path.resolve(__dirname, '../../test/fake-proxy-ffmpeg.mjs')
 const ffmpeg = { bin: process.execPath, prefixArgs: [FAKE] }
@@ -64,6 +65,34 @@ describe('generateProxy encoder selection (C2)', () => {
 })
 
 describe('generateProxy partial file handling (C2)', () => {
+  it('invalidates a replaced source and validates it again after regeneration', async () => {
+    process.env.FAKE_OK_ENCODERS = 'h264_nvenc'
+    const source = path.join(appData, 'source.mp4')
+    fs.writeFileSync(source, 'old')
+    const deps = { detect: async () => ['h264_nvenc'], ffmpeg }
+    const output = await generateProxy(source, undefined, 2, deps)
+    expect(mediaCacheIsCurrent(source, output)).toBe(true)
+    const original = fs.statSync(source)
+    fs.writeFileSync(source, 'new-video')
+    fs.utimesSync(source, original.atime, original.mtime)
+    expect(mediaCacheIsCurrent(source, output)).toBe(false)
+    await generateProxy(source, undefined, 2, deps)
+    expect(mediaCacheIsCurrent(source, output)).toBe(true)
+    fs.utimesSync(source, original.atime, new Date(original.mtimeMs + 5000))
+    expect(mediaCacheIsCurrent(source, output)).toBe(false)
+  })
+
+  it('does not publish a proxy if its source changes while the encoder is starting', async () => {
+    process.env.FAKE_OK_ENCODERS = 'h264_nvenc'
+    const source = path.join(appData, 'source.mp4')
+    fs.writeFileSync(source, 'old')
+    await expect(generateProxy(source, undefined, 2, {
+      detect: async () => { fs.writeFileSync(source, 'replacement'); return ['h264_nvenc'] }, ffmpeg
+    })).rejects.toThrow(/來源影片已變更/)
+    expect(fs.existsSync(proxyPath(source))).toBe(false)
+    expect(mediaCacheIsCurrent(source, proxyPath(source))).toBe(false)
+  })
+
   it('writes to a .partial.mp4 first; the final proxy path does not exist until success', async () => {
     process.env.FAKE_OK_ENCODERS = 'h264_nvenc'
     await generateProxy('D:/v/b.mp4', undefined, undefined, { detect: async () => ['h264_nvenc'], ffmpeg })

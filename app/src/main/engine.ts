@@ -17,6 +17,7 @@ export class EngineError extends Error {
 
 interface PendingRequest {
   id: string
+  sent: boolean
   resolve: (value: unknown) => void
   reject: (reason: unknown) => void
   onProgress?: (p: { t: number; duration: number }) => void
@@ -233,16 +234,18 @@ export class EngineClient extends EventEmitter {
         )
       }
 
+      this.pending.set(id, { id, sent: false, resolve: resolve as (val: unknown) => void, reject, onProgress })
+      const fail = (error: unknown): void => {
+        this.pending.delete(id)
+        reject(error)
+      }
       const sendReq = () => {
+        const request = this.pending.get(id)
+        if (!request) return
         if (!this.proc || !this.proc.stdin || this.proc.stdin.destroyed) {
-          return reject(new EngineError('engine_crashed', 'Engine process is not running or its stdin is closed'))
+          return fail(new EngineError('engine_crashed', 'Engine process is not running or its stdin is closed'))
         }
-        this.pending.set(id, {
-          id,
-          resolve: resolve as (val: unknown) => void,
-          reject,
-          onProgress
-        })
+        request.sent = true
         const line = JSON.stringify({ id, cmd, args }) + '\n'
         this.proc.stdin.write(line, 'utf-8', (err) => {
           if (err) {
@@ -256,7 +259,7 @@ export class EngineClient extends EventEmitter {
         // Still starting or need restart
         this._spawn()
           .then(() => sendReq())
-          .catch(reject)
+          .catch(fail)
       } else {
         sendReq()
       }
@@ -266,6 +269,12 @@ export class EngineClient extends EventEmitter {
   }
 
   cancel(targetId: string): void {
+    const request = this.pending.get(targetId)
+    if (request && !request.sent) {
+      this.pending.delete(targetId)
+      request.reject(new EngineError('cancelled', 'Analysis cancelled before the engine was ready'))
+      return
+    }
     if (!this.proc || !this.proc.stdin || this.proc.stdin.destroyed) return
     const cancelId = `cancel_${Date.now()}_${++this.reqSeq}`
     const line = JSON.stringify({ id: cancelId, cmd: 'cancel', args: { target: targetId } }) + '\n'

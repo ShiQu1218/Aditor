@@ -127,6 +127,23 @@ describeReal('real ffmpeg export: clip junctions play cleanly', () => {
     expect(decoded.stderr.trim()).toBe('')
   })
 
+  it('exports a source named like the partial output without changing or deleting it', async () => {
+    const clips = path.join(outDir, 'Clips')
+    fs.mkdirSync(clips, { recursive: true })
+    const input = path.join(clips, 'partial-source_1.partial.mp4')
+    const original = fs.readFileSync(source)
+    fs.writeFileSync(input, original)
+    const result = await service().start(sender(), {
+      items: [{ id: 'x', source: input, start: 1, end: 3 }], mode: 'separate', quality: 'copy', outDir, baseName: 'partial-source'
+    })
+    expect(result.ok, JSON.stringify(result)).toBe(true)
+    expect(fs.readFileSync(input)).toEqual(original)
+    expect(result.outputs).toEqual([path.join(clips, 'partial-source_1.mp4')])
+    const decoded = run(FFMPEG!, ['-v', 'error', '-i', result.outputs[0], '-f', 'null', '-'])
+    expect(decoded.status, decoded.stderr).toBe(0)
+    expect(fs.readdirSync(clips).filter((file) => file.startsWith('partial-source')).sort()).toEqual(['partial-source_1.mp4', 'partial-source_1.partial.mp4'])
+  })
+
   for (const quality of ['copy', 'precise'] as const) {
     it(`concat (${quality}): first frame is a keyframe at time 0, timestamps continuous at every junction, A/V lengths match`, async () => {
       const r = await service().start(sender(), { items: items(), mode: 'concat', quality, encoder: 'mpeg4', outDir, baseName: `joined-${quality}` })

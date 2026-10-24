@@ -7,6 +7,7 @@ import { detectEncoders } from './export/encoders'
 import { killTree } from './export/killTree'
 import { normalizePath } from './library'
 import { tr } from '../shared/locale'
+import { sourceStamp, stampMediaCache } from './media-cache'
 
 export function proxyPath(videoPath: string): string {
   const hash = crypto.createHash('sha1').update(normalizePath(videoPath)).digest('hex')
@@ -173,6 +174,7 @@ export function generateProxy(
   const existing = inflight.get(outPath)
   if (existing) return existing
   const job = (async (): Promise<string> => {
+    const stamp = sourceStamp(videoPath)
     fs.mkdirSync(path.dirname(outPath), { recursive: true })
     const candidates = orderEncoders(await (deps.detect ?? defaultDetect)())
     if (candidates.length === 0) {
@@ -189,7 +191,9 @@ export function generateProxy(
       }
       if (res.ok) {
         try {
+          if (sourceStamp(videoPath) !== stamp) throw new Error(tr('來源影片已變更，請重新產生代理檔'))
           fs.renameSync(partial, outPath)
+          stampMediaCache(outPath, stamp)
         } catch (err) {
           await removePartial(partial)
           throw new Error(tr('無法完成代理檔：{message}', { message: (err as Error).message }))

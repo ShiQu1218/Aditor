@@ -7,7 +7,7 @@ import { EngineClient } from './engine'
 import { detectEncoders } from './export/encoders'
 import { createExportService, registerExportHandlers } from './export/export-ipc'
 import { hasOpenH264, downloadOpenH264 } from './codecs'
-import { loadCacheDoc, resolveCacheFile, saveCacheDoc } from './cache-io'
+import { loadCacheWithEdits, saveCacheEdits } from './reanalysis'
 import { SettingsStore } from './settings'
 import { registerSettingsHandlers } from './settings-ipc'
 import { WatchManager } from './watch'
@@ -23,6 +23,7 @@ import { computeHlCount, createHlGuard, createSerialQueue, hlForSavedDoc } from 
 import { createThrottle } from '../shared/throttle'
 import type { CacheDoc, Clip } from '../shared/types'
 import { handleProxyGenerate, handleProxyUsage } from './proxy-ipc'
+import { mediaCacheIsCurrent } from './media-cache'
 import { ProjectItem } from '../renderer/editor/project'
 import { catalogFor } from '../renderer/i18n'
 import { getActiveLocale, tr } from '../shared/locale'
@@ -190,7 +191,7 @@ export function registerIpcHandlers(
       if (entry.hl !== undefined) return entry.hl
       if (hlGuard.isNegative(key)) return null
       const startedRev = hlGuard.rev(key)
-      const doc = loadCacheDoc(resolveCacheFile(videoPath, cacheDir(), cacheBeside())) as CacheDoc | null
+      const doc = loadCacheWithEdits(videoPath, cacheDir(), cacheBeside()) as CacheDoc | null
       const params = settings?.get().autoclip ?? DEFAULT_SETTINGS.autoclip
       const count = await computeHlCount((cmd, args) => engine.request<unknown>(cmd, args).promise, doc, params)
       if (count === null) {
@@ -259,7 +260,7 @@ export function registerIpcHandlers(
   })
 
   // Derive the cache file from the video path (no side effects and no analysis); used when Studio loads.
-  ipcMain.handle('cache:loadByVideo', async (_, videoPath: string) => loadCacheDoc(resolveCacheFile(videoPath, cacheDir(), cacheBeside())))
+  ipcMain.handle('cache:loadByVideo', async (_, videoPath: string) => loadCacheWithEdits(videoPath, cacheDir(), cacheBeside()))
 
   // When Studio saves, sync library "N highlights" with the current pending-suggestion count (clear it when post-reanalysis suggestions have not been recomputed, so lazy computation can handle it).
   // Bump the revision so an older computeHl cannot overwrite this newer value.
@@ -268,7 +269,7 @@ export function registerIpcHandlers(
   const saveCacheFromRenderer = (doc: SavedDoc): boolean => {
     const plan = planCacheSave(doc, library, cacheDir(), cacheBeside())
     if (!plan) return false
-    const ok = saveCacheDoc(plan.doc)
+    const ok = saveCacheEdits(plan.doc as CacheDoc, cacheDir(), cacheBeside(), queue.activeCachePath?.(doc.video!.path!))
     const videoPath = doc.video?.path
     if (ok && videoPath) {
       hlGuard.bump(normalizePath(videoPath))
@@ -292,7 +293,7 @@ export function registerIpcHandlers(
     if (!isSafeLocalVideoPath(videoPath)) return null
     const { proxyPath } = await import('./proxy')
     const p = proxyPath(videoPath)
-    return fs.existsSync(p) ? p : null
+    return mediaCacheIsCurrent(videoPath, p) ? p : null
   })
 
   ipcMain.handle('proxy:generate', async (event, videoPath: unknown, durationSec?: unknown) => {
@@ -321,6 +322,7 @@ export function registerIpcHandlers(
     const p = proxyPath(videoPath)
     if (fs.existsSync(p)) {
       fs.unlinkSync(p)
+      fs.rmSync(p + '.source', { force: true })
       return true
     }
     return false

@@ -44,6 +44,7 @@ const messages: MessageTable = {
   '專案檔損毀（{name}）：{message}': 'Project file is corrupted ({name}): {message}',
   '找不到可用的 H.264 編碼器（未偵測到 NVENC／QSV／AMF，也尚未安裝 OpenH264）': 'No usable H.264 encoder found (NVENC, QSV, and AMF were not detected, and OpenH264 is not installed).',
   '代理檔產生已取消': 'Proxy file generation was canceled.',
+  '來源影片已變更，請重新產生代理檔': 'The source video has changed. Generate the proxy again.',
   '無法完成代理檔：{message}': 'Could not finish the proxy file: {message}',
   '代理檔產生失敗，已嘗試的編碼器皆無法使用（{failures}）': 'Proxy file generation failed. None of the attempted encoders are available ({failures}).',
   'OBS 連線測試無法使用': 'The OBS connection test is unavailable.',
