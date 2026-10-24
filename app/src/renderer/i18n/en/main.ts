@@ -315,6 +315,7 @@ export const i18n: Messages['i18n'] = {
     transport: {
       fullscreen: 'Fullscreen',
       exitFullscreen: 'Exit fullscreen',
+      seek: 'Seek',
       volume: 'Preview volume',
       mute: 'Mute',
       unmute: 'Unmute',

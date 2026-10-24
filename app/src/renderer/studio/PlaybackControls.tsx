@@ -17,6 +17,9 @@ interface PlaybackControlsProps {
   onCycleSpeed: () => void
   onPrevEvent: () => void
   onNextEvent: () => void
+  onSeek: (t: number) => void
+  onScrubStart: () => void
+  onScrubEnd: (cancelled: boolean) => void
 }
 
 export function PlaybackControls({
@@ -32,11 +35,36 @@ export function PlaybackControls({
   onTogglePlay,
   onCycleSpeed,
   onPrevEvent,
-  onNextEvent
+  onNextEvent,
+  onSeek,
+  onScrubStart,
+  onScrubEnd
 }: PlaybackControlsProps): JSX.Element {
   const t = i18n.studio.transport
+  const scrubbing = React.useRef(false)
+  const beginScrub = (): void => {
+    if (scrubbing.current) return
+    scrubbing.current = true
+    onScrubStart()
+  }
+  const finishScrub = (): void => {
+    if (!scrubbing.current) return
+    scrubbing.current = false
+    onScrubEnd(false)
+  }
+  const handleSeek = (e: React.ChangeEvent<HTMLInputElement>): void => {
+    // Keyboard steps arrive without a pointerdown, so wrap them in a scrub session too.
+    const keyboard = !scrubbing.current
+    beginScrub()
+    onSeek(Number(e.currentTarget.value))
+    if (keyboard) finishScrub()
+  }
   return (
     <>
+      <input type="range" className="stage-seek" min={0} max={Math.max(duration, 0.01)} step="any"
+        value={Math.min(currentTime, duration)} aria-label={t.seek} aria-valuetext={formatTime(currentTime)}
+        onPointerDown={beginScrub} onPointerUp={finishScrub} onPointerCancel={finishScrub}
+        onBlur={finishScrub} onChange={handleSeek} />
       <button type="button" className="play-btn" aria-label={playing ? t.pause : t.play} onClick={onTogglePlay}>
         {playing ? <Pause className="ic" /> : <Play className="ic" />}
       </button>

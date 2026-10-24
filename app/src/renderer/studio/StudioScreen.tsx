@@ -1656,6 +1656,9 @@ export function StudioScreen({ videoPath, onBack, onRegisterLeaveGuard, onVideoR
               onCycleSpeed={cycleSpeed}
               onPrevEvent={() => seekEvent(-1)}
               onNextEvent={() => seekEvent(1)}
+              onSeek={seekTo}
+              onScrubStart={startScrub}
+              onScrubEnd={endScrub}
             />
           </PlayerStage>
 

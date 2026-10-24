@@ -199,6 +199,9 @@
 @media (hover: none) {
   .stage-controls { opacity: 1; pointer-events: auto; }
 }
+/* The editor timeline already scrubs in windowed mode; the seek bar is only needed in fullscreen. */
+.stage-seek { display: none; order: -1; flex: 1 0 100%; margin: 0; accent-color: var(--accent); }
+.stage:fullscreen .stage-seek { display: block; }
 .stage-video { width: 100%; height: 100%; object-fit: contain; }
 .stage-overlay-top {
   position: absolute;
