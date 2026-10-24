@@ -38,7 +38,8 @@ export async function loadStudioDoc(path: string, deps: LoaderDeps, allowUnanaly
       if (cached) return { kind: 'ready', doc: cached, from: 'cache' }
       const video = await deps.probe?.(path)
       if (!video || !Number.isFinite(video.duration) || video.duration <= 0) {
-        return { kind: 'error', message: 'video duration unavailable' }
+        const reason = !video ? 'the video file could not be probed (missing, unreadable, or unsupported)' : `probe returned duration ${video.duration}`
+        return { kind: 'error', message: `Cannot open without analysis: ${reason}` }
       }
       return {
         kind: 'ready', from: 'metadata',
@@ -52,8 +53,8 @@ export async function loadStudioDoc(path: string, deps: LoaderDeps, allowUnanaly
     if (cached) return isDone(cached) ? { kind: 'ready', doc: cached, from: 'cache' } : { kind: 'blocked' }
     const res = await deps.analyze({ path })
     if (isDone(res)) return { kind: 'ready', doc: res, from: 'analyze' }
-    return { kind: 'error', message: 'analysis returned no usable result' }
+    return { kind: 'error', message: `Analysis finished but its result is not usable (status: ${(res as CacheDoc | null)?.analysis?.status ?? 'none'})` }
   } catch (err) {
-    return toError(err, 'load failed')
+    return toError(err, `Loading failed: ${String(err)}`)
   }
 }

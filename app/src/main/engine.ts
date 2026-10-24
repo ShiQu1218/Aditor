@@ -4,6 +4,8 @@ import { EventEmitter } from 'events'
 import { StringDecoder } from 'string_decoder'
 import { emitChildDiagnostic, type ChildDiagnosticHandler } from '../shared/child-diagnostics'
 
+const STDERR_TAIL_CHARS = 1000
+
 export class EngineError extends Error {
   code: string
   constructor(code: string, message: string) {
@@ -35,6 +37,7 @@ export class EngineClient extends EventEmitter {
   private proc: ChildProcess | null = null
   private stdoutBuf = ''
   private stdoutDecoder = new StringDecoder('utf8')
+  private stderrTail = ''
   private pending = new Map<string, PendingRequest>()
   private reqSeq = 0
   private engineVersion = ''
@@ -73,6 +76,7 @@ export class EngineClient extends EventEmitter {
         this.proc = p
         this.stdoutBuf = ''
         this.stdoutDecoder = new StringDecoder('utf8')
+        this.stderrTail = ''
 
         // Analysis can start while a game is running (per-match analysis, watched folders). Below-normal lets the game
         // keep its CPU time; FFmpeg processes spawned by the engine inherit this priority class on Windows.
@@ -91,8 +95,9 @@ export class EngineClient extends EventEmitter {
         })
 
         p.stderr?.on('data', (chunk: Buffer) => {
-          // Keep for debugging/logging
           const msg = chunk.toString('utf-8')
+          // Keep the tail so a crash can report why the engine died (usually a Python traceback).
+          this.stderrTail = (this.stderrTail + msg).slice(-STDERR_TAIL_CHARS)
           if (process.env.DEBUG_ENGINE) {
             console.error('[Engine stderr]', msg)
           }
@@ -169,14 +174,20 @@ export class EngineClient extends EventEmitter {
     }
   }
 
+  private _crashReason(exitCode: number | null): string {
+    const tail = this.stderrTail.trim()
+    return `exit code ${exitCode ?? 'signal'}${tail ? `: ${tail}` : ''}`
+  }
+
   private _onClose(_code: number | null): void {
+    const reason = this._crashReason(_code)
     this.proc = null
     this.stdoutBuf = ''
     this.stdoutDecoder = new StringDecoder('utf8')
     this.readyPromise = null
 
     if (this.readyReject) {
-      this.readyReject(new EngineError('engine_crashed', 'Engine closed before ready'))
+      this.readyReject(new EngineError('engine_crashed', `Engine exited before it was ready (${reason})`))
       this.readyResolve = null
       this.readyReject = null
     }
@@ -185,13 +196,13 @@ export class EngineClient extends EventEmitter {
     const pendingList = Array.from(this.pending.values())
     this.pending.clear()
     for (const req of pendingList) {
-      req.reject(new EngineError('engine_crashed', 'Engine process crashed unexpectedly'))
+      req.reject(new EngineError('engine_crashed', `Engine process crashed during the request (${reason})`))
     }
 
     if (this.isStopping) {
       return
     }
-    emitChildDiagnostic(this.opts.onDiagnostic, { component: 'python-engine', code: 'engine_crashed', message: `Python engine exited unexpectedly (${_code ?? 'signal'})` })
+    emitChildDiagnostic(this.opts.onDiagnostic, { component: 'python-engine', code: 'engine_crashed', message: `Python engine exited unexpectedly (${reason})` })
 
     // Record crash
     const now = Date.now()
@@ -219,7 +230,7 @@ export class EngineClient extends EventEmitter {
       this.crashTimes = this.crashTimes.filter((t) => now - t <= this.crashWindowMs)
       if (this.crashTimes.length >= this.maxCrashesInWindow && !this.proc) {
         return reject(
-          new EngineError('engine_crashed', 'Engine has crashed 3 times in 60s and will not restart')
+          new EngineError('engine_crashed', `Engine crashed ${this.maxCrashesInWindow} times in ${this.crashWindowMs / 1000}s and will not restart ${this.stderrTail.trim() ? `(last stderr: ${this.stderrTail.trim()})` : ''}`)
         )
       }
 
@@ -232,7 +243,7 @@ export class EngineClient extends EventEmitter {
         const request = this.pending.get(id)
         if (!request) return
         if (!this.proc || !this.proc.stdin || this.proc.stdin.destroyed) {
-          return fail(new EngineError('engine_crashed', 'Engine process not available'))
+          return fail(new EngineError('engine_crashed', 'Engine process is not running or its stdin is closed'))
         }
         request.sent = true
         const line = JSON.stringify({ id, cmd, args }) + '\n'

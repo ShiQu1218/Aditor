@@ -548,6 +548,8 @@
 }
 /* margin-left:auto on notices pushes buttons offscreen in a centered grid. */
 .studio-blocked .notice-actions { margin-left: 0; flex-wrap: wrap; justify-content: center; }
+.studio-blocked .studio-error-detail { max-width: min(640px, 90%); max-height: 8em; overflow: auto; margin: 0; text-align: left; }
+.studio-blocked .studio-error-detail code { white-space: pre-wrap; word-break: break-word; user-select: text; }
 .sr-only {
   position: absolute;
   width: 1px;
