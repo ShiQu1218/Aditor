@@ -41,6 +41,24 @@ export function useLivePlayer({ sessionId, mime, segments, bounds }: PlayerInput
   const [playing, setPlaying] = useState(false)
   const [error, setError] = useState<PlayerError>(null)
 
+  const seekTarget = useCallback((t: number): number => {
+    const { start, end } = boundsRef.current()
+    const target = Math.min(Math.max(t, start), Math.max(start, end - 0.1))
+    let nearest = target
+    let distance = Infinity
+    for (const segment of segmentsRef.current) {
+      const from = Math.max(start, segment.pts)
+      const to = Math.min(end, segment.pts + segment.dur)
+      if (to <= from) continue
+      if (from <= target && target < to) return target
+      // Segment ends are exclusive; land just inside the preceding segment when it is closer.
+      const candidate = target < from ? from : Math.max(from, to - 0.1)
+      const delta = Math.abs(candidate - target)
+      if (delta < distance) { nearest = candidate; distance = delta }
+    }
+    return nearest
+  }, [])
+
   useEffect(() => {
     const video = videoRef.current
     const api = window.api?.recording
@@ -52,7 +70,7 @@ export function useLivePlayer({ sessionId, mime, segments, bounds }: PlayerInput
     const readInit = api.readInit
     const readSegment = api.readSegment
     setError(null)
-    startRef.current = Math.max(0, boundsRef.current().end - LIVE_EDGE_OFFSET)
+    startRef.current = seekTarget(boundsRef.current().end - LIVE_EDGE_OFFSET)
     const ms = new MediaSource()
     const url = URL.createObjectURL(ms)
     let buffer: LiveBuffer | null = null
@@ -130,18 +148,17 @@ export function useLivePlayer({ sessionId, mime, segments, bounds }: PlayerInput
       video.removeAttribute('src')
       video.load()
     }
-  }, [sessionId, mime])
+  }, [sessionId, mime, seekTarget])
 
   const seek = useCallback((t: number): void => {
-    const { start, end } = boundsRef.current()
-    const target = Math.min(Math.max(t, start), Math.max(start, end - 0.1))
+    const target = seekTarget(t)
     const video = videoRef.current
     setCurrent(target)
     if (!video) return
     startRef.current = target
     applySeekRef.current?.()
     bufferRef.current?.revalidate()
-  }, [])
+  }, [seekTarget])
 
   const togglePlay = useCallback((): void => {
     const video = videoRef.current
@@ -163,8 +180,16 @@ export function useLivePlayer({ sessionId, mime, segments, bounds }: PlayerInput
       setError(error => error?.kind === 'load' ? null : error)
     }
     previousSegments.current = segments
+    if (startRef.current !== null) {
+      const target = seekTarget(startRef.current)
+      if (target !== startRef.current) {
+        startRef.current = target
+        setCurrent(target)
+        applySeekRef.current?.()
+      }
+    }
     bufferRef.current?.setSegments(segments)
-  }, [segments])
+  }, [segments, seekTarget])
 
   const addSegment = useCallback((segment: LiveSegment): void => { bufferRef.current?.addSegment(segment) }, [])
 

@@ -3,6 +3,7 @@ import React, { act } from 'react'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { IDLE_RECORDING_STATUS, type LiveState, type LiveUpdate, type RecordingStatus } from '../../shared/recording'
 import type { EngineEvent } from '../../shared/types'
+import { formatTime } from '../../shared/time'
 import type { RecordingApi } from '../global'
 import { liveI18n as t, recordingI18n as rt } from '../i18n'
 import { RecordingPanel } from '../shell/RecordingPanel'
@@ -136,6 +137,82 @@ describe('RecordingPanel live match view', () => {
 })
 
 describe('LiveScreen', () => {
+  test.each([[20, 9.9], [80, 90], [10, 9.9], [90, 90], [9.95, 9.95], [100, 99.9]])('dragging to %s resolves a pruned gap to %s and keeps buffering', async (target, expected) => {
+    const segments = [...segs(5), ...segs(5).map(s => ({ ...s, seq: s.seq + 45, pts: s.pts + 90 }))]
+    const r = rig(RECORDING, { ...LIVE, segments })
+    screen()
+    await settle()
+    const video = document.querySelector('video')!
+    Object.defineProperty(video, 'readyState', { configurable: true, value: 1 })
+    media.sb!.buffered = { length: 1, start: () => 90, end: () => 100 }
+    act(() => video.dispatchEvent(new Event('loadedmetadata')))
+    expect(video.currentTime).toBe(97)
+    vi.mocked(r.api.readSegment!).mockClear()
+    const slider = document.querySelector<HTMLElement>('[role="slider"]')!
+    vi.spyOn(slider, 'getBoundingClientRect').mockReturnValue({ left: 0, width: 100 } as DOMRect)
+    for (const type of ['pointerdown', 'pointerup']) {
+      const event = new MouseEvent(type, { bubbles: true, clientX: target, buttons: 1 })
+      Object.defineProperty(event, 'pointerId', { value: 1 })
+      act(() => slider.dispatchEvent(event))
+    }
+    expect(timeText()).toBe(fill(t.time, { cur: formatTime(expected), end: formatTime(100) }))
+    await settle()
+    if (expected < 10) {
+      expect(r.api.readSegment).toHaveBeenCalledWith(ID, 5)
+      act(() => video.dispatchEvent(new Event('timeupdate')))
+      expect(slider.getAttribute('aria-valuenow')).toBe('10')
+      media.sb!.buffered = { length: 1, start: () => 8, end: () => 10 }
+      act(() => media.sb!.dispatchEvent(new Event('updateend')))
+    }
+    expect(video.currentTime).toBe(expected)
+    r.push({ sessionId: ID, segment: { seq: 51, pts: 100, dur: 2 } })
+    act(() => { video.currentTime = 99; video.dispatchEvent(new Event('timeupdate')) })
+    await settle()
+    expect(r.api.readSegment).toHaveBeenCalledWith(ID, 51)
+  })
+
+  test('pruning the pending seek target moves it to a remaining segment before fetching', async () => {
+    const r = rig(RECORDING, LIVE)
+    screen()
+    await settle()
+    const video = document.querySelector('video')!
+    Object.defineProperty(video, 'readyState', { configurable: true, value: 1 })
+    media.sb!.buffered = { length: 1, start: () => 14, end: () => 20 }
+    act(() => video.dispatchEvent(new Event('loadedmetadata')))
+    click(byLabel(document.body, '已消滅 · 0:12')!)
+    expect(timeText()).toMatch(/^0:09/)
+    r.push({ sessionId: ID, segments: LIVE.segments.filter(s => s.pts < 8 || s.pts >= 12) })
+    expect(timeText()).toMatch(/^0:08/)
+    media.sb!.buffered = { length: 1, start: () => 6, end: () => 8 }
+    act(() => media.sb!.dispatchEvent(new Event('updateend')))
+    expect(video.currentTime).toBe(7.9)
+  })
+
+  test('opening near a short newest segment skips the preceding gap', async () => {
+    rig(RECORDING, { ...LIVE, segments: [{ seq: 1, pts: 0, dur: 10 }, { seq: 2, pts: 90, dur: 1 }] })
+    screen()
+    await settle()
+    const video = document.querySelector('video')!
+    Object.defineProperty(video, 'readyState', { configurable: true, value: 1 })
+    media.sb!.buffered = { length: 1, start: () => 90, end: () => 91 }
+    act(() => video.dispatchEvent(new Event('loadedmetadata')))
+    expect(video.currentTime).toBe(90)
+  })
+
+  test('an initially empty recording seeks into the first available segment', async () => {
+    const r = rig(RECORDING, { ...LIVE, segments: [] })
+    screen()
+    await settle()
+    const video = document.querySelector('video')!
+    Object.defineProperty(video, 'readyState', { configurable: true, value: 1 })
+    r.push({ sessionId: ID, segment: { seq: 46, pts: 90, dur: 2 } })
+    await settle()
+    expect(r.api.readSegment).toHaveBeenCalledWith(ID, 46)
+    media.sb!.buffered = { length: 1, start: () => 90, end: () => 92 }
+    act(() => media.sb!.dispatchEvent(new Event('updateend')))
+    expect(video.currentTime).toBe(90)
+  })
+
   test('an unbuffered seek keeps its target through stale media events and applies only the latest seek when buffered', async () => {
     rig(RECORDING, LIVE)
     screen()

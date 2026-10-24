@@ -27,7 +27,7 @@ export function LiveTimeline({ current, end, retainStart, events, matches, onSee
     if (rect.width <= 0) return null
     return Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width))
   }
-  /** Where a drag lands: the player clamps to the retained range, so the preview shows the same position. */
+  /** Clamp the drag preview to the retained range; the player resolves pruned gaps on release. */
   const seekTarget = (fraction: number): number => {
     const time = fraction * end
     return Math.min(Math.max(time, retainStart), Math.max(retainStart, end - 0.1))
