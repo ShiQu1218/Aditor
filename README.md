@@ -8,12 +8,7 @@
 >
 > Record your *Apex Legends* or *VALORANT* matches, or drag in videos you already have. Aditor marks every Apex knockdown and assist, or every VALORANT kill and death, automatically, then lets you pick highlights on a timeline and export them. Video processing runs locally on your PC from on-screen pixels only, without game injection. Filtered Sentry error and performance diagnostics are on by default and can be turned off in Settings; see [diagnostics details](docs/sentry.md).
 
-> [!IMPORTANT]
-> **Apex Legends:** Battle Royale (casual), Ranked and Wildcard; Traditional Chinese and English Team Deathmatch kill/assist banners are detected, and Control uses the top-right feed for local-player kills. English Control remains unsupported; other Mixtape modes, languages and Control assists remain unverified. See [validation scope](docs/accuracy-report-mixtape.md).
->
-> **VALORANT:** kills, deaths, rounds, multi-kills and aces. Deathmatch records kills and deaths but has no rounds. See [Known limitations](#known-limitations) for the recommended window mode and other caveats.
-
-**Download:** [Releases](https://github.com/ShiQu1218/Aditor/releases) (Windows 10 / 11, 64-bit)
+**Download:** [Releases](https://github.com/ShiQu1218/Aditor/releases) (Windows 10 / 11, 64-bit; installer or portable build)
 
 ---
 
@@ -41,57 +36,66 @@ Zoom in to see individual knockdown and assist markers, then add a suggested hig
 
 ---
 
-## Features
+## What you can do
 
 | Feature | Description |
 |---|---|
-| Multiple games | Apex Legends and VALORANT; the game is recognized automatically, or you can pick it, or re-analyze a video as another game, from the video card |
-| Offline analysis | Drop in a recording (MP4 / MKV / MOV / WebM); Apex knockdowns and assists, or VALORANT kills and deaths, are marked automatically |
-| VALORANT rounds | Round win/loss strip on the timeline, plus multi-kill and ace highlights |
+| Import and analyze | Drag in recordings (MP4 / MKV / MOV / WebM), or add a **watch folder** so new videos are imported and queued for analysis automatically, one at a time |
+| Automatic event marking | Apex knockdowns and assists, or VALORANT kills and deaths, are marked on the timeline. The game is recognized automatically; you can also pick it, or re-analyze a video as another game, from the video card |
+| Highlights | Suggested highlights, AI auto-compilation of dense kills into multi-kill fight clips, and VALORANT multi-kill and ace highlights |
+| VALORANT rounds | Round win/loss strip on the timeline |
 | Spectate filter | Apex: teammates' kills while you spectate after dying are not counted as yours |
-| Built-in recording | Starts when a supported game launches; "one file per match" or "start to finish" |
-| Recording GPU | On PCs with more than one GPU, choose which one captures and encodes (automatic by default) |
-| OBS mode | OBS records, Aditor only detects and splits files |
-| AI auto-compilation | Groups dense kills into multi-kill fight clips |
-| Editing & export | Split, trim, reorder, undo, autosave; fast lossless or precise hardware re-encode |
-| Multilingual UI | 繁體中文, 简体中文, English, 日本語, 한국어 |
+| Record gameplay | Built-in recorder starts when a supported game launches; choose "one file per match" or "start to finish" |
+| Watch live | While a match is being recorded, open it in the Live view to watch it with events marked as they happen |
+| Capture options | Window capture (WGC), screen capture (DDA) or an opt-in Hook capture (with a risk confirmation); automatic by default. Optional mouse cursor, system audio and microphone, and a choice of GPU on multi-GPU PCs |
+| OBS mode | OBS records, Aditor only detects and splits files (via OBS WebSocket, with optional fallback to the built-in recorder) |
+| Edit | Split, trim, reorder, undo, autosave; switch between same-day videos in the studio, and one project can draw clips from several source videos; proxy files for smoother preview of hard-to-decode videos |
+| Export | One file per clip or a single compilation; **fast lossless** (keyframe cuts) or **precise re-encode** with NVENC / QSV / AMF, or optional CPU OpenH264 downloaded on request |
+| Library | Filter by game and by recording or import source; remove videos directly from the studio |
+| Everything else | Guided first-run onboarding, searchable settings, auto-update for the installer build, UI in 繁體中文, 简体中文, English, 日本語 and 한국어 |
 
 ---
 
-## How it works
+## Quick start
 
-<p align="center"><img src="docs/diagrams/architecture.en.png" alt="Architecture" width="720"></p>
+1. Download `Aditor-Setup-<version>.exe` (installer, supports auto-update) or `Aditor-<version>-Portable.exe` from [Releases](https://github.com/ShiQu1218/Aditor/releases). The executables are not code signed, so Windows SmartScreen may warn you.
+2. Follow the first-run onboarding. Then either drag existing recordings into the library, or set a watch folder in Settings.
+3. To record, leave Aditor running and launch Apex Legends or VALORANT. Recording starts automatically and each match is analyzed afterwards. Choose the recording mode, capture method and OBS options in Settings.
+4. Open a video in the Studio, review the marked events and suggested highlights, trim or reorder clips, and export.
 
-Three separate programs: the **Electron app** (UI), the **recorder `aditorrec`** (Rust, GPU capture and encoding) and the **analysis engine** (Python). A crash on one side never takes down the others.
+---
 
-### Kill detection
+## Supported games and modes
 
-<p align="center"><img src="docs/diagrams/pipeline.en.png" alt="Detection pipeline" width="720"></p>
+| Game | Detected | Notes |
+|---|---|---|
+| Apex Legends: Battle Royale (casual), Ranked, Wildcard | Knockdowns and assists | Solo eliminations and squad wipes add no extra kills; any game language (icon matching) |
+| Apex Legends: Mixtape, Team Deathmatch | Kills and assists | Traditional Chinese and English text banners |
+| Apex Legends: Mixtape, Control | Local-player kills from the top-right feed | Traditional Chinese only, verified on one recording; English Control and Control assists are unsupported |
+| Other Apex Mixtape modes | Unverified | See the [validation scope](docs/accuracy-report-mixtape.md) |
+| VALORANT | Kills, deaths, rounds, multi-kills, aces | Deathmatch records kills and deaths but has no rounds. 16:9, 16:10, 4:3 and 5:4 layouts |
 
-No machine learning — just template matching on the kill-banner icons, so it works in any game language. To reject lookalike banners, each video learns its own text templates from the first clear kills.
+## Requirements
 
-<p align="center"><img src="docs/diagrams/banner-decision.en.png" alt="Banner decision" width="720"></p>
+- Windows 10 or 11, 64-bit.
+- For recording: a GPU with a hardware encoder (NVENC / AMF / QSV). Analysis and export of existing videos do not need one (precise re-encode falls back to OpenH264 on request, and fast lossless needs no encoder).
+- No Python, Node.js or FFmpeg install is needed; everything is bundled.
 
-### Match segmentation
+---
 
-<p align="center"><img src="docs/diagrams/match-state.en.png" alt="Match state machine" width="720"></p>
+## Known limitations
 
-### VALORANT detection
-
-The pipeline above is Apex Legends. VALORANT is also detected from on-screen pixels with image processing, without machine learning:
-
-- **Kills and deaths:** the local player's yellow marker in the top-right kill feed, together with the victim's team color. Deaths are never counted as kills.
-- **Rounds, multi-kills and aces:** rounds come from changes in the scoreboard digits at the top; two to four kills in a round form a multi-kill and five an ace. Deathmatch has no rounds.
-- **Match boundaries while recording:** read from the Riot Client's local API (read-only; Aditor never touches game memory). If it is unreachable, Aditor tells you and records the whole session as one file.
-- **Screen layouts:** 16:9, 16:10, 4:3 and 5:4, stretched or letterboxed.
-
-### Recording
-
-<p align="center"><img src="docs/diagrams/recording.en.png" alt="Recording pipeline" width="720"></p>
-
-Video stays on the GPU and only hardware encoders are used, so the impact on the game is small. Recording is written in 2-second segments: a crash loses at most 2 seconds, and in "one file per match" mode the lobby is not kept.
-
-<sub>Diagram sources: [`docs/diagrams/src/`](docs/diagrams/src)</sub>
+- **Apex Legends:** Team Deathmatch text banners support Traditional Chinese and English. Control local-player kills use the top-right feed, verified on one Traditional Chinese recording; English Control remains unsupported. Other languages, HUD configurations, Control assists and other Mixtape modes remain unverified.
+- **Apex Legends:** Battle Royale and Wildcard detect **knockdowns** and **assists**; Mixtape also detects direct kills. BR solo eliminations and squad wipes do not produce additional kills.
+- **Apex Legends:** the spectate filter recognizes the hint bar in Traditional/Simplified Chinese, English, Japanese and Korean only.
+- **VALORANT:** detection assumes the default HUD position; overlays that cover the top-right kill feed can cause missed kills.
+- **VALORANT:** playing in **borderless window** (windowed fullscreen) is recommended; in exclusive fullscreen the game window can pop up or minimize and disturb recording. Non-16:9 layouts such as 4:3 normally require exclusive fullscreen.
+- **VALORANT:** per-match splitting relies on the Riot Client's unofficial local API, which a Riot update may break; when that happens the session is recorded as one file. An imported video that is not 16:9 and carries no Aditor aspect tag is analyzed as 16:9.
+- Some interface text still says "Apex" even when the video is another game.
+- Recording needs a hardware encoder (NVENC / AMF / QSV); without one nothing is recorded.
+- Hook capture loads OBS's game-capture component into the game process; the game publisher has not stated whether this is permitted, so it is opt-in only. Read the in-app warning first.
+- Detection relies on the game's UI; a game update may require updated templates.
+- Accuracy reports (Traditional Chinese): [`docs/accuracy-report-icon.md`](docs/accuracy-report-icon.md), [`docs/accuracy-report-matches.md`](docs/accuracy-report-matches.md).
 
 ---
 
@@ -115,18 +119,13 @@ Working-set sums can double-count shared pages. Private committed memory include
 
 ---
 
-## Known limitations
+## How it works (short version)
 
-- **Apex Legends:** Team Deathmatch text banners support Traditional Chinese and English. Control local-player kills use the top-right feed, verified on one Traditional Chinese recording; English Control remains unsupported. Other languages, HUD configurations, Control assists and other Mixtape modes remain unverified.
-- **Apex Legends:** Battle Royale and Wildcard detect **knockdowns** and **assists**; Mixtape also detects direct kills. BR solo eliminations and squad wipes do not produce additional kills.
-- **Apex Legends:** the spectate filter recognizes the hint bar in Traditional/Simplified Chinese, English, Japanese and Korean only.
-- **VALORANT:** detection assumes the default HUD position; overlays that cover the top-right kill feed can cause missed kills.
-- **VALORANT:** playing in **borderless window** (windowed fullscreen) is recommended; in exclusive fullscreen the game window can pop up or minimize and disturb recording. Non-16:9 layouts such as 4:3 normally require exclusive fullscreen.
-- **VALORANT:** per-match splitting relies on the Riot Client's unofficial local API, which a Riot update may break; when that happens the session is recorded as one file. An imported video that is not 16:9 and carries no Aditor aspect tag is analyzed as 16:9.
-- Some interface text still says "Apex" even when the video is another game.
-- Recording needs a hardware encoder (NVENC / AMF / QSV); without one nothing is recorded.
-- Detection relies on the game's UI; a game update may require updated templates.
-- Accuracy reports (Traditional Chinese): [`docs/accuracy-report-icon.md`](docs/accuracy-report-icon.md), [`docs/accuracy-report-matches.md`](docs/accuracy-report-matches.md).
+Aditor is three separate programs, so a crash in one never takes down the others: the **Electron app** (UI), the **recorder `aditorrec`** (Rust, GPU capture and hardware encoding, written in 2-second segments so a crash loses at most 2 seconds) and the **analysis engine** (Python). Detection uses image processing only, with no machine learning: template matching on kill-banner icons for Apex (each video also learns its own text templates), and kill-feed markers plus scoreboard digits for VALORANT. VALORANT match boundaries while recording come from the Riot Client's read-only local API; Aditor never touches game memory.
+
+<p align="center"><img src="docs/diagrams/architecture.en.png" alt="Architecture" width="720"></p>
+
+More diagrams: [detection pipeline](docs/diagrams/pipeline.en.png), [banner decision](docs/diagrams/banner-decision.en.png), [match state machine](docs/diagrams/match-state.en.png), [recording pipeline](docs/diagrams/recording.en.png). Sources: [`docs/diagrams/src/`](docs/diagrams/src). Accuracy and design notes live in [`docs/`](docs).
 
 ---
 
