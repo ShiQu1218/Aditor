@@ -1592,6 +1592,7 @@ export function StudioScreen({ videoPath, onBack, onRegisterLeaveGuard, onVideoR
         {removeDialog}
         {loadError ? <StudioLoadErrorView
           code={loadError.code}
+          message={loadError.message}
           onRetry={() => handleNoticeAction('resume')}
           onCopy={() => handleNoticeAction('copyError')}
           onBack={onBack}
