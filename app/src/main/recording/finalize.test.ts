@@ -244,6 +244,11 @@ describe.skipIf(!ffmpeg)('finalization with real ffmpeg streams', () => {
       expect(fs.existsSync(path.join(dir, 'finalized.json'))).toBe(true)
       const pending = JSON.parse(fs.readFileSync(path.join(dir, 'match-part.json'), 'utf8')) as { output: string; part: string }
       fs.unlinkSync(pending.part)
+      const unlink = fs.promises.unlink.bind(fs.promises)
+      vi.spyOn(fs.promises, 'unlink').mockImplementationOnce(async () => { throw new Error('marker busy') })
+      await expect(finalizeSession(dir, deps)).rejects.toThrow('marker busy')
+      expect(fs.existsSync(path.join(dir, 'match-part.json'))).toBe(true)
+      vi.spyOn(fs.promises, 'unlink').mockImplementation(unlink)
       const [output] = await finalizeSession(dir, deps)
       expect(output).toBe(pending.output)
       expect(fs.readdirSync(path.dirname(output)).filter((entry) => entry.endsWith('.mp4'))).toEqual([path.basename(output)])

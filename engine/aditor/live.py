@@ -533,6 +533,7 @@ class LiveEngine:
         self.last_t: float | None = None
         self.last_pts: int | None = None
         self.frames = self.skipped = self.torn = 0
+        self._initial_skipped = 0
         self.cpu_total = 0.0
         self._win_frames, self._win_cpu = 0, 0.0
         now = clock()
@@ -552,6 +553,8 @@ class LiveEngine:
                 break
             if self.next_seq is None:
                 self.next_seq = max(1, latest - START_BACKLOG_SLOTS + 1)
+                self._initial_skipped = self.next_seq - 1
+                self.skipped += self._initial_skipped
             if latest < self.next_seq:
                 break
             if latest - self.next_seq + 1 > MAX_LAG_SLOTS:
@@ -655,6 +658,8 @@ class LiveEngine:
     def quality(self) -> dict:
         """Whether the final result can be used directly as an analysis result (equivalent to offline): no buffer limit was hit and few slots were skipped or torn."""
         reasons = list(self.kills.degraded)
+        if self._initial_skipped:
+            reasons.append("startup_frames_lost")
         lost = self.skipped + self.torn
         if self.frames and lost / (self.frames + lost) > MAX_LOSS_RATIO:
             reasons.append("frames_lost")

@@ -8,6 +8,35 @@ import type { LiveEvent, LiveUpdate, RecordingService } from '../../shared/recor
 import * as disk from './disk'
 import { fakeCommand, fakeLiveCommand, makeDeps, sessionDir, tempRoot, waitFor } from './test-support'
 
+it('rejects failed live writes without marking detection complete, then permits a persisted retry', async () => {
+  const dir = sessionDir(root())
+  const live = new LiveSession({ sessionId: 'write-error', dir, profileDir: dir, recordEvent: vi.fn(), notice: vi.fn() })
+  const engine = Object.assign(new EventEmitter(), {
+    stop: vi.fn(async () => {}), engineVersion: () => '0.3.0', quality: () => ({ complete: true })
+  })
+  const internal = live as any
+  internal.engine = engine
+  internal.listen(engine)
+  engine.emit('progress', 10)
+  fs.writeFileSync(path.join(dir, 'live.json'), JSON.stringify({ matches: [] }))
+  fs.writeFileSync(path.join(dir, 'seg_000001.m4s'), 'keep')
+  const rename = fs.promises.rename.bind(fs.promises)
+  const spy = vi.spyOn(fs.promises, 'rename').mockImplementation(async (from, to) => {
+    if (String(to).endsWith('live.json')) throw new Error('file busy')
+    return rename(from, to)
+  })
+  internal.onMatch({ ev: 'match_start', t: 0, reason: 'initial_match' })
+  await expect(live.flush()).rejects.toThrow('file busy')
+  await expect(live.stop()).rejects.toThrow('file busy')
+  expect(fs.existsSync(path.join(dir, 'live-complete.json'))).toBe(false)
+  expect(fs.existsSync(path.join(dir, 'seg_000001.m4s'))).toBe(true)
+  spy.mockRestore()
+  engine.emit('snapshot', { t: 10, events: [], spectating: [] })
+  await live.stop()
+  expect(JSON.parse(fs.readFileSync(path.join(dir, 'live.json'), 'utf8')).matches).toEqual([{ start: 0, end: null }])
+  expect(fs.existsSync(path.join(dir, 'live-complete.json'))).toBe(true)
+})
+
 const roots: string[] = []
 const services: RecordingService[] = []
 afterEach(async () => {

@@ -1,3 +1,4 @@
+import { mergeSavedEvents } from '../../shared/events'
 import { CacheDoc, Clip, ClipStatus, EngineEvent, EventType } from '../../shared/types'
 import { mergeOnReanalyze, normalizeClips } from '../../shared/clips'
 
@@ -131,42 +132,7 @@ export function viewerReducer(state: ViewerState, action: ViewerAction): ViewerS
       const oldDoc = state.doc
       const freshDoc = action.doc
 
-      // Older saves can already contain the same manual event more than once; keep the last copy of each id.
-      const manualEvents = [...new Map(
-        oldDoc.events.filter((e) => e.source === 'manual').map((e) => [e.id, e])
-      ).values()]
-      const oldUserAutoEvents = oldDoc.events.filter(
-        (e) => e.source === 'auto' && (e.deleted || e.counted_override !== null)
-      )
-
-      // The fresh doc may already carry local manual events; keep the local copy of each id only once.
-      const manualIds = new Set(manualEvents.map((e) => e.id))
-      const freshEvents = freshDoc.events.filter((fe) => !(fe.source === 'manual' && manualIds.has(fe.id)))
-      const updatedFreshEvents = freshEvents.map((fe) => {
-        // Find nearest old auto event with same type and |t - fe.t| <= 1.0
-        let nearest: EngineEvent | null = null
-        let minDist = Infinity
-        for (const oe of oldUserAutoEvents) {
-          if (oe.type === fe.type && Math.abs(oe.t - fe.t) <= 1.0) {
-            const dist = Math.abs(oe.t - fe.t)
-            if (dist < minDist) {
-              minDist = dist
-              nearest = oe
-            }
-          }
-        }
-
-        if (nearest) {
-          return {
-            ...fe,
-            deleted: nearest.deleted,
-            counted_override: nearest.counted_override
-          }
-        }
-        return fe
-      })
-
-      const mergedEvents = [...updatedFreshEvents, ...manualEvents].sort((a, b) => a.t - b.t)
+      const mergedEvents = mergeSavedEvents(oldDoc.events, freshDoc.events)
       // Load (state has no clips yet): use the document's clips directly, preserving saved status.
       // Reanalysis uses mergeOnReanalyze: keep accepted clips and mark stale; replace suggested/skipped with new results (spec §4.2).
       const freshAi = (freshDoc.clips || []).filter((c) => c.origin === 'ai')

@@ -23,6 +23,7 @@ import { ObsRecording } from './obs-session'
 import { resolveCaptureMethod } from './capture-method'
 import type { RecordingDeps, RecordingNoticeKind } from './index'
 import { tr } from '../../shared/locale'
+import { recordOutputRemoval } from './removed-output'
 
 /** Marker aditorrec puts in no_hw_encoder messages when the NVIDIA driver is too old (IPC contract with recorder/src/encode/mod.rs). */
 const NVIDIA_DRIVER_OUTDATED = 'nvidia_driver_outdated'
@@ -262,6 +263,12 @@ export class RecordingSessionService implements RecordingService {
     return Object.freeze({ ...this.state, error: this.state.error ? Object.freeze({ ...this.state.error }) : null })
   }
 
+  noteOutputRemoval(videoPath: string): void {
+    for (const session of [this.active, ...this.pendingObs.values()]) {
+      if (session) recordOutputRemoval(session.dir, videoPath)
+    }
+  }
+
   async capabilities(): Promise<RecorderCapabilities | null> {
     const client = new AditorrecClient(this.deps.recorderCommand, this.deps.onDiagnostic)
     this.capabilityRequests.add(client)
@@ -464,7 +471,8 @@ export class RecordingSessionService implements RecordingService {
       await validateSessionDir(dir)
       const startedAt = Date.now()
       const writeSnapshot = (): Promise<void> => writeJson(path.join(dir, 'recording.json'), {
-        startedAt, postAnalysis: settings.postAnalysis, mode: settings.mode, backend: session?.backend ?? settings.backend, gameAspect, game
+        startedAt, postAnalysis: settings.postAnalysis, mode: settings.mode, backend: session?.backend ?? settings.backend, gameAspect, game,
+        livePending: true
       })
       await writeSnapshot()
       const client = new AditorrecClient(this.deps.recorderCommand, this.deps.onDiagnostic)
@@ -535,7 +543,6 @@ export class RecordingSessionService implements RecordingService {
       if (session && this.active === session) {
         session.ending = true
         await session.client.close()
-        await session.live.stop()
         if (!await this.finish()) return false
       }
       const code = error instanceof RecorderError ? error.code : 'recording_start_failed'
@@ -738,8 +745,11 @@ export class RecordingSessionService implements RecordingService {
     catch (error) { this.notice('error', tr('錄影程序停止失敗，將收尾已完成段落：{error}', { error: String(error) })) }
     this.update({ phase: 'finalizing' })
     // Wait for the live engine's final snapshot to be written to live.json before converting it into an analysis cache.
-    await session.live.stop()
     try {
+      await session.live.stop()
+      const snapshotFile = path.join(session.dir, 'recording.json')
+      const snapshot = JSON.parse(await fs.promises.readFile(snapshotFile, 'utf8'))
+      await writeJson(snapshotFile, { ...snapshot, livePending: false })
       await session.writes
       await session.cuts
       if (session.obs && !session.captured) {

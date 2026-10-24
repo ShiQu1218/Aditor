@@ -72,6 +72,22 @@ it('starts at match start, stops after the post-match delay, adds the file direc
   expect(r.deps.enqueueAnalysis).toHaveBeenCalledWith(r.files[0])
   expect(r.service.status()).toMatchObject({ phase: 'recording', obsRecording: false, detectionOnly: false })
 })
+
+it('does not reimport a deleted published OBS match and still finalizes the session', async () => {
+  const r = await rig()
+  r.event('match_start')
+  await waitFor(() => r.service.status().obsRecording === true)
+  r.event('match_end', (Date.now() - r.active.obs.meta.captureStartedAt) / 1000)
+  await waitFor(() => (r.deps.addToLibrary as any).mock.calls.length === 1)
+  await r.active.cuts
+  r.service.noteOutputRemoval!(r.files[0])
+  fs.unlinkSync(r.files[0])
+  vi.mocked(r.deps.addToLibrary).mockClear()
+  await r.service.stopManual()
+  expect(r.service.status().phase).toBe('idle')
+  expect(r.deps.addToLibrary).not.toHaveBeenCalled()
+  expect(fs.existsSync(r.active.dir)).toBe(false)
+})
 it.each([false, true])('Stop and restart when directly queuing the next match or when one starts during post-session waiting: %s', async (ended) => {
   const r = await rig()
   r.event('match_start'); await waitFor(() => r.service.status().obsRecording === true)

@@ -17,6 +17,16 @@ afterEach(() => {
 })
 
 describe('Library durability (I3)', () => {
+  it('keeps sources when persisting removal intent fails, including ENOENT and bulk removal', () => {
+    const video = path.join(dir, 'recorded.mp4')
+    fs.writeFileSync(video, 'keep')
+    const lib = new Library(file, () => { throw Object.assign(new Error('cannot persist intent'), { code: 'ENOENT' }) })
+    lib.add([video], 'recording')
+    expect(() => lib.remove(video)).toThrow('cannot persist intent')
+    expect(lib.removeMany([video])).toEqual({ removed: [], failed: [video] })
+    expect(fs.existsSync(video)).toBe(true)
+    expect(lib.get(video)).toBeDefined()
+  })
   it('deletes recorded sources after reloading and persists removal', () => {
     const video = path.join(dir, 'recorded.mp4')
     fs.writeFileSync(video, 'recording')

@@ -215,6 +215,8 @@ export interface RecorderCapabilities {
 
 /** Public interface for the main-process recording service (implemented in `main/recording/`; only `recording-ipc.ts` and the system tray depend on it). */
 export interface RecordingService {
+  /** Main-process library deletion hook; persist intent before removing an output from an unfinished session. */
+  noteOutputRemoval?(videoPath: string): void
   testObs?(): Promise<ObsTestResult>
   start(): void
   stop(): Promise<void>

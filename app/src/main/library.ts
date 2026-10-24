@@ -48,7 +48,7 @@ export class Library {
   private file: string
   private entries: LibraryEntry[] = []
 
-  constructor(file: string) {
+  constructor(file: string, private beforeSourceRemoval?: (videoPath: string) => void) {
     this.file = file
     this.load()
   }
@@ -209,6 +209,7 @@ export class Library {
     const entry = this.get(videoPath)
     if (!entry) return false
     if (entry.source === 'recording' || opts.deleteSource === true) {
+      this.beforeSourceRemoval?.(entry.path)
       try {
         fs.unlinkSync(entry.path)
       } catch (err) {
@@ -241,6 +242,8 @@ export class Library {
       const norm = normalizePath(entry.path)
       if (removedNorms.has(norm)) continue // Duplicate path in the same request.
       if (entry.source === 'recording' || opts.deleteSource === true) {
+        try { this.beforeSourceRemoval?.(entry.path) }
+        catch { failed.push(entry.path); continue }
         try {
           fs.unlinkSync(entry.path)
         } catch (err) {

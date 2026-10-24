@@ -10,6 +10,7 @@ import { finalizeObsSession } from './obs-finalize'
 import { tr } from '../../shared/locale'
 import { DAY_FOLDER_PATTERN, dayFolderName } from '../../shared/storage'
 import { DEFAULT_GAME, GAMES, gameOf, type GameId } from '../../shared/games'
+import { outputWasRemoved } from './removed-output'
 
 export interface SessionSnapshot {
   startedAt: number
@@ -178,8 +179,7 @@ export async function resumeMatchPart(dir: string, marker: { cuts: { outputPath:
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
     }
     if (!stat) {
-      // The part was deleted after the process died: drop the reservation instead of retrying the same missing file forever.
-      await fs.promises.unlink(file)
+      // Keep the reservation until the caller has persisted removal of the stale marker.
       return pending.output
     }
     if (!stat.isFile() || stat.isSymbolicLink()) throw new Error(tr('逐局暫存影片不是一般檔案'))
@@ -197,6 +197,7 @@ async function dropStaleCut(dir: string, marker: MatchMarker, outputPath: string
   if (cuts.length === marker.cuts.length) return
   marker.cuts = cuts
   await writeJson(path.join(dir, 'matches.json'), marker)
+  await resumeMatchPart(dir, marker)
 }
 
 async function remuxMatch(dir: string, deps: RecordingDeps, config: SessionSnapshot, marker: MatchMarker,
@@ -268,20 +269,25 @@ function reportMissing(deps: RecordingDeps, missing: number, output: string): vo
 async function completeCut(dir: string, deps: RecordingDeps, config: SessionSnapshot, marker: MatchMarker,
   cut: MatchCut, entries: IndexEntry[], finishing: boolean, trusted: boolean
 ): Promise<void> {
-  await validateCut(cut, path.dirname(path.dirname(dir)))
+  if (outputWasRemoved(dir, cut.outputPath)) return
+  try { await validateCut(cut, path.dirname(path.dirname(dir))) }
+  catch (error) { if (outputWasRemoved(dir, cut.outputPath)) return; throw error }
+  if (outputWasRemoved(dir, cut.outputPath)) return
   addRecorded(deps, [cut.outputPath], config.game)
   if (!cut.liveCached || (finishing && trusted && !cut.liveTrusted)) {
     try {
       const summary = await writeLiveCache(dir, cut.outputPath, deps, entries, {
         forceUntrusted: !finishing, overwriteLive: finishing && trusted
       })
-      if (summary) deps.onLiveAnalysis?.(cut.outputPath, summary)
+      if (summary) {
+        deps.onLiveAnalysis?.(cut.outputPath, summary)
+        cut.liveCached = true
+        cut.liveTrusted = summary.trusted
+      }
     } catch (error) {
       console.error('[recording] Failed to convert per-match live events into an analysis cache:', error)
     }
-    cut.liveCached = true
   }
-  if (finishing && trusted) cut.liveTrusted = true
   await writeJson(path.join(dir, 'matches.json'), marker)
   if (!cut.analysisQueued && (config.postAnalysis === 'perMatch' ||
       (finishing && config.postAnalysis === 'afterExit' && !cut.liveTrusted))) {
@@ -435,7 +441,7 @@ export const LIVE_COMPLETE_FILE = 'live-complete.json'
 /** Persist finalized.json before library/analysis side effects so recovery does not generate the video twice. */
 export async function finalizeSession(dir: string, deps: RecordingDeps): Promise<string[]> {
   dir = await validateSessionDir(dir)
-  const recording = await readOptional<{ backend?: unknown }>(path.join(dir, 'recording.json'))
+  const recording = await readOptional<{ backend?: unknown; livePending?: unknown }>(path.join(dir, 'recording.json'))
   if (recording?.backend === 'obs') return finalizeObsSession(dir, deps, await snapshot(dir, deps.getSettings().postAnalysis))
   const outputDir = path.dirname(path.dirname(dir))
   const markerPath = path.join(dir, 'finalized.json')
@@ -457,7 +463,8 @@ export async function finalizeSession(dir: string, deps: RecordingDeps): Promise
       return []
     }
     const config = await snapshot(dir, deps.getSettings().postAnalysis)
-    if (config.mode === 'match') {
+    // An interrupted live write may leave an older, non-empty match list. Preserve all available footage instead.
+    if (config.mode === 'match' && recording?.livePending !== true && !fs.existsSync(path.join(dir, 'live.json.tmp'))) {
       const live = await readOptional<LiveFile>(path.join(dir, 'live.json'))
       const outputs = await cutMatches(dir, deps, { finishing: true })
       const matches = await readOptional<MatchMarker>(path.join(dir, 'matches.json'))
@@ -516,7 +523,9 @@ export async function finalizeSession(dir: string, deps: RecordingDeps): Promise
     try {
       // Align the cache with the first segment actually in the output when leading segments went missing; use the full index if no segment files remain.
       const { present } = await presentEntries(dir, await readIndex(dir))
-      const summary = await writeLiveCache(dir, marker.outputPath, deps, present.length ? present : undefined)
+      const summary = await writeLiveCache(dir, marker.outputPath, deps, present.length ? present : undefined, {
+        forceUntrusted: recording?.livePending === true || fs.existsSync(path.join(dir, 'live.json.tmp'))
+      })
       if (summary) deps.onLiveAnalysis?.(marker.outputPath, summary)
       // Live results are equivalent to offline analysis, so do not enqueue a full analysis (the user can still reanalyze manually).
       if (summary?.trusted) marker.liveTrusted = true

@@ -178,7 +178,6 @@ fn run_loop<S: TextureSource, W: WindowProbe>(
     let start_ticks = clock::now_ticks() - opts.origin_ticks;
     let mut scheduled = start;
     let mut next_window_check = scheduled + WINDOW_CHECK;
-    let mut window_alive = true;
 
     loop {
         let now = Instant::now();
@@ -196,24 +195,6 @@ fn run_loop<S: TextureSource, W: WindowProbe>(
             shared_texture = new_texture;
             if new_size != size {
                 size = new_size;
-                if window_alive {
-                    let _ = notices.send(CaptureNotice::WindowFound {
-                        width: size.0,
-                        height: size.1,
-                        monitor: false,
-                    });
-                }
-            }
-        }
-
-        if Instant::now() >= next_window_check {
-            next_window_check = Instant::now() + WINDOW_CHECK;
-            let alive = window.alive();
-            if window_alive && !alive {
-                window_alive = false;
-                let _ = notices.send(CaptureNotice::WindowLost);
-            } else if !window_alive && alive {
-                window_alive = true;
                 let _ = notices.send(CaptureNotice::WindowFound {
                     width: size.0,
                     height: size.1,
@@ -222,8 +203,12 @@ fn run_loop<S: TextureSource, W: WindowProbe>(
             }
         }
 
-        if !window_alive {
-            continue;
+        if Instant::now() >= next_window_check {
+            next_window_check = Instant::now() + WINDOW_CHECK;
+            if !window.alive() {
+                let _ = notices.send(CaptureNotice::WindowLost);
+                bail!("hook_unavailable: Game capture window disappeared; restart capture on the current game window");
+            }
         }
 
         let pts = grid_pts(start_ticks, start, scheduled);
@@ -437,6 +422,26 @@ mod tests {
             gpu.context.Unmap(&staging, 0);
             px
         }
+    }
+
+    #[test]
+    fn capture_loop_reports_window_loss_instead_of_freezing_forever() {
+        let gpu = Gpu::create().unwrap();
+        let (texture, info) = create_shared_rgba_texture(&gpu, 64, 32, [0, 0, 0, 255]);
+        let source = FakeTextureSource { queue: Arc::new(Mutex::new(VecDeque::new())) };
+        let window = FakeWindowProbe { alive: Arc::new(AtomicBool::new(false)) };
+        let consumer = Box::new(RecordingConsumer {
+            gpu: gpu.clone(), samples: Arc::new(Mutex::new(Vec::new())),
+        });
+        let (notices, events) = mpsc::channel();
+        let (_stop, stopped) = mpsc::channel();
+        let (ready, _initialized) = mpsc::sync_channel(1);
+        let error = run_loop(gpu, CaptureOptions {
+            pid: std::process::id(), max_fps: 30, capture_cursor: false,
+            origin_ticks: clock::now_ticks(),
+        }, texture, info.format, source, window, consumer, notices, stopped, &ready).unwrap_err();
+        assert!(error.to_string().contains("hook_unavailable:"));
+        assert!(events.try_iter().any(|e| e == CaptureNotice::WindowLost));
     }
 
     #[test]
