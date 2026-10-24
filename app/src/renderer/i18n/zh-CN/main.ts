@@ -317,6 +317,7 @@ export const i18n: Messages['i18n'] = {
     transport: {
       fullscreen: '全屏',
       exitFullscreen: '退出全屏',
+      seek: '播放进度',
       volume: '预览音量',
       mute: '静音',
       unmute: '取消静音',

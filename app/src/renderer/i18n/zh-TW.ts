@@ -316,6 +316,7 @@ const i18n = {
     transport: {
       fullscreen: '全螢幕',
       exitFullscreen: '離開全螢幕',
+      seek: '播放進度',
       volume: '預覽音量',
       mute: '靜音',
       unmute: '取消靜音',
