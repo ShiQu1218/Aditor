@@ -100,21 +100,18 @@ export function registerIpcHandlers(
     return added
   })
 
-  ipcMain.handle('library:remove', (_, videoPath: string, options?: unknown) => {
-    queue.cancel(videoPath)
-    const res = library.remove(videoPath, sanitizeRemoveOptions(options))
+  ipcMain.handle('library:remove', async (_, videoPath: string, options?: unknown) => {
+    const res = await queue.withStoppedAnalysis([videoPath], () => library.remove(videoPath, sanitizeRemoveOptions(options)))
     broadcastUpdated()
     return res
   })
 
   // Bulk removal for selection mode: one broadcast and one save; invalid arguments are a no-op.
-  ipcMain.handle('library:removeMany', (_, paths: unknown, options?: unknown) => {
+  ipcMain.handle('library:removeMany', async (_, paths: unknown, options?: unknown) => {
     if (!Array.isArray(paths) || !paths.every((p): p is string => typeof p === 'string')) {
       return { removed: [], failed: [] }
     }
-    const res = library.removeMany(paths, sanitizeRemoveOptions(options))
-    // Cancel analysis only for entries that are really gone; a failed removal keeps its entry and its queue slot.
-    for (const videoPath of res.removed) queue.cancel(videoPath)
+    const res = await queue.withStoppedAnalysis(paths, () => library.removeMany(paths, sanitizeRemoveOptions(options)))
     broadcastUpdated()
     return res
   })
