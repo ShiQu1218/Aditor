@@ -4,6 +4,7 @@ import path from 'path'
 import { spawnSync } from 'child_process'
 import { finalizeSession, writeJson } from './finalize'
 import { recoverSessions } from './recovery'
+import { recordOutputRemoval } from './removed-output'
 import { DAY_FOLDER_PATTERN } from '../../shared/storage'
 import { createSegments, ffmpeg, makeDeps, sessionDir, tempRoot } from './test-support'
 
@@ -32,6 +33,20 @@ async function rig(mode = 'session', trusted = false) {
   return { root, dir, deps, outputPath, original }
 }
 describe.skipIf(!ffmpeg)('OBS finalization and recovery (real ffmpeg)', () => {
+  it('omits a deliberately deleted legacy OBS cut from library insertion and finalized outputs', async () => {
+    const r = await rig('match')
+    r.deps.addToLibrary = vi.fn(() => { throw new Error('library busy') })
+    await expect(finalizeSession(r.dir, r.deps)).rejects.toThrow('library busy')
+    const marker = JSON.parse(fs.readFileSync(path.join(r.dir, 'matches.json'), 'utf8'))
+    const output = marker.cuts[0].outputPath
+    recordOutputRemoval(r.dir, output)
+    fs.unlinkSync(output)
+    r.deps.addToLibrary = vi.fn()
+    expect(await finalizeSession(r.dir, r.deps)).toEqual([])
+    expect(r.deps.addToLibrary).not.toHaveBeenCalled()
+    expect(fs.existsSync(r.dir)).toBe(false)
+    expect(fs.readFileSync(r.outputPath)).toEqual(r.original)
+  })
   it.each(['1920x1440', null, undefined])('persists recording-time game aspect on remuxed match output: %s', async (gameAspect) => {
     const r = await rig('match')
     const config = JSON.parse(fs.readFileSync(path.join(r.dir, 'recording.json'), 'utf8'))
@@ -171,6 +186,9 @@ describe.skipIf(!ffmpeg)('OBS finalization and recovery (real ffmpeg)', () => {
     if (missingPart) {
       const pending = JSON.parse(fs.readFileSync(path.join(r.dir, 'match-part.json'), 'utf8'))
       fs.unlinkSync(pending.part)
+      vi.spyOn(fs.promises, 'rename').mockImplementationOnce(async () => { throw new Error('marker busy') })
+      await expect(finalizeSession(r.dir, r.deps)).rejects.toThrow('marker busy')
+      expect(fs.existsSync(path.join(r.dir, 'match-part.json'))).toBe(true)
     }
     const outputs = await finalizeSession(r.dir, r.deps)
     expect(outputs).toEqual(marker.cuts.map((cut: any) => cut.outputPath))

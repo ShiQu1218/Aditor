@@ -176,7 +176,7 @@ async function initEngineAndServices(): Promise<void> {
 
   const templateProfileDir = profileDir(app.isPackaged)
 
-  library = new Library(join(appDataDir(), 'library.json'))
+  library = new Library(join(appDataDir(), 'library.json'), (file) => recordingService?.noteOutputRemoval?.(file))
   // Reset leftover "analyzing" entries from the previous interrupted run; no queue is processing them.
   library.resetStaleAnalyzing()
   settingsStore = new SettingsStore(join(appDataDir(), 'settings.json'))

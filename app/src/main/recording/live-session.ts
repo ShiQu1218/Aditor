@@ -83,6 +83,7 @@ export class LiveSession extends EventEmitter {
   private engine: LiveEngine | null = null
   private writing: Promise<void> = Promise.resolve()
   private dirty = false
+  private writeError: unknown = null
   private width: number | null = null
   private height: number | null = null
   private pending: number | null = null
@@ -186,7 +187,7 @@ export class LiveSession extends EventEmitter {
     return readConfined(this.options.dir, segmentFile(seq), MAX_SEGMENT_BYTES)
   }
 
-  /** Stop the live engine (wait for its final snapshot), then wait for live.json to finish writing. Never throw. */
+  /** Stop the live engine and persist its final snapshot; a failed write must preserve the recording for recovery. */
   async stop(): Promise<void> {
     try { await this.engine?.stop() } catch (error) { console.warn('[live] Stop failed:', error) }
     await this.flush()
@@ -204,6 +205,7 @@ export class LiveSession extends EventEmitter {
       pending = this.writing
       await pending
     }
+    if (this.writeError) throw this.writeError
   }
 
   private onProgress(t: number): void {
@@ -268,7 +270,11 @@ export class LiveSession extends EventEmitter {
         matches: this.matches, retained_from: this.retainedFrom(),
         width: this.width, height: this.height, quality: this.engine?.quality() ?? null
       })
-    }).catch((error) => { console.warn('[live] Failed to write live.json:', error) })
+      this.writeError = null
+    }).catch((error) => {
+      this.writeError = error
+      console.warn('[live] Failed to write live.json:', error)
+    })
   }
 
   private emitUpdate(patch: Omit<LiveUpdate, 'sessionId'>): void {

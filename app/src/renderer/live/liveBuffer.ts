@@ -86,8 +86,12 @@ export class LiveBuffer {
 /** Call after seeking/pausing: the browser may have evicted buffered data, so recheck which segments need fetching. */
   revalidate(): void {
     const ranges = this.options.sourceBuffer.buffered
+    const t = this.options.currentTime()
     for (const segment of this.segments) {
-      if (this.appended.has(segment.seq) && !covers(ranges, segment.pts + segment.dur / 2)) this.appended.delete(segment.seq)
+      const from = Math.max(segment.pts, this.retainStart(), t - BEHIND_SEC)
+      const to = Math.min(segment.pts + segment.dur, t + AHEAD_SEC)
+      if (this.appended.has(segment.seq) && to > from &&
+          (!covers(ranges, (from + to) / 2) || (t >= from && t < to && !covers(ranges, t)))) this.appended.delete(segment.seq)
     }
     this.pump()
   }
@@ -134,17 +138,22 @@ export class LiveBuffer {
       if (!this.segments.some(s => s.seq === segment.seq)) { this.busy = false; this.pump(); return }
       this.options.sourceBuffer.appendBuffer(bytes)
       this.appended.add(segment.seq)
+      this.failures.delete(segment.seq)
     }).catch((error) => {
       if (this.disposed) return
       this.busy = false
       if (!this.segments.some(s => s.seq === segment.seq)) { this.pump(); return }
       this.failures.set(segment.seq, (this.failures.get(segment.seq) ?? 0) + 1)
       if ((error as DOMException)?.name === 'QuotaExceededError') {
-  // Quota exceeded: release data before the playhead and retry this segment in the next cycle (updateend).
+        // Evict outside the playback window, including future data retained after a backward seek.
         const ranges = this.options.sourceBuffer.buffered
         const cut = this.options.currentTime() - BEHIND_SEC
-        if (ranges.length > 0 && ranges.start(0) < cut) this.removeRange(ranges.start(0), cut)
-        return
+        if ((this.failures.get(segment.seq) ?? 0) < MAX_FAILURES && ranges.length > 0) {
+          if (ranges.start(0) < cut) { this.removeRange(ranges.start(0), cut); return }
+          const ahead = this.options.currentTime() + AHEAD_SEC
+          const end = ranges.end(ranges.length - 1)
+          if (end > ahead) { this.removeRange(ahead, end); return }
+        }
       }
       this.options.onError?.(error)
     })
@@ -159,7 +168,9 @@ export class LiveBuffer {
 
   private removeRange(start: number, end: number): void {
     if (end <= start) return
-    for (const segment of this.segments) if (segment.pts + segment.dur <= end) this.appended.delete(segment.seq)
+    for (const segment of this.segments) {
+      if (segment.pts >= start && segment.pts + segment.dur <= end) this.appended.delete(segment.seq)
+    }
     this.busy = true
     this.options.sourceBuffer.remove(start, end)
   }

@@ -5,6 +5,7 @@ import path from 'path'
 import { EventEmitter } from 'events'
 import { createRecordingService, type RecordingDeps } from './index'
 import { readFrames } from './session'
+import { LiveSession } from './live-session'
 import type { RecordingService, RecordingSettings } from '../../shared/recording'
 import * as disk from './disk'
 import { copySegments, createSegments, fakeCommand, ffmpeg, makeDeps, sessionDir, tempRoot, waitFor } from './test-support'
@@ -47,6 +48,21 @@ afterEach(async () => {
 })
 
 describe('recording service state machine', () => {
+  it('reports failed live persistence and preserves the session instead of leaving shutdown stuck', async () => {
+    const value = rig()
+    value.settings.autoRecord = false
+    value.service.start()
+    expect(await value.service.startManual()).toBe(true)
+    const [start] = commands(value, 'start')
+    expect(JSON.parse(fs.readFileSync(path.join(start.session_dir, 'recording.json'), 'utf8')).livePending).toBe(true)
+    vi.spyOn(LiveSession.prototype, 'flush').mockRejectedValue(new Error('live file busy'))
+    await expect(value.service.stopManual()).resolves.toBeUndefined()
+    expect(value.service.status().error?.code).toBe('finalize_failed')
+    expect(JSON.parse(fs.readFileSync(path.join(start.session_dir, 'recording.json'), 'utf8')).livePending).toBe(true)
+    expect(fs.existsSync(start.session_dir)).toBe(true)
+    expect(fs.existsSync(path.join(start.session_dir, 'live-complete.json'))).toBe(false)
+    expect(value.deps.addToLibrary).not.toHaveBeenCalled()
+  })
   it.each([['cloud', '雲端同步'], ['network', '網路磁碟']] as const)('warns once per output folder when recording to %s storage', async (kind, text) => {
     const value = rig()
     value.deps.probeStorage = vi.fn(async () => kind)

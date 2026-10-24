@@ -170,6 +170,21 @@ describe('viewerReducer', () => {
     expect(copies[0].t).toBe(50)
   })
 
+  it('transfers each correction to only one fresh auto event and leaves nearby manual events alone', () => {
+    const doc = makeTestDoc()
+    const old = { ...doc.events[0], id: 'old', t: 10, deleted: true }
+    doc.events = [old]
+    const fresh = { ...doc, events: [
+      { ...old, id: 'manual', t: 10, source: 'manual' as const, deleted: false },
+      { ...old, id: 'first', t: 10.1, deleted: false },
+      { ...old, id: 'second', t: 10.7, deleted: false }
+    ] }
+    const merged = viewerReducer({ doc, clips: [], filter: new Set(), dirty: true }, { type: 'analysisResult', doc: fresh })
+    expect(merged.doc.events.map((e) => [e.id, e.deleted])).toEqual([
+      ['manual', false], ['first', true], ['second', false]
+    ])
+  })
+
   it('analysis result dedupes duplicate manual events already persisted in the old doc', () => {
     const base = makeTestDoc()
     const manual: EngineEvent = {

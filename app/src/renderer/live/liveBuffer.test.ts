@@ -60,6 +60,60 @@ async function drain(sb: FakeSourceBuffer, rounds = 30): Promise<void> {
 }
 
 describe('LiveBuffer segment queue', () => {
+  test('does not reload a segment whose retained tail is still buffered', async () => {
+    const sb = new FakeSourceBuffer()
+    const fetchSegment = vi.fn(async () => new TextEncoder().encode('seg 100 2'))
+    const buffer = new LiveBuffer({ sourceBuffer: sb, fetchInit: async () => new TextEncoder().encode('init'),
+      fetchSegment, currentTime: () => 101.8 })
+    buffer.setSegments([{ seq: 1, pts: 100, dur: 2 }, { seq: 2, pts: 1900, dur: 1.5 }])
+    await drain(sb, 12)
+    buffer.revalidate()
+    await drain(sb, 12)
+    expect(fetchSegment).toHaveBeenCalledTimes(1)
+    expect(sb.ops.filter((op) => op.startsWith('remove'))).toEqual(['remove 100-101.5'])
+    expect(sb.buffered.start(0)).toBe(101.5)
+    expect(sb.buffered.end(0)).toBe(102)
+    buffer.dispose()
+  })
+  test('evicts future buffers after a backward seek and retries the requested segment', async () => {
+    const r = rig(110, 60)
+    r.buffer.setSegments(r.segments)
+    await drain(r.sb)
+    r.sb.ranges = [[100, 120]]
+    r.sb.quota = true
+    r.clock.t = 20
+    r.buffer.revalidate()
+    await tick()
+    expect(r.sb.ops).toContain('remove 28-120')
+    r.sb.quota = false
+    await drain(r.sb)
+    expect(r.sb.ranges.some(([start, end]) => start <= 20 && end > 20)).toBe(true)
+    expect(r.onError).not.toHaveBeenCalled()
+    r.buffer.dispose()
+  })
+
+  test('reloads a partially evicted segment when seeking into its missing tail', async () => {
+    const r = rig(10, 10)
+    r.buffer.setSegments(r.segments)
+    await drain(r.sb)
+    const before = r.fetchSegment.mock.calls.filter(([seq]) => seq === 6).length
+    r.sb.ranges = [[8, 11.9]]
+    r.clock.t = 11.95
+    r.buffer.revalidate()
+    await drain(r.sb)
+    expect(r.fetchSegment.mock.calls.filter(([seq]) => seq === 6)).toHaveLength(before + 1)
+    expect(covers(r.sb.buffered, 11.95)).toBe(true)
+    r.buffer.dispose()
+  })
+
+  test('reports quota failure when no buffered range can be evicted', async () => {
+    const r = rig(0, 3)
+    r.sb.quota = true
+    r.buffer.setSegments(r.segments)
+    await drain(r.sb)
+    expect(r.onError).toHaveBeenCalledWith(expect.objectContaining({ name: 'QuotaExceededError' }))
+    r.buffer.dispose()
+  })
   test('Appends init first, then nearby segments in order; performs one operation at a time', async () => {
     const r = rig(0)
     expect(r.sb.mode).toBe('segments')

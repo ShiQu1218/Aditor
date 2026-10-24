@@ -12,6 +12,7 @@ import { ObsClient } from './obs-client'
 import { copyCutArgs } from '../export/plan'
 import type { ProjectItem } from '../../renderer/editor/project'
 import { tr } from '../../shared/locale'
+import { outputWasRemoved } from './removed-output'
 
 interface ObsOutput extends LiveCacheRange {
   outputPath: string
@@ -137,6 +138,7 @@ export async function finalizeObsSession(dir: string, deps: RecordingDeps, confi
     if (stale) {
       marker.cuts = marker.cuts.filter((cut) => cut.outputPath !== stale)
       await writeJson(markerFile, marker)
+      await resumeMatchPart(dir, marker)
     }
     for (const [index, match] of matches.entries()) {
       if (marker.cuts.some((cut) => cut.index === index)) continue
@@ -174,6 +176,7 @@ export async function finalizeObsSession(dir: string, deps: RecordingDeps, confi
     await writeJson(markerFile, marker)
   }
   for (const cut of marker.cuts) {
+    if (outputWasRemoved(dir, cut.outputPath)) continue
     const original = cut.outputPath === meta.outputPath
     if ((!original && !inOutputDir(cut.outputPath, outputDir)) || !await localFile(cut.outputPath)) throw new Error(tr('OBS 收尾影片路徑無效'))
     addRecorded(deps, [cut.outputPath], config.game)
@@ -191,8 +194,9 @@ export async function finalizeObsSession(dir: string, deps: RecordingDeps, confi
       await writeJson(markerFile, marker)
     }
   }
+  const outputs = marker.cuts.filter((cut) => !outputWasRemoved(dir, cut.outputPath)).map((cut) => cut.outputPath)
   await fs.promises.rm(dir, { recursive: true })
-  return marker.cuts.map((cut) => cut.outputPath)
+  return outputs
 }
 
 export class ObsRecoveryPending extends Error {}
@@ -240,6 +244,7 @@ export async function finalizeObsMatches(dir: string, deps: RecordingDeps, confi
     if (!match.stopped && !finishing) continue
     if (!match.stopped || !match.outputPath) throw new Error(tr('OBS 逐局影片尚未完成'))
     const file = match.outputPath
+    if (outputWasRemoved(dir, file)) continue
     if (!await localFile(file)) throw new Error(tr('OBS 逐局影片不是可讀取的本機檔案'))
     const relative = path.relative(await fs.promises.realpath(dir), await fs.promises.realpath(file))
     if (!relative.startsWith('..') && !path.isAbsolute(relative)) throw new Error(tr('OBS 原檔位於錄影工作目錄內'))

@@ -272,8 +272,11 @@ def test_engine_starts_with_bounded_backlog(profile, layout, scene):
         b, s, _ = _blank(layout)
         for k in range(12):            # 12 frames were written before the reader began polling: catch up on only the latest 8.
             w.write(_pts(k * TICK), b, s)
-        assert eng.poll() == 8 and eng.skipped == 0
+        assert eng.poll() == 8 and eng.skipped == 4
         assert eng.last_t == 11 * TICK
+        eng.finish()
+        assert not eng.quality()['complete']
+        assert 'startup_frames_lost' in eng.quality()['reasons']
     finally:
         r.close()
         w.close()

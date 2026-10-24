@@ -8,6 +8,8 @@ import { RecordingSessionService } from './session'
 import { pruneSegments } from './prune'
 import { recoverSessions } from './recovery'
 import { createRecordingService } from './index'
+import { LiveSession } from './live-session'
+import { Library } from '../library'
 import type { RecordingService, RecordingSettings } from '../../shared/recording'
 import * as disk from './disk'
 import { fakeCommand, fakeLiveCommand, makeDeps, sessionDir, tempRoot, waitFor } from './test-support'
@@ -114,6 +116,64 @@ describe('per-match segment ranges', () => {
 })
 
 describe('per-match clipping and recovery', () => {
+  it.each(['pending', 'temporary snapshot'])('preserves unregistered match footage during restart recovery: %s', async (failure) => {
+    const r = rig('afterExit')
+    const firstMatch = r.live.matches.slice(0, 1)
+    r.saveLive({ ...r.live, matches: firstMatch, quality: { complete: true } })
+    const [published] = await cutMatches(r.dir, r.deps)
+    const live = new LiveSession({ sessionId: 'write-failure', dir: r.dir, profileDir: r.root,
+      recordEvent: vi.fn(), notice: vi.fn() })
+    const internal = live as any
+    internal.matches = firstMatch
+    const rename = fs.promises.rename.bind(fs.promises)
+    const spy = vi.spyOn(fs.promises, 'rename').mockImplementation(async (from, to) => {
+      if (String(to).endsWith('live.json')) throw new Error('live busy')
+      return rename(from, to)
+    })
+    internal.onMatch({ ev: 'match_start', t: 70, reason: 'opening_confirmed' })
+    await expect(live.stop()).rejects.toThrow('live busy')
+    spy.mockRestore()
+    if (failure === 'pending') {
+      fs.unlinkSync(path.join(r.dir, 'live.json.tmp'))
+      const config = read(path.join(r.dir, 'recording.json'))
+      fs.writeFileSync(path.join(r.dir, 'recording.json'), JSON.stringify({ ...config, livePending: true }))
+    }
+    r.deps.enqueueAnalysis = vi.fn()
+    const [recovered] = await finalizeSession(r.dir, r.deps)
+    expect(recovered).toBeDefined()
+    expect(recovered).not.toBe(published)
+    expect(fs.readFileSync(recovered, 'utf8')).toBe('初始化|' + entries.map((e) => `${e.pts}|`).join(''))
+    expect(fs.existsSync(published)).toBe(true)
+    expect(r.deps.enqueueAnalysis).toHaveBeenCalledWith(recovered)
+    expect(r.deps.onLiveAnalysis).toHaveBeenLastCalledWith(recovered, expect.objectContaining({ trusted: false }))
+    expect(fs.existsSync(r.dir)).toBe(false)
+  })
+  it.each([false, true])('finalizes after a published match is intentionally deleted (bulk: %s)', async (bulk) => {
+    const r = rig()
+    const service = new RecordingSessionService(r.deps)
+    ;(service as any).active = { dir: r.dir }
+    const library = new Library(path.join(r.root, 'library.json'), (file) => service.noteOutputRemoval(file))
+    r.deps.addToLibrary = (files) => { library.add(files, 'recording') }
+    const outputs = await cutMatches(r.dir, r.deps)
+    expect(outputs).toHaveLength(2)
+    if (bulk) expect(library.removeMany([outputs[0]]).removed).toEqual([outputs[0]])
+    else expect(library.remove(outputs[0])).toBe(true)
+    await finalizeSession(r.dir, r.deps)
+    expect(library.get(outputs[0])).toBeUndefined()
+    expect(fs.existsSync(outputs[0])).toBe(false)
+    expect(library.get(outputs[1])).toBeDefined()
+    expect(fs.existsSync(r.dir)).toBe(false)
+  })
+
+  it('queues post-recording analysis when final live cache persistence fails', async () => {
+    const r = rig('afterExit')
+    r.saveLive({ ...r.live, quality: { complete: true } })
+    r.deps.liveCachePath = () => { throw new Error('cache unavailable') }
+    const outputs = await finalizeSession(r.dir, r.deps)
+    expect(outputs).toHaveLength(2)
+    expect(r.deps.enqueueAnalysis).toHaveBeenCalledTimes(2)
+    expect(r.deps.onLiveAnalysis).not.toHaveBeenCalled()
+  })
   it('names two outputs from segment time, drops lobby footage, and shifts and filters cached events, spectator intervals, and matches', async () => {
     const r = rig()
     const outputs = await finalizeSession(r.dir, r.deps)
@@ -325,6 +385,10 @@ describe('per-match clipping and recovery', () => {
     const output = first.cuts[0].outputPath as string
     fs.unlinkSync(output.replace('.mp4', '.part.mp4'))
 
+    vi.spyOn(fs.promises, 'rename').mockImplementationOnce(async () => { throw new Error('marker busy') })
+    await expect(cutMatches(r.dir, r.deps)).rejects.toThrow('marker busy')
+    expect(fs.existsSync(path.join(r.dir, 'match-part.json'))).toBe(true)
+
     const outputs = await cutMatches(r.dir, r.deps)
     expect(outputs).toContain(output)
     expect(r.marker().cuts).toHaveLength(2)
@@ -380,7 +444,9 @@ describe('per-match clipping and recovery', () => {
     r.saveLive({ ...r.live, quality: { complete: true } })
     await finalizeSession(r.dir, r.deps)
     expect(fs.readFileSync(r.deps.liveCachePath!(outputs[0]), 'utf8')).toBe(full)
-    expect(r.deps.enqueueAnalysis).not.toHaveBeenCalled()
+    // Let the engine validate/reuse the existing cache when no live cache was committed.
+    expect(r.deps.enqueueAnalysis).toHaveBeenCalledTimes(1)
+    expect(r.deps.enqueueAnalysis).toHaveBeenCalledWith(outputs[0])
   })
 
   it.each(['afterExit', 'perMatch'] as const)('Queue each untrusted %s result once per match; retries do not re-notify for old cuts', async (postAnalysis) => {
