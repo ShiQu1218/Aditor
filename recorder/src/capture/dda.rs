@@ -215,19 +215,19 @@ fn frame_pts(last_present: i64, accumulated: u32, now: i64, freq: i64, origin: i
 
 /// DDA frame selection and timestamp alignment.
 ///
-/// WGC spaces incoming frames at least one frame apart, while DDA follows monitor refreshes closely. Round frame selection and align PTS to prevent collisions.
+/// WGC and DDA both deliver frames on present/refresh times that jitter around frame boundaries. Round frame selection and align PTS to prevent collisions.
 /// timestamps advance in 4.17 ms steps). If using `FrameGate`（which floors time buckets），adjacent frames may be less than
 /// one frame apart and be dropped by the encoder rule that rounds to 1/fps frames and drops duplicates (167 frames dropped in a 20-second 4K test).
 /// Use the encoder rounded frame selection and align PTS to frame boundaries (error ≤ half a frame),
 /// so frame indices remain integers and cannot collide regardless of the starting frame.
-struct SlotGate {
+pub(super) struct SlotGate {
     fps: i128,
     origin: Option<i64>,
     last: Option<i64>,
 }
 
 impl SlotGate {
-    fn new(fps: u32) -> Self {
+    pub(super) fn new(fps: u32) -> Self {
         Self {
             fps: fps.max(1) as i128,
             origin: None,
@@ -251,7 +251,7 @@ impl SlotGate {
     }
 
     /// Returns aligned PTS, or None if this frame was already sent or time moved backwards.
-    fn accept(&mut self, pts: i64) -> Option<i64> {
+    pub(super) fn accept(&mut self, pts: i64) -> Option<i64> {
         let (slot, pts) = self.candidate(pts)?;
         self.last = Some(slot);
         Some(pts)
@@ -1162,6 +1162,19 @@ mod tests {
         }
         // Comparison: passing present times directly to the encoder rule causes frame-index collisions.
         assert!(encoder_drops(&presents, 60) > 0);
+    }
+
+    #[test]
+    fn slot_gate_keeps_every_slot_of_a_jittered_source_at_the_recording_rate() {
+        // A 60 Hz game sitting near a slot boundary, with ±1 ms present jitter, recorded at 60 fps.
+        let frame = TICKS_PER_SEC / 60;
+        let presents: Vec<i64> = (0..600)
+            .map(|i| 3 * TICKS_PER_SEC + frame / 2 + i * frame + [-10_000, 10_000][i as usize % 2])
+            .collect();
+        let mut gate = SlotGate::new(60);
+        let out: Vec<i64> = presents.iter().filter_map(|&p| gate.accept(p)).collect();
+        assert_eq!(out.len(), presents.len());
+        assert_eq!(encoder_drops(&out, 60), 0);
     }
 
     #[test]

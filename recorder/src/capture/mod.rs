@@ -357,7 +357,7 @@ struct CallbackState {
     gpu: Gpu,
     device: IDirect3DDevice,
     consumer: Box<dyn FrameConsumer>,
-    gate: FrameGate,
+    gate: dda::SlotGate,
     origin: i64,
     probe: LumaProbe,
     color: color::SdrConverter,
@@ -467,8 +467,9 @@ impl ActiveCapture {
         }
         // Older Windows versions lack these two interfaces; capture still works without them.
         let _ = session.SetIsBorderRequired(false);
+        // Half a frame: a full-frame interval makes WGC skip frames presented slightly early, which the encoder then fills with duplicates.
         let _ = session.SetMinUpdateInterval(TimeSpan {
-            Duration: TICKS_PER_SEC / opts.max_fps as i64,
+            Duration: TICKS_PER_SEC / opts.max_fps as i64 / 2,
         });
         let signals = Arc::new(Signals {
             alive: AtomicBool::new(true),
@@ -573,9 +574,9 @@ impl CallbackState {
         if size.Width <= 0 || size.Height <= 0 {
             return Ok(());
         }
-        let pts = frame.0.SystemRelativeTime()?.Duration - self.origin;
+        let raw_pts = frame.0.SystemRelativeTime()?.Duration - self.origin;
         let resized = signals.size.load(Ordering::Acquire) != pack_size(size);
-        if self.gate.accept(pts) {
+        if let Some(pts) = self.gate.accept(raw_pts) {
             let visible = if monitor {
                 // Minimized fallback stays black until window capture resumes, including the restore polling gap.
                 if let Some(notice) = self.visibility.update(self.pid, pts, || {
@@ -675,7 +676,7 @@ fn run(
         gpu: gpu.clone(),
         device,
         consumer,
-        gate: FrameGate::new(opts.max_fps),
+        gate: dda::SlotGate::new(opts.max_fps),
         origin: opts.origin_ticks,
         probe,
         color: color::SdrConverter::new(&gpu)?,
