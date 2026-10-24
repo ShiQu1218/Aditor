@@ -1,7 +1,7 @@
 """Detection profile (templates/icons/profile.json): shared icon/color settings.
 
 BR detection uses language-independent icons and enemy-name colors. Spectator banners (`spectating`) cover multiple languages;
-the additional text-only Mixtape keyword templates currently cover Traditional Chinese."""
+the additional text-only Mixtape keyword templates cover Traditional Chinese and English."""
 from __future__ import annotations
 
 import json
