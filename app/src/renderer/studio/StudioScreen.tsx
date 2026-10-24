@@ -939,6 +939,8 @@ export function StudioScreen({ videoPath, onBack, onRegisterLeaveGuard, onVideoR
     setRemoveChoice(null)
     setRemovingVideo(true)
     const current = normPath(path) === normPath(videoPath)
+    const video = current && deleteSource !== false ? videoRef.current : null
+    const playback = video ? { src: video.getAttribute('src'), t: video.currentTime, play: !video.paused } : null
     if (current) {
       videoRef.current?.pause()
       cacheSaver.current!.setHeld(true)
@@ -954,6 +956,13 @@ export function StudioScreen({ videoPath, onBack, onRegisterLeaveGuard, onVideoR
           return
         }
       }
+      if (video) {
+        // Pausing retains the Windows file handle; unload the media before deleting its source.
+        loadedSrcRef.current = null
+        pendingSeekRef.current = null
+        video.removeAttribute('src')
+        video.load()
+      }
       if (deleteSource === undefined) await window.api.library.remove(path)
       else await window.api.library.remove(path, { deleteSource })
       // Only discard pending edits when the source file itself was deleted.
@@ -961,6 +970,11 @@ export function StudioScreen({ videoPath, onBack, onRegisterLeaveGuard, onVideoR
       // Stay in the studio: the owner clears the removed current video and the studio landing opens the next one.
       onVideoRemoved?.(path)
     } catch {
+      if (mountedRef.current && video && playback?.src) {
+        pendingSeekRef.current = { t: playback.t, play: playback.play }
+        video.src = playback.src
+        video.load()
+      }
       if (mountedRef.current) toast({ message: i18n.library.card.removeFailed })
     } finally {
       if (current) cacheSaver.current!.setHeld(false)

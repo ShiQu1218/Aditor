@@ -93,7 +93,8 @@ impl HookInfo {
     pub fn configure(&mut self, offsets: GraphicsOffsets, fps: u32) {
         let fps = if fps == 0 { DEFAULT_FPS } else { fps };
         self.offsets = offsets;
-        self.frame_interval = NANOS_PER_SEC / u64::from(fps);
+        // Match OBS's default: sample the game at twice the output rate to avoid repeated frames from independent clocks.
+        self.frame_interval = NANOS_PER_SEC / u64::from(fps) / 2;
         self.allow_srgb_alias = true;
         self.force_shmem = false;
         self.capture_overlay = false;
@@ -391,14 +392,14 @@ release=0x140a0
         };
         info.configure(offsets, 120);
         assert_eq!(info.offsets, offsets);
-        assert_eq!(info.frame_interval, 1_000_000_000 / 120);
+        assert_eq!(info.frame_interval, 1_000_000_000 / 120 / 2);
         assert!(info.allow_srgb_alias);
         assert!(!info.force_shmem);
         assert!(!info.capture_overlay);
         assert!(!info.unused_use_scale);
 
         info.configure(offsets, 0);
-        assert_eq!(info.frame_interval, 1_000_000_000 / 60);
+        assert_eq!(info.frame_interval, 1_000_000_000 / 60 / 2);
     }
 
     #[test]

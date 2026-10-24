@@ -136,6 +136,40 @@ describe('RecordingPanel live match view', () => {
 })
 
 describe('LiveScreen', () => {
+  test('an unbuffered seek keeps its target through stale media events and applies only the latest seek when buffered', async () => {
+    rig(RECORDING, LIVE)
+    screen()
+    await settle()
+    const video = document.querySelector('video')!
+    Object.defineProperty(video, 'readyState', { configurable: true, value: 1 })
+    media.sb!.buffered = { length: 1, start: () => 14, end: () => 20 }
+    act(() => video.dispatchEvent(new Event('loadedmetadata')))
+    expect(video.currentTime).toBe(17)
+
+    const slider = document.querySelector<HTMLElement>('[role="slider"]')!
+    press(slider, 'Home')
+    expect(video.currentTime).toBe(17)
+    press(slider, 'ArrowRight')
+    act(() => {
+      video.currentTime = 19
+      video.dispatchEvent(new Event('timeupdate'))
+      video.dispatchEvent(new Event('waiting'))
+    })
+    expect(slider.getAttribute('aria-valuenow')).toBe('5')
+    // Completion of an earlier fetch must not apply the superseded seek to zero.
+    media.sb!.buffered = { length: 1, start: () => 0, end: () => 2 }
+    act(() => media.sb!.dispatchEvent(new Event('updateend')))
+    expect(video.currentTime).toBe(19)
+    media.sb!.buffered = { length: 1, start: () => 4, end: () => 8 }
+    act(() => media.sb!.dispatchEvent(new Event('updateend')))
+    expect(video.currentTime).toBe(5)
+    act(() => {
+      video.currentTime = 6
+      video.dispatchEvent(new Event('timeupdate'))
+    })
+    expect(slider.getAttribute('aria-valuenow')).toBe('6')
+  })
+
   test('MSE creates SourceBuffer from MIME, appends init before fetching recent segments, and keeps fetching after new segment updates', async () => {
     const r = rig(RECORDING, LIVE)
     screen()

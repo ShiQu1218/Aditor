@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, expect, test, vi } from 'vitest'
+import { act } from 'react'
 import { buttonByText, cleanupMounted, click, flush, press } from '../../../test/dom'
 import { mountStudio, STUDIO_VIDEO, type StudioMount } from '../../../test/studioHarness'
 import type { LibraryEntry } from '../../main/library'
@@ -12,6 +13,29 @@ const entry = (path: string, source: LibraryEntry['source'] = 'recording'): Libr
 })
 const headerRemove = () => document.querySelector<HTMLButtonElement>('.studio-file-row .studio-video-remove')!
 const t = i18n.library.card
+
+test('deleting a playing source unloads it before removal and restores playback if removal fails', async () => {
+  vi.spyOn(window, 'confirm').mockReturnValue(true)
+  studio = await mountStudio({ api: { entries: [entry(STUDIO_VIDEO)] } })
+  const video = document.querySelector('video')!
+  const src = video.getAttribute('src')
+  Object.defineProperty(video, 'paused', { configurable: true, value: false })
+  video.currentTime = 42
+  const load = vi.spyOn(video, 'load')
+  const play = vi.spyOn(video, 'play')
+  studio.fake.api.library.remove.mockImplementationOnce(async () => {
+    expect(video.hasAttribute('src')).toBe(false)
+    expect(load).toHaveBeenCalledOnce()
+    throw new Error('EPERM')
+  })
+  click(headerRemove()); await flush()
+  expect(video.getAttribute('src')).toBe(src)
+  expect(load).toHaveBeenCalledTimes(2)
+  video.currentTime = 0
+  act(() => video.dispatchEvent(new Event('loadedmetadata')))
+  expect(video.currentTime).toBe(42)
+  expect(play).toHaveBeenCalledOnce()
+})
 
 test('header deletion confirms a recording, removes it once, and stays in the studio', async () => {
   const onBack = vi.fn(), onVideoRemoved = vi.fn()

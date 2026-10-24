@@ -6,6 +6,20 @@ import { i18n, settingsI18n, shellI18n } from '../src/renderer/i18n'
 
 const T = i18n.studio
 
+test('a playing studio video can be deleted without pausing first', async ({ launch, videos }) => {
+  const file = path.join(videos.dir, 'Playback deletion.mp4')
+  fs.copyFileSync(videos.videos[0].path, file)
+  const { page } = await launch()
+  await importAndAnalyze(page, [file], ['Playback deletion'])
+  await openStudio(page, 'Playback deletion')
+  await page.locator('video').evaluate((video: HTMLVideoElement) => video.play())
+  await expect.poll(() => page.locator('video').evaluate((video: HTMLVideoElement) => video.paused)).toBe(false)
+  await page.locator('.studio-file-row .studio-video-remove').click()
+  await page.getByRole('dialog').getByRole('button', { name: i18n.library.card.deleteSource, exact: true }).click()
+  await expect.poll(() => fs.existsSync(file)).toBe(false)
+  await expect(page.locator('.toast', { hasText: i18n.library.card.removeFailed })).toHaveCount(0)
+})
+
 test('smoke: app launches, library empty state visible, rail navigable by keyboard', async ({ launch }) => {
   const { page } = await launch()
   await expect(page.locator('.lib-empty')).toBeVisible()

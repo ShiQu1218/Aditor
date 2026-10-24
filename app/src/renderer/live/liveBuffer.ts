@@ -40,6 +40,7 @@ export interface LiveBufferOptions {
 /** Call while buffering is idle so MediaSource.duration grows with the recording. */
   setDuration?: (seconds: number) => void
   onError?: (error: unknown) => void
+  onBuffered?: () => void
 }
 
 export function covers(ranges: TimeRangesLike, t: number): boolean {
@@ -57,6 +58,7 @@ export class LiveBuffer {
   private disposed = false
   private readonly onUpdateEnd = (): void => {
     this.busy = false
+    this.options.onBuffered?.()
     this.pump()
   }
 

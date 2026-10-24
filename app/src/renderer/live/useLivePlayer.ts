@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { LiveSegment } from '../../shared/recording'
-import { LIVE_EDGE_OFFSET, LiveBuffer, type SourceBufferLike } from './liveBuffer'
+import { covers, LIVE_EDGE_OFFSET, LiveBuffer, type SourceBufferLike } from './liveBuffer'
 
 export type PlayerError = { kind: 'unsupported'; mime: string } | { kind: 'load'; message: string } | null
 
@@ -34,8 +34,9 @@ export function useLivePlayer({ sessionId, mime, segments, bounds }: PlayerInput
   segmentsRef.current = segments
   const boundsRef = useRef(bounds)
   boundsRef.current = bounds
-  /** Target time before metadata loads (the live edge on open). */
+  /** Keep the requested time while its segments load, independent of the old playhead. */
   const startRef = useRef<number | null>(null)
+  const applySeekRef = useRef<(() => void) | null>(null)
   const [current, setCurrent] = useState(0)
   const [playing, setPlaying] = useState(false)
   const [error, setError] = useState<PlayerError>(null)
@@ -55,9 +56,22 @@ export function useLivePlayer({ sessionId, mime, segments, bounds }: PlayerInput
     const ms = new MediaSource()
     const url = URL.createObjectURL(ms)
     let buffer: LiveBuffer | null = null
+    let sb: SourceBuffer | null = null
+    let autoplay = true
+    const applySeek = (): void => {
+      const target = startRef.current
+      if (target === null || video.readyState === 0 || !sb || !covers(sb.buffered, target)) return
+      startRef.current = null
+      video.currentTime = target
+      setCurrent(target)
+      if (autoplay) {
+        autoplay = false
+        void video.play().catch(() => undefined)
+      }
+    }
+    applySeekRef.current = applySeek
     const onOpen = (): void => {
       URL.revokeObjectURL(url)
-      let sb: SourceBuffer
       try { sb = ms.addSourceBuffer(mime) }
       catch {
         setError({ kind: 'unsupported', mime })
@@ -69,29 +83,26 @@ export function useLivePlayer({ sessionId, mime, segments, bounds }: PlayerInput
         fetchSegment: (seq) => readSegment(sessionId, seq),
         currentTime: () => startRef.current ?? video.currentTime,
         setDuration: (seconds) => {
-          if (ms.readyState !== 'open' || sb.updating || !(seconds > 0)) return
+          if (ms.readyState !== 'open' || !sb || sb.updating || !(seconds > 0)) return
           if (Number.isNaN(ms.duration) || ms.duration < seconds) {
             try { ms.duration = seconds } catch { /* Another operation is in progress; retry next time. */ }
           }
         },
-        onError: (err) => setError({ kind: 'load', message: err instanceof Error ? err.message : String(err) })
+        onError: (err) => setError({ kind: 'load', message: err instanceof Error ? err.message : String(err) }),
+        onBuffered: applySeek
       })
       bufferRef.current = buffer
       buffer.setSegments(segmentsRef.current)
     }
     const onMeta = (): void => {
-      if (startRef.current !== null) {
-        video.currentTime = startRef.current
-        startRef.current = null
-        void video.play().catch(() => undefined)
-      }
+      applySeek()
     }
     const onTime = (): void => {
-      setCurrent(video.currentTime)
+      setCurrent(startRef.current ?? video.currentTime)
       bufferRef.current?.pump()
     }
     const onSeek = (): void => {
-      setCurrent(video.currentTime)
+      setCurrent(startRef.current ?? video.currentTime)
       bufferRef.current?.revalidate()
     }
     const onPlay = (): void => setPlaying(true)
@@ -114,6 +125,7 @@ export function useLivePlayer({ sessionId, mime, segments, bounds }: PlayerInput
       video.removeEventListener('pause', onPause)
       buffer?.dispose()
       bufferRef.current = null
+      applySeekRef.current = null
       URL.revokeObjectURL(url)
       video.removeAttribute('src')
       video.load()
@@ -126,10 +138,9 @@ export function useLivePlayer({ sessionId, mime, segments, bounds }: PlayerInput
     const video = videoRef.current
     setCurrent(target)
     if (!video) return
-    if (startRef.current !== null || video.readyState === 0) {
-      startRef.current = target
-      bufferRef.current?.pump()
-    } else video.currentTime = target
+    startRef.current = target
+    applySeekRef.current?.()
+    bufferRef.current?.revalidate()
   }, [])
 
   const togglePlay = useCallback((): void => {
