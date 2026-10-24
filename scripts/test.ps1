@@ -56,6 +56,7 @@ try {
     }
 
     Invoke-Step "app typecheck" $app { npm run typecheck }
+    Invoke-Step "app lint" $app { npm run lint }
 
     if ($Tier -eq "fast") {
         Invoke-Step "app vitest (fast)" $app { npm run test:fast }
