@@ -23,8 +23,8 @@ export type LoadOutcome =
 
 const isDone = (d: CacheDoc | null | undefined): d is CacheDoc => d?.analysis?.status === 'done'
 
-function toError(err: unknown, fallback: string): LoadOutcome {
-  const message = err instanceof Error ? err.message : fallback
+function toError(err: unknown): LoadOutcome {
+  const message = err instanceof Error ? err.message : `Loading failed: ${String(err)}`
   const code = (err as { code?: unknown } | null)?.code
   return typeof code === 'string' || typeof code === 'number' ? { kind: 'error', message, code } : { kind: 'error', message }
 }
@@ -55,6 +55,6 @@ export async function loadStudioDoc(path: string, deps: LoaderDeps, allowUnanaly
     if (isDone(res)) return { kind: 'ready', doc: res, from: 'analyze' }
     return { kind: 'error', message: `Analysis finished but its result is not usable (status: ${(res as CacheDoc | null)?.analysis?.status ?? 'none'})` }
   } catch (err) {
-    return toError(err, `Loading failed: ${String(err)}`)
+    return toError(err)
   }
 }
