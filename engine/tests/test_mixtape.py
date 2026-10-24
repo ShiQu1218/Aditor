@@ -1,4 +1,4 @@
-"""Real Chinese Mixtape crops and replay/streaming regressions; no external video required."""
+"""Real Chinese/English Mixtape crops and replay/streaming regressions."""
 from pathlib import Path
 import json
 
@@ -27,6 +27,34 @@ def test_text_only_banners_without_damage(profile, name, kind):
     assert r.kind == kind
     assert not r.damage_line and not r.spectating
     assert r.name_sig is not None
+
+
+@pytest.mark.parametrize("name,kind", [("en_kill", "kill"), ("en_assist", "assist_elim")])
+def test_native_english_holdouts(profile, name, kind):
+    result = Detector(profile).detect(read(f"{name}_banner"), read(f"{name}_spec"))
+    assert result.kind == kind
+    assert result.name_sig is not None
+
+
+def test_english_death_replay_is_not_a_local_kill(profile):
+    detector = Detector(profile)
+    banner = read("en_self_banner")
+    assert detector.detect(banner, read("en_self_spec")).kind is None
+    assert detector.detect(banner, read("other_spec")).kind == "kill"
+
+
+def test_english_fading_name_counts_once_before_the_next_victim(profile):
+    detector = Detector(profile)
+    tracker = EventTracker(profile)
+    with np.load(FIXTURES / "english_transitions.npz") as frames:
+        for t, band, hud in zip(frames["t"], frames["banner"], frames["spec"]):
+            banner = np.zeros((180, 800, 3), np.uint8)
+            spec = np.zeros((118, 480, 3), np.uint8)
+            banner[65:95, 180:620] = band
+            spec[12:40, 112:360] = hud
+            tracker.feed(float(t), detector.detect(banner, spec))
+    events, _ = tracker.finish()
+    assert [(e.t, e.type) for e in events] == [(358, "kill"), (363.5, "kill")]
 
 
 def test_self_victim_is_rejected_even_with_capitalized_name(profile):

@@ -1,4 +1,4 @@
-"""Text-only Mixtape banners. Shipped keyword crops currently cover Traditional Chinese.
+"""Text-only Mixtape banners with native Traditional Chinese and English keyword crops.
 
 Unlike BR score banners these have no icons or damage line. Require the centered
 keyword/name layout and the local player's HUD, and reject a victim matching that
@@ -36,7 +36,8 @@ class MixtapeDetector:
             if speaker is not None:
                 self.speakers = [cv2.resize(speaker, None, fx=s, fy=s).astype(np.float32) / 255.0
                                  for s in (0.9, 1.0, 1.1)]
-        for kind, name in (("kill", "mixtape_elim_zh"), ("assist_elim", "mixtape_assist_zh")):
+        for kind, name in (("kill", "mixtape_elim_zh"), ("assist_elim", "mixtape_assist_zh"),
+                           ("kill", "mixtape_elim_en"), ("assist_elim", "mixtape_assist_en")):
             path = Path(profile.dir) / f"{name}.png"
             if path.exists():
                 template = cv2.imdecode(np.fromfile(str(path), np.uint8), cv2.IMREAD_GRAYSCALE)
@@ -46,7 +47,7 @@ class MixtapeDetector:
                                                .astype(np.float32) / 255.0))
 
     def detect(self, banner, spec):
-        from .detect import _despeckle, ink_mask, name_sig_similarity, red_mask, white_mask
+        from .detect import _despeckle, ink_mask, name_sig_similarity, name_strokes, red_mask, white_mask
 
         # Legacy/foreign profiles do not capture the player name. Never guess
         # ownership when it is unavailable. Coordinates are reference-layout.
@@ -86,16 +87,22 @@ class MixtapeDetector:
                       & (hsv[..., 1] >= 90) & (hsv[..., 2] >= 120))
             mask = (red_mask(row, self.profile, pink=True) > 0) | yellow
         else:
-            mask = white_mask(row, self.profile.white) > 0
-        mask = _despeckle(mask & (ink_mask(row, self.profile) >= 0.25))
+            mask = white_mask(row, {**self.profile.white, 'v_min': 170}) > 0
+        strokes = _despeckle(mask & (ink_mask(row, self.profile) >= 0.25))
+        if np.count_nonzero(strokes) < 35:
+            strokes = _despeckle(mask & (name_strokes(row) >= 25))
+        mask = strokes
         cols = np.flatnonzero(mask.any(axis=0))
         if cols.size < 4 or cols[0] > 15:
             return uncertain
         # A blank gap ends the name, excluding the background beyond the plate.
         end = int(cols[-1]) + 1
         gaps = np.flatnonzero(np.diff(cols) > 18)
-        if gaps.size:
-            end = int(cols[gaps[0]]) + 1
+        for gap in gaps:
+            candidate = int(cols[gap]) + 1
+            if candidate - int(cols[0]) >= 8 and abs((2 * x + w + candidate) / 2 - 400) <= 4:
+                end = candidate
+                break
         start = int(cols[0])
         # The complete keyword + name must straddle the screen center.
         if abs((x + x + w + end) / 2 - 400) > 24:
@@ -145,6 +152,8 @@ class MixtapeDetector:
                 if (prefix >= 0.70 and suffix >= 0.70
                         and name_sig_similarity(NameSig(128, hi), NameSig(128, vi)) >= 0.45):
                     return None
-        width = max(1, round(gw * NameSig.HEIGHT / gh))
-        sig = NameSig(width, (cv2.resize(glyph, (width, NameSig.HEIGHT)) >= 0.5).astype(np.uint8))
+        # Keep the keyword's baseline instead of rescaling names when a few strokes fade or are covered.
+        event_glyph = mask[:, start:end].astype(np.float32)
+        width = max(1, round(gw * NameSig.HEIGHT / event_glyph.shape[0]))
+        sig = NameSig(width, (cv2.resize(event_glyph, (width, NameSig.HEIGHT)) >= 0.5).astype(np.uint8))
         return FrameResult(kind, score, x, False, sig, False, hint="plain")

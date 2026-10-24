@@ -231,6 +231,13 @@ INK_SCALE = 100.0       # Top-hat brightness difference at which a stroke reache
 _INK_K = cv2.getStructuringElement(cv2.MORPH_RECT, (7, 7))
 
 
+def name_strokes(image: np.ndarray) -> np.ndarray:
+    """Keep colored and dark name strokes whose grayscale brightness can match the backdrop."""
+    light = cv2.morphologyEx(image, cv2.MORPH_TOPHAT, _INK_K)
+    dark = cv2.morphologyEx(image, cv2.MORPH_BLACKHAT, _INK_K)
+    return np.maximum(light, dark).max(axis=2).astype(np.float32)
+
+
 def ink_mask(bgr: np.ndarray, profile: Profile) -> np.ndarray:
     """Text-stroke image for keyword templates (continuous 0–1 values): a local top-hat measuring the brightness difference
     of thin bright strokes from the local background. Avoid an absolute white threshold: low-contrast recordings (text in
