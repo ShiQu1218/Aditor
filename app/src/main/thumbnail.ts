@@ -4,13 +4,14 @@ import crypto from 'crypto'
 import { spawn } from 'child_process'
 import { proxyDir } from '../shared/paths'
 import { normalizePath } from './library'
+import { sourceStamp } from './media-cache'
 
 /** Thumbnail limit 320x180 (spec §6): virtualized grids do not need to decode full-resolution JPEGs on low-end machines. */
 export const THUMB_MAX_W = 320
 export const THUMB_MAX_H = 180
 
 export function thumbnailPath(videoPath: string): string {
-  const hash = crypto.createHash('sha1').update(normalizePath(videoPath)).digest('hex')
+  const hash = crypto.createHash('sha1').update(JSON.stringify([normalizePath(videoPath), sourceStamp(videoPath)])).digest('hex')
   return path.join(proxyDir(), 'thumbs', `${hash}.jpg`)
 }
 
@@ -40,6 +41,7 @@ export interface ThumbnailDeps {
 /** Write `<hash>.tmp.jpg` first and rename only on success; remove partial files on failure so they are not mistaken for usable thumbnails. */
 export async function generateThumbnail(videoPath: string, duration: number, deps: ThumbnailDeps = {}): Promise<string | undefined> {
   if (!fs.existsSync(videoPath)) return undefined
+  const stamp = sourceStamp(videoPath)
   const outPath = thumbnailPath(videoPath)
   fs.mkdirSync(path.dirname(outPath), { recursive: true })
   if (fs.existsSync(outPath)) return outPath
@@ -52,7 +54,7 @@ export async function generateThumbnail(videoPath: string, duration: number, dep
     proc.on('error', () => resolve(false))
   })
   try {
-    if (ok) {
+    if (ok && sourceStamp(videoPath) === stamp) {
       fs.renameSync(tmp, outPath)
       return outPath
     }

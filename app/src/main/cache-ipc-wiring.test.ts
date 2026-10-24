@@ -18,6 +18,9 @@ import { registerIpcHandlers } from './ipc-handlers'
 import { SettingsStore } from './settings'
 import { cacheFilePath } from './cache-io'
 import { cacheDir } from '../shared/paths'
+import { clipsBackupPath } from './reanalysis'
+import { proxyPath } from './proxy'
+import { sourceStamp, stampMediaCache } from './media-cache'
 
 /** Wiring test: cache:loadByVideo reads from the location selected by settings.cacheLocation, using the same beside rule as the engine. */
 describe('cache:loadByVideo reads according to cacheLocation', () => {
@@ -102,5 +105,41 @@ describe('cache:loadByVideo reads according to cacheLocation', () => {
     expect(JSON.parse(fs.readFileSync(dest, 'utf-8')).cache_path).toBe(dest)
     expect(await save({}, { cache_path: evil, video: { path: path.join(dir, 'videos', 'other.mp4') }, events: [] })).toBe(false)
     expect(handlers.has('cache:load')).toBe(false)
+  })
+
+  test('saving during analysis uses a durable backup, and reopening overlays it on newer engine results', async () => {
+    const video = path.join(dir, 'v.mp4')
+    const dest = cacheFilePath(video, cacheDir())
+    const library = { get: () => ({ path: video, status: 'analyzing' }), update: () => {}, getEntries: () => [] } as any
+    const queue = { on: () => {}, payload: () => ({}), activeCachePath: () => dest } as any
+    registerIpcHandlers(library, queue, () => [])
+    const manual = { id: 'm1', t: 5, source: 'manual', type: 'knock' }
+    const doc = { video: { path: video }, analysis: { status: 'partial' }, events: [manual], clips: [] }
+    expect(await handlers.get('cache:save')!({}, doc)).toBe(true)
+    expect(fs.existsSync(dest)).toBe(false)
+    expect(fs.existsSync(clipsBackupPath(dest))).toBe(true)
+    fs.writeFileSync(dest, JSON.stringify({ ...doc, analysis: { status: 'done' }, events: [{ id: 'a1', t: 10, source: 'auto' }] }))
+    const loaded = await handlers.get('cache:loadByVideo')!({}, video)
+    expect(loaded.analysis.status).toBe('done')
+    expect(loaded.events.map((e: { id: string }) => e.id)).toEqual(['m1', 'a1'])
+  })
+
+  test('proxy:get rejects replaced sources and proxy:delete removes the source stamp too', async () => {
+    const video = path.join(dir, 'v.mp4')
+    fs.writeFileSync(video, 'old')
+    const proxy = proxyPath(video)
+    fs.mkdirSync(path.dirname(proxy), { recursive: true })
+    fs.writeFileSync(proxy, 'proxy')
+    stampMediaCache(proxy, sourceStamp(video))
+    const library = { getEntries: () => [] } as any
+    const queue = { on: () => {} } as any
+    registerIpcHandlers(library, queue, () => [])
+    const get = handlers.get('proxy:get')!
+    expect(await get({}, video)).toBe(proxy)
+    fs.writeFileSync(video, 'replacement')
+    expect(await get({}, video)).toBeNull()
+    expect(await handlers.get('proxy:delete')!({}, video)).toBe(true)
+    expect(fs.existsSync(proxy)).toBe(false)
+    expect(fs.existsSync(proxy + '.source')).toBe(false)
   })
 })
