@@ -3,6 +3,7 @@ import { EngineClient, EngineError } from './engine'
 import { tr } from '../shared/locale'
 import { Library, normalizePath } from './library'
 import { CacheDoc, countEvents } from '../shared/types'
+import { cacheFilePath, loadCacheDoc } from './cache-io'
 import { gameOf } from '../shared/games'
 import type { QueuePayload, QueueSnapshot } from '../shared/queueState'
 import { analyzeSettingArgs, AnalyzeSettings } from './settings-derived'
@@ -22,6 +23,7 @@ interface CurrentRun {
   /** Cancelled by the user: report idle externally, but do not start the next item until the engine actually stops. */
   cancelled: boolean
   done: Promise<void>
+  cachePath?: string
 }
 
 export class AnalysisQueue extends EventEmitter {
@@ -51,6 +53,12 @@ export class AnalysisQueue extends EventEmitter {
       analyzing: this.current && !this.current.cancelled ? this.current.path : null,
       queued: [...this.queue]
     }
+  }
+
+  /** Includes a cancelled run until the engine acknowledges cancellation. */
+  activeCachePath(videoPath: string): string | undefined {
+    return this.current && normalizePath(this.current.path) === normalizePath(videoPath)
+      ? this.current.cachePath : undefined
   }
 
   /** `library:updated`/`queue:getState` payload: queue snapshot plus progress and start time for the item being analyzed. */
@@ -156,6 +164,7 @@ export class AnalysisQueue extends EventEmitter {
       // Read existing cached clips before reanalysis (the engine overwrites the cache and keeps manual clips only).
       const settings = this.opts.getSettings?.()
       const extra = analyzeSettingArgs(settings)
+      run.cachePath = cacheFilePath(videoPath, this.opts.cacheDir, extra.beside)
       const prior = capturePriorCache(videoPath, this.opts.cacheDir, extra.beside)
       const req = this.engine.request<CacheDoc>(
         'analyze',
@@ -183,19 +192,21 @@ export class AnalysisQueue extends EventEmitter {
       if (run.cancelled) {
         this.engine.cancel(req.id)
       }
-      const doc = await req.promise
+      let doc = await req.promise
       if (run.cancelled) return
-
-      // Rewrite the cache only after success (cancellation/failure leaves the old cache untouched).
-      try {
-        preserveClipsAfterReanalysis(prior, doc, videoPath, this.opts.cacheDir, extra.beside, force)
-      } catch (err) {
-        console.error('[Queue] failed to preserve clips after re-analysis:', err)
-      }
 
       const duration = doc.video?.duration || 0
       const thumb = await this._generateThumbnail(videoPath, duration).catch(() => undefined)
       if (run.cancelled) return
+
+      // Rewrite the cache only after success (cancellation/failure leaves the old cache untouched).
+      try {
+        if (preserveClipsAfterReanalysis(prior, doc, videoPath, this.opts.cacheDir, extra.beside, force)) {
+          doc = (loadCacheDoc(doc.cache_path || run.cachePath!) as CacheDoc | null) ?? doc
+        }
+      } catch (err) {
+        console.error('[Queue] failed to preserve clips after re-analysis:', err)
+      }
 
       this.library.update(videoPath, {
         status: 'done',

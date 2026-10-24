@@ -5,7 +5,7 @@ import fs from 'fs'
 import path from 'path'
 import { cacheBelongsToVideo, cacheFilePath, legacyCacheFilePath, loadCacheDoc, resolveCacheFile, saveCacheDoc } from './cache-io'
 
-/** Reanalysis backup file: `<cache>.clips.json`; v2 also carries auto/manual event state. */
+/** Reanalysis backup: v2 carries event/clip state; v3 carries a document edited during analysis. */
 export function clipsBackupPath(cachePath: string): string {
   return cachePath.replace(/\.json$/i, '') + '.clips.json'
 }
@@ -13,11 +13,15 @@ export function clipsBackupPath(cachePath: string): string {
 interface ReanalysisBackup {
   events: EngineEvent[]
   clips: Clip[]
+  document?: CacheDoc
 }
 
 function readReanalysisBackup(cachePath: string): ReanalysisBackup | null {
   try {
     const data = JSON.parse(fs.readFileSync(clipsBackupPath(cachePath), 'utf-8'))
+    if (data?.version === 3 && typeof data.document?.video?.path === 'string' && Array.isArray(data.document.events) && Array.isArray(data.document.clips)) {
+      return { events: data.document.events, clips: data.document.clips, document: data.document }
+    }
     if (!data || ![1, 2].includes(data.version) || !Array.isArray(data.clips)) return null
     return { events: data.version === 2 && Array.isArray(data.events) ? data.events as EngineEvent[] : [], clips: data.clips as Clip[] }
   } catch {
@@ -39,14 +43,14 @@ function readLegacyBackup(videoPath: string, cacheDir: string, currentPath: stri
 }
 
 /** Atomically write a backup (tmp + fsync + rename); log failures and return false. */
-function writeReanalysisBackup(cachePath: string, events: EngineEvent[], clips: Clip[]): boolean {
+function writeReanalysisBackup(cachePath: string, events: EngineEvent[], clips: Clip[], document?: CacheDoc): boolean {
   const dest = clipsBackupPath(cachePath)
   const tmp = `${dest}.tmp`
   try {
     fs.mkdirSync(path.dirname(dest), { recursive: true })
     const fd = fs.openSync(tmp, 'w')
     try {
-      fs.writeSync(fd, JSON.stringify({ version: 2, events, clips }), null, 'utf-8')
+      fs.writeSync(fd, JSON.stringify(document ? { version: 3, document } : { version: 2, events, clips }), null, 'utf-8')
       fs.fsyncSync(fd)
     } finally {
       fs.closeSync(fd)
@@ -60,6 +64,43 @@ function writeReanalysisBackup(cachePath: string, events: EngineEvent[], clips: 
     } catch {}
     return false
   }
+}
+
+/** Keep edits out of the engine-owned file until analysis has committed its result. */
+function savePendingCacheDoc(doc: CacheDoc): boolean {
+  return writeReanalysisBackup(doc.cache_path, doc.events, doc.clips, doc)
+}
+
+function editedBackup(videoPath: string, cacheDir: string, beside: boolean): { path: string; backup: ReanalysisBackup } | null {
+  const candidates = [cacheFilePath(videoPath, cacheDir, beside), cacheFilePath(videoPath, cacheDir, !beside), legacyCacheFilePath(videoPath, cacheDir, true)]
+  let newest: { path: string; backup: ReanalysisBackup; time: number } | null = null
+  for (const candidate of new Set(candidates)) {
+    const backup = readReanalysisBackup(candidate)
+    if (!backup?.document || path.resolve(backup.document.video.path).toLowerCase() !== path.resolve(videoPath).toLowerCase()) continue
+    const time = fs.statSync(clipsBackupPath(candidate)).mtimeMs
+    if (!newest || time > newest.time) newest = { path: candidate, backup, time }
+  }
+  return newest
+}
+
+/** Reopening a source must include edits saved while its engine cache was being replaced. */
+export function loadCacheWithEdits(videoPath: string, cacheDir: string, beside = false): unknown | null {
+  const source = resolveCacheFile(videoPath, cacheDir, beside)
+  const doc = loadCacheDoc(source) as CacheDoc | null
+  const backup = editedBackup(videoPath, cacheDir, beside)?.backup ?? readReanalysisBackup(source)
+  if (!backup) return doc
+  if (!doc) return backup.document ?? null
+  return { ...doc, events: mergeSavedEvents(backup.events, doc.events ?? []), clips: backup.clips, app: backup.document?.app ?? doc.app }
+}
+
+/** Existing interrupted-analysis backups must also receive later edits. */
+export function saveCacheEdits(doc: CacheDoc, cacheDir: string, beside: boolean, activePath?: string): boolean {
+  const pending = editedBackup(doc.video.path, cacheDir, beside)
+  const target = activePath ?? pending?.path ?? doc.cache_path
+  if (activePath || pending || doc.analysis?.status === 'partial' || fs.existsSync(clipsBackupPath(target))) {
+    return savePendingCacheDoc({ ...doc, cache_path: target })
+  }
+  return saveCacheDoc(doc)
 }
 
 function deleteClipsBackup(cachePath: string): void {
@@ -93,6 +134,7 @@ export function capturePriorCache(videoPath: string, cacheDir: string, beside = 
   const cachePath = cacheFilePath(videoPath, cacheDir, beside)
   const sourcePath = resolveCacheFile(videoPath, cacheDir, beside)
   const sourceBackup = readReanalysisBackup(sourcePath)
+  const editing = editedBackup(videoPath, cacheDir, beside)?.backup
   const legacyBackup = readLegacyBackup(videoPath, cacheDir, sourcePath)
   let doc = loadCacheDoc(sourcePath) as (Partial<CacheDoc> & { base_events?: EngineEvent[] }) | null
   if (doc && sourcePath !== cachePath) {
@@ -103,10 +145,10 @@ export function capturePriorCache(videoPath: string, cacheDir: string, beside = 
   const docDone = hasDoc && doc!.analysis?.status === 'done'
   const docClips = hasDoc && Array.isArray(doc!.clips) ? doc!.clips! : []
 
-  if (docDone) writeReanalysisBackup(cachePath, (doc!.events ?? []) as EngineEvent[], docClips as Clip[])
+  if (docDone && !editing) writeReanalysisBackup(cachePath, (doc!.events ?? []) as EngineEvent[], docClips as Clip[])
   const targetBackup = readReanalysisBackup(cachePath)
-  const backup = targetBackup ?? sourceBackup ?? legacyBackup
-  if (backup && !targetBackup) writeReanalysisBackup(cachePath, backup.events, backup.clips)
+  const backup = editing ?? targetBackup ?? sourceBackup ?? legacyBackup
+  if (backup && (!targetBackup || editing)) writeReanalysisBackup(cachePath, backup.events, backup.clips, backup.document)
   if (hasDoc && !docDone && backup?.events.length && !Array.isArray(doc!.base_events)) {
     const withBase = { ...doc, cache_path: cachePath, base_events: backup.events }
     if (saveCacheDoc(withBase as { cache_path: string })) doc = withBase
@@ -126,8 +168,8 @@ export function capturePriorCache(videoPath: string, cacheDir: string, beside = 
  * main restores clips using `mergeOnReanalyze(oldClips, [])` (keep manual clips; keep added AI clips and mark them stale;
  * discard suggested/skipped clips), and sets `app.suggestionsPending = true` so Studio recomputes suggestions on open (once only).
  *
- * Cases not handled (return false and leave the engine-written cache unchanged): first analysis (no prior cache), old document incomplete,
- * new result incomplete, or a non-forced run returns unchanged video/analysis metadata (cache hit).
+ * Without pending user edits, leave first/incomplete analyses and non-forced cache hits unchanged.
+ * Pending edits are restored even on a first analysis or cache hit; incomplete results keep their backup.
  * This function is not called on cancellation/failure: leave the backup beside the cache so a resume/rerun can keep using it
  * (the engine has already overwritten the cache with a partial containing only manual clips before cancellation).
  */
@@ -139,10 +181,13 @@ export function preserveClipsAfterReanalysis(
   beside = false,
   force = false
 ): boolean {
-  if (!prior || !prior.done) return false
   if (!result || result.analysis?.status !== 'done') return false
-  const cachePath = result.cache_path || prior.backupPath || cacheFilePath(videoPath, cacheDir, beside)
-  if (!force && fingerprintOf(result) === prior.fingerprint) {
+  const editing = editedBackup(videoPath, cacheDir, beside)
+  if (!editing && (!prior || !prior.done)) return false
+  const saved = editing?.backup ?? prior!
+  const cachePath = result.cache_path || prior?.backupPath || cacheFilePath(videoPath, cacheDir, beside)
+  const cacheHit = !force && prior?.fingerprint === fingerprintOf(result)
+  if (cacheHit && !editing) {
     // The engine returned the cache directly: no reanalysis occurred, so the backup just created is no longer needed.
     deleteClipsBackup(cachePath)
     return false
@@ -150,12 +195,18 @@ export function preserveClipsAfterReanalysis(
   const doc: CacheDoc = {
     ...result,
     cache_path: cachePath,
-    events: mergeSavedEvents(prior.events, result.events ?? []),
-    clips: mergeOnReanalyze(prior.clips, []),
-    app: { ...result.app, suggestionsPending: true }
+    events: mergeSavedEvents(saved.events, result.events ?? []),
+    clips: cacheHit ? saved.clips : mergeOnReanalyze(saved.clips, []),
+    app: cacheHit ? { ...result.app, ...editing?.backup.document?.app } : { ...result.app, suggestionsPending: true }
   }
   const ok = saveCacheDoc(doc)
   // Delete the backup only after the rewrite succeeds; keep it on failure for the next attempt.
-  if (ok) deleteClipsBackup(prior.backupPath)
+  if (ok) {
+    for (const backupPath of new Set([cachePath, prior?.backupPath, editing?.path])) if (backupPath) deleteClipsBackup(backupPath)
+    for (const candidate of [cacheFilePath(videoPath, cacheDir, !beside), legacyCacheFilePath(videoPath, cacheDir, true)]) {
+      const edited = readReanalysisBackup(candidate)?.document
+      if (edited && path.resolve(edited.video.path).toLowerCase() === path.resolve(videoPath).toLowerCase()) deleteClipsBackup(candidate)
+    }
+  }
   return ok
 }

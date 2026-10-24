@@ -49,4 +49,20 @@ describe('thumbnails (I14)', () => {
     expect(fs.existsSync(thumbnailPath(video))).toBe(false)
     expect(fs.readdirSync(path.dirname(thumbnailPath(video)))).toEqual([])
   })
+
+  it('reuses the same source but regenerates when its size or modification time changes', async () => {
+    const count = () => fs.readFileSync(process.env.FAKE_LOG!, 'utf8').trim().split('\n').length
+    const first = await generateThumbnail(video, 100, { ffmpeg })
+    const second = await generateThumbnail(video, 100, { ffmpeg })
+    expect(second).toBe(first)
+    expect(count()).toBe(1)
+    const initial = fs.statSync(video)
+    fs.writeFileSync(video, 'replacement')
+    fs.utimesSync(video, initial.atime, initial.mtime)
+    expect(await generateThumbnail(video, 100, { ffmpeg })).not.toBe(first)
+    expect(count()).toBe(2)
+    fs.utimesSync(video, initial.atime, new Date(initial.mtimeMs + 5000))
+    await generateThumbnail(video, 100, { ffmpeg })
+    expect(count()).toBe(3)
+  })
 })

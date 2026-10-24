@@ -1,5 +1,6 @@
 import fs from 'fs'
 import path from 'path'
+import { randomUUID } from 'crypto'
 import { spawn } from 'child_process'
 import { FfmpegJob } from './plan'
 import { killTree } from './killTree'
@@ -63,6 +64,20 @@ export async function checkDiskSpace(outDir: string, estimatedBytes: number): Pr
 export function partialPathFor(output: string): string {
   const ext = path.extname(output)
   return path.join(path.dirname(output), path.basename(output, ext) + '.partial' + ext)
+}
+
+function reservePartial(output: string): string {
+  let partial = partialPathFor(output)
+  for (;;) {
+    try {
+      fs.closeSync(fs.openSync(partial, 'wx'))
+      return partial
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
+      const ext = path.extname(output)
+      partial = partialPathFor(output.slice(0, -ext.length) + `.${randomUUID()}` + ext)
+    }
+  }
 }
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
@@ -129,10 +144,12 @@ export async function runExport(opts: RunExportOptions, control: RunExportContro
     for (let i = 0; i < jobs.length; i++) {
       if (signal?.aborted) return { ok: false, cancelled: true, outputs: completed }
       const job = jobs[i]
-      const partial = partialPathFor(job.output)
-      if (job.intermediate) tempFilesToClean.push(job.output)
+      if (job.args.at(-1) !== job.output) throw new JobFailure('Invalid export output argument')
+      if (job.intermediate && fs.existsSync(job.output)) throw new JobFailure('Intermediate output already exists')
+      const partial = reservePartial(job.output)
+      tempFilesToClean.push(partial)
       // Rewrite the output argument (the final `-y <output>`) to the partial path.
-      let args = job.args.map((a) => (a === job.output ? partial : a))
+      let args = [...job.args.slice(0, -1), partial]
 
       if (args.includes('LIST_FILE_PLACEHOLDER') && opts.concatListContent) {
         const tempDir = opts.tempDir ?? path.join(appDataDir(), 'temp')
@@ -233,6 +250,7 @@ export async function runExport(opts: RunExportOptions, control: RunExportContro
         throw new JobFailure(tr('無法完成輸出檔：{message}', { message: (err as Error).message }))
       }
       if (!job.intermediate) completed.push(finalPath)
+      else tempFilesToClean.push(finalPath)
     }
   } catch (err) {
     return { ok: false, error: (err as Error).message, outputs: completed }

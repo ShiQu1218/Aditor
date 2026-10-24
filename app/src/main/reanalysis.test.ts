@@ -6,7 +6,8 @@ import { AnalysisQueue } from './queue'
 import { Library } from './library'
 import type { EngineClient } from './engine'
 import { cacheFilePath, legacyCacheFilePath, saveCacheDoc } from './cache-io'
-import { capturePriorCache, clipsBackupPath, readClipsBackup } from './reanalysis'
+import { capturePriorCache, clipsBackupPath, readClipsBackup, saveCacheEdits, loadCacheWithEdits, preserveClipsAfterReanalysis } from './reanalysis'
+import type { CacheDoc } from '../shared/types'
 
 const V1 = path.join(os.tmpdir(), 'aditor-ra', 'v1.mp4')
 const tick = (ms = 30): Promise<void> => new Promise((r) => setTimeout(r, ms))
@@ -113,6 +114,102 @@ describe('clips backup across cancelled re-analysis (F2)', () => {
     )
   }
   const summary = (clips: any[]): unknown[] => clips.map((c) => [c.id, c.status, c.stale ?? false])
+
+  it('keeps edits saved during first analysis and thumbnail generation after leaving Studio', async () => {
+    let finish!: (doc: unknown) => void
+    let thumbnailDone!: () => void
+    const fake = { request: () => ({ id: 'r', promise: new Promise((resolve) => { finish = resolve }) }), cancel() {} } as unknown as EngineClient
+    const q = new AnalysisQueue(fake, lib, { profileDir: '/p', cacheDir: dir })
+    ;(q as any)._generateThumbnail = () => new Promise<void>((resolve) => { thumbnailDone = resolve })
+    q.enqueue(V1)
+    const edited = doc('partial', 1, [manual], [event('m-new', 5, { source: 'manual' })]) as unknown as CacheDoc
+    expect(saveCacheEdits(edited, dir, false, q.activeCachePath(V1))).toBe(true)
+    expect(fs.existsSync(cache())).toBe(false) // Never race the engine's JSON writer.
+    expect((loadCacheWithEdits(V1, dir) as CacheDoc).events[0].id).toBe('m-new')
+    const result = doc('done', 1, [], [event('a-new', 30)]) as unknown as CacheDoc
+    saveCacheDoc(result)
+    finish(result)
+    await tick()
+    const late = { ...edited, events: [...edited.events, event('m-late', 7, { source: 'manual' })] } as CacheDoc
+    expect(saveCacheEdits(late, dir, false, q.activeCachePath(V1))).toBe(true)
+    thumbnailDone()
+    await tick()
+    expect(readDoc().events.map((e: any) => e.id)).toEqual(['m-new', 'm-late', 'a-new'])
+    expect(readDoc().clips.map((c: any) => c.id)).toEqual(['m1'])
+    expect(lib.get(V1)?.counts?.knock).toBe(3)
+    expect(fs.existsSync(backup())).toBe(false)
+  })
+
+  it('keeps edits through cancellation, later edits, and a resumed analysis', async () => {
+    seedDone()
+    const q = new AnalysisQueue(cancellableEngine(), lib, { profileDir: '/p', cacheDir: dir })
+    q.enqueue(V1)
+    const edited = doc('partial', 2, [clip('new-manual', 10, { origin: 'manual' })], [event('m-new', 5, { source: 'manual' })]) as unknown as CacheDoc
+    expect(saveCacheEdits(edited, dir, false, q.activeCachePath(V1))).toBe(true)
+    q.cancel(V1)
+    await tick()
+    const later = { ...edited, clips: [] }
+    expect(saveCacheEdits(later, dir, false)).toBe(true)
+    expect((loadCacheWithEdits(V1, dir) as CacheDoc).events[0].id).toBe('m-new')
+    const resumed = new AnalysisQueue(engine('done'), lib, { profileDir: '/p', cacheDir: dir })
+    resumed.enqueue(V1)
+    await tick(60)
+    expect(readDoc().events.some((e: any) => e.id === 'm-new')).toBe(true)
+    expect(readDoc().clips).toEqual([])
+    expect(fs.existsSync(backup())).toBe(false)
+  })
+
+  it('opening during reanalysis includes the original accepted clips before saving new edits', async () => {
+    seedDone()
+    const q = new AnalysisQueue(cancellableEngine(), lib, { profileDir: '/p', cacheDir: dir })
+    q.enqueue(V1)
+    const loaded = loadCacheWithEdits(V1, dir) as CacheDoc
+    expect(loaded.clips.some((c) => c.id === 'a1')).toBe(true)
+    expect(saveCacheEdits({ ...loaded, events: [event('m-new', 5, { source: 'manual' })] } as unknown as CacheDoc, dir, false, q.activeCachePath(V1))).toBe(true)
+    q.cancel(V1)
+    await tick()
+    new AnalysisQueue(engine('done'), lib, { profileDir: '/p', cacheDir: dir }).enqueue(V1)
+    await tick(60)
+    expect(readDoc().clips.some((c: any) => c.id === 'a1' && c.stale)).toBe(true)
+    expect(readDoc().events[0].id).toBe('m-new')
+  })
+
+  it('commits edits during a cache hit without discarding suggestion states', () => {
+    seedDone()
+    const result = readDoc() as CacheDoc
+    const prior = capturePriorCache(V1, dir)
+    const edited = { ...result, events: [event('m-new', 5, { source: 'manual' })] } as unknown as CacheDoc
+    expect(saveCacheEdits(edited, dir, false, cache())).toBe(true)
+    expect(preserveClipsAfterReanalysis(prior, result, V1, dir)).toBe(true)
+    expect(summary(readDoc().clips)).toEqual(summary(result.clips))
+    expect(readDoc().events[0].id).toBe('m-new')
+    expect(fs.existsSync(backup())).toBe(false)
+  })
+
+  it('keeps source edits saved before the first queued analysis starts', async () => {
+    const edited = doc('partial', 1, [manual], [event('m-new', 5, { source: 'manual' })]) as unknown as CacheDoc
+    expect(saveCacheEdits(edited, dir, false)).toBe(true)
+    const q = new AnalysisQueue(engine('done'), lib, { profileDir: '/p', cacheDir: dir })
+    q.enqueue(V1)
+    await tick(60)
+    expect(readDoc().events[0].id).toBe('m-new')
+    expect(fs.existsSync(backup())).toBe(false)
+  })
+
+  it('moves pending edits across cache locations without leaving an old editable backup', () => {
+    const videoPath = path.join(dir, 'source.mp4')
+    const appFile = cacheFilePath(videoPath, dir)
+    const besideFile = cacheFilePath(videoPath, dir, true)
+    const edited = { ...doc('partial', 1, [manual], [event('m-new', 5, { source: 'manual' })]), video: { ...video(1), path: videoPath }, cache_path: appFile } as unknown as CacheDoc
+    expect(saveCacheEdits(edited, dir, false, appFile)).toBe(true)
+    const prior = capturePriorCache(videoPath, dir, true)
+    const result = { ...edited, events: [], clips: [], analysis: analysis('done'), cache_path: besideFile } as unknown as CacheDoc
+    saveCacheDoc(result)
+    expect(preserveClipsAfterReanalysis(prior, result, videoPath, dir, true)).toBe(true)
+    expect((loadCacheWithEdits(videoPath, dir, true) as CacheDoc).events[0].id).toBe('m-new')
+    expect(fs.existsSync(clipsBackupPath(appFile))).toBe(false)
+    expect(fs.existsSync(clipsBackupPath(besideFile))).toBe(false)
+  })
 
   it('before a re-analysis of a done cache, a sidecar backup of its clips is written next to the cache', async () => {
     seedDone()
