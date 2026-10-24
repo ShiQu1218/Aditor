@@ -9,6 +9,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
+import numpy as np
+
 from . import ENGINE_VERSION
 from .aspect import detect_aspect, resolve_layout
 from .cache import (cache_path, load_cache, merge_clips, merge_reanalysis,
@@ -16,6 +18,7 @@ from .cache import (cache_path, load_cache, merge_clips, merge_reanalysis,
 from .calibrate import (LEARN_SCAN_SECONDS, AnchorCollector, build_keywords, calibrate, extend_keywords,
                         keywords_complete, same_keywords)
 from .decode import FrameStream, is_gpu_path
+from .control_feed import ControlFeed
 from .errors import Cancelled
 from .derive import derive
 from .detect import Detector, Keywords, Pending
@@ -118,6 +121,7 @@ class _Seg:
     snap_progress: float = 0.0  # Tracker cursor corresponding to snap_events/snap_spec (for writing partials).
     snap_events: list = field(default_factory=list)
     snap_spec: list = field(default_factory=list)
+    feed_events: list = field(default_factory=list)
     own_from: float = 0.0     # Time when this run begins owning output (greater than start on resume).
 
     @property
@@ -442,7 +446,7 @@ def analyze(path: str, profile: Profile, *, cache_dir: Path, beside: bool = Fals
         evs = list(kept_events)
         spec = list(kept_spec)
         for sg in segs:
-            evs += sg.snap_events
+            evs += sg.snap_events + sg.feed_events
             spec += sg.snap_spec
         return sorted(evs, key=lambda e: e.t), _merge_intervals(spec)
 
@@ -483,6 +487,7 @@ def analyze(path: str, profile: Profile, *, cache_dir: Path, beside: bool = Fals
         own_from, frm = sg.resume_plan()
         detector = Detector(profile, h_scale, keywords=keywords)
         tracker = EventTracker(profile)
+        feed = ControlFeed(profile) if profile.killfeed_roi is not None else None
         col = learn_lo = learn_hi = late_col = late_lo = late_hi = None
         buf: list[tuple[float, FrameResult | Pending]] | None = None  # Buffer before keywords finish learning (None means frames can be finalized immediately).
         log: list[tuple[float, FrameResult | Pending]] | None = None  # Per-frame log for extended learning (None when extension is unnecessary).
@@ -515,6 +520,7 @@ def analyze(path: str, profile: Profile, *, cache_dir: Path, beside: bool = Fals
         def snap(progress: float) -> None:
             evs, spec = tracker.snapshot()
             sg.snap_events = [e for e in evs if sg.owns(e.t)]
+            sg.feed_events = [e for e in feed.events if sg.owns(e.t)] if feed is not None else []
             sg.snap_spec = _clip_intervals(spec, own_from, hi)
             sg.snap_progress = progress
 
@@ -525,6 +531,10 @@ def analyze(path: str, profile: Profile, *, cache_dir: Path, beside: bool = Fals
                         with lock:
                             snap(cursor)
                     return
+                if feed is not None:
+                    feed.feed(t, getattr(stream, 'killfeed', None), spec, getattr(stream, 'thumb', None))
+                    if feed.active:
+                        banner = np.zeros_like(banner)
                 r, f = detector.prepare(banner, spec)
                 if col is not None:
                     if learn_lo - 1e-6 <= t < learn_hi - 1e-6:
@@ -564,6 +574,7 @@ def analyze(path: str, profile: Profile, *, cache_dir: Path, beside: bool = Fals
             events, intervals = tracker.finish()
             with lock:
                 sg.snap_events = [e for e in events if sg.owns(e.t)]
+                sg.feed_events = [e for e in feed.events if sg.owns(e.t)] if feed is not None else []
                 sg.snap_spec = _clip_intervals(intervals, own_from, hi)
                 sg.snap_progress = sg.progress_t = sg.target
         except BaseException:

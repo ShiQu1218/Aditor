@@ -618,6 +618,10 @@ describe('recorder small-frame regions', () => {
     const rois = { banner_roi: [560, 700, 800, 180], spec_roi: [60, 1028, 480, 40] }
     write({ ...rois, capture_rois: { banner: [560, 652, 800, 228], spec: [60, 1028, 480, 44] } })
     expect(await readFrames(dir)).toEqual({ banner: [560, 652, 800, 228], spec: [60, 1028, 480, 44], base: [1920, 1080] })
+    write({ ...rois, capture_rois: { banner: rois.banner_roi, spec: rois.spec_roi, killfeed: [850, 42, 1070, 438] } })
+    expect(await readFrames(dir)).toMatchObject({ killfeed: [850, 42, 1070, 438] })
+    write({ ...rois, capture_rois: { banner: rois.banner_roi, spec: rois.spec_roi, killfeed: [850, 42, 1071, 438] } })
+    await expect(readFrames(dir)).rejects.toMatchObject({ code: 'profile_invalid' })
     write(rois)
     expect(await readFrames(dir)).toEqual({ banner: [560, 700, 800, 180], spec: [60, 1028, 480, 40], base: [1920, 1080] })
     write({ ...rois, capture_rois: { banner: [560, 1000, 800, 228], spec: [60, 1028, 480, 44] } })

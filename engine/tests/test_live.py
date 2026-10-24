@@ -49,12 +49,15 @@ class ShmTestWriter:
         self.mm[0:8] = magic
         struct.pack_into("<9I", self.mm, 8, version, SHM_SLOTS, layout.slot_size, *layout.banner,
                          *layout.spec, *layout.thumb)
+        struct.pack_into('<I', self.mm, 44, layout.killfeed[0])
+        struct.pack_into('<I', self.mm, 56, layout.killfeed[1])
         self.seq = 0
 
     def slot_offset(self, seq: int) -> int:
         return SHM_HEADER_BYTES + ((seq - 1) % SHM_SLOTS) * self.layout.slot_size
 
-    def write(self, pts: int, banner: np.ndarray, spec: np.ndarray, thumb: np.ndarray | None = None) -> int:
+    def write(self, pts: int, banner: np.ndarray, spec: np.ndarray, thumb: np.ndarray | None = None,
+              killfeed: np.ndarray | None = None) -> int:
         lay = self.layout
         seq = self.seq + 1
         off = self.slot_offset(seq)
@@ -69,6 +72,9 @@ class ShmTestWriter:
         if thumb is not None:
             a += lay.spec_bytes
             self.mm[a:a + lay.thumb_bytes] = np.ascontiguousarray(thumb, np.uint8).tobytes()
+        if killfeed is not None:
+            a = off + 24 + lay.banner_bytes + lay.spec_bytes + lay.thumb_bytes
+            self.mm[a:a + lay.killfeed_bytes] = np.ascontiguousarray(killfeed, np.uint8).tobytes()
         struct.pack_into("<Q", self.mm, end, seq)
         struct.pack_into("<Q", self.mm, LATEST_SEQ_OFFSET, seq)
         self.seq = seq
@@ -118,6 +124,28 @@ def test_slot_size_matches_rust_layout():
     lay = ShmLayout((7, 3), (5, 2), (4, 2))
     assert lay.slot_size == 136
     assert lay.total_size == SHM_HEADER_BYTES + 16 * 136
+
+
+def test_optional_killfeed_round_trip_and_legacy_header():
+    lay = ShmLayout((7, 3), (5, 2), (4, 2), (3, 2))
+    writer = ShmTestWriter(_name(), lay)
+    reader = ShmReader(memoryview(writer.mm), lay.total_size)
+    banner, spec, _ = _blank(lay)
+    feed = np.full((2, 3, 3), 123, np.uint8)
+    try:
+        writer.write(0, banner, spec, killfeed=feed)
+        actual = reader.read(1)
+        assert actual.thumb is None and np.array_equal(actual.killfeed, feed)
+        writer.set_seq_end(1, 0)
+        assert reader.read(1) is None
+    finally:
+        reader.close()
+        writer.close()
+    legacy = ShmLayout((7, 3), (5, 2), (4, 2))
+    writer = ShmTestWriter(_name(), legacy, version=1)
+    reader = ShmReader(memoryview(writer.mm), legacy.total_size)
+    reader.close()
+    writer.close()
 
 
 def test_reader_copies_slots_and_thumb_flag():
@@ -170,7 +198,7 @@ def test_torn_and_overwritten_slots_are_rejected():
 
 @pytest.mark.parametrize("mutate, message", [
     (lambda mm: mm.__setitem__(slice(0, 8), b"BADMAGIC"), "magic"),
-    (lambda mm: struct.pack_into("<I", mm, 8, 2), "version"),
+    (lambda mm: struct.pack_into("<I", mm, 8, 99), "version"),
     (lambda mm: struct.pack_into("<I", mm, 12, 8), "Slot count"),
     (lambda mm: struct.pack_into("<I", mm, 16, 128), "Slot size"),
     (lambda mm: struct.pack_into("<I", mm, 20, 0), "greater than 0"),

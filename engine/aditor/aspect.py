@@ -53,7 +53,7 @@ def _template_score(scene: SceneFrame) -> float:
     if not s:
         return 0.0
     footer = max(s["loading_footer"], s["wildcard_footer"])
-    minimap = max(s["minimap_border"], s["ranked_minimap"], s["spectator_minimap"])
+    minimap = max(s["minimap_border"], s["ranked_minimap"], s["spectator_minimap"], s["control_objectives"])
     health = max(s["health_border"], s["ranked_health"], s["spectator_health"])
     chevron = max(s["mode_chevron"], s["ranked_chevron"])
     return max(min(chevron, footer), min(s["ready_border"], s["mode_border"]), min(minimap, health))

@@ -30,6 +30,7 @@ pub struct SmallFrames {
     pub pts: i64,
     pub banner: Vec<u8>,
     pub spec: Vec<u8>,
+    pub killfeed: Option<Vec<u8>>,
     pub thumb: Option<Vec<u8>>,
 }
 
@@ -73,6 +74,10 @@ impl SmallFrameExtractor {
 
     pub fn spec_size(&self) -> (u32, u32) {
         (self.frames.spec[2], self.frames.spec[3])
+    }
+
+    pub fn killfeed_size(&self) -> (u32, u32) {
+        self.frames.killfeed.map(|r| (r[2], r[3])).unwrap_or((0, 0))
     }
 
     /// Called for every captured frame; throttled internally to `SMALL_FPS` using pts. Returns the previous sample's readback, if available.
@@ -144,6 +149,9 @@ impl SmallFrameExtractor {
         }
         copy_roi(&self.gpu, normalized, &slot.banner, self.frames.banner);
         copy_roi(&self.gpu, normalized, &slot.spec, self.frames.spec);
+        if let (Some(texture), Some(rect)) = (&slot.killfeed, self.frames.killfeed) {
+            copy_roi(&self.gpu, normalized, texture, rect);
+        }
         if with_thumb {
             // SAFETY: Source and destination are unmapped textures with matching dimensions and formats.
             unsafe {
@@ -168,7 +176,7 @@ fn validate_spec(frames: FramesSpec) -> Result<()> {
     if frames.base != [1920, 1080] {
         bail!("Thumbnail reference resolution must be 1920×1080");
     }
-    for roi in [frames.banner, frames.spec] {
+    for roi in [Some(frames.banner), Some(frames.spec), frames.killfeed].into_iter().flatten() {
         let [x, y, w, h] = roi;
         if w == 0 || h == 0 || x as u64 + w as u64 > 1920 || y as u64 + h as u64 > 1080 {
             bail!("Thumbnail ROI must fit within the reference frame and have nonzero width and height");
@@ -180,6 +188,7 @@ fn validate_spec(frames: FramesSpec) -> Result<()> {
 struct Readback {
     banner: ID3D11Texture2D,
     spec: ID3D11Texture2D,
+    killfeed: Option<ID3D11Texture2D>,
     thumb: ID3D11Texture2D,
     pending: Option<(i64, bool)>,
     ready: ID3D11Query,
@@ -201,6 +210,7 @@ impl Readback {
         Ok(Self {
             banner: texture(gpu, (frames.banner[2], frames.banner[3]), true)?,
             spec: texture(gpu, (frames.spec[2], frames.spec[3]), true)?,
+            killfeed: frames.killfeed.map(|r| texture(gpu, (r[2], r[3]), true)).transpose()?,
             thumb: texture(gpu, (THUMB_W, THUMB_H), true)?,
             pending: None,
             ready: ready.context("Missing thumbnail completion event")?,
@@ -239,10 +249,17 @@ impl Readback {
         } else {
             None
         };
+        let killfeed = if let Some(texture) = &self.killfeed {
+            let Some(mapped) = Mapped::try_new(gpu, texture)? else { return Ok(None) };
+            Some(mapped)
+        } else {
+            None
+        };
         let result = SmallFrames {
             pts,
             banner: banner.pixels(false),
             spec: spec.pixels(false),
+            killfeed: killfeed.as_ref().map(|mapped| mapped.pixels(false)),
             thumb: thumb.as_ref().map(|mapped| mapped.pixels(true)),
         };
         self.pending = None;
@@ -513,8 +530,10 @@ mod tests {
             banner: [10, 20, 30, 40],
             spec: [0, 0, 1, 1],
             base: [1920, 1080],
+            killfeed: None,
         };
         assert!(validate_spec(valid).is_ok());
+        assert!(validate_spec(FramesSpec { killfeed: Some([1919, 0, 2, 1]), ..valid }).is_err());
         for roi in [
             [0, 0, 0, 1],
             [1919, 0, 2, 1],

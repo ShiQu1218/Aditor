@@ -39,6 +39,7 @@ const FRAMES: FramesSpec = FramesSpec {
     banner: [192, 216, 192, 108],
     spec: [960, 540, 192, 108],
     base: [1920, 1080],
+    killfeed: None,
 };
 const SET_BLACK: u32 = WM_APP + 1;
 const RESIZE: u32 = WM_APP + 2;

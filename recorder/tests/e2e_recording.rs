@@ -290,7 +290,7 @@ impl Mapping {
             bytes: 64,
         };
         assert_eq!(result.copy(0, 8), b"APXSHM01");
-        assert_eq!(result.u32(8), 1);
+        assert_eq!(result.u32(8), 2);
         assert_eq!(result.u32(12), 16);
         result.bytes = 64 + result.u32(16) as usize * 16;
         result

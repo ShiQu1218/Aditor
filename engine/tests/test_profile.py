@@ -126,6 +126,7 @@ def test_shipped_capture_rois_cover_every_supported_aspect():
     p = load_profile(ICON_DIR)
     assert tuple(doc["capture_rois"]["banner"]) == capture_rect(p.banner_roi, BANNER_ANCHOR) == p.capture_banner
     assert tuple(doc["capture_rois"]["spec"]) == capture_rect(p.spec_roi, SPEC_ANCHOR) == p.capture_spec
+    assert tuple(doc['capture_rois']['killfeed']) == capture_rect(p.killfeed_roi, 'top') == p.capture_killfeed
 
 
 def test_profile_layout_defaults_to_16_9_and_can_be_replaced():

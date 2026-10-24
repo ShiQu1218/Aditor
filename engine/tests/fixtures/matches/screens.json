@@ -389,6 +389,62 @@
       "file": "ranked_17-30_1730.png",
       "scene": "pre_match",
       "evidence": "2026-10-23 17-30 1730s: wide ranked mode card and loading footer during direct requeue."
+    },
+    {
+      "file": "control_1650.png",
+      "video": "Apex_2026-10-24_14-24.mp4",
+      "t": 1650,
+      "scene": "lobby",
+      "evidence": "控制模式：據點列與血條；開場、大廳、選角及離開確認畫面為反例。"
+    },
+    {
+      "file": "control_1679.png",
+      "video": "Apex_2026-10-24_14-24.mp4",
+      "t": 1679,
+      "scene": "pre_match",
+      "evidence": "控制模式：據點列與血條；開場、大廳、選角及離開確認畫面為反例。"
+    },
+    {
+      "file": "control_1700.png",
+      "video": "Apex_2026-10-24_14-24.mp4",
+      "t": 1700,
+      "scene": "other",
+      "evidence": "控制模式：據點列與血條；開場、大廳、選角及離開確認畫面為反例。"
+    },
+    {
+      "file": "control_1725.png",
+      "video": "Apex_2026-10-24_14-24.mp4",
+      "t": 1725,
+      "scene": "other",
+      "evidence": "控制模式：據點列與血條；開場、大廳、選角及離開確認畫面為反例。"
+    },
+    {
+      "file": "control_1745.png",
+      "video": "Apex_2026-10-24_14-24.mp4",
+      "t": 1745,
+      "scene": "in_match_hud",
+      "evidence": "控制模式：據點列與血條；開場、大廳、選角及離開確認畫面為反例。"
+    },
+    {
+      "file": "control_1910.png",
+      "video": "Apex_2026-10-24_14-24.mp4",
+      "t": 1910,
+      "scene": "in_match_hud",
+      "evidence": "控制模式：據點列與血條；開場、大廳、選角及離開確認畫面為反例。"
+    },
+    {
+      "file": "control_2100.png",
+      "video": "Apex_2026-10-24_14-24.mp4",
+      "t": 2100,
+      "scene": "in_match_hud",
+      "evidence": "控制模式：據點列與血條；開場、大廳、選角及離開確認畫面為反例。"
+    },
+    {
+      "file": "control_2400.png",
+      "video": "Apex_2026-10-24_14-24.mp4",
+      "t": 2400,
+      "scene": "other",
+      "evidence": "控制模式：據點列與血條；開場、大廳、選角及離開確認畫面為反例。"
     }
   ]
 }

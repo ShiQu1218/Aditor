@@ -5,15 +5,15 @@
 //! ```text
 //! Header（64 bytes）
 //!   0  [u8; 8]  magic = b"APXSHM01"
-//!   8  u32      version = 1
+//!   8  u32      version = 2 (adds optional kill-feed data)
 //!  12  u32      slot_count = 16
 //!  16  u32      slot_size (bytes, including slot header, aligned to 8)
 //!  20  u32      banner_w   24 u32 banner_h
 //!  28  u32      spec_w     32 u32 spec_h
 //!  36  u32      thumb_w    40 u32 thumb_h
-//!  44  u32      reserved
+//!  44  u32      killfeed_w (0 when absent)
 //!  48  u64      latest_seq (sequence of the latest completed slot; 0 = none)
-//!  56  u64      reserved
+//!  56  u32      killfeed_h (0 when absent); 60 u32 reserved
 //! Slot i is at 64 + i * slot_size; slot for seq = (seq - 1) % slot_count
 //!   0  u64      seq_begin
 //!   8  i64      pts（100 ns tick）
@@ -22,6 +22,7 @@
 //!  24  [u8]     banner（banner_w*banner_h*3，BGR24）
 //!      [u8]     spec（spec_w*spec_h*3，BGR24）
 //!      [u8]     thumb (thumb_w*thumb_h, GRAY8; contents undefined when has_thumb=0)
+//!      [u8]     killfeed (killfeed_w*killfeed_h*3, BGR24)
 //!      pad to 8-byte alignment
 //!  slot_size-8  u64  seq_end
 //! ```
@@ -50,10 +51,11 @@ pub struct ShmLayout {
     pub banner: (u32, u32),
     pub spec: (u32, u32),
     pub thumb: (u32, u32),
+    pub killfeed: (u32, u32),
 }
 
 pub const SHM_MAGIC: &[u8; 8] = b"APXSHM01";
-pub const SHM_VERSION: u32 = 1;
+pub const SHM_VERSION: u32 = 2;
 pub const SHM_SLOTS: u32 = 16;
 pub const SHM_HEADER_BYTES: usize = 64;
 
@@ -114,6 +116,8 @@ impl ShmWriter {
             (32, layout.spec.1),
             (36, layout.thumb.0),
             (40, layout.thumb.1),
+            (44, layout.killfeed.0),
+            (56, layout.killfeed.1),
         ] {
             mapping.store_bytes(offset, &value.to_le_bytes());
         }
@@ -132,10 +136,12 @@ impl ShmWriter {
         banner: &[u8],
         spec: &[u8],
         thumb: Option<&[u8]>,
+        killfeed: Option<&[u8]>,
     ) -> Result<u64> {
         if banner.len() != self.sizes.banner
             || spec.len() != self.sizes.spec
             || thumb.is_some_and(|data| data.len() != self.sizes.thumb)
+            || killfeed.map_or(0, |data| data.len()) != self.sizes.killfeed
         {
             bail!("Thumbnail data length does not match the shared-memory layout");
         }
@@ -158,6 +164,9 @@ impl ShmWriter {
             self.mapping
                 .store_bytes(slot + 24 + self.sizes.banner + self.sizes.spec, thumb);
         }
+        if let Some(feed) = killfeed {
+            self.mapping.store_bytes(slot + 24 + self.sizes.banner + self.sizes.spec + self.sizes.thumb, feed);
+        }
         fence(Ordering::Release);
         self.mapping
             .word_at(end)
@@ -175,6 +184,7 @@ struct Sizes {
     banner: usize,
     spec: usize,
     thumb: usize,
+    killfeed: usize,
     slot: usize,
     total: usize,
 }
@@ -193,9 +203,11 @@ impl Sizes {
         let banner = image_bytes(layout.banner, 3)?;
         let spec = image_bytes(layout.spec, 3)?;
         let thumb = image_bytes(layout.thumb, 1)?;
+        let killfeed = if layout.killfeed == (0, 0) { 0 } else { image_bytes(layout.killfeed, 3)? };
         let slot = banner
             .checked_add(spec)
             .and_then(|n| n.checked_add(thumb))
+            .and_then(|n| n.checked_add(killfeed))
             .and_then(|n| n.checked_add(32 + 7))
             .map(|n| n & !7)
             .filter(|n| *n <= u32::MAX as usize)
@@ -209,6 +221,7 @@ impl Sizes {
             banner,
             spec,
             thumb,
+            killfeed,
             slot,
             total,
         })
@@ -279,6 +292,7 @@ mod tests {
             banner: (7, 3),
             spec: (5, 2),
             thumb: (4, 2),
+            killfeed: (0, 0),
         }
     }
 
@@ -351,7 +365,7 @@ mod tests {
         let reader = Reader::open(&name, &writer.sizes);
         assert_eq!(reader.bytes(0, 8), SHM_MAGIC);
         for (offset, value) in [
-            (8, 1),
+            (8, SHM_VERSION),
             (12, 16),
             (16, 136),
             (20, 7),
@@ -378,7 +392,8 @@ mod tests {
                         seq * 10,
                         &banner,
                         &spec,
-                        has_thumb.then_some(thumb.as_slice())
+                        has_thumb.then_some(thumb.as_slice()),
+                        None
                     )
                     .unwrap(),
                 seq as u64
@@ -416,18 +431,35 @@ mod tests {
     }
 
     #[test]
+    fn optional_killfeed_is_required_and_follows_the_thumbnail() {
+        let layout = ShmLayout { killfeed: (3, 2), ..layout() };
+        let mapping_name = name();
+        let mut writer = ShmWriter::create(&mapping_name, layout).unwrap();
+        let reader = Reader::open(&mapping_name, &writer.sizes);
+        assert_eq!(reader.u32(44), 3);
+        assert_eq!(reader.u32(56), 2);
+        let banner = vec![1; writer.sizes.banner];
+        let spec = vec![2; writer.sizes.spec];
+        let feed = vec![3; writer.sizes.killfeed];
+        assert!(writer.write(0, &banner, &spec, None, None).is_err());
+        writer.write(0, &banner, &spec, None, Some(&feed)).unwrap();
+        let off = SHM_HEADER_BYTES + 24 + writer.sizes.banner + writer.sizes.spec + writer.sizes.thumb;
+        assert_eq!(reader.bytes(off, feed.len()), feed);
+    }
+
+    #[test]
     fn invalid_lengths_do_not_publish_or_advance_sequence() {
         let mut writer = ShmWriter::create(&name(), layout()).unwrap();
         let banner = vec![1; writer.sizes.banner];
         let spec = vec![2; writer.sizes.spec];
         let thumb = vec![3; writer.sizes.thumb];
-        assert!(writer.write(1, &banner[..1], &spec, None).is_err());
-        assert!(writer.write(1, &banner, &spec[..1], None).is_err());
-        assert!(writer.write(1, &banner, &spec, Some(&thumb[..1])).is_err());
+        assert!(writer.write(1, &banner[..1], &spec, None, None).is_err());
+        assert!(writer.write(1, &banner, &spec[..1], None, None).is_err());
+        assert!(writer.write(1, &banner, &spec, Some(&thumb[..1]), None).is_err());
         assert_eq!(writer.seq, 0);
         assert_eq!(writer.mapping.word_at(48).load(Ordering::Acquire), 0);
-        assert_eq!(writer.write(1, &banner, &spec, None).unwrap(), 1);
-        assert!(writer.write(2, &[], &spec, None).is_err());
+        assert_eq!(writer.write(1, &banner, &spec, None, None).unwrap(), 1);
+        assert!(writer.write(2, &[], &spec, None, None).is_err());
         assert_eq!(writer.seq, 1);
     }
 
@@ -468,7 +500,7 @@ mod tests {
                 0,
                 &vec![0; writer.sizes.banner],
                 &vec![0; writer.sizes.spec],
-                None
+                None, None
             )
             .is_err());
         assert_eq!(writer.mapping.word_at(48).load(Ordering::Acquire), 0);
@@ -493,7 +525,7 @@ mod tests {
         let name = name();
         let mut writer = ShmWriter::create(&name, layout()).unwrap();
         writer
-            .write(-123, &vec![42; sizes.banner], &vec![43; sizes.spec], None)
+            .write(-123, &vec![42; sizes.banner], &vec![43; sizes.spec], None, None)
             .unwrap();
         let output = std::process::Command::new(std::env::current_exe().unwrap())
             .args([
@@ -522,6 +554,7 @@ mod tests {
                 banner: (32, 16),
                 spec: (16, 8),
                 thumb: (16, 8),
+                killfeed: (0, 0),
             },
         )
         .unwrap();
@@ -565,7 +598,7 @@ mod tests {
             spec.fill(seq as u8);
             thumb.fill(seq as u8);
             writer
-                .write(seq as i64, &banner, &spec, Some(&thumb))
+                .write(seq as i64, &banner, &spec, Some(&thumb), None)
                 .unwrap();
         }
         done.store(true, Ordering::Release);

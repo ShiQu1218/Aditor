@@ -52,7 +52,7 @@ from .scene import SCENE_SIZE, SceneDetector
 
 # ---- Shared-memory layout (recorder/src/shm.rs) ----
 SHM_MAGIC = b"APXSHM01"
-SHM_VERSION = 1
+SHM_VERSION = 2
 SHM_SLOTS = 16
 SHM_HEADER_BYTES = 64
 SLOT_HEAD_BYTES = 24        # seq_begin(u64) + pts(i64) + has_thumb(u32) + reserved(u32)
@@ -89,6 +89,11 @@ class ShmLayout:
     banner: tuple[int, int]   # (w, h)
     spec: tuple[int, int]
     thumb: tuple[int, int]
+    killfeed: tuple[int, int] = (0, 0)
+
+    @property
+    def killfeed_bytes(self) -> int:
+        return self.killfeed[0] * self.killfeed[1] * 3
 
     @property
     def banner_bytes(self) -> int:
@@ -105,7 +110,7 @@ class ShmLayout:
     @property
     def slot_size(self) -> int:
         """Same layout as shm.rs Sizes::new: 24-byte slot header + data + 8-byte seq_end, rounded up to an 8-byte boundary."""
-        return (self.banner_bytes + self.spec_bytes + self.thumb_bytes + 32 + 7) & ~7
+        return (self.banner_bytes + self.spec_bytes + self.thumb_bytes + self.killfeed_bytes + 32 + 7) & ~7
 
     @property
     def total_size(self) -> int:
@@ -119,6 +124,7 @@ class Slot:
     banner: np.ndarray        # (h, w, 3) BGR
     spec: np.ndarray          # (h, w, 3) BGR
     thumb: np.ndarray | None  # (h, w) GRAY8; None when has_thumb=0.
+    killfeed: np.ndarray | None = None
 
 
 def parse_header(buf, size: int) -> ShmLayout:
@@ -128,13 +134,17 @@ def parse_header(buf, size: int) -> ShmLayout:
     if bytes(buf[0:8]) != SHM_MAGIC:
         raise LayoutError("Shared memory magic does not match")
     version, slots, slot_size, bw, bh, sw, sh, tw, th = struct.unpack_from("<9I", buf, 8)
-    if version != SHM_VERSION:
+    if version not in (1, SHM_VERSION):
         raise LayoutError(f"Unsupported shared memory version: {version}")
     if slots != SHM_SLOTS:
         raise LayoutError(f"Slot count does not match: {slots}")
     if min(bw, bh, sw, sh, tw, th) <= 0:
         raise LayoutError("Thumbnail dimensions must be greater than 0")
-    layout = ShmLayout((bw, bh), (sw, sh), (tw, th))
+    fw = struct.unpack_from('<I', buf, 44)[0] if version >= 2 else 0
+    fh = struct.unpack_from('<I', buf, 56)[0] if version >= 2 else 0
+    if (fw == 0) != (fh == 0) or fw > 1920 or fh > 1080:
+        raise LayoutError('Invalid kill-feed dimensions')
+    layout = ShmLayout((bw, bh), (sw, sh), (tw, th), (fw, fh))
     if slot_size != layout.slot_size:
         raise LayoutError(f"Slot size does not match: {slot_size} != {layout.slot_size}")
     if layout.total_size > size:
@@ -193,12 +203,15 @@ class ShmReader:
         banner = np.frombuffer(self._buf[a:b], np.uint8).copy()
         spec = np.frombuffer(self._buf[b:c], np.uint8).copy()
         thumb = np.frombuffer(self._buf[c:c + lay.thumb_bytes], np.uint8).copy() if has_thumb else None
+        d = c + lay.thumb_bytes
+        feed = np.frombuffer(self._buf[d:d + lay.killfeed_bytes], np.uint8).copy() if lay.killfeed_bytes else None
         if self._u64(off) != seq:
             return None  # The writer started overwriting this slot during the copy.
         return Slot(seq, pts,
                     banner.reshape(lay.banner[1], lay.banner[0], 3),
                     spec.reshape(lay.spec[1], lay.spec[0], 3),
-                    None if thumb is None else thumb.reshape(lay.thumb[1], lay.thumb[0]))
+                    None if thumb is None else thumb.reshape(lay.thumb[1], lay.thumb[0]),
+                    None if feed is None else feed.reshape(lay.killfeed[1], lay.killfeed[0], 3))
 
     def close(self) -> None:
         buf, self._buf = self._buf, None
@@ -329,6 +342,8 @@ class LiveKills:
                  pending_max_bytes: int = PENDING_BUFFER_MAX_BYTES, late_max_bytes: int = LATE_REPLAY_MAX_BYTES,
                  log: Callable[[str], None] | None = None):
         self.profile = profile
+        from .control_feed import ControlFeed
+        self.control = ControlFeed(profile) if profile.killfeed_roi is not None else None
         self._learn_hi = learn_seconds
         self._pending_max = pending_max_bytes
         self._late_max = late_max_bytes
@@ -360,8 +375,13 @@ class LiveKills:
             return "calibrating"
         return "learning" if self._buf is not None else "detecting"
 
-    def feed(self, t: float, banner: np.ndarray, spec: np.ndarray) -> None:
+    def feed(self, t: float, banner: np.ndarray, spec: np.ndarray, killfeed: np.ndarray | None = None,
+             thumb: np.ndarray | None = None) -> None:
         self.revision += 1
+        if self.control is not None:
+            self.control.feed(t, killfeed, spec, thumb)
+            if self.control.active:
+                banner = np.zeros_like(banner)
         if self._calib is not None:
             if self._calib.feed(t, banner, spec):
                 self._calibrated()
@@ -475,8 +495,11 @@ class LiveKills:
         """Current events (after derive) and spectating intervals; empty during calibration and provisional during keyword learning."""
         src = self._provisional if self._buf is not None else self.tracker
         if src is None:
-            return [], []
+            events = self.control.events if self.control is not None else []
+            return derive(events, [], self.profile), []
         events, spec = src.snapshot()
+        if self.control is not None:
+            events = events + self.control.events
         return derive(events, spec, self.profile), spec
 
     def finish(self) -> tuple[list[Event], list[SpecInterval]]:
@@ -486,6 +509,8 @@ class LiveKills:
         self._learned()
         self._settle_late()  # Choose final templates from all anchors (same as offline finalize).
         events, spec = self.tracker.finish()
+        if self.control is not None:
+            events = events + self.control.events
         return derive(events, spec, self.profile), list(spec)
 
 
@@ -560,7 +585,10 @@ class LiveEngine:
             return False
         cpu0 = time.process_time()
         banner, spec = self.profile.restore(slot.banner, slot.spec) if self._restore else (slot.banner, slot.spec)
-        self.kills.feed(t, banner, spec)
+        if slot.killfeed is not None and self.profile.killfeed_roi is not None:
+            self.kills.feed(t, banner, spec, self.profile.restore_killfeed(slot.killfeed), slot.thumb)
+        else:
+            self.kills.feed(t, banner, spec)
         if slot.thumb is not None and self.scene is not None:  # No scene templates (Valorant): no match events.
             for ev in self.matches.feed(t, self.scene.classify(slot.thumb, full_scores=False)):
                 self.emit({"ev": ev.type, "t": ev.t, "reason": ev.reason})
@@ -639,6 +667,9 @@ def _check_layout(layout: ShmLayout, profile, needs_thumb: bool = True) -> None:
     """Small-frame dimensions must match the profile capture rects (aditorrec crops using a 1920×1080 reference), or the
     reference ROIs when the game is 16:9; the thumbnail must be large enough for scene classification."""
     sizes = (layout.banner, layout.spec)
+    feed = getattr(profile, 'capture_killfeed', None)
+    if layout.killfeed != (0, 0) and (feed is None or layout.killfeed != tuple(feed[2:])):
+        raise LayoutError('Kill-feed dimensions do not match the profile')
     capture = (tuple(profile.capture_banner[2:]), tuple(profile.capture_spec[2:]))
     rois = (getattr(profile, "banner_roi", None), getattr(profile, "spec_roi", None))
     reference = (tuple(rois[0][2:]), tuple(rois[1][2:])) if None not in rois else None

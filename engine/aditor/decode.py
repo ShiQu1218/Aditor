@@ -8,6 +8,7 @@ import threading
 from typing import Iterator
 
 import numpy as np
+import cv2
 
 from . import ffbin
 from .profile import Profile
@@ -42,6 +43,15 @@ def build_filter(profile: Profile, gpu: bool = False, hw_format: str = "nv12") -
     bx, by, bw, bh = profile.capture_banner
     sx, sy, sw, sh = profile.capture_spec
     pre = f"fps={FPS},hwdownload,format={hw_format}" if gpu else f"fps={FPS}"
+    feed = getattr(profile, "capture_killfeed", None)
+    if feed is not None:
+        fx, fy, fw, fh = feed
+        width = max(bw, sw, fw)
+        return (f"[0:v]{pre},scale=1920:1080,split=4[a][b][c][d];"
+                f"[a]crop={bw}:{bh}:{bx}:{by},pad={width}:ih[a1];"
+                f"[b]crop={sw}:{sh}:{sx}:{sy},pad={width}:ih[b1];"
+                f"[c]crop={fw}:{fh}:{fx}:{fy},pad={width}:ih[c1];"
+                f"[d]scale=640:360,pad={width}:360[d1];[a1][b1][c1][d1]vstack=inputs=4")
     return (f"[0:v]{pre},scale=1920:1080,split[a][b];"
             f"[a]crop={bw}:{bh}:{bx}:{by}[a1];"
             f"[b]crop={sw}:{sh}:{sx}:{sy},pad={bw}:ih[b1];"
@@ -84,6 +94,8 @@ class FrameStream:
         self._proc: subprocess.Popen | None = None
         self._closed = False
         self._hw_format = "nv12"
+        self.killfeed = None
+        self.thumb = None
 
     @property
     def stderr_tail(self) -> str:
@@ -126,7 +138,11 @@ class FrameStream:
         """k0 is the number of frames produced by the previous (failed) hardware decode; resume at start + k0/FPS to preserve the timeline grid."""
         bx, by, bw, bh = self.profile.capture_banner
         sx, sy, sw, sh = self.profile.capture_spec
-        frame_bytes = bw * (bh + sh) * 3
+        feed = getattr(self.profile, "capture_killfeed", None)
+        fw, fh = feed[2:] if feed is not None else (0, 0)
+        width = max(bw, sw, fw) if feed is not None else bw
+        th = 360 if feed is not None else 0
+        frame_bytes = width * (bh + sh + fh + th) * 3
         buf = bytearray(frame_bytes)
         view = memoryview(buf)
         self._proc = proc = self._spawn(hwaccel, self.start + k0 / FPS)
@@ -140,9 +156,11 @@ class FrameStream:
                 got += n
             if got < frame_bytes:
                 break
-            arr = np.frombuffer(buf, dtype=np.uint8)
-            banner, spec = self.profile.restore(arr[: bw * bh * 3].reshape(bh, bw, 3),
-                                                arr[bw * bh * 3:].reshape(sh, bw, 3)[:, :sw])
+            arr = np.frombuffer(buf, dtype=np.uint8).reshape(bh + sh + fh + th, width, 3)
+            banner, spec = self.profile.restore(arr[:bh, :bw], arr[bh:bh + sh, :sw])
+            self.killfeed = self.profile.restore_killfeed(arr[bh + sh:bh + sh + fh, :fw]).copy() if feed is not None else None
+            if feed is not None:
+                self.thumb = cv2.cvtColor(arr[-th:, :640], cv2.COLOR_BGR2GRAY)
             yield self.start + k * (1.0 / FPS), banner.copy(), spec.copy()
             k += 1
         rc = proc.wait()

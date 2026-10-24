@@ -468,6 +468,7 @@ fn dda_blacks_frames_and_emits_events_when_another_process_takes_foreground() {
                         banner: [0, 0, 96, 48],
                         spec: [960, 540, 96, 48],
                         base: [1920, 1080],
+    killfeed: None,
                     },
                 )
                 .unwrap(),

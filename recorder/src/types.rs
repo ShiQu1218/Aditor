@@ -39,6 +39,8 @@ impl Rect {
 pub struct FramesSpec {
     pub banner: [u32; 4],
     pub spec: [u32; 4],
+    #[serde(default)]
+    pub killfeed: Option<[u32; 4]>,
     /// ROI reference resolution, currently fixed at `[1920, 1080]`.
     pub base: [u32; 2],
 }

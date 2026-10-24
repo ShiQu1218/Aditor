@@ -36,6 +36,14 @@ class Profile:
     dedupe_window: float
     dir: Path = field(default_factory=Path)
     layout: Layout = Layout(1.0)  # Game render aspect; banner_roi/spec_roi stay in 16:9 reference layout.
+    killfeed_roi: tuple[int, int, int, int] | None = None
+
+    @property
+    def capture_killfeed(self):
+        return capture_rect(self.killfeed_roi, "top") if self.killfeed_roi is not None else None
+
+    def restore_killfeed(self, image):
+        return self.layout.extract(image, self.capture_killfeed, self.killfeed_roi, "top")
 
     @property
     def capture_banner(self) -> tuple[int, int, int, int]:
@@ -113,6 +121,11 @@ def load_profile(dir: Path) -> Profile:
         raise _err("Field templates_version must be a non-empty string")
     banner_roi = _int_list(doc["banner_roi"], 4, "banner_roi")
     spec_roi = _int_list(doc["spec_roi"], 4, "spec_roi")
+    killfeed_roi = _int_list(doc["killfeed_roi"], 4, "killfeed_roi") if "killfeed_roi" in doc else None
+    if killfeed_roi is not None:
+        x, y, w, h = killfeed_roi
+        if w <= 0 or h <= 0 or x + w > 1920 or y + h > 1080:
+            raise _err("killfeed_roi must fit within 1920×1080 and have positive dimensions")
     if banner_roi[2] <= 0 or banner_roi[3] <= 0 or spec_roi[2] <= 0 or spec_roi[3] <= 0:
         raise _err("banner_roi/spec_roi width and height must be > 0")
     white = _white(doc["white"], "white")
@@ -144,7 +157,8 @@ def load_profile(dir: Path) -> Profile:
         templates_version=doc["templates_version"], banner_roi=banner_roi, spec_roi=spec_roi,  # type: ignore[arg-type]
         white=white, red=doc["red"], spectating=specs,
         name_sig_threshold=_num(doc["name_sig_threshold"], "name_sig_threshold", 0.0, 1.0, lo_open=True),
-        dedupe_window=_num(doc["dedupe_window"], "dedupe_window", 0.0, lo_open=True), dir=dir)
+        dedupe_window=_num(doc["dedupe_window"], "dedupe_window", 0.0, lo_open=True), dir=dir,
+        killfeed_roi=killfeed_roi)
     for spec in specs:
         if not (dir / spec.file).exists():
             raise ProfileError(f"Template file is missing: {spec.file}")

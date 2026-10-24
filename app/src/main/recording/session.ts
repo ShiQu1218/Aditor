@@ -111,7 +111,9 @@ export async function readFrames(profileDir: string, game: GameId = DEFAULT_GAME
   const banner = profile.capture_rois ? profile.capture_rois.banner : profile.banner_roi
   const spec = profile.capture_rois ? profile.capture_rois.spec : profile.spec_roi
   if (!roi(banner) || !roi(spec)) throw new RecorderError('profile_invalid', tr('錄影範本的 ROI 無效'))
-  return { banner, spec, base: [1920, 1080] }
+  const killfeed = profile.capture_rois?.killfeed
+  if (killfeed !== undefined && !roi(killfeed)) throw new RecorderError('profile_invalid', tr('錄影範本的 ROI 無效'))
+  return { banner, spec, base: [1920, 1080], ...(killfeed === undefined ? {} : { killfeed }) }
 }
 
 export class RecordingSessionService implements RecordingService {

@@ -91,11 +91,11 @@ def test_is_gpu_path():
 
 def test_build_filter_gpu_downloads_after_fps(profile):
     f = decode.build_filter(profile, True)
-    assert f.startswith("[0:v]fps=4,hwdownload,format=nv12,scale=1920:1080,split[a][b];")
+    assert f.startswith("[0:v]fps=4,hwdownload,format=nv12,scale=1920:1080,split")
     assert "hwdownload,format=p010le," in decode.build_filter(profile, True, "p010le")
     soft = decode.build_filter(profile)
-    assert soft.startswith("[0:v]fps=4,scale=1920:1080,split[a][b];") and "hwdownload" not in soft
-    assert f.split("split[a][b];", 1)[1] == soft.split("split[a][b];", 1)[1]
+    assert soft.startswith("[0:v]fps=4,scale=1920:1080,split") and "hwdownload" not in soft
+    assert f.split("split", 1)[1] == soft.split("split", 1)[1]
 
 
 def test_frame_stream_end_limits_output(tmp_path, profile):
@@ -153,6 +153,9 @@ def test_hw_failure_mid_stream_continues_in_software_on_the_same_time_grid(tmp_p
     bx, by, bw, bh = profile.capture_banner
     sx, sy, sw, sh = profile.capture_spec
     frame_bytes = bw * (bh + sh) * 3
+    if profile.capture_killfeed is not None:
+        fw, fh = profile.capture_killfeed[2:]
+        frame_bytes = max(bw, sw, fw) * (bh + sh + fh + 360) * 3
     real_spawn = FrameStream._spawn
     calls = []
     hw_procs = []

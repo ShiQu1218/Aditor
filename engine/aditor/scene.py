@@ -55,11 +55,13 @@ _TEMPLATES = {
     "spectator_minimap": ((7, 27, 103, 103), (12, 32)),
     "ranked_health": ((33, 312, 120, 39), (38, 317)),
     "spectator_health": ((33, 291, 122, 39), (38, 296)),
+    "control_objectives": ((287, 24, 44, 20), (291, 28)),
     "summary_tabs": ((196, 20, 250, 34), (201, 25)),
 }
 PRE_MATCH_THRESHOLD = 0.75
 LOBBY_THRESHOLD = 0.70
 HUD_THRESHOLD = 0.60
+CONTROL_THRESHOLD = 0.80
 SUMMARY_THRESHOLD = 0.80
 # A thumbnail is considered black when its brightest pixel is at or below this value (allowing for encoded black-level offset).
 BLANK_MAX_LEVEL = 8
@@ -134,7 +136,8 @@ class SceneDetector:
             minimap = score("ranked_minimap")
         if minimap < HUD_THRESHOLD:
             minimap = score("spectator_minimap")
-        if minimap >= HUD_THRESHOLD:
+        # Control has no minimap; require its objective strip as well as the health HUD.
+        if minimap >= HUD_THRESHOLD or score("control_objectives") >= CONTROL_THRESHOLD:
             health = score("health_border")
             if health < HUD_THRESHOLD:
                 health = score("ranked_health")

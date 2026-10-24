@@ -1001,6 +1001,7 @@ mod tests {
                         banner: [0, 0, 96, 48],
                         spec: [960, 540, 96, 48],
                         base: [1920, 1080],
+                        killfeed: Some([1800, 170, 96, 48]),
                     },
                 )
                 .unwrap(),
@@ -1023,12 +1024,14 @@ mod tests {
             );
             assert_eq!(consumer.frames.len(), 3);
             assert!(consumer.frames[0].thumb.is_some());
+            assert!(consumer.frames[0].killfeed.is_some());
             for (slot, small) in consumer.frames.iter().enumerate() {
                 assert_eq!(small.pts, slot as i64 * TICKS_PER_SEC / 4);
                 assert!(small
                     .banner
                     .iter()
                     .chain(&small.spec)
+                    .chain(small.killfeed.iter().flatten())
                     .chain(small.thumb.iter().flatten())
                     .all(|&v| v == 0));
             }

@@ -66,6 +66,24 @@ def test_direct_ranked_requeue_splits_without_lobby(detector, prefix):
     assert tracker.matches == [Match(0, 10), Match(10, 20), Match(20, 30)]
 
 
+def test_control_opening_confirms_without_a_minimap(detector):
+    from aditor.matches import Match, MatchTracker
+
+    frames = {s["t"]: load_screen(s) for s in SCREENS["frames"] if s["file"].startswith("control_")}
+    tracker = MatchTracker()
+    tracker.feed(0, detector.classify(frames[1745]))
+    assert [e.type for e in tracker.feed(10, detector.classify(frames[1679]))] == ["match_end", "match_pending"]
+    tracker.feed(31, detector.classify(frames[1700]))
+    assert [e.type for e in tracker.feed(76, detector.classify(frames[1745]))] == ["match_start"]
+    tracker.finish(80)
+    assert tracker.matches == [Match(0, 10), Match(10, 80)]
+
+    # The objective strip alone must not confirm gameplay without the player's health HUD.
+    frame = frames[1745].copy()
+    frame[291:352, 33:155] = 0
+    assert detector.classify(frame).kind == "other"
+
+
 def test_fast_classification_short_circuits_template_matches(detector, monkeypatch):
     calls = []
     match_score = detector._match_score

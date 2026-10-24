@@ -508,6 +508,7 @@ impl Session {
                 banner: extractor.banner_size(),
                 spec: extractor.spec_size(),
                 thumb: (THUMB_W, THUMB_H),
+                killfeed: extractor.killfeed_size(),
             },
         )
         .map_err(|e| failure(ErrorCode::Internal, e))?;
@@ -723,6 +724,7 @@ impl Session {
                     &small.banner,
                     &small.spec,
                     small.thumb.as_deref(),
+                    small.killfeed.as_deref(),
                 )
                 .map_err(|e| failure(ErrorCode::Internal, e))?;
         }
@@ -896,7 +898,7 @@ fn validate(args: &StartArgs) -> Result<()> {
         "Session ID must contain 1–80 alphanumeric characters, hyphens, or underscores"
     );
     ensure!(args.frames.base == [1920, 1080], "Thumbnail reference resolution must be 1920×1080");
-    for roi in [args.frames.banner, args.frames.spec] {
+    for roi in [Some(args.frames.banner), Some(args.frames.spec), args.frames.killfeed].into_iter().flatten() {
         let rect = Rect::from_array(roi);
         ensure!(
             rect == rect.scaled((1920, 1080), (1920, 1080)),
