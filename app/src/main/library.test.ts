@@ -267,4 +267,14 @@ describe('Library', () => {
       }
     })
   })
+
+  it('backs up a library whose array holds a malformed entry instead of crashing startup', () => {
+    fs.writeFileSync(tmpFile, JSON.stringify([null]))
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const loaded = new Library(tmpFile)
+    expect(loaded.getEntries()).toEqual([])
+    expect(loaded.corruptBackup).not.toBeNull()
+    expect(fs.readFileSync(loaded.corruptBackup!, 'utf-8')).toBe('[null]')
+    expect(() => loaded.resetStaleAnalyzing()).not.toThrow()
+  })
 })

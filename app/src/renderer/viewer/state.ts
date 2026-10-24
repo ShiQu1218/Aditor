@@ -131,12 +131,18 @@ export function viewerReducer(state: ViewerState, action: ViewerAction): ViewerS
       const oldDoc = state.doc
       const freshDoc = action.doc
 
-      const manualEvents = oldDoc.events.filter((e) => e.source === 'manual')
+      // Older saves can already contain the same manual event more than once; keep the last copy of each id.
+      const manualEvents = [...new Map(
+        oldDoc.events.filter((e) => e.source === 'manual').map((e) => [e.id, e])
+      ).values()]
       const oldUserAutoEvents = oldDoc.events.filter(
         (e) => e.source === 'auto' && (e.deleted || e.counted_override !== null)
       )
 
-      const updatedFreshEvents = freshDoc.events.map((fe) => {
+      // The fresh doc may already carry local manual events; keep the local copy of each id only once.
+      const manualIds = new Set(manualEvents.map((e) => e.id))
+      const freshEvents = freshDoc.events.filter((fe) => !(fe.source === 'manual' && manualIds.has(fe.id)))
+      const updatedFreshEvents = freshEvents.map((fe) => {
         // Find nearest old auto event with same type and |t - fe.t| <= 1.0
         let nearest: EngineEvent | null = null
         let minDist = Infinity

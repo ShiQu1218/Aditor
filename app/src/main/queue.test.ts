@@ -5,6 +5,14 @@ import { EngineClient, EngineError } from './engine'
 import path from 'path'
 import os from 'os'
 
+async function waitFor(condition: () => boolean, timeout = 2000): Promise<void> {
+  const deadline = Date.now() + timeout
+  while (!condition()) {
+    if (Date.now() > deadline) throw new Error('Timed out waiting for test condition')
+    await new Promise((resolve) => setTimeout(resolve, 5))
+  }
+}
+
 describe('AnalysisQueue', () => {
   let tmpFile: string
   let lib: Library
@@ -264,5 +272,63 @@ describe('AnalysisQueue game aspect', () => {
     expect(seen[0]).not.toHaveProperty('aspect')
     expect(seen[1]).not.toHaveProperty('aspect')
     expect(getGameAspect).not.toHaveBeenCalled()
+  })
+
+  it('passes force only for an explicit reanalysis', async () => {
+    const forces: unknown[] = []
+    const engineMock = {
+      request: (_cmd: string, args: { force?: boolean }) => {
+        forces.push(args.force)
+        return { id: `req_${forces.length}`, promise: Promise.resolve({ video: { duration: 10 }, events: [] }) }
+      },
+      cancel: () => {}
+    } as unknown as EngineClient
+    const video = 'D:/Videos/again.mp4'
+    const lib = new Library(path.join(os.tmpdir(), `aditor_queue_force_${Date.now()}_${Math.random()}.json`))
+    lib.add([video])
+    const queue = new AnalysisQueue(engineMock, lib, { profileDir: '/profile', cacheDir: '/cache' })
+    queue.enqueue(video)
+    await waitFor(() => forces.length === 1)
+    await waitFor(() => queue.snapshot().analyzing === null)
+    queue.enqueue(video, true)
+    await waitFor(() => forces.length === 2)
+    await waitFor(() => queue.snapshot().analyzing === null)
+    queue.enqueue(video)
+    await waitFor(() => forces.length === 3)
+    await waitFor(() => queue.snapshot().analyzing === null)
+    expect(forces).toEqual([undefined, true, undefined])
+  })
+
+  it('does not leak a force request made while the video is already running', async () => {
+    const forces: Array<boolean | undefined> = []
+    const finish: Array<() => void> = []
+    const engineMock = {
+      request: (_cmd: string, args: { force?: boolean }) => {
+        forces.push(args.force)
+        const promise = new Promise<unknown>((resolve) => {
+          finish.push(() => resolve({ video: { duration: 10 }, events: [] }))
+        })
+        return { id: `req_${forces.length}`, promise }
+      },
+      cancel: () => {}
+    } as unknown as EngineClient
+    const video = 'D:/Videos/running.mp4'
+    const lib = new Library(path.join(os.tmpdir(), `aditor_queue_force_running_${Date.now()}_${Math.random()}.json`))
+    lib.add([video])
+    const queue = new AnalysisQueue(engineMock, lib, { profileDir: '/profile', cacheDir: '/cache' })
+
+    queue.enqueue(video)
+    await waitFor(() => finish.length === 1)
+    // Already running, so nothing is queued for this path and the force request must not be remembered.
+    queue.enqueue(video, true)
+    expect(forces).toEqual([undefined])
+
+    finish[0]()
+    await waitFor(() => queue.snapshot().analyzing === null)
+    queue.enqueue(video)
+    await waitFor(() => finish.length === 2)
+    finish[1]()
+    await waitFor(() => queue.snapshot().analyzing === null)
+    expect(forces).toEqual([undefined, undefined])
   })
 })

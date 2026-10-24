@@ -158,22 +158,45 @@ async function validateCut(cut: MatchCut, outputDir: string): Promise<void> {
   }
 }
 
-/** The reserved file is recorded in the work directory; recovery removes only this session's temporary file. */
-export async function resumeMatchPart(dir: string, marker: { cuts: { outputPath: string }[] }): Promise<void> {
+/**
+ * The reserved file is recorded in the work directory; recovery removes only this session's temporary file.
+ * Returns the output path when the reservation is stale (the marker lists it, but both the output and the part
+ * are gone), so the caller can drop the marker entry and finalize again from the segments.
+ */
+export async function resumeMatchPart(dir: string, marker: { cuts: { outputPath: string }[] }): Promise<string | null> {
   const file = path.join(dir, 'match-part.json')
   const pending = await readOptional<{ output: string; part: string }>(file)
-  if (!pending) return
+  if (!pending) return null
   if (!outputInDir(pending.output, path.dirname(path.dirname(dir))) || pending.part !== pending.output.slice(0, -4) + '.part.mp4') {
     throw new Error(tr('逐局暫存影片路徑無效'))
   }
   if (marker.cuts.some((cut) => cut.outputPath === pending.output) && !fs.existsSync(pending.output)) {
-    const stat = await fs.promises.lstat(pending.part)
+    let stat: fs.Stats | null = null
+    try {
+      stat = await fs.promises.lstat(pending.part)
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+    }
+    if (!stat) {
+      // The part was deleted after the process died: drop the reservation instead of retrying the same missing file forever.
+      await fs.promises.unlink(file)
+      return pending.output
+    }
     if (!stat.isFile() || stat.isSymbolicLink()) throw new Error(tr('逐局暫存影片不是一般檔案'))
     await fs.promises.rename(pending.part, pending.output)
   } else {
     await fs.promises.unlink(pending.part).catch((error: NodeJS.ErrnoException) => { if (error.code !== 'ENOENT') throw error })
   }
   await fs.promises.unlink(file)
+  return null
+}
+
+/** Drop a cut whose reservation cannot be completed so the match is cut again from its segments. */
+async function dropStaleCut(dir: string, marker: MatchMarker, outputPath: string): Promise<void> {
+  const cuts = marker.cuts.filter((cut) => cut.outputPath !== outputPath)
+  if (cuts.length === marker.cuts.length) return
+  marker.cuts = cuts
+  await writeJson(path.join(dir, 'matches.json'), marker)
 }
 
 async function remuxMatch(dir: string, deps: RecordingDeps, config: SessionSnapshot, marker: MatchMarker,
@@ -295,7 +318,8 @@ export async function cutMatches(dir: string, deps: RecordingDeps, options: Matc
   if (!Array.isArray(marker.cuts) || (marker.skipped !== undefined && !Array.isArray(marker.skipped))) {
     throw new Error(tr('逐局剪檔紀錄無效'))
   }
-  await resumeMatchPart(dir, marker)
+  const stale = await resumeMatchPart(dir, marker)
+  if (stale) await dropStaleCut(dir, marker, stale)
   const trusted = finishing && !!live && isTrusted(live)
   for (const cut of marker.cuts) {
     if (!finishing && (options.failed?.has(cut.index) ||
@@ -330,7 +354,8 @@ export async function cutMatches(dir: string, deps: RecordingDeps, options: Matc
     } catch (error) {
       cutError(index, error, options)
       // If the marker was written but rename failed, restore the temporary file before the next match can overwrite this reservation.
-      await resumeMatchPart(dir, marker)
+      const stale = await resumeMatchPart(dir, marker)
+      if (stale) await dropStaleCut(dir, marker, stale)
     }
   }
   return outputs
@@ -417,6 +442,14 @@ export async function finalizeSession(dir: string, deps: RecordingDeps): Promise
   let marker: Finalized | null = null
   try { marker = JSON.parse(await fs.promises.readFile(markerPath, 'utf8')) }
   catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error }
+  if (marker) {
+    const stale = await resumeMatchPart(dir, { cuts: [marker] })
+    if (stale === marker.outputPath) {
+      // The reserved part was deleted before its rename: drop the marker and finalize again from the segments below.
+      await fs.promises.unlink(markerPath)
+      marker = null
+    }
+  }
   if (!marker) {
     const entries = await readIndex(dir)
     if (entries.length === 0) {
@@ -445,18 +478,29 @@ export async function finalizeSession(dir: string, deps: RecordingDeps): Promise
     // Incomplete detection falls through to the available segments below.
     const { present, missing } = await presentEntries(dir, entries)
     if (!present.length) throw new Error(tr('錄影段落檔案全部遺失，無法輸出影片，已保留工作'))
+    // Drop a part left by an attempt that crashed before its marker was written.
+    await resumeMatchPart(dir, { cuts: [] })
     const { output, part } = await reserveOutput(outputDir, outputBase(config.startedAt, config.game), config.startedAt)
+    const pending = path.join(dir, 'match-part.json')
+    let recorded = false
     try {
+      // Same order as per-match cuts: persist the reservation and marker before the rename, so recovery finishes it instead of remuxing again.
+      await writeJson(pending, { output, part })
       await remux(deps.ffmpegPath, segmentPaths(dir, present), part, config)
       await fs.promises.access(output).then(() => {
         throw new Error(tr('輸出影片已存在：{output}', { output }))
       }, (error: NodeJS.ErrnoException) => { if (error.code !== 'ENOENT') throw error })
-      await fs.promises.rename(part, output)
       marker = { outputPath: output, postAnalysis: config.postAnalysis, analysisQueued: false }
       await writeJson(markerPath, marker)
+      recorded = true
+      await fs.promises.rename(part, output)
+      await fs.promises.unlink(pending)
       reportMissing(deps, missing, output)
     } catch (error) {
-      await fs.promises.unlink(part).catch(() => {})
+      if (!recorded) {
+        await fs.promises.unlink(part).catch(() => {})
+        await fs.promises.unlink(pending).catch(() => {})
+      }
       throw error
     }
   }

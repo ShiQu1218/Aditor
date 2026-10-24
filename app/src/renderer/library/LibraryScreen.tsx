@@ -269,8 +269,8 @@ export function LibraryScreen({ onSelectVideo, onOpenSettings }: LibraryScreenPr
     [finishManyRemove]
   )
 
-  const handleRetry = useCallback((path: string) => {
-    void window.api?.queue?.enqueue?.(path)
+  const handleRetry = useCallback((path: string, force?: boolean) => {
+    void window.api?.queue?.enqueue?.(path, force)
   }, [])
 
   const handleSetGame = useCallback((path: string, game: GameId) => {

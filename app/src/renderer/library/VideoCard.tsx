@@ -24,7 +24,8 @@ export interface VideoCardProps {
   onOpen: (entry: LibraryEntry) => void
   onToggleFavorite: (path: string) => void
   onRemove: (path: string) => void
-  onRetry: (path: string) => void
+  /** `force` bypasses the analysis cache (explicit "Reanalyze"). */
+  onRetry: (path: string, force?: boolean) => void
   /** The user picks the game after recognition failed; main records it and analyzes the video again. */
   onSetGame?: (path: string, game: GameId) => void
   /** Report when the card menu opens/closes (include a close function when opening); keymap handles Esc in menu-then-search order. */
@@ -363,7 +364,7 @@ function VideoCardView({ entry, onOpen, onToggleFavorite, onRemove, onRetry, onS
                   tabIndex={-1}
                   onClick={() => {
                     setMenuOpen(false)
-                    onRetry(entry.path)
+                    onRetry(entry.path, true)
                   }}
                 >
                   <RefreshCw className="ic sm" />

@@ -63,6 +63,10 @@ export class Library {
     try {
       const parsed: unknown = JSON.parse(fs.readFileSync(this.file, 'utf-8'))
       if (!Array.isArray(parsed)) throw new Error('library.json is not an array')
+      // One malformed entry would crash later startup code; treat it as corruption so the file is backed up.
+      if (!parsed.every((e) => e && typeof e === 'object' && typeof e.path === 'string' && typeof e.status === 'string')) {
+        throw new Error('library.json has an invalid entry')
+      }
       this.entries = parsed as LibraryEntry[]
     } catch (err) {
       // Corrupt file: rename it as a backup first so a later save() does not overwrite it with an empty array.

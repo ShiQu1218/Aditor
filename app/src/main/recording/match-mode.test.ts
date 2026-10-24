@@ -307,6 +307,31 @@ describe('per-match clipping and recovery', () => {
     expect(r.deps.addToLibrary).toHaveBeenCalledTimes(2)
   })
 
+  it('cuts a match again when its reserved part disappeared after the marker was written', async () => {
+    const r = rig()
+    const rename = fs.promises.rename.bind(fs.promises)
+    let interrupted = false
+    const spy = vi.spyOn(fs.promises, 'rename').mockImplementation(async (from, to) => {
+      if (String(from).endsWith('.part.mp4') && !interrupted) {
+        interrupted = true
+        throw new Error('模擬改名時中斷')
+      }
+      await rename(from, to)
+    })
+    await expect(cutMatches(r.dir, r.deps)).rejects.toThrow('中斷')
+    spy.mockRestore()
+    const first = r.marker()
+    expect(first.cuts).toHaveLength(1)
+    const output = first.cuts[0].outputPath as string
+    fs.unlinkSync(output.replace('.mp4', '.part.mp4'))
+
+    const outputs = await cutMatches(r.dir, r.deps)
+    expect(outputs).toContain(output)
+    expect(r.marker().cuts).toHaveLength(2)
+    expect(r.marker().cuts[0].outputPath).toBe(output)
+    expect(remux.inputs).toHaveLength(3)
+  })
+
   it('final trusted results rewrite their own live cache, skip afterExit, and add all existing clips', async () => {
     const r = rig('afterExit')
     const outputs = await cutMatches(r.dir, r.deps)

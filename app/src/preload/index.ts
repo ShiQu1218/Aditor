@@ -89,7 +89,7 @@ const api = {
     }
   },
   queue: {
-    enqueue: (path: string) => ipcRenderer.invoke('queue:enqueue', path),
+    enqueue: (path: string, force?: boolean) => ipcRenderer.invoke('queue:enqueue', path, force),
     cancel: (path: string) => ipcRenderer.invoke('queue:cancel', path),
     /** Actual queue state (analyzing/queued/progress/start time). */
     getState: () => ipcRenderer.invoke('queue:getState')

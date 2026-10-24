@@ -22,13 +22,15 @@ import { Library } from './library'
 describe('library:remove / library:removeMany (source file option)', () => {
   let dir: string
   let library: Library
+  let queue: { enqueue: ReturnType<typeof vi.fn> }
 
   beforeEach(() => {
     handlers.clear()
     dir = fs.mkdtempSync(path.join(os.tmpdir(), 'aditor-lib-ipc-'))
     library = new Library(path.join(dir, 'library.json'))
-    const queue = { on: () => {}, payload: () => ({}), enqueue: () => {}, withStoppedAnalysis: async (_paths: string[], remove: () => unknown) => remove() } as any
-    registerIpcHandlers(library, queue, () => [])
+    queue = { enqueue: vi.fn() }
+    const queueMock = { on: () => {}, payload: () => ({}), ...queue, withStoppedAnalysis: async (_paths: string[], remove: () => unknown) => remove() } as any
+    registerIpcHandlers(library, queueMock, () => [])
   })
   afterEach(() => {
     fs.rmSync(dir, { recursive: true, force: true })
@@ -80,5 +82,16 @@ describe('library:remove / library:removeMany (source file option)', () => {
     library.add([file], 'recording')
     expect(await handlers.get('library:remove')!({}, file)).toBe(true)
     expect(fs.existsSync(file)).toBe(false)
+  })
+
+  test('queue:enqueue rejects unsafe paths before reaching the queue', async () => {
+    for (const bad of ['http://x/a.mp4', 'concat:a|b', '\\\\srv\\share\\a.mp4', 'D:\\v\\a.exe', 5, null]) {
+      expect(() => handlers.get('queue:enqueue')!({}, bad, true)).toThrow()
+    }
+    expect(queue.enqueue).not.toHaveBeenCalled()
+
+    const file = imported('g.mp4')
+    await handlers.get('queue:enqueue')!({}, file, true)
+    expect(queue.enqueue).toHaveBeenCalledWith(file, true)
   })
 })

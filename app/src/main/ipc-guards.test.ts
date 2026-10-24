@@ -3,6 +3,7 @@ import fs from 'fs'
 import os from 'os'
 import path from 'path'
 import {
+  requireVideoPath,
   sanitizeAnalyzeArgs,
   sanitizeProbeArgs,
   sanitizeDeriveArgs,
@@ -38,6 +39,15 @@ describe('engine argument sanitizing (I1 / Minor 13)', () => {
   })
   it('autoclip passes only events/params/duration', () => {
     expect(sanitizeAutoclipArgs({ events: [], params: {}, duration: 3, extra: 1 })).toEqual({ events: [], params: {}, duration: 3 })
+  })
+})
+
+describe('queue:enqueue path validation', () => {
+  it('accepts a safe local video path', () => {
+    expect(requireVideoPath('D:\\v\\a.mp4')).toBe('D:\\v\\a.mp4')
+  })
+  it.each(['http://x/a.mp4', 'concat:a|b', '\\\\srv\\share\\a.mp4', 'D:\\v\\a.exe', 5, null])('rejects unsafe path %s', (p) => {
+    expect(() => requireVideoPath(p)).toThrow()
   })
 })
 

@@ -73,7 +73,7 @@ describe('VideoCard keyboard/pointer activation', () => {
     press(document.activeElement as Element, 'Escape') // Close the menu.
     const err = card('err-card')
     click(Array.from(err.querySelectorAll('button')).find((b) => b.textContent === '重試')!)
-    expect(fake.api.queue.enqueue).toHaveBeenCalledWith(err.dataset.vcardPath)
+    expect(fake.api.queue.enqueue).toHaveBeenCalledWith(err.dataset.vcardPath, undefined)
     expect(onSelect).not.toHaveBeenCalled()
   })
 

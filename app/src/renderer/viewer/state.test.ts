@@ -158,6 +158,41 @@ describe('viewerReducer', () => {
     expect(updatedState.clips.some((c) => c.id === 'cm1')).toBe(true)
   })
 
+  it('analysis result keeps a manual event once when the fresh doc already has it', () => {
+    const base: ViewerState = { doc: makeTestDoc(), filter: new Set(), clips: [], dirty: false }
+    const state = viewerReducer(base, { type: 'addManualEvent', t: 50, eventType: 'elim' })
+    const manual = state.doc.events.find((e) => e.source === 'manual')!
+    const freshDoc = makeTestDoc()
+    freshDoc.events = [...freshDoc.events, { ...manual, t: 49 }]
+    const merged = viewerReducer(state, { type: 'analysisResult', doc: freshDoc })
+    const copies = merged.doc.events.filter((e) => e.id === manual.id)
+    expect(copies).toHaveLength(1)
+    expect(copies[0].t).toBe(50)
+  })
+
+  it('analysis result dedupes duplicate manual events already persisted in the old doc', () => {
+    const base = makeTestDoc()
+    const manual: EngineEvent = {
+      id: 'dup',
+      t: 30,
+      type: 'elim',
+      score: 1,
+      damage_line: false,
+      name_sig: null,
+      counted: true,
+      counted_reason: 'manual',
+      counted_override: null,
+      source: 'manual'
+    }
+    base.events = [...base.events, { ...manual, t: 31 }, { ...manual, t: 32 }]
+    const state: ViewerState = { doc: base, filter: new Set(), clips: [], dirty: false }
+
+    const merged = viewerReducer(state, { type: 'analysisResult', doc: makeTestDoc() })
+    const copies = merged.doc.events.filter((e) => e.id === 'dup')
+    expect(copies).toHaveLength(1)
+    expect(copies[0].t).toBe(32)
+  })
+
   describe('clip status actions', () => {
     const base = (): ViewerState => ({
       doc: makeTestDoc(),

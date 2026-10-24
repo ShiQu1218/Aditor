@@ -201,4 +201,53 @@ describe.skipIf(!ffmpeg)('finalization with real ffmpeg streams', () => {
     expect(deps.enqueueAnalysis).toHaveBeenCalledWith(output)
     expect(fs.readdirSync(path.dirname(output)).filter((name) => name.endsWith('.mp4'))).toHaveLength(1)
   })
+
+  it.each([
+    ['marker write', (operation: 'open' | 'rename', file: string) => operation === 'open' && file.endsWith('finalized.json.tmp')],
+    ['rename', (operation: 'open' | 'rename', file: string) => operation === 'rename' && file.endsWith('.part.mp4')]
+  ] as const)('recovers from a %s failure without producing a second output', async (name, failsOn) => {
+    const base = root(); const deps = makeDeps(base); deps.ffmpegPath = ffmpeg!
+    const dir = sessionDir(base); copySegments(segments, dir)
+    const open = fs.promises.open.bind(fs.promises)
+    const rename = fs.promises.rename.bind(fs.promises)
+    let failed = false
+    const fail = (operation: 'open' | 'rename', file: unknown) => {
+      if (!failed && failsOn(operation, String(file))) { failed = true; throw new Error('simulated failure') }
+    }
+    const spies = [
+      vi.spyOn(fs.promises, 'open').mockImplementation((async (file: string, ...rest: unknown[]) => { fail('open', file); return (open as any)(file, ...rest) }) as never),
+      vi.spyOn(fs.promises, 'rename').mockImplementation(async (from, to) => { fail('rename', from); return rename(from, to) })
+    ]
+    try {
+      await expect(finalizeSession(dir, deps)).rejects.toThrow('simulated failure')
+      // The rename row recovers the part left by the first attempt without remuxing again.
+      if (name === 'rename') deps.ffmpegPath = 'must-not-run'
+      const [output] = await finalizeSession(dir, deps)
+      expect(path.basename(output)).not.toMatch(/_2\.mp4$/)
+      const names = fs.readdirSync(path.dirname(output))
+      expect(names.filter((name) => name.endsWith('.mp4'))).toEqual([path.basename(output)])
+      expect(fs.existsSync(dir)).toBe(false)
+    } finally { for (const spy of spies) spy.mockRestore() }
+  })
+
+  it('re-finalizes from segments when a reserved part disappeared after the final marker was written', async () => {
+    const base = root(); const deps = makeDeps(base); deps.ffmpegPath = ffmpeg!
+    const dir = sessionDir(base); copySegments(segments, dir)
+    const rename = fs.promises.rename.bind(fs.promises)
+    let failed = false
+    const spy = vi.spyOn(fs.promises, 'rename').mockImplementation(async (from, to) => {
+      if (!failed && String(from).endsWith('.part.mp4')) { failed = true; throw new Error('simulated failure') }
+      return rename(from, to)
+    })
+    try {
+      await expect(finalizeSession(dir, deps)).rejects.toThrow('simulated failure')
+      expect(fs.existsSync(path.join(dir, 'finalized.json'))).toBe(true)
+      const pending = JSON.parse(fs.readFileSync(path.join(dir, 'match-part.json'), 'utf8')) as { output: string; part: string }
+      fs.unlinkSync(pending.part)
+      const [output] = await finalizeSession(dir, deps)
+      expect(output).toBe(pending.output)
+      expect(fs.readdirSync(path.dirname(output)).filter((entry) => entry.endsWith('.mp4'))).toEqual([path.basename(output)])
+      expect(fs.existsSync(dir)).toBe(false)
+    } finally { spy.mockRestore() }
+  })
 })

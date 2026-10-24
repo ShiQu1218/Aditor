@@ -174,6 +174,8 @@ const messages: MessageTable = {
   'OBS 時間對齊資料無效': 'The OBS time alignment data is invalid.',
   'OBS 原檔位於錄影工作目錄內，已保留原檔與工作目錄': 'The OBS source file is inside the recording work folder, so the source file and work folder have been kept.',
   '無法取得 OBS 影片長度，已保留工作供下次補收尾': 'Could not read the OBS video length. The recording job has been kept to finalize next time.',
+  'OBS 影片暫時無法讀取，已保留工作供下次補收尾': 'The OBS video cannot be read right now. The recording job has been kept to finalize next time.',
+  'OBS 影片已不存在，已移除這次錄影的收尾工作': 'The OBS video no longer exists. The finalization job for this recording has been removed.',
   'OBS 收尾紀錄無效': 'The OBS finalization record is invalid.',
   '逐局暫存紀錄與 OBS 原檔重疊，已保留原檔': 'The per-match temporary record overlaps the OBS source file, so the source file has been kept.',
   '逐局輸出路徑已存在': 'The per-match output path already exists.',

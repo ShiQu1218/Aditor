@@ -14,7 +14,7 @@ import { WatchManager } from './watch'
 import { ProjectStore } from './projects'
 import { registerProjectHandlers } from './project-ipc'
 import { fileExistsSafe, isSafeLocalDirPath, isSafeLocalVideoPath } from './safe-path'
-import { planCacheSave, sanitizeRemoveOptions } from './ipc-guards'
+import { planCacheSave, requireVideoPath, sanitizeRemoveOptions } from './ipc-guards'
 import { isGameId } from '../shared/games'
 import { DEFAULT_SETTINGS } from '../shared/settings'
 import { currentE2EConfig } from './e2e'
@@ -248,8 +248,8 @@ export function registerIpcHandlers(
     registerProjectHandlers(ipcMain, projectStore, settings, onProjectFlushDone)
   }
 
-  ipcMain.handle('queue:enqueue', (_, videoPath: string) => {
-    queue.enqueue(videoPath)
+  ipcMain.handle('queue:enqueue', (_, videoPath: unknown, force?: unknown) => {
+    queue.enqueue(requireVideoPath(videoPath), force === true)
     broadcastUpdated()
   })
 

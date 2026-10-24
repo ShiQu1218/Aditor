@@ -21,10 +21,24 @@ interface ObsOutput extends LiveCacheRange {
   liveTrusted: boolean
 }
 
+function localVideoPath(file: unknown): file is string {
+  return isSafeLocalDirPath(file) && !/^[\\/]{2}/.test(file) && ALLOWED_VIDEO_EXTS.has(path.extname(file).toLowerCase())
+}
+
 async function localFile(file: unknown): Promise<boolean> {
-  if (!isSafeLocalDirPath(file) || /^[\\/]{2}/.test(file) || !ALLOWED_VIDEO_EXTS.has(path.extname(file).toLowerCase())) return false
+  if (!localVideoPath(file)) return false
   try { await fs.promises.access(file, fs.constants.R_OK); return (await fs.promises.stat(file)).isFile() }
   catch { return false }
+}
+
+/** A missing local file is permanently deleted only when its volume and parent folder still exist; an offline drive or unmounted folder may come back. */
+async function permanentlyDeleted(file: string): Promise<boolean> {
+  try { await fs.promises.stat(file); return false }
+  catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') return false }
+  try {
+    await fs.promises.stat(path.parse(file).root)
+    return (await fs.promises.stat(path.dirname(file))).isDirectory()
+  } catch { return false }
 }
 
 /**
@@ -84,6 +98,16 @@ export async function finalizeObsSession(dir: string, deps: RecordingDeps, confi
   if (recordedMatches) return finalizeObsMatches(dir, deps, config, recordedMatches, true)
   const meta = await readOptional<ObsMetadata>(path.join(dir, 'obs.json'))
   if (!meta?.outputPath || !await localFile(meta.outputPath)) {
+    // A local path that is unreadable right now (drive offline, file locked) may come back; keep live.json for a retry.
+    if (localVideoPath(meta?.outputPath)) {
+      // A file deleted from an accessible folder never comes back; do not keep retrying it on every startup.
+      if (await permanentlyDeleted(meta.outputPath)) {
+        deps.notify('warning', tr('OBS 影片已不存在，已移除這次錄影的收尾工作'))
+        await fs.promises.rm(dir, { recursive: true })
+        return []
+      }
+      throw new Error(tr('OBS 影片暫時無法讀取，已保留工作供下次補收尾'))
+    }
     deps.notify('warning', tr('OBS 影片不是可讀取的本機檔案，未加入媒體庫；請在 OBS 主機確認並手動匯入'))
     await fs.promises.rm(dir, { recursive: true })
     return []

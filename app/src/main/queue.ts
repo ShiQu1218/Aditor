@@ -31,6 +31,8 @@ export class AnalysisQueue extends EventEmitter {
   private queue: string[] = []
   private current: CurrentRun | null = null
   private removing = new Set<string>()
+  /** Normalized paths the user explicitly asked to reanalyze; their run bypasses the engine cache. */
+  private forced = new Set<string>()
 
   constructor(engine: EngineClient, library: Library, opts: AnalysisQueueOptions) {
     super()
@@ -64,11 +66,15 @@ export class AnalysisQueue extends EventEmitter {
     }
   }
 
-  enqueue(videoPath: string): void {
+  enqueue(videoPath: string, force = false): void {
     const norm = normalizePath(videoPath)
     if (this.removing.has(norm)) return
+    // A path that is already running cannot be queued again, so keeping its force token would affect a later plain enqueue.
     const running = this.current && !this.current.cancelled && normalizePath(this.current.path) === norm
-    if (!running && !this.queue.some((p) => normalizePath(p) === norm)) {
+    if (running) return
+    // Upgrade an already queued plain run to forced, but only add a token when the item is actually queued.
+    if (force) this.forced.add(norm)
+    if (!this.queue.some((p) => normalizePath(p) === norm)) {
       this.queue.push(videoPath)
       this.library.update(videoPath, { status: 'pending', progress: 0 })
       this.emit('update')
@@ -80,6 +86,7 @@ export class AnalysisQueue extends EventEmitter {
     const norm = normalizePath(videoPath)
     if (this.current && !this.current.cancelled && normalizePath(this.current.path) === norm) {
       this.current.cancelled = true
+      this.forced.delete(norm)
       if (this.current.reqId) {
         this.engine.cancel(this.current.reqId)
       }
@@ -92,6 +99,7 @@ export class AnalysisQueue extends EventEmitter {
     const idx = this.queue.findIndex((p) => normalizePath(p) === norm)
     if (idx !== -1) {
       this.queue.splice(idx, 1)
+      this.forced.delete(norm)
       this.library.update(videoPath, { status: 'pending', progress: 0, analyzingSince: undefined })
       this.emit('update')
     }
@@ -107,6 +115,7 @@ export class AnalysisQueue extends EventEmitter {
       const run = this.current
       for (const videoPath of paths) this.cancel(videoPath)
       this.queue = this.queue.filter((p) => !norms.has(normalizePath(p)))
+      for (const norm of norms) this.forced.delete(norm)
       if (run && norms.has(normalizePath(run.path))) {
         await Promise.race([
           run.done,
@@ -128,6 +137,7 @@ export class AnalysisQueue extends EventEmitter {
     }
 
     const videoPath = this.queue.shift()!
+    const force = this.forced.delete(normalizePath(videoPath))
     let finish!: () => void
     const done = new Promise<void>((resolve) => { finish = resolve })
     const run: CurrentRun = { path: videoPath, reqId: null, cancelled: false, done }
@@ -156,7 +166,8 @@ export class AnalysisQueue extends EventEmitter {
           hwaccel: extra.hwaccel,
           beside: extra.beside,
           // A game the user chose, or one recognised before; absent means the engine recognises it.
-          game: this.library.get(videoPath)?.game
+          game: this.library.get(videoPath)?.game,
+          ...(force ? { force: true } : {})
         },
         (progress) => {
           if (run.cancelled) {
