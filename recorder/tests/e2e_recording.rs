@@ -328,20 +328,15 @@ impl Mapping {
                 let pts = i64::from_le_bytes(self.copy(offset + 8, 8).try_into().unwrap());
                 let banner = self.copy(offset + 24, 96 * 48 * 3);
                 fence(Ordering::Acquire);
-                if end == seq && self.seq(offset) == seq {
+                if end == seq && self.seq(offset) == seq
+                    && banner.chunks_exact(3).all(|p| p[0] < 8 && p[1] < 8 && p[2] > 247)
+                {
                     assert!(pts >= 0);
-                    assert!(
-                        banner
-                            .chunks_exact(3)
-                            .all(|p| p[0] < 8 && p[1] < 8 && p[2] > 247),
-                        "Banner did not capture the red block: {:?}",
-                        &banner[..12]
-                    );
                     assert_eq!((self.u32(36), self.u32(40)), (640, 360));
                     return seq;
                 }
             }
-            assert!(Instant::now() < deadline, "No valid shared memory slots");
+            assert!(Instant::now() < deadline, "No valid shared memory frame with the red block");
             thread::sleep(Duration::from_millis(20));
         }
     }
@@ -636,6 +631,58 @@ fn fit_encodes_non_widescreen_window_at_16_by_9_with_silent_track() {
 #[ignore = "Requires an interactive desktop that permits foreground switching; SetForegroundWindow refuses to activate the test window in this environment"]
 fn ipc_records_six_seconds_via_desktop_duplication() {
     record(6, false, "dda");
+}
+
+#[test]
+fn wgc_static_window_recovery_does_not_capture_the_desktop() {
+    let _guard = HARDWARE.lock().unwrap_or_else(|e| e.into_inner());
+    let window = Window::open(1280, 720);
+    // SAFETY: Stop redraws only on this test's window to reproduce a static game/menu.
+    unsafe { KillTimer(Some(HWND(window.hwnd as *mut _)), 1).unwrap() };
+    let mut process = Process::open();
+    let mut request = start(&directory(), 1, false);
+    request["capture_cursor"] = json!(false);
+    process.send(request);
+    process.until(|v| v["ev"] == "started");
+    assert_eq!(process.reply(1)["ok"], true);
+    let recovered = process.until(|v| v["ev"] == "window_found");
+    assert_eq!(recovered["monitor"], false);
+    assert_eq!(recovered["width"], 1280);
+    assert_eq!(recovered["height"], 720);
+    process.exit();
+}
+
+#[test]
+fn wgc_recovers_when_minimized_and_can_restart_while_minimized() {
+    let _guard = HARDWARE.lock().unwrap_or_else(|e| e.into_inner());
+    let window = Window::open(1280, 720);
+    let mut process = Process::open();
+    let mut request = start(&directory(), 1, true);
+    request["audio"] = Value::Null;
+    process.send(request);
+    process.until(|v| v["ev"] == "started");
+    assert_eq!(process.reply(1)["ok"], true);
+    // SAFETY: Only minimize this test's window; leave the user's foreground window alone.
+    unsafe {
+        let _ = ShowWindowAsync(HWND(window.hwnd as *mut _), SW_MINIMIZE);
+    }
+    process.until(|v| v["ev"] == "window_found" && v["monitor"] == true);
+    process.until(|v| v["ev"] == "segment");
+    process.send(json!({"id":2,"cmd":"stop"}));
+    assert_eq!(process.reply(2)["ok"], true);
+    let mut request = start(&directory(), 3, true);
+    request["audio"] = Value::Null;
+    process.send(request);
+    assert_eq!(process.reply(3)["ok"], true);
+    process.until(|v| v["ev"] == "segment");
+    // SAFETY: Restore only this test's window without changing the foreground application.
+    unsafe {
+        let _ = ShowWindowAsync(HWND(window.hwnd as *mut _), SW_SHOWNOACTIVATE);
+    }
+    process.until(|v| v["ev"] == "window_found" && v["monitor"] == false && v["width"] == 1280);
+    let started = process.seen.iter().rev().find(|v| v["ev"] == "started").unwrap();
+    Mapping::open(started["shm"].as_str().unwrap()).verify();
+    process.exit();
 }
 
 #[test]

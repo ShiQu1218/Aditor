@@ -1,5 +1,5 @@
 //! WGC capture (task B2). Find the Apex top-level window by PID and create a `GraphicsCaptureItem`;
-//! reconnect when the window is recreated; switch to `CreateForMonitor` after 3 consecutive seconds of black frames (spec §3.1).
+//! reconnect when the window is recreated or stops delivering frames; fall back to monitor capture for black or minimized windows.
 //! See `dda` for lower-latency full-display capture, selected by `Capture::start_with`.
 //!
 //! The scaffold defines the interface; implementations must preserve signatures and add new types in this module.
@@ -35,7 +35,7 @@ use windows::Win32::System::WinRT::Graphics::Capture::IGraphicsCaptureItemIntero
 use windows::Win32::System::WinRT::{RoInitialize, RoUninitialize, RO_INIT_MULTITHREADED};
 use windows::Win32::UI::WindowsAndMessaging::{
     EnumWindows, GetWindowLongPtrW, GetWindowRect, GetWindowThreadProcessId, IsWindow,
-    IsWindowVisible, GWL_EXSTYLE, WS_EX_TOOLWINDOW,
+    IsIconic, IsWindowVisible, GWL_EXSTYLE, WS_EX_TOOLWINDOW,
 };
 
 use crate::clock::TICKS_PER_SEC;
@@ -357,6 +357,11 @@ struct Signals {
     fallback: AtomicBool,
     size: AtomicU64,
     dropped: AtomicU64,
+    last_frame: AtomicU64,
+}
+
+fn capture_stalled(last_frame: u64, now: u64) -> bool {
+    now.saturating_sub(last_frame) >= 3 * TICKS_PER_SEC as u64
 }
 
 fn pack_size(size: SizeInt32) -> u64 {
@@ -366,6 +371,7 @@ fn pack_size(size: SizeInt32) -> u64 {
 struct ActiveCapture {
     hwnd: HWND,
     monitor: bool,
+    minimized_fallback: bool,
     /// Actual monitor of a fallback display capture; `None` for window captures.
     monitor_target: Option<HMONITOR>,
     item: GraphicsCaptureItem,
@@ -386,6 +392,7 @@ impl ActiveCapture {
     fn new(
         hwnd: HWND,
         monitor: bool,
+        minimized_fallback: bool,
         opts: &CaptureOptions,
         shared: &Arc<Mutex<CallbackState>>,
     ) -> Result<Self> {
@@ -448,10 +455,12 @@ impl ActiveCapture {
             fallback: AtomicBool::new(false),
             size: AtomicU64::new(pack_size(size)),
             dropped: AtomicU64::new(0),
+            last_frame: AtomicU64::new(crate::clock::now_ticks() as u64),
         });
         let mut active = Self {
             hwnd,
             monitor,
+            minimized_fallback,
             monitor_target,
             item,
             pool,
@@ -488,7 +497,7 @@ impl ActiveCapture {
             if !signals.alive.load(Ordering::Acquire) {
                 return Ok(());
             }
-            if let Err(error) = state.frame(pool, monitor, &signals) {
+            if let Err(error) = state.frame(pool, monitor, minimized_fallback, &signals) {
                 eprintln!("Capture callback failed: {error:#}");
                 signals.closed.store(true, Ordering::Release);
             }
@@ -535,6 +544,7 @@ impl CallbackState {
         &mut self,
         pool: &Direct3D11CaptureFramePool,
         monitor: bool,
+        minimized_fallback: bool,
         signals: &Signals,
     ) -> Result<()> {
         let frame = Frame(pool.TryGetNextFrame()?);
@@ -546,7 +556,10 @@ impl CallbackState {
         let resized = signals.size.load(Ordering::Acquire) != pack_size(size);
         if self.gate.accept(pts) {
             let visible = if monitor {
-                if let Some(notice) = self.visibility.update(self.pid, pts, dda::foreground_state) {
+                // Minimized fallback stays black until window capture resumes, including the restore polling gap.
+                if let Some(notice) = self.visibility.update(self.pid, pts, || {
+                    if minimized_fallback { (None, true) } else { dda::foreground_state() }
+                }) {
                     let _ = self.notices.send(notice);
                 }
                 self.visibility.is_visible()
@@ -600,6 +613,9 @@ impl CallbackState {
                         }
                     }
                 }
+                signals
+                    .last_frame
+                    .store(crate::clock::now_ticks() as u64, Ordering::Release);
             }
         } else {
             signals.dropped.fetch_add(1, Ordering::Relaxed);
@@ -649,7 +665,7 @@ fn run(
         notices: notices.clone(),
     }));
     let mut active = Some(
-        ActiveCapture::new(hwnd, false, &opts, &shared)
+        ActiveCapture::new(hwnd, false, false, &opts, &shared)
             .context("capture_failed: Failed to create WGC capture")?,
     );
     if let Some(capture) = &active {
@@ -671,21 +687,34 @@ fn run(
         if active.as_ref().is_some_and(|capture| {
             capture.signals.closed.load(Ordering::Acquire)
                 || !window_matches(capture.hwnd, opts.pid)
+                // SAFETY: Query only; restore window capture after the minimized fallback ends.
+                || (capture.minimized_fallback && !unsafe { IsIconic(capture.hwnd).as_bool() })
         }) {
             drop(active.take());
             let _ = notices.send(CaptureNotice::WindowLost);
         }
         if let Some(capture) = &active {
-            if !capture.monitor && capture.signals.fallback.load(Ordering::Acquire) {
+            // A static window also stops delivering frames; silence alone must not widen capture to the desktop.
+            if (!capture.monitor && capture.signals.fallback.load(Ordering::Acquire))
+                || capture_stalled(
+                    capture.signals.last_frame.load(Ordering::Acquire),
+                    crate::clock::now_ticks() as u64,
+                )
+            {
                 let hwnd = capture.hwnd;
+                let black = capture.signals.fallback.load(Ordering::Acquire);
+                // SAFETY: This query only reads the target window's current minimized state.
+                let minimized = unsafe { IsIconic(hwnd).as_bool() };
+                let monitor = capture.monitor || black || minimized;
+                let minimized_fallback = capture.minimized_fallback || (!capture.monitor && !black && minimized);
                 drop(active.take());
-                match ActiveCapture::new(hwnd, true, &opts, &shared) {
+                match ActiveCapture::new(hwnd, monitor, minimized_fallback, &opts, &shared) {
                     Ok(capture) => {
                         capture.announce(&notices);
                         active = Some(capture);
                     }
                     Err(error) => {
-                        eprintln!("Failed to switch to display capture: {error:#}");
+                        eprintln!("Failed to recover capture: {error:#}");
                         let _ = notices.send(CaptureNotice::WindowLost);
                     }
                 }
@@ -695,13 +724,13 @@ fn run(
             let captured = capture.monitor_target?;
             // SAFETY: The HWND belongs to the target PID and is only queried for its current monitor.
             let current = unsafe { MonitorFromWindow(capture.hwnd, MONITOR_DEFAULTTONEAREST) };
-            monitor_moved(Some(captured), current).then_some(capture.hwnd)
+            monitor_moved(Some(captured), current).then_some((capture.hwnd, capture.minimized_fallback))
         });
-        if let Some(hwnd) = moved {
+        if let Some((hwnd, minimized_fallback)) = moved {
             // Stop the old monitor capture before creating the new item; on failure `active` stays
             // None, so the old desktop can never keep being recorded.
             drop(active.take());
-            match ActiveCapture::new(hwnd, true, &opts, &shared) {
+            match ActiveCapture::new(hwnd, true, minimized_fallback, &opts, &shared) {
                 Ok(capture) => {
                     capture.announce(&notices);
                     active = Some(capture);
@@ -714,7 +743,7 @@ fn run(
         }
         if active.is_none() {
             if let Ok(hwnd) = find_window(opts.pid) {
-                match ActiveCapture::new(hwnd, false, &opts, &shared) {
+                match ActiveCapture::new(hwnd, false, false, &opts, &shared) {
                     Ok(capture) => {
                         capture.announce(&notices);
                         active = Some(capture);
@@ -746,6 +775,15 @@ fn run(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn missing_frames_trigger_recovery_after_three_seconds() {
+        let second = TICKS_PER_SEC as u64;
+        assert!(!capture_stalled(second, 4 * second - 1));
+        assert!(capture_stalled(second, 4 * second));
+        assert!(!capture_stalled(4 * second, 4 * second));
+        assert!(!capture_stalled(4 * second, second));
+    }
 
     #[test]
     fn terminal_errors_reach_notices_before_and_after_initialization() {
