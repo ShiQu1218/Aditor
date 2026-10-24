@@ -21,6 +21,7 @@ interface CurrentRun {
   reqId: string | null
   /** Cancelled by the user: report idle externally, but do not start the next item until the engine actually stops. */
   cancelled: boolean
+  done: Promise<void>
 }
 
 export class AnalysisQueue extends EventEmitter {
@@ -29,6 +30,7 @@ export class AnalysisQueue extends EventEmitter {
   private opts: AnalysisQueueOptions
   private queue: string[] = []
   private current: CurrentRun | null = null
+  private removing = new Set<string>()
 
   constructor(engine: EngineClient, library: Library, opts: AnalysisQueueOptions) {
     super()
@@ -64,6 +66,7 @@ export class AnalysisQueue extends EventEmitter {
 
   enqueue(videoPath: string): void {
     const norm = normalizePath(videoPath)
+    if (this.removing.has(norm)) return
     const running = this.current && !this.current.cancelled && normalizePath(this.current.path) === norm
     if (!running && !this.queue.some((p) => normalizePath(p) === norm)) {
       this.queue.push(videoPath)
@@ -94,13 +97,40 @@ export class AnalysisQueue extends EventEmitter {
     }
   }
 
+  /** Keep sources idle until synchronous removal finishes, including an in-flight thumbnail. */
+  async withStoppedAnalysis<T>(paths: string[], remove: () => T): Promise<T> {
+    const norms = new Set(paths.map(normalizePath))
+    if ([...norms].some((norm) => this.removing.has(norm))) throw new Error('Removal already in progress')
+    for (const norm of norms) this.removing.add(norm)
+    let timer: ReturnType<typeof setTimeout> | undefined
+    try {
+      const run = this.current
+      for (const videoPath of paths) this.cancel(videoPath)
+      this.queue = this.queue.filter((p) => !norms.has(normalizePath(p)))
+      if (run && norms.has(normalizePath(run.path))) {
+        await Promise.race([
+          run.done,
+          new Promise<never>((_, reject) => {
+            timer = setTimeout(() => reject(new Error('Analysis did not stop in time; source file was not removed')), 10_000)
+          })
+        ])
+      }
+      return remove()
+    } finally {
+      clearTimeout(timer)
+      for (const norm of norms) this.removing.delete(norm)
+    }
+  }
+
   private async _processNext(): Promise<void> {
     if (this.current || this.queue.length === 0) {
       return
     }
 
     const videoPath = this.queue.shift()!
-    const run: CurrentRun = { path: videoPath, reqId: null, cancelled: false }
+    let finish!: () => void
+    const done = new Promise<void>((resolve) => { finish = resolve })
+    const run: CurrentRun = { path: videoPath, reqId: null, cancelled: false, done }
     this.current = run
 
     this.library.update(videoPath, {
@@ -143,6 +173,7 @@ export class AnalysisQueue extends EventEmitter {
         this.engine.cancel(req.id)
       }
       const doc = await req.promise
+      if (run.cancelled) return
 
       // Rewrite the cache only after success (cancellation/failure leaves the old cache untouched).
       try {
@@ -153,6 +184,7 @@ export class AnalysisQueue extends EventEmitter {
 
       const duration = doc.video?.duration || 0
       const thumb = await this._generateThumbnail(videoPath, duration).catch(() => undefined)
+      if (run.cancelled) return
 
       this.library.update(videoPath, {
         status: 'done',
@@ -181,6 +213,7 @@ export class AnalysisQueue extends EventEmitter {
       }
     } finally {
       this.current = null
+      finish()
       this.emit('update')
       // Process next in queue
       void this._processNext()
