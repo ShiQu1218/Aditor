@@ -188,7 +188,7 @@ export class AnalysisQueue extends EventEmitter {
 
       // Rewrite the cache only after success (cancellation/failure leaves the old cache untouched).
       try {
-        preserveClipsAfterReanalysis(prior, doc, videoPath, this.opts.cacheDir, extra.beside)
+        preserveClipsAfterReanalysis(prior, doc, videoPath, this.opts.cacheDir, extra.beside, force)
       } catch (err) {
         console.error('[Queue] failed to preserve clips after re-analysis:', err)
       }
