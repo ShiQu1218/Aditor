@@ -158,7 +158,7 @@ describe.skipIf(!ffmpeg)('OBS finalization and recovery (real ffmpeg)', () => {
     expect(r.deps.addToLibrary).not.toHaveBeenCalled()
     expect(fs.existsSync(r.dir)).toBe(false)
   })
-  it('reuses the same reserved file during recovery when rename fails after the marker is persisted', async () => {
+  it.each([false, true])('recovers after rename fails with a persisted marker (part missing: %s)', async (missingPart) => {
     const r = await rig('match')
     const rename = fs.promises.rename.bind(fs.promises)
     let interrupted = false
@@ -168,6 +168,10 @@ describe.skipIf(!ffmpeg)('OBS finalization and recovery (real ffmpeg)', () => {
     })
     await expect(finalizeSession(r.dir, r.deps)).rejects.toThrow('模擬中斷')
     const marker = JSON.parse(fs.readFileSync(path.join(r.dir, 'matches.json'), 'utf8'))
+    if (missingPart) {
+      const pending = JSON.parse(fs.readFileSync(path.join(r.dir, 'match-part.json'), 'utf8'))
+      fs.unlinkSync(pending.part)
+    }
     const outputs = await finalizeSession(r.dir, r.deps)
     expect(outputs).toEqual(marker.cuts.map((cut: any) => cut.outputPath))
     expect(datedMp4(r.root)).toHaveLength(1)

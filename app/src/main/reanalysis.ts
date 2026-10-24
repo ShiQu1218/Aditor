@@ -167,7 +167,7 @@ export function capturePriorCache(videoPath: string, cacheDir: string, beside = 
  * discard suggested/skipped clips), and sets `app.suggestionsPending = true` so Studio recomputes suggestions on open (once only).
  *
  * Cases not handled (return false and leave the engine-written cache unchanged): first analysis (no prior cache), old document incomplete,
- * new result incomplete, or engine returns the cache directly (video/analysis unchanged from before analysis = cache hit, not reanalysis).
+ * new result incomplete, or a non-forced run returns unchanged video/analysis metadata (cache hit).
  * This function is not called on cancellation/failure: leave the backup beside the cache so a resume/rerun can keep using it
  * (the engine has already overwritten the cache with a partial containing only manual clips before cancellation).
  */
@@ -176,12 +176,13 @@ export function preserveClipsAfterReanalysis(
   result: CacheDoc,
   videoPath: string,
   cacheDir: string,
-  beside = false
+  beside = false,
+  force = false
 ): boolean {
   if (!prior || !prior.done) return false
   if (!result || result.analysis?.status !== 'done') return false
   const cachePath = result.cache_path || prior.backupPath || cacheFilePath(videoPath, cacheDir, beside)
-  if (fingerprintOf(result) === prior.fingerprint) {
+  if (!force && fingerprintOf(result) === prior.fingerprint) {
     // The engine returned the cache directly: no reanalysis occurred, so the backup just created is no longer needed.
     deleteClipsBackup(cachePath)
     return false

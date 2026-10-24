@@ -222,6 +222,19 @@ describe('clips backup across cancelled re-analysis (F2)', () => {
     expect(fs.existsSync(backup())).toBe(false)
   })
 
+  it('forced re-analysis preserves accepted AI clips even when video and analysis metadata are unchanged', async () => {
+    seedDone()
+    const q = new AnalysisQueue(engine('done', 1), lib, { profileDir: '/p', cacheDir: dir })
+    q.enqueue(V1, true)
+    await tick(60)
+    expect(summary(readDoc().clips)).toEqual([
+      ['a1', 'accepted', true],
+      ['m1', 'accepted', false]
+    ])
+    expect(readDoc().app).toEqual({ suggestionsPending: true })
+    expect(fs.existsSync(backup())).toBe(false)
+  })
+
   it('a backup write failure never breaks the analysis', async () => {
     seedDone()
     fs.mkdirSync(backup()) // Make renaming to the backup path fail by creating a directory there.

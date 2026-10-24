@@ -133,7 +133,11 @@ export async function finalizeObsSession(dir: string, deps: RecordingDeps, confi
     if (pending && [pending.part, pending.output].some((file) => path.resolve(file).toLowerCase() === source.toLowerCase())) {
       throw new Error(tr('逐局暫存紀錄與 OBS 原檔重疊，已保留原檔'))
     }
-    await resumeMatchPart(dir, marker)
+    const stale = await resumeMatchPart(dir, marker)
+    if (stale) {
+      marker.cuts = marker.cuts.filter((cut) => cut.outputPath !== stale)
+      await writeJson(markerFile, marker)
+    }
     for (const [index, match] of matches.entries()) {
       if (marker.cuts.some((cut) => cut.index === index)) continue
       const start = Math.max(0, match.start - offset - MATCH_PRE_PAD_SEC)
