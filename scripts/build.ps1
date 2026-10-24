@@ -98,6 +98,9 @@ try {
     $env:ADITORREC_FFMPEG_DIR = $previousFfmpegDir
 }
 
+# Refuse to package a stale engine, including when -SkipEngine was requested.
+& "$PSScriptRoot\verify-live-engine.ps1"
+
 # 5. Build Web & Electron bundles
 Write-Host "`n[5/6] Building Electron Renderer & Main process..."
 Set-Location (Join-Path $root "app")
