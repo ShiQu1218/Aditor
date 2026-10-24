@@ -392,7 +392,6 @@ struct EndpointStream {
     client: IAudioClient,
     event: Event,
     format: Format,
-    buffer_frames: u32,
     _apartment: Apartment,
 }
 
@@ -456,17 +455,16 @@ impl EndpointStream {
         let flags =
             AUDCLNT_STREAMFLAGS_EVENTCALLBACK | if mic { 0 } else { AUDCLNT_STREAMFLAGS_LOOPBACK };
         // SAFETY: The format pointer remains valid until Initialize returns; shared event mode uses a zero period.
-        let (capture, buffer_frames) = unsafe {
+        let capture = unsafe {
             client.Initialize(AUDCLNT_SHAREMODE_SHARED, flags, 0, 0, raw, None)?;
             client.SetEventHandle(event.0)?;
-            (client.GetService()?, client.GetBufferSize()?)
+            client.GetService()?
         };
         let stream = Self {
             capture,
             client,
             event,
             format,
-            buffer_frames,
             _apartment: apartment,
         };
         // SAFETY: client is initialized and its event is configured.
@@ -510,19 +508,8 @@ impl EndpointStream {
                 .GetBuffer(&mut data, &mut frames, &mut flags, None, Some(&mut qpc))
         }?;
         let result = (|| {
-            if frames > self.buffer_frames {
-                bail!("WASAPI packet exceeds device buffer size");
-            }
-            let bytes = if flags & AUDCLNT_BUFFERFLAGS_SILENT.0 as u32 != 0 || frames == 0 {
-                Vec::new()
-            } else {
-                if data.is_null() {
-                    bail!("WASAPI returned a null audio data pointer");
-                }
-                let length = frames as usize * self.format.block_align;
-                // SAFETY: GetBuffer guarantees frames complete frames, and the pointer is valid until ReleaseBuffer.
-                unsafe { std::slice::from_raw_parts(data, length) }.to_vec()
-            };
+            // SAFETY: GetBuffer supplies frames complete frames, valid until ReleaseBuffer below.
+            let bytes = unsafe { copy_packet_bytes(data, frames, flags, self.format.block_align) }?;
             let pts = if flags & AUDCLNT_BUFFERFLAGS_TIMESTAMP_ERROR.0 as u32 == 0 {
                 i64::try_from(qpc).context("Audio QPC timestamp is out of range")?
             } else {
@@ -539,6 +526,28 @@ impl EndpointStream {
         unsafe { self.capture.ReleaseBuffer(frames) }.context("Failed to release WASAPI packet")?;
         result
     }
+}
+
+/// Copies the packet length reported by GetBuffer rather than using the endpoint buffer capacity.
+/// SAFETY: Non-silent data must point to frames * block_align readable bytes for this call.
+unsafe fn copy_packet_bytes(
+    data: *const u8,
+    frames: u32,
+    flags: u32,
+    block_align: usize,
+) -> Result<Vec<u8>> {
+    if flags & AUDCLNT_BUFFERFLAGS_SILENT.0 as u32 != 0 || frames == 0 {
+        return Ok(Vec::new());
+    }
+    if data.is_null() {
+        bail!("WASAPI returned a null audio data pointer");
+    }
+    let length = (frames as usize)
+        .checked_mul(block_align)
+        .filter(|length| *length <= isize::MAX as usize)
+        .context("WASAPI packet byte length is out of range")?;
+    // SAFETY: The caller guarantees readable packet data; the slice length fits in isize.
+    Ok(unsafe { std::slice::from_raw_parts(data, length) }.to_vec())
 }
 
 impl Drop for EndpointStream {
@@ -740,6 +749,34 @@ fn mix_loop(
 mod tests {
     use super::*;
     use std::sync::Mutex;
+
+    #[test]
+    fn capture_copies_the_full_reported_packet() {
+        // A 20 ms packet at 192 kHz must not be limited to a nominal 10 ms endpoint buffer.
+        let frames = 3_840;
+        let bytes = vec![0x5a; frames as usize * 8];
+        // SAFETY: bytes contains the entire reported packet and lives throughout the copy.
+        let copied = unsafe { copy_packet_bytes(bytes.as_ptr(), frames, 0, 8) }.unwrap();
+        assert_eq!(copied, bytes);
+    }
+
+    #[test]
+    fn capture_validates_data_and_length_but_allows_silent_null_packets() {
+        let null = std::ptr::null();
+        // SAFETY: Silent/empty packets do not read data; invalid inputs must fail before reading.
+        unsafe {
+            assert!(copy_packet_bytes(null, 480, 0, 8).is_err());
+            assert!(
+                copy_packet_bytes(null, 480, AUDCLNT_BUFFERFLAGS_SILENT.0 as u32, 8)
+                    .unwrap()
+                    .is_empty()
+            );
+            assert!(copy_packet_bytes(null, 0, 0, 8).unwrap().is_empty());
+            let byte = 0u8;
+            assert!(copy_packet_bytes(&byte, 2, 0, usize::MAX).is_err());
+            assert!(copy_packet_bytes(&byte, 1, 0, isize::MAX as usize + 1).is_err());
+        }
+    }
 
     fn packet(pts: i64, flags: u32, value: f32, frames: u32) -> Packet {
         Packet {
