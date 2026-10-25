@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore } from 'react'
 import '../styles/studio.css'
 import '../styles/projectTrack.css'
-import { CacheDoc } from '../../shared/types'
+import { CacheDoc, type Clip } from '../../shared/types'
 import { formatTime } from '../../shared/time'
 import { viewerReducer } from '../viewer/state'
 import { STUDIO_SETTINGS_DEFAULTS, subscribeStudioSettings, type StudioSettings } from './studioSettings'
@@ -22,7 +22,7 @@ import { i18n, settingsI18n } from '../i18n'
 import { AddEventDialog } from './AddEventDialog'
 import { Aside } from './Aside'
 import { AutoClipPopover } from './AutoClipPopover'
-import { clipTitle, followRangeEdits, nextSuggestion, withProjectStatus } from './highlights'
+import { clipTitle, followRangeEdits, linkedClip, linkedItem, nextSuggestion, withProjectStatus } from './highlights'
 import { HighlightsTab } from './HighlightsTab'
 import { NoticeBar } from './NoticeBar'
 import { PlayerStage } from './PlayerStage'
@@ -148,6 +148,12 @@ export function StudioScreen({ videoPath, onBack, onRegisterLeaveGuard, onVideoR
     ? displayedProject.items.find((item) => item.id === sourceProjectItem.id) ?? null : null
   // Determine “added” from actual project content (deleting a project clip or creating a new project returns the card and track to suggested).
   const shownClips = useMemo(() => withProjectStatus(state.clips, videoPath, displayedProject), [state.clips, videoPath, displayedProject])
+  // A selected item still on its highlight's range is drawn as that highlight (following the trim draft), so the source track shows one range.
+  const committedSource = sourceRange ? project.items.find((item) => item.id === sourceRange.id) : undefined
+  const linkedSource = committedSource ? linkedClip(committedSource, videoPath, project, state.clips) : null
+  const timelineClips = useMemo(() => linkedSource && sourceRange
+    ? shownClips.map((c) => (c.id === linkedSource.id ? { ...c, start: sourceRange.start, end: sourceRange.end } : c))
+    : shownClips, [shownClips, linkedSource, sourceRange])
   const allowUnanalyzed = useRef(Boolean(playbackRequest)).current
   const switchingSourceRef = useRef(false)
   const mountedRef = useRef(true)
@@ -333,6 +339,13 @@ export function StudioScreen({ videoPath, onBack, onRegisterLeaveGuard, onVideoR
     project, projectRef, apply, undo, newProject, projectId: project.id, openProject, toast, exportCtl, videoPath, duration, selProjId, setSelProjId, setSourceTrim,
     projCollapsed, setSettings, playProjectItem, mountedRef, switchingSourceRef, shownClips, acceptClip
   })
+  /** Dragging a highlight's own edge also trims the project item added from it (one undoable edit, on release). */
+  const trimLinkedItem = useCallback((before: Clip, after: Clip): void => {
+    const item = linkedItem(before, videoPath, projectRef.current)
+    if (!item) return
+    const edge = after.start !== before.start ? 'start' : 'end'
+    trimProjectItem(item.id, edge, after[edge])
+  }, [videoPath, trimProjectItem])
 
   /* ---------------- Project-mode guard (ignore source-document editing commands and show a Toast) ---------------- */
 
@@ -547,7 +560,9 @@ export function StudioScreen({ videoPath, onBack, onRegisterLeaveGuard, onVideoR
               events={state.doc.events}
               spectating={state.doc.spectating}
               rounds={state.doc.rounds}
-              clips={shownClips}
+              clips={timelineClips}
+              activeClipId={linkedSource?.id ?? null}
+              showProjectRange={!linkedSource}
               filter={state.filter}
               onSeek={seekTo}
               onScrubStart={startScrub}
@@ -563,6 +578,7 @@ export function StudioScreen({ videoPath, onBack, onRegisterLeaveGuard, onVideoR
               onSelectEvent={handleSelectEvent}
               seekBefore={cfg.before}
               onUpdateClip={(clip) => dispatch({ type: 'updateClip', clip })}
+              onClipTrimCommit={trimLinkedItem}
               currentEventId={activeEvent?.id}
               getPlayTime={sourcePlayTime}
               playing={isPlaying}

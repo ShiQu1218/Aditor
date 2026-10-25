@@ -11,6 +11,7 @@ import {
   clipTitle,
   followRangeEdits,
   linkedClip,
+  linkedItem,
   mergeSuggestions,
   nextSuggestion,
   planAccept,
@@ -278,6 +279,9 @@ describe('linkedClip', () => {
     expect(linkedClip(item, 'other.mp4', p, [c])).toBeNull()
     const dup = createProject('P', [item, { ...item, id: 'i2' }])
     expect(linkedClip(item, 'v.mp4', dup, [c])).toBeNull()
+    expect(linkedItem(c, 'v.mp4', p)).toBe(item)
+    expect(linkedItem(c, 'v.mp4', dup)).toBeNull()
+    expect(linkedItem({ ...c, end: 79 }, 'v.mp4', p)).toBeNull()
   })
 })
 

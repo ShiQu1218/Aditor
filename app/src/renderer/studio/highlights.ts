@@ -81,7 +81,13 @@ export function findItemsForClip(clip: Clip, source: string, project: Project): 
 /** The clip a project item was added from (same range), unless another item shares that range and would lose its link. */
 export function linkedClip(item: ProjectItem, source: string, project: Project, clips: Clip[]): Clip | null {
   const clip = clips.find((c) => sameItem(item, source, c))
-  return clip && findItemsForClip(clip, source, project).length === 1 ? clip : null
+  return clip && linkedItem(clip, source, project) ? clip : null
+}
+
+/** The only project item added from a clip (same range); null when none or several share that range. */
+export function linkedItem(clip: Clip, source: string, project: Project): ProjectItem | null {
+  const items = project.items.filter((it) => sameItem(it, source, clip))
+  return items.length === 1 ? items[0] : null
 }
 
 /**

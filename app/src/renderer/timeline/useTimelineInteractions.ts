@@ -237,6 +237,8 @@ export interface InteractionOptions {
   onSelectEvent?: (e: EngineEvent) => void
   onToggleSelect?: (id: string) => void
   onUpdateClip?: (clip: Clip) => void
+  /** Called once on release of a clip edge drag, with the clip as it was before the drag. */
+  onClipTrimCommit?: (before: Clip, after: Clip) => void
 }
 
 export interface InteractionResult {
@@ -326,6 +328,7 @@ export function useTimelineInteractions(opts: InteractionOptions): InteractionRe
       t = h.edge === 'start' ? next.start : next.end
       if (phase === 'preview' && t === lastSeek.current) return
       cur.onUpdateClip?.(next)
+      if (phase === 'commit' && (next.start !== clip.start || next.end !== clip.end)) cur.onClipTrimCommit?.(clip, next)
     }
     if (scrubStart.current && t !== lastSeek.current) {
       cur.onSeek(t)
