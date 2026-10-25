@@ -1,6 +1,6 @@
 import { readFileSync } from 'fs'
 import { resolve } from 'path'
-import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
+import { defineConfig } from 'electron-vite'
 import react from '@vitejs/plugin-react'
 import { cspPlugin } from './src/shared/csp'
 import { sentryVitePlugin } from '@sentry/vite-plugin'
@@ -26,8 +26,8 @@ const SENTRY_BUNDLED = ['@sentry/electron', '@sentry/browser-utils']
 
 export default defineConfig({
   main: {
-    build: { sourcemap: 'hidden' },
-    plugins: [externalizeDepsPlugin({ exclude: SENTRY_BUNDLED }), ...sentryPlugins('main')],
+    build: { sourcemap: 'hidden', externalizeDeps: { exclude: SENTRY_BUNDLED } },
+    plugins: [...sentryPlugins('main')],
     resolve: {
       alias: {
         '@shared': resolve('src/shared')
@@ -35,8 +35,8 @@ export default defineConfig({
     }
   },
   preload: {
-    build: { sourcemap: 'hidden' },
-    plugins: [externalizeDepsPlugin({ exclude: SENTRY_BUNDLED }), ...sentryPlugins('preload')],
+    build: { sourcemap: 'hidden', externalizeDeps: { exclude: SENTRY_BUNDLED } },
+    plugins: [...sentryPlugins('preload')],
     resolve: {
       alias: {
         '@shared': resolve('src/shared')
