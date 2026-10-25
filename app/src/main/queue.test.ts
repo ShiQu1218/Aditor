@@ -89,10 +89,11 @@ describe('AnalysisQueue', () => {
     expect(lib.getEntries().find((e) => e.path === 'D:/Videos/v1.mp4')?.status).toBe('analyzing')
     expect(lib.getEntries().find((e) => e.path === 'D:/Videos/v2.mp4')?.status).toBe('pending')
 
-    // Wait for both to finish
-    await new Promise((r) => setTimeout(r, 100))
-    expect(lib.getEntries().find((e) => e.path === 'D:/Videos/v1.mp4')?.status).toBe('done')
-    expect(lib.getEntries().find((e) => e.path === 'D:/Videos/v2.mp4')?.status).toBe('done')
+    // Wait for both to finish; poll instead of a fixed sleep so slow CI runners do not flake
+    await vi.waitFor(() => {
+      expect(lib.getEntries().find((e) => e.path === 'D:/Videos/v1.mp4')?.status).toBe('done')
+      expect(lib.getEntries().find((e) => e.path === 'D:/Videos/v2.mp4')?.status).toBe('done')
+    })
   })
 
   it('queue continues after failure', async () => {
