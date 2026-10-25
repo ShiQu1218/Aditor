@@ -12,6 +12,14 @@
 
 ---
 
+## 介紹影片
+
+1 分 43 秒，涵蓋錄影、即時回放、分析、精華與匯出。點擊圖片播放（[English version](docs/video/Aditor-intro-en.mp4)）。
+
+<p align="center"><a href="docs/video/Aditor-intro-zh-TW.mp4"><img src="docs/video/poster-zh-TW.jpg" alt="Aditor 介紹影片：點擊播放" width="960"></a></p>
+
+---
+
 ## 介面預覽
 
 以下使用 Apex Legends 的實際錄影與已儲存的分析結果，介面語言為繁體中文。

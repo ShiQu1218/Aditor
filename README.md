@@ -12,6 +12,14 @@
 
 ---
 
+## Intro video
+
+A 1:43 walkthrough: recording, live replay, analysis, highlights, export. Click the image to play it ([Traditional Chinese version](docs/video/Aditor-intro-zh-TW.mp4)).
+
+<p align="center"><a href="docs/video/Aditor-intro-en.mp4"><img src="docs/video/poster-en.jpg" alt="Aditor intro video: click to play" width="960"></a></p>
+
+---
+
 ## Screenshots
 
 Real Apex Legends recordings and saved analysis results, shown in the Traditional Chinese UI.
