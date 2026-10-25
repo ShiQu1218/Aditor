@@ -186,6 +186,43 @@ describe('boot ordering', () => {
   })
 })
 
+describe('openProject', () => {
+  const stored: ProjectWithId = { ...withItems({ ...createProject('stored'), id: 'p_old' }, 'x', 'y') }
+
+  test('replaces the current project, clears undo history, and does not rewrite the opened file', async () => {
+    const { s, io } = mk()
+    s.settingsLoaded(true)
+    expect(s.openProject(stored)).toBe(true)
+    expect(s.getState().project.id).toBe('p_old')
+    expect(s.getState().items).toHaveLength(2)
+    expect(s.getState().canUndo).toBe(false)
+    expect(s.getState().unsaved).toBe(false)
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(io.save).not.toHaveBeenCalled()
+  })
+
+  test('pending edits of the current project are written before switching', () => {
+    const { s, io } = mk()
+    s.settingsLoaded(true)
+    s.apply(withItems(initial, 'a'))
+    expect(s.openProject(stored)).toBe(true)
+    expect(io.saveSync).toHaveBeenCalledTimes(1)
+    expect(io.saveSync.mock.calls[0][0].id).toBe('p_init')
+  })
+
+  test('keeps the current project when saving it fails', () => {
+    const io = mkIo()
+    io.saveSync.mockImplementation(() => {
+      throw new Error('disk full')
+    })
+    const { s } = mk(io)
+    s.settingsLoaded(true)
+    s.apply(withItems(initial, 'a'))
+    expect(s.openProject(stored)).toBe(false)
+    expect(s.getState().project.id).toBe('p_init')
+  })
+})
+
 describe('newProject', () => {
   test('newProject does not write an empty project until the first edit', async () => {
     const { s, io } = mk()

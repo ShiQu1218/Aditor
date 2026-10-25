@@ -45,12 +45,18 @@ export function registerProjectHandlers(
 
   ipc.on('projects:flushDone', (_event, ok?: boolean) => onFlushDone?.(ok !== false))
 
-  ipc.handle('projects:load', async (_e, id: string) => store.load(id))
+  // Loading counts as opening: remember the id so the next startup restores the project the user last worked in.
+  ipc.handle('projects:load', async (_e, id: string) => {
+    const project = await store.load(id)
+    if (project) remember(id)
+    return project
+  })
   // Used by the renderer to show a notice when startup restore finds a corrupt or newer-version project (I12).
   ipc.handle('projects:lastError', async () =>
     store.lastErrorKind && store.lastError ? { kind: store.lastErrorKind, message: store.lastError } : null
   )
   ipc.handle('projects:list', async () => store.list())
+  ipc.handle('projects:rename', async (_e, id: string, name: string) => store.rename(id, name))
   ipc.handle('projects:remove', async (_e, id: string) => {
     await store.remove(id)
     return true

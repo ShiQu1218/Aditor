@@ -5,6 +5,7 @@ import { ChevronDown, Copy, Download, Redo2, Scissors, Trash2, Undo2 } from '../
 import type { Project, ProjectItem } from '../editor/project'
 import type { SaveState } from '../editor/ProjectProvider'
 import { useFocusTrap } from '../a11y/useFocusTrap'
+import { ProjectManagerDialog } from './ProjectManagerDialog'
 import { rovingStep } from '../a11y/roving'
 import { dropIndex, itemWidth, trimFromDrag, trimUpperBound } from '../editor/trackLayout'
 import { sourceBadge } from '../editor/sourceColors'
@@ -43,7 +44,11 @@ export interface ProjectTrackProps {
   onRedo: () => void
   canUndo: boolean
   canRedo: boolean
-  onNewProject: () => void
+  /** Id of the project being edited (the manager dialog marks it as in use). */
+  projectId: string
+  /** `deleteOld` also removes the project being replaced. */
+  onNewProject: (deleteOld: boolean) => void
+  onOpenProject: (id: string) => Promise<boolean>
   onAddExternalVideo: () => void
   onExport: () => void
   exportOpen: boolean
@@ -106,7 +111,9 @@ export function ProjectTrack(props: ProjectTrackProps): JSX.Element {
     onRedo,
     canUndo,
     canRedo,
+    projectId,
     onNewProject,
+    onOpenProject,
     onAddExternalVideo,
     onExport,
     exportOpen,
@@ -122,6 +129,8 @@ export function ProjectTrack(props: ProjectTrackProps): JSX.Element {
   const [trimDrag, setTrimDrag] = useState<TrimDrag | null>(null)
   const [reorder, setReorder] = useState<ReorderDrag | null>(null)
   const [newDlgOpen, setNewDlgOpen] = useState(false)
+  const [deleteOld, setDeleteOld] = useState(false)
+  const [mgrOpen, setMgrOpen] = useState(false)
   const trackRef = useRef<HTMLDivElement>(null)
   const trimRef = useRef<{ item: ProjectItem; edge: 'start' | 'end'; startX: number; pxPerSec: number; upper: number; moved: boolean } | null>(null)
   const orderRef = useRef<{ id: string; startX: number; dragging: boolean } | null>(null)
@@ -164,8 +173,8 @@ export function ProjectTrack(props: ProjectTrackProps): JSX.Element {
   }
 
   useEffect(() => {
-    onDialogOpenChange(newDlgOpen)
-  }, [newDlgOpen, onDialogOpenChange])
+    onDialogOpenChange(newDlgOpen || mgrOpen)
+  }, [newDlgOpen, mgrOpen, onDialogOpenChange])
 
   // New-project dialog focus trap (focus the first option on open, keep Tab inside, handle Esc once, and restore focus on close).
   useFocusTrap(dlgBoxRef, { active: newDlgOpen, onEscape: () => setNewDlgOpen(false) })
@@ -318,6 +327,7 @@ export function ProjectTrack(props: ProjectTrackProps): JSX.Element {
 
   const requestNewProject = useCallback(() => {
     if (project.items.length === 0) return // Mock: do nothing for an empty project.
+    setDeleteOld(false)
     setNewDlgOpen(true)
   }, [project.items.length])
 
@@ -412,6 +422,9 @@ export function ProjectTrack(props: ProjectTrackProps): JSX.Element {
             </button>
             <button type="button" className="btn-ghost sm" onClick={requestNewProject}>
               {t.newProject}
+            </button>
+            <button type="button" className="btn-ghost sm" onClick={() => setMgrOpen(true)}>
+              {t.projectManager}
             </button>
             <button type="button" className="btn-ghost sm" onClick={onAddExternalVideo}>
               {t.addExternalVideo}
@@ -533,6 +546,10 @@ export function ProjectTrack(props: ProjectTrackProps): JSX.Element {
                 .replace('{name}', project.name)
                 .replace('{n}', String(project.items.length))}
             </div>
+            <label className="np-opt">
+              <input type="checkbox" checked={deleteOld} onChange={(e) => setDeleteOld(e.target.checked)} />
+              <span>{dlg.deleteOld.replace('{name}', project.name)}</span>
+            </label>
             <div className="foot">
               <button type="button" className="btn-ghost" onClick={() => setNewDlgOpen(false)}>
                 {dlg.cancel}
@@ -542,7 +559,7 @@ export function ProjectTrack(props: ProjectTrackProps): JSX.Element {
                 className="btn-accent"
                 onClick={() => {
                   setNewDlgOpen(false)
-                  onNewProject()
+                  onNewProject(deleteOld)
                 }}
               >
                 {dlg.confirm}
@@ -551,6 +568,8 @@ export function ProjectTrack(props: ProjectTrackProps): JSX.Element {
           </div>
         </div>
       )}
+
+      {mgrOpen && <ProjectManagerDialog currentId={projectId} onClose={() => setMgrOpen(false)} onOpen={onOpenProject} />}
     </section>
   )
 }

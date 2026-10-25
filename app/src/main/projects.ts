@@ -192,6 +192,16 @@ export class ProjectStore {
     return entries
   }
 
+  /** Rename a stored project in place. Returns false when the project is missing, unreadable, or the name is blank. */
+  async rename(id: string, name: string): Promise<boolean> {
+    const trimmed = typeof name === 'string' ? name.trim() : ''
+    if (!trimmed) return false
+    const project = await this.load(id)
+    if (!project) return false
+    await this.save({ ...project, name: trimmed })
+    return true
+  }
+
   async remove(id: string): Promise<void> {
     try {
       fs.unlinkSync(this.filePath(id))

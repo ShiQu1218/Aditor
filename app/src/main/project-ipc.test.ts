@@ -36,6 +36,26 @@ function setup() {
 }
 
 describe('registerProjectHandlers', () => {
+  test('projects:load records the opened project as lastProjectId; a missing project leaves it unchanged', async () => {
+    const { store, settings, ipc } = setup()
+    await store.save(proj('p_a'))
+    await store.save(proj('p_b'))
+    await ipc.handlers.get('projects:load')!({}, 'p_a')
+    expect(settings.get().lastProjectId).toBe('p_a')
+    await ipc.handlers.get('projects:load')!({}, 'p_b')
+    expect(settings.get().lastProjectId).toBe('p_b')
+    expect(await ipc.handlers.get('projects:load')!({}, 'p_missing')).toBeNull()
+    expect(settings.get().lastProjectId).toBe('p_b')
+  })
+
+  test('projects:rename renames a stored project and reports failure for blank names', async () => {
+    const { store, ipc } = setup()
+    await store.save(proj('p_r', 'old'))
+    expect(await ipc.handlers.get('projects:rename')!({}, 'p_r', 'fresh')).toBe(true)
+    expect((await store.load('p_r'))?.name).toBe('fresh')
+    expect(await ipc.handlers.get('projects:rename')!({}, 'p_r', '  ')).toBe(false)
+  })
+
   test('projects:save writes the file and lastProjectId in the same call', async () => {
     const { store, settings, ipc } = setup()
     expect(await ipc.handlers.get('projects:save')!({}, proj('p_one'))).toBe(true)
