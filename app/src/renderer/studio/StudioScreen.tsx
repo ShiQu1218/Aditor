@@ -335,7 +335,7 @@ export function StudioScreen({ videoPath, onBack, onRegisterLeaveGuard, onVideoR
     selectProjectItem, shiftSelectedItem, playSelectedItem, toggleProjCollapsed, handleNewProjectConfirmed, handleOpenProject,
     handleAddExternalVideo, addFirstSuggestion
   } = useStudioProjectTrack({
-    project, projectRef, apply, undo, newProject, projectId: project.id, openProject, toast, exportCtl, videoPath, duration, selProjId, setSelProjId, setSourceTrim,
+    project, projectRef, apply, newProject, projectId: project.id, openProject, toast, exportCtl, videoPath, duration, selProjId, setSelProjId, setSourceTrim,
     projCollapsed, setSettings, playProjectItem, mountedRef, switchingSourceRef, shownClips, acceptClip
   })
   /** Dragging a highlight's own edge also trims the project item added from it (one undoable edit, on release). */

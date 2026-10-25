@@ -127,8 +127,22 @@ describe('Recording settings validation and migration', () => {
       expect(new SettingsStore(file).get().recording.outputDir).toBe(dir)
     }
     expect(store.set(patch({ outputDir: null })).settings.recording.outputDir).toBeNull()
-    expect(migrate({ outputDir: path.join(dir, 'missing') }).outputDir).toBeNull()
+    expect(migrate({ outputDir: path.join(dir, 'missing') }).outputDir).toBe(path.join(dir, 'missing'))
     expect(migrate({ outputDir: dir }).outputDir).toBe(dir)
+  })
+
+  test('keeps an offline recording location through reload and later settings writes', () => {
+    const outputDir = path.join(dir, 'recordings')
+    fs.mkdirSync(outputDir)
+    new SettingsStore(file).set(patch({ outputDir }))
+    fs.rmdirSync(outputDir)
+    const reloaded = new SettingsStore(file)
+    expect(reloaded.get().recording.outputDir).toBe(outputDir)
+    reloaded.set({ before: 12 })
+    expect(new SettingsStore(file).get().recording.outputDir).toBe(outputDir)
+    for (const invalid of ['relative', '\\\\server\\share', '\0']) {
+      expect(migrate({ outputDir: invalid }).outputDir).toBeNull()
+    }
   })
 
   test('Settings IPC returns path errors and persists valid fields; reloads and other setting changes do not overwrite recording values', () => {

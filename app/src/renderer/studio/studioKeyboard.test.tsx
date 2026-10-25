@@ -2,7 +2,7 @@
 // Integration tests for studio keyboard paths: mount StudioScreen with a fake API and dispatch real keydown events.
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { act } from 'react'
-import { cleanupMounted, click, flush, focusEl, installDomShims, press } from '../../../test/dom'
+import { buttonByText, cleanupMounted, click, flush, focusEl, installDomShims, press } from '../../../test/dom'
 import { mountStudio, STUDIO_VIDEO, type StudioMount } from '../../../test/studioHarness'
 import { eventAriaLabel } from './reasons'
 import type { EngineEvent } from '../../shared/types'
@@ -134,6 +134,47 @@ describe('project track (roving tabindex + keyboard editing)', () => {
     press(document.activeElement as Element, 'Delete')
     expect(chips().length).toBe(3) // The project timeline is unaffected.
     expect(q('.toast button')?.textContent).toBe('復原')
+  })
+
+  test('deletion Toast restores its clip without undoing a later reorder', async () => {
+    s = await mountStudio({ items })
+    focusEl(chips()[1])
+    press(chips()[1], 'Delete')
+    const restoreDeleted = q('.toast button')!
+    focusEl(chips()[1])
+    press(chips()[1], 'ArrowLeft', { altKey: true })
+    expect(chips().map((c) => c.getAttribute('data-item-id'))).toEqual(['i3', 'i1'])
+    click(restoreDeleted)
+    expect(chips().map((c) => c.getAttribute('data-item-id'))).toEqual(['i3', 'i2', 'i1'])
+  })
+
+  test('deletion Toast cannot change a different project', async () => {
+    s = await mountStudio({ items })
+    focusEl(chips()[1])
+    press(chips()[1], 'Delete')
+    const restoreDeleted = q('.toast button')!
+    click(buttonByText(s.m.container, '新專案')!)
+    click(q('.np-dlg .btn-accent')!)
+    expect(chips()).toHaveLength(0)
+    click(q('.hl-accept')!)
+    expect(chips()).toHaveLength(1)
+    click(restoreDeleted)
+    expect(chips()).toHaveLength(1)
+  })
+
+  test('new project reports failure when the old project cannot be deleted', async () => {
+    let fail!: (error: Error) => void
+    const remove = vi.fn(() => new Promise<boolean>((_resolve, reject) => { fail = reject }))
+    s = await mountStudio({ items, api: { overrides: { projects: { load: async () => ({ version: 1, name: '測試專案', items }), remove } } } })
+    click(buttonByText(s.m.container, '新專案')!)
+    click(q('.np-dlg input[type="checkbox"]')!)
+    click(q('.np-dlg .btn-accent')!)
+    expect(remove).toHaveBeenCalledWith('p_test')
+    expect(q('.toast')).toBeNull()
+    await act(async () => { fail(new Error('access denied')) })
+    await flush()
+    expect(q('.toast')?.textContent).toContain('刪除失敗')
+    expect(q('.toast')?.textContent).not.toContain('舊專案已刪除')
   })
 })
 

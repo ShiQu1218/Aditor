@@ -2,6 +2,7 @@ import type { MessageTable } from '../locale'
 
 /** Translations for scattered in-app messages (notifications and errors); keys are Traditional Chinese source strings looked up by tr(). */
 const messages: MessageTable = {
+  '無法備份編輯內容，已停止重新分析': '无法备份编辑内容，已停止重新分析',
   '系統加密服務無法使用，無法讀取 OBS 密碼': '系统加密服务不可用，无法读取 OBS 密码',
   '無法解密 OBS 密碼，請重新設定': '无法解密 OBS 密码，请重新设置',
   'OBS 密碼格式無效或過長': 'OBS 密码格式无效或过长',

@@ -77,6 +77,19 @@ describe('ProjectManagerDialog', () => {
     expect(api.list).toHaveBeenCalledTimes(2)
   })
 
+  test('a delete error stays visible and does not report a successful removal', async () => {
+    const api = installApi()
+    api.remove.mockRejectedValueOnce(new Error('access denied'))
+    const m = mount(<ProjectManagerDialog currentId="p_cur" onClose={() => {}} onOpen={async () => true} />)
+    await flush()
+    click(buttonByText(rowOf(m.container, '舊專案'), '刪除')!)
+    click(buttonByText(rowOf(m.container, '舊專案'), '確定刪除')!)
+    await flush()
+    expect(m.container.querySelector('.pm-error')?.textContent).toBe('刪除失敗。')
+    expect(api.list).toHaveBeenCalledTimes(1)
+    expect(rowOf(m.container, '舊專案')).toBeTruthy()
+  })
+
   test('Esc cancels an inline prompt first and only then closes the dialog', async () => {
     installApi()
     const onClose = vi.fn()
