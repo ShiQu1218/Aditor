@@ -74,7 +74,7 @@ try {
           "gpu_luma_uses_full_thumb", "gpu_nv12_conversion", "gpu_recording_and_scaling", "gpu_static_capture",
           "actual_default_loopback_and_microphone", "gpu_small_frames_preserve_roi", "wgc_captures_pixels_resizes") | ForEach-Object { "--skip", $_ }
     } else { @() }
-    Invoke-Step "recorder cargo test" (Join-Path $root "recorder") { if ($cargoSkips) { cargo test --no-fail-fast --lib --bins --test audio_capture --test capture_dda --test capture_wgc --test ipc_process -- @cargoSkips } else { cargo test } }
+    Invoke-Step "recorder cargo test" (Join-Path $root "recorder") { if ($cargoSkips) { cargo test --no-fail-fast --bins --test audio_capture --test capture_dda --test capture_wgc --test ipc_process -- @cargoSkips } else { cargo test } }
 
     if ($Tier -eq "full") {
         if (-not $env:ADITOR_GOLDEN_VIDEO) {
