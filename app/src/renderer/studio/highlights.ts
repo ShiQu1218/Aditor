@@ -78,15 +78,16 @@ export function findItemsForClip(clip: Clip, source: string, project: Project): 
   return project.items.filter((it) => sameItem(it, source, clip)).map((it) => it.id)
 }
 
-/** The clip an item was added from (by clipId), while no other item claims that clip. */
-export function linkedClip(item: ProjectItem, project: Project, clips: Clip[]): Clip | null {
+/** The clip an item was added from (by clipId in this source), while no other item claims that clip. */
+export function linkedClip(item: ProjectItem, source: string, project: Project, clips: Clip[]): Clip | null {
   const clip = item.clipId ? clips.find((c) => c.id === item.clipId) : undefined
-  return clip && linkedItem(clip, project)?.id === item.id ? clip : null
+  return clip && linkedItem(clip, source, project)?.id === item.id ? clip : null
 }
 
-/** The only project item added from a clip; null when none or several (duplicates) claim it. */
-export function linkedItem(clip: Clip, project: Project): ProjectItem | null {
-  const items = project.items.filter((it) => it.clipId === clip.id)
+/** The only item in `source` added from a clip; clip ids repeat across videos, so the source is part of the key. */
+export function linkedItem(clip: Clip, source: string, project: Project): ProjectItem | null {
+  const src = normPath(source)
+  const items = project.items.filter((it) => it.clipId === clip.id && normPath(it.source) === src)
   return items.length === 1 ? items[0] : null
 }
 
@@ -95,10 +96,9 @@ export function linkedItem(clip: Clip, project: Project): ProjectItem | null {
  * repairs the source document after trims, undo/redo, and edits made while another video was open.
  */
 export function mirrorLinkedClips(project: Project, source: string, clips: Clip[]): Clip[] {
-  const src = normPath(source)
   return clips.flatMap((clip) => {
-    const item = linkedItem(clip, project)
-    if (!item || normPath(item.source) !== src || (item.start === clip.start && item.end === clip.end)) return []
+    const item = linkedItem(clip, source, project)
+    if (!item || (item.start === clip.start && item.end === clip.end)) return []
     return [{ ...clip, start: item.start, end: item.end }]
   })
 }

@@ -279,12 +279,22 @@ describe('clip links', () => {
 
   test('an item links to its clip by id only while no other item claims it', () => {
     const p = createProject('P', [item])
-    expect(linkedClip(item, p, [c])).toBe(c)
-    expect(linkedItem(c, p)).toBe(item)
-    expect(linkedClip({ ...item, clipId: undefined }, p, [c])).toBeNull()
+    expect(linkedClip(item, 'v.mp4', p, [c])).toBe(c)
+    expect(linkedItem(c, 'v.mp4', p)).toBe(item)
+    expect(linkedClip({ ...item, clipId: undefined }, 'v.mp4', p, [c])).toBeNull()
     const dup = createProject('P', [item, { ...item, id: 'i2' }])
-    expect(linkedClip(item, dup, [c])).toBeNull()
-    expect(linkedItem(c, dup)).toBeNull()
+    expect(linkedClip(item, 'v.mp4', dup, [c])).toBeNull()
+    expect(linkedItem(c, 'v.mp4', dup)).toBeNull()
+  })
+
+  test('links are scoped to the source video, since clip ids repeat across videos', () => {
+    const other: ProjectItem = { ...item, id: 'i9', source: 'b.mp4' }
+    const p = createProject('P', [item, other])
+    expect(linkedItem(c, 'v.mp4', p)).toBe(item)
+    expect(linkedItem(c, 'B.MP4', p)).toBe(other)
+    expect(linkedItem(c, 'c.mp4', p)).toBeNull()
+    expect(linkedClip(other, 'v.mp4', p, [c])).toBeNull()
+    expect(mirrorLinkedClips(p, 'v.mp4', [c])).toEqual([{ ...c, end: 70 }])
   })
 
   test('linked clips mirror their item range, so undo and reopening the video repair them', () => {
