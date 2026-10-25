@@ -9,9 +9,9 @@ import {
   clipAt,
   clipEventGlyphs,
   clipTitle,
-  followRangeEdits,
   linkedClip,
   linkedItem,
+  mirrorLinkedClips,
   mergeSuggestions,
   nextSuggestion,
   planAccept,
@@ -269,40 +269,33 @@ describe('acceptToProject', () => {
   })
 })
 
-describe('linkedClip', () => {
-  test('returns the clip a project item was added from, unless another item shares its range', () => {
-    const c = clip('c1', 40, { end: 80, status: 'accepted' })
-    const item: ProjectItem = { id: 'i1', source: 'v.mp4', start: 40, end: 80 }
-    const p = createProject('P', [item])
-    expect(linkedClip(item, 'v.mp4', p, [c])).toBe(c)
-    expect(linkedClip({ ...item, start: 41 }, 'v.mp4', p, [c])).toBeNull()
-    expect(linkedClip(item, 'other.mp4', p, [c])).toBeNull()
-    const dup = createProject('P', [item, { ...item, id: 'i2' }])
-    expect(linkedClip(item, 'v.mp4', dup, [c])).toBeNull()
-    expect(linkedItem(c, 'v.mp4', p)).toBe(item)
-    expect(linkedItem(c, 'v.mp4', dup)).toBeNull()
-    expect(linkedItem({ ...c, end: 79 }, 'v.mp4', p)).toBeNull()
-  })
-})
-
-describe('followRangeEdits', () => {
+describe('clip links', () => {
   const c = clip('c1', 40, { end: 80, status: 'accepted' })
-  const before = createProject('P', [{ id: 'i1', source: 'v.mp4', start: 40, end: 80 }])
-  const trimmed = { ...before, items: [{ ...before.items[0], end: 70 }] }
+  const item: ProjectItem = { id: 'i1', source: 'v.mp4', start: 40, end: 70, clipId: 'c1' }
 
-  test('moves the linked clip with a trim, and back with its undo', () => {
-    const moved = followRangeEdits(before, trimmed, 'v.mp4', [c])
-    expect(moved).toEqual([{ ...c, end: 70 }])
-    expect(followRangeEdits(trimmed, before, 'v.mp4', moved)).toEqual([c])
+  test('acceptToProject records which clip an item came from', () => {
+    expect(acceptToProject(c, 'v.mp4', createProject('P')).added[0].clipId).toBe('c1')
   })
 
-  test('ignores edits that add or remove items, and unrelated or switched projects', () => {
-    const split = { ...before, items: [{ ...before.items[0], end: 60 }, { id: 'i2', source: 'v.mp4', start: 60, end: 80 }] }
-    expect(followRangeEdits(before, split, 'v.mp4', [c])).toEqual([])
-    expect(followRangeEdits(before, before, 'v.mp4', [c])).toEqual([])
-    const other = createProject('Q', [{ id: 'j1', source: 'v.mp4', start: 40, end: 70 }])
-    expect(followRangeEdits(before, other, 'v.mp4', [c])).toEqual([])
-    expect(followRangeEdits(before, trimmed, 'other.mp4', [c])).toEqual([])
+  test('an item links to its clip by id only while no other item claims it', () => {
+    const p = createProject('P', [item])
+    expect(linkedClip(item, p, [c])).toBe(c)
+    expect(linkedItem(c, p)).toBe(item)
+    expect(linkedClip({ ...item, clipId: undefined }, p, [c])).toBeNull()
+    const dup = createProject('P', [item, { ...item, id: 'i2' }])
+    expect(linkedClip(item, dup, [c])).toBeNull()
+    expect(linkedItem(c, dup)).toBeNull()
+  })
+
+  test('linked clips mirror their item range, so undo and reopening the video repair them', () => {
+    expect(mirrorLinkedClips(createProject('P', [item]), 'v.mp4', [c])).toEqual([{ ...c, end: 70 }])
+    expect(mirrorLinkedClips(createProject('P', [{ ...item, end: 80 }]), 'v.mp4', [c])).toEqual([])
+    expect(mirrorLinkedClips(createProject('P', [item]), 'other.mp4', [c])).toEqual([])
+  })
+
+  test('duplicated ranges leave the clip alone instead of guessing (trim duplicate, trim original, undo)', () => {
+    const p = createProject('P', [item, { ...item, id: 'i2' }])
+    expect(mirrorLinkedClips(p, 'v.mp4', [c])).toEqual([])
   })
 })
 

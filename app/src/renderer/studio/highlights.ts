@@ -78,29 +78,28 @@ export function findItemsForClip(clip: Clip, source: string, project: Project): 
   return project.items.filter((it) => sameItem(it, source, clip)).map((it) => it.id)
 }
 
-/** The clip a project item was added from (same range), unless another item shares that range and would lose its link. */
-export function linkedClip(item: ProjectItem, source: string, project: Project, clips: Clip[]): Clip | null {
-  const clip = clips.find((c) => sameItem(item, source, c))
-  return clip && linkedItem(clip, source, project) ? clip : null
+/** The clip an item was added from (by clipId), while no other item claims that clip. */
+export function linkedClip(item: ProjectItem, project: Project, clips: Clip[]): Clip | null {
+  const clip = item.clipId ? clips.find((c) => c.id === item.clipId) : undefined
+  return clip && linkedItem(clip, project)?.id === item.id ? clip : null
 }
 
-/** The only project item added from a clip (same range); null when none or several share that range. */
-export function linkedItem(clip: Clip, source: string, project: Project): ProjectItem | null {
-  const items = project.items.filter((it) => sameItem(it, source, clip))
+/** The only project item added from a clip; null when none or several (duplicates) claim it. */
+export function linkedItem(clip: Clip, project: Project): ProjectItem | null {
+  const items = project.items.filter((it) => it.clipId === clip.id)
   return items.length === 1 ? items[0] : null
 }
 
 /**
- * Clips to move after a pure range edit (a trim, or its undo/redo): when the item count is unchanged, each item whose
- * range changed drags the clip it was linked to before the edit. Splits and duplicates add items and are left alone.
+ * Linked clips whose range differs from their item's: the project (with its undo history) owns the range, so this
+ * repairs the source document after trims, undo/redo, and edits made while another video was open.
  */
-export function followRangeEdits(before: Project, after: Project, source: string, clips: Clip[]): Clip[] {
-  if (before === after || before.items.length !== after.items.length) return []
-  return before.items.flatMap((prev) => {
-    const next = after.items.find((it) => it.id === prev.id)
-    if (!next || (next.start === prev.start && next.end === prev.end)) return []
-    const clip = linkedClip(prev, source, before, clips)
-    return clip ? [{ ...clip, start: next.start, end: next.end }] : []
+export function mirrorLinkedClips(project: Project, source: string, clips: Clip[]): Clip[] {
+  const src = normPath(source)
+  return clips.flatMap((clip) => {
+    const item = linkedItem(clip, project)
+    if (!item || normPath(item.source) !== src || (item.start === clip.start && item.end === clip.end)) return []
+    return [{ ...clip, start: item.start, end: item.end }]
   })
 }
 
@@ -112,7 +111,7 @@ export function acceptToProject(clip: Clip, source: string, project: Project): A
   if (project.items.some((it) => sameItem(it, source, clip))) {
     return { added: [], undo: (p) => p }
   }
-  const item: ProjectItem = { id: newItemId(), source, start: clip.start, end: clip.end }
+  const item: ProjectItem = { id: newItemId(), source, start: clip.start, end: clip.end, clipId: clip.id }
   const ids = [item.id]
   return {
     added: [item],

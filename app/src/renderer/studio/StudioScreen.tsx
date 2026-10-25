@@ -22,7 +22,7 @@ import { i18n, settingsI18n } from '../i18n'
 import { AddEventDialog } from './AddEventDialog'
 import { Aside } from './Aside'
 import { AutoClipPopover } from './AutoClipPopover'
-import { clipTitle, followRangeEdits, linkedClip, linkedItem, nextSuggestion, withProjectStatus } from './highlights'
+import { clipTitle, linkedClip, linkedItem, mirrorLinkedClips, nextSuggestion, withProjectStatus } from './highlights'
 import { HighlightsTab } from './HighlightsTab'
 import { NoticeBar } from './NoticeBar'
 import { PlayerStage } from './PlayerStage'
@@ -150,7 +150,7 @@ export function StudioScreen({ videoPath, onBack, onRegisterLeaveGuard, onVideoR
   const shownClips = useMemo(() => withProjectStatus(state.clips, videoPath, displayedProject), [state.clips, videoPath, displayedProject])
   // A selected item still on its highlight's range is drawn as that highlight (following the trim draft), so the source track shows one range.
   const committedSource = sourceRange ? project.items.find((item) => item.id === sourceRange.id) : undefined
-  const linkedSource = committedSource ? linkedClip(committedSource, videoPath, project, state.clips) : null
+  const linkedSource = committedSource ? linkedClip(committedSource, project, state.clips) : null
   const timelineClips = useMemo(() => linkedSource && sourceRange
     ? shownClips.map((c) => (c.id === linkedSource.id ? { ...c, start: sourceRange.start, end: sourceRange.end } : c))
     : shownClips, [shownClips, linkedSource, sourceRange])
@@ -163,13 +163,12 @@ export function StudioScreen({ videoPath, onBack, onRegisterLeaveGuard, onVideoR
   }, [])
   const stateRef = useRef(state)
   stateRef.current = state
-  // Trims, undo and redo all change the project; keep the highlight each trimmed item came from on the same range.
-  const prevProjectRef = useRef(project)
+  // Linked highlights mirror their project item. Re-run when the project changes (trim, undo, redo) or this video's
+  // clips load or change membership, but not on a clip's own edge drag, which would snap it back mid-drag.
+  const clipIds = useMemo(() => state.clips.map((c) => c.id).join('\n'), [state.clips])
   useEffect(() => {
-    const before = prevProjectRef.current
-    prevProjectRef.current = project
-    for (const clip of followRangeEdits(before, project, videoPath, stateRef.current.clips)) dispatch({ type: 'updateClip', clip })
-  }, [project, videoPath])
+    for (const clip of mirrorLinkedClips(project, videoPath, stateRef.current.clips)) dispatch({ type: 'updateClip', clip })
+  }, [project, videoPath, clipIds])
 
   // Project-track collapse: 'auto' collapses when the window is ≤800px high; save manual changes to settings.
   const autoCollapse = useMediaQuery('(max-height: 800px)')
@@ -341,11 +340,11 @@ export function StudioScreen({ videoPath, onBack, onRegisterLeaveGuard, onVideoR
   })
   /** Dragging a highlight's own edge also trims the project item added from it (one undoable edit, on release). */
   const trimLinkedItem = useCallback((before: Clip, after: Clip): void => {
-    const item = linkedItem(before, videoPath, projectRef.current)
+    const item = linkedItem(before, projectRef.current)
     if (!item) return
     const edge = after.start !== before.start ? 'start' : 'end'
     trimProjectItem(item.id, edge, after[edge])
-  }, [videoPath, trimProjectItem])
+  }, [trimProjectItem])
 
   /* ---------------- Project-mode guard (ignore source-document editing commands and show a Toast) ---------------- */
 
