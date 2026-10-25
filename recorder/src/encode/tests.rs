@@ -508,7 +508,7 @@ fn gpu_recording_and_scaling_have_independent_keyframe_segments() {
     record(&gpu, (1920, 1080), "hevc_nvenc", true, 300, true);
     for name in ["h264_nvenc", "av1_nvenc"] {
         assert!(names.iter().any(|available| available == name));
-        record(&gpu, (1280, 720), name, false, 120, false);
+        record(&gpu, (1280, 720), name, name == "av1_nvenc", 300, false);
     }
 }
 

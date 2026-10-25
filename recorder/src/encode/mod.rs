@@ -326,6 +326,7 @@ impl SegmentWriter {
         let (video_tx, video_rx) = mpsc::sync_channel(QUEUE_SIZE);
         let (audio_tx, audio_rx) = mpsc::sync_channel(64);
         let counts = Arc::new(Counts::default());
+        let muxer = mux::MuxWorker::new(muxer, counts.clone())?;
         let worker_counts = counts.clone();
         let fps = video.fps;
         let worker = thread::Builder::new()
@@ -510,7 +511,7 @@ fn frame_tick(slot: i64, fps: u32) -> i64 {
 }
 fn encode_frame(
     encoder: &Encoder,
-    muxer: &mut mux::Muxer,
+    muxer: &mut mux::MuxWorker,
     source: &Frame,
     slot: i64,
     fps: u32,
@@ -556,7 +557,7 @@ fn monitor_worker(counts: &Counts, run: impl FnOnce() -> Result<()>) -> Result<(
 fn run_worker(
     encoder: Encoder,
     mut audio: Option<aac::Audio>,
-    mut muxer: mux::Muxer,
+    mut muxer: mux::MuxWorker,
     video_rx: Receiver<VideoJob>,
     audio_rx: Receiver<AudioJob>,
     counts: Arc<Counts>,
@@ -665,7 +666,7 @@ fn run_worker(
 
 fn advance_audio(
     audio: &mut Option<aac::Audio>,
-    muxer: &mut mux::Muxer,
+    muxer: &mut mux::MuxWorker,
     next_slot: i64,
     fps: u32,
 ) -> Result<()> {
