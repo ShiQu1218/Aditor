@@ -187,6 +187,7 @@ export function ProjectProvider({ children }: { children: React.ReactNode }): JS
         if (!stored || isEditorLocked()) return false
         const opened: ProjectWithId = { ...stored, id }
         if (!session.openProject(opened)) return false
+        void Promise.resolve(api.projects.markOpened?.(id)).catch(() => {})
         setLastMissingSources([])
         try {
           const { missing } = await validateSources(opened, (source) => api.library.fileExists(source))

@@ -103,6 +103,7 @@ describe('ProjectStore', () => {
     expect(await store.rename('p_ren', '   ')).toBe(false)
     expect((await store.load('p_ren'))?.name).toBe('new name')
     expect(await store.rename('p_missing', 'x')).toBe(false)
+    expect(await store.rename('p_ren', 'x'.repeat(121))).toBe(false)
   })
 
   test('remove deletes the project file and tolerates missing ids', async () => {

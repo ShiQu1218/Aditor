@@ -1,4 +1,4 @@
-import { ProjectStore, StoredProject } from './projects'
+import { ProjectStore, StoredProject, isValidId } from './projects'
 import type { SettingsStore } from './settings'
 
 /** Minimal ipcMain subset (for dependency injection in tests). */
@@ -45,11 +45,12 @@ export function registerProjectHandlers(
 
   ipc.on('projects:flushDone', (_event, ok?: boolean) => onFlushDone?.(ok !== false))
 
-  // Loading counts as opening: remember the id so the next startup restores the project the user last worked in.
-  ipc.handle('projects:load', async (_e, id: string) => {
-    const project = await store.load(id)
-    if (project) remember(id)
-    return project
+  ipc.handle('projects:load', async (_e, id: string) => store.load(id))
+  // Sent by the renderer only after it actually switched to the project, so a failed switch cannot change what startup restores.
+  ipc.handle('projects:markOpened', async (_e, id: string) => {
+    if (!isValidId(id)) return false
+    remember(id)
+    return true
   })
   // Used by the renderer to show a notice when startup restore finds a corrupt or newer-version project (I12).
   ipc.handle('projects:lastError', async () =>

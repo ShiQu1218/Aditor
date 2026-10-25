@@ -69,6 +69,7 @@ export function ProjectManagerDialog({ currentId, onClose, onOpen }: ProjectMana
     run(async () => {
       const ok = await onOpen(id)
       if (ok) onClose()
+      else await refresh()
       return ok
     }, dlg.openFailed)
 

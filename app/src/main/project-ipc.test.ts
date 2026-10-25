@@ -36,15 +36,15 @@ function setup() {
 }
 
 describe('registerProjectHandlers', () => {
-  test('projects:load records the opened project as lastProjectId; a missing project leaves it unchanged', async () => {
+  test('projects:load does not change lastProjectId; projects:markOpened does, and rejects invalid ids', async () => {
     const { store, settings, ipc } = setup()
     await store.save(proj('p_a'))
     await store.save(proj('p_b'))
     await ipc.handlers.get('projects:load')!({}, 'p_a')
-    expect(settings.get().lastProjectId).toBe('p_a')
-    await ipc.handlers.get('projects:load')!({}, 'p_b')
+    expect(settings.get().lastProjectId).toBeFalsy()
+    expect(await ipc.handlers.get('projects:markOpened')!({}, 'p_b')).toBe(true)
     expect(settings.get().lastProjectId).toBe('p_b')
-    expect(await ipc.handlers.get('projects:load')!({}, 'p_missing')).toBeNull()
+    expect(await ipc.handlers.get('projects:markOpened')!({}, '../evil')).toBe(false)
     expect(settings.get().lastProjectId).toBe('p_b')
   })
 
