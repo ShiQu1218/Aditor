@@ -5,7 +5,7 @@ import { addItems, duplicateItem, moveItem, removeItem, trimItem, type Project, 
 import { i18n } from '../i18n'
 import type { useToast } from '../shell/ToastHost'
 import type { createExportController } from './exportController'
-import { isSuggested, linkedClip } from './highlights'
+import { isSuggested } from './highlights'
 import type { StudioSettings } from './studioSettings'
 import { baseName, normPath } from './studioScreenModel'
 
@@ -32,7 +32,6 @@ interface StudioProjectTrackOptions {
   switchingSourceRef: MutableRefObject<boolean>
   shownClips: Clip[]
   acceptClip: (clip: Clip) => void
-  updateClip: (clip: Clip) => void
 }
 
 /** Project-track operations (Task 13): selection, trimming, reordering, duplication, deletion, and imports. */
@@ -57,8 +56,7 @@ export function useStudioProjectTrack({
   mountedRef,
   switchingSourceRef,
   shownClips,
-  acceptClip,
-  updateClip
+  acceptClip
 }: StudioProjectTrackOptions) {
   const importingRef = useRef(false)
 
@@ -76,14 +74,9 @@ export function useStudioProjectTrack({
     (id: string, edge: 'start' | 'end', t: number) => {
       const item = projectRef.current.items.find((i) => i.id === id)
       const sameVideo = item ? normPath(item.source) === normPath(videoPath) : true
-      const linked = item ? linkedClip(item, videoPath, projectRef.current, shownClips) : null
-      const next = trimItem(projectRef.current, id, edge, t, sameVideo ? duration : undefined)
-      apply(next)
-      // Keep the highlight the item was added from in step, so the source track shows one range.
-      const trimmed = next.items.find((i) => i.id === id)
-      if (linked && trimmed) updateClip({ ...linked, start: trimmed.start, end: trimmed.end })
+      apply(trimItem(projectRef.current, id, edge, t, sameVideo ? duration : undefined))
     },
-    [apply, videoPath, duration, shownClips, updateClip]
+    [apply, videoPath, duration]
   )
 
   /** Dragging updates only the display draft; commit one undoable edit through the existing API at the end. */

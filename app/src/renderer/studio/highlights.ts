@@ -85,6 +85,20 @@ export function linkedClip(item: ProjectItem, source: string, project: Project, 
 }
 
 /**
+ * Clips to move after a pure range edit (a trim, or its undo/redo): when the item count is unchanged, each item whose
+ * range changed drags the clip it was linked to before the edit. Splits and duplicates add items and are left alone.
+ */
+export function followRangeEdits(before: Project, after: Project, source: string, clips: Clip[]): Clip[] {
+  if (before === after || before.items.length !== after.items.length) return []
+  return before.items.flatMap((prev) => {
+    const next = after.items.find((it) => it.id === prev.id)
+    if (!next || (next.start === prev.start && next.end === prev.end)) return []
+    const clip = linkedClip(prev, source, before, clips)
+    return clip ? [{ ...clip, start: next.start, end: next.end }] : []
+  })
+}
+
+/**
  * Add clips to the project (spec §3.6): duplicate additions are idempotent (return empty `added`).
  * The returned `undo` removes only clips added this time for use by the Toast Undo action.
  */

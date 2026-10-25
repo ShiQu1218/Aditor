@@ -22,7 +22,7 @@ import { i18n, settingsI18n } from '../i18n'
 import { AddEventDialog } from './AddEventDialog'
 import { Aside } from './Aside'
 import { AutoClipPopover } from './AutoClipPopover'
-import { clipTitle, nextSuggestion, withProjectStatus } from './highlights'
+import { clipTitle, followRangeEdits, nextSuggestion, withProjectStatus } from './highlights'
 import { HighlightsTab } from './HighlightsTab'
 import { NoticeBar } from './NoticeBar'
 import { PlayerStage } from './PlayerStage'
@@ -157,6 +157,13 @@ export function StudioScreen({ videoPath, onBack, onRegisterLeaveGuard, onVideoR
   }, [])
   const stateRef = useRef(state)
   stateRef.current = state
+  // Trims, undo and redo all change the project; keep the highlight each trimmed item came from on the same range.
+  const prevProjectRef = useRef(project)
+  useEffect(() => {
+    const before = prevProjectRef.current
+    prevProjectRef.current = project
+    for (const clip of followRangeEdits(before, project, videoPath, stateRef.current.clips)) dispatch({ type: 'updateClip', clip })
+  }, [project, videoPath])
 
   // Project-track collapse: 'auto' collapses when the window is ≤800px high; save manual changes to settings.
   const autoCollapse = useMediaQuery('(max-height: 800px)')
@@ -324,8 +331,7 @@ export function StudioScreen({ videoPath, onBack, onRegisterLeaveGuard, onVideoR
     handleAddExternalVideo, addFirstSuggestion
   } = useStudioProjectTrack({
     project, projectRef, apply, undo, newProject, projectId: project.id, openProject, toast, exportCtl, videoPath, duration, selProjId, setSelProjId, setSourceTrim,
-    projCollapsed, setSettings, playProjectItem, mountedRef, switchingSourceRef, shownClips, acceptClip,
-    updateClip: (clip) => dispatch({ type: 'updateClip', clip })
+    projCollapsed, setSettings, playProjectItem, mountedRef, switchingSourceRef, shownClips, acceptClip
   })
 
   /* ---------------- Project-mode guard (ignore source-document editing commands and show a Toast) ---------------- */

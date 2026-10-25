@@ -9,6 +9,7 @@ import {
   clipAt,
   clipEventGlyphs,
   clipTitle,
+  followRangeEdits,
   linkedClip,
   mergeSuggestions,
   nextSuggestion,
@@ -277,6 +278,27 @@ describe('linkedClip', () => {
     expect(linkedClip(item, 'other.mp4', p, [c])).toBeNull()
     const dup = createProject('P', [item, { ...item, id: 'i2' }])
     expect(linkedClip(item, 'v.mp4', dup, [c])).toBeNull()
+  })
+})
+
+describe('followRangeEdits', () => {
+  const c = clip('c1', 40, { end: 80, status: 'accepted' })
+  const before = createProject('P', [{ id: 'i1', source: 'v.mp4', start: 40, end: 80 }])
+  const trimmed = { ...before, items: [{ ...before.items[0], end: 70 }] }
+
+  test('moves the linked clip with a trim, and back with its undo', () => {
+    const moved = followRangeEdits(before, trimmed, 'v.mp4', [c])
+    expect(moved).toEqual([{ ...c, end: 70 }])
+    expect(followRangeEdits(trimmed, before, 'v.mp4', moved)).toEqual([c])
+  })
+
+  test('ignores edits that add or remove items, and unrelated or switched projects', () => {
+    const split = { ...before, items: [{ ...before.items[0], end: 60 }, { id: 'i2', source: 'v.mp4', start: 60, end: 80 }] }
+    expect(followRangeEdits(before, split, 'v.mp4', [c])).toEqual([])
+    expect(followRangeEdits(before, before, 'v.mp4', [c])).toEqual([])
+    const other = createProject('Q', [{ id: 'j1', source: 'v.mp4', start: 40, end: 70 }])
+    expect(followRangeEdits(before, other, 'v.mp4', [c])).toEqual([])
+    expect(followRangeEdits(before, trimmed, 'other.mp4', [c])).toEqual([])
   })
 })
 
