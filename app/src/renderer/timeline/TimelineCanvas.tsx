@@ -19,7 +19,7 @@ export interface TimelineHandle {
 
 interface TimelineCanvasProps extends Pick<InteractionOptions,
   'projectItem' | 'onProjectTrim' | 'onScrubStart' | 'onScrubEnd' | 'onHoverSeek' |
-  'bladeMode' | 'onBladeModeChange' | 'onBladeRange' | 'onBladeTooShort' | 'disabled'> {
+  'bladeMode' | 'onBladeModeChange' | 'onBladeRange' | 'onBladeTooShort' | 'disabled' | 'onClipTrimCommit'> {
   duration: number
   currentTime: number
   events: EngineEvent[]
@@ -45,6 +45,8 @@ interface TimelineCanvasProps extends Pick<InteractionOptions,
   playing?: boolean
   /** Keep the source playhead visible at custom zoom levels during project preview. */
   followProject?: boolean
+  /** False keeps the project item's trim handles but leaves its range undrawn (a clip already draws the same range). */
+  showProjectRange?: boolean
 }
 
 const EMPTY_SET: Set<string> = new Set()
@@ -80,6 +82,8 @@ export const TimelineCanvas = React.forwardRef<TimelineHandle, TimelineCanvasPro
     onBladeRange,
     onBladeTooShort,
     disabled,
+    onClipTrimCommit,
+    showProjectRange = true,
     getPlayTime,
     playing,
     followProject
@@ -171,6 +175,7 @@ export const TimelineCanvas = React.forwardRef<TimelineHandle, TimelineCanvasPro
     onBladeTooShort,
     disabled,
     onUpdateClip,
+    onClipTrimCommit,
     onAutoScroll: (update) => setZoomState((state) => ({ ...state, view: update(state.view) }))
   })
 
@@ -218,7 +223,7 @@ export const TimelineCanvas = React.forwardRef<TimelineHandle, TimelineCanvasPro
     hoverClipId: ix.hoverClipId,
     activeClipId,
     lowPerf,
-    projectItem,
+    projectItem: showProjectRange ? projectItem : null,
     blade: ix.blade
   }
 
@@ -253,7 +258,7 @@ export const TimelineCanvas = React.forwardRef<TimelineHandle, TimelineCanvasPro
   // Static layer: use rAF to coalesce redraws only when data, zoom, size, selection, or hover changes (not currentTime).
   useEffect(() => {
     scheduler.invalidate()
-  }, [scheduler, view, layout, spectating, rounds, clips, selected, currentEventId, ix.hoverClipId, activeClipId, height, lowPerf, projectItem, ix.blade])
+  }, [scheduler, view, layout, spectating, rounds, clips, selected, currentEventId, ix.hoverClipId, activeClipId, height, lowPerf, projectItem, showProjectRange, ix.blade])
 
   return (
     <div className="tl-source" data-zone="src">

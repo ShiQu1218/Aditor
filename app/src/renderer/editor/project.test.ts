@@ -7,7 +7,8 @@ import {
   duplicateItem,
   moveItem,
   trimItem,
-  totalDuration
+  totalDuration,
+  projectShapeError
 } from './project'
 
 describe('project pure functions', () => {
@@ -47,6 +48,19 @@ describe('project pure functions', () => {
     expect(updated.items[1].id).not.toBe('item1')
     expect(updated.items[2].id).toBe('item2')
     expect(totalDuration(updated)).toBe(totalDuration(baseProject))
+  })
+
+  it('splitItem drops the highlight link from both halves; duplicateItem keeps it on both', () => {
+    const linked: Project = { ...baseProject, items: [{ ...baseProject.items[0], clipId: 'c1' }] }
+    expect(splitItem(linked, 'item1', 14).items.map((i) => i.clipId)).toEqual([undefined, undefined])
+    expect(duplicateItem(linked, 'item1').items.map((i) => i.clipId)).toEqual(['c1', 'c1'])
+  })
+
+  it('projectShapeError accepts an optional string clipId and rejects other types', () => {
+    const withLink = (clipId: unknown) => ({ ...baseProject, items: [{ ...baseProject.items[0], clipId }] })
+    expect(projectShapeError(baseProject)).toBeNull()
+    expect(projectShapeError(withLink('c1'))).toBeNull()
+    expect(projectShapeError(withLink(5))).toMatchObject({ kind: 'format' })
   })
 
   it('splitItem outside range is no-op', () => {

@@ -78,6 +78,31 @@ export function findItemsForClip(clip: Clip, source: string, project: Project): 
   return project.items.filter((it) => sameItem(it, source, clip)).map((it) => it.id)
 }
 
+/** The clip an item was added from (by clipId in this source), while no other item claims that clip. */
+export function linkedClip(item: ProjectItem, source: string, project: Project, clips: Clip[]): Clip | null {
+  const clip = item.clipId ? clips.find((c) => c.id === item.clipId) : undefined
+  return clip && linkedItem(clip, source, project)?.id === item.id ? clip : null
+}
+
+/** The only item in `source` added from a clip; clip ids repeat across videos, so the source is part of the key. */
+export function linkedItem(clip: Clip, source: string, project: Project): ProjectItem | null {
+  const src = normPath(source)
+  const items = project.items.filter((it) => it.clipId === clip.id && normPath(it.source) === src)
+  return items.length === 1 ? items[0] : null
+}
+
+/**
+ * Linked clips whose range differs from their item's: the project (with its undo history) owns the range, so this
+ * repairs the source document after trims, undo/redo, and edits made while another video was open.
+ */
+export function mirrorLinkedClips(project: Project, source: string, clips: Clip[]): Clip[] {
+  return clips.flatMap((clip) => {
+    const item = linkedItem(clip, source, project)
+    if (!item || (item.start === clip.start && item.end === clip.end)) return []
+    return [{ ...clip, start: item.start, end: item.end }]
+  })
+}
+
 /**
  * Add clips to the project (spec §3.6): duplicate additions are idempotent (return empty `added`).
  * The returned `undo` removes only clips added this time for use by the Toast Undo action.
@@ -86,7 +111,7 @@ export function acceptToProject(clip: Clip, source: string, project: Project): A
   if (project.items.some((it) => sameItem(it, source, clip))) {
     return { added: [], undo: (p) => p }
   }
-  const item: ProjectItem = { id: newItemId(), source, start: clip.start, end: clip.end }
+  const item: ProjectItem = { id: newItemId(), source, start: clip.start, end: clip.end, clipId: clip.id }
   const ids = [item.id]
   return {
     added: [item],

@@ -4,6 +4,8 @@ export interface ProjectItem {
   source: string
   start: number
   end: number
+  /** Highlight this item was added from; while no other item claims it, the highlight mirrors this item's range. */
+  clipId?: string
 }
 
 export interface Project {
@@ -54,8 +56,11 @@ export function splitItem(p: Project, id: string, atSourceTime: number): Project
     return p
   }
 
+  // Splitting ends the highlight link: neither half alone stands for the highlight.
   const first: ProjectItem = {
-    ...item,
+    id: item.id,
+    source: item.source,
+    start: item.start,
     end: atSourceTime
   }
   const second: ProjectItem = {
@@ -171,7 +176,8 @@ export function projectShapeError(data: unknown): ProjectShapeError | null {
       typeof x.start === 'number' &&
       Number.isFinite(x.start) &&
       typeof x.end === 'number' &&
-      Number.isFinite(x.end)
+      Number.isFinite(x.end) &&
+      (x.clipId === undefined || typeof x.clipId === 'string')
     if (!ok) return { kind: 'format', message: tr('items[{i}] 格式不符', { i }) }
   }
   return null

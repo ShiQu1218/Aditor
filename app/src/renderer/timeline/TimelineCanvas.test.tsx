@@ -186,6 +186,21 @@ describe('source timeline gestures', () => {
     expect(onSeek).toHaveBeenLastCalledWith(120)
   })
 
+  test('clip handle drags report the original and final range once, on release', () => {
+    const onUpdateClip = vi.fn()
+    const onClipTrimCommit = vi.fn()
+    const clip = { id: 'c', start: 60, end: 180, origin: 'ai' as const, event_ids: [], status: 'accepted' as const }
+    mount(<TimelineCanvas {...props} currentTime={60} onUpdateClip={onUpdateClip} onClipTrimCommit={onClipTrimCommit} clips={[clip]} />)
+    mouse('mousedown', 100, { clientY: 60 })
+    mouse('mousemove', 150, { clientY: 60 })
+    nextFrame()
+    expect(onUpdateClip).toHaveBeenLastCalledWith({ ...clip, start: 90 })
+    expect(onClipTrimCommit).not.toHaveBeenCalled()
+    mouse('mouseup', 200, { clientY: 60 })
+    expect(onClipTrimCommit).toHaveBeenCalledTimes(1)
+    expect(onClipTrimCommit).toHaveBeenCalledWith(clip, { ...clip, start: 120 })
+  })
+
   test('blade clicks never seek or trim; hover preview coalesces and leaving cancels pending preview', () => {
     const onSeek = vi.fn()
     const onHoverSeek = vi.fn()

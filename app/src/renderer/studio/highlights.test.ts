@@ -9,6 +9,9 @@ import {
   clipAt,
   clipEventGlyphs,
   clipTitle,
+  linkedClip,
+  linkedItem,
+  mirrorLinkedClips,
   mergeSuggestions,
   nextSuggestion,
   planAccept,
@@ -263,6 +266,46 @@ describe('acceptToProject', () => {
     // Same time from different sources represents different clips.
     const r3 = acceptToProject(c, 'other.mp4', p1)
     expect(r3.added).toHaveLength(1)
+  })
+})
+
+describe('clip links', () => {
+  const c = clip('c1', 40, { end: 80, status: 'accepted' })
+  const item: ProjectItem = { id: 'i1', source: 'v.mp4', start: 40, end: 70, clipId: 'c1' }
+
+  test('acceptToProject records which clip an item came from', () => {
+    expect(acceptToProject(c, 'v.mp4', createProject('P')).added[0].clipId).toBe('c1')
+  })
+
+  test('an item links to its clip by id only while no other item claims it', () => {
+    const p = createProject('P', [item])
+    expect(linkedClip(item, 'v.mp4', p, [c])).toBe(c)
+    expect(linkedItem(c, 'v.mp4', p)).toBe(item)
+    expect(linkedClip({ ...item, clipId: undefined }, 'v.mp4', p, [c])).toBeNull()
+    const dup = createProject('P', [item, { ...item, id: 'i2' }])
+    expect(linkedClip(item, 'v.mp4', dup, [c])).toBeNull()
+    expect(linkedItem(c, 'v.mp4', dup)).toBeNull()
+  })
+
+  test('links are scoped to the source video, since clip ids repeat across videos', () => {
+    const other: ProjectItem = { ...item, id: 'i9', source: 'b.mp4' }
+    const p = createProject('P', [item, other])
+    expect(linkedItem(c, 'v.mp4', p)).toBe(item)
+    expect(linkedItem(c, 'B.MP4', p)).toBe(other)
+    expect(linkedItem(c, 'c.mp4', p)).toBeNull()
+    expect(linkedClip(other, 'v.mp4', p, [c])).toBeNull()
+    expect(mirrorLinkedClips(p, 'v.mp4', [c])).toEqual([{ ...c, end: 70 }])
+  })
+
+  test('linked clips mirror their item range, so undo and reopening the video repair them', () => {
+    expect(mirrorLinkedClips(createProject('P', [item]), 'v.mp4', [c])).toEqual([{ ...c, end: 70 }])
+    expect(mirrorLinkedClips(createProject('P', [{ ...item, end: 80 }]), 'v.mp4', [c])).toEqual([])
+    expect(mirrorLinkedClips(createProject('P', [item]), 'other.mp4', [c])).toEqual([])
+  })
+
+  test('duplicated ranges leave the clip alone instead of guessing (trim duplicate, trim original, undo)', () => {
+    const p = createProject('P', [item, { ...item, id: 'i2' }])
+    expect(mirrorLinkedClips(p, 'v.mp4', [c])).toEqual([])
   })
 })
 
