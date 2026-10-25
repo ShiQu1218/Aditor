@@ -22,7 +22,8 @@ describe('guardCommand (source-doc mutating commands in project mode)', () => {
 
 describe('toast actions in StudioScreen', () => {
   test('every toast action run is wrapped in guarded() except the project-only undo', () => {
-    const src = readFileSync(join(__dirname, 'StudioScreen.tsx'), 'utf8')
+    const src = ['StudioScreen.tsx', 'useStudioSourceEdits.ts', 'useStudioProjectTrack.ts', 'useStudioExport.ts']
+      .map((f) => readFileSync(join(__dirname, f), 'utf8')).join('\n')
     const runs = [...src.matchAll(/\brun:\s*([^\n]*)/g)].map((m) => m[1].trim())
     expect(runs.length).toBeGreaterThan(5)
     const unguarded = runs.filter((r) => !r.startsWith('guarded('))
