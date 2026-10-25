@@ -85,7 +85,7 @@ describe('export plan', () => {
   })
 
   it('copy separate jobs use -ss before -i and -c copy', () => {
-    const { jobs, notices } = buildJobs(
+    const { jobs } = buildJobs(
       [sampleItems[0]],
       {
         mode: 'separate',

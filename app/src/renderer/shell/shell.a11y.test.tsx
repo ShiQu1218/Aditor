@@ -1,5 +1,4 @@
 // @vitest-environment jsdom
-import React from 'react'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { act } from 'react'
 import { KEY_TABLE } from '../input/keymap'

@@ -202,6 +202,16 @@ export class ProjectSession {
     return true
   }
 
+  /** Switch to an already stored project: write pending content for the current one first, and keep it if that fails. */
+  openProject(project: ProjectWithId): boolean {
+    if (!this.flushSync()) return false
+    this.boot.edit()
+    this.history = new History<ProjectWithId>(project)
+    this.unsaved = false
+    this.commit('saved', null)
+    return true
+  }
+
   private markEdited(): void {
     this.unsaved = true
     this.writeSeq++

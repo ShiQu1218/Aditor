@@ -1,9 +1,8 @@
 // @vitest-environment jsdom
-import React from 'react'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { LibraryScreen } from './LibraryScreen'
 import type { LibraryEntry } from '../../main/library'
-import { createFakeApi, installFakeApi, type FakeApi } from '../../../test/fakeApi'
+import { createFakeApi, installFakeApi } from '../../../test/fakeApi'
 import { Providers } from '../../../test/harness'
 import { buttonByText, byLabel, cleanupMounted, click, flush, installDomShims, mount, press } from '../../../test/dom'
 import { i18n } from '../i18n'

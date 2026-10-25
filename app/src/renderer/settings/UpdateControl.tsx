@@ -1,4 +1,3 @@
-import React from 'react'
 import { RefreshCw } from '../components/icons'
 import { settingsI18n } from '../i18n'
 import { describedBy, type ControlIds } from './SettingControls'

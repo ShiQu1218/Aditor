@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react'
+import { useEffect } from 'react'
 import { recordedTime } from '../library/recordedTime'
 import { i18n } from '../i18n'
 import { StudioLoadingView } from './StudioStates'

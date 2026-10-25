@@ -1,4 +1,5 @@
 import type { SettingsRange } from '../../shared/settings'
+export { fillTemplate } from '../../shared/template'
 
 /** Clamp to the valid range and round to an integer; return null for non-finite numbers (callers must not submit them). */
 export function clampToRange(range: SettingsRange, value: number): number | null {
@@ -35,9 +36,4 @@ export function formatBytes(bytes: number): string {
     i += 1
   }
   return i === 0 ? `${Math.round(v)} B` : `${v.toFixed(1)} ${units[i]}`
-}
-
-/** Replace `{name}` placeholders. */
-export function fillTemplate(tpl: string, vars: Record<string, string | number>): string {
-  return tpl.replace(/\{(\w+)\}/g, (m, k: string) => (k in vars ? String(vars[k]) : m))
 }

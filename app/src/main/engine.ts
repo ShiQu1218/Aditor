@@ -6,6 +6,13 @@ import { emitChildDiagnostic, type ChildDiagnosticHandler } from '../shared/chil
 
 const STDERR_TAIL_CHARS = 1000
 
+/** Replace the user's home directory (and any X:\Users\name path) with ~ so error text is safe to show and copy. */
+export function redactHome(text: string): string {
+  const home = os.homedir()
+  const escaped = home.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  return text.replace(new RegExp(escaped, 'gi'), '~').replace(/[A-Za-z]:[\\/]Users[\\/][^\\/\s'"]+/gi, '~')
+}
+
 export class EngineError extends Error {
   code: string
   constructor(code: string, message: string) {
@@ -174,9 +181,14 @@ export class EngineClient extends EventEmitter {
     }
   }
 
-  private _crashReason(exitCode: number | null): string {
-    const tail = this.stderrTail.trim()
-    return `exit code ${exitCode ?? 'signal'}${tail ? `: ${tail}` : ''}`
+  private _lastStderrLine(): string {
+    return this.stderrTail.split('\n').map((l) => l.trim()).filter(Boolean).pop() ?? ''
+  }
+
+  /** User-facing errors get the last stderr line with the home dir redacted; diagnostics get the full tail. */
+  private _crashReason(exitCode: number | null, full = false): string {
+    const detail = full ? this.stderrTail.trim() : redactHome(this._lastStderrLine())
+    return `exit code ${exitCode ?? 'signal'}${detail ? `: ${detail}` : ''}`
   }
 
   private _onClose(_code: number | null): void {
@@ -202,7 +214,7 @@ export class EngineClient extends EventEmitter {
     if (this.isStopping) {
       return
     }
-    emitChildDiagnostic(this.opts.onDiagnostic, { component: 'python-engine', code: 'engine_crashed', message: `Python engine exited unexpectedly (${reason})` })
+    emitChildDiagnostic(this.opts.onDiagnostic, { component: 'python-engine', code: 'engine_crashed', message: `Python engine exited unexpectedly (${this._crashReason(_code, true)})` })
 
     // Record crash
     const now = Date.now()
@@ -230,7 +242,7 @@ export class EngineClient extends EventEmitter {
       this.crashTimes = this.crashTimes.filter((t) => now - t <= this.crashWindowMs)
       if (this.crashTimes.length >= this.maxCrashesInWindow && !this.proc) {
         return reject(
-          new EngineError('engine_crashed', `Engine crashed ${this.maxCrashesInWindow} times in ${this.crashWindowMs / 1000}s and will not restart ${this.stderrTail.trim() ? `(last stderr: ${this.stderrTail.trim()})` : ''}`)
+          new EngineError('engine_crashed', `Engine crashed ${this.maxCrashesInWindow} times in ${this.crashWindowMs / 1000}s and will not restart${this.stderrTail.trim() ? ` (last stderr: ${redactHome(this._lastStderrLine())})` : ''}`)
         )
       }
 

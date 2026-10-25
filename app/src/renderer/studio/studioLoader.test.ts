@@ -94,4 +94,26 @@ describe('loadStudioDoc', () => {
     const d = deps({ getStatus: vi.fn(async () => { throw new Error('ipc down') }) })
     expect((await loadStudioDoc('a.mp4', d)).kind).toBe('error')
   })
+
+  test('probe returning null explains the file could not be probed', async () => {
+    const d = deps({ cacheLoad: async () => null, probe: async () => null })
+    expect(await loadStudioDoc('b', d, true)).toMatchObject({ kind: 'error', message: expect.stringContaining('could not be probed') })
+  })
+
+  test('invalid probe duration is reported in the message', async () => {
+    const d = deps({ cacheLoad: async () => null, probe: async () => ({ duration: 0 }) as VideoInfo })
+    expect(await loadStudioDoc('b', d, true)).toMatchObject({ kind: 'error', message: expect.stringContaining('duration 0') })
+  })
+
+  test('unusable analysis result reports its status, or none for null', async () => {
+    const partial = deps({ cacheLoad: async () => null, analyze: async () => doc('partial') })
+    expect(await loadStudioDoc('a', partial)).toMatchObject({ kind: 'error', message: expect.stringContaining('status: partial') })
+    const none = deps({ cacheLoad: async () => null, analyze: async () => null })
+    expect(await loadStudioDoc('a', none)).toMatchObject({ kind: 'error', message: expect.stringContaining('status: none') })
+  })
+
+  test('non-Error throws are stringified once', async () => {
+    const d = deps({ getStatus: async () => { throw 'oops' } })
+    expect(await loadStudioDoc('a', d)).toEqual({ kind: 'error', message: 'Loading failed: oops' })
+  })
 })

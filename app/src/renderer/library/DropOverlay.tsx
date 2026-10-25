@@ -1,4 +1,3 @@
-import React from 'react'
 import { i18n } from '../i18n'
 
 /** Full-page drop overlay, shown when files are dragged into the library. */

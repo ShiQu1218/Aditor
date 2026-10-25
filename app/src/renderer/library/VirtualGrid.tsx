@@ -30,7 +30,7 @@ const NAV_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Ho
    * When the main card button is focused, ←→↑↓/Home/End moves the cursor (using the actual column count from computeGrid across date groups).
    * If virtualization has scrolled the cursor card out, scroll it into view before focusing it; keep the focused row rendered so wheel scrolling does not drop focus to body.
    */
-export function VirtualGrid({ groups, renderCard, selectionMode = false, selected, onToggleGroup }: VirtualGridProps): JSX.Element {
+export function VirtualGrid({ groups, renderCard, selected, onToggleGroup }: VirtualGridProps): JSX.Element {
   const scrollRef = useRef<HTMLDivElement>(null)
   const [size, setSize] = useState({ width: 0, height: 0 })
   const [scrollTop, setScrollTop] = useState(0)

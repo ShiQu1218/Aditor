@@ -23,12 +23,14 @@ export interface ProjectListEntry {
 const ID_RE = /^[A-Za-z0-9_-]+$/
 /** Values that look valid but are invalid, such as `String(undefined)`. */
 const BAD_IDS = new Set(['undefined', 'null', 'NaN'])
+/** Longest project name accepted by `rename` (mirrors the dialog's input limit). */
+const MAX_NAME_LENGTH = 120
 /** Maximum number of corrupt backups to retain per project. */
 const MAX_BACKUPS = 3
 
 export type ProjectErrorKind = 'save' | 'corrupt' | 'transient' | 'unsupported'
 
-function isValidId(id: unknown): id is string {
+export function isValidId(id: unknown): id is string {
   return typeof id === 'string' && id.length > 0 && ID_RE.test(id) && !BAD_IDS.has(id)
 }
 
@@ -190,6 +192,16 @@ export class ProjectStore {
     }
     entries.sort((a, b) => b.updatedAt - a.updatedAt)
     return entries
+  }
+
+  /** Rename a stored project in place. Returns false when the project is missing, unreadable, or the name is blank. */
+  async rename(id: string, name: string): Promise<boolean> {
+    const trimmed = typeof name === 'string' ? name.trim() : ''
+    if (!trimmed || trimmed.length > MAX_NAME_LENGTH) return false
+    const project = await this.load(id)
+    if (!project) return false
+    await this.save({ ...project, name: trimmed })
+    return true
   }
 
   async remove(id: string): Promise<void> {

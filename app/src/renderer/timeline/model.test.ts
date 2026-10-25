@@ -93,7 +93,7 @@ describe('Timeline Model', () => {
     }
 
     const t0 = performance.now()
-    const map = heatmap(events, 6000, 100)
+    heatmap(events, 6000, 100)
     const tHeatmap = performance.now() - t0
     expect(tHeatmap).toBeLessThan(15) // comfortably < 5-15ms
 

@@ -1,4 +1,3 @@
-import React from 'react'
 import { AlertTriangle } from '../components/icons'
 import { i18n } from '../i18n'
 import type { NoticeAction, StudioNotice } from './notices'

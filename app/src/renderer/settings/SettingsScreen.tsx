@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { useKeymap } from '../hooks/useShortcuts'
 import { useMediaQuery } from '../hooks/useMediaQuery'
 import { useOptionalOverlay } from '../shell/OverlayHost'

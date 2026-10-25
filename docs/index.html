@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Aditor — automatic highlights for VALORANT and Apex Legends</title>
+<meta name="description" content="Aditor records your VALORANT and Apex Legends matches, marks every kill and death automatically from on-screen pixels, and helps you edit and export highlights.">
+<link rel="icon" href="https://raw.githubusercontent.com/ShiQu1218/Aditor/main/app/resources/icon.png">
+<style>
+:root{--bg:#111112;--card:#1b1b1d;--line:#2a2a2d;--text:#ececef;--mute:#a0a0a8;--red:#e0443e;--teal:#50c8aa}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:16px/1.65 "Segoe UI","Microsoft JhengHei",system-ui,sans-serif}
+a{color:var(--teal)}
+.wrap{max-width:980px;margin:0 auto;padding:0 20px}
+header{display:flex;justify-content:space-between;align-items:center;padding:18px 0}
+.brand{display:flex;align-items:center;gap:12px;font-weight:700;font-size:20px}
+.brand img{width:36px;height:36px}
+.lang button{background:none;border:1px solid var(--line);color:var(--mute);padding:4px 12px;border-radius:999px;cursor:pointer;font:inherit;font-size:14px}
+.lang button.on{color:var(--text);border-color:var(--red)}
+.hero{text-align:center;padding:48px 0 32px}
+.hero h1{font-size:clamp(30px,5vw,48px);line-height:1.2;margin:0 0 16px}
+.hero p{max-width:680px;margin:0 auto 28px;color:var(--mute);font-size:18px}
+.btn{display:inline-block;background:var(--red);color:#fff;text-decoration:none;padding:12px 28px;border-radius:10px;font-weight:600}
+.btn.ghost{background:none;border:1px solid var(--line);color:var(--text);margin-left:8px}
+.hero small{display:block;margin-top:14px;color:var(--mute)}
+section{padding:36px 0;border-top:1px solid var(--line)}
+h2{font-size:26px;margin:0 0 20px}
+.shot{width:100%;border-radius:12px;border:1px solid var(--line);display:block}
+.tour{display:grid;gap:28px}
+.tour figure{margin:0;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px}
+.tour figcaption{margin-bottom:12px}
+.tour figcaption b{display:block;font-size:18px}
+.tour figcaption span{color:var(--mute)}
+.tour img{width:100%;max-width:640px;display:block;margin:0 auto;border-radius:8px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px}
+.card h3{margin:0 0 6px;font-size:17px}
+.card p{margin:0;color:var(--mute);font-size:15px}
+ul.trust{padding-left:20px;margin:0}
+ul.trust li{margin:8px 0}
+footer{padding:28px 0 56px;color:var(--mute);font-size:13px;border-top:1px solid var(--line)}
+footer p{margin:6px 0}
+body[data-l=en] .zh,body[data-l=zh] .en{display:none}
+</style>
+</head>
+<body data-l="en">
+<div class="wrap">
+<header>
+  <div class="brand"><img src="https://raw.githubusercontent.com/ShiQu1218/Aditor/main/app/resources/icon.png" alt="">Aditor</div>
+  <div class="lang"><button data-set="en" class="on">English</button> <button data-set="zh">繁體中文</button></div>
+</header>
+
+<div class="hero">
+  <h1><span class="en">Every kill and death in your<br>VALORANT and Apex Legends matches, marked for you</span><span class="zh">VALORANT 與 Apex Legends<br>每一次擊殺與死亡，自動幫你標好</span></h1>
+  <p><span class="en">Record your matches or drag in videos you already have. Aditor finds the key moments from on-screen pixels, then lets you pick highlights on a timeline and export them.</span><span class="zh">錄下對局，或直接拖入手上的影片。Aditor 只從畫面像素找出關鍵時刻，讓你在時間軸上挑選精彩片段並匯出。</span></p>
+  <a class="btn" href="https://github.com/ShiQu1218/Aditor/releases"><span class="en">Download for Windows</span><span class="zh">下載 Windows 版</span></a>
+  <a class="btn ghost" href="https://github.com/ShiQu1218/Aditor">GitHub</a>
+  <small><span class="en">Windows 10 / 11, 64-bit · installer or portable build</span><span class="zh">Windows 10 / 11 64 位元 · 安裝版或免安裝版</span></small>
+</div>
+
+
+<section>
+  <h2><span class="en">Feature tour</span><span class="zh">功能導覽</span></h2>
+  <div class="tour">
+    <figure><figcaption><b><span class="en">1. Built-in recorder</span><span class="zh">1. 內建錄影</span></b><span><span class="en">Starts when a supported game launches; one file per match or start to finish.</span><span class="zh">支援的遊戲啟動後自動開始錄影，可選每場一檔或從頭錄到尾。</span></span></figcaption>
+      <img class="en" src="intro/en-1-record.gif" alt="" loading="lazy"><img class="zh" src="intro/zh-TW-1-record.gif" alt="" loading="lazy"></figure>
+    <figure><figcaption><b><span class="en">2. Live replay</span><span class="zh">2. 即時回放</span></b><span><span class="en">Rewind while a match is still being recorded, then jump back to the latest frame (demo footage).</span><span class="zh">對局還在錄影時就能回看，再一鍵跳回最新畫面（示範畫面）。</span></span></figcaption>
+      <img class="en" src="intro/en-2-live.gif" alt="" loading="lazy"><img class="zh" src="intro/zh-TW-2-live.gif" alt="" loading="lazy"></figure>
+    <figure><figcaption><b><span class="en">3. Import and analyze</span><span class="zh">3. 匯入與分析</span></b><span><span class="en">Detects the game and marks events from on-screen pixels only, on your PC.</span><span class="zh">自動辨識遊戲，只讀取畫面像素，在你的電腦上標出事件。</span></span></figcaption>
+      <img class="en" src="intro/en-3-analyze.gif" alt="" loading="lazy"><img class="zh" src="intro/zh-TW-3-analyze.gif" alt="" loading="lazy"></figure>
+    <figure><figcaption><b><span class="en">4. Studio</span><span class="zh">4. 工作室</span></b><span><span class="en">Kills, deaths and round results on a single timeline.</span><span class="zh">擊殺、死亡與回合勝負顯示在同一條時間軸。</span></span></figcaption>
+      <img class="en" src="intro/en-4-studio.gif" alt="" loading="lazy"><img class="zh" src="intro/zh-TW-4-studio.gif" alt="" loading="lazy"></figure>
+    <figure><figcaption><b><span class="en">5. AI highlights</span><span class="zh">5. AI 精華</span></b><span><span class="en">Multi-kills become suggested clips; nothing is added until you confirm.</span><span class="zh">連殺自動整理成建議片段，由你確認後才加入專案。</span></span></figcaption>
+      <img class="en" src="intro/en-5-highlights.gif" alt="" loading="lazy"><img class="zh" src="intro/zh-TW-5-highlights.gif" alt="" loading="lazy"></figure>
+    <figure><figcaption><b><span class="en">6. Export</span><span class="zh">6. 匯出</span></b><span><span class="en">Fast lossless cuts, or precise re-encode with NVENC / QSV / AMF.</span><span class="zh">快速無損剪切，或以 NVENC / QSV / AMF 精準重新編碼。</span></span></figcaption>
+      <img class="en" src="intro/en-6-export.gif" alt="" loading="lazy"><img class="zh" src="intro/zh-TW-6-export.gif" alt="" loading="lazy"></figure>
+    <figure><figcaption><b><span class="en">7. Apex Legends too</span><span class="zh">7. 也支援 Apex Legends</span></b><span><span class="en">Knockdowns and assists are marked the same way.</span><span class="zh">擊倒與助攻以同樣方式標記。</span></span></figcaption>
+      <img class="en" src="intro/en-7-apex.gif" alt="" loading="lazy"><img class="zh" src="intro/zh-TW-7-apex.gif" alt="" loading="lazy"></figure>
+  </div>
+</section>
+
+<section>
+  <h2><span class="en">How Aditor works</span><span class="zh">Aditor 如何運作</span></h2>
+  <ul class="trust">
+    <li><span class="en">Analyzes only the on-screen pixels of recordings you make yourself.</span><span class="zh">只分析你自己錄製的影片畫面像素。</span></li>
+    <li><span class="en">By default it does not inject into the game, read game memory or modify game files.</span><span class="zh">預設不注入遊戲、不讀取遊戲記憶體、不修改遊戲檔案。</span></li>
+    <li><span class="en">It provides no live match information and no competitive advantage.</span><span class="zh">不提供任何即時戰局資訊或競爭優勢。</span></li>
+    <li><span class="en">Videos are processed locally on your PC. Filtered Sentry error and performance diagnostics are on by default and can be turned off in Settings (<a href="https://github.com/ShiQu1218/Aditor/blob/main/docs/sentry.md">details</a>).</span><span class="zh">影片在你的電腦上本機處理。過濾後的 Sentry 錯誤與效能診斷預設啟用，可在設定關閉（<a href="https://github.com/ShiQu1218/Aditor/blob/main/docs/sentry.md">詳情</a>）。</span></li>
+  </ul>
+</section>
+
+<section>
+  <h2><span class="en">What you can do</span><span class="zh">主要功能</span></h2>
+  <div class="grid">
+    <div class="card"><h3><span class="en">Import and watch folders</span><span class="zh">匯入與監看資料夾</span></h3><p><span class="en">MP4, MKV, MOV and WebM. New videos in a watch folder are queued for analysis automatically.</span><span class="zh">支援 MP4、MKV、MOV、WebM；監看資料夾中的新影片會自動排隊分析。</span></p></div>
+    <div class="card"><h3><span class="en">VALORANT</span><span class="zh">VALORANT</span></h3><p><span class="en">Kills, deaths, rounds, multi-kills and aces, with a round win/loss strip on the timeline.</span><span class="zh">擊殺、死亡、回合、連殺與 ACE，時間軸上有回合勝負色帶。</span></p></div>
+    <div class="card"><h3><span class="en">Apex Legends</span><span class="zh">Apex Legends</span></h3><p><span class="en">Knockdowns and assists, with teammates' kills while you spectate not counted as yours.</span><span class="zh">擊倒與助攻；死亡後旁觀隊友的擊殺不會算成你的。</span></p></div>
+    <div class="card"><h3><span class="en">Capture options</span><span class="zh">擷取選項</span></h3><p><span class="en">Window or screen capture, optional cursor, system audio and microphone, and OBS mode.</span><span class="zh">視窗或螢幕擷取，可選滑鼠游標、系統音訊與麥克風，也支援 OBS 模式。</span></p></div>
+    <div class="card"><h3><span class="en">Edit</span><span class="zh">剪輯</span></h3><p><span class="en">Split, trim, reorder, undo and autosave; one project can use clips from several videos.</span><span class="zh">分割、裁切、排序、復原與自動儲存；一個專案可使用多支影片的片段。</span></p></div>
+    <div class="card"><h3><span class="en">Languages</span><span class="zh">介面語言</span></h3><p><span class="en">繁體中文, 简体中文, English, 日本語 and 한국어.</span><span class="zh">繁體中文、简体中文、English、日本語、한국어。</span></p></div>
+  </div>
+</section>
+
+<footer>
+  <p><span class="en">Aditor isn't endorsed by Riot Games and doesn't reflect the views or opinions of Riot Games or anyone officially involved in producing or managing Riot Games properties. Riot Games and all associated properties are trademarks or registered trademarks of Riot Games, Inc. VALORANT is a trademark of Riot Games, Inc.</span><span class="zh">Aditor 為獨立的第三方工具，未經 Riot Games 認可或贊助，亦不代表 Riot Games 或任何參與製作或管理 Riot Games 產品者的觀點。Riot Games 及其相關商標為 Riot Games, Inc. 的商標或註冊商標。VALORANT 為 Riot Games, Inc. 的商標。</span></p>
+  <p>Apex Legends is a trademark of Electronic Arts Inc. Aditor is not affiliated with or endorsed by Electronic Arts or Respawn Entertainment.</p>
+  <p><a href="https://github.com/ShiQu1218/Aditor">github.com/ShiQu1218/Aditor</a></p>
+</footer>
+</div>
+<script>
+(function () {
+  var body = document.body, btns = document.querySelectorAll('.lang button');
+  function set(l) {
+    body.setAttribute('data-l', l); document.documentElement.lang = l === 'zh' ? 'zh-Hant' : 'en';
+    btns.forEach(function (b) { b.classList.toggle('on', b.dataset.set === l); });
+    try { localStorage.setItem('aditor-l', l); } catch (e) { /* storage unavailable */ }
+  }
+  btns.forEach(function (b) { b.addEventListener('click', function () { set(b.dataset.set); }); });
+  var saved = null; try { saved = localStorage.getItem('aditor-l'); } catch (e) { /* ignore */ }
+  set(saved || ((navigator.language || '').toLowerCase().indexOf('zh') === 0 ? 'zh' : 'en'));
+})();
+</script>
+</body>
+</html>

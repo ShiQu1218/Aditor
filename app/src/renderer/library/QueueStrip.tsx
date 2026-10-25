@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { formatEta } from '../../shared/eta'
 import { fileName } from './VideoCard'
 import { ChevronDown } from '../components/icons'

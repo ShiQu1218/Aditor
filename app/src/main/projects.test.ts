@@ -93,6 +93,19 @@ describe('ProjectStore', () => {
     expect(list[0].updatedAt).toBeGreaterThan(list[1].updatedAt)
   })
 
+  test('rename updates only the name, trims it, and rejects blank names or missing ids', async () => {
+    const { store } = tmpStore()
+    await store.save(proj('p_ren', 'old name', 2))
+    expect(await store.rename('p_ren', '  new name  ')).toBe(true)
+    const loaded = await store.load('p_ren')
+    expect(loaded?.name).toBe('new name')
+    expect(loaded?.items).toHaveLength(2)
+    expect(await store.rename('p_ren', '   ')).toBe(false)
+    expect((await store.load('p_ren'))?.name).toBe('new name')
+    expect(await store.rename('p_missing', 'x')).toBe(false)
+    expect(await store.rename('p_ren', 'x'.repeat(121))).toBe(false)
+  })
+
   test('remove deletes the project file and tolerates missing ids', async () => {
     const { dir, store } = tmpStore()
     await store.save(proj('p_del', '刪除我'))

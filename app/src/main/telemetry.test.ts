@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ChildDiagnostic } from '../shared/child-diagnostics'
 
-const fake = vi.hoisted(() => ({ init: vi.fn(), handle: vi.fn(), send: vi.fn(async () => ({})), captureEvent: vi.fn((event: any) => 'test-event') }))
+const fake = vi.hoisted(() => ({ init: vi.fn(), handle: vi.fn(), send: vi.fn(async () => ({})), captureEvent: vi.fn((_event: any) => 'test-event') }))
 vi.mock('electron', () => ({ app: { isPackaged: false, getVersion: () => '0.3.0' }, ipcMain: { handle: fake.handle } }))
 vi.mock('@sentry/electron/main', () => ({
   init: fake.init, IPCMode: { Protocol: 2 },

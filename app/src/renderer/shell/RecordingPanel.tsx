@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useFocusTrap } from '../a11y/useFocusTrap'
 import { X } from '../components/icons'
 import { recordingI18n as t } from '../i18n'

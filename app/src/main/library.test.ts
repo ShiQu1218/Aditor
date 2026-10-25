@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { Library } from './library'
-import path from 'path'
 import fs from 'fs'
+import path from 'path'
 import os from 'os'
 
 describe('Library', () => {

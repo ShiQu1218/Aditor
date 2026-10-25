@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import React, { act } from 'react'
+import { act } from 'react'
 import { renderToString } from 'react-dom/server'
 import fs from 'fs'
 import path from 'path'

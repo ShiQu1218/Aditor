@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { SETTINGS_RANGES, type Settings, type SettingsRange } from '../../shared/settings'
 import type { AutoClipParams } from '../../shared/types'
 import { FolderOpen, Plus, RefreshCw, Trash2, X } from '../components/icons'

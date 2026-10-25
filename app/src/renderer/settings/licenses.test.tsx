@@ -1,6 +1,5 @@
 // @vitest-environment jsdom
 // I11: Third-party licenses is now an active settings row that asks main to open the bundled license file.
-import React from 'react'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { SettingsScreen } from './SettingsScreen'
 import { SETTING_ROWS } from './rows'

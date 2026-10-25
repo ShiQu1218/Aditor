@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore } from 'react'
 import '../styles/studio.css'
 import '../styles/projectTrack.css'
 import { CacheDoc } from '../../shared/types'
@@ -79,6 +79,7 @@ export function StudioScreen({ videoPath, onBack, onRegisterLeaveGuard, onVideoR
     canUndo,
     canRedo,
     newProject,
+    openProject,
     saveState,
     missingItemIds
   } = useProject()
@@ -319,10 +320,10 @@ export function StudioScreen({ videoPath, onBack, onRegisterLeaveGuard, onVideoR
 
   const {
     trimProjectItem, trimSourceProjectItem, moveProjectItem, renameProject, duplicateSelectedItem, deleteSelectedItem,
-    selectProjectItem, shiftSelectedItem, playSelectedItem, toggleProjCollapsed, handleNewProjectConfirmed,
+    selectProjectItem, shiftSelectedItem, playSelectedItem, toggleProjCollapsed, handleNewProjectConfirmed, handleOpenProject,
     handleAddExternalVideo, addFirstSuggestion
   } = useStudioProjectTrack({
-    project, projectRef, apply, undo, newProject, toast, exportCtl, videoPath, duration, selProjId, setSelProjId, setSourceTrim,
+    project, projectRef, apply, undo, newProject, projectId: project.id, openProject, toast, exportCtl, videoPath, duration, selProjId, setSelProjId, setSourceTrim,
     projCollapsed, setSettings, playProjectItem, mountedRef, switchingSourceRef, shownClips, acceptClip
   })
 
@@ -587,7 +588,9 @@ export function StudioScreen({ videoPath, onBack, onRegisterLeaveGuard, onVideoR
             onRedo={redo}
             canUndo={canUndo}
             canRedo={canRedo}
+            projectId={project.id}
             onNewProject={handleNewProjectConfirmed}
+            onOpenProject={handleOpenProject}
             onAddExternalVideo={handleAddExternalVideo}
             onExport={handleOpenExport}
             exportOpen={exportOpen}

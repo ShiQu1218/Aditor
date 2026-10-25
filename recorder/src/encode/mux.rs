@@ -6,7 +6,11 @@ use std::{
     io::Write,
     path::{Path, PathBuf},
     ptr,
-    sync::mpsc::Sender,
+    sync::{
+        mpsc::{self, Sender, SyncSender},
+        Arc,
+    },
+    thread::{self, JoinHandle},
 };
 
 use anyhow::{ensure, Context, Result};
@@ -14,14 +18,70 @@ use anyhow::{ensure, Context, Result};
 use super::{
     ffi::*,
     ffmpeg::{check, Encoder, Packet, AUDIO_BASE, AV_NOPTS_VALUE, TICK_BASE},
-    SegmentInfo,
+    monitor_worker, Counts, SegmentInfo,
 };
+
+pub(super) struct MuxWorker {
+    sender: Option<SyncSender<(Vec<Packet>, bool)>>,
+    worker: Option<JoinHandle<Result<()>>>,
+    counts: Arc<Counts>,
+}
+
+impl MuxWorker {
+    pub fn new(mut muxer: Muxer, counts: Arc<Counts>) -> Result<Self> {
+        // Bound compressed packets while allowing encoding to continue during segment writes and fsync.
+        let (sender, receiver) = mpsc::sync_channel::<(Vec<Packet>, bool)>(256);
+        let worker_counts = counts.clone();
+        let worker = thread::Builder::new()
+            .name("aditorrec-mux".into())
+            .spawn(move || {
+                monitor_worker(&worker_counts, || {
+                    for (packets, video) in receiver {
+                        muxer.push(packets, video)?;
+                    }
+                    muxer.finish()
+                })
+            })
+            .context("Failed to create muxer thread")?;
+        Ok(Self { sender: Some(sender), worker: Some(worker), counts })
+    }
+
+    pub fn push(&mut self, packets: Vec<Packet>, video: bool) -> Result<()> {
+        self.counts.check_error()?;
+        if packets.is_empty() {
+            return Ok(());
+        }
+        self.sender.as_ref().context("Muxer is closed")?
+            .try_send((packets, video))
+            .map_err(|error| match error {
+                mpsc::TrySendError::Full(_) => anyhow::anyhow!("Recording disk cannot keep up; muxer queue is full"),
+                mpsc::TrySendError::Disconnected(_) => anyhow::anyhow!("Muxer thread has exited"),
+            })
+    }
+
+    pub fn finish(&mut self) -> Result<()> {
+        self.sender.take();
+        if let Some(worker) = self.worker.take() {
+            worker.join()
+                .map_err(|_| anyhow::anyhow!("Muxer thread terminated unexpectedly"))??;
+        }
+        self.counts.check_error()
+    }
+}
+
+impl Drop for MuxWorker {
+    fn drop(&mut self) {
+        if let Err(error) = self.finish() {
+            self.counts.fail(error);
+        }
+    }
+}
 
 struct Output {
     file: File,
     error: Option<std::io::Error>,
 }
-// SAFETY: opaque points to the Box<Output> owned by Muxer and is accessed synchronously by one encoding thread.
+// SAFETY: opaque points to the Box<Output> owned by Muxer and is accessed synchronously by one muxing thread.
 unsafe extern "C" fn write_output(opaque: *mut c_void, data: *const u8, size: i32) -> i32 {
     // SAFETY: AVIO guarantees data has size bytes; opaque remains valid until AVIO is released.
     let (output, bytes) = unsafe {
@@ -58,7 +118,7 @@ pub(super) struct Muxer {
     end: i64,
     seq: u64,
 }
-// SAFETY: AVFormatContext, AVIO, and Output are used only by one encoding thread.
+// SAFETY: AVFormatContext, AVIO, and Output are used only by one muxing thread.
 unsafe impl Send for Muxer {}
 impl Muxer {
     pub fn new(
@@ -278,6 +338,54 @@ impl Drop for Muxer {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn slow_mux_does_not_block_encoding_and_finish_drains_queued_packets() {
+        let counts = Arc::new(Counts::default());
+        let (sender, receiver) = mpsc::sync_channel::<(Vec<Packet>, bool)>(2);
+        let (release, wait) = mpsc::channel();
+        let worker = thread::spawn(move || {
+            wait.recv_timeout(std::time::Duration::from_secs(2)).unwrap();
+            let jobs: Vec<_> = receiver.into_iter().collect();
+            assert_eq!(jobs.len(), 2);
+            assert!(jobs[0].1);
+            assert!(!jobs[1].1);
+            // SAFETY: The worker exclusively owns the received packets.
+            unsafe {
+                assert_eq!((*jobs[0].0[0].0).pts, 123);
+                assert_eq!((*jobs[1].0[0].0).pts, 456);
+            }
+            Ok(())
+        });
+        let mut muxer = MuxWorker { sender: Some(sender), worker: Some(worker), counts };
+        let mut results = Vec::new();
+        for (pts, video) in [(123, true), (456, false)] {
+            let packet = Packet::new().unwrap();
+            // SAFETY: The producer exclusively owns the packet before handing it to the worker.
+            unsafe { (*packet.0).pts = pts; }
+            results.push(muxer.push(vec![packet], video));
+        }
+        let empty = muxer.push(Vec::new(), true);
+        let full = muxer.push(vec![Packet::new().unwrap()], true);
+        release.send(()).unwrap();
+        muxer.finish().unwrap();
+        assert!(results.into_iter().all(|result| result.is_ok()));
+        assert!(empty.is_ok());
+        assert!(full.unwrap_err().to_string().contains("queue is full"));
+    }
+
+    #[test]
+    fn mux_failure_is_reported_even_without_another_packet() {
+        let counts = Arc::new(Counts::default());
+        let worker_counts = counts.clone();
+        let (sender, _receiver) = mpsc::sync_channel(2);
+        let worker = thread::spawn(move || {
+            monitor_worker(&worker_counts, || anyhow::bail!("Test disk sync failed"))
+        });
+        let mut muxer = MuxWorker { sender: Some(sender), worker: Some(worker), counts: counts.clone() };
+        assert!(muxer.finish().unwrap_err().to_string().contains("Test disk sync failed"));
+        assert!(counts.check_error().unwrap_err().to_string().contains("Test disk sync failed"));
+    }
 
     #[test]
     fn missing_pts_is_rejected_before_updating_the_timeline() {

@@ -63,10 +63,6 @@ export async function videoTime(page: Page): Promise<number> {
   return page.evaluate(() => (document.querySelector('video') as HTMLVideoElement).currentTime)
 }
 
-export function toastLocator(page: Page, text: string | RegExp) {
-  return page.locator('.toast', { hasText: text })
-}
-
 export interface StoredProjectFile {
   id: string
   name: string

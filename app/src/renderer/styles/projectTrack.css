@@ -233,6 +233,22 @@
 .np-dlg .sub { color: var(--text-2); font-size: var(--fs-small); line-height: var(--lh-body); }
 .np-dlg .foot { display: flex; justify-content: flex-end; gap: var(--sp-2); margin-top: var(--sp-4); }
 
+.np-opt { display: flex; align-items: center; gap: var(--sp-2); margin-top: var(--sp-3); color: var(--text-2); font-size: var(--fs-small); }
+
+/* ---- Project manager dialog ---- */
+.pm-dlg { width: min(640px, calc(100vw - 32px)); max-height: calc(100vh - 64px); display: flex; flex-direction: column; }
+.pm-list { list-style: none; margin: 0; padding: 0; overflow-y: auto; border-top: 1px solid var(--line-strong); }
+.pm-row { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); padding: var(--sp-2) 0; border-bottom: 1px solid var(--line-strong); }
+.pm-row.current { background: var(--bg-hover); }
+.pm-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.pm-name { font-size: var(--fs-body); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pm-meta { color: var(--text-2); font-size: var(--fs-small); }
+.pm-badge { align-self: flex-start; font-size: var(--fs-small); color: var(--accent, var(--text-1)); }
+.pm-input { width: 100%; }
+.pm-actions { display: flex; align-items: center; gap: var(--sp-2); flex-shrink: 0; }
+.pm-confirm { max-width: 220px; color: var(--text-2); font-size: var(--fs-small); }
+.pm-error { color: var(--danger, #e5484d); font-size: var(--fs-small); margin-bottom: var(--sp-2); }
+
 /* ---- Narrow windows: hide secondary text (spec §3.2) ---- */
 @media (max-width: 1500px) {
   .proj-info .xtra { display: none; }

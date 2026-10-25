@@ -136,6 +136,8 @@ impl Drop for Frame {
 }
 
 pub(super) struct Packet(pub *mut AVPacket);
+// SAFETY: Exclusive packet ownership moves to the mux thread; no other thread accesses its data.
+unsafe impl Send for Packet {}
 impl Packet {
     pub fn new() -> Result<Self> {
         check_version()?;

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { LOCALES, LOCALE_NAMES, recordingI18n, shellI18n, settingsI18n } from '../i18n'
 import type { LanguageSetting } from '../../shared/locale'
 import type { RecordingSettings } from '../../shared/recording'

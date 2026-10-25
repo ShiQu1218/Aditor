@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react'
+import { useEffect, useRef } from 'react'
 import { AnalysisQueue } from '../components/icons'
 import { useQueueStore } from '../queue/QueueProvider'
 

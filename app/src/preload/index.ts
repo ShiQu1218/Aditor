@@ -121,6 +121,8 @@ const api = {
     /** Most recent project read/write error (kind: save/corrupt/transient/unsupported); null when none. */
     lastError: () => ipcRenderer.invoke('projects:lastError'),
     remove: (id: string) => ipcRenderer.invoke('projects:remove', id),
+    rename: (id: string, name: string) => ipcRenderer.invoke('projects:rename', id, name),
+    markOpened: (id: string) => ipcRenderer.invoke('projects:markOpened', id),
     /** Used when closing the window: block until main writes the project to disk (and records lastProjectId). */
     flushSync: (project: unknown): boolean => ipcRenderer.sendSync('projects:flushSync', project) === true,
     /** Main requests an immediate flush before closing the window. */

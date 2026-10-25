@@ -1,4 +1,4 @@
-import React, { useRef } from 'react'
+import { useRef } from 'react'
 import { KEY_TABLE, type KeyRow } from '../input/keymap'
 import { useFocusTrap } from '../a11y/useFocusTrap'
 import { X } from '../components/icons'

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { AlertTriangle } from '../components/icons'
 import { i18n } from '../i18n'
 import { createLowPerfPrompt } from './lowPerfPrompt'

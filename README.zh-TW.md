@@ -12,6 +12,40 @@
 
 ---
 
+## 功能導覽
+
+以下短片取自真實的 VALORANT 與 Apex Legends 影片。
+
+**1. 內建錄影**：支援的遊戲啟動後自動開始錄影。
+
+<p align="center"><img src="docs/intro/zh-TW-1-record.gif" alt="內建錄影自動開始" width="640"></p>
+
+**2. 即時回放**：對局還在錄影時就能回看（示範畫面）。
+
+<p align="center"><img src="docs/intro/zh-TW-2-live.gif" alt="即時回放畫面" width="640"></p>
+
+**3. 匯入與分析**：自動辨識遊戲，只讀取畫面像素標出事件。
+
+<p align="center"><img src="docs/intro/zh-TW-3-analyze.gif" alt="匯入並分析錄影" width="640"></p>
+
+**4. 工作室**：擊殺、死亡與回合勝負顯示在同一條時間軸。
+
+<p align="center"><img src="docs/intro/zh-TW-4-studio.gif" alt="工作室時間軸" width="640"></p>
+
+**5. AI 精華**：自動建議連殺片段，由你逐一確認。
+
+<p align="center"><img src="docs/intro/zh-TW-5-highlights.gif" alt="AI 建議精華" width="640"></p>
+
+**6. 匯出**：快速無損剪切，或精準重新編碼。
+
+<p align="center"><img src="docs/intro/zh-TW-6-export.gif" alt="匯出面板" width="640"></p>
+
+**7. Apex Legends**：擊倒與助攻以同樣方式標記。
+
+<p align="center"><img src="docs/intro/zh-TW-7-apex.gif" alt="Apex Legends 擊倒與助攻" width="640"></p>
+
+---
+
 ## 介面預覽
 
 以下使用 Apex Legends 的實際錄影與已儲存的分析結果，介面語言為繁體中文。

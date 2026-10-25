@@ -1,5 +1,4 @@
 // @vitest-environment jsdom
-import React from 'react'
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
 import { SettingsScreen } from './SettingsScreen'
 import { createFakeApi, installFakeApi } from '../../../test/fakeApi'

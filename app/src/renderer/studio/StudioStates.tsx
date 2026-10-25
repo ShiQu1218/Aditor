@@ -1,4 +1,3 @@
-import React from 'react'
 import { i18n } from '../i18n'
 
 /** Full-page states before studio loading, when blocked, or after load failure (never show fabricated data). */
@@ -23,7 +22,7 @@ export function StudioBlockedView({ onBack }: { onBack: () => void }): JSX.Eleme
 
 interface LoadErrorViewProps {
   code?: string | number
-/** Underlying failure reason (engine/IPC message), shown so the user sees why loading failed. */
+  /** Underlying failure reason (engine/IPC message), shown so the user sees why loading failed. */
   message?: string
   onRetry: () => void
   onCopy: () => void
