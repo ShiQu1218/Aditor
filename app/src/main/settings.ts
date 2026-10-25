@@ -11,6 +11,7 @@ import { AutoClipParams } from '../shared/types'
 import { RECORDING_RANGES, type RecordingSettings } from '../shared/recording'
 import { validateOutDir } from './settings-ipc'
 import { LANGUAGE_SETTINGS } from '../shared/locale'
+import { isSafeLocalDirPath } from './safe-path'
 
 const RANGES = SETTINGS_RANGES
 /** First settings version with the 'auto' capture method. */
@@ -168,11 +169,8 @@ export function migrateSettings(raw: unknown): Settings {
     migrated = { ...migrated, recording: { ...migrated.recording, captureMethod: 'auto' } }
   }
   if (migrated.recording.outputDir !== null) {
-    try {
-      migrated.recording.outputDir = validateOutDir(migrated.recording.outputDir)
-    } catch {
-      migrated.recording.outputDir = null
-    }
+    // An unavailable drive must not erase the saved location or redirect recording to another disk.
+    migrated.recording.outputDir = isSafeLocalDirPath(migrated.recording.outputDir) ? path.resolve(migrated.recording.outputDir) : null
   }
   // applySettings safely discards unknown fields such as gameLang from legacy settings (removed because detection is language-independent).
   return migrated

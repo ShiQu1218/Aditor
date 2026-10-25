@@ -29,6 +29,6 @@ describe('toast actions in StudioScreen', () => {
     const unguarded = runs.filter((r) => !r.startsWith('guarded('))
   // Undoing a clip deletion in the project timeline modifies only the project, not the source document.
   // View in the export-complete toast only opens the export drawer (read-only; does not modify the source document).
-    expect(unguarded.every((r) => /^undo\b/.test(r) || r.startsWith('() => setExportOpen(true)'))).toBe(true)
+    expect(unguarded.every((r) => r.startsWith('function undoDeletion()') || r.startsWith('() => setExportOpen(true)'))).toBe(true)
   })
 })

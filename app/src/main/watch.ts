@@ -352,7 +352,7 @@ export class WatchManager extends EventEmitter {
   private handleNewFiles(paths: string[]): void {
     const files = paths.filter((p) =>
       !p.split(/[\\/]/).some((part) => part.toLowerCase() === '.sessions') &&
-      !p.toLowerCase().endsWith('.part.mp4') &&
+      !/\.(?:part|partial)\.mp4$/i.test(p) &&
       SUPPORTED_EXTS.has(path.extname(p).toLowerCase()))
     if (files.length === 0) {
       return

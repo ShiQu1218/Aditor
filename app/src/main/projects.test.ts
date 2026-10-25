@@ -114,6 +114,17 @@ describe('ProjectStore', () => {
     await expect(store.remove('p_del')).resolves.toBeUndefined()
   })
 
+  test('remove reports access errors and preserves the project', async () => {
+    const { dir, store } = tmpStore()
+    await store.save(proj('p_locked', '保留我'))
+    vi.spyOn(fs, 'unlinkSync').mockImplementationOnce(() => {
+      throw Object.assign(new Error('access denied'), { code: 'EACCES' })
+    })
+    await expect(store.remove('p_locked')).rejects.toThrow('access denied')
+    expect(fs.existsSync(path.join(dir, 'p_locked.json'))).toBe(true)
+    await expect(store.remove('../invalid')).rejects.toThrow('無效的專案')
+  })
+
   test('transient read error returns null, is NOT renamed, and reports transient', async () => {
     const { dir, store } = tmpStore()
     await store.save(proj('p_busy', '忙碌'))

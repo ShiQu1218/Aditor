@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
@@ -332,13 +332,38 @@ describe('clips backup across cancelled re-analysis (F2)', () => {
     expect(fs.existsSync(backup())).toBe(false)
   })
 
-  it('a backup write failure never breaks the analysis', async () => {
+  it('a backup write failure stops analysis before it can replace saved edits', async () => {
     seedDone()
+    const original = fs.readFileSync(cache(), 'utf8')
     fs.mkdirSync(backup()) // Make renaming to the backup path fail by creating a directory there.
-    const q = new AnalysisQueue(engine('done'), lib, { profileDir: '/p', cacheDir: dir })
+    const fake = cancellableEngine()
+    const request = vi.spyOn(fake, 'request')
+    const q = new AnalysisQueue(fake, lib, { profileDir: '/p', cacheDir: dir })
     q.enqueue(V1)
-    await tick(60)
-    expect(lib.get(V1)?.status).toBe('done')
+    await tick()
+    q.cancel(V1)
+    expect(request).not.toHaveBeenCalled()
+    expect(fs.readFileSync(cache(), 'utf8')).toBe(original)
+    expect((loadCacheWithEdits(V1, dir) as CacheDoc).clips.map((c) => c.id)).toContain('a1')
+    expect(lib.get(V1)?.status).toBe('error')
+    expect(lib.get(V1)?.error).toContain('無法備份編輯內容')
+  })
+
+  it('keeps pending edits when copying their backup to a new cache location fails', () => {
+    const besideDir = fs.mkdtempSync(path.join(os.tmpdir(), 'aditor-ra-backup-'))
+    const videoPath = path.join(besideDir, 'switch.mp4')
+    const source = cacheFilePath(videoPath, dir, true)
+    const target = cacheFilePath(videoPath, dir)
+    const edited = { ...doc('partial', 1, [clip('accepted-ai', 10)]), video: { ...video(1), path: videoPath }, cache_path: source } as unknown as CacheDoc
+    try {
+      expect(saveCacheEdits(edited, dir, true)).toBe(true)
+      fs.mkdirSync(clipsBackupPath(target))
+      expect(() => capturePriorCache(videoPath, dir)).toThrow('無法備份編輯內容')
+      expect((loadCacheWithEdits(videoPath, dir) as CacheDoc).clips.map((c) => c.id)).toEqual(['accepted-ai'])
+      expect(fs.existsSync(target)).toBe(false)
+    } finally {
+      fs.rmSync(besideDir, { recursive: true, force: true })
+    }
   })
 
   it('keeps deleted events, overrides, accepted AI clips, and manual clips when switching cache locations', async () => {

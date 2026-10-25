@@ -13,7 +13,6 @@ interface StudioProjectTrackOptions {
   project: Project
   projectRef: MutableRefObject<Project>
   apply: (next: Project) => void
-  undo: () => void
   newProject: () => boolean
   /** Id of the project being edited (its file is the one deleted by "also delete the current project"). */
   projectId: string
@@ -39,7 +38,6 @@ export function useStudioProjectTrack({
   project,
   projectRef,
   apply,
-  undo,
   newProject,
   projectId,
   openProject,
@@ -59,6 +57,8 @@ export function useStudioProjectTrack({
   acceptClip
 }: StudioProjectTrackOptions) {
   const importingRef = useRef(false)
+  const currentProjectId = useRef(projectId)
+  currentProjectId.current = projectId
 
   // Keep selection in sync with clip changes: select the first clip when a project becomes non-empty; clear selection if the clip is deleted or the project changes.
   const prevItemCount = useRef(0)
@@ -119,21 +119,30 @@ export function useStudioProjectTrack({
     if (clone) setSelProjId(clone.id)
   }, [selProjId, apply])
 
-  /** Delete the selected clip (Delete or track head); Toast Undo removes the history entry just added. */
+  /** Restore only this deletion so the notification cannot undo later edits or change another project. */
   const deleteSelectedItem = useCallback(() => {
     const id = selProjId
     if (!id) return
     // Select an adjacent clip after deletion (prefer the next one) so keyboard focus does not fall to body.
     const items = projectRef.current.items
     const at = items.findIndex((i) => i.id === id)
+    if (at < 0) return
+    const deleted = items[at]
     const neighbor = items[at + 1] ?? items[at - 1] ?? null
     apply(removeItem(projectRef.current, id))
     setSelProjId(neighbor ? neighbor.id : null)
     toast({
       message: i18n.studio.toast.deletedItem,
-      action: { label: i18n.studio.toast.undo, run: undo }
+      action: { label: i18n.studio.toast.undo, run: function undoDeletion() {
+        if (!mountedRef.current || currentProjectId.current !== projectId) return
+        const current = projectRef.current
+        if (current.items.some((item) => item.id === id)) return
+        const restored = [...current.items]
+        restored.splice(Math.min(at, restored.length), 0, deleted)
+        apply({ ...current, items: restored })
+      } }
     })
-  }, [selProjId, apply, toast, undo])
+  }, [selProjId, apply, toast, projectId, projectRef, mountedRef])
 
   /** ←/→ moves the selected clip; when none is selected, select the first/last clip. */
   const selectProjectItem = useCallback(
@@ -176,15 +185,19 @@ export function useStudioProjectTrack({
 
   /** The session synchronously saves the old project before creating a new one; keep current content if saving fails. */
   const handleNewProjectConfirmed = useCallback(
-    (deleteOld = false) => {
+    async (deleteOld = false): Promise<void> => {
       const oldId = projectId
       if (!newProject()) return
       setSelProjId(null)
       prevItemCount.current = 0
       if (deleteOld) {
         // The old file was just flushed by newProject(); remove it only after that succeeded.
-        void window.api?.projects?.remove(oldId)
-        toast({ message: i18n.studio.toast.newProjectDeletedOld })
+        try {
+          await window.api.projects.remove(oldId)
+          toast({ message: i18n.studio.toast.newProjectDeletedOld })
+        } catch {
+          toast({ message: `${i18n.studio.toast.newProject} ${i18n.studio.projectManagerDlg.removeFailed}` })
+        }
         return
       }
       toast({ message: i18n.studio.toast.newProject })

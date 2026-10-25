@@ -4,6 +4,7 @@ import type { CacheDoc, Clip, EngineEvent } from '../shared/types'
 import fs from 'fs'
 import path from 'path'
 import { cacheBelongsToVideo, cacheFilePath, legacyCacheFilePath, loadCacheDoc, resolveCacheFile, saveCacheDoc } from './cache-io'
+import { tr } from '../shared/locale'
 
 /** Reanalysis backup: v2 carries event/clip state; v3 carries a document edited during analysis. */
 export function clipsBackupPath(cachePath: string): string {
@@ -145,10 +146,14 @@ export function capturePriorCache(videoPath: string, cacheDir: string, beside = 
   const docDone = hasDoc && doc!.analysis?.status === 'done'
   const docClips = hasDoc && Array.isArray(doc!.clips) ? doc!.clips! : []
 
-  if (docDone && !editing) writeReanalysisBackup(cachePath, (doc!.events ?? []) as EngineEvent[], docClips as Clip[])
+  if (docDone && !editing && !writeReanalysisBackup(cachePath, (doc!.events ?? []) as EngineEvent[], docClips as Clip[])) {
+    throw new Error(tr('無法備份編輯內容，已停止重新分析'))
+  }
   const targetBackup = readReanalysisBackup(cachePath)
   const backup = editing ?? targetBackup ?? sourceBackup ?? legacyBackup
-  if (backup && (!targetBackup || editing)) writeReanalysisBackup(cachePath, backup.events, backup.clips, backup.document)
+  if (backup && (!targetBackup || editing) && !writeReanalysisBackup(cachePath, backup.events, backup.clips, backup.document)) {
+    throw new Error(tr('無法備份編輯內容，已停止重新分析'))
+  }
   if (hasDoc && !docDone && backup?.events.length && !Array.isArray(doc!.base_events)) {
     const withBase = { ...doc, cache_path: cachePath, base_events: backup.events }
     if (saveCacheDoc(withBase as { cache_path: string })) doc = withBase

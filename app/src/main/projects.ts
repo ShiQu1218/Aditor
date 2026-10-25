@@ -207,8 +207,9 @@ export class ProjectStore {
   async remove(id: string): Promise<void> {
     try {
       fs.unlinkSync(this.filePath(id))
-    } catch {
+    } catch (err) {
       // Treat a missing file as already deleted.
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err
     }
   }
 }
