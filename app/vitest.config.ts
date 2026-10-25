@@ -12,6 +12,8 @@ export default defineConfig({
   },
   test: {
     globals: true,
+    // Real-ffmpeg tests take several seconds on slow CI runners; the 5s default flaked there.
+    testTimeout: 30_000,
     environment: 'node',
     include: ['src/**/*.test.{ts,tsx}']
   }
