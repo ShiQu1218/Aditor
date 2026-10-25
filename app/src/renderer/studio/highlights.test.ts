@@ -9,6 +9,7 @@ import {
   clipAt,
   clipEventGlyphs,
   clipTitle,
+  linkedClip,
   mergeSuggestions,
   nextSuggestion,
   planAccept,
@@ -263,6 +264,19 @@ describe('acceptToProject', () => {
     // Same time from different sources represents different clips.
     const r3 = acceptToProject(c, 'other.mp4', p1)
     expect(r3.added).toHaveLength(1)
+  })
+})
+
+describe('linkedClip', () => {
+  test('returns the clip a project item was added from, unless another item shares its range', () => {
+    const c = clip('c1', 40, { end: 80, status: 'accepted' })
+    const item: ProjectItem = { id: 'i1', source: 'v.mp4', start: 40, end: 80 }
+    const p = createProject('P', [item])
+    expect(linkedClip(item, 'v.mp4', p, [c])).toBe(c)
+    expect(linkedClip({ ...item, start: 41 }, 'v.mp4', p, [c])).toBeNull()
+    expect(linkedClip(item, 'other.mp4', p, [c])).toBeNull()
+    const dup = createProject('P', [item, { ...item, id: 'i2' }])
+    expect(linkedClip(item, 'v.mp4', dup, [c])).toBeNull()
   })
 })
 

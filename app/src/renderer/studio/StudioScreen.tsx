@@ -324,7 +324,8 @@ export function StudioScreen({ videoPath, onBack, onRegisterLeaveGuard, onVideoR
     handleAddExternalVideo, addFirstSuggestion
   } = useStudioProjectTrack({
     project, projectRef, apply, undo, newProject, projectId: project.id, openProject, toast, exportCtl, videoPath, duration, selProjId, setSelProjId, setSourceTrim,
-    projCollapsed, setSettings, playProjectItem, mountedRef, switchingSourceRef, shownClips, acceptClip
+    projCollapsed, setSettings, playProjectItem, mountedRef, switchingSourceRef, shownClips, acceptClip,
+    updateClip: (clip) => dispatch({ type: 'updateClip', clip })
   })
 
   /* ---------------- Project-mode guard (ignore source-document editing commands and show a Toast) ---------------- */

@@ -78,6 +78,12 @@ export function findItemsForClip(clip: Clip, source: string, project: Project): 
   return project.items.filter((it) => sameItem(it, source, clip)).map((it) => it.id)
 }
 
+/** The clip a project item was added from (same range), unless another item shares that range and would lose its link. */
+export function linkedClip(item: ProjectItem, source: string, project: Project, clips: Clip[]): Clip | null {
+  const clip = clips.find((c) => sameItem(item, source, c))
+  return clip && findItemsForClip(clip, source, project).length === 1 ? clip : null
+}
+
 /**
  * Add clips to the project (spec §3.6): duplicate additions are idempotent (return empty `added`).
  * The returned `undo` removes only clips added this time for use by the Toast Undo action.
