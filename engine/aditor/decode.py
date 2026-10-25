@@ -42,7 +42,9 @@ def build_filter(profile: Profile, gpu: bool = False, hw_format: str = "nv12") -
     cannot be specified. FrameStream retries with another format if decoding fails before the first frame."""
     bx, by, bw, bh = profile.capture_banner
     sx, sy, sw, sh = profile.capture_spec
-    pre = f"fps={FPS},hwdownload,format={hw_format}" if gpu else f"fps={FPS}"
+    # Match software decoder chroma conversion so faint HUD colours keep the same thresholds.
+    planar = "yuv420p10le" if hw_format == "p010le" else "yuv420p"
+    pre = f"fps={FPS},hwdownload,format={hw_format},format={planar}" if gpu else f"fps={FPS}"
     feed = getattr(profile, "capture_killfeed", None)
     if feed is not None:
         fx, fy, fw, fh = feed

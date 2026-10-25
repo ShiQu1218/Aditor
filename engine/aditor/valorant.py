@@ -621,10 +621,7 @@ def analyze_valorant(path: str, info: VideoInfo, profile: ValorantProfile, *, ca
     detector = FeedDetector(profile)
     tracker = FeedTracker()
     rounds = RoundTracker(profile.spec_origin)
-    # Software decoding: the player's yellow kill-feed marker is only faintly saturated in some clients, and hardware
-    # decoding's slightly different chroma pushes it under the yellow threshold (a deathmatch recording lost 4 of 34
-    # kills). Live detection is unaffected: aditorrec crops the captured RGB frames directly.
-    stream = FrameStream(path, profile, hwaccel=False, codec=info.codec)
+    stream = FrameStream(path, profile, hwaccel=hwaccel, codec=info.codec)
     last_report = -1.0
     for t, feed, spec in stream:
         if cancel is not None and cancel.is_set():

@@ -19,6 +19,23 @@ YELLOW = (80, 225, 235)
 BACKGROUND = (60, 70, 80)
 
 
+@pytest.mark.parametrize("hwaccel", [True, False])
+def test_analysis_respects_hardware_decode_setting(tmp_path, monkeypatch, hwaccel):
+    from aditor import valorant
+    from aditor.models import VideoInfo
+    calls = []
+
+    def stream(*args, **kwargs):
+        calls.append(kwargs["hwaccel"])
+        return iter(())
+
+    monkeypatch.setattr(valorant, "FrameStream", stream)
+    monkeypatch.setattr(valorant, "keyframes", lambda path: [])
+    info = VideoInfo(str(tmp_path / "video.mp4"), 1, 1920, 1080, "av1", 0, 0, 0)
+    valorant.analyze_valorant(info.path, info, PROFILE, cache_dir=tmp_path, hwaccel=hwaccel)
+    assert calls == [hwaccel]
+
+
 def feed(*rows, blobs=()):
     """rows: (slot, killer_team, victim_team, self_at) with self_at in {None, 'left', 'right', 'both'}."""
     img = np.full((CH, CW, 3), BACKGROUND, np.uint8)

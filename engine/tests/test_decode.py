@@ -91,8 +91,8 @@ def test_is_gpu_path():
 
 def test_build_filter_gpu_downloads_after_fps(profile):
     f = decode.build_filter(profile, True)
-    assert f.startswith("[0:v]fps=4,hwdownload,format=nv12,scale=1920:1080,split")
-    assert "hwdownload,format=p010le," in decode.build_filter(profile, True, "p010le")
+    assert f.startswith("[0:v]fps=4,hwdownload,format=nv12,format=yuv420p,scale=1920:1080,split")
+    assert "hwdownload,format=p010le,format=yuv420p10le," in decode.build_filter(profile, True, "p010le")
     soft = decode.build_filter(profile)
     assert soft.startswith("[0:v]fps=4,scale=1920:1080,split") and "hwdownload" not in soft
     assert f.split("split", 1)[1] == soft.split("split", 1)[1]
@@ -143,6 +143,21 @@ def test_av1_decode_with_codec_yields_frames(tmp_path, profile):
     v = _av1_clip(tmp_path)
     frames = list(FrameStream(str(v), profile, codec="av1"))
     assert len(frames) == 4
+
+
+def test_av1_hardware_colours_match_software(tmp_path, profile):
+    import numpy as np
+    v = _av1_clip(tmp_path)
+    stream = FrameStream(str(v), profile, codec="av1")
+    hardware = list(stream)
+    if not stream.used_hwaccel:
+        pytest.skip("D3D11VA hardware decoding is unavailable")
+    software = list(FrameStream(str(v), profile, codec="av1", hwaccel=False))
+    assert len(hardware) == len(software) == 4
+    for (th, bh, sh), (ts, bs, ss) in zip(hardware, software):
+        assert th == ts
+        np.testing.assert_array_equal(bh, bs)
+        np.testing.assert_array_equal(sh, ss)
 
 
 def test_hw_failure_mid_stream_continues_in_software_on_the_same_time_grid(tmp_path, profile, monkeypatch):
