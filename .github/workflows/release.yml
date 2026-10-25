@@ -1,0 +1,57 @@
+name: Release
+
+# Push a tag like v0.3.4 (matching app/package.json version) to build and attach
+# the installer to a draft GitHub release. Publishing the draft is done by hand,
+# which is what makes latest.yml visible to electron-updater.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Check tag matches app version
+        shell: pwsh
+        run: |
+          $version = (Get-Content app/package.json | ConvertFrom-Json).version
+          if ("v$version" -ne "${{ github.ref_name }}") { throw "Tag ${{ github.ref_name }} does not match app version $version" }
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install dependencies
+        shell: pwsh
+        run: |
+          npm ci --prefix app
+          python -m venv engine/.venv
+          engine/.venv/Scripts/python.exe -m pip install -e engine "pyinstaller==6.22.3"
+
+      - name: Build installer
+        shell: pwsh
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: ./scripts/build.ps1
+
+      - name: Create draft release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $files = Get-ChildItem dist -File | Where-Object { $_.Extension -in '.exe', '.blockmap' -or $_.Name -eq 'latest.yml' } | ForEach-Object FullName
+          gh release create "${{ github.ref_name }}" --draft --generate-notes --title "${{ github.ref_name }}" $files
