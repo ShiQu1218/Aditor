@@ -67,12 +67,13 @@ try {
     Invoke-Step "engine pytest ($Tier)" (Join-Path $root "engine") { & $python -m pytest -q -m $pytestMarker }
 
     # The recorder tests link against the bundled FFmpeg DLLs.
-    # GitHub-hosted runners have no hardware D3D11 adapter, so skip the tests that need one.
+    # GitHub-hosted runners have no hardware D3D11 adapter or audio devices, so skip the tests that need them.
     $cargoSkips = if ($env:GITHUB_ACTIONS -eq "true") {
         @("gpu_idle_black_frames", "opens_shared_texture", "shared_texture_open_and_convert", "capture_loop_delivers_frames",
-          "gpu_luma_uses_full_thumb", "gpu_nv12_conversion", "gpu_recording_and_scaling", "gpu_static_capture") | ForEach-Object { "--skip", $_ }
+          "gpu_luma_uses_full_thumb", "gpu_nv12_conversion", "gpu_recording_and_scaling", "gpu_static_capture",
+          "actual_default_loopback_and_microphone") | ForEach-Object { "--skip", $_ }
     } else { @() }
-    Invoke-Step "recorder cargo test" (Join-Path $root "recorder") { if ($cargoSkips) { cargo test -- @cargoSkips } else { cargo test } }
+    Invoke-Step "recorder cargo test" (Join-Path $root "recorder") { if ($cargoSkips) { cargo test --no-fail-fast -- @cargoSkips } else { cargo test } }
 
     if ($Tier -eq "full") {
         if (-not $env:ADITOR_GOLDEN_VIDEO) {
