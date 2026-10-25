@@ -37,8 +37,13 @@ describe('Studio layout and interactions', () => {
     expect(quick.compareDocumentPosition(filter) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(ai.compareDocumentPosition(filter) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(document.querySelector('.studio-head')?.textContent).not.toContain(T.quickClip)
-    const buttons = Array.from(document.querySelectorAll('.plane-head button')).slice(-3)
-    expect(buttons.map((b) => b.textContent?.trim())).toEqual([T.track.newProject, T.track.addExternalVideo, T.exportCount.replace('{n}', '0')])
+    const buttons = Array.from(document.querySelectorAll('.plane-head button')).slice(-4)
+    expect(buttons.map((b) => b.textContent?.trim())).toEqual([
+      T.track.newProject,
+      T.track.projectManager,
+      T.track.addExternalVideo,
+      T.exportCount.replace('{n}', '0')
+    ])
     click(quick)
     expect(quick.getAttribute('aria-pressed')).toBe('true')
     expect(document.querySelectorAll('.pclip')).toHaveLength(0)

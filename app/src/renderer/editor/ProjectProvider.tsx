@@ -35,6 +35,8 @@ export interface ProjectContextValue {
   redo: () => void
   /** Synchronously save the old project before creating a new one; keep the old project if saving fails. */
   newProject: () => boolean
+  /** Switch to a stored project by id; resolves false (current project kept) when it cannot be read or the current one cannot be saved. */
+  openProject: (id: string) => Promise<boolean>
   /** Autosave state (displayed by Task 13). */
   saveState: SaveState
   /** Timestamp (ms) of the most recent successful write. */
@@ -171,6 +173,28 @@ export function ProjectProvider({ children }: { children: React.ReactNode }): JS
       newProject: () => {
         if (isEditorLocked() || !session.newProject()) return false
         setLastMissingSources([])
+        return true
+      },
+      openProject: async (id: string) => {
+        const api = window.api
+        if (isEditorLocked() || !api?.projects) return false
+        let stored: Project | null = null
+        try {
+          stored = await api.projects.load(id)
+        } catch {
+          return false
+        }
+        if (!stored || isEditorLocked()) return false
+        const opened: ProjectWithId = { ...stored, id }
+        if (!session.openProject(opened)) return false
+        void Promise.resolve(api.projects.markOpened?.(id)).catch(() => {})
+        setLastMissingSources([])
+        try {
+          const { missing } = await validateSources(opened, (source) => api.library.fileExists(source))
+          if (session.getState().project === opened) setLastMissingSources(missing)
+        } catch {
+          /* A failed source check must not block opening. */
+        }
         return true
       }
     }),

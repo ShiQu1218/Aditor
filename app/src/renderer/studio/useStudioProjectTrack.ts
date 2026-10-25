@@ -15,6 +15,9 @@ interface StudioProjectTrackOptions {
   apply: (next: Project) => void
   undo: () => void
   newProject: () => boolean
+  /** Id of the project being edited (its file is the one deleted by "also delete the current project"). */
+  projectId: string
+  openProject: (id: string) => Promise<boolean>
   toast: ReturnType<typeof useToast>
   exportCtl: ReturnType<typeof createExportController>
   videoPath: string
@@ -38,6 +41,8 @@ export function useStudioProjectTrack({
   apply,
   undo,
   newProject,
+  projectId,
+  openProject,
   toast,
   exportCtl,
   videoPath,
@@ -170,12 +175,37 @@ export function useStudioProjectTrack({
   }, [projCollapsed])
 
   /** The session synchronously saves the old project before creating a new one; keep current content if saving fails. */
-  const handleNewProjectConfirmed = useCallback(() => {
-    if (!newProject()) return
-    setSelProjId(null)
-    prevItemCount.current = 0
-    toast({ message: i18n.studio.toast.newProject })
-  }, [newProject, toast])
+  const handleNewProjectConfirmed = useCallback(
+    (deleteOld = false) => {
+      const oldId = projectId
+      if (!newProject()) return
+      setSelProjId(null)
+      prevItemCount.current = 0
+      if (deleteOld) {
+        // The old file was just flushed by newProject(); remove it only after that succeeded.
+        void window.api?.projects?.remove(oldId)
+        toast({ message: i18n.studio.toast.newProjectDeletedOld })
+        return
+      }
+      toast({ message: i18n.studio.toast.newProject })
+    },
+    [newProject, projectId, toast]
+  )
+
+  /** Switch to a stored project from the manager dialog. */
+  const handleOpenProject = useCallback(
+    async (id: string): Promise<boolean> => {
+      if (!(await openProject(id))) {
+        toast({ message: i18n.studio.toast.openProjectFailed })
+        return false
+      }
+      setSelProjId(null)
+      prevItemCount.current = 0
+      toast({ message: i18n.studio.toast.projectOpened })
+      return true
+    },
+    [openProject, toast]
+  )
 
   /** Add all external videos to the project in one undoable action; first play the first new clip whose duration was obtained. */
   const handleAddExternalVideo = useCallback(() => {
@@ -226,6 +256,7 @@ export function useStudioProjectTrack({
     playSelectedItem,
     toggleProjCollapsed,
     handleNewProjectConfirmed,
+    handleOpenProject,
     handleAddExternalVideo,
     addFirstSuggestion
   }

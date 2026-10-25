@@ -133,7 +133,9 @@ describe('new-project dialog (ProjectTrack)', () => {
       onRedo: () => undefined,
       canUndo: false,
       canRedo: false,
+      projectId: 'p_test',
       onNewProject: vi.fn(),
+      onOpenProject: vi.fn(async () => true),
       onAddExternalVideo: () => undefined,
       onExport: () => undefined,
       exportOpen: false,
@@ -163,7 +165,7 @@ describe('new-project dialog (ProjectTrack)', () => {
     click(buttonByText(m.container, '新專案') as HTMLElement)
     const direct = m.container.querySelector('.np-dlg .btn-accent') as HTMLElement
     click(direct)
-    expect(props.onNewProject).toHaveBeenCalledWith()
+    expect(props.onNewProject).toHaveBeenCalledWith(false)
   })
 })
 
