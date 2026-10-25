@@ -12,11 +12,37 @@
 
 ---
 
-## Intro video
+## Feature tour
 
-A 1:43 walkthrough: recording, live replay, analysis, highlights, export. Click the image to play it ([Traditional Chinese version](docs/video/Aditor-intro-zh-TW.mp4)).
+Short clips of the main features, recorded from real VALORANT and Apex Legends footage.
 
-<p align="center"><a href="docs/video/Aditor-intro-en.mp4"><img src="docs/video/poster-en.jpg" alt="Aditor intro video: click to play" width="960"></a></p>
+**1. Built-in recorder** starts when a supported game launches.
+
+<p align="center"><img src="docs/intro/en-1-record.gif" alt="Built-in recorder starting automatically" width="640"></p>
+
+**2. Live replay** lets you rewind while a match is still being recorded (demo footage).
+
+<p align="center"><img src="docs/intro/en-2-live.gif" alt="Live replay view" width="640"></p>
+
+**3. Import and analyze** detects the game and marks events from on-screen pixels only.
+
+<p align="center"><img src="docs/intro/en-3-analyze.gif" alt="Importing and analyzing a recording" width="640"></p>
+
+**4. Studio** shows kills, deaths and round results on one timeline.
+
+<p align="center"><img src="docs/intro/en-4-studio.gif" alt="Studio timeline" width="640"></p>
+
+**5. AI highlights** suggests multi-kill clips and you confirm each one.
+
+<p align="center"><img src="docs/intro/en-5-highlights.gif" alt="AI suggested highlights" width="640"></p>
+
+**6. Export** with fast lossless cuts or precise re-encode.
+
+<p align="center"><img src="docs/intro/en-6-export.gif" alt="Export panel" width="640"></p>
+
+**7. Apex Legends** knockdowns and assists are marked the same way.
+
+<p align="center"><img src="docs/intro/en-7-apex.gif" alt="Apex Legends knockdowns and assists" width="640"></p>
 
 ---
 
