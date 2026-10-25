@@ -22,7 +22,7 @@ export function StudioBlockedView({ onBack }: { onBack: () => void }): JSX.Eleme
 
 interface LoadErrorViewProps {
   code?: string | number
-/** Underlying failure reason (engine/IPC message), shown so the user sees why loading failed. */
+  /** Underlying failure reason (engine/IPC message), shown so the user sees why loading failed. */
   message?: string
   onRetry: () => void
   onCopy: () => void

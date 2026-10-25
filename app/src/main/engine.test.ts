@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
-import { EngineClient, EngineError } from './engine'
+import { EngineClient, EngineError, redactHome } from './engine'
 import path from 'path'
 import os from 'os'
 import fs from 'fs'
@@ -222,5 +222,71 @@ describe('EngineClient', () => {
     } finally {
       fs.rmSync(marker, { force: true })
     }
+  })
+
+  describe('crash messages', () => {
+    const READY = `setTimeout(()=>console.log(JSON.stringify({type:'ready'})),50);`
+    const RL = `const rl=require('readline').createInterface({input:process.stdin});`
+    const withScript = async (body: string, fn: (args: string[]) => Promise<void>): Promise<void> => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'aditor-engine-stderr-'))
+      const script = path.join(dir, 'engine.cjs')
+      fs.writeFileSync(script, body)
+      try {
+        await fn([script, path.join(dir, 'count')])
+      } finally {
+        await client?.stop()
+        client = null
+        fs.rmSync(dir, { recursive: true, force: true })
+      }
+    }
+    const rejection = async (c: EngineClient): Promise<string> => {
+      const err = await c.request('x', {}).promise.catch((e: EngineError) => e)
+      return (err as EngineError).message
+    }
+
+    it('reports exit code and last stderr line; diagnostics keep the full tail', async () => {
+      const body = `${RL}${READY}rl.on('line',()=>{process.stderr.write('Traceback line one\\nValueError: bad\\n');setTimeout(()=>process.exit(7),50)});`
+      await withScript(body, async (args) => {
+        const diagnostics: string[] = []
+        client = new EngineClient({ command: process.execPath, args, onDiagnostic: (d) => diagnostics.push(d.message) })
+        await client.start()
+        const message = await rejection(client)
+        expect(message).toContain('exit code 7: ValueError: bad')
+        expect(message).not.toContain('Traceback')
+        expect(diagnostics.join('\n')).toContain('Traceback line one')
+      })
+    })
+
+    it('redactHome replaces the home dir and X:\\Users\\name paths with ~', () => {
+      expect(redactHome(`open ${os.homedir()}\\a.py`)).toBe('open ~\\a.py')
+      expect(redactHome('E:\\Users\\bob\\x.py failed')).toBe('~\\x.py failed')
+    })
+
+    it('truncates the stderr tail to STDERR_TAIL_CHARS in diagnostics', async () => {
+      const body = `${RL}${READY}rl.on('line',()=>{process.stderr.write('A'.repeat(3000)+'END');setTimeout(()=>process.exit(1),50)});`
+      await withScript(body, async (args) => {
+        const diagnostics: string[] = []
+        client = new EngineClient({ command: process.execPath, args, onDiagnostic: (d) => diagnostics.push(d.message) })
+        await client.start()
+        await rejection(client)
+        const msg = diagnostics.find((m) => m.includes('exited unexpectedly'))!
+        expect(msg.endsWith('END)')).toBe(true)
+        expect(msg.match(/A+/)![0].length).toBe(997)
+      })
+    })
+
+    it('resets the tail on restart and leaves no trailing space when stderr is empty', async () => {
+      const body = `const fs=require('fs');const c=process.argv[2];const n=fs.existsSync(c)?1:0;fs.writeFileSync(c,'x');${RL}${READY}rl.on('line',()=>{if(n===0)process.stderr.write('first-run-failure\\n');setTimeout(()=>process.exit(1),50)});`
+      await withScript(body, async (args) => {
+        client = new EngineClient({ command: process.execPath, args })
+        await client.start()
+        expect(await rejection(client)).toContain('first-run-failure')
+        const second = await rejection(client)
+        expect(second).not.toContain('first-run-failure')
+        expect(second).toContain('exit code 1')
+        await rejection(client)
+        expect(await rejection(client)).toBe('Engine crashed 3 times in 60s and will not restart')
+      })
+    })
   })
 })
