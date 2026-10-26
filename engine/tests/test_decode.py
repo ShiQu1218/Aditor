@@ -61,26 +61,51 @@ def test_close_terminates_ffmpeg(tmp_path, profile):
 
 
 GPU = ["-hwaccel", "d3d11va", "-hwaccel_output_format", "d3d11"]
+THREADS = ["-threads", "2", "-filter_threads", "1", "-filter_complex_threads", "1"]
 
 
 def test_build_input_args_av1_uses_native_decoder_with_d3d11va():
     # Decoder options must precede -i; -ss must also precede -i and follow hwaccel.
-    assert decode.build_input_args("av1", True, 2.5) == GPU + ["-c:v", "av1", "-ss", "2.500"]
+    assert decode.build_input_args("av1", True, 2.5) == THREADS + GPU + ["-c:v", "av1", "-ss", "2.500"]
 
 
 @pytest.mark.parametrize("codec", ["h264", "hevc", "vp9"])
 def test_build_input_args_other_gpu_codecs_no_c_v(codec):
-    assert decode.build_input_args(codec, True, 0.0) == GPU
+    assert decode.build_input_args(codec, True, 0.0) == THREADS + GPU
 
 
 def test_build_input_args_unknown_codec_keeps_hwaccel_auto():
-    assert decode.build_input_args(None, True, 0.0) == ["-hwaccel", "auto"]
-    assert decode.build_input_args("mpeg4", True, 0.0) == ["-hwaccel", "auto"]
+    assert decode.build_input_args(None, True, 0.0) == THREADS + ["-hwaccel", "auto"]
+    assert decode.build_input_args("mpeg4", True, 0.0) == THREADS + ["-hwaccel", "auto"]
 
 
-def test_build_input_args_no_hwaccel_only_start():
-    assert decode.build_input_args("av1", False, 0.0) == []
-    assert decode.build_input_args("h264", False, 3.0) == ["-ss", "3.000"]
+def test_build_input_args_no_hwaccel_keeps_thread_budget():
+    assert decode.build_input_args("av1", False, 0.0) == THREADS
+    assert decode.build_input_args("h264", False, 3.0) == THREADS + ["-ss", "3.000"]
+
+
+@pytest.mark.parametrize("hwaccel", [False, True])
+def test_thread_budget_preserves_decoded_pixels(tmp_path, profile, monkeypatch, hwaccel):
+    import numpy as np
+    v = _av1_clip(tmp_path)
+    limited = list(FrameStream(str(v), profile, codec="av1", hwaccel=hwaccel))
+    real_popen = decode.subprocess.Popen
+
+    def without_budget(cmd, *args, **kwargs):
+        cmd = list(cmd)
+        for option in ("-threads", "-filter_threads", "-filter_complex_threads"):
+            while option in cmd:
+                i = cmd.index(option)
+                del cmd[i:i + 2]
+        return real_popen(cmd, *args, **kwargs)
+
+    monkeypatch.setattr(decode.subprocess, "Popen", without_budget)
+    automatic = list(FrameStream(str(v), profile, codec="av1", hwaccel=hwaccel))
+    assert len(limited) == len(automatic) == 4
+    for (t, banner, spec), (old_t, old_banner, old_spec) in zip(limited, automatic):
+        assert t == old_t
+        np.testing.assert_array_equal(banner, old_banner)
+        np.testing.assert_array_equal(spec, old_spec)
 
 
 def test_is_gpu_path():
@@ -137,6 +162,14 @@ def test_av1_fallback_drops_c_v_av1(tmp_path, profile, monkeypatch):
     assert "nonexistent_accel" in cmds[1] and "format=p010le" in fc(cmds[1])
     assert "-hwaccel" not in cmds[2] and "-c:v" not in cmds[2]
     assert "hwdownload" not in fc(cmds[2])
+    for cmd in cmds:
+        input_end = cmd.index("-i")
+        assert cmd[cmd.index("-threads") + 1] == "2"
+        assert cmd.index("-threads") < input_end
+        assert cmd[cmd.index("-filter_threads") + 1] == "1"
+        assert cmd[cmd.index("-filter_complex_threads") + 1] == "1"
+        output_threads = cmd.index("-threads", input_end)
+        assert cmd[output_threads + 1] == "1"
 
 
 def test_av1_decode_with_codec_yields_frames(tmp_path, profile):
