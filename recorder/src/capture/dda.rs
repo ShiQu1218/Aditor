@@ -6,7 +6,7 @@
 //! - Frames: pass the DDA desktop texture directly to the consumer, then release it after the consumer returns to avoid a full-frame copy.
 //!   Calls ReleaseFrame after the consumer returns, avoiding one full-frame copy.
 //! - Optionally composite the separately supplied desktop cursor after SDR conversion.
-//! - When the foreground window does not belong to the target PID or is minimized, continuously sends GPU black frames to avoid recording another app.
+//! - Records the whole monitor, including other windows; foreground changes only emit game_hidden/game_visible events.
 //! - DXGI_ERROR_ACCESS_LOST (resolution change, fullscreen transition, UAC secure desktop): discard and recreate duplication.
 //! - Rotated monitors retain panel native orientation. FP16 HDR desktops are tone-mapped to SDR on the GPU.
 
@@ -235,7 +235,7 @@ impl SlotGate {
         }
     }
 
-    /// Peek at the next frame without consuming it, so a static desktop can check the foreground before deciding whether to add a black frame.
+    /// Peek at the next frame without consuming it, so a static desktop still polls the foreground once per slot.
     fn candidate(&mut self, pts: i64) -> Option<(i64, i64)> {
         if pts < 0 {
             return None;
@@ -259,10 +259,18 @@ impl SlotGate {
 }
 
 /// Queries only the window manager and never opens the target process; a failed query or missing foreground window is treated as hidden.
-pub(super) fn foreground_state() -> (Option<u32>, bool) {
+/// A foreground window on another monitor (e.g. the Aditor preview on a second screen) leaves the game's
+/// monitor showing the game, so the game window itself is reported instead.
+pub(super) fn foreground_state(game: Option<HWND>) -> (Option<u32>, bool) {
     // SAFETY: HWND is used only for queries; if the window disappears, PID remains zero and no process handle is acquired.
     unsafe {
-        let hwnd = GetForegroundWindow();
+        let foreground = GetForegroundWindow();
+        let hwnd = match game {
+            Some(game) if !foreground.is_invalid() && monitor_of(foreground) != monitor_of(game) => {
+                game
+            }
+            _ => foreground,
+        };
         let mut pid = 0;
         GetWindowThreadProcessId(hwnd, Some(&mut pid));
         ((pid != 0).then_some(pid), IsIconic(hwnd).as_bool())
@@ -273,7 +281,7 @@ fn game_visible(pid: u32, foreground_pid: Option<u32>, iconic: bool) -> bool {
     foreground_pid == Some(pid) && !iconic
 }
 
-/// Query at most once per output interval; also poll static desktops to switch to black frames when no new DDA frame arrives.
+/// Query at most once per output interval; also poll static desktops so events fire when no new DDA frame arrives.
 pub(super) struct Visibility {
     checked: Option<i64>,
     visible: bool,
@@ -364,35 +372,31 @@ impl BlackFrame {
     }
 }
 
-/// New desktop frames and timeout-generated black frames share the interval and foreground cache to avoid duplicate queries or output in one slot.
+/// New desktop frames and idle polls share the interval and foreground cache to avoid duplicate queries in one slot.
 struct Output {
     pid: u32,
     gate: SlotGate,
     visibility: Visibility,
-    black: BlackFrame,
     color: super::color::SdrConverter,
     cursor: Option<super::cursor::CursorOverlay>,
     cursor_visible: bool,
     monitor: HMONITOR,
+    hwnd: Option<HWND>,
     notices: Sender<CaptureNotice>,
 }
 
 impl Output {
-    fn visible(&mut self, pts: i64) -> bool {
+    fn track_visibility(&mut self, pts: i64) {
         // AcquireNextFrame has returned; no GPU or consumer lock is held here.
-        if let Some(notice) = self.visibility.update(self.pid, pts, foreground_state) {
+        let game = self.hwnd;
+        if let Some(notice) = self.visibility.update(self.pid, pts, || foreground_state(game)) {
             let _ = self.notices.send(notice);
         }
-        self.visibility.visible
     }
 
-    fn idle(&mut self, consumer: &mut dyn FrameConsumer, now: i64) {
+    fn idle(&mut self, now: i64) {
         if let Some((_, pts)) = self.gate.candidate(now) {
-            if !self.visible(pts) {
-                if let Some(pts) = self.gate.accept(now) {
-                    self.black.deliver(consumer, pts);
-                }
-            }
+            self.track_visibility(pts);
         }
     }
 }
@@ -691,35 +695,30 @@ fn deliver(
             desc.Format.0
         );
     }
-    if output.visible(pts) {
-        let texture = output.color.convert(&texture, output.monitor)?;
-        let texture = if output.cursor_visible {
-            if let Some(cursor) = &mut output.cursor {
-                match cursor.draw(&texture, output.monitor) {
-                    Ok(texture) => texture,
-                    Err(error) => {
-                        eprintln!(
-                            "Could not draw cursor; continuing without cursor overlay: {error:#}"
-                        );
-                        output.cursor = None;
-                        texture
-                    }
+    output.track_visibility(pts);
+    let texture = output.color.convert(&texture, output.monitor)?;
+    let texture = if output.cursor_visible {
+        if let Some(cursor) = &mut output.cursor {
+            match cursor.draw(&texture, output.monitor) {
+                Ok(texture) => texture,
+                Err(error) => {
+                    eprintln!("Could not draw cursor; continuing without cursor overlay: {error:#}");
+                    output.cursor = None;
+                    texture
                 }
-            } else {
-                texture
             }
         } else {
             texture
-        };
-        consumer.on_frame(&CapturedFrame {
-            texture: &texture,
-            width: desc.Width,
-            height: desc.Height,
-            pts,
-        });
+        }
     } else {
-        output.black.deliver(consumer, pts);
-    }
+        texture
+    };
+    consumer.on_frame(&CapturedFrame {
+        texture: &texture,
+        width: desc.Width,
+        height: desc.Height,
+        pts,
+    });
     Ok(Some((desc.Width, desc.Height)))
 }
 
@@ -750,8 +749,7 @@ pub(super) fn run(
             .then(|| super::cursor::CursorOverlay::new(&gpu)),
         cursor_visible: false,
         monitor,
-        black: BlackFrame::new(&gpu, dup.size)
-            .context("capture_failed: Failed to create DDA black frame")?,
+        hwnd: Some(hwnd),
         notices: notices.clone(),
     };
     let mut tracker = Tracker {
@@ -780,19 +778,14 @@ pub(super) fn run(
             next_check = Instant::now() + WINDOW_CHECK;
             tracker.check_window();
             output.monitor = tracker.monitor;
+            output.hwnd = tracker.hwnd;
         }
         if tracker.dup.is_none() {
             output.cursor_visible = false;
             tracker.reopen(&gpu)?;
         }
-        if let Some(dup) = &tracker.dup {
-            if output.black.size != dup.size {
-                output.black = BlackFrame::new(&gpu, dup.size)
-                    .context("capture_failed: Failed to resize DDA black frame")?;
-            }
-        }
         let Some(dup) = &tracker.dup else {
-            output.idle(consumer.as_mut(), clock::now_ticks() - opts.origin_ticks);
+            output.idle(clock::now_ticks() - opts.origin_ticks);
             match stopped.recv_timeout(poll) {
                 Ok(()) | Err(mpsc::RecvTimeoutError::Disconnected) => break,
                 Err(mpsc::RecvTimeoutError::Timeout) => continue,
@@ -824,7 +817,7 @@ pub(super) fn run(
         match outcome {
             Ok(Some(size)) => tracker.announce(size),
             Ok(None) => {
-                output.idle(consumer.as_mut(), clock::now_ticks() - opts.origin_ticks);
+                output.idle(clock::now_ticks() - opts.origin_ticks);
                 thread::sleep(poll);
             }
             Err(AcquireError::Lost) => {
@@ -934,108 +927,6 @@ mod tests {
             initially_hidden.update(42, 0, || (None, false)),
             Some(CaptureNotice::GameHidden { pts: 0 })
         );
-    }
-
-    #[test]
-    fn hidden_frames_advance_without_desktop_updates_and_share_output_slots() {
-        let mut visibility = Visibility::new();
-        let mut gate = SlotGate::new(60);
-        assert_eq!(gate.accept(0), Some(0));
-        let mut output = Vec::new();
-        for now in (0..=TICKS_PER_SEC).step_by(10_000) {
-            if let Some((_, pts)) = gate.candidate(now) {
-                visibility.update(42, pts, || (None, false));
-                if !visibility.visible {
-                    if let Some(pts) = gate.accept(now) {
-                        output.push(pts);
-                    }
-                }
-            }
-        }
-        assert_eq!(output.len(), 60);
-        assert_eq!(output[0], TICKS_PER_SEC / 60);
-        assert_eq!(output.last(), Some(&TICKS_PER_SEC));
-        assert_eq!(encoder_drops(&output, 60), 0);
-        assert_eq!(gate.accept(TICKS_PER_SEC), None);
-    }
-
-    #[test]
-    fn gpu_idle_black_frames_reach_small_frames_without_desktop_updates() {
-        use crate::capture::small::{SmallFrameExtractor, SmallFrames};
-        use crate::types::FramesSpec;
-
-        struct Consumer {
-            extractor: SmallFrameExtractor,
-            frames: Vec<SmallFrames>,
-            captured: Vec<(i64, u32, u32)>,
-        }
-        impl FrameConsumer for Consumer {
-            fn on_frame(&mut self, frame: &CapturedFrame<'_>) {
-                self.captured.push((frame.pts, frame.width, frame.height));
-                if let Some(small) =
-                    self.extractor
-                        .on_frame(frame.texture, frame.width, frame.height, frame.pts)
-                {
-                    self.frames.push(small);
-                }
-            }
-        }
-        let gpu = Gpu::create().unwrap();
-        for size in [(960, 540), (1920, 1080)] {
-            let (notices, received) = mpsc::channel();
-            let mut output = Output {
-                pid: u32::MAX,
-                gate: SlotGate::new(60),
-                visibility: Visibility::new(),
-                color: crate::capture::color::SdrConverter::new(&gpu).unwrap(),
-                cursor: None,
-                cursor_visible: false,
-                monitor: HMONITOR::default(),
-                black: BlackFrame::new(&gpu, size).unwrap(),
-                notices,
-            };
-            let mut consumer = Consumer {
-                extractor: SmallFrameExtractor::new(
-                    &gpu,
-                    FramesSpec {
-                        banner: [0, 0, 96, 48],
-                        spec: [960, 540, 96, 48],
-                        base: [1920, 1080],
-                        killfeed: Some([1800, 170, 96, 48]),
-                    },
-                )
-                .unwrap(),
-                frames: Vec::new(),
-                captured: Vec::new(),
-            };
-            for slot in 0..4 {
-                let pts = slot * TICKS_PER_SEC / 4;
-                output.idle(&mut consumer, pts);
-                output.idle(&mut consumer, pts + 1);
-                // SAFETY: Submits only commands to the test device so asynchronous thumbnail readback completes before the next sample.
-                unsafe { gpu.context.Flush() };
-                thread::sleep(Duration::from_millis(100));
-            }
-            assert_eq!(consumer.captured.len(), 4);
-            assert!(consumer.captured.iter().all(|f| (f.1, f.2) == size));
-            assert_eq!(
-                received.try_iter().collect::<Vec<_>>(),
-                vec![CaptureNotice::GameHidden { pts: 0 }]
-            );
-            assert_eq!(consumer.frames.len(), 3);
-            assert!(consumer.frames[0].thumb.is_some());
-            assert!(consumer.frames[0].killfeed.is_some());
-            for (slot, small) in consumer.frames.iter().enumerate() {
-                assert_eq!(small.pts, slot as i64 * TICKS_PER_SEC / 4);
-                assert!(small
-                    .banner
-                    .iter()
-                    .chain(&small.spec)
-                    .chain(small.killfeed.iter().flatten())
-                    .chain(small.thumb.iter().flatten())
-                    .all(|&v| v == 0));
-            }
-        }
     }
 
     #[test]

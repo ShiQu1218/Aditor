@@ -580,7 +580,7 @@ impl CallbackState {
             let visible = if monitor {
                 // Minimized fallback stays black until window capture resumes, including the restore polling gap.
                 if let Some(notice) = self.visibility.update(self.pid, pts, || {
-                    if minimized_fallback { (None, true) } else { dda::foreground_state() }
+                    if minimized_fallback { (None, true) } else { dda::foreground_state(Some(self.hwnd)) }
                 }) {
                     let _ = self.notices.send(notice);
                 }
@@ -588,7 +588,8 @@ impl CallbackState {
             } else {
                 // A monitor fallback may have hidden the game before capture was rebuilt as a window.
                 if !self.visibility.is_visible() {
-                    if let Some(notice) = self.visibility.update(self.pid, pts, dda::foreground_state) {
+                    let game = self.hwnd;
+                    if let Some(notice) = self.visibility.update(self.pid, pts, || dda::foreground_state(Some(game))) {
                         let _ = self.notices.send(notice);
                     }
                 }

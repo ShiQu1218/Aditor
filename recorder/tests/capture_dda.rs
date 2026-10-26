@@ -427,7 +427,7 @@ impl Drop for RecorderProcess {
 /// Check BGRA encoder input, small images, and the real recorder's JSON-lines IPC together.
 #[test]
 #[ignore = "Requires an interactive desktop that permits foreground switching; SetForegroundWindow refuses to activate the test window in this environment"]
-fn dda_blacks_frames_and_emits_events_when_another_process_takes_foreground() {
+fn dda_keeps_recording_and_emits_events_when_another_process_takes_foreground() {
     let _lock = HARDWARE.lock().unwrap_or_else(|error| error.into_inner());
     // SAFETY: Only save the original foreground window as another PID's window without obtaining its process handle.
     let other = unsafe { GetForegroundWindow() };
@@ -529,44 +529,17 @@ fn dda_blacks_frames_and_emits_events_when_another_process_takes_foreground() {
     };
     let hidden_event = event_until("game_hidden");
     assert!((0.0..5.0).contains(&hidden_event["pts"].as_f64().unwrap()));
-    sample.store(true, Ordering::Release);
-    assert_eq!(
-        pixels.recv_timeout(Duration::from_secs(3)).unwrap(),
-        [0, 0, 0, 255]
-    );
-    // Stop redrawing the test window to verify black frames do not depend on new desktop frames.
-    unsafe { KillTimer(Some(HWND(window.hwnd as *mut _)), 1).unwrap() };
-    thread::sleep(Duration::from_millis(1200));
+    // DDA keeps recording the real desktop while hidden; only the events change.
+    thread::sleep(Duration::from_millis(500));
     let hidden_frames: Vec<_> = frames.try_iter().filter(|f| f.0 > hidden_pts).collect();
-    assert!(
-        hidden_frames.len() >= 55,
-        "Only {} frames while hidden",
-        hidden_frames.len()
-    );
+    assert!(!hidden_frames.is_empty(), "No frames while hidden");
     assert!(hidden_frames.iter().all(|f| (f.1, f.2) == monitor));
-    assert!(hidden_frames
-        .windows(2)
-        .all(|p| p[1].0 > p[0].0 && p[1].0 - p[0].0 <= TICKS_PER_SEC / 10));
-    let hidden_small: Vec<_> = small.try_iter().filter(|s| s.pts > hidden_pts).collect();
-    assert!(hidden_small.len() >= 3, "Small-image output did not continue while hidden");
-    assert!(
-        hidden_small.iter().all(|s| s
-            .banner
-            .iter()
-            .chain(&s.spec)
-            .chain(s.thumb.iter().flatten())
-            .all(|&v| v == 0)),
-        "Small images are not black while hidden"
-    );
-    assert!(!notices
-        .try_iter()
-        .any(|n| matches!(n, CaptureNotice::GameHidden { .. })));
+    assert!(small.try_iter().any(|s| s.pts > hidden_pts), "Small-image output stopped while hidden");
 
     window.foreground();
     notice_until(&notices, |n| matches!(n, CaptureNotice::GameVisible { .. }));
     let visible_event = event_until("game_visible");
     assert!(visible_event["pts"].as_f64().unwrap() > hidden_event["pts"].as_f64().unwrap());
-    unsafe { assert_ne!(SetTimer(Some(HWND(window.hwnd as *mut _)), 1, 16, None), 0) };
     thread::sleep(Duration::from_millis(100));
     sample.store(true, Ordering::Release);
     let restored = pixels.recv_timeout(Duration::from_secs(3)).unwrap();
