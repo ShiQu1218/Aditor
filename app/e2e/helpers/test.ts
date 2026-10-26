@@ -58,7 +58,6 @@ export async function openStudio(page: Page, title: string): Promise<void> {
   await expect(page.locator('.hl-card').first()).toBeVisible()
 }
 
-export const playheadVideo = (page: Page) => page.locator('video')
 export async function videoTime(page: Page): Promise<number> {
   return page.evaluate(() => (document.querySelector('video') as HTMLVideoElement).currentTime)
 }

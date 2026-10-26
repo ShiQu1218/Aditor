@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, type Dispatch, type MutableRefObject, type RefObject, type SetStateAction } from 'react'
 import type { EngineEvent, EventType } from '../../shared/types'
-import { formatTime, toCurrentTime } from '../../shared/time'
+import { formatTime } from '../../shared/time'
 import type { Project, ProjectItem } from '../editor/project'
 import { nextEvent } from '../timeline/model'
 import { i18n } from '../i18n'
@@ -80,7 +80,8 @@ export function useStudioSourcePlayback({
     const el = videoRef.current
     if (el && planSeek({ loadedSrc: loadedSrcRef.current, wantedSrc }) === 'now') {
       pendingSeekRef.current = null
-      el.currentTime = toCurrentTime(t, 0)
+      // Chromium and engine timestamps both start at zero for MP4/WebM.
+      el.currentTime = t
       if (play) void el.play().catch(() => {})
       return
     }
@@ -95,7 +96,7 @@ export function useStudioSourcePlayback({
     const p = pendingSeekRef.current
     if (p) {
       pendingSeekRef.current = null
-      el.currentTime = toCurrentTime(p.t, 0)
+      el.currentTime = p.t
       if (p.play) void el.play().catch(() => {})
     }
   }, [])
