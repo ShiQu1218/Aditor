@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useSyncExternalStore } from 'react'
 import '../styles/exportDrawer.css'
 import { i18n } from '../i18n'
 import { formatTime } from '../../shared/time'
+import { fillTemplate as fmt } from '../../shared/template'
 import { tr } from '../../shared/locale'
 import { exportSubDirName, joinForDisplay } from '../../shared/storage'
 import { totalDuration, Project } from '../editor/project'
@@ -39,9 +40,6 @@ export interface ExportDrawerViewProps {
     acceptConsent: () => void
   }
 }
-
-const fmt = (tpl: string, vars: Record<string, string | number>): string =>
-  Object.entries(vars).reduce((s, [k, v]) => s.replace(`{${k}}`, String(v)), tpl)
 
 /** Encoder display name without suffixes such as "detected". */
 function encoderName(name: string): string {

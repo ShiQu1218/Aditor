@@ -489,10 +489,11 @@ describe('per-match recording service', () => {
   it('waits for trailing segments after a match closes before clipping, while recording and playback continue without restarts or duplicate notices', async () => {
     const r = serviceRig()
     const { service, finalized } = r
-    await waitFor(() => service.status().matchIndex === 1)
+    // Recorder segments and live match events arrive independently; matchIndex only confirms the start.
+    await expect.poll(async () => (await service.live!())?.matches, { timeout: 10_000 })
+      .toEqual([{ start: 0.5, end: 3 }])
     await waitFor(() => service.status().durationSec === 8)
     const before = (await service.live!())!
-    expect(before.matches).toEqual([{ start: 0.5, end: 3 }])
     expect(finalized).not.toHaveBeenCalled()
     const dir = path.join(r.deps.defaultOutputDir, '.sessions', before.sessionId)
     expect(read(path.join(dir, 'recording.json')).mode).toBe('match')
