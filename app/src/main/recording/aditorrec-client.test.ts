@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import fs from 'fs'
 import path from 'path'
-import { AditorrecClient, HELLO_TIMEOUT_MS, RecorderError } from './aditorrec-client'
+import { AditorrecClient, HELLO_TIMEOUT_MS, RecorderError, recorderTags } from './aditorrec-client'
 import { fakeCommand, tempRoot } from './test-support'
 
 const clients: AditorrecClient[] = []
@@ -15,6 +15,26 @@ afterEach(async () => {
   for (const value of clients.splice(0)) await value.close()
   vi.useRealTimers()
   for (const root of roots.splice(0)) fs.rmSync(root, { recursive: true, force: true })
+})
+
+describe('recorderTags', () => {
+  it('keeps only coarse capture, encoder and audio settings, never device IDs or paths', () => {
+    const tags = recorderTags({ pid: 4242, session_dir: 'C:\\Users\\Alice\\rec', capture: 'dda',
+      encode: { codec: 'hevc', encoder: 'hevc_nvenc', gpu: '10de:2684', fps: 60, height: 1080, bitrate_kbps: 20000 },
+      audio: { render: '{0.0.0.00000000}.{guid}', capture: 'mic-id', mic_enabled: true, render_enabled: false } })
+    expect(tags).toEqual({ capture: 'dda', codec: 'hevc', encoder: 'hevc_nvenc', fps: '60', height: '1080', mic: 'on', system_audio: 'off' })
+  })
+  it('returns no tags for OBS mode or malformed arguments', () => {
+    expect(recorderTags({ capture: 'wgc', encode: null, audio: null })).toEqual({ capture: 'wgc' })
+    expect(recorderTags({})).toEqual({})
+  })
+  it('tags diagnostics with the startup phase before recording begins', async () => {
+    const onDiagnostic = vi.fn()
+    const value = new AditorrecClient(fakeCommand('stderr-exit'), onDiagnostic)
+    clients.push(value)
+    await expect(value.hello()).rejects.toBeDefined()
+    expect(onDiagnostic).toHaveBeenCalledWith(expect.objectContaining({ tags: { phase: 'startup' } }))
+  })
 })
 
 describe('aditorrec JSON-lines client', () => {

@@ -84,6 +84,15 @@ describe('telemetry privacy boundary', () => {
     expect(sanitizeTelemetryEvent({ tags: { electron: '45.0.1' } }).tags).toBeUndefined()
   })
 
+  it('keeps well-formed recorder state tags and drops malformed or unknown ones', () => {
+    const clean = sanitizeTelemetryEvent({ tags: { component: 'rust-recorder', capture: 'dda', codec: 'hevc', encoder: 'hevc_nvenc',
+      fps: '60', height: '1080', mic: 'on', system_audio: 'off', phase: 'recording', uptime: '<1m', gpu: 'NVIDIA RTX 4070' } })
+    expect(clean.tags).toEqual({ component: 'rust-recorder', capture: 'dda', codec: 'hevc', encoder: 'hevc_nvenc',
+      fps: '60', height: '1080', mic: 'on', system_audio: 'off', phase: 'recording', uptime: '<1m' })
+    expect(sanitizeTelemetryEvent({ tags: { component: 'rust-recorder', capture: 'C:\\Users\\Alice', encoder: 'a b/c', fps: '60fps' } }).tags)
+      .toEqual({ component: 'rust-recorder' })
+  })
+
   it('preserves matching Debug IDs with the same safe build-relative path as stack frames', () => {
     const filename = 'C:/Users/Alice/Aditor/out/main/index.js'
     const clean = sanitizeTelemetryEvent({

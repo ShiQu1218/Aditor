@@ -183,7 +183,7 @@ export function reportChildDiagnostic(diagnostic: ChildDiagnostic): string | und
 
     const eventId = Sentry.captureEvent({
       platform: diagnostic.component === 'rust-recorder' ? 'native' : 'python', level: 'error',
-      tags: { component: diagnostic.component },
+      tags: { ...diagnostic.tags, component: diagnostic.component },
       exception: { values: [{ type: `${diagnostic.component}:${diagnostic.code}${exceptionType ? `:${exceptionType}` : ''}`,
         value: redactTelemetryText(diagnostic.message),
         mechanism: { type: 'child_process', handled: true },

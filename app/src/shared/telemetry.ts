@@ -71,7 +71,20 @@ function safeHardwareContexts(contexts: Event['contexts']): Record<string, Recor
 
 const SAFE_COMPONENTS = new Set(['python-engine', 'python-live', 'rust-recorder', 'user-report', 'preview-playback'])
 // Extra tags are kept only when their value has a fixed, non-identifying shape.
-const SAFE_TAG_VALUES: Record<string, RegExp> = { electron: /^\d+(?:\.\d+){2}$/, decode: /^(?:auto|software)$/ }
+const SAFE_TAG_VALUES: Record<string, RegExp> = {
+  electron: /^\d+(?:\.\d+){2}$/,
+  decode: /^(?:auto|software)$/,
+  // Recorder state at failure time (see recorderTags in aditorrec-client.ts).
+  capture: /^(?:wgc|dda|hook)$/,
+  codec: /^(?:hevc|h264|av1)$/,
+  encoder: /^[\w.-]{1,32}$/,
+  fps: /^\d{1,4}$/,
+  height: /^\d{1,5}$/,
+  mic: /^(?:on|off)$/,
+  system_audio: /^(?:on|off)$/,
+  phase: /^(?:startup|recording)$/,
+  uptime: /^(?:<10s|<1m|<10m|<1h|>=1h)$/
+}
 
 function safeTags(tags: Event['tags']): Record<string, string> | undefined {
   if (typeof tags?.component !== 'string' || !SAFE_COMPONENTS.has(tags.component)) return undefined

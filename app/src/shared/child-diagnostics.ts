@@ -5,6 +5,8 @@ export interface ChildDiagnostic {
   code: string
   message: string
   exception?: unknown
+  /** Coarse state at failure time; the telemetry sanitizer re-validates every value against an allowlist. */
+  tags?: Readonly<Record<string, string>>
 }
 
 export type ChildDiagnosticHandler = (diagnostic: ChildDiagnostic) => void

@@ -11,6 +11,32 @@ const MAX_BYTES = 64 * 1024
 export const HELLO_TIMEOUT_MS = 30_000
 export type RecorderEvent = Record<string, unknown> & { ev: string }
 
+const UPTIME_BUCKETS: ReadonlyArray<readonly [number, string]> = [[10_000, '<10s'], [60_000, '<1m'], [600_000, '<10m'], [3_600_000, '<1h']]
+
+/** The recorder reports failures as plain text, so the settings it was started with are the only context for grouping them by device and configuration. */
+export function recorderTags(args: object): Record<string, string> {
+  const { capture, encode, audio } = args as { capture?: unknown; encode?: Record<string, unknown> | null; audio?: Record<string, unknown> | null }
+  const tags: Record<string, string> = {}
+  const set = (key: string, value: unknown): void => {
+    if (typeof value === 'number' && Number.isFinite(value)) tags[key] = String(Math.round(value))
+    else if (typeof value === 'string') tags[key] = value
+  }
+  set('capture', capture)
+  set('codec', encode?.codec)
+  set('encoder', encode?.encoder)
+  set('fps', encode?.fps)
+  set('height', encode?.height)
+  if (audio) {
+    tags.mic = audio.mic_enabled === true ? 'on' : 'off'
+    tags.system_audio = audio.render_enabled === false ? 'off' : 'on'
+  }
+  return tags
+}
+
+function uptimeBucket(ms: number): string {
+  return UPTIME_BUCKETS.find(([limit]) => ms < limit)?.[1] ?? '>=1h'
+}
+
 export class RecorderError extends Error {
   constructor(public code: string, message: string) {
     super(message)
@@ -33,6 +59,8 @@ export class AditorrecClient extends EventEmitter {
   private decoder = new StringDecoder('utf8')
   private closing = false
   private closed: Promise<void> = Promise.resolve()
+  private startTags: Record<string, string> = {}
+  private recordingSince: number | null = null
 
   constructor(private command: RecorderCommand, private onDiagnostic?: ChildDiagnosticHandler) { super() }
 
@@ -115,8 +143,10 @@ export class AditorrecClient extends EventEmitter {
       this.on('closed', onCrash)
       timer = setTimeout(() => reject(this.error('recorder_timeout', tr('等待錄影開始事件逾時'))), 30000)
     })
+    this.startTags = recorderTags(args)
     try {
       await Promise.all([started, this.request('start', args)])
+      this.recordingSince = Date.now()
     } finally {
       clearTimeout(timer)
       this.off('event', onEvent)
@@ -178,7 +208,10 @@ export class AditorrecClient extends EventEmitter {
   }
 
   private error(code: string, message: string): RecorderError {
-    if (!this.closing) emitChildDiagnostic(this.onDiagnostic, { component: 'rust-recorder', code, message })
+    if (!this.closing) {
+      const phase: Record<string, string> = this.recordingSince === null ? { phase: 'startup' } : { phase: 'recording', uptime: uptimeBucket(Date.now() - this.recordingSince) }
+      emitChildDiagnostic(this.onDiagnostic, { component: 'rust-recorder', code, message, tags: { ...this.startTags, ...phase } })
+    }
     const log = this.stderr.toString('utf8').trim()
     return new RecorderError(code, log ? `${message}\n${log}` : message)
   }
