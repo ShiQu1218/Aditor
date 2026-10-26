@@ -167,11 +167,13 @@ More diagrams: [detection pipeline](docs/diagrams/pipeline.en.png), [banner deci
 
 Requires Node.js 20+, Python 3.11+ and the Rust stable toolchain.
 
+Release and CI use Python 3.12 with shared pins in `engine/constraints.txt`, including transitive dependencies. After updating the pins or build backend in `engine/pyproject.toml`, run `scripts/test.ps1 -Tier full` before releasing.
+
 ```powershell
 git clone https://github.com/ShiQu1218/Aditor.git
 cd Aditor
 python -m venv engine\.venv
-.\engine\.venv\Scripts\python.exe -m pip install -e "engine[dev]" pyinstaller
+.\engine\.venv\Scripts\python.exe -m pip install -c engine/constraints.txt -e "engine[dev]" pyinstaller
 npm --prefix app install
 powershell -ExecutionPolicy Bypass -File scripts\build.ps1
 ```

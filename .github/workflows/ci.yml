@@ -49,7 +49,7 @@ jobs:
         shell: pwsh
         run: |
           python -m venv engine/.venv
-          engine/.venv/Scripts/python.exe -m pip install -e "engine[dev]"
+          engine/.venv/Scripts/python.exe -m pip install -c engine/constraints.txt -e "engine[dev]"
 
       # Same fast tier developers run before committing.
       - name: Fast test tier
