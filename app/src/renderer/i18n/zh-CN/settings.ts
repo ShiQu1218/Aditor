@@ -210,7 +210,7 @@ export const settingsI18n: Messages['settingsI18n'] = {
     },
     report: {
       title: '反馈问题',
-      desc: '描述遇到的问题，连同基本设备信息（操作系统、CPU、内存、GPU）发送给开发者。请勿填写个人信息。需开启“分享错误与性能诊断”才能使用。',
+      desc: '只需描述遇到的问题，操作系统、CPU、内存、GPU 等基本设备信息会自动附上，无需自行填写。请勿填写个人信息。需开启“分享错误与性能诊断”才能使用。',
       keywords: ['report', 'feedback', 'bug', '反馈', '问题', '意见'],
       placeholder: '发生了什么？（最多 500 字）',
       send: '发送反馈',

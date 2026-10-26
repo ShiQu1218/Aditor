@@ -210,7 +210,7 @@ export const settingsI18n: Messages['settingsI18n'] = {
     },
     report: {
       title: '문제 신고',
-      desc: '발생한 문제를 기본 기기 정보(OS, CPU, 메모리, GPU)와 함께 개발자에게 보냅니다. 개인 정보는 적지 마세요. “오류 및 성능 진단 공유”가 켜져 있어야 합니다.',
+      desc: '발생한 문제만 적어 주세요. 기본 기기 정보(OS, CPU, 메모리, GPU)는 자동으로 함께 전송되므로 직접 적을 필요가 없습니다. 개인 정보는 적지 마세요. “오류 및 성능 진단 공유”가 켜져 있어야 합니다.',
       keywords: ['report', 'feedback', 'bug', '신고', '문제', '피드백'],
       placeholder: '무슨 일이 있었나요? (최대 500자)',
       send: '신고 보내기',

@@ -209,7 +209,7 @@ export const settingsI18n: Messages['settingsI18n'] = {
     },
     report: {
       title: 'Report a problem',
-      desc: 'Describe what went wrong and send it to the developers together with basic device info (OS, CPU, memory, GPU). Do not include personal information. Requires diagnostics sharing to be on.',
+      desc: 'Just describe what went wrong. Basic device info (OS, CPU, memory, GPU) is attached automatically, so you do not need to type it. Do not include personal information. Requires diagnostics sharing to be on.',
       keywords: ['report', 'feedback', 'bug', 'problem', 'sentry'],
       placeholder: 'What happened? (up to 500 characters)',
       send: 'Send report',
