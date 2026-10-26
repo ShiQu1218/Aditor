@@ -68,6 +68,18 @@ describe('telemetry privacy boundary', () => {
     expect(JSON.stringify(clean)).not.toMatch(/Alice|ALICE/)
   })
 
+  it('keeps numbered gpu_N contexts that the SDK emits on multi-GPU machines', () => {
+    const clean = sanitizeTelemetryEvent({ contexts: {
+      gpu_1: { type: 'gpu', name: 'NVIDIA RTX 4070', vendor_name: 'NVIDIA', driver_version: '555.1', id: '0x2786', vendor_id: '0x10de', active: true, extra: 'Alice' },
+      gpu_2: { type: 'gpu', name: 'AMD Radeon(TM) Graphics', vendor_name: 'AMD', active: false },
+      gpu_9: { name: 'beyond the cap' }
+    } })
+    expect(clean.contexts?.gpu_1).toEqual({ name: 'NVIDIA RTX 4070', vendor_name: 'NVIDIA', driver_version: '555.1', id: '0x2786', vendor_id: '0x10de', active: true })
+    expect(clean.contexts?.gpu_2).toEqual({ name: 'AMD Radeon(TM) Graphics', vendor_name: 'AMD', active: false })
+    expect(clean.contexts).not.toHaveProperty('gpu_9')
+    expect(JSON.stringify(clean)).not.toContain('Alice')
+  })
+
   it('keeps the user-report tag and redacts paths and emails in the report text', () => {
     const clean = sanitizeTelemetryEvent({ message: 'mail me@example.com about C:\\Users\\Alice\\a.mp4', tags: { component: 'user-report', extra: 'Alice' } })
     expect(clean.tags).toEqual({ component: 'user-report' })

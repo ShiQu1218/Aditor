@@ -48,20 +48,24 @@ function safeFrame(frame: StackFrame): StackFrame {
 const SAFE_TRACE_ORIGINS = new Set(['auto.pageload.browser', 'auto.navigation.browser', 'auto.electron.startup'])
 
 // Coarse hardware facts only: no hostnames, boot times, locale or free-form build strings.
+const GPU_FIELDS = ['name', 'vendor_name', 'driver_version', 'id', 'vendor_id', 'active'] as const
+// The SDK names a single adapter `gpu` but several `gpu_1`, `gpu_2`, ... (laptops and iGPU + dGPU desktops).
+const MAX_GPU_CONTEXTS = 4
 const HARDWARE_CONTEXT_FIELDS: Record<string, readonly string[]> = {
   os: ['name', 'version', 'kernel_version'],
   device: ['arch', 'memory_size', 'processor_count', 'cpu_description', 'processor_frequency'],
-  gpu: ['name', 'vendor_name', 'driver_version', 'id', 'vendor_id']
+  gpu: GPU_FIELDS,
+  ...Object.fromEntries(Array.from({ length: MAX_GPU_CONTEXTS }, (_, i) => [`gpu_${i + 1}`, GPU_FIELDS]))
 }
 
-function safeHardwareContexts(contexts: Event['contexts']): Record<string, Record<string, string | number>> {
-  const out: Record<string, Record<string, string | number>> = {}
+function safeHardwareContexts(contexts: Event['contexts']): Record<string, Record<string, string | number | boolean>> {
+  const out: Record<string, Record<string, string | number | boolean>> = {}
   for (const [key, fields] of Object.entries(HARDWARE_CONTEXT_FIELDS)) {
     const source = contexts?.[key] as Record<string, unknown> | undefined
-    const picked: Record<string, string | number> = {}
+    const picked: Record<string, string | number | boolean> = {}
     for (const field of fields) {
       const value = source?.[field]
-      if (typeof value === 'number') picked[field] = value
+      if (typeof value === 'number' || typeof value === 'boolean') picked[field] = value
       else if (typeof value === 'string') picked[field] = redactTelemetryText(value)
     }
     if (Object.keys(picked).length) out[key] = picked
