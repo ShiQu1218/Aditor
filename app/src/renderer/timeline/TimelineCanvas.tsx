@@ -6,7 +6,7 @@ import { View, TimelineZoom, ZoomMode, maxCustomZoom, pan, resizeTimeline, setCu
 import { i18n } from '../i18n'
 import { layoutTimeline, TimelineLayout } from './layout'
 import { createRedrawScheduler, DrawModel, drawTimeline, readTheme, resetThemeCache } from './draw'
-import { Playhead, playheadTarget } from './Playhead'
+import { Playhead, playbackPollMs, playheadTarget } from './Playhead'
 import { TimelineScrollbar } from './TimelineScrollbar'
 import { useTimelineInteractions, type InteractionOptions } from './useTimelineInteractions'
 
@@ -99,6 +99,8 @@ export const TimelineCanvas = React.forwardRef<TimelineHandle, TimelineCanvasPro
     view: { duration: Math.max(1, duration), start: 0, span: Math.max(1, duration), width: 800 }
   }))
   const { view, mode } = zoomState
+  const viewRef = useRef(view)
+  viewRef.current = view
   const customZoom = Math.min(maxCustomZoom(view.duration), Math.max(1, zoomState.customZoom))
   const canvasId = useId()
   const playback = useRef({ playing, time: currentTime, getTime: getPlayTime })
@@ -182,7 +184,13 @@ export const TimelineCanvas = React.forwardRef<TimelineHandle, TimelineCanvasPro
   const following = !ix.interacting && ix.blade.hover === null
   const followPlayhead = useCallback((state: TimelineZoom): TimelineZoom => {
     const time = playheadTarget(playback.current)
-    if (state.mode === 'detail') return setZoomMode(state, 'detail', time)
+    if (state.mode === 'detail') {
+      const next = setZoomMode(state, 'detail', time)
+      // Ignore sub-pixel steps: each new view rerenders and repaints the canvas, at the display refresh rate during playback.
+      const subPixel = next.mode === state.mode && next.view.span === state.view.span &&
+        Math.abs(next.view.start - state.view.start) * state.view.width < state.view.span
+      return subPixel ? state : next
+    }
     if (followProject && state.mode === 'custom' && (time < state.view.start || time >= state.view.start + state.view.span)) {
       return setZoomMode(state, 'custom', time)
     }
@@ -198,12 +206,13 @@ export const TimelineCanvas = React.forwardRef<TimelineHandle, TimelineCanvasPro
   useEffect(() => {
     if ((mode !== 'detail' && !(mode === 'custom' && followProject)) || !playing || !hasPlayTime || !following) return
     let id = 0
+    // Pixel-paced timer, not rAF, for the same reason as the playhead loop.
     const tick = (): void => {
       setZoomState(followPlayhead)
-      id = requestAnimationFrame(tick)
+      id = window.setTimeout(tick, playbackPollMs(viewRef.current))
     }
-    id = requestAnimationFrame(tick)
-    return () => cancelAnimationFrame(id)
+    id = window.setTimeout(tick, playbackPollMs(viewRef.current))
+    return () => window.clearTimeout(id)
   }, [mode, playing, hasPlayTime, following, followProject, followPlayhead])
 
   // Low-performance mode (settings update immediately): reduce the heat bar to 60 bins and redraw.
