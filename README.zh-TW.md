@@ -167,11 +167,13 @@ Aditor 由三個獨立程式組成，任一邊當掉都不會拖垮其他部分�
 
 需要 Node.js 20+、Python 3.11+ 與 Rust stable 工具鏈。
 
+發版與 CI 使用 Python 3.12，透過 `engine/constraints.txt` 共用固定版本，包含間接相依套件。更新版本清單或 `engine/pyproject.toml` 的建置後端後，請在發版前執行 `scripts/test.ps1 -Tier full`。
+
 ```powershell
 git clone https://github.com/ShiQu1218/Aditor.git
 cd Aditor
 python -m venv engine\.venv
-.\engine\.venv\Scripts\python.exe -m pip install -e "engine[dev]" pyinstaller
+.\engine\.venv\Scripts\python.exe -m pip install -c engine/constraints.txt -e "engine[dev]" pyinstaller
 npm --prefix app install
 powershell -ExecutionPolicy Bypass -File scripts\build.ps1
 ```

@@ -40,7 +40,7 @@ jobs:
         run: |
           npm ci --prefix app
           python -m venv engine/.venv
-          engine/.venv/Scripts/python.exe -m pip install -e engine "pyinstaller==6.22.3"
+          engine/.venv/Scripts/python.exe -m pip install -c engine/constraints.txt -e engine pyinstaller
 
       - name: Build installer
         shell: pwsh

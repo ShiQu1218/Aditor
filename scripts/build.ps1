@@ -18,12 +18,8 @@ Write-Host "========================================"
 if (-not $SkipEngine) {
     Write-Host "`n[1/6] Building Engine with PyInstaller..."
     $python = Join-Path $root "engine\.venv\Scripts\python.exe"
-    & $python -c "import PyInstaller"
-    if ($LASTEXITCODE -ne 0) {
-        Write-Host "PyInstaller not found in venv, installing..."
-        & $python -m pip install "pyinstaller==6.22.3"
-        if ($LASTEXITCODE -ne 0) { throw "PyInstaller installation failed" }
-    }
+    & $python -m pip install -c (Join-Path $root "engine\constraints.txt") -e (Join-Path $root "engine") pyinstaller
+    if ($LASTEXITCODE -ne 0) { throw "Pinned engine dependency installation failed" }
 
     $distPath = Join-Path $root "build\engine"
     $workPath = Join-Path $root "build\pyinstaller-temp"
