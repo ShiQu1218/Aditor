@@ -1,13 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ChildDiagnostic } from '../shared/child-diagnostics'
 
-const fake = vi.hoisted(() => ({ init: vi.fn(), handle: vi.fn(), send: vi.fn(async () => ({})), captureEvent: vi.fn((_event: any) => 'test-event') }))
-vi.mock('electron', () => ({ app: { isPackaged: false, getVersion: () => '0.3.0' }, ipcMain: { handle: fake.handle } }))
+const fake = vi.hoisted(() => ({ switches: new Set<string>(), init: vi.fn(), handle: vi.fn(), send: vi.fn(async () => ({})), captureEvent: vi.fn((_event: any) => 'test-event') }))
+vi.mock('electron', () => ({ app: { isPackaged: false, getVersion: () => '0.3.0', commandLine: { hasSwitch: (name: string) => fake.switches.has(name) } }, ipcMain: { handle: fake.handle } }))
 vi.mock('@sentry/electron/main', () => ({
   init: fake.init, IPCMode: { Protocol: 2 },
   captureEvent: fake.captureEvent,
   onUncaughtExceptionIntegration: () => ({}), onUnhandledRejectionIntegration: () => ({}),
   normalizePathsIntegration: () => ({}), startupTracingIntegration: () => ({}),
+  nodeContextIntegration: () => ({}), gpuContextIntegration: () => ({}),
   makeElectronTransport: () => ({ send: fake.send, flush: async () => true })
 }))
 
@@ -26,6 +27,58 @@ function diagnostic(overrides: Partial<ChildDiagnostic> = {}): ChildDiagnostic {
 
 beforeEach(() => { vi.resetModules(); vi.clearAllMocks() })
 afterEach(() => { vi.useRealTimers() })
+
+describe('manual user report', () => {
+  it('sends trimmed, length-capped text as a tagged event only while telemetry is active', async () => {
+    const { initializeTelemetry, updateTelemetryConsent, reportUserFeedback } = await import('./telemetry')
+    initializeTelemetry(true)
+    expect(reportUserFeedback('  export freezes  ')).toBe(true)
+    expect(fake.captureEvent.mock.calls[0][0]).toMatchObject({ message: 'export freezes', level: 'info', tags: { component: 'user-report' } })
+    expect(reportUserFeedback('x'.repeat(2000))).toBe(true)
+    expect(fake.captureEvent.mock.calls[1][0].message).toHaveLength(500)
+    expect(reportUserFeedback('   ')).toBe(false)
+    expect(reportUserFeedback(42)).toBe(false)
+    updateTelemetryConsent(false)
+    expect(reportUserFeedback('after opt-out')).toBe(false)
+    expect(fake.captureEvent).toHaveBeenCalledTimes(2)
+  })
+
+  it('refuses reports when telemetry was never started', async () => {
+    const { initializeTelemetry, reportUserFeedback } = await import('./telemetry')
+    initializeTelemetry(false)
+    expect(reportUserFeedback('hello')).toBe(false)
+    expect(fake.captureEvent).not.toHaveBeenCalled()
+  })
+})
+
+describe('preview A/V desync report', () => {
+  it('builds a grouped, tagged event from sanitized measurements and stops after the session cap', async () => {
+    const { initializeTelemetry, reportPlaybackDesync } = await import('./telemetry')
+    initializeTelemetry(true)
+    fake.switches.add('disable-accelerated-video-decode')
+    expect(reportPlaybackDesync({ driftMs: 480.4, droppedFrames: 12, totalFrames: 900 })).toBe(true)
+    expect(fake.captureEvent.mock.calls[0][0]).toMatchObject({
+      level: 'warning', fingerprint: ['preview-av-desync'], tags: { component: 'preview-playback', decode: 'software' }
+    })
+    expect(fake.captureEvent.mock.calls[0][0].message).toContain('drift 480ms, dropped 12/900 frames')
+    fake.switches.clear()
+    expect(reportPlaybackDesync({ driftMs: 500, droppedFrames: 0, totalFrames: 0 })).toBe(true)
+    expect(fake.captureEvent.mock.calls[1][0].tags.decode).toBe('auto')
+    expect(reportPlaybackDesync({ driftMs: 500 })).toBe(true)
+    expect(reportPlaybackDesync({ driftMs: 500 })).toBe(false)
+  })
+
+  it('rejects malformed or zero-drift input and reports nothing while telemetry is off', async () => {
+    const { initializeTelemetry, reportPlaybackDesync } = await import('./telemetry')
+    initializeTelemetry(true)
+    for (const bad of [null, 'x', {}, { driftMs: Number.NaN }, { driftMs: 0 }]) expect(reportPlaybackDesync(bad)).toBe(false)
+    expect(fake.captureEvent).not.toHaveBeenCalled()
+    vi.resetModules()
+    const off = await import('./telemetry')
+    off.initializeTelemetry(false)
+    expect(off.reportPlaybackDesync({ driftMs: 500 })).toBe(false)
+  })
+})
 
 describe('telemetry consent', () => {
   it('does not initialize or enable reporting without persisted consent, even after toggling on', async () => {

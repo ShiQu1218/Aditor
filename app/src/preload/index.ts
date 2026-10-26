@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import { RECORDING_CHANNELS, type LiveState, type LiveUpdate, type RecordingStatus, type RecorderCapabilities } from '../shared/recording'
 import { UPDATE_CHANNELS, type UpdateStatus } from '../shared/update'
+import type { PlaybackDesyncReport } from '../shared/telemetry'
 
 type FlushResult = void | boolean | PromiseLike<unknown>
 const flushCallbacks = new Set<() => FlushResult>()
@@ -22,7 +23,11 @@ const flushRequestHandler = (): void => {
 }
 
 const api = {
-  telemetry: { enabled: (): Promise<boolean> => ipcRenderer.invoke('telemetry:enabled') },
+  telemetry: {
+    enabled: (): Promise<boolean> => ipcRenderer.invoke('telemetry:enabled'),
+    report: (message: string): Promise<boolean> => ipcRenderer.invoke('telemetry:report', message),
+    reportPlaybackDesync: (report: PlaybackDesyncReport): Promise<boolean> => ipcRenderer.invoke('telemetry:playbackDesync', report)
+  },
   recording: {
     testObs: () => ipcRenderer.invoke(RECORDING_CHANNELS.testObs),
     getStatus: (): Promise<RecordingStatus> => ipcRenderer.invoke(RECORDING_CHANNELS.getStatus),

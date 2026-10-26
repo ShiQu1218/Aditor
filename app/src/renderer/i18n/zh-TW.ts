@@ -815,8 +815,19 @@ const settingsI18n = {
     },
     telemetryEnabled: {
       title: '分享錯誤與效能診斷',
-      desc: '預設將過濾後的應用程式、分析與錄影錯誤及效能資料傳送至 Sentry，可隨時關閉。不含影片、截圖與完整操作紀錄。重新啟用後請重新啟動。',
+      desc: '預設將過濾後的應用程式、分析與錄影錯誤及效能資料傳送至 Sentry，並附帶基本裝置資訊（作業系統版本、CPU、記憶體、GPU），可隨時關閉。不含影片、截圖與完整操作紀錄。重新啟用後請重新啟動。',
       keywords: ['sentry', 'diagnostics', 'privacy']
+    },
+    report: {
+      title: '回報問題',
+      desc: '描述遇到的問題，連同基本裝置資訊（作業系統、CPU、記憶體、GPU）傳送給開發者。請勿填寫個人資料。需開啟「分享錯誤與效能診斷」才能使用。',
+      keywords: ['report', 'feedback', 'bug', '回報', '問題', '意見'],
+      placeholder: '發生了什麼事？（最多 500 字）',
+      send: '送出回報',
+      sending: '傳送中…',
+      sent: '已送出回報，謝謝！',
+      failed: '無法送出回報，請稍後再試。',
+      disabled: '請先開啟「分享錯誤與效能診斷」才能送出回報。'
     },
     trademark: {
       title: '商標聲明',

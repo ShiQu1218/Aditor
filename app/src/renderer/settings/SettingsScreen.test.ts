@@ -110,7 +110,7 @@ describe('SettingsScreen markup (renderToString + fake window.api data)', () => 
 
   test('category about includes a diagnostics switch enabled by default', async () => {
     const html = await render({ initialCategory: 'about' })
-    expect(rowIds(html)).toEqual(['about', 'updateStatus', 'autoUpdate', 'telemetryEnabled', 'trademark'])
+    expect(rowIds(html)).toEqual(['about', 'updateStatus', 'autoUpdate', 'telemetryEnabled', 'report', 'trademark'])
     expect(html).toContain('Apex Legends 為 Electronic Arts／Respawn 之商標')
     expect(html).toMatch(/id="set-autoUpdate"[^>]*checked/)
     expect(html).toMatch(/id="set-telemetryEnabled"[^>]*checked/)

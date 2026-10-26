@@ -53,6 +53,37 @@ describe('telemetry privacy boundary', () => {
     expect(untrusted.contexts?.trace).not.toHaveProperty('origin')
   })
 
+  it('keeps only coarse hardware fields from os, device and gpu contexts', () => {
+    const clean = sanitizeTelemetryEvent({ contexts: {
+      os: { name: 'Windows', version: '10.0.26300', kernel_version: '10.0.26300', build: 'C:\\Users\\Alice\\x' },
+      device: { arch: 'x64', memory_size: 17179869184, processor_count: 16, cpu_description: 'AMD Ryzen 7', processor_frequency: 3800,
+        name: 'ALICE-PC', boot_time: '2026-01-01T00:00:00Z' },
+      gpu: { name: 'NVIDIA RTX 4070', vendor_name: 'NVIDIA', driver_version: '555.1', id: 1, extra: 'Alice' },
+      culture: { locale: 'zh-TW', timezone: 'Asia/Taipei' }
+    } })
+    expect(clean.contexts?.os).toEqual({ name: 'Windows', version: '10.0.26300', kernel_version: '10.0.26300' })
+    expect(clean.contexts?.device).toEqual({ arch: 'x64', memory_size: 17179869184, processor_count: 16, cpu_description: 'AMD Ryzen 7', processor_frequency: 3800 })
+    expect(clean.contexts?.gpu).toEqual({ name: 'NVIDIA RTX 4070', vendor_name: 'NVIDIA', driver_version: '555.1', id: 1 })
+    expect(clean.contexts).not.toHaveProperty('culture')
+    expect(JSON.stringify(clean)).not.toMatch(/Alice|ALICE/)
+  })
+
+  it('keeps the user-report tag and redacts paths and emails in the report text', () => {
+    const clean = sanitizeTelemetryEvent({ message: 'mail me@example.com about C:\\Users\\Alice\\a.mp4', tags: { component: 'user-report', extra: 'Alice' } })
+    expect(clean.tags).toEqual({ component: 'user-report' })
+    expect(clean.message).toBe('mail [email] about [local path]')
+  })
+
+  it('keeps only well-formed electron/decode tags and the reporter fingerprint', () => {
+    const clean = sanitizeTelemetryEvent({ fingerprint: ['preview-av-desync'],
+      tags: { component: 'preview-playback', electron: '45.0.1', decode: 'software', user: 'Alice' } })
+    expect(clean.tags).toEqual({ component: 'preview-playback', electron: '45.0.1', decode: 'software' })
+    expect(clean.fingerprint).toEqual(['preview-av-desync'])
+    expect(sanitizeTelemetryEvent({ tags: { component: 'preview-playback', electron: 'C:\\Users\\Alice', decode: 'x' } }).tags)
+      .toEqual({ component: 'preview-playback' })
+    expect(sanitizeTelemetryEvent({ tags: { electron: '45.0.1' } }).tags).toBeUndefined()
+  })
+
   it('preserves matching Debug IDs with the same safe build-relative path as stack frames', () => {
     const filename = 'C:/Users/Alice/Aditor/out/main/index.js'
     const clean = sanitizeTelemetryEvent({

@@ -64,6 +64,7 @@ const ROW_TARGETS: Record<string, { fields?: string[]; consumers?: Array<[string
   autoUpdate: { fields: ['autoUpdate'] },
   telemetryEnabled: { fields: ['telemetryEnabled'] },
   updateStatus: { consumers: [['main/update-ipc.ts', /UPDATE_CHANNELS\.check/], ['renderer/settings/settingsController.ts', /update\.check/]] },
+  report: { consumers: [['main/telemetry.ts', /telemetry:report/], ['renderer/settings/ReportControl.tsx', /telemetry\?\.report/]] },
   trademark: { consumers: [['renderer/i18n/zh-TW.ts', /trademark/]] },
   ...Object.fromEntries(Object.keys(recordingI18n.rows).map((field) => [
     `recording-${field}`, { fields: ['recording'] }

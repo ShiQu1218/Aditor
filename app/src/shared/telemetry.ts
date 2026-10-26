@@ -3,6 +3,16 @@ import type { Event, StackFrame } from '@sentry/electron/main'
 // Public ingest key, not an auth token. Upload credentials belong only in the build environment.
 export const SENTRY_DSN = 'https://5c57897479340b1a622630935c43a4fb@o4512296943747072.ingest.us.sentry.io/4512296977760256'
 
+/** Matches the 500-character cap redactTelemetryText applies, so nothing is silently cut after the user submits. */
+export const MAX_USER_REPORT_LENGTH = 500
+
+/** Measurements only; main adds the Electron/Chrome versions and decode mode, and builds the event. */
+export interface PlaybackDesyncReport {
+  driftMs: number
+  droppedFrames: number
+  totalFrames: number
+}
+
 export function redactTelemetryText(value: string): string {
   return value
     .replace(/(?:file:\/\/\/|[A-Za-z]:[\\/]|\\\\)[^\r\n"'<>]+/g, '[local path]')
@@ -37,6 +47,42 @@ function safeFrame(frame: StackFrame): StackFrame {
 // Keep only fixed SDK values: never forward app-provided or arbitrary origin strings.
 const SAFE_TRACE_ORIGINS = new Set(['auto.pageload.browser', 'auto.navigation.browser', 'auto.electron.startup'])
 
+// Coarse hardware facts only: no hostnames, boot times, locale or free-form build strings.
+const HARDWARE_CONTEXT_FIELDS: Record<string, readonly string[]> = {
+  os: ['name', 'version', 'kernel_version'],
+  device: ['arch', 'memory_size', 'processor_count', 'cpu_description', 'processor_frequency'],
+  gpu: ['name', 'vendor_name', 'driver_version', 'id', 'vendor_id']
+}
+
+function safeHardwareContexts(contexts: Event['contexts']): Record<string, Record<string, string | number>> {
+  const out: Record<string, Record<string, string | number>> = {}
+  for (const [key, fields] of Object.entries(HARDWARE_CONTEXT_FIELDS)) {
+    const source = contexts?.[key] as Record<string, unknown> | undefined
+    const picked: Record<string, string | number> = {}
+    for (const field of fields) {
+      const value = source?.[field]
+      if (typeof value === 'number') picked[field] = value
+      else if (typeof value === 'string') picked[field] = redactTelemetryText(value)
+    }
+    if (Object.keys(picked).length) out[key] = picked
+  }
+  return out
+}
+
+const SAFE_COMPONENTS = new Set(['python-engine', 'python-live', 'rust-recorder', 'user-report', 'preview-playback'])
+// Extra tags are kept only when their value has a fixed, non-identifying shape.
+const SAFE_TAG_VALUES: Record<string, RegExp> = { electron: /^\d+(?:\.\d+){2}$/, decode: /^(?:auto|software)$/ }
+
+function safeTags(tags: Event['tags']): Record<string, string> | undefined {
+  if (typeof tags?.component !== 'string' || !SAFE_COMPONENTS.has(tags.component)) return undefined
+  const out: Record<string, string> = { component: tags.component }
+  for (const [key, pattern] of Object.entries(SAFE_TAG_VALUES)) {
+    const value = tags[key]
+    if (typeof value === 'string' && pattern.test(value)) out[key] = value
+  }
+  return out
+}
+
 /** Allowlist payload fields rather than trying to blacklist arbitrary app/SDK context. */
 export function sanitizeTelemetryEvent<T extends Event>(event: T): T {
   const traceOrigin = event.contexts?.trace?.origin
@@ -48,8 +94,9 @@ export function sanitizeTelemetryEvent<T extends Event>(event: T): T {
     sdk: { ...event.sdk, settings: { infer_ip: 'never' } },
     // Explicit sentinel prevents server-side enrichment from the network IP.
     user: { ip_address: '0.0.0.0' },
-    tags: typeof event.tags?.component === 'string' && ['python-engine', 'python-live', 'rust-recorder'].includes(event.tags.component)
-      ? { component: event.tags.component } : undefined,
+    tags: safeTags(event.tags),
+    // Only our own reporters set a fingerprint; it groups repeated reports of one fault into one issue.
+    fingerprint: event.fingerprint?.filter((part) => typeof part === 'string').slice(0, 5),
     debug_meta: event.debug_meta ? { images: event.debug_meta.images?.flatMap((image) =>
       image.type === 'sourcemap' && safeFilename(image.code_file) !== '[external]'
         ? [{ type: 'sourcemap' as const, code_file: safeFilename(image.code_file), debug_id: image.debug_id }] : []) } : undefined,
@@ -59,11 +106,14 @@ export function sanitizeTelemetryEvent<T extends Event>(event: T): T {
       mechanism: value.mechanism ? { type: value.mechanism.type, handled: value.mechanism.handled } : undefined,
       stacktrace: value.stacktrace ? { frames: value.stacktrace.frames?.map(safeFrame) } : undefined
     })) } : undefined,
-    contexts: event.contexts?.trace ? { trace: {
-      trace_id: event.contexts.trace.trace_id, span_id: event.contexts.trace.span_id,
-      parent_span_id: event.contexts.trace.parent_span_id,
-      ...(safeOrigin ? { origin: safeOrigin } : {}), op: 'desktop'
-    } } : undefined,
+    contexts: event.contexts ? {
+      ...safeHardwareContexts(event.contexts),
+      ...(event.contexts.trace ? { trace: {
+        trace_id: event.contexts.trace.trace_id, span_id: event.contexts.trace.span_id,
+        parent_span_id: event.contexts.trace.parent_span_id,
+        ...(safeOrigin ? { origin: safeOrigin } : {}), op: 'desktop'
+      } } : {})
+    } : undefined,
     ...(event.type === 'transaction' ? {
       transaction: 'Aditor desktop', start_timestamp: event.start_timestamp,
       spans: event.spans?.map((span) => ({

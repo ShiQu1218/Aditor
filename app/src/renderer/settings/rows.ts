@@ -42,6 +42,7 @@ export type ControlSpec =
   | { kind: 'openh264' }
   | { kind: 'about' }
   | { kind: 'update' }
+  | { kind: 'report' }
   | { kind: 'none' }
 
 export interface SettingRow {
@@ -309,6 +310,16 @@ export const SETTING_ROWS: SettingRow[] = [
     desc: t.row.telemetryEnabled.desc,
     keywords: [...t.row.telemetryEnabled.keywords],
     control: { kind: 'switch', field: 'telemetryEnabled' }
+  },
+  {
+    id: 'report',
+    category: 'about',
+    card: t.card.about,
+    title: t.row.report.title,
+    desc: t.row.report.desc,
+    keywords: [...t.row.report.keywords],
+    isNew: true,
+    control: { kind: 'report' }
   },
   {
     id: 'trademark',

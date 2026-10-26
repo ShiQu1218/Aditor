@@ -205,8 +205,19 @@ export const settingsI18n: Messages['settingsI18n'] = {
     },
     telemetryEnabled: {
       title: '分享错误与性能诊断',
-      desc: '默认将过滤后的应用、分析与录制错误及性能数据发送至 Sentry，可随时关闭。不含视频、截图与完整操作记录。重新启用后请重启。',
+      desc: '默认将过滤后的应用、分析与录制错误及性能数据发送至 Sentry，并附带基本设备信息（操作系统版本、CPU、内存、GPU），可随时关闭。不含视频、截图与完整操作记录。重新启用后请重启。',
       keywords: ['sentry', 'diagnostics', 'privacy']
+    },
+    report: {
+      title: '反馈问题',
+      desc: '描述遇到的问题，连同基本设备信息（操作系统、CPU、内存、GPU）发送给开发者。请勿填写个人信息。需开启“分享错误与性能诊断”才能使用。',
+      keywords: ['report', 'feedback', 'bug', '反馈', '问题', '意见'],
+      placeholder: '发生了什么？（最多 500 字）',
+      send: '发送反馈',
+      sending: '发送中…',
+      sent: '已发送，谢谢！',
+      failed: '无法发送，请稍后再试。',
+      disabled: '请先开启“分享错误与性能诊断”才能发送反馈。'
     },
     trademark: {
       title: '商标声明',
