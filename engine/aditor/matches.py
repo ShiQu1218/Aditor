@@ -209,7 +209,7 @@ def _video_frames(path: str, fps: float, hwaccel: bool, codec: str) -> Iterator[
         cmd = [ffbin.ffmpeg(), "-v", "error", "-nostdin"]
         cmd += build_input_args(codec, hw, k / fps)
         cmd += ["-i", path, "-map", "0:v:0", "-an", "-sn", "-dn", "-vf",
-                f"{pre},scale={w}:{h}", "-pix_fmt", "gray", "-f", "rawvideo", "pipe:1"]
+                f"{pre},scale={w}:{h}", "-pix_fmt", "gray", "-threads", "1", "-f", "rawvideo", "pipe:1"]
         with tempfile.TemporaryFile() as err:
             proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=err, bufsize=0)
             try:

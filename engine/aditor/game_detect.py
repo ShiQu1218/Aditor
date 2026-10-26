@@ -34,7 +34,7 @@ def _grab(path: str, t: float, hwaccel: bool) -> np.ndarray | None:
     for hw in ((True, False) if hwaccel else (False,)):
         cmd = [ffbin.ffmpeg(), "-v", "error", "-nostdin"] + build_input_args(None, hw, t)
         cmd += ["-i", path, "-map", "0:v:0", "-an", "-sn", "-dn", "-frames:v", "1", "-vf", "scale=1920:1080",
-                "-pix_fmt", "bgr24", "-f", "rawvideo", "pipe:1"]
+                "-pix_fmt", "bgr24", "-threads", "1", "-f", "rawvideo", "pipe:1"]
         try:
             out = subprocess.run(cmd, capture_output=True, timeout=SAMPLE_TIMEOUT).stdout
         except subprocess.TimeoutExpired:

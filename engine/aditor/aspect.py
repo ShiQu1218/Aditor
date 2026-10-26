@@ -93,7 +93,7 @@ def _grab(path: str, t: float, hwaccel: bool, cancel: threading.Event | None = N
             raise Cancelled()
         cmd = [ffbin.ffmpeg(), "-v", "error", "-nostdin"] + build_input_args(None, hw, t)
         cmd += ["-i", path, "-map", "0:v:0", "-an", "-sn", "-dn", "-frames:v", "1", "-vf", f"scale={w}:{h}",
-                "-pix_fmt", "gray", "-f", "rawvideo", "pipe:1"]
+                "-pix_fmt", "gray", "-threads", "1", "-f", "rawvideo", "pipe:1"]
         with subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE) as proc:
             deadline = time.monotonic() + SAMPLE_TIMEOUT
             try:

@@ -61,8 +61,9 @@ def build_filter(profile: Profile, gpu: bool = False, hw_format: str = "nv12") -
 
 
 def build_input_args(codec: str | None, hwaccel: bool, start: float) -> list[str]:
-    """Input options before -i (decoder options and -ss must both precede -i)."""
-    args: list[str] = []
+    """Analysis thread budgets and input options; decoder options and -ss must precede -i."""
+    # Multiple analysis segments run beside the game; do not create a per-core pool in every FFmpeg process.
+    args = ["-threads", "2", "-filter_threads", "1", "-filter_complex_threads", "1"]
     if is_gpu_path(codec, hwaccel):
         args += AV1_HWACCEL_ARGS if codec == "av1" else GPU_HWACCEL_ARGS
     elif hwaccel:
@@ -129,7 +130,7 @@ class FrameStream:
         cmd += ["-i", self.path, "-filter_complex", build_filter(self.profile, is_gpu_path(self.codec, hwaccel), self._hw_format)]
         if self.end is not None:
             cmd += ["-t", f"{max(self.end - start, 0.0):.3f}"]
-        cmd += ["-pix_fmt", "bgr24", "-f", "rawvideo", "pipe:1"]
+        cmd += ["-pix_fmt", "bgr24", "-threads", "1", "-f", "rawvideo", "pipe:1"]
         with self._lock:
             self._stderr.clear()
         proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=0)

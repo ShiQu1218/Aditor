@@ -105,7 +105,7 @@ def plan_segments(duration: float, jobs: int, *, min_len: float = AUTO_MIN_SEGME
 
 
 def auto_jobs(gpu_path: bool) -> int:
-    """Automatic jobs: min(4, max(1, cpu // 4)) for the hardware path; 1 for the software path (dav1d is already multithreaded)."""
+    """Automatic jobs: min(4, max(1, cpu // 4)) for hardware; 1 for CPU-intensive software decoding."""
     if not gpu_path:
         return 1
     return min(4, max(1, (os.cpu_count() or 4) // 4))
