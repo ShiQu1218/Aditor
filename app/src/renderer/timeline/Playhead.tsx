@@ -15,6 +15,11 @@ export function playheadTarget(a: { playing?: boolean; time: number; getTime?: (
   return a.time
 }
 
+/** Delay between playback position checks: half a pixel of media time (so 2x speed stays within a pixel), clamped to 16-250 ms. */
+export function playbackPollMs(view: View): number {
+  return Math.min(250, Math.max(16, (view.span / Math.max(1, view.width)) * 500))
+}
+
 interface PlayheadProps {
   time: number
   view: View
@@ -31,12 +36,17 @@ export function Playhead({ time, view, getTime, playing }: PlayheadProps): JSX.E
   const ref = useRef<HTMLDivElement>(null)
   const viewRef = useRef(view)
   viewRef.current = view
+  const placed = useRef<{ x: number; visible: boolean } | null>(null)
 
   const place = (t: number): void => {
     const el = ref.current
     if (!el) return
     const { x, visible } = playheadX(t, viewRef.current)
-    el.style.transform = `translateX(${x}px)`
+    const px = Math.round(x)
+    // Every style write forces a main-frame commit; skipping unchanged pixels keeps playback from recompositing the window each vsync.
+    if (placed.current?.x === px && placed.current.visible === visible) return
+    placed.current = { x: px, visible }
+    el.style.transform = `translateX(${px}px)`
     el.style.opacity = visible ? '1' : '0'
   }
 
@@ -49,16 +59,17 @@ export function Playhead({ time, view, getTime, playing }: PlayheadProps): JSX.E
     place(playheadTarget({ playing, time, getTime: getTimeRef.current }))
   }, [time, view.start, view.span, view.width, playing])
 
-  // Start/stop the playback rAF loop only from playing (getTime reads from a ref, so an inline parent function does not restart it).
+  // Start/stop the playback loop only from playing (getTime reads from a ref, so an inline parent function does not restart it).
+  // A pixel-paced timer instead of rAF: even an idle rAF loop commits a main frame every vsync, which starves video presentation on some PCs.
   useEffect(() => {
     if (!playing || !hasGetTime) return
     let id = 0
     const tick = (): void => {
       place(getTimeRef.current!())
-      id = requestAnimationFrame(tick)
+      id = window.setTimeout(tick, playbackPollMs(viewRef.current))
     }
-    id = requestAnimationFrame(tick)
-    return () => cancelAnimationFrame(id)
+    id = window.setTimeout(tick, playbackPollMs(viewRef.current))
+    return () => window.clearTimeout(id)
   }, [playing, hasGetTime])
 
   return <div ref={ref} className="tl-playhead" aria-hidden="true" />

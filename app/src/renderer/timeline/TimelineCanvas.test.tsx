@@ -56,6 +56,7 @@ afterEach(() => {
   cleanupMounted()
   studio?.restore()
   studio = null
+  vi.useRealTimers()
   vi.unstubAllGlobals()
 })
 function nextFrame(): void {
@@ -66,6 +67,11 @@ function nextFrame(): void {
       callback(frameTime)
     }
   })
+}
+
+/** One playback poll (16 ms is the floor of playbackPollMs; detail mode here is 15 ms per half pixel). */
+function pollTick(): void {
+  act(() => { vi.advanceTimersByTime(16) })
 }
 
 function mouse(type: string, x: number, init: MouseEventInit = {}): void {
@@ -311,17 +317,43 @@ describe('source timeline zoom controls', () => {
     expect(start()).toBe(570)
   })
 
-  test('detail follows live playback between timeupdate events and cancels its frame loop on unmount', () => {
+  test('detail follows live playback between timeupdate events without a frame loop and stops on unmount', () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
     let time = 100
     const m = mount(<TimelineCanvas {...props} playing getPlayTime={() => time} />)
     click(modeButton('detail'))
     expect(start()).toBe(85)
     time = 160
     nextFrame()
+    pollTick()
     expect(start()).toBe(145)
+    nextFrame()
+    pollTick()
     expect(q('.tl-playhead').style.transform).toBe('translateX(500px)')
-    m.unmount()
+    nextFrame()
+    // An idle rAF loop would commit a main frame every vsync during playback.
     expect(frames.size).toBe(0)
+    m.unmount()
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  test('playback skips sub-pixel playhead and detail-view updates', () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    let time = 100
+    mount(<TimelineCanvas {...props} playing getPlayTime={() => time} />)
+    click(modeButton('detail'))
+    pollTick()
+    const head = q('.tl-playhead')
+    const transform = head.style.transform
+    const writes = vi.spyOn(head.style, 'transform', 'set')
+    time = 100.01 // 1000 px for a 30 s window: 0.01 s is a third of a pixel.
+    pollTick()
+    expect(start()).toBe(85)
+    expect(writes).not.toHaveBeenCalled()
+    time = 100.06
+    pollTick()
+    expect(start()).toBeCloseTo(85.06)
+    expect(head.style.transform).toBe(transform)
   })
 
   test('the slider enters custom mode and retains its multiplier across mode changes and rerenders', () => {
