@@ -1,6 +1,6 @@
 import { app, ipcMain } from 'electron'
 import * as Sentry from '@sentry/electron/main'
-import { SENTRY_DSN, sanitizeTelemetryEvent } from '../shared/telemetry'
+import { MAX_USER_REPORT_LENGTH, SENTRY_DSN, sanitizeTelemetryEvent } from '../shared/telemetry'
 import { redactTelemetryText } from '../shared/telemetry'
 import type { ChildDiagnostic } from '../shared/child-diagnostics'
 
@@ -79,6 +79,8 @@ function withinReportBudget(now: number): boolean {
 export function initializeTelemetry(consent: boolean): void {
   allowed = consent
   ipcMain.handle('telemetry:enabled', () => started && allowed)
+  ipcMain.handle('telemetry:report', (_event, message: unknown) => reportUserFeedback(message))
+  ipcMain.handle('telemetry:playbackDesync', (_event, report: unknown) => reportPlaybackDesync(report))
   if (!consent) return
   try {
     Sentry.init({
@@ -88,7 +90,10 @@ export function initializeTelemetry(consent: boolean): void {
       ipcMode: Sentry.IPCMode.Protocol,
       defaultIntegrations: false,
       integrations: [Sentry.onUncaughtExceptionIntegration(), Sentry.onUnhandledRejectionIntegration(),
-        Sentry.normalizePathsIntegration(), Sentry.startupTracingIntegration()],
+        Sentry.normalizePathsIntegration(), Sentry.startupTracingIntegration(),
+        // OS/CPU/memory and GPU; sanitizeTelemetryEvent allowlists the coarse fields that may leave the machine.
+        Sentry.nodeContextIntegration({ app: false, culture: false, cloudResource: false }),
+        Sentry.gpuContextIntegration({ infoLevel: 'complete' })],
       dataCollection: { userInfo: false, cookies: false, httpHeaders: false, httpBodies: [], urlQueryParams: false },
       sendDefaultPii: false,
       tracesSampleRate: app.isPackaged ? 0.1 : 1,
@@ -117,6 +122,42 @@ export function initializeTelemetry(consent: boolean): void {
 
 /** Disabling takes effect immediately; enabling requires a restart to install startup hooks safely. */
 export function updateTelemetryConsent(consent: boolean): void { allowed = consent && started }
+
+/** Explicit user action: send free text through the same sanitizer and device context as automatic errors. */
+export function reportUserFeedback(message: unknown): boolean {
+  if (!allowed || !started || typeof message !== 'string') return false
+  const text = message.trim().slice(0, MAX_USER_REPORT_LENGTH)
+  if (!text) return false
+  try {
+    return Boolean(Sentry.captureEvent({ message: text, level: 'info', tags: { component: 'user-report' } }))
+  } catch { return false }
+}
+
+/** A few per session is enough to see the pattern; a stuck player must not flood Sentry. */
+const MAX_DESYNC_REPORTS_PER_SESSION = 3
+let desyncReports = 0
+
+/** Preview audio/video drift measured by the renderer; versions come from main so they cannot be spoofed or mistyped. */
+export function reportPlaybackDesync(raw: unknown): boolean {
+  if (!allowed || !started || desyncReports >= MAX_DESYNC_REPORTS_PER_SESSION || !raw || typeof raw !== 'object') return false
+  const r = raw as Record<string, unknown>
+  const count = (value: unknown): number => typeof value === 'number' && Number.isFinite(value) ? Math.max(0, Math.min(Math.round(value), 1e9)) : 0
+  const driftMs = count(r.driftMs)
+  if (driftMs === 0) return false
+  // Software decoding is applied at startup through this Chromium switch (see main/index.ts).
+  const decode = app.commandLine.hasSwitch('disable-accelerated-video-decode') ? 'software' : 'auto'
+  try {
+    const eventId = Sentry.captureEvent({
+      level: 'warning',
+      message: `Preview audio/video desync: drift ${driftMs}ms, dropped ${count(r.droppedFrames)}/${count(r.totalFrames)} frames, chrome ${process.versions.chrome ?? 'unknown'}`,
+      fingerprint: ['preview-av-desync'],
+      tags: { component: 'preview-playback', electron: process.versions.electron ?? '', decode }
+    })
+    if (!eventId) return false
+    desyncReports += 1
+    return true
+  } catch { return false }
+}
 
 /** Child processes have no Sentry credentials or network client; this is their only upload path. */
 export function reportChildDiagnostic(diagnostic: ChildDiagnostic): string | undefined {

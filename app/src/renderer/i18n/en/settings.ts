@@ -204,8 +204,19 @@ export const settingsI18n: Messages['settingsI18n'] = {
     },
     telemetryEnabled: {
       title: 'Share error and performance diagnostics',
-      desc: 'Enabled by default: send filtered app, analysis and recording errors and performance data to Sentry. You can turn this off immediately. No videos, screenshots or full interaction history. Restart after re-enabling.',
+      desc: 'Enabled by default: send filtered app, analysis and recording errors and performance data to Sentry, along with basic device info (OS version, CPU, memory, GPU). You can turn this off immediately. No videos, screenshots or full interaction history. Restart after re-enabling.',
       keywords: ['sentry', 'diagnostics', 'privacy']
+    },
+    report: {
+      title: 'Report a problem',
+      desc: 'Describe what went wrong and send it to the developers together with basic device info (OS, CPU, memory, GPU). Do not include personal information. Requires diagnostics sharing to be on.',
+      keywords: ['report', 'feedback', 'bug', 'problem', 'sentry'],
+      placeholder: 'What happened? (up to 500 characters)',
+      send: 'Send report',
+      sending: 'Sending…',
+      sent: 'Report sent. Thank you!',
+      failed: 'Could not send the report. Please try again later.',
+      disabled: 'Turn on "Share error and performance diagnostics" to send reports.'
     },
     trademark: {
       title: 'Trademark notice',

@@ -9,6 +9,7 @@ import type { SettingRow } from './rows'
 import { RecordingControl } from './RecordingControl'
 import { StoragePreview } from './StoragePreview'
 import { UpdateControl } from './UpdateControl'
+import { ReportControl } from './ReportControl'
 
 const t = settingsI18n.row
 
@@ -500,6 +501,8 @@ export function SettingControl(props: ControlProps): JSX.Element | null {
       )
     case 'update':
       return <UpdateControl ids={ids} status={state.update} controller={controller} />
+    case 'report':
+      return <ReportControl ids={ids} />
     case 'none':
       return null
   }

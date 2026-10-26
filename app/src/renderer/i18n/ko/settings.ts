@@ -205,8 +205,19 @@ export const settingsI18n: Messages['settingsI18n'] = {
     },
     telemetryEnabled: {
       title: '오류 및 성능 진단 공유',
-      desc: '기본적으로 필터링된 앱, 분석, 녹화 오류 및 성능 데이터를 Sentry로 전송합니다. 언제든지 끌 수 있습니다. 동영상, 스크린샷, 전체 작업 기록은 포함하지 않습니다. 다시 켠 후에는 재시작하세요.',
+      desc: '기본적으로 필터링된 앱, 분석, 녹화 오류 및 성능 데이터를 기본 기기 정보(OS 버전, CPU, 메모리, GPU)와 함께 Sentry로 전송합니다. 언제든지 끌 수 있습니다. 동영상, 스크린샷, 전체 작업 기록은 포함하지 않습니다. 다시 켠 후에는 재시작하세요.',
       keywords: ['sentry', 'diagnostics', 'privacy']
+    },
+    report: {
+      title: '문제 신고',
+      desc: '발생한 문제를 기본 기기 정보(OS, CPU, 메모리, GPU)와 함께 개발자에게 보냅니다. 개인 정보는 적지 마세요. “오류 및 성능 진단 공유”가 켜져 있어야 합니다.',
+      keywords: ['report', 'feedback', 'bug', '신고', '문제', '피드백'],
+      placeholder: '무슨 일이 있었나요? (최대 500자)',
+      send: '신고 보내기',
+      sending: '보내는 중…',
+      sent: '보냈습니다. 감사합니다!',
+      failed: '보내지 못했습니다. 나중에 다시 시도하세요.',
+      disabled: '신고를 보내려면 “오류 및 성능 진단 공유”를 켜세요.'
     },
     trademark: {
       title: '상표 고지',

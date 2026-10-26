@@ -42,6 +42,7 @@ import { useStudioDocument } from './useStudioDocument'
 import { useStudioSuggestions } from './useStudioSuggestions'
 import { useStudioSourcePlayback } from './useStudioSourcePlayback'
 import { useStudioPlayback } from './useStudioPlayback'
+import { usePreviewSyncMonitor } from './usePreviewSyncMonitor'
 import { useStudioNotices } from './useStudioNotices'
 import { useStudioVideoRemoval } from './useStudioVideoRemoval'
 import { useStudioSourceEdits } from './useStudioSourceEdits'
@@ -230,6 +231,7 @@ export function StudioScreen({ videoPath, onBack, onRegisterLeaveGuard, onVideoR
     onPlaybackRequestConsumed, onOpenVideo, exportCtl, toast, stateRef, cacheSaver, removalPending, switchingSourceRef,
     dispatchMode, setSelProjId, setCurrentTime, setPreviewTime, setIsPlaying, setVideoMissing
   })
+  usePreviewSyncMonitor(videoRef, isPlaying, videoSrc)
 
   /* ---------------- Mode pill and context ---------------- */
 

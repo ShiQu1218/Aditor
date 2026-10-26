@@ -1,4 +1,5 @@
 import type { LiveState, LiveUpdate, RecordingStatus, RecorderCapabilities, ObsTestResult } from '../shared/recording'
+import type { PlaybackDesyncReport } from '../shared/telemetry'
 
 /** Recording APIs are provided only by preload. Other legacy APIs remain for compatibility. */
 export interface RecordingApi {
@@ -18,6 +19,6 @@ export interface RecordingApi {
 
 declare global {
   interface Window {
-    api: { recording: RecordingApi; telemetry?: { enabled(): Promise<boolean> } } & Record<'engine' | 'library' | 'queue' | 'cache' | 'proxy' | 'projects' | 'app' | 'settings' | 'export' | 'update', any>
+    api: { recording: RecordingApi; telemetry?: { enabled(): Promise<boolean>; report(message: string): Promise<boolean>; reportPlaybackDesync(report: PlaybackDesyncReport): Promise<boolean> } } & Record<'engine' | 'library' | 'queue' | 'cache' | 'proxy' | 'projects' | 'app' | 'settings' | 'export' | 'update', any>
   }
 }
