@@ -335,7 +335,18 @@ const quitGuard = createAppQuitGuard({
 if (!app.requestSingleInstanceLock()) {
   app.quit()
 } else {
-  initializeTelemetry(loadSettings(join(appDataDir(), 'settings.json')).telemetryEnabled)
+  const startupSettings = loadSettings(join(appDataDir(), 'settings.json'))
+  // Some GPU/driver combinations stall Chromium's hardware decoder (slow-motion preview); Chromium reads this switch only at startup.
+  if (startupSettings.decode === 'software') app.commandLine.appendSwitch('disable-accelerated-video-decode')
+  // Settings compares this with the current value to offer a restart.
+  ipcMain.handle('app:startupDecode', () => startupSettings.decode)
+  ipcMain.handle('app:relaunch', () => {
+    // Portable builds run from a temporary extraction; relaunch the original executable instead.
+    const portable = process.env.PORTABLE_EXECUTABLE_FILE
+    app.relaunch(portable ? { execPath: portable } : undefined)
+    app.quit() // Goes through the quit guard (project flush, recording finalization).
+  })
+  initializeTelemetry(startupSettings.telemetryEnabled)
   app.on('second-instance', showMainWindow)
   app.whenReady().then(async () => {
     await initEngineAndServices()

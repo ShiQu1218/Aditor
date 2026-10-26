@@ -67,6 +67,14 @@ export function SettingRow({ row, state, settings, controller }: SettingRowProps
           disabled={false}
         />
       </div>
+      {row.id === 'decode' && state.startupDecode !== null && settings.decode !== state.startupDecode && (
+        <p className="set-note" role="status">
+          {settingsI18n.row.decode.restartNotice}
+          <button type="button" className="set-btn sm" onClick={() => void controller.relaunch()}>
+            {settingsI18n.row.decode.restartNow}
+          </button>
+        </p>
+      )}
       {error && (
         <p id={ids.err} className="set-err" role="alert">
           {error}

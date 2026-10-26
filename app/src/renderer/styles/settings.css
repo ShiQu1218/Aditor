@@ -90,6 +90,7 @@
 .set-grey { color: var(--text-disabled); }
 .set-row.is-disabled .set-title { color: var(--text-2); }
 .set-ctl { min-width: 0; }
+.set-note { grid-column: 1 / -1; display: flex; align-items: center; gap: var(--sp-2); margin: 0; color: var(--text-2); font-size: var(--fs-small); }
 .set-err { grid-column: 1 / -1; margin: 0; color: var(--danger); font-size: var(--fs-small); font-weight: var(--fw-bold); }
 .set-newtag { font-size: 10px; font-weight: var(--fw-bold); color: var(--info); border: 1px solid color-mix(in srgb, var(--info) 50%, transparent); border-radius: var(--r-xs); padding: 0 4px; margin-left: 6px; }
 

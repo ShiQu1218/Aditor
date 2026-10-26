@@ -67,10 +67,12 @@ export const settingsI18n: Messages['settingsI18n'] = {
     },
     decode: {
       title: '解码方式',
-      desc: '强制软件解码会在之后开始的分析中生效（已在分析中的视频不受影响）；硬件解码失败时会自动改用软件解码并提示。',
+      desc: '强制软件解码会在之后开始的分析中生效（已在分析中的视频不受影响）；硬件解码失败时会自动改用软件解码并提示。预览播放也会改用软件解码（重启 Aditor 后生效），可改善部分显卡上预览慢动作或音画不同步的问题。',
       keywords: ['解码', '硬解', '软解', '硬件', '软件', '显卡', 'gpu', 'decode'],
       auto: '自动（硬件优先）',
-      software: '强制软件解码'
+      software: '强制软件解码',
+      restartNotice: '预览播放的解码方式会在重启 Aditor 后应用。',
+      restartNow: '立即重启'
     },
     cacheLocation: {
       title: '缓存位置',
