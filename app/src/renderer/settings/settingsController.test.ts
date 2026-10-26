@@ -62,6 +62,16 @@ describe('SettingsController', () => {
     expect(s.saveFailed).toBe(false)
   })
 
+  test('start loads the startup decode setting; a failed relaunch is shown on the decode row', async () => {
+    const rig = makeApi()
+    rig.api.app = { startupDecode: async () => 'software', relaunch: async () => { throw new Error('relaunch failed') } }
+    const c = new SettingsController(rig.api)
+    await c.start()
+    expect(c.getState().startupDecode).toBe('software')
+    await c.relaunch()
+    expect(c.getState().rowErrors.decode).toBe('relaunch failed')
+  })
+
   test('settings:changed events update the state; stop() unsubscribes', async () => {
     const { c, emit, listeners } = await started()
     emit({ ...DEFAULT_SETTINGS, lowPerfMode: true })

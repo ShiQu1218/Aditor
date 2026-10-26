@@ -66,10 +66,12 @@ export const settingsI18n: Messages['settingsI18n'] = {
     },
     decode: {
       title: 'Decoding method',
-      desc: 'Forcing software decoding applies to analyses started afterward. Videos already being analyzed are not affected. If hardware decoding fails, software decoding is used automatically and you are notified.',
+      desc: 'Forcing software decoding applies to analyses started afterward. Videos already being analyzed are not affected. If hardware decoding fails, software decoding is used automatically and you are notified. Preview playback also uses software decoding after you restart Aditor, which can fix slow-motion or out-of-sync preview on some graphics cards.',
       keywords: ['decode', 'decoding', 'hardware', 'software', 'gpu'],
       auto: 'Auto (hardware first)',
-      software: 'Force software decoding'
+      software: 'Force software decoding',
+      restartNotice: 'Preview playback uses the new decoding method after Aditor restarts.',
+      restartNow: 'Restart now'
     },
     cacheLocation: {
       title: 'Cache location',

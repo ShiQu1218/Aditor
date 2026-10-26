@@ -77,6 +77,15 @@ describe('SettingsScreen markup (renderToString + fake window.api data)', () => 
     expect(html).toContain('新增資料夾')
   })
 
+  test('decode offers a restart only after it differs from the value the app started with', async () => {
+    const api = { ...fakeApi(), app: { startupDecode: async () => 'auto' as const, relaunch: async () => undefined } }
+    const notice = settingsI18n.row.decode.restartNotice
+    expect(await render({ initialCategory: 'analysis' }, api)).not.toContain(notice)
+    const html = await render({ initialCategory: 'analysis' }, api, (c) => c.setEnum('decode', 'software'))
+    expect(html).toContain(notice)
+    expect(html).toContain(settingsI18n.row.decode.restartNow)
+  })
+
   test('category editing: proxy + clip defaults (6 rows) with usage text and steppers', async () => {
     const html = await render({ initialCategory: 'editing' })
     expect(rowIds(html)).toEqual(['proxySuggest', 'proxyUsage', 'beforeAfter', 'autoclip', 'autoSuggestOnOpen', 'projectAutosave'])

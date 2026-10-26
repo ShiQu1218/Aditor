@@ -58,6 +58,10 @@ export interface SettingsApi {
     openReleases(): Promise<boolean>
     onStatus(cb: (status: UpdateStatus) => void): () => void
   }
+  app?: {
+    startupDecode?(): Promise<Settings['decode']>
+    relaunch?(): Promise<void>
+  }
 }
 
 /** OpenH264 download flow for settings: idle → consent (license notice) → downloading → idle/error. */
@@ -87,6 +91,8 @@ export interface SettingsState {
   openh264Download: OpenH264DownloadState
   /** Auto-update status; unsupported when an older preload has no update API. */
   update: UpdateStatus
+  /** Decode setting at app startup (preview decoding uses it until restart); null means unknown. */
+  startupDecode: Settings['decode'] | null
 }
 
 export const INITIAL_SETTINGS_STATE: SettingsState = {
@@ -102,7 +108,8 @@ export const INITIAL_SETTINGS_STATE: SettingsState = {
   suggestedStorageRoot: null,
   openh264: null,
   openh264Download: { step: 'idle', ratio: 0, error: null },
-  update: { state: 'unsupported' }
+  update: { state: 'unsupported' },
+  startupDecode: null
 }
 
 /** Settings rows that display main-process path/password validation errors → keys in `SettingsSetResult.errors`. */
@@ -156,7 +163,24 @@ export class SettingsController {
     })
     this.unsubscribeUpdate?.()
     this.unsubscribeUpdate = this.api.update?.onStatus((update) => this.patch({ update })) ?? null
-    await Promise.all([this.loadSettings(), this.refreshWatch(), this.refreshProxy(), this.refreshEncoders(), this.refreshRecordingCapabilities(), this.refreshStorageSuggestion(), this.refreshUpdate()])
+    await Promise.all([this.loadSettings(), this.refreshWatch(), this.refreshProxy(), this.refreshEncoders(), this.refreshRecordingCapabilities(), this.refreshStorageSuggestion(), this.refreshUpdate(), this.refreshStartupDecode()])
+  }
+
+  private async refreshStartupDecode(): Promise<void> {
+    try {
+      this.patch({ startupDecode: (await this.api.app?.startupDecode?.()) ?? null })
+    } catch {
+      // Unknown startup value: no restart notice is shown.
+    }
+  }
+
+  /** Restart to apply the decode setting to preview playback; show the failure on the row if main cannot restart. */
+  async relaunch(): Promise<void> {
+    try {
+      await this.api.app?.relaunch?.()
+    } catch (e) {
+      this.setRowError('decode', e instanceof Error ? e.message : String(e))
+    }
   }
 
   stop(): void {

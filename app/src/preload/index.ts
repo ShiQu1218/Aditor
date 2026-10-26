@@ -140,6 +140,10 @@ const api = {
   app: {
     /** Open the third-party notices bundled with the installer. */
     openLicenses: () => ipcRenderer.invoke('app:openLicenses'),
+    /** The decode setting this run started with (preview hardware decoding is fixed at startup). */
+    startupDecode: () => ipcRenderer.invoke('app:startupDecode'),
+    /** Restart Aditor through the normal quit flow. */
+    relaunch: () => ipcRenderer.invoke('app:relaunch'),
     /** Notified when main minimizes the window to the tray or taskbar. */
     onWindowHidden: (callback: () => void) => {
       const handler = () => callback()
