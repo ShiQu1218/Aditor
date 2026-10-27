@@ -6,6 +6,8 @@ import type { UpdateStatus } from '../shared/update'
 /** Native import() exposes electron-updater's CommonJS singleton through default. */
 export async function loadAutoUpdater(): Promise<UpdaterLike> {
   const { default: electronUpdater } = await import('electron-updater')
+  // Console logging can emit EPIPE when its output pipe closes; update errors already reach our status listener.
+  electronUpdater.autoUpdater.logger = null
   return electronUpdater.autoUpdater
 }
 

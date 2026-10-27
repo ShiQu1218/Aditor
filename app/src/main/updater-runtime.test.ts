@@ -4,7 +4,7 @@ import { resolve } from 'path'
 import ts from 'typescript'
 import { expect, test } from 'vitest'
 
-test('native Node import loads the real CommonJS updater and keeps install-on-quit disabled', () => {
+test('real updater works with broken console pipes and keeps automatic installation disabled', () => {
   // Preserve native import(): Vite's module interop would hide the production regression.
   const source = ts.transpileModule(readFileSync(resolve(__dirname, 'updater.ts'), 'utf-8'), {
     compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext }
@@ -18,7 +18,7 @@ test('native Node import loads the real CommonJS updater and keeps install-on-qu
       import { createRequire } from 'node:module';
       import assert from 'node:assert/strict';
       const require = createRequire(import.meta.url);
-      require.cache[require.resolve('electron')] = { exports: { app: { getVersion: () => '0.2.0' } } };
+      require.cache[require.resolve('electron')] = { exports: { app: { getVersion: () => '0.2.0', isPackaged: true } } };
       ${source}
       const updater = await loadAutoUpdater();
       assert.equal(typeof updater.checkForUpdates, 'function');
@@ -29,6 +29,13 @@ test('native Node import loads the real CommonJS updater and keeps install-on-qu
       assert.equal(updater.autoDownload, false);
       assert.equal(updater.autoInstallOnAppQuit, false);
       assert.equal(service.download(), false);
+      for (const method of ['info', 'warn', 'error', 'debug', 'log']) {
+        console[method] = () => { throw Object.assign(new Error('broken output pipe'), { code: 'EPIPE' }); };
+      }
+      updater.getUpdateInfoAndProvider = async () => ({ info: { version: '0.2.0' }, provider: {} });
+      assert.deepEqual(await service.check(), { state: 'latest' });
+      updater.getUpdateInfoAndProvider = async () => { throw new Error('offline'); };
+      assert.deepEqual(await service.check(), { state: 'error', error: 'offline' });
     `
   })
   expect(result.error).toBeUndefined()
