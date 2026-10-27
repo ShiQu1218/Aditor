@@ -443,6 +443,17 @@ struct Session {
     last_stats: Instant,
     previous: EncodeStats,
     audio_stall_warned: bool,
+    /// DDA records the real desktop while the game is hidden; detection still needs black frames to split matches there.
+    game_hidden: bool,
+}
+fn blank_small_frames(small: &mut SmallFrames) {
+    for buf in [&mut small.banner, &mut small.spec]
+        .into_iter()
+        .chain(small.killfeed.as_mut())
+        .chain(small.thumb.as_mut())
+    {
+        buf.fill(0);
+    }
 }
 /// Whether the directory contains aditorrec output (init, index, session.json, or segments).
 fn has_recorder_output(dir: &Path) -> Result<bool> {
@@ -556,6 +567,7 @@ impl Session {
             last_stats: Instant::now(),
             previous: EncodeStats::default(),
             audio_stall_warned: false,
+            game_hidden: false,
         };
         let (source_w, source_h) = match session.notices.recv_timeout(Duration::from_secs(5)) {
             Ok(CaptureNotice::WindowFound { width, height, .. }) => (width, height),
@@ -717,7 +729,10 @@ impl Session {
             }
             self.published += 1;
         }
-        for small in self.small.try_iter() {
+        for mut small in self.small.try_iter() {
+            if self.game_hidden {
+                blank_small_frames(&mut small);
+            }
             self.shm
                 .write(
                     small.pts,
@@ -729,7 +744,13 @@ impl Session {
                 .map_err(|e| failure(ErrorCode::Internal, e))?;
         }
         loop {
-            match self.notices.try_recv() {
+            let notice = self.notices.try_recv();
+            match notice {
+                Ok(CaptureNotice::GameHidden { .. }) => self.game_hidden = true,
+                Ok(CaptureNotice::GameVisible { .. }) => self.game_hidden = false,
+                _ => {}
+            }
+            match notice {
                 Ok(CaptureNotice::Failed { message }) => {
                     return Err((ErrorCode::CaptureFailed, message));
                 }
@@ -977,6 +998,26 @@ mod tests {
     use super::*;
     use serde_json::{json, Value};
     use std::{io, sync::Mutex};
+
+    #[test]
+    fn hidden_game_blanks_every_detection_buffer() {
+        let mut small = SmallFrames {
+            pts: 7,
+            banner: vec![9; 4],
+            spec: vec![9; 4],
+            killfeed: Some(vec![9; 4]),
+            thumb: Some(vec![9; 4]),
+        };
+        blank_small_frames(&mut small);
+        assert_eq!(small.pts, 7);
+        assert!(small
+            .banner
+            .iter()
+            .chain(&small.spec)
+            .chain(small.killfeed.iter().flatten())
+            .chain(small.thumb.iter().flatten())
+            .all(|&v| v == 0));
+    }
 
     #[derive(Clone, Default)]
     struct Output(Arc<Mutex<Vec<u8>>>);
