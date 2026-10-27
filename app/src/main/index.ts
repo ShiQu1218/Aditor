@@ -252,6 +252,7 @@ async function initEngineAndServices(): Promise<void> {
     quit: () => app.quit(),
     notifyError: (message) => notify('error', message)
   })
+  if (!tray) openRequested = true
   let launchAtLogin: boolean | undefined
   const updateLoginItem = (): void => {
     const enabled = settingsStore!.get().recording.launchAtLogin
@@ -370,6 +371,6 @@ if (!app.requestSingleInstanceLock()) {
     tray = null
   })
   app.on('window-all-closed', () => {
-    if (process.platform !== 'darwin' && !settingsStore?.get().recording.closeToTray) app.quit()
+    if (process.platform !== 'darwin' && (!tray || !settingsStore?.get().recording.closeToTray)) app.quit()
   })
 }

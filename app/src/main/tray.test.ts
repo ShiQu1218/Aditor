@@ -22,6 +22,7 @@ function setup(phase: RecordingStatus['phase'] = 'idle') {
     createTray: () => handle,
     buildMenu: (template) => { items = template; return {} as Menu }
   })
+  if (!tray) throw new Error('Test tray failed to initialize')
   return {
     service, handle, openWindow, quit, notifyError, tray, unsubscribe,
     items: () => items,
@@ -38,6 +39,24 @@ function setup(phase: RecordingStatus['phase'] = 'idle') {
 }
 
 describe('recording tray', () => {
+  it('returns null when the initial icon is missing so startup can continue without a tray', () => {
+    const s = setup()
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const buildMenu = vi.fn()
+    try {
+      expect(createRecordingTray({ service: s.service, iconDir: 'missing-icons',
+        openWindow: s.openWindow, quit: s.quit, notifyError: s.notifyError }, {
+        createTray: () => { throw new Error('Failed to load image from path') }, buildMenu
+      })).toBeNull()
+      expect(s.service.onStatus).toHaveBeenCalledOnce()
+      expect(buildMenu).not.toHaveBeenCalled()
+      expect(error).toHaveBeenCalledOnce()
+    } finally {
+      error.mockRestore()
+      s.tray.destroy()
+    }
+  })
+
   it.each([
     ['idle', 'idle', '待命', '開始錄影', true],
     ['starting', 'idle', '正在啟動錄影', '停止錄影', true],

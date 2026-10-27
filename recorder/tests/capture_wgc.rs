@@ -252,13 +252,17 @@ impl Drop for TestWindow {
 
 struct Consumer {
     small: SmallFrameExtractor,
-    frames: Sender<(i64, u32, u32)>,
+    frames: Sender<(i64, u32, u32, bool)>,
     images: Sender<SmallFrames>,
 }
 
 impl FrameConsumer for Consumer {
     fn on_frame(&mut self, frame: &CapturedFrame<'_>) {
-        let _ = self.frames.send((frame.pts, frame.width, frame.height));
+        let mut desc = D3D11_TEXTURE2D_DESC::default();
+        // SAFETY: The capture owns this texture until the callback returns.
+        unsafe { frame.texture.GetDesc(&mut desc) };
+        let matches = (desc.Width, desc.Height) == (frame.width, frame.height);
+        let _ = self.frames.send((frame.pts, frame.width, frame.height, matches));
         if let Some(small) =
             self.small
                 .on_frame(frame.texture, frame.width, frame.height, frame.pts)
@@ -348,6 +352,7 @@ fn wgc_captures_pixels_resizes_reconnects_and_falls_back_to_monitor() {
     assert!(initial.len() >= 30, "Only received {} frames over two seconds", initial.len());
     assert!(initial.windows(2).all(|pair| pair[0].0 < pair[1].0));
     assert!(initial.iter().all(|frame| (frame.1, frame.2) == (960, 540)));
+    assert!(initial.iter().all(|frame| frame.3), "Capture dimensions must match the texture");
     let image = images
         .try_iter()
         .find(|image| image.thumb.is_some())
@@ -356,21 +361,25 @@ fn wgc_captures_pixels_resizes_reconnects_and_falls_back_to_monitor() {
     assert_color(&image.spec, [0, 255, 0], 192, 108);
     assert_eq!(image.thumb.unwrap().len(), (THUMB_W * THUMB_H) as usize);
 
-    window.resize(1280, 720);
-    notice_until(&notices, |notice| {
-        *notice
-            == CaptureNotice::WindowFound {
-                width: 1280,
-                height: 720,
+    for (width, height) in [(1280, 720), (640, 360), (960, 540)] {
+        window.resize(width, height);
+        notice_until(&notices, |notice| {
+            *notice == CaptureNotice::WindowFound {
+                width: width as u32,
+                height: height as u32,
                 monitor: false,
             }
-    });
-    let deadline = Instant::now() + Duration::from_secs(3);
-    while !frames
-        .recv_timeout(deadline.saturating_duration_since(Instant::now()))
-        .is_ok_and(|frame| (frame.1, frame.2) == (1280, 720))
-    {
-        assert!(Instant::now() < deadline);
+        });
+        let deadline = Instant::now() + Duration::from_secs(3);
+        loop {
+            let frame = frames
+                .recv_timeout(deadline.saturating_duration_since(Instant::now()))
+                .unwrap();
+            assert!(frame.3, "Capture dimensions must match the texture during resize");
+            if (frame.1, frame.2) == (width as u32, height as u32) {
+                break;
+            }
+        }
     }
     drop(window);
     notice_until(&notices, |notice| *notice == CaptureNotice::WindowLost);
