@@ -607,7 +607,8 @@ impl CallbackState {
                     (size.Width as u32, size.Height as u32),
                 )?);
             }
-            if desc.Width >= size.Width as u32 && desc.Height >= size.Height as u32 {
+            // Resizing can leave an old-sized surface in the pool; consumers require exact texture dimensions.
+            if desc.Width == size.Width as u32 && desc.Height == size.Height as u32 {
                 if monitor && !visible {
                     self.monitor_black
                         .as_ref()
@@ -643,7 +644,7 @@ impl CallbackState {
         } else {
             signals.dropped.fetch_add(1, Ordering::Relaxed);
         }
-        // Return the old frame before recreating the pool; when growing, do not pass an old texture to consumers with new dimensions.
+        // Return the old frame before recreating the pool for either a larger or smaller capture target.
         drop(frame);
         if resized {
             pool.Recreate(&self.device, DirectXPixelFormat::R16G16B16A16Float, 2, size)?;

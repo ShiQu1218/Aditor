@@ -45,10 +45,15 @@ function statusLabel(status: RecordingStatus): string {
 export function createRecordingTray(opts: RecordingTrayOptions, deps: TrayDependencies = {
   createTray: (image) => new Tray(image),
   buildMenu: (items) => Menu.buildFromTemplate(items)
-}): { destroy(): void; refresh(): void } {
+}): { destroy(): void; refresh(): void } | null {
   const icon = (status: RecordingStatus): string => join(opts.iconDir,
     `tray-${status.phase === 'error' ? 'error' : status.phase === 'recording' ? 'recording' : 'idle'}.png`)
-  const tray = deps.createTray(icon(opts.service.status()))
+  let tray: TrayHandle
+  try { tray = deps.createTray(icon(opts.service.status())) }
+  catch (error) {
+    console.error('[tray] 無法建立系統匣圖示：', error)
+    return null
+  }
   let disposed = false
   const run = (action: () => Promise<unknown> | void): void => {
     void Promise.resolve().then(action).catch((error) => opts.notifyError(tr('錄影操作失敗：{error}', { error: String(error) })))
