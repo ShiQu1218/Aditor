@@ -599,6 +599,46 @@ describe('clips backup across cancelled re-analysis (F2)', () => {
       expect(summary(readDoc().clips)).toEqual([['m1', 'accepted', false]])
       expect(readClipsBackup(besideFile())?.map((c) => c.id)).toContain('a1')
     })
+
+    /** Both locations hold done caches (beside newest) and an unmerged v2 backup each, written at the given times. */
+    const seedBoth = (besideAt: number, appdataAt: number): void => {
+      saveCacheDoc(doc('done', 1, [manual], [], cache()) as { cache_path: string })
+      saveCacheDoc(doc('done', 1, [manual], [], besideFile()) as { cache_path: string })
+      fs.utimesSync(cache(), new Date(1000), new Date(1000))
+      fs.writeFileSync(clipsBackupPath(besideFile()), JSON.stringify({ version: 2, events: [], clips: [clip('beside-ai', 100), manual] }))
+      fs.writeFileSync(backup(), JSON.stringify({ version: 2, events: [], clips: [clip('appdata-ai', 200), manual] }))
+      fs.utimesSync(clipsBackupPath(besideFile()), new Date(besideAt), new Date(besideAt))
+      fs.utimesSync(backup(), new Date(appdataAt), new Date(appdataAt))
+    }
+
+    for (const [label, besideAt, appdataAt, kept] of [
+      ['the source backup is newer', 3000, 2000, 'beside-ai'],
+      ['the target backup is newer', 2000, 3000, 'appdata-ai']
+    ] as const) {
+      it(`with unmerged backups in both locations, restores the newer one and clears both when ${label}`, async () => {
+        seedBoth(besideAt, appdataAt)
+        await run(3, 'appdata')
+        expect(summary(readDoc().clips)).toEqual([
+          [kept, 'accepted', true],
+          ['m1', 'accepted', false]
+        ])
+        expect(fs.existsSync(backup())).toBe(false)
+        expect(fs.existsSync(clipsBackupPath(besideFile()))).toBe(false)
+      })
+    }
+
+    it('edits saved at the target win over a source v2 backup, which is cleared after the merge', async () => {
+      seedBoth(3000, 2000)
+      const edited = { ...doc('done', 1, [clip('edited-ai', 300), manual], [], cache()) }
+      fs.writeFileSync(backup(), JSON.stringify({ version: 3, document: edited }))
+      await run(3, 'appdata')
+      expect(summary(readDoc().clips)).toEqual([
+        ['edited-ai', 'accepted', true],
+        ['m1', 'accepted', false]
+      ])
+      expect(fs.existsSync(backup())).toBe(false)
+      expect(fs.existsSync(clipsBackupPath(besideFile()))).toBe(false)
+    })
   })
 })
 

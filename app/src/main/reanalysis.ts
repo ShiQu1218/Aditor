@@ -104,6 +104,10 @@ export function saveCacheEdits(doc: CacheDoc, cacheDir: string, beside: boolean,
   return saveCacheDoc(doc)
 }
 
+function backupTime(cachePath: string): number {
+  return fs.statSync(clipsBackupPath(cachePath)).mtimeMs
+}
+
 function deleteClipsBackup(cachePath: string): void {
   try {
     fs.unlinkSync(clipsBackupPath(cachePath))
@@ -149,14 +153,16 @@ export function capturePriorCache(videoPath: string, cacheDir: string, beside = 
   const docClips = hasDoc && Array.isArray(doc!.clips) ? doc!.clips! : []
 
   // A backup still beside a done cache was never merged back (restore write failed or the app quit first); keep it.
-  // A migrated source carries its own unmerged backup; the newest copy (resolveCacheFile) decides which one applies.
-  const unconsumed = docDone && !editing ? readReanalysisBackup(cachePath) ?? sourceBackup : null
+  // A migrated source carries its own unmerged backup; when both locations have one, the newer backup wins.
+  const ownBackup = readReanalysisBackup(cachePath)
+  const sourceWins = sourcePath !== cachePath && !!sourceBackup && (!ownBackup || backupTime(sourcePath) > backupTime(cachePath))
+  const unconsumed = docDone && !editing ? (sourceWins ? sourceBackup : ownBackup) : null
   if (docDone && !editing && !unconsumed && !writeReanalysisBackup(cachePath, (doc!.events ?? []) as EngineEvent[], docClips as Clip[])) {
     throw new Error(tr('無法備份編輯內容，已停止重新分析'))
   }
   const targetBackup = readReanalysisBackup(cachePath)
-  const backup = editing ?? targetBackup ?? sourceBackup ?? legacyBackup
-  if (backup && (!targetBackup || editing) && !writeReanalysisBackup(cachePath, backup.events, backup.clips, backup.document)) {
+  const backup = editing ?? (sourceWins ? sourceBackup : targetBackup) ?? sourceBackup ?? legacyBackup
+  if (backup && (backup !== targetBackup || editing) && !writeReanalysisBackup(cachePath, backup.events, backup.clips, backup.document)) {
     throw new Error(tr('無法備份編輯內容，已停止重新分析'))
   }
   if (hasDoc && !docDone && backup?.events.length && !Array.isArray(doc!.base_events)) {
@@ -170,7 +176,8 @@ export function capturePriorCache(videoPath: string, cacheDir: string, beside = 
     done: docDone || backup !== null,
     fingerprint: hasDoc ? fingerprintOf(doc!) : '',
     backupPath: cachePath,
-    ...(backup && backup === sourceBackup && sourcePath !== cachePath ? { sourceBackupPath: sourcePath } : {})
+    // Merged or superseded either way; leaving it would replay old state after switching back.
+    ...(sourceBackup && sourcePath !== cachePath ? { sourceBackupPath: sourcePath } : {})
   }
 }
 
