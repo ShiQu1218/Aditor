@@ -220,7 +220,7 @@ samples have unstable tail metrics; the 0.1% low can be just one frame.
 foreground. The fake game reclaims the foreground every 250 ms (and logs the pid
 that held it to `game.stderr.log`), because an unfocused window can be throttled by
 the driver's background frame-rate limit (seen as a flat 120 FPS at 240 Hz).
-Discard any run where it is non-zero.
+The summary automatically excludes any run where it is non-zero.
 
 `summary.md` reports the median and min/max across completed repetitions, FPS
 percentage deltas versus the baseline median, and absolute stutter-count deltas.

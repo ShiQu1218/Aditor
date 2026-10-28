@@ -306,13 +306,15 @@ fn run(o: Options) -> Result<()> {
             previous = None;
             if let Some(path) = &o.measurement {
                 let epoch = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs_f64() * 1000.0;
+                let temporary = path.with_extension("tmp");
                 fs::write(
-                    path,
+                    &temporary,
                     format!(
                         "{{\"epoch_ms\":{epoch},\"qpc_ms\":{}}}\n",
                         now as f64 * tick_ms
                     ),
                 )?;
+                fs::rename(temporary, path)?;
             }
         }
         if measure_start.is_some_and(|start| (now - start) as f64 * tick_ms >= o.duration * 1000.0)

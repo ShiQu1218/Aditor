@@ -45,11 +45,16 @@ def component_breakdown(groups):
 
 def summarize(root):
     groups = {}
+    excluded = {}
     for file in sorted(root.glob("*/metadata.json")):
         meta = json.loads(file.read_text(encoding="utf-8-sig"))
         if meta.get("status") != "complete":
             continue
         stats = json.loads((file.parent / "stats.json").read_text(encoding="utf-8-sig"))
+        if stats.get("background_frames", 0) > 0:
+            scenario = meta["scenario"]
+            excluded[scenario] = excluded.get(scenario, 0) + 1
+            continue
         if any(not isinstance(stats.get(k), (int, float)) or not math.isfinite(stats[k])
                or stats[k] < 0 for k in METRICS):
             raise ValueError(f"Invalid stats: {file.parent}")
@@ -76,6 +81,10 @@ def summarize(root):
             cells.append(cell)
         lines.append(f"| {scenario} | {len(runs)} | " + " | ".join(cells) + " |")
     lines += component_breakdown(groups)
+    if excluded:
+        counts = ", ".join(f"{s}: {n}" for s, n in excluded.items())
+        lines += ["", f"Background runs excluded ({counts}): background_frames > 0; "
+                  "game was not in the foreground (driver background frame-rate cap)."]
     incomplete = sum(json.loads(f.read_text(encoding="utf-8-sig")).get("status") != "complete"
                      for f in root.glob("*/metadata.json"))
     lines += ["", f"Incomplete/failed runs excluded: {incomplete}.", "",
@@ -97,6 +106,17 @@ def self_test():
         report = summarize(root)
         assert "85.00 [80.00, 90.00] (-15.00%)" in report
         assert "85.00 [80.00, 90.00] (-15.00)" in report
+        assert "Background runs excluded" not in report
+        for i, scenario in enumerate(("baseline", "record", "record", "app_idle"), start=3):
+            run = root / str(i)
+            run.mkdir()
+            (run / "metadata.json").write_text(json.dumps(dict(status="complete", scenario=scenario)))
+            (run / "stats.json").write_text(json.dumps(dict.fromkeys(METRICS, 1) | {"background_frames": 1}))
+        (root / "1" / "stats.json").write_text(json.dumps(dict.fromkeys(METRICS, 80) | {"background_frames": 0}))
+        report = summarize(root)
+        assert "85.00 [80.00, 90.00] (-15.00%)" in report
+        assert "Background runs excluded (baseline: 1, record: 2, app_idle: 1): background_frames > 0" in report
+        assert "| app_idle |" not in report
         (root / "2" / "metadata.json").write_text('{"status":"failed"}')
         assert "Incomplete/failed runs excluded: 1" in summarize(root)
         (root / "0" / "stats.json").write_text('{"avg_fps": -1}')
