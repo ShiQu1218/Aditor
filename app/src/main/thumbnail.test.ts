@@ -10,7 +10,7 @@ let appData: string
 let video: string
 const saved: Record<string, string | undefined> = {}
 beforeEach(() => {
-  for (const k of ['APPDATA', 'FAKE_LOG', 'FAKE_EXIT']) saved[k] = process.env[k]
+  for (const k of ['APPDATA', 'FAKE_LOG', 'FAKE_EXIT', 'FAKE_DELAY_MS']) saved[k] = process.env[k]
   appData = fs.mkdtempSync(path.join(os.tmpdir(), 'aditor-thumb-'))
   process.env.APPDATA = appData
   process.env.FAKE_LOG = path.join(appData, 'log')
@@ -64,5 +64,13 @@ describe('thumbnails (I14)', () => {
     fs.utimesSync(video, initial.atime, new Date(initial.mtimeMs + 5000))
     await generateThumbnail(video, 100, { ffmpeg })
     expect(count()).toBe(3)
+  })
+
+  it('concurrent requests for the same video (recording finalization and the analysis queue) both get the thumbnail', async () => {
+    process.env.FAKE_DELAY_MS = '300'
+    const results = await Promise.all([generateThumbnail(video, 100, { ffmpeg }), generateThumbnail(video, 100, { ffmpeg })])
+    expect(results).toEqual([thumbnailPath(video), thumbnailPath(video)])
+    expect(fs.readFileSync(thumbnailPath(video), 'utf-8')).toBe('jpg-data')
+    expect(fs.readdirSync(path.dirname(thumbnailPath(video)))).toEqual([path.basename(thumbnailPath(video))])
   })
 })
