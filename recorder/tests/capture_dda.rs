@@ -328,6 +328,7 @@ fn dda_captures_monitor_pixels_with_increasing_pts_and_reconnects() {
             pid: std::process::id(),
             max_fps: 60,
             origin_ticks: origin,
+            sdr_size: None,
         },
         Box::new(Consumer {
             gpu: gpu.clone(),
@@ -453,6 +454,7 @@ fn dda_keeps_recording_and_emits_events_when_another_process_takes_foreground() 
             pid: std::process::id(),
             max_fps: 60,
             origin_ticks: origin,
+            sdr_size: None,
         },
         Box::new(Consumer {
             gpu: gpu.clone(),
@@ -604,6 +606,7 @@ fn dda_rejects_device_on_adapter_without_the_monitor() {
             pid: std::process::id(),
             max_fps: 60,
             origin_ticks: clock::now_ticks(),
+            sdr_size: None,
         },
         Box::new(Empty),
         notices,

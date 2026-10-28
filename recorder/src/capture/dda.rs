@@ -695,6 +695,7 @@ fn deliver(
             desc.Format.0
         );
     }
+    let source_size = (desc.Width, desc.Height);
     output.track_visibility(pts);
     let texture = output.color.convert(&texture, output.monitor)?;
     let texture = if output.cursor_visible {
@@ -713,13 +714,15 @@ fn deliver(
     } else {
         texture
     };
+    // SAFETY: The converted/overlaid texture remains alive through delivery.
+    unsafe { texture.GetDesc(&mut desc) };
     consumer.on_frame(&CapturedFrame {
         texture: &texture,
         width: desc.Width,
         height: desc.Height,
         pts,
     });
-    Ok(Some((desc.Width, desc.Height)))
+    Ok(Some(source_size))
 }
 
 pub(super) fn run(
@@ -743,7 +746,7 @@ pub(super) fn run(
         pid: opts.pid,
         gate: SlotGate::new(opts.max_fps),
         visibility: Visibility::new(),
-        color: super::color::SdrConverter::new(&gpu)?,
+        color: super::color::SdrConverter::new(&gpu, opts.sdr_size.clone())?,
         cursor: opts
             .capture_cursor
             .then(|| super::cursor::CursorOverlay::new(&gpu)),

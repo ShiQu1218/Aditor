@@ -529,11 +529,13 @@ impl Session {
         let (first_tx, first) = mpsc::sync_channel(1);
         let pipeline = Arc::new(OnceLock::new());
         let counts = Arc::new(Counts::default());
+        let sdr_size = Arc::new(OnceLock::new());
         let opts = CaptureOptions {
             pid: args.pid,
             max_fps: fps,
             capture_cursor: args.capture_cursor,
             origin_ticks: 0,
+            sdr_size: Some(sdr_size.clone()),
         };
         let consumer = Box::new(Consumer {
             pipeline: pipeline.clone(),
@@ -579,6 +581,11 @@ impl Session {
         } else {
             (source_w, source_h)
         };
+        let _ = sdr_size.set(if args.encode.is_some() {
+            (width, height)
+        } else {
+            (0, 0)
+        });
         if let Some(cfg) = &args.encode {
             session.index =
                 Some(IndexWriter::create(dir).map_err(|e| failure(ErrorCode::Internal, e))?);
