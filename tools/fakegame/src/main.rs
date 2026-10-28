@@ -16,6 +16,7 @@ use windows::{
         System::{
             LibraryLoader::GetModuleHandleW,
             Performance::{QueryPerformanceCounter, QueryPerformanceFrequency},
+            Threading::{AttachThreadInput, GetCurrentThreadId},
         },
         UI::{
             HiDpi::{SetThreadDpiAwarenessContext, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2},
@@ -23,6 +24,29 @@ use windows::{
         },
     },
 };
+
+/// Pulls the window to the foreground; Windows refuses a plain SetForegroundWindow from a background-launched process.
+/// Returns the pid that owned the foreground when the window did not have it.
+fn claim_foreground(hwnd: HWND) -> Option<u32> {
+    // SAFETY: Plain window-manager calls on this thread's window and the current foreground window.
+    unsafe {
+        let foreground = GetForegroundWindow();
+        if foreground == hwnd {
+            return None;
+        }
+        let mut owner = 0;
+        let thread = GetWindowThreadProcessId(foreground, Some(&mut owner));
+        let current = GetCurrentThreadId();
+        let attached =
+            thread != 0 && thread != current && AttachThreadInput(thread, current, true).as_bool();
+        let _ = BringWindowToTop(hwnd);
+        let _ = SetForegroundWindow(hwnd);
+        if attached {
+            let _ = AttachThreadInput(thread, current, false);
+        }
+        Some(owner)
+    }
+}
 
 #[derive(Debug)]
 struct Options {
@@ -200,8 +224,14 @@ fn run(o: Options) -> Result<()> {
             ..Default::default()
         };
         AdjustWindowRect(&mut rect, style, false)?;
+        // Topmost keeps the taskbar from overlapping a fullscreen run, which forces composed (vsync-locked) presents.
+        let ex_style = if o.window.is_some() {
+            WINDOW_EX_STYLE::default()
+        } else {
+            WS_EX_TOPMOST
+        };
         let hwnd = CreateWindowExW(
-            WINDOW_EX_STYLE::default(),
+            ex_style,
             w!("AditorFakeGame"),
             w!("Aditor Fake Apex"),
             style | WS_VISIBLE,
@@ -224,6 +254,9 @@ fn run(o: Options) -> Result<()> {
     }
     let tick_ms = 1000.0 / frequency as f64;
     let mut rows = Vec::new();
+    let mut background_frames = 0;
+    let mut foreground_next = Instant::now();
+    let mut foreground_owner = None;
     let mut visible = false;
     let mut warmup_start = None;
     let mut measure_start = None;
@@ -245,6 +278,18 @@ fn run(o: Options) -> Result<()> {
         }
         if message.message == WM_QUIT {
             break;
+        }
+        // An unfocused window can be throttled by the driver's background frame-rate limit.
+        if Instant::now() >= foreground_next {
+            foreground_next = Instant::now() + Duration::from_millis(250);
+            let owner = claim_foreground(window.0);
+            if owner.is_some() && owner != foreground_owner {
+                eprintln!(
+                    "fakegame: foreground held by pid {}; reclaiming",
+                    owner.unwrap_or(0)
+                );
+            }
+            foreground_owner = owner;
         }
         let now = qpc()?;
         if visible && warmup_start.is_none() && o.start.as_ref().is_none_or(|p| p.exists()) {
@@ -314,6 +359,10 @@ fn run(o: Options) -> Result<()> {
                 rows.push((stamp as f64 * tick_ms, (stamp - last) as f64 * tick_ms));
             }
             previous = Some(stamp);
+            // SAFETY: GetForegroundWindow has no preconditions.
+            if unsafe { GetForegroundWindow() } != window.0 {
+                background_frames += 1;
+            }
         }
         if o.cap > 0.0 {
             cap_next = (cap_next + Duration::from_secs_f64(1.0 / o.cap)).max(Instant::now());
@@ -325,12 +374,9 @@ fn run(o: Options) -> Result<()> {
         writeln!(csv, "{i},{stamp:.6},{ms:.6}")?;
     }
     csv.flush()?;
-    println!(
-        "{}",
-        serde_json::to_string(&stats::summarize(
-            &rows.iter().map(|r| r.1).collect::<Vec<_>>()
-        )?)?
-    );
+    let mut summary = stats::summarize(&rows.iter().map(|r| r.1).collect::<Vec<_>>())?;
+    summary.background_frames = background_frames;
+    println!("{}", serde_json::to_string(&summary)?);
     Ok(())
 }
 

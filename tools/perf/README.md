@@ -216,6 +216,12 @@ ceil(N*0.01) and ceil(N*0.001) intervals, respectively. Stutters are strictly
 greater than twice p50; `max_ms` is the longest measured interval. Very short
 samples have unstable tail metrics; the 0.1% low can be just one frame.
 
+`background_frames` counts measured frames presented while another window had the
+foreground. The fake game reclaims the foreground every 250 ms (and logs the pid
+that held it to `game.stderr.log`), because an unfocused window can be throttled by
+the driver's background frame-rate limit (seen as a flat 120 FPS at 240 Hz).
+Discard any run where it is non-zero.
+
 `summary.md` reports the median and min/max across completed repetitions, FPS
 percentage deltas versus the baseline median, and absolute stutter-count deltas.
 When all seven breakdown scenarios are present, it also reports a component

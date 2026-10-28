@@ -12,6 +12,8 @@ pub struct Stats {
     pub low_01pct_fps: f64,
     pub stutters: usize,
     pub max_ms: f64,
+    /// Measured frames presented while another window had the foreground.
+    pub background_frames: usize,
 }
 
 pub fn summarize(times: &[f64]) -> Result<Stats> {
@@ -38,6 +40,7 @@ pub fn summarize(times: &[f64]) -> Result<Stats> {
         low_01pct_fps: low(0.001),
         stutters: times.iter().filter(|t| **t > 2.0 * median).count(),
         max_ms: *sorted.last().unwrap(),
+        background_frames: 0,
     })
 }
 
