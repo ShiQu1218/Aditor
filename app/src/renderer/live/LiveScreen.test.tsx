@@ -427,6 +427,23 @@ describe('LiveScreen', () => {
     expect(list()).not.toContain(formatTime(30))
   })
 
+  test('The play button reflects the new recording after a source switch, not the old one that was playing', async () => {
+    const ID2 = '20261018-130000-beef'
+    const r = rig(RECORDING, LIVE)
+    screen()
+    await settle()
+    act(() => { document.querySelector('video')!.dispatchEvent(new Event('play')) })
+    expect(byLabel(document.body, t.pause)).toBeTruthy()
+    // The new recording has not loaded yet, so nothing is playing.
+    vi.mocked(r.api.readInit!).mockReturnValue(new Promise(() => {}))
+    vi.mocked(r.api.getLive!).mockResolvedValue({ ...LIVE, sessionId: ID2 })
+    r.status({ ...RECORDING, sessionId: ID2 })
+    r.push({ sessionId: ID2, segment: { seq: 11, pts: 20, dur: 2 } })
+    await settle()
+    expect(byLabel(document.body, t.play)).toBeTruthy()
+    expect(byLabel(document.body, t.pause)).toBeFalsy()
+  })
+
   test('Shows a recording that starts after the screen opened with nothing to watch', async () => {
     const r = rig()
     screen()

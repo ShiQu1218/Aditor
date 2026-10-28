@@ -147,6 +147,8 @@ export function useLivePlayer({ sessionId, mime, segments, bounds }: PlayerInput
       URL.revokeObjectURL(url)
       video.removeAttribute('src')
       video.load()
+      // load() pauses without a pause event, and the listener is gone; the next source starts paused.
+      setPlaying(false)
     }
   }, [sessionId, mime, seekTarget])
 
