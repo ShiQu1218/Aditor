@@ -89,6 +89,7 @@ pub struct ControlFeed {
     profile: Profile,
     names: MixtapeDetector,
     scene: SceneMatcher,
+    br_counters: Vec<Image<u8>>,
     pub active: bool,
     player: Option<Image<f32>>,
     entries: Vec<Entry>,
@@ -123,6 +124,18 @@ impl ControlFeed {
             profile: p.clone(),
             names,
             scene: SceneMatcher::new(dir.is_dir().then_some(dir.as_path()))?,
+            // The top-right counters are 10% larger than the banner icons.
+            br_counters: ["skull", "hand"]
+                .iter()
+                .map(|name| {
+                    cv::resize_factor(
+                        &cv::read_png(&p.dir.join(format!("{name}.png")), true)?,
+                        1.1,
+                        1.1,
+                        Interpolation::Linear,
+                    )
+                })
+                .collect::<Result<_>>()?,
             active: false,
             player: None,
             entries: vec![],
@@ -313,6 +326,26 @@ impl ControlFeed {
         }
         Ok(rows)
     }
+    fn battle_royale_hud(&self, gray: &Image<u8>) -> Result<bool> {
+        let [x, y, _, _] = self.profile.killfeed_roi.unwrap();
+        // The kill-leader ornament changes the skull; the assist icon must still match strongly.
+        for (template, (left, threshold)) in
+            self.br_counters.iter().zip([(1540, 0.75), (1600, 0.85)])
+        {
+            let counter = crop(gray, left - x, 85 - y, left + 60 - x, 130 - y);
+            if counter.width < template.width || counter.height < template.height {
+                return Ok(false);
+            }
+            if !cv::match_template(&counter, template, None)?
+                .data
+                .iter()
+                .any(|&score| score >= threshold)
+            {
+                return Ok(false);
+            }
+        }
+        Ok(true)
+    }
     pub fn feed(
         &mut self,
         t: f64,
@@ -323,30 +356,35 @@ impl ControlFeed {
         let Some(feed) = feed else {
             return Ok(());
         };
-        if let Some(thumb) = thumb {
-            if matches!(
-                self.scene.classify(thumb, self.profile.layout)?,
-                "pre_match" | "lobby"
-            ) {
-                self.active = false;
-                self.player = None;
-                self.entries.clear();
-            }
+        let scene = thumb
+            .map(|thumb| self.scene.classify(thumb, self.profile.layout))
+            .transpose()?;
+        if matches!(scene, Some("pre_match" | "lobby")) {
+            self.active = false;
+            self.player = None;
+            self.entries.clear();
         }
         let [x, y, w, h] = self.profile.killfeed_roi.unwrap();
         let (rw, rh) = (((x + w) / 3 - x / 3) as usize, (h / 3) as usize);
-        let image = cv::resize(&cv::gray(feed)?, rw, rh, Interpolation::Linear)?;
+        let gray = cv::gray(feed)?;
+        let image = cv::resize(&gray, rw, rh, Interpolation::Linear)?;
         let mut reference = Image::new(640, 360, 1, vec![0; 640 * 360])?;
         for yy in 0..rh {
             let start = (yy + y as usize / 3) * 640 + x as usize / 3;
             reference.data[start..start + rw].copy_from_slice(&image.data[yy * rw..(yy + 1) * rw]);
         }
-        if self.scene.match_score(&reference, "control_objectives")? >= 0.8 {
-            self.active = true;
-        }
-        if !self.active {
+        let objectives = self.scene.match_score(&reference, "control_objectives")? >= 0.8;
+        if !self.active && (!objectives || scene.is_some_and(|kind| kind != "in_match_hud")) {
             return Ok(());
         }
+        // BR's kill and assist counters outweigh accidental objective matches in the compass.
+        if self.battle_royale_hud(&gray)? {
+            self.active = false;
+            self.player = None;
+            self.entries.clear();
+            return Ok(());
+        }
+        self.active = true;
         let rows = self.rows(feed, spec)?;
         self.feed_rows(t, rows)
     }

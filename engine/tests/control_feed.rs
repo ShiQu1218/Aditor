@@ -75,3 +75,44 @@ fn lobby_disarms_control() {
     c.feed(1., Some(&zero), &s, Some(&thumb)).unwrap();
     assert!(!c.active);
 }
+
+#[test]
+fn battle_royale_counters_reject_compass_false_positive_and_disarm_control() {
+    let p = common::profile();
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/control_feed");
+    let control = aditor::cv::read_png(&root.join("1745_0_feed.png"), false).unwrap();
+    let spec = aditor::cv::read_png(&root.join("1745_0_spec.png"), false).unwrap();
+    for name in ["br_271_25_hud.png", "br_506_hud.png"] {
+        let hud = aditor::cv::read_png(&root.join(name), false).unwrap();
+        let br = hud.border(0, 420 - hud.height, 0, 0, 0);
+        let mut c = ControlFeed::new(&p).unwrap();
+        for t in [0., 0.25, 0.5, 0.75] {
+            c.feed(t, Some(&br), &spec, None).unwrap();
+            assert!(!c.active, "{name} at {t}");
+        }
+        c.feed(1., Some(&control), &spec, None).unwrap();
+        assert!(c.active);
+        c.feed(1.25, Some(&br), &spec, None).unwrap();
+        assert!(!c.active, "{name} must disarm an already active detector");
+        c.feed(1.5, Some(&control), &spec, None).unwrap();
+        assert!(c.active);
+        assert!(c.events.is_empty());
+    }
+}
+
+#[test]
+fn inventory_false_positive_cannot_arm_control_with_scene_evidence() {
+    let p = common::profile();
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/control_feed");
+    let hud = aditor::cv::read_png(&root.join("br_inventory_236_hud.png"), false).unwrap();
+    let feed = hud.border(0, 420 - hud.height, 0, 0, 0);
+    let thumb = aditor::cv::read_png(&root.join("br_inventory_236_thumb.png"), true).unwrap();
+    let spec = aditor::cv::read_png(&root.join("1745_0_spec.png"), false).unwrap();
+    let mut c = ControlFeed::new(&p).unwrap();
+    c.feed(0., Some(&feed), &spec, Some(&thumb)).unwrap();
+    assert!(!c.active);
+    let control = aditor::cv::read_png(&root.join("1745_0_feed.png"), false).unwrap();
+    let thumb = parity::screen("control_1745.png");
+    c.feed(0.25, Some(&control), &spec, Some(&thumb)).unwrap();
+    assert!(c.active);
+}
