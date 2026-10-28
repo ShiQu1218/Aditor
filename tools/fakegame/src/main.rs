@@ -319,6 +319,11 @@ fn run(o: Options) -> Result<()> {
         }
         if measure_start.is_some_and(|start| (now - start) as f64 * tick_ms >= o.duration * 1000.0)
         {
+            // Written before the window closes, so the harness can tell expected capture loss from a failure.
+            if let Some(path) = &o.measurement {
+                fs::write(path.with_extension("done"), "done
+")?;
+            }
             break;
         }
         let timeline = measure_start
@@ -345,6 +350,8 @@ fn run(o: Options) -> Result<()> {
                 Instant::now() < visible_deadline,
                 "No visible presentation for 15 seconds; run on an unlocked interactive desktop, outside a hidden/sandbox desktop"
             );
+            // Occlusion restarts the gate: warmup must not begin until frames are visible again.
+            visible = false;
             warmup_start = None;
             std::thread::sleep(Duration::from_millis(50));
             continue;

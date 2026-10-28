@@ -90,6 +90,11 @@ async function run(config) {
     }
     throw new Error(`Timed out waiting for ${label}; see app.log and app-state.jsonl in ${runDir}`);
   }
+  // The game marks the end of measurement before closing its window; capture loss and the app's own
+  // shutdown can be observed before Node sees the game's 'close'.
+  function measurementOver() {
+    return gameExit !== undefined || fs.existsSync(file('measurement.done'));
+  }
   function liveEnginePids() {
     const result = spawnSync('powershell.exe', ['-NoProfile', '-Command',
       "@(Get-CimInstance Win32_Process -Filter \"Name='aditor.exe'\" | Where-Object { $_.CommandLine -like '*--shm*' }).ProcessId"],
@@ -107,9 +112,9 @@ async function run(config) {
     fs.appendFileSync(file('app-state.jsonl'), JSON.stringify({ epoch_ms: epochMs, ...state }) + '\n');
     if (idle) assert.equal(state.recording.phase, 'idle', 'app_idle unexpectedly started recording');
     if (state.recording.phase === 'error') throw new Error(`Recording failed: ${JSON.stringify(state.recording.error)}`);
-    if (!idle && measuring && gameExit === undefined && state.recording.phase !== 'recording') throw new Error(`Recording stopped during measurement: ${state.recording.phase}`);
+    if (!idle && measuring && !measurementOver() && state.recording.phase !== 'recording') throw new Error(`Recording stopped during measurement: ${state.recording.phase}`);
     // The pid probe is a cheap syscall; the CIM query that finds the pids runs only before measurement.
-    if (!idle && measuring && gameExit === undefined) checkLiveEngine(liveEngine);
+    if (!idle && measuring && !measurementOver()) checkLiveEngine(liveEngine);
     if (copied && samePath(state.queue.current?.path, config.analysisDestination) && state.queue.current.progress > 0) {
       metadata.analysis_first_progress_epoch_ms ??= epochMs;
       metadata.analysis_last_progress = state.queue.current.progress;
@@ -163,10 +168,7 @@ async function run(config) {
     await waitFor('GPU footage upload', () => fs.existsSync(file('ready')));
     if (direct) {
       const { RecorderWorkload } = require('./bench-recorder.cjs');
-      // The recorder can report window or hook loss before Node sees the game's exit, so the end of the
-      // measured window counts as exited too.
-      recorder = new RecorderWorkload(config, metadata, killTree, () => gameExit !== undefined
-        || (metadata.measurement !== undefined && Date.now() >= metadata.measurement.epoch_ms + config.durationS * 1000));
+      recorder = new RecorderWorkload(config, metadata, killTree, measurementOver);
       await recorder.start(game.pid);
     }
     if (page && !idle) {

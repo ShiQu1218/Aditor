@@ -19,7 +19,7 @@ param(
     [string]$Windowed = '',
     [ValidateSet('auto', 'wgc', 'dda', 'hook')][string]$CaptureMethod = 'auto',
     [ValidateSet('speed', 'balanced', 'quality')][string]$Preset = 'speed',
-    [ValidateRange(10, 180)][int]$StartTimeoutS = 120,
+    [ValidateRange(30, 180)][int]$StartTimeoutS = 120,
     [ValidateRange(10, 600)][int]$FinalizeTimeoutS = 120,
     [string]$CacheDir = (Join-Path ([IO.Path]::GetTempPath()) 'aditor-fakegame-cache'),
     [string]$ResultsDir = (Join-Path ([IO.Path]::GetTempPath()) 'aditor-fakegame-results'),

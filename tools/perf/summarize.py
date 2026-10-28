@@ -60,7 +60,8 @@ def summarize(root):
             raise ValueError(f"Invalid stats: {file.parent}")
         groups.setdefault(meta["scenario"], []).append(stats)
     if not groups:
-        raise ValueError("No completed runs")
+        raise ValueError("No completed runs" + (
+            f" ({sum(excluded.values())} excluded for background_frames > 0)" if excluded else ""))
     baseline = groups.get("baseline")
     lines = ["# Fake-game frame-time benchmark", "",
              "Values are median [min, max] across completed runs. FPS deltas are percentages; "
