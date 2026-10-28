@@ -15,7 +15,7 @@ use std::{
     path::Path,
     sync::{
         atomic::{AtomicU64, Ordering},
-        mpsc::{self, Receiver, Sender, SyncSender, TryRecvError, TrySendError},
+        mpsc::{self, Receiver, Sender, SyncSender, TryRecvError},
         Arc, Mutex, OnceLock, TryLockError,
     },
     thread::{self, JoinHandle},
@@ -474,11 +474,10 @@ impl SegmentWriter {
             self.counts.queue.fetch_add(1, Ordering::Relaxed);
             match self.video_tx.as_ref()?.try_send(VideoJob { surface, slot }) {
                 Ok(()) => {}
-                Err(error) => {
+                Err(_) => {
+                    // Disconnected only happens after the worker failed; monitor_worker records that error once the
+                    // worker's muxer has flushed, so recording a generic error here would mask the real cause.
                     self.counts.queue.fetch_sub(1, Ordering::Relaxed);
-                    if matches!(error, TrySendError::Disconnected(_)) {
-                        self.counts.fail("Encoder thread has exited");
-                    }
                     return None;
                 }
             }
