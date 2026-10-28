@@ -5,6 +5,7 @@ import type { Settings, SettingsSetResult } from '../shared/settings'
 import { isSafeLocalDirPath } from './safe-path'
 import type { SettingsStore } from './settings'
 import { prepareStorageRoot, suggestStorageRoot } from './storage-root'
+import { RECORDINGS_DIRNAME } from '../shared/storage'
 
 /** IPC channel for retrieving the suggested storage root (used by first-run setup and Settings). */
 export const STORAGE_SUGGEST_CHANNEL = 'settings:suggestStorageRoot'
@@ -61,9 +62,31 @@ export function validateOutDir(dir: unknown): string {
   return resolved
 }
 
+/** Whether a recording folder still holds session work that startup recovery finds only while it is the output folder. */
+function hasUnfinishedSessions(outputDir: string): boolean {
+  try {
+    return fs.readdirSync(path.join(outputDir, '.sessions'), { withFileTypes: true }).some((entry) => entry.isDirectory())
+  } catch {
+    return false
+  }
+}
+
+const samePath = (a: string, b: string): boolean =>
+  process.platform === 'win32' ? path.resolve(a).toLowerCase() === path.resolve(b).toLowerCase() : path.resolve(a) === path.resolve(b)
+
 /** Handle storageRoot in a partial settings object (mutate partial in place; add failures to errors). */
-function applyStorageRoot(partial: Partial<Settings>, errors: NonNullable<SettingsSetResult['errors']>): void {
+function applyStorageRoot(partial: Partial<Settings>, errors: NonNullable<SettingsSetResult['errors']>, currentOutputDir: string | null): void {
   if (!('storageRoot' in partial) || partial.storageRoot === null) return
+  if (currentOutputDir && typeof partial.storageRoot === 'string' && isSafeLocalDirPath(partial.storageRoot) &&
+      !samePath(path.join(partial.storageRoot, RECORDINGS_DIRNAME), currentOutputDir) && hasUnfinishedSessions(currentOutputDir)) {
+    errors.storageRoot = tr('目前的錄影資料夾還有尚未完成收尾的錄影，請先完成或恢復錄影後再變更儲存位置：{path}', { path: currentOutputDir })
+    delete partial.storageRoot
+    if (partial.recording && typeof partial.recording === 'object') {
+      const { outputDir: _keep, ...recording } = partial.recording
+      partial.recording = recording as Settings['recording']
+    }
+    return
+  }
   try {
     const { root, recordingsDir, exportsDir } = prepareStorageRoot(partial.storageRoot)
     partial.storageRoot = root
@@ -142,7 +165,7 @@ export function registerSettingsHandlers(
         delete partial.defaultOutDir
       }
     }
-    applyStorageRoot(partial, errors)
+    applyStorageRoot(partial, errors, settings.get().recording.outputDir)
     const saved = settings.set(partial)
     const result = { ...saved, settings: publicSettings(saved.settings) }
     return Object.keys(errors).length > 0 ? { ...result, errors: { ...result.errors, ...errors } } : result

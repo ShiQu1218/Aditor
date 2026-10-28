@@ -78,4 +78,24 @@ describe('settings:set storageRoot', () => {
     call('settings:set', { storageRoot: root })
     expect(call(STORAGE_SUGGEST_CHANNEL)).toBe(root)
   })
+
+  test('refuses to move away from a recording folder that still has unfinished sessions, which recovery would no longer scan', () => {
+    const oldRoot = path.join(dir, 'Old')
+    const newRoot = path.join(dir, 'New')
+    call('settings:set', { storageRoot: oldRoot })
+    const session = path.join(oldRoot, 'Recordings', '.sessions', '20260101-000000-abcd')
+    fs.mkdirSync(session, { recursive: true })
+
+    const res = call('settings:set', { storageRoot: newRoot, before: 5 })
+    expect(res.errors?.storageRoot).toBeTruthy()
+    expect(res.settings.storageRoot).toBe(oldRoot)
+    expect(res.settings.recording.outputDir).toBe(path.join(oldRoot, 'Recordings'))
+    expect(res.settings.defaultOutDir).toBe(path.join(oldRoot, 'Exports'))
+    expect(res.settings.before).toBe(5)
+    expect(fs.existsSync(session)).toBe(true)
+
+    expect(call('settings:set', { storageRoot: oldRoot }).errors).toBeUndefined()
+    fs.rmSync(session, { recursive: true })
+    expect(call('settings:set', { storageRoot: newRoot }).settings.storageRoot).toBe(newRoot)
+  })
 })
