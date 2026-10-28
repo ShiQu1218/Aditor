@@ -42,7 +42,9 @@ fn yellow(hsv: &Image<u8>, pale: bool) -> Image<u8> {
         channels: 1,
         data: hsv
             .data
-            .chunks_exact(3)
+            .as_chunks::<3>()
+            .0
+            .iter()
             .map(|p| {
                 u8::from(if pale {
                     p[0] >= 26 && p[0] <= 40 && p[1] >= 55 && p[2] >= 140
@@ -104,7 +106,7 @@ impl FeedDetector {
         let (b0, b1) = self.band(k);
         let r = crop(hsv, self.right - 130, b0 + 5, self.right - 60, b1 - 5);
         let (mut red, mut teal) = (0, 0);
-        for p in r.data.chunks_exact(3) {
+        for p in r.data.as_chunks::<3>().0.iter() {
             if p[1] >= 55 && p[2] >= 110 {
                 red += usize::from(p[0] <= 10 || p[0] >= 170);
                 teal += usize::from((65..=100).contains(&p[0]));
@@ -236,7 +238,9 @@ impl FeedDetector {
             }
             let share = region
                 .data
-                .chunks_exact(3)
+                .as_chunks::<3>()
+                .0
+                .iter()
                 .filter(|p| (55..=100).contains(&p[0]) && p[1] >= 25 && p[2] >= 110)
                 .count() as f64
                 / (region.width * region.height) as f64;
@@ -288,7 +292,9 @@ impl FeedDetector {
                 r.height,
                 1,
                 r.data
-                    .chunks_exact(3)
+                    .as_chunks::<3>()
+                    .0
+                    .iter()
                     .map(|p| u8::from(p[1] <= 100 && p[2] >= 175) * 255)
                     .collect(),
             )?;

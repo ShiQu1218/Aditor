@@ -96,7 +96,9 @@ pub fn enemy_color_mask(im: &Image<u8>) -> Image<u8> {
         channels: 1,
         data: im
             .data
-            .chunks_exact(3)
+            .as_chunks::<3>()
+            .0
+            .iter()
             .map(|p| {
                 let (b, g, r) = (p[0] as i32, p[1] as i32, p[2] as i32);
                 u8::from(

@@ -183,7 +183,7 @@ impl MixtapeDetector {
         let mut mask = if kind == "kill" {
             let mut m = red_mask(&row, p, true);
             let hsv = cv::hsv(&row)?;
-            for (v, h) in m.data.iter_mut().zip(hsv.data.chunks_exact(3)) {
+            for (v, h) in m.data.iter_mut().zip(hsv.data.as_chunks::<3>().0.iter()) {
                 if h[0] >= 15 && h[0] <= 40 && h[1] >= 90 && h[2] >= 120 {
                     *v = 255;
                 }

@@ -81,12 +81,14 @@ impl RoundTracker {
             return Ok(None);
         }
         let hsv = cv::hsv(&crop.crop(x as usize, y as usize, 52, 32)?)?;
-        let mut values: Vec<_> = hsv.data.chunks_exact(3).map(|p| p[2]).collect();
+        let mut values: Vec<_> = hsv.data.as_chunks::<3>().0.iter().map(|p| p[2]).collect();
         values.sort_unstable();
         let median = (values[values.len() / 2 - 1] as i32 + values[values.len() / 2] as i32) / 2;
         let mask: Vec<_> = hsv
             .data
-            .chunks_exact(3)
+            .as_chunks::<3>()
+            .0
+            .iter()
             .map(|p| p[2] as i32 >= 200.max(median + 45) && p[1] <= 50)
             .collect();
         let ink = mask.iter().filter(|&&b| b).count();
@@ -95,7 +97,9 @@ impl RoundTracker {
         }
         let sat = hsv
             .data
-            .chunks_exact(3)
+            .as_chunks::<3>()
+            .0
+            .iter()
             .zip(&mask)
             .filter(|(_, b)| !**b)
             .map(|(p, _)| p[1] as f64)
@@ -112,7 +116,9 @@ impl RoundTracker {
         let hsv = cv::hsv(&region)?;
         Ok(hsv
             .data
-            .chunks_exact(3)
+            .as_chunks::<3>()
+            .0
+            .iter()
             .filter(|p| (p[0] <= 10 || p[0] >= 170) && p[1] >= 60 && p[2] >= 90)
             .count() as f64
             / (region.width * region.height) as f64

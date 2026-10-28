@@ -17,7 +17,9 @@ pub fn scoreboard_visible(frame: &Image<u8>) -> Result<bool> {
         let region = hsv.crop(x, y, w, h)?;
         Ok(region
             .data
-            .chunks_exact(3)
+            .as_chunks::<3>()
+            .0
+            .iter()
             .filter(|p| {
                 p[1] >= 60 && p[2] >= 90 && ranges.iter().any(|&(lo, hi)| p[0] >= lo && p[0] <= hi)
             })
@@ -27,7 +29,9 @@ pub fn scoreboard_visible(frame: &Image<u8>) -> Result<bool> {
     let gray = hsv
         .crop(796, 36, 56, 26)?
         .data
-        .chunks_exact(3)
+        .as_chunks::<3>()
+        .0
+        .iter()
         .map(|p| p[1] as f64)
         .sum::<f64>()
         / (56. * 26.)

@@ -12,7 +12,7 @@ use anyhow::Result;
 use image::ImageEncoder;
 fn png(img: &Image<u8>) -> Result<Vec<u8>> {
     let mut data = img.data.clone();
-    for p in data.chunks_exact_mut(3) {
+    for p in data.as_chunks_mut::<3>().0.iter_mut() {
         p.swap(0, 2);
     }
     let mut out = vec![];
@@ -33,7 +33,7 @@ fn unpng(bytes: &[u8]) -> Result<Image<u8>> {
     let img = image::load_from_memory_with_format(bytes, image::ImageFormat::Png)?.into_rgb8();
     let (w, h) = img.dimensions();
     let mut data = img.into_raw();
-    for p in data.chunks_exact_mut(3) {
+    for p in data.as_chunks_mut::<3>().0.iter_mut() {
         p.swap(0, 2);
     }
     Image::new(w as usize, h as usize, 3, data)

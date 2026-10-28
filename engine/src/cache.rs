@@ -47,10 +47,10 @@ fn sha1(input: &[u8]) -> String {
         0x10325476,
         0xc3d2e1f0,
     ];
-    for chunk in data.chunks_exact(64) {
+    for chunk in data.as_chunks::<64>().0.iter() {
         let mut w = [0u32; 80];
-        for (i, b) in chunk.chunks_exact(4).enumerate() {
-            w[i] = u32::from_be_bytes(b.try_into().unwrap());
+        for (i, b) in chunk.as_chunks::<4>().0.iter().enumerate() {
+            w[i] = u32::from_be_bytes(*b);
         }
         for i in 16..80 {
             w[i] = (w[i - 3] ^ w[i - 8] ^ w[i - 14] ^ w[i - 16]).rotate_left(1);

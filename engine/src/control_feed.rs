@@ -176,7 +176,9 @@ impl ControlFeed {
         let cyan = despeckle(
             &mask(
                 feed.data
-                    .chunks_exact(3)
+                    .as_chunks::<3>()
+                    .0
+                    .iter()
                     .map(|p| {
                         u8::from(
                             p[0] > 110
@@ -251,7 +253,9 @@ impl ControlFeed {
                     channels: 1,
                     data: row
                         .data
-                        .chunks_exact(3)
+                        .as_chunks::<3>()
+                        .0
+                        .iter()
                         .map(|p| {
                             u8::from(
                                 p[2] > 140

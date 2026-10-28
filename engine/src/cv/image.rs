@@ -121,7 +121,7 @@ pub fn write_png(path: &Path, img: &Image<u8>) -> Result<()> {
     );
     let mut data = img.data.clone();
     if img.channels == 3 {
-        for p in data.chunks_exact_mut(3) {
+        for p in data.as_chunks_mut::<3>().0.iter_mut() {
             p.swap(0, 2);
         }
     }

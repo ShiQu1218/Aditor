@@ -47,7 +47,9 @@ pub fn white_mask(im: &Image<u8>, white: &Value) -> Result<Image<u8>> {
     Ok(mask(
         im,
         hsv.data
-            .chunks_exact(3)
+            .as_chunks::<3>()
+            .0
+            .iter()
             .map(|p| {
                 if p[2] as f64 >= v_min && p[1] as f64 <= s_max {
                     255
@@ -64,7 +66,9 @@ pub fn red_mask(im: &Image<u8>, profile: &Profile, pink: bool) -> Image<u8> {
     mask(
         im,
         im.data
-            .chunks_exact(3)
+            .as_chunks::<3>()
+            .0
+            .iter()
             .map(|p| {
                 let (b, g, r) = (p[0] as f64, p[1] as f64, p[2] as f64);
                 let red = r >= n(rule, "r_min")
@@ -297,8 +301,10 @@ pub fn name_strokes(im: &Image<u8>) -> Result<Image<f32>> {
         channels: 1,
         data: light
             .data
-            .chunks_exact(3)
-            .zip(dark.data.chunks_exact(3))
+            .as_chunks::<3>()
+            .0
+            .iter()
+            .zip(dark.data.as_chunks::<3>().0.iter())
             .map(|(a, b)| *a.iter().chain(b).max().unwrap() as f32)
             .collect(),
     })

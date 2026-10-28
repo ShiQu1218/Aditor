@@ -7,7 +7,9 @@ pub fn gray(src: &Image<u8>) -> Result<Image<u8>> {
         src.height,
         1,
         src.data
-            .chunks_exact(3)
+            .as_chunks::<3>()
+            .0
+            .iter()
             .map(|p| {
                 ((p[0] as u32 * 3735 + p[1] as u32 * 19235 + p[2] as u32 * 9798 + 16384) >> 15)
                     as u8
@@ -18,7 +20,13 @@ pub fn gray(src: &Image<u8>) -> Result<Image<u8>> {
 pub fn hsv(src: &Image<u8>) -> Result<Image<u8>> {
     ensure!(src.channels == 3, "BGR requires three channels");
     let mut out = src.clone();
-    for (p, q) in src.data.chunks_exact(3).zip(out.data.chunks_exact_mut(3)) {
+    for (p, q) in src
+        .data
+        .as_chunks::<3>()
+        .0
+        .iter()
+        .zip(out.data.as_chunks_mut::<3>().0.iter_mut())
+    {
         let (b, g, r) = (p[0] as i32, p[1] as i32, p[2] as i32);
         let v = r.max(g).max(b);
         let diff = v - r.min(g).min(b);
