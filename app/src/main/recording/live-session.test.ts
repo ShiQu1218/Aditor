@@ -354,12 +354,12 @@ it('treats processed frames as healthy in a lobby with no kill snapshots, cleans
   await live.flush()
 })
 
-it('marks detection as healthy throughout only when live detection is healthy at stop, not when unstarted, failed, or restarting', async () => {
+it('marks detection as healthy throughout only when live detection is healthy at stop, not when unstarted, failed, restarting, killed without a final snapshot, or lossy', async () => {
   const marker = (dir: string) => fs.existsSync(path.join(dir, 'live-complete.json'))
   const make = () => {
     const dir = sessionDir(root())
     const live = new LiveSession({ sessionId: '標記', dir, profileDir: dir, recordEvent: vi.fn(), notice: vi.fn() })
-    const engine = Object.assign(new EventEmitter(), { stop: vi.fn(async () => {}) })
+    const engine = Object.assign(new EventEmitter(), { stop: vi.fn(async () => {}), quality: vi.fn((): unknown => ({ complete: true, reasons: [] })) })
     return { dir, live, engine, internal: live as any }
   }
   const never = make()
@@ -382,4 +382,17 @@ it('marks detection as healthy throughout only when live detection is healthy at
   restarting.engine.emit('restarting', { message: '重啟' })
   await restarting.live.stop()
   expect(marker(restarting.dir)).toBe(false)
+  // Killed after the stop timeout: no final snapshot, so healthy progress alone is not proof that no match was missed.
+  const killed = make()
+  killed.internal.engine = killed.engine; killed.internal.listen(killed.engine)
+  killed.engine.emit('progress', 10)
+  killed.engine.quality.mockReturnValue(null)
+  await killed.live.stop()
+  expect(marker(killed.dir)).toBe(false)
+  const lossy = make()
+  lossy.internal.engine = lossy.engine; lossy.internal.listen(lossy.engine)
+  lossy.engine.emit('progress', 10)
+  lossy.engine.quality.mockReturnValue({ complete: false, reasons: ['frames_lost'] })
+  await lossy.live.stop()
+  expect(marker(lossy.dir)).toBe(false)
 })
