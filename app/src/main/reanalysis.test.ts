@@ -248,6 +248,38 @@ describe('clips backup across cancelled re-analysis (F2)', () => {
     expect(fs.existsSync(backup())).toBe(false)
   })
 
+  it('a failed restore write keeps its backup through the next run, which then restores accepted AI clips', async () => {
+    seedDone()
+    const rename = fs.renameSync.bind(fs)
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    // Fail only the post-analysis merge write (the one that sets suggestionsPending), as on EPERM or a full disk.
+    const failMerge = vi.spyOn(fs, 'renameSync').mockImplementation((from, to) => {
+      if (to === cache() && fs.readFileSync(from, 'utf8').includes('suggestionsPending')) throw new Error('EPERM')
+      return rename(from, to)
+    })
+    try {
+      const q1 = new AnalysisQueue(engine('done'), lib, { profileDir: '/p', cacheDir: dir })
+      ;(q1 as any)._generateThumbnail = async () => undefined
+      q1.enqueue(V1, true)
+      await tick(60)
+      expect(readDoc().clips.map((c: any) => c.id)).toEqual(['m1'])
+      expect(readClipsBackup(cache())?.some((c) => c.id === 'a1')).toBe(true)
+      failMerge.mockRestore()
+
+      const q2 = new AnalysisQueue(engine('done', 3), lib, { profileDir: '/p', cacheDir: dir })
+      ;(q2 as any)._generateThumbnail = async () => undefined
+      q2.enqueue(V1, true)
+      await tick(60)
+      expect(summary(readDoc().clips)).toEqual([
+        ['a1', 'accepted', true],
+        ['m1', 'accepted', false]
+      ])
+      expect(fs.existsSync(backup())).toBe(false)
+    } finally {
+      vi.restoreAllMocks()
+    }
+  })
+
   it('a cancel during thumbnail generation still restores accepted AI clips before a later run backs up the cache', async () => {
     seedDone()
     let thumbnailDone!: () => void

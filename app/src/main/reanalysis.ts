@@ -146,7 +146,9 @@ export function capturePriorCache(videoPath: string, cacheDir: string, beside = 
   const docDone = hasDoc && doc!.analysis?.status === 'done'
   const docClips = hasDoc && Array.isArray(doc!.clips) ? doc!.clips! : []
 
-  if (docDone && !editing && !writeReanalysisBackup(cachePath, (doc!.events ?? []) as EngineEvent[], docClips as Clip[])) {
+  // A backup still beside a done cache was never merged back (restore write failed or the app quit first); keep it.
+  const unconsumed = docDone && !editing ? readReanalysisBackup(cachePath) : null
+  if (docDone && !editing && !unconsumed && !writeReanalysisBackup(cachePath, (doc!.events ?? []) as EngineEvent[], docClips as Clip[])) {
     throw new Error(tr('無法備份編輯內容，已停止重新分析'))
   }
   const targetBackup = readReanalysisBackup(cachePath)
