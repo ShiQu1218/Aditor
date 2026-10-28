@@ -79,10 +79,25 @@ describe('settings store', () => {
   it('corrupt json is backed up to .bak and defaults returned', () => {
     fs.writeFileSync(file, '{ this is not valid json', 'utf-8')
 
-    expect(loadSettings(file)).toEqual(DEFAULT_SETTINGS)
-    expect(fs.existsSync(file)).toBe(false)
+    const recovered = { ...DEFAULT_SETTINGS, telemetryEnabled: false, recording: { ...DEFAULT_SETTINGS.recording, autoRecord: false } }
+    expect(loadSettings(file)).toEqual(recovered)
+    expect(JSON.parse(fs.readFileSync(file, 'utf-8'))).toEqual(recovered)
     expect(fs.existsSync(`${file}.bak`)).toBe(true)
     expect(fs.readFileSync(`${file}.bak`, 'utf-8')).toBe('{ this is not valid json')
+  })
+
+  it('corrupt json keeps telemetry and auto-recording off unless the damaged file still shows them on', () => {
+    const optedOut = JSON.stringify({ ...DEFAULT_SETTINGS, telemetryEnabled: false, recording: { ...DEFAULT_SETTINGS.recording, autoRecord: false } })
+    fs.writeFileSync(file, optedOut.slice(0, -40), 'utf-8')
+    expect(loadSettings(file)).toMatchObject({ telemetryEnabled: false, recording: { autoRecord: false } })
+    // The startup read renames the file; the store created later must not fall back to telemetry-on defaults.
+    expect(new SettingsStore(file).get()).toMatchObject({ telemetryEnabled: false, recording: { autoRecord: false } })
+
+    fs.writeFileSync(file, '{ "telemetryEnabled": tru', 'utf-8')
+    expect(loadSettings(file)).toMatchObject({ telemetryEnabled: false, recording: { autoRecord: false } })
+
+    fs.writeFileSync(file, JSON.stringify(DEFAULT_SETTINGS).slice(0, -40), 'utf-8')
+    expect(loadSettings(file)).toMatchObject({ telemetryEnabled: true, recording: { autoRecord: true } })
   })
 
   it('old/no-version file migrates and keeps known values', () => {
