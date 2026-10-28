@@ -276,6 +276,16 @@ export class RecordingSessionService implements RecordingService {
     for (const session of [this.active, ...this.pendingObs.values()]) {
       if (session) recordOutputRemoval(session.dir, videoPath)
     }
+    // Sessions kept for recovery live in <outputDir>/.sessions beside the <outputDir>/<day>/ output; without a marker
+    // their next finalization would fail on the deleted output forever. A marker in an unrelated session is ignored.
+    const sessions = path.join(path.dirname(path.dirname(videoPath)), '.sessions')
+    let entries: fs.Dirent[]
+    try { entries = fs.readdirSync(sessions, { withFileTypes: true }) } catch { return }
+    for (const entry of entries) {
+      if (!entry.isDirectory() || entry.isSymbolicLink()) continue
+      try { recordOutputRemoval(path.join(sessions, entry.name), videoPath) }
+      catch (error) { console.error('[recording] Failed to record output removal for a kept session:', error) }
+    }
   }
 
   async capabilities(): Promise<RecorderCapabilities | null> {
