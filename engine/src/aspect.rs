@@ -185,6 +185,41 @@ pub fn grab(
     }
     Ok(None)
 }
+pub(crate) fn sampled_frames(
+    duration: f64,
+    samples: usize,
+    grab: impl Fn(f64) -> Result<Option<Image<u8>>> + Sync,
+) -> impl Iterator<Item = Result<Image<u8>>> {
+    // Bound decoder memory while retaining the original sample order and retry positions.
+    (0..samples)
+        .step_by(4)
+        .flat_map(move |start| {
+            std::thread::scope(|scope| {
+                let handles: Vec<_> = (start..(start + 4).min(samples))
+                    .map(|i| {
+                        let grab = &grab;
+                        scope.spawn(move || {
+                            let t = duration * (i as f64 + 0.5) / samples as f64;
+                            let frame = grab(t)?;
+                            if frame.is_none() && t > 1. {
+                                grab(t - 1.)
+                            } else {
+                                Ok(frame)
+                            }
+                        })
+                    })
+                    .collect();
+                handles
+                    .into_iter()
+                    .map(|h| {
+                        h.join()
+                            .unwrap_or_else(|_| Err(anyhow::anyhow!("Sample worker panicked")))
+                    })
+                    .collect::<Vec<_>>()
+            })
+        })
+        .filter_map(Result::transpose)
+}
 pub fn detect_aspect(
     path: &str,
     info: &VideoInfo,
@@ -198,19 +233,12 @@ pub fn detect_aspect(
             found: false,
         });
     }
-    let frames = (0..DETECT_SAMPLES)
-        .map(|i| -> Result<Option<Image<u8>>> {
-            if cancel.is_some_and(|c| c.load(Ordering::Relaxed)) {
-                return Err(crate::errors::Cancelled.into());
-            }
-            let t = info.duration * (i as f64 + 0.5) / DETECT_SAMPLES as f64;
-            let mut frame = grab(path, t, hwaccel, cancel)?;
-            if frame.is_none() && t > 1. {
-                frame = grab(path, t - 1., hwaccel, cancel)?;
-            }
-            Ok(frame)
-        })
-        .filter_map(Result::transpose);
+    let frames = sampled_frames(info.duration, DETECT_SAMPLES, |t| {
+        if cancel.is_some_and(|c| c.load(Ordering::Relaxed)) {
+            return Err(crate::errors::Cancelled.into());
+        }
+        grab(path, t, hwaccel, cancel)
+    });
     choose_layout_results(frames, scene_dir)
 }
 pub fn detect_layout(
@@ -220,4 +248,51 @@ pub fn detect_layout(
     cancel: Option<&AtomicBool>,
 ) -> Result<Layout> {
     Ok(detect_aspect(path, info, None, hwaccel, cancel)?.layout)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::AtomicUsize;
+
+    #[test]
+    fn parallel_samples_preserve_order_retries_and_bound_decoders() {
+        let active = AtomicUsize::new(0);
+        let peak = AtomicUsize::new(0);
+        let frames = sampled_frames(18., 9, |t| {
+            let count = active.fetch_add(1, Ordering::SeqCst) + 1;
+            peak.fetch_max(count, Ordering::SeqCst);
+            std::thread::sleep(Duration::from_millis(if t == 1. { 5 } else { 1 }));
+            active.fetch_sub(1, Ordering::SeqCst);
+            if [3., 4., 5.].contains(&t) {
+                Ok(None)
+            } else {
+                Ok(Some(Image::new(1, 1, 1, vec![t as u8])?))
+            }
+        })
+        .collect::<Result<Vec<_>>>()
+        .unwrap();
+        assert_eq!(
+            frames.iter().map(|f| f.data[0]).collect::<Vec<_>>(),
+            vec![1, 2, 7, 9, 11, 13, 15, 17]
+        );
+        assert!((1..=4).contains(&peak.load(Ordering::SeqCst)));
+        assert_eq!(active.load(Ordering::SeqCst), 0);
+    }
+
+    #[test]
+    fn sample_error_stops_before_starting_the_next_batch() {
+        let mut frames = sampled_frames(18., 9, |t| {
+            assert!(t <= 7.);
+            if t == 3. {
+                bail!("sample failed");
+            }
+            Ok(Some(Image::new(1, 1, 1, vec![t as u8])?))
+        });
+        assert_eq!(frames.next().unwrap().unwrap().data, vec![1]);
+        assert_eq!(
+            frames.next().unwrap().unwrap_err().to_string(),
+            "sample failed"
+        );
+    }
 }

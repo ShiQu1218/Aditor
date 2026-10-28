@@ -9,7 +9,7 @@ use crate::{
     profile::Profile,
 };
 use anyhow::Result;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 pub const LEARN_SCAN_SECONDS: f64 = 900.;
 pub fn pick_scale(scales: &[f64]) -> f64 {
     if scales.is_empty() {
@@ -36,6 +36,28 @@ pub fn pick_scale(scales: &[f64]) -> f64 {
 pub fn stopped(cancel: Option<&AtomicBool>) -> bool {
     cancel.is_some_and(|c| c.load(Ordering::Relaxed))
 }
+struct ScaleScan {
+    hits: Vec<(f64, f64)>,
+    scanned: f64,
+    result: Result<()>,
+}
+impl ScaleScan {
+    fn append(self, hits: &mut Vec<f64>, budget: f64) -> Result<()> {
+        // Include the final partial interval, but ignore failures from speculative reads beyond it.
+        if self.scanned <= (budget / 0.25).ceil() * 0.25 {
+            self.result?;
+        }
+        let remaining = 5 - hits.len();
+        hits.extend(
+            self.hits
+                .into_iter()
+                .filter(|&(at, _)| at < budget)
+                .map(|(_, scale)| scale)
+                .take(remaining),
+        );
+        Ok(())
+    }
+}
 pub fn calibrate(
     path: &str,
     info: &VideoInfo,
@@ -54,52 +76,100 @@ pub fn calibrate(
         decode_profile.killfeed_roi = None;
     }
     let mid = info.duration / 2.;
-    let mut hits = vec![];
-    let mut scanned = 0.;
-    for (start, limit) in [(mid, None), (0., Some(mid))] {
-        if start == 0. && (mid <= 0. || scanned >= max_scan) {
-            break;
-        }
-        let mut part_hits = vec![];
-        let mut stream = FrameStream::new(
-            path,
-            decode_profile.clone(),
-            DecodeOptions {
-                start,
-                hwaccel,
-                codec: Some(info.codec.clone()),
-                ..DecodeOptions::default()
-            },
-        );
-        while let Some(frame) = stream.next_cancellable(&|| stopped(cancel)) {
-            if stopped(cancel) {
-                return Err(Cancelled.into());
-            }
-            let (t, b, s) = frame?;
-            if limit.is_some_and(|l| t >= l) || scanned >= max_scan {
-                break;
-            }
-            scanned += 0.25;
-            if probe.chev_best(&b)?.0 < 0.45 {
-                if mixtape.detect(&b, &s)?.is_some_and(|r| r.kind.is_some()) {
-                    part_hits.push(1.);
+    let stop = AtomicBool::new(false);
+    let second_budget = AtomicU64::new(max_scan.to_bits());
+    let scan = |start, limit: Option<f64>, progress: &mut dyn FnMut(f64)| {
+        let mut hits = vec![];
+        let mut scanned = 0.;
+        let result = (|| -> Result<()> {
+            let mut stream = FrameStream::new(
+                path,
+                decode_profile.clone(),
+                DecodeOptions {
+                    start,
+                    hwaccel,
+                    codec: Some(info.codec.clone()),
+                    ..DecodeOptions::default()
+                },
+            );
+            while let Some(frame) =
+                stream.next_cancellable(&|| stopped(cancel) || stop.load(Ordering::Relaxed))
+            {
+                if stopped(cancel) {
+                    return Err(Cancelled.into());
                 }
-            } else {
-                let f = multi.score_features(&b)?;
-                if f.chev >= multi.p.chev_min && f.plus >= multi.p.plus_min {
-                    part_hits.push(f.chev_scale);
+                if stop.load(Ordering::Relaxed) {
+                    break;
                 }
+                let (t, b, s) = frame?;
+                let budget = if limit.is_some() {
+                    f64::from_bits(second_budget.load(Ordering::Relaxed))
+                } else {
+                    max_scan
+                };
+                if limit.is_some_and(|l| t >= l) || scanned >= budget {
+                    break;
+                }
+                let at = scanned;
+                scanned += 0.25;
+                if probe.chev_best(&b)?.0 < 0.45 {
+                    if mixtape.detect(&b, &s)?.is_some_and(|r| r.kind.is_some()) {
+                        hits.push((at, 1.));
+                    }
+                } else {
+                    let f = multi.score_features(&b)?;
+                    if f.chev >= multi.p.chev_min && f.plus >= multi.p.plus_min {
+                        hits.push((at, f.chev_scale));
+                    }
+                }
+                if hits.len() >= 5 {
+                    break;
+                }
+                progress(scanned);
             }
-            if part_hits.len() >= 5 {
-                break;
+            Ok(())
+        })();
+        ScaleScan {
+            hits,
+            scanned,
+            result,
+        }
+    };
+    std::thread::scope(|scope| -> Result<f64> {
+        let mut second = None;
+        let first = scan(mid, None, &mut |scanned| {
+            // Avoid speculative decoding when the usual early banners already suffice.
+            if second.is_none()
+                && mid > 0.
+                && mid < max_scan
+                && scanned >= 30.
+                && scanned < max_scan
+            {
+                let scan = &scan;
+                second = Some(scope.spawn(move || scan(0., Some(mid), &mut |_| {})));
             }
+        });
+        let needs_second =
+            first.result.is_ok() && first.hits.len() < 5 && mid > 0. && first.scanned < max_scan;
+        if !needs_second {
+            stop.store(true, Ordering::Relaxed);
+        } else {
+            second_budget.store((max_scan - first.scanned).to_bits(), Ordering::Relaxed);
         }
-        hits.extend(part_hits.into_iter().take(5 - hits.len()));
-        if hits.len() >= 5 {
-            break;
+        let second = second.map(|h| h.join());
+        first.result?;
+        let mut hits: Vec<_> = first.hits.into_iter().map(|(_, scale)| scale).collect();
+        if needs_second {
+            let second = match second {
+                Some(result) => {
+                    result.map_err(|_| anyhow::anyhow!("Calibration worker panicked"))?
+                }
+                None => scan(0., Some(mid), &mut |_| {}),
+            };
+            second.append(&mut hits, max_scan - first.scanned)?;
         }
-    }
-    Ok(pick_scale(&hits))
+        Ok(pick_scale(&hits))
+    })
 }
 #[derive(Clone, Debug)]
 pub struct Group {
@@ -357,4 +427,45 @@ pub fn learn_keywords(
     }
     cols.push(scan(limit, info.duration)?);
     Ok(extend_keywords(&base, &build_keywords(&cols)?))
+}
+
+#[cfg(test)]
+mod scale_scan_tests {
+    use super::*;
+
+    #[test]
+    fn speculative_hits_obey_the_original_budget_and_first_five_limit() {
+        let mut hits = vec![0.9, 0.95, 1.];
+        ScaleScan {
+            hits: vec![(0., 1.05), (0.25, 1.1), (0.5, 0.9), (0.75, 1.)],
+            scanned: 1.,
+            result: Ok(()),
+        }
+        .append(&mut hits, 0.5)
+        .unwrap();
+        assert_eq!(hits, vec![0.9, 0.95, 1., 1.05, 1.1]);
+        let mut hits = vec![];
+        ScaleScan {
+            hits: vec![(0., 0.95), (0.25, 1.1)],
+            scanned: 0.5,
+            result: Err(anyhow::anyhow!("outside budget")),
+        }
+        .append(&mut hits, 0.1)
+        .unwrap();
+        assert_eq!(hits, vec![0.95]);
+        assert!(ScaleScan {
+            hits: vec![],
+            scanned: 0.25,
+            result: Err(anyhow::anyhow!("required sample failed")),
+        }
+        .append(&mut vec![], 0.25)
+        .is_err());
+        assert!(ScaleScan {
+            hits: vec![],
+            scanned: 0.25,
+            result: Err(anyhow::anyhow!("partial final sample failed")),
+        }
+        .append(&mut vec![], 0.1)
+        .is_err());
+    }
 }

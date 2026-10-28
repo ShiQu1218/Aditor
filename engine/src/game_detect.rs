@@ -152,21 +152,16 @@ pub fn detect(
     let mut apex = 0;
     let mut valorant = 0;
     if info.duration > 0. {
-        for i in 0..24 {
+        for frame in crate::aspect::sampled_frames(info.duration, 24, |t| {
             if crate::calibrate::stopped(cancel) {
                 return Err(crate::errors::Cancelled.into());
             }
-            let t = info.duration * (i as f64 + 0.5) / 24.;
-            let mut frame = grab(path, t, hwaccel, cancel)?;
-            if frame.is_none() && t > 1. {
-                frame = grab(path, t - 1., hwaccel, cancel)?;
-            }
-            if let Some(frame) = frame {
-                match frame_game(&frame, &matcher)? {
-                    Some("valorant") => valorant += 1,
-                    Some("apex") => apex += 1,
-                    _ => (),
-                }
+            grab(path, t, hwaccel, cancel)
+        }) {
+            match frame_game(&frame?, &matcher)? {
+                Some("valorant") => valorant += 1,
+                Some("apex") => apex += 1,
+                _ => (),
             }
         }
     }
