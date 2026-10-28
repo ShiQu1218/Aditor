@@ -329,8 +329,7 @@ async function isFileReleased(filePath: string): Promise<boolean> {
     // Windows copies preallocate the final size before releasing the destination handle.
     const handle = await fs.promises.open(filePath, 'r+').catch(async (err: NodeJS.ErrnoException) => {
       if (!['EPERM', 'EACCES'].includes(err.code ?? '')) throw err
-      const stat = await fs.promises.stat(filePath)
-      if ((stat.mode & 0o200) !== 0) throw err
+      // Windows copy writers also deny reads (engine: Permission denied); writers allowing reads report EBUSY on 'r+'.
       return fs.promises.open(filePath, 'r')
     })
     await handle.close()

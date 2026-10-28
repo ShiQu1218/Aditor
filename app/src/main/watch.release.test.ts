@@ -110,16 +110,18 @@ describe('watched file release', () => {
     vi.useFakeTimers()
     const { watcher, onAdd } = setup()
     const close = vi.fn(async () => {})
-    vi.spyOn(fs.promises, 'stat').mockResolvedValue({ mode: 0o666 } as fs.Stats)
     const open = vi.spyOn(fs.promises, 'open')
       .mockRejectedValueOnce(Object.assign(new Error('Busy'), { code }))
-      .mockResolvedValue({ close } as unknown as fs.promises.FileHandle)
+    if (code !== 'EBUSY') open.mockRejectedValueOnce(Object.assign(new Error('Busy'), { code }))
+    open.mockResolvedValue({ close } as unknown as fs.promises.FileHandle)
     watcher.emit('add', 'busy.mp4')
     await vi.advanceTimersByTimeAsync(99)
     expect(onAdd).not.toHaveBeenCalled()
     await vi.advanceTimersByTimeAsync(1)
     expect(open).toHaveBeenCalledWith('busy.mp4', 'r+')
-    expect(open).toHaveBeenCalledTimes(2)
+    expect(open.mock.calls).toEqual(code === 'EBUSY'
+      ? [['busy.mp4', 'r+'], ['busy.mp4', 'r+']]
+      : [['busy.mp4', 'r+'], ['busy.mp4', 'r'], ['busy.mp4', 'r+']])
     expect(close).toHaveBeenCalledTimes(1)
     expect(onAdd).toHaveBeenCalledExactlyOnceWith(['busy.mp4'])
   })
@@ -128,7 +130,6 @@ describe('watched file release', () => {
     vi.useFakeTimers()
     const { watcher, onAdd } = setup()
     const close = vi.fn(async () => {})
-    vi.spyOn(fs.promises, 'stat').mockResolvedValue({ mode: 0o444 } as fs.Stats)
     const open = vi.spyOn(fs.promises, 'open')
       .mockRejectedValueOnce(Object.assign(new Error('Read-only'), { code: 'EACCES' }))
       .mockRejectedValueOnce(Object.assign(new Error('Busy'), { code }))
@@ -144,6 +145,25 @@ describe('watched file release', () => {
     ])
     expect(close).toHaveBeenCalledTimes(1)
     expect(onAdd).toHaveBeenCalledExactlyOnceWith(['readonly.mp4'])
+  })
+
+  test.skipIf(process.platform !== 'win32')('imports a writable Windows file when write access is denied but reading succeeds', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'watch-access-'))
+    const file = path.join(root, 'restricted.mp4')
+    fs.writeFileSync(file, 'video')
+    try {
+      fs.chmodSync(file, 0o666)
+      expect(fs.statSync(file).mode & 0o200).not.toBe(0)
+      const { watcher, onAdd } = setup()
+      const open = vi.spyOn(fs.promises, 'open')
+        .mockRejectedValueOnce(Object.assign(new Error('Write access denied'), { code: 'EACCES' }))
+      watcher.emit('add', file)
+      await vi.waitFor(() => expect(onAdd).toHaveBeenCalledExactlyOnceWith([file]))
+      expect(open.mock.calls).toEqual([[file, 'r+'], [file, 'r']])
+      await watcher.close()
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true })
+    }
   })
 
   test.skipIf(process.platform !== 'win32')('imports a real unlocked read-only Windows file', async () => {
