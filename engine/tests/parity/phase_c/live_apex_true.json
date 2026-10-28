@@ -1,0 +1,77 @@
+[
+  {
+    "ev": "ready",
+    "engine_version": "0.3.0",
+    "banner": [
+      800,
+      180
+    ],
+    "spec": [
+      480,
+      118
+    ],
+    "thumb": [
+      640,
+      360
+    ]
+  },
+  {
+    "ev": "snapshot",
+    "t": 1.75,
+    "events": [
+      {
+        "id": "a0",
+        "t": 0.0,
+        "type": "kill",
+        "score": 0.9993090033531189,
+        "damage_line": false,
+        "name_sig": null,
+        "counted": true,
+        "counted_reason": "first",
+        "counted_override": null,
+        "source": "auto",
+        "deleted": false
+      }
+    ],
+    "spectating": []
+  },
+  {
+    "ev": "stats",
+    "t": 1.75,
+    "frames": 8,
+    "skipped": 0,
+    "torn": 0,
+    "lag_s": 0.0,
+    "cpu_ms_per_frame": 46.875
+  },
+  {
+    "ev": "snapshot",
+    "t": 1.75,
+    "events": [
+      {
+        "id": "a0",
+        "t": 0.0,
+        "type": "kill",
+        "score": 0.9993090033531189,
+        "damage_line": false,
+        "name_sig": null,
+        "counted": true,
+        "counted_reason": "first",
+        "counted_override": null,
+        "source": "auto",
+        "deleted": false
+      }
+    ],
+    "spectating": [],
+    "final": true,
+    "quality": {
+      "complete": true,
+      "reasons": [],
+      "h_scale": 1.0,
+      "aspect_squash": 1.0,
+      "frames": 8,
+      "skipped": 0,
+      "torn": 0
+    }
+  }
+]

@@ -38,7 +38,7 @@ describe('EngineClient', () => {
     client = new EngineClient({ command: process.execPath, args: [FAKE_ENGINE], setPriority, onDiagnostic })
     const res = await client.start()
     expect(res.engineVersion).toBe('0.1.0')
-    expect(onDiagnostic).toHaveBeenCalledWith(expect.objectContaining({ component: 'python-engine', code: 'engine_priority' }))
+    expect(onDiagnostic).toHaveBeenCalledWith(expect.objectContaining({ component: 'rust-engine', code: 'engine_priority' }))
   })
 
   it('forwards child diagnostics without affecting request rejection or normal shutdown', async () => {
@@ -46,7 +46,7 @@ describe('EngineClient', () => {
     client = new EngineClient({ command: process.execPath, args: [FAKE_ENGINE], onDiagnostic })
     await client.start()
     await expect(client.request('error_test', {}).promise).rejects.toMatchObject({ code: 'probe_failed' })
-    expect(onDiagnostic).toHaveBeenCalledWith(expect.objectContaining({ component: 'python-engine', code: 'probe_failed' }))
+    expect(onDiagnostic).toHaveBeenCalledWith(expect.objectContaining({ component: 'rust-engine', code: 'probe_failed' }))
     await client.stop()
     expect(onDiagnostic).toHaveBeenCalledTimes(1)
   })
@@ -271,7 +271,7 @@ describe('EngineClient', () => {
         await rejection(client)
         const msg = diagnostics.find((m) => m.includes('exited unexpectedly'))!
         expect(msg.endsWith('END)')).toBe(true)
-        expect(msg.match(/A+/)![0].length).toBe(997)
+        expect(msg.match(/A{2,}/)![0].length).toBe(997)
       })
     })
 

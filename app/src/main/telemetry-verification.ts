@@ -28,21 +28,20 @@ export async function verifyTelemetry(): Promise<{ eventId: string; message: str
       if (id) childEventIds[diagnostic.component] = id
     }
     const { EngineClient } = await import('./engine')
-    const pythonCommand = process.env.ADITOR_VERIFY_PYTHON
+    const engineCommand = process.env.ADITOR_VERIFY_ENGINE
     const recorderCommand = process.env.ADITOR_VERIFY_RECORDER
-    if (!pythonCommand || !recorderCommand) throw new Error('Child verification requires explicit Python and recorder executables')
-    const engine = new EngineClient({ command: pythonCommand, args: ['-m', 'aditor', 'ipc'],
-      env: { PYTHONPATH: resolve(__dirname, '../../../engine') }, onDiagnostic })
+    if (!engineCommand || !recorderCommand) throw new Error('Child verification requires explicit analysis engine and recorder executables')
+    const engine = new EngineClient({ command: engineCommand, args: ['ipc'], onDiagnostic })
     try {
       await engine.start()
-      // Exercise a real Python IPC failure without opening or analyzing a video.
-      await engine.request('probe', { path: null }).promise.catch(() => undefined)
+      // Exercise a reportable profile failure without opening or analyzing a video.
+      await engine.request('derive', { events: [], spectating: [],
+        profile_dir: resolve(process.env.ADITOR_APPDATA!, 'missing-verification-profile') }).promise.catch(() => undefined)
     } finally { await engine.stop() }
     const { LiveEngine } = await import('./recording/live-engine')
     let resolveLive!: () => void
     const liveReported = new Promise<void>((resolve) => { resolveLive = resolve })
-    const live = new LiveEngine({ command: { command: pythonCommand, args: ['-m', 'aditor', 'live'],
-      env: { PYTHONPATH: resolve(__dirname, '../../../engine') } },
+    const live = new LiveEngine({ command: { command: engineCommand, args: ['live'] },
       args: ['--shm', 'Local\\aditor-sentry-verification', '--profile-dir', resolve(process.env.ADITOR_APPDATA!, 'missing-verification-profile')],
       onDiagnostic: (diagnostic) => { onDiagnostic(diagnostic); if (diagnostic.code === 'internal') resolveLive() } })
     let liveTimer: ReturnType<typeof setTimeout> | undefined
@@ -62,7 +61,7 @@ export async function verifyTelemetry(): Promise<{ eventId: string; message: str
       process.kill(recorder.pid)
       await crashed
     } finally { await recorder.close() }
-    if (!childEventIds['python-engine'] || !childEventIds['python-live'] || !childEventIds['rust-recorder']) throw new Error('Child diagnostics did not reach the gateway')
+    if (!childEventIds['rust-engine'] || !childEventIds['rust-live'] || !childEventIds['rust-recorder']) throw new Error('Child diagnostics did not reach the gateway')
   }
   const flushed = await Sentry.flush(10_000)
   unsubscribe?.()

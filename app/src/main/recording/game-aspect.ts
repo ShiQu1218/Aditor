@@ -3,7 +3,7 @@ import os from 'os'
 import path from 'path'
 import { DEFAULT_GAME, type GameId } from '../../shared/games'
 
-/** Render aspects Apex and Valorant offer; the engine maps each game's HUD layout from them (engine/aditor/layout.py, valorant.py). */
+/** Render aspects Apex and Valorant offer; the engine maps each game's HUD layout from them (engine/src/layout.rs, valorant/profile.rs). */
 const SUPPORTED_ASPECTS = [16 / 9, 16 / 10, 4 / 3, 5 / 4]
 const ASPECT_TOLERANCE = 0.01
 

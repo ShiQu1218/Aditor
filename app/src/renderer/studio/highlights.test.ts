@@ -145,7 +145,7 @@ describe('planAccept (single-card add + Toast undo)', () => {
 
 describe('planSuggestions + mergeSuggestions (real data flow)', () => {
   const settings = { autoSuggestOnOpen: true, autoclip: { n: 3, gap: 20, before: 8, after: 4, max_len: 90 } }
-  // The document returned by engine analyze contains only manual clips (engine/aditor/analyze.py).
+  // The document returned by engine analyze contains only manual clips (engine/src/analyze.rs).
   const engineDoc = doc({ events: [ev('e1', 100), ev('e2', 105), ev('e3', 110)], clips: [clip('m1', 500, { origin: 'manual', status: 'accepted' })] })
 
   test('load path: auto-place only when enabled and no ai clips; never marks stale', () => {

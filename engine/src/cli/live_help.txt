@@ -1,0 +1,15 @@
+usage: aditor live [-h] --shm SHM --profile-dir PROFILE_DIR
+                   [--scene-dir SCENE_DIR] [--aspect ASPECT] [--game GAME]
+
+options:
+  -h, --help            show this help message and exit
+  --shm SHM             Shared memory name (for example,
+                        Local\aditorrec-<sessionId>)
+  --profile-dir PROFILE_DIR
+                        Icon template directory (templates/icons)
+  --scene-dir SCENE_DIR
+                        Scene template directory (default: templates/scene)
+  --aspect ASPECT       Game render aspect or resolution (16:9, 16:10, 4:3,
+                        5:4, or WxH); offline default: video metadata,
+                        otherwise 16:9
+  --game GAME           Game being recorded: apex (default) or valorant

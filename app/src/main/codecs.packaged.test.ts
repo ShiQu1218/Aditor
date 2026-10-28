@@ -5,7 +5,7 @@ import path from 'path'
 import { createHash } from 'crypto'
 import { Readable } from 'stream'
 
-// Packaged builds have no Python in engine/.venv: treat every child_process.spawn as a failure to verify that the default decompression path stays entirely in Node.
+// Packaged builds have no script interpreter: treat every child_process.spawn as a failure to verify that the default decompression path stays entirely in Node.
 vi.mock('child_process', () => ({
   spawn: () => {
     throw new Error('spawn must not be used to decompress OpenH264')
@@ -14,8 +14,8 @@ vi.mock('child_process', () => ({
 
 import { downloadOpenH264 } from './codecs'
 
-describe('downloadOpenH264 default decompression (packaged build, no Python)', () => {
-  test('decompresses without spawning any process and without the dev .venv', async () => {
+describe('downloadOpenH264 default decompression (packaged build)', () => {
+  test('decompresses without spawning any process and without a script interpreter', async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'aditor-codecs-pk-'))
     const body = fs.readFileSync(path.join(__dirname, '__fixtures__', 'multi.bz2'))
     const dll = await downloadOpenH264({

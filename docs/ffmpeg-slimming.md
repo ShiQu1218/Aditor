@@ -20,12 +20,14 @@ GPT-6.1 Sol medium 獨立審查未發現需修正的實質 bug；實機與 golde
 | NSIS 安裝檔 | 120,843,364 | dist/Aditor-Setup-0.3.2.exe |
 | Portable | 120,526,461 | dist/Aditor-0.3.2-Portable.exe |
 
-執行原有 `scripts/build.ps1` 全部階段成功，包括 PyInstaller、fetch／SHA／Strict 驗證、
+執行原有 `scripts/build.ps1` 全部階段成功，當時包括 Python 打包（現已改為 Rust engine Cargo build）、fetch／SHA／Strict 驗證、
 `cargo build --release`、app build、electron-builder NSIS／portable。下載、解壓與 SHA stamp 流程保持原樣。
 
 `npm test` 的 192 個檔案、1,975 項測試已全部通過（包含 real-binary 測試）。
 
-## 正式全套測試
+## 當時的正式全套測試
+
+以下數字為 2026-10-23 的歷史結果。現行引擎測試改用 `cargo test --manifest-path engine/Cargo.toml`；Python 評估工具測試見 `tools/README.md`。
 
 執行 `scripts/test.ps1 -Tier full -KeepGoing`，明確指定 `ADITOR_MATCH_DIR=E:/Apex_highlighter_clip`。
 
@@ -35,7 +37,7 @@ GPT-6.1 Sol medium 獨立審查未發現需修正的實質 bug；實機與 golde
 | app typecheck | 通過 |
 | app npm test | 1,975 passed，192 個測試檔案全過 |
 | recorder cargo test | 208 passed、6 ignored、0 failed；包含三種 NVENC 的實際編碼／分段／音訊／色彩驗證 |
-| engine pytest（含 slow） | 604 passed、3 skipped、1 xfailed、0 failed（14 分 1 秒） |
+| 舊引擎測試（含 slow） | 604 passed、3 skipped、1 xfailed、0 failed（14 分 1 秒） |
 | E 槽完整場次 truth 驗收 | 所有 test_recording_acceptance 通過，沒有略過或失敗 |
 | E2E | 23 passed、0 skipped、0 failed |
 

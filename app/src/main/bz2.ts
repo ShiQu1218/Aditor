@@ -2,7 +2,7 @@ import fs from 'fs'
 
 /**
  * Pure TypeScript bzip2 decompression (single stream).
- * Packaged apps do not include Python, so OpenH264 is decoded in Node instead of using Python's `bz2` module.
+ * OpenH264 is decoded entirely in Node without spawning a helper process.
  * Validates the CRC32 of every block and the full stream; deprecated randomized blocks are not supported.
  */
 

@@ -1,4 +1,4 @@
-export type DiagnosticComponent = 'python-engine' | 'python-live' | 'rust-recorder'
+export type DiagnosticComponent = 'rust-engine' | 'rust-live' | 'rust-recorder'
 
 export interface ChildDiagnostic {
   component: DiagnosticComponent

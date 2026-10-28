@@ -113,7 +113,7 @@ Zoom in to see individual knockdown and assist markers, then add a suggested hig
 
 - Windows 10 or 11, 64-bit.
 - For recording: a GPU with a hardware encoder (NVENC / AMF / QSV). Analysis and export of existing videos do not need one (precise re-encode falls back to OpenH264 on request, and fast lossless needs no encoder).
-- No Python, Node.js or FFmpeg install is needed; everything is bundled.
+- No runtime or FFmpeg install is needed; everything required is bundled.
 
 ---
 
@@ -155,7 +155,7 @@ Working-set sums can double-count shared pages. Private committed memory include
 
 ## How it works (short version)
 
-Aditor is three separate programs, so a crash in one never takes down the others: the **Electron app** (UI), the **recorder `aditorrec`** (Rust, GPU capture and hardware encoding, written in 2-second segments so a crash loses at most 2 seconds) and the **analysis engine** (Python). Detection uses image processing only, with no machine learning: template matching on kill-banner icons for Apex (each video also learns its own text templates), and kill-feed markers plus scoreboard digits for VALORANT. VALORANT match boundaries while recording come from the Riot Client's read-only local API; Aditor never touches game memory.
+Aditor is three separate programs, so a crash in one never takes down the others: the **Electron app** (UI), the **recorder `aditorrec`** (Rust, GPU capture and hardware encoding, written in 2-second segments so a crash loses at most 2 seconds) and the **analysis engine** (Rust). Detection uses image processing only, with no machine learning: template matching on kill-banner icons for Apex (each video also learns its own text templates), and kill-feed markers plus scoreboard digits for VALORANT. VALORANT match boundaries while recording come from the Riot Client's read-only local API; Aditor never touches game memory.
 
 <p align="center"><img src="docs/diagrams/architecture.en.png" alt="Architecture" width="720"></p>
 
@@ -165,20 +165,19 @@ More diagrams: [detection pipeline](docs/diagrams/pipeline.en.png), [banner deci
 
 ## Building from source
 
-Requires Node.js 20+, Python 3.11+ and the Rust stable toolchain.
+Requires Node.js 20+ and the Rust stable toolchain. Python is optional for [evaluation tools](tools/README.md).
 
-Release and CI use Python 3.12 with shared pins in `engine/constraints.txt`, including transitive dependencies. After updating the pins or build backend in `engine/pyproject.toml`, run `scripts/test.ps1 -Tier full` before releasing.
+The engine and recorder are separate Rust executables. Cargo.lock pins dependencies; run `scripts/test.ps1 -Tier full` before releasing.
 
 ```powershell
 git clone https://github.com/ShiQu1218/Aditor.git
 cd Aditor
-python -m venv engine\.venv
-.\engine\.venv\Scripts\python.exe -m pip install -c engine/constraints.txt -e "engine[dev]" pyinstaller
+cargo build --release --manifest-path engine/Cargo.toml
 npm --prefix app install
 powershell -ExecutionPolicy Bypass -File scripts\build.ps1
 ```
 
-The installer and portable build are written to `dist\`. Tests: `engine\.venv\Scripts\python.exe -m pytest -q` and `npm --prefix app test`.
+The installer and portable build are written to `dist\`. Tests: `cargo test --manifest-path engine/Cargo.toml -- --test-threads=4` and `npm --prefix app test`.
 
 ---
 

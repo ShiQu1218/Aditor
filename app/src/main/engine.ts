@@ -93,7 +93,7 @@ export class EngineClient extends EventEmitter {
             if (this.opts.setPriority) this.opts.setPriority(p.pid)
             else os.setPriority(p.pid, os.constants.priority.PRIORITY_BELOW_NORMAL)
           } catch (err) {
-            emitChildDiagnostic(this.opts.onDiagnostic, { component: 'python-engine', code: 'engine_priority', message: String(err) })
+            emitChildDiagnostic(this.opts.onDiagnostic, { component: 'rust-engine', code: 'engine_priority', message: String(err) })
           }
         })
 
@@ -103,7 +103,7 @@ export class EngineClient extends EventEmitter {
 
         p.stderr?.on('data', (chunk: Buffer) => {
           const msg = chunk.toString('utf-8')
-          // Keep the tail so a crash can report why the engine died (usually a Python traceback).
+          // Keep the tail so a crash can report why the engine died (including native engine diagnostics).
           this.stderrTail = (this.stderrTail + msg).slice(-STDERR_TAIL_CHARS)
           if (process.env.DEBUG_ENGINE) {
             console.error('[Engine stderr]', msg)
@@ -111,7 +111,7 @@ export class EngineClient extends EventEmitter {
         })
 
         p.on('error', (err) => {
-          emitChildDiagnostic(this.opts.onDiagnostic, { component: 'python-engine', code: 'engine_spawn', message: err.message })
+          emitChildDiagnostic(this.opts.onDiagnostic, { component: 'rust-engine', code: 'engine_spawn', message: err.message })
           if (this.readyReject) {
             this.readyReject(err)
             this.readyResolve = null
@@ -175,7 +175,7 @@ export class EngineClient extends EventEmitter {
       this.pending.delete(id)
       req.resolve(msg.data)
     } else if (msg.type === 'error') {
-      emitChildDiagnostic(this.opts.onDiagnostic, { component: 'python-engine', code: String(msg.code || 'internal'), message: String(msg.message || 'Unknown engine error'), exception: msg.exception })
+      emitChildDiagnostic(this.opts.onDiagnostic, { component: 'rust-engine', code: String(msg.code || 'internal'), message: String(msg.message || 'Unknown engine error'), exception: msg.exception })
       this.pending.delete(id)
       req.reject(new EngineError(String(msg.code || 'internal'), String(msg.message || 'unknown error')))
     }
@@ -214,7 +214,7 @@ export class EngineClient extends EventEmitter {
     if (this.isStopping) {
       return
     }
-    emitChildDiagnostic(this.opts.onDiagnostic, { component: 'python-engine', code: 'engine_crashed', message: `Python engine exited unexpectedly (${this._crashReason(_code, true)})` })
+    emitChildDiagnostic(this.opts.onDiagnostic, { component: 'rust-engine', code: 'engine_crashed', message: `Analysis engine exited unexpectedly (${this._crashReason(_code, true)})` })
 
     // Record crash
     const now = Date.now()

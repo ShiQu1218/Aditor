@@ -113,7 +113,7 @@
 
 - Windows 10 或 11，64 位元。
 - 錄影需要具備硬體編碼器的顯示卡（NVENC / AMF / QSV）。分析與匯出現有影片則不需要（精準重新編碼可依提示改用 OpenH264，快速無損不需要編碼器）。
-- 不需另外安裝 Python、Node.js 或 FFmpeg，全部已內建。
+- 不需另外安裝執行環境或 FFmpeg，所需元件已內建。
 
 ---
 
@@ -155,7 +155,7 @@
 
 ## 運作方式（簡版）
 
-Aditor 由三個獨立程式組成，任一邊當掉都不會拖垮其他部分：**Electron App**（介面）、**錄影器 `aditorrec`**（Rust，GPU 擷取與硬體編碼，以 2 秒為一段寫入，當機最多損失 2 秒）與**分析引擎**（Python）。偵測只用影像處理，不使用機器學習：Apex 對擊殺橫幅上的圖示做樣板比對（每支影片還會自己學出文字樣板），VALORANT 則看擊殺列表標記與比分數字。VALORANT 錄影時的對局邊界來自 Riot Client 的唯讀本機 API，Aditor 不碰遊戲記憶體。
+Aditor 由三個獨立程式組成，任一邊當掉都不會拖垮其他部分：**Electron App**（介面）、**錄影器 `aditorrec`**（Rust，GPU 擷取與硬體編碼，以 2 秒為一段寫入，當機最多損失 2 秒）與**分析引擎**（Rust）。偵測只用影像處理，不使用機器學習：Apex 對擊殺橫幅上的圖示做樣板比對（每支影片還會自己學出文字樣板），VALORANT 則看擊殺列表標記與比分數字。VALORANT 錄影時的對局邊界來自 Riot Client 的唯讀本機 API，Aditor 不碰遊戲記憶體。
 
 <p align="center"><img src="docs/diagrams/architecture.zh-TW.png" alt="架構" width="720"></p>
 
@@ -165,20 +165,19 @@ Aditor 由三個獨立程式組成，任一邊當掉都不會拖垮其他部分�
 
 ## 從原始碼建置
 
-需要 Node.js 20+、Python 3.11+ 與 Rust stable 工具鏈。
+需要 Node.js 20+ 與 Rust stable 工具鏈。只有[評估工具](tools/README.md)需要 Python。
 
-發版與 CI 使用 Python 3.12，透過 `engine/constraints.txt` 共用固定版本，包含間接相依套件。更新版本清單或 `engine/pyproject.toml` 的建置後端後，請在發版前執行 `scripts/test.ps1 -Tier full`。
+分析引擎與錄影器是獨立的 Rust 執行檔，由 Cargo.lock 固定相依版本。發版前請執行 `scripts/test.ps1 -Tier full`。
 
 ```powershell
 git clone https://github.com/ShiQu1218/Aditor.git
 cd Aditor
-python -m venv engine\.venv
-.\engine\.venv\Scripts\python.exe -m pip install -c engine/constraints.txt -e "engine[dev]" pyinstaller
+cargo build --release --manifest-path engine/Cargo.toml
 npm --prefix app install
 powershell -ExecutionPolicy Bypass -File scripts\build.ps1
 ```
 
-安裝檔與免安裝版輸出在 `dist\`。測試：`engine\.venv\Scripts\python.exe -m pytest -q` 與 `npm --prefix app test`。
+安裝檔與免安裝版輸出在 `dist\`。測試：`cargo test --manifest-path engine/Cargo.toml -- --test-threads=4` 與 `npm --prefix app test`。
 
 ---
 

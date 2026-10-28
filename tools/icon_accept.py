@@ -3,7 +3,7 @@
 Usage:
   python tools/icon_accept.py --out DIR [--jobs 1 4] LAB=video_path ...
 Ground truth (used only for scoring, not parameter tuning):
-  TC/ENG/JP: old text engine after3 events (the <LAB>_j1.json file in ICON_ACCEPT_BASELINE) plus visual corrections in tools/icon_exp/truth_aug.json
+  TC/ENG/JP: old text engine after3 events (the <LAB>_j1.json file in ICON_ACCEPT_BASELINE) plus visual corrections in tools/archive/icon_exp/truth_aug.json
   SC1: visual annotations from the experiment report; SC2: the 3 events visually identified in experiment report §4.6
   H771/H950: no ground truth; show event counts and compare with the old text engine, if <LAB>_j1.json exists in ICON_ACCEPT_BASELINE
 Does not write to the video directory (cache is stored under --out)."""
@@ -17,7 +17,7 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "engine"))
+from engine_cli import analyze
 
 PM = {"knock": "K", "assist_knock": "A", "assist_elim": "A"}
 SC1 = [(312.25, "K"), (315.0, "K"), (334.0, "K"), (354.5, "K"), (577.75, "K"), (672.75, "K"), (685.25, "K"),
@@ -36,7 +36,7 @@ def truth(lab: str, base: Path | None) -> list[tuple[float, str]] | None:
         return sorted(SC2)
     if lab in ("TC", "ENG", "JP") and base and (base / f"{lab}_j1.json").exists():
         ev = product(json.loads((base / f"{lab}_j1.json").read_text(encoding="utf-8"))["events"])
-        aug = json.loads((ROOT / "tools" / "icon_exp" / "truth_aug.json").read_text(encoding="utf-8"))[lab]
+        aug = json.loads((ROOT / "tools" / "archive" / "icon_exp" / "truth_aug.json").read_text(encoding="utf-8"))[lab]
         mv = {o: n for o, n in aug["move"]}
         rt = {t: c for t, c in aug["retype"]}
         return sorted([(mv.get(t, t), rt.get(t, c)) for t, c in ev] + [tuple(x) for x in aug["add"]])
@@ -65,20 +65,17 @@ def main() -> int:
     ap.add_argument("--jobs", type=int, nargs="+", default=[1, 4])
     ap.add_argument("videos", nargs="+", help="LAB=path")
     a = ap.parse_args()
-    from aditor.analyze import analyze
-    from aditor.probe import probe
-    from aditor.profile import load_profile
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
     base = Path(os.environ["ICON_ACCEPT_BASELINE"]) if os.environ.get("ICON_ACCEPT_BASELINE") else None
-    prof = load_profile(ROOT / "templates" / "icons")
+    prof = ROOT / "templates" / "icons"
     for spec in a.videos:
         lab, path = spec.split("=", 1)
-        dur = probe(path).duration
         docs = {}
         for j in a.jobs:
             t0 = time.time()
-            doc = analyze(path, prof, cache_dir=out / f"cache_{lab}_j{j}", jobs=j, force=True)
+            doc = analyze(path, prof, out / f"cache_{lab}_j{j}", out / f"{lab}_j{j}.json", jobs=j)
+            dur = doc["video"]["duration"]
             el = time.time() - t0
             docs[j] = doc
             (out / f"{lab}_j{j}.json").write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")

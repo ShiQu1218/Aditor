@@ -1,0 +1,5 @@
+# Maintained Python tools only; the production engine is a Cargo binary.
+numpy==2.5.4
+opencv-python==5.0.0.93
+pytest==9.1.1
+ccl_chromium_reader @ git+https://github.com/cclgroupltd/ccl_chromium_reader.git@3af0bd7d56216d499a8792e9fbfa6604d584b09b

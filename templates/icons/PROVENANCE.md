@@ -8,7 +8,7 @@
 
 | 素材 | 角色 |
 |---|---|
-| English.mkv、Japanese.mkv、SC1.mkv（簡中、黃名） | 訓練：圖示樣板、數值門檻（`engine/aditor/icon_detect.py` 的 `IconParams`）|
+| English.mkv、Japanese.mkv、SC1.mkv（簡中、黃名） | 訓練：圖示樣板、數值門檻（`engine/src/icon_detect.rs` 的 `IconParams`）|
 | test-TC.mp4（繁中）、test-ENG.mp4、test_JP.mp4、SC2.mkv（簡中）、H771／H950（繁中） | 驗收：只量測，不得調參 |
 
 ## 圖示樣板（灰階 PNG，合計約 4 KB）

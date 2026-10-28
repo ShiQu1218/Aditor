@@ -7,16 +7,25 @@ Usage:
 """
 import argparse
 import os
-import re
+import shutil
 import subprocess
-import sys
+import tempfile
 from pathlib import Path
 
 import cv2
 import numpy as np
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "engine"))
-from aditor import ffbin  # noqa: E402
+def ffmpeg():
+    override = os.environ.get("ADITOR_FFMPEG")
+    if override:
+        if not Path(override).is_file():
+            raise FileNotFoundError(f"ADITOR_FFMPEG not found: {override}")
+        return override
+    bundled = Path(__file__).resolve().parents[1] / "build/ffmpeg/bin/ffmpeg.exe"
+    found = str(bundled) if bundled.is_file() else shutil.which("ffmpeg")
+    if not found:
+        raise FileNotFoundError("ffmpeg not found; set ADITOR_FFMPEG or add it to PATH")
+    return found
 
 
 def imread(p):
@@ -44,20 +53,32 @@ def dump(video, start, end, fps, roi, out, scale_to=None):
         vf += f",crop={w}:{h}:{x}:{y}"
     if scale_to:
         vf += f",scale={scale_to}"
-    tmp = out / "_tmp_%06d.png"
-    cmd = [ffbin.ffmpeg(), "-v", "error", "-y", "-hwaccel", "auto", "-ss", str(start), "-to", str(end), "-i", str(video),
-           "-vf", vf, "-start_number", "0", "-f", "image2", str(tmp)]
-    subprocess.run(cmd, check=True)
-    n = 0
-    for f in sorted(out.glob("_tmp_*.png")):
-        k = int(re.search(r"_tmp_(\d+)", f.name).group(1))
-        t = start + k / float(fps)
-        dst = out / f"t{t:08.2f}.png"
-        if dst.exists():
-            dst.unlink()
-        os.replace(f, dst)
-        n += 1
-    return n
+    with tempfile.TemporaryDirectory(prefix="aditor_dump_", dir=out) as tmp:
+        video_out = Path(tmp) / "frames.mkv"
+        # The bundled FFmpeg has FFV1 but no PNG encoder; OpenCV writes the lossless frames as PNG.
+        cmd = [ffmpeg(), "-v", "error", "-y", "-hwaccel", "auto", "-ss", str(start), "-to", str(end), "-i", str(video),
+               "-vf", vf, "-an", "-c:v", "ffv1", "-threads", "2", "-pix_fmt", "bgr0", "-progress", "pipe:1", str(video_out)]
+        result = subprocess.run(cmd, check=True, stdout=subprocess.PIPE)
+        counts = [int(line[6:]) for line in result.stdout.splitlines() if line.startswith(b"frame=")]
+        if counts and counts[-1] == 0:
+            return 0
+        capture = cv2.VideoCapture(str(video_out))
+        try:
+            if not capture.isOpened():
+                raise RuntimeError("Could not open extracted frames")
+            n = 0
+            while True:
+                ok, frame = capture.read()
+                if not ok:
+                    break
+                png = Path(tmp) / "frame.png"
+                imwrite(png, frame)
+                os.replace(png, out / f"t{start + n / float(fps):08.2f}.png")
+                n += 1
+            return n
+        finally:
+            capture.release()
+
 
 
 def crop(png, rect, out, mask=False, v_min=200, s_max=60):

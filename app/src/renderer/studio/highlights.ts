@@ -273,7 +273,7 @@ export function isSuggestionsPending(doc: Pick<CacheDoc, 'app'>): boolean {
 }
 
 /**
- * Whether and how to generate suggestions after analysis. The engine's analyze document contains manual clips only (engine/aditor/analyze.py).
+ * Whether and how to generate suggestions after analysis. The engine's analyze document contains manual clips only (engine/src/analyze.rs).
  * After reanalysis, main writes back manual and accepted (stale) clips and sets `app.suggestionsPending`,
  * so flagged documents always rerun autoclip with the current defaults and use mergeOnReanalyze.
  * A normal load (first analysis, no flag) follows shouldAutoPlace and does not mark clips stale.

@@ -8,12 +8,9 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
-import sys
 import time
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "engine"))
-from aditor.decode import FrameStream
-from aditor.valorant import FeedDetector, FeedTracker, load_valorant_profile
+from engine_cli import ROOT, json_lines
 
 
 def match_events(truth: list[float], predicted: list[float], tolerance: float) -> dict:
@@ -68,15 +65,15 @@ def main() -> None:
     args = parser.parse_args()
     baseline = json.loads(args.baseline.read_text(encoding="utf-8"))
     truth = json.loads(args.truth.read_text(encoding="utf-8"))
-    profile = load_valorant_profile(Path(__file__).resolve().parents[1] / "templates/valorant/icons")
-    report = {"templates_version": profile.templates_version, "baseline": baseline["source"], "videos": []}
+    profile_dir = ROOT / "templates/valorant/icons"
+    version = json.loads((profile_dir / "profile.json").read_text(encoding="utf-8"))["templates_version"]
+    report = {"templates_version": version, "baseline": baseline["source"], "videos": []}
     args.output.parent.mkdir(parents=True, exist_ok=True)
     for path in sorted(args.video_root.glob("*.mp4")):
-        detector, tracker = FeedDetector(profile), FeedTracker()
         started = time.perf_counter()
-        for t, feed, _ in FrameStream(str(path), profile, hwaccel=False):
-            tracker.feed(t, detector.observations(feed))
-        events = [{"id": e.id, "t": e.t, "type": e.type} for e in tracker.events]
+        events = []
+        for frame in json_lines("debug-valorant-feed", path, "--profile-dir", profile_dir):
+            events = [{"id": e["id"], "t": e["t"], "type": e["type"]} for e in frame["events"]]
         report["videos"].append({"filename": path.name, "events": events,
                                   "seconds": time.perf_counter() - started})
         print(json.dumps({"filename": path.name, "kills": sum(e["type"] == "kill" for e in events)},

@@ -177,7 +177,7 @@ export class LiveEngine extends EventEmitter {
   }
 
   private crashed(message: string): void {
-    emitChildDiagnostic(this.options.onDiagnostic, { component: 'python-live', code: 'engine_crashed', message: 'Live Python engine exited unexpectedly' })
+    emitChildDiagnostic(this.options.onDiagnostic, { component: 'rust-live', code: 'engine_crashed', message: 'Live analysis engine exited unexpectedly' })
     // Archive current events; the new process starts at the latest frame, so accept only events after lastT.
     this.archived = this.current
     this.resumeT = this.lastT
@@ -253,7 +253,7 @@ export class LiveEngine extends EventEmitter {
         if (finite(msg.t) && finite(msg.frames) && msg.frames > 0) this.emit('progress', msg.t)
         break
       case 'error':
-        emitChildDiagnostic(this.options.onDiagnostic, { component: 'python-live', code: String(msg.code ?? 'internal'), message: String(msg.message ?? 'Live engine error'), exception: msg.exception })
+        emitChildDiagnostic(this.options.onDiagnostic, { component: 'rust-live', code: String(msg.code ?? 'internal'), message: String(msg.message ?? 'Live engine error'), exception: msg.exception })
         this.emit('warning', tr('即時偵測錯誤（{code}）：{message}', { code: String(msg.code), message: String(msg.message) }))
         break
     }

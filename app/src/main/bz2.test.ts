@@ -5,7 +5,7 @@ import { bunzip2 } from './bz2'
 
 const fx = (n: string): Buffer => fs.readFileSync(path.join(__dirname, '__fixtures__', n))
 
-/** Deterministic data matching the Python generator for multi.bz2 (350000 bytes, including long runs across multiple 100k blocks). */
+/** Deterministic data matching the reference generator for multi.bz2 (350000 bytes, including long runs across multiple 100k blocks). */
 export function genData(n: number): Buffer {
   const b: number[] = []
   let x = 12345
@@ -30,7 +30,7 @@ describe('bunzip2 (pure TS)', () => {
   test('decodes an empty stream', () => {
     expect(bunzip2(fx('empty.bz2')).length).toBe(0)
   })
-  test('decodes a multi-block stream with long runs (matches Python bz2)', () => {
+  test('decodes a multi-block stream with long runs (matches the reference bz2 stream)', () => {
     const out = bunzip2(fx('multi.bz2'))
     expect(out.length).toBe(350000)
     expect(out.equals(genData(350000))).toBe(true)

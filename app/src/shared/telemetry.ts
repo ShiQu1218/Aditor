@@ -73,7 +73,7 @@ function safeHardwareContexts(contexts: Event['contexts']): Record<string, Recor
   return out
 }
 
-const SAFE_COMPONENTS = new Set(['python-engine', 'python-live', 'rust-recorder', 'user-report', 'preview-playback'])
+const SAFE_COMPONENTS = new Set(['rust-engine', 'rust-live', 'rust-recorder', 'user-report', 'preview-playback'])
 // Extra tags are kept only when their value has a fixed, non-identifying shape.
 const SAFE_TAG_VALUES: Record<string, RegExp> = {
   electron: /^\d+(?:\.\d+){2}$/,

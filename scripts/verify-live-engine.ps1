@@ -4,6 +4,8 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+# Rust release executable, staged by build.ps1; no runtime or sidecar libraries required.
+if (-not (Test-Path -LiteralPath $Engine)) { throw "Rust engine executable not found: $Engine" }
 $profile = Get-Content -Raw -LiteralPath (Join-Path $Templates 'icons\profile.json') | ConvertFrom-Json
 $banner = $profile.capture_rois.banner
 $spec = $profile.capture_rois.spec

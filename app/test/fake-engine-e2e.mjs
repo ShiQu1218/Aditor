@@ -1,5 +1,5 @@
 // E2E fake-engine implementation (loaded by fake-engine.mjs when FAKE_ENGINE_MODE=e2e).
-// Mirrors the engine/aditor/ipc.py protocol: probe / analyze (progress, cancel, busy, cache hit) / derive / autoclip / cancel.
+// Mirrors the engine/src/ipc.rs protocol: probe / analyze (progress, cancel, busy, cache hit) / derive / autoclip / cancel.
 // Video metadata comes from the real ffprobe; events are synthetic and generated deterministically from video duration (300 by default).
 import fs from 'fs'
 import path from 'path'
@@ -89,7 +89,7 @@ export function resolveProfile(profileDir) {
   }
 }
 
-/** Mirrors the inverse of engine/aditor/cache.needs_reanalysis: fresh means complete, video unchanged, and engine/template versions matching. */
+/** Mirrors the inverse of engine/src/cache.rs needs_reanalysis: fresh means complete, video unchanged, and engine/template versions matching. */
 export function isCacheFresh(old, info, prof) {
   const a = old?.analysis
   if (!a || a.status !== 'done') return false
@@ -156,7 +156,7 @@ export function derive(events, spectating) {
 
 const isCounted = (e) => (e.deleted ? false : e.counted_override !== null && e.counted_override !== undefined ? e.counted_override : e.counted)
 
-/** Port of engine/aditor/autoclip.py. */
+/** Port of engine/src/autoclip.rs. */
 export function autoClips(events, params, duration) {
   const p = { gap: 20, n: 3, before: 8, after: 4, max_len: 90, ...params }
   const counted = events.filter(isCounted).sort((a, b) => a.t - b.t)
