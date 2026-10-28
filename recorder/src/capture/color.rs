@@ -3,6 +3,7 @@ use std::time::{Duration, Instant};
 
 use anyhow::{ensure, Context, Result};
 use windows::core::s;
+use windows::Graphics::DirectX::DirectXPixelFormat;
 use windows::Win32::Devices::Display::*;
 use windows::Win32::Graphics::Direct3D::Fxc::D3DCompile;
 use windows::Win32::Graphics::Direct3D::D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
@@ -11,6 +12,35 @@ use windows::Win32::Graphics::Dxgi::Common::*;
 use windows::Win32::Graphics::Gdi::*;
 
 use crate::gpu::Gpu;
+
+#[derive(Clone, Copy)]
+pub(super) enum DisplayState {
+    Sdr,
+    Hdr,
+    Unknown,
+}
+
+impl DisplayState {
+    pub(super) fn pool_format(self) -> DirectXPixelFormat {
+        match self {
+            Self::Sdr => DirectXPixelFormat::B8G8R8A8UIntNormalized,
+            Self::Hdr | Self::Unknown => DirectXPixelFormat::R16G16B16A16Float,
+        }
+    }
+
+    pub(super) fn log_pool_format(self) {
+        let description = match self {
+            Self::Sdr => "BGRA8 (SDR display)",
+            Self::Hdr => "FP16 (HDR display)",
+            Self::Unknown => "FP16 (display state unknown)",
+        };
+        eprintln!("WGC: frame pool format {description}");
+    }
+}
+
+pub(super) fn display_state(monitor: HMONITOR) -> DisplayState {
+    sdr_white(monitor).map_or(DisplayState::Unknown, |(state, _)| state)
+}
 
 pub(super) struct SdrConverter {
     gpu: Gpu,
@@ -118,7 +148,7 @@ impl SdrConverter {
             desc.Format.0
         );
         if self.monitor != monitor.0 as isize || Instant::now() >= self.refresh {
-            if let Some((white, hdr)) = sdr_white(monitor) {
+            if let Some((_, (white, hdr))) = sdr_white(monitor) {
                 self.white = white;
                 self.hdr = hdr;
             }
@@ -206,7 +236,8 @@ impl Surfaces {
     }
 }
 
-fn sdr_white(monitor: HMONITOR) -> Option<(f32, bool)> {
+// Keep converter fallbacks separate from whether the display mode was confirmed.
+fn sdr_white(monitor: HMONITOR) -> Option<(DisplayState, (f32, bool))> {
     // SDRWhiteLevel is an 80-nit multiplier times 1000, matching scRGB's 1.0 = 80 nits:
     // https://learn.microsoft.com/windows/win32/api/wingdi/ns-wingdi-displayconfig_sdr_white_level
     // SAFETY: All display API structures are initialized with their documented sizes.
@@ -252,9 +283,11 @@ fn sdr_white(monitor: HMONITOR) -> Option<(f32, bool)> {
                 adapterId: path.targetInfo.adapterId,
                 id: path.targetInfo.id,
             };
-            if DisplayConfigGetDeviceInfo(&mut color.header) != 0 || color.Anonymous.value & 2 == 0
-            {
-                return Some((1.0, false));
+            if DisplayConfigGetDeviceInfo(&mut color.header) != 0 {
+                return Some((DisplayState::Unknown, (1.0, false)));
+            }
+            if color.Anonymous.value & 2 == 0 {
+                return Some((DisplayState::Sdr, (1.0, false)));
             }
             let mut white = DISPLAYCONFIG_SDR_WHITE_LEVEL::default();
             white.header = DISPLAYCONFIG_DEVICE_INFO_HEADER {
@@ -264,9 +297,12 @@ fn sdr_white(monitor: HMONITOR) -> Option<(f32, bool)> {
                 id: path.targetInfo.id,
             };
             if DisplayConfigGetDeviceInfo(&mut white.header) == 0 && white.SDRWhiteLevel > 0 {
-                return Some((white.SDRWhiteLevel as f32 / 1000.0, true));
+                return Some((
+                    DisplayState::Hdr,
+                    (white.SDRWhiteLevel as f32 / 1000.0, true),
+                ));
             }
-            return Some((1.0, true));
+            return Some((DisplayState::Unknown, (1.0, true)));
         }
         None
     }
@@ -275,6 +311,17 @@ fn sdr_white(monitor: HMONITOR) -> Option<(f32, bool)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn pool_format_requires_confirmed_sdr() {
+        assert_eq!(
+            DisplayState::Sdr.pool_format(),
+            DirectXPixelFormat::B8G8R8A8UIntNormalized
+        );
+        for state in [DisplayState::Hdr, DisplayState::Unknown] {
+            assert_eq!(state.pool_format(), DirectXPixelFormat::R16G16B16A16Float);
+        }
+    }
 
     fn input(gpu: &Gpu, size: (u32, u32), rgb: [f32; 4]) -> ID3D11Texture2D {
         let mut texture = None;
