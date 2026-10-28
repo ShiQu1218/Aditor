@@ -231,6 +231,19 @@ fn actual_default_loopback_and_microphone_capture_for_two_seconds() {
         / loopback.samples.len() as f32)
         .sqrt();
     assert!(rms > 0.005, "Loopback did not capture the test tone, RMS={rms}");
+    // Excluding this process tree (as Aditor excludes itself) must drop the tone it plays.
+    let excluded = record(&types::AudioConfig {
+        exclude_pid: Some(std::process::id()),
+        ..cfg.clone()
+    });
+    verify(&excluded);
+    let excluded_rms = (excluded.samples.iter().map(|sample| sample * sample).sum::<f32>()
+        / excluded.samples.len() as f32)
+        .sqrt();
+    assert!(
+        excluded_rms < rms / 4.,
+        "Excluded loopback still captured this process's tone: {excluded_rms} vs {rms}"
+    );
     drop(tone);
     cfg.render.clone_from(&render.id);
     cfg.capture = "不存在的麥克風端點".into();
