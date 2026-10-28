@@ -22,6 +22,21 @@ describe('AnalysisQueue', () => {
     lib = new Library(tmpFile)
   })
 
+  it('keeps the existing thumbnail when the new one cannot be generated', async () => {
+    const video = 'D:/Videos/thumb.mp4'
+    lib.add([video])
+    lib.update(video, { thumb: 'C:/thumbs/old.jpg' })
+    const engineMock = {
+      request: () => ({ id: 'r1', promise: Promise.resolve({ video: { duration: 10 }, events: [] }) }),
+      cancel: () => {}
+    } as unknown as EngineClient
+    const queue = new AnalysisQueue(engineMock, lib, { profileDir: '/p', cacheDir: path.join(os.tmpdir(), 'aditor-queue-thumb') })
+    ;(queue as any)._generateThumbnail = async () => undefined
+    queue.enqueue(video)
+    await waitFor(() => lib.get(video)?.status === 'done')
+    expect(lib.get(video)?.thumb).toBe('C:/thumbs/old.jpg')
+  })
+
   it('asks the user for the game when the engine cannot recognise it, then analyzes with the chosen game', async () => {
     const calls: Array<{ game?: string }> = []
     const engineMock = {

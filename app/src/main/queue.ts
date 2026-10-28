@@ -248,7 +248,8 @@ export class AnalysisQueue extends EventEmitter {
         counts: countEvents(doc.events || []),
         game: gameOf(doc.game),
         durationSec: duration,
-        thumb,
+        // A failed generation keeps the thumbnail the entry already has.
+        ...(thumb ? { thumb } : {}),
         codec: doc.video?.codec,
         // Reanalysis completed: invalidate the old N highlights count and let lazy computation recalculate it.
         hl: undefined
