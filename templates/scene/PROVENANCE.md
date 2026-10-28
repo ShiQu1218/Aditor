@@ -27,7 +27,7 @@
 
 13 組 PNG 與遮罩。新版積分賽卡片的箭頭使用獨立範本，遮罩僅保留斜框及其內側背景，
 排除外側會隨地圖變亮的背景；搜尋範圍向右擴大以涵蓋較寬的卡片。完整搜尋區域與最低解析度見
-`engine/aditor/scene.py` 的 `SCENE_ROIS`；遲滯與時間門檻在 `engine/aditor/matches.py`。
+`engine/src/scene.rs` 的 `SCENE_ROIS`；遲滯與時間門檻在 `engine/src/matches.rs`。
 
 ## 真值與訓練重疊
 

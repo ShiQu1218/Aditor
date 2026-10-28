@@ -141,7 +141,7 @@ describe('LiveSession file reads', () => {
     const dir = root()
     const notice = vi.fn()
     const live = new LiveSession({ sessionId: 'x', dir, profileDir: dir, recordEvent: vi.fn(), notice,
-      command: { command: path.join(dir, 'missing', 'python.exe'), args: [] } })
+      command: { command: path.join(dir, 'missing', 'aditor.exe'), args: [] } })
     live.startEngine('Local\\x', 1920, 1080)
     expect(notice).toHaveBeenCalledWith(expect.stringContaining('找不到即時偵測引擎'))
   })

@@ -29,18 +29,43 @@ jobs:
           cache: npm
           cache-dependency-path: app/package-lock.json
 
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            engine
+            recorder
+
+      - uses: actions/cache@v4
+        with:
+          path: build/ffmpeg-lgpl-shared-*.zip
+          key: ffmpeg-${{ hashFiles('scripts/fetch-ffmpeg.ps1') }}
+
+      - name: Fetch FFmpeg
+        shell: pwsh
+        run: |
+          ./scripts/fetch-ffmpeg.ps1
+          Add-Content $env:GITHUB_PATH "$pwd/build/ffmpeg/bin"
+
+      - name: Check Rust engine
+        shell: pwsh
+        env:
+          CARGO_BUILD_JOBS: 4
+        run: |
+          cargo fmt --manifest-path engine/Cargo.toml --check
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo clippy --manifest-path engine/Cargo.toml --all-targets -- -D warnings
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo test --manifest-path engine/Cargo.toml -- --test-threads=4
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Install dependencies
         shell: pwsh
         run: |
           npm ci --prefix app
-          python -m venv engine/.venv
-          engine/.venv/Scripts/python.exe -m pip install -c engine/constraints.txt -e engine pyinstaller
 
       - name: Build installer
         shell: pwsh

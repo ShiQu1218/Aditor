@@ -2,7 +2,7 @@
 
 Usage: python tools/benchmark.py <video> [--seconds 600] [--start 0] [--jobs N] [--hw-only]
 
---jobs N: Split [start, start+seconds] evenly into N segments, each decoded concurrently by its own FrameStream (parallel segmentation as in analyze).
+--jobs N: Split [start, start+seconds] evenly into N segments, each decoded concurrently by its own engine subprocess (parallel segmentation as in analyze).
 
 Measures only decoding and per-frame detection (excluding calibration and keyframes). AV1 software decoding represents a worst case for low-end computers.
 """
@@ -16,66 +16,26 @@ from pathlib import Path
 DEFAULT_PROFILE = Path(__file__).resolve().parents[1] / "templates" / "icons"
 
 
-def run_once(video: str, profile, seconds: float, start: float, hwaccel: bool,
-             codec: str | None = None) -> dict:
-    from aditor.decode import FrameStream
-    from aditor.detect import Detector
-
-    detector = Detector(profile, 1.0)
-    stream = FrameStream(video, profile, start=start, hwaccel=hwaccel, codec=codec)
-    t0 = time.perf_counter()
-    first = None
-    last_t = start
-    frames = 0
-    try:
-        for t, banner, spec in stream:
-            if first is None:
-                first = time.perf_counter()
-            detector.detect(banner, spec)
-            last_t = t
-            frames += 1
-            if t - start >= seconds:
-                break
-    finally:
-        stream.close()
-    wall = time.perf_counter() - t0
-    video_s = last_t - start + 0.25
-    return {"hwaccel": hwaccel, "used_hwaccel": stream.used_hwaccel, "frames": frames,
-            "video_s": video_s, "wall_s": wall, "startup_s": (first or t0) - t0,
-            "speed": video_s / wall if wall > 0 else 0.0}
+def run_once(video: str, profile, seconds: float, start: float, hwaccel: bool) -> dict:
+    from engine_cli import json_lines
+    args = ["debug-benchmark", video, "--profile-dir", profile, "--seconds", seconds, "--start", start]
+    if not hwaccel:
+        args.append("--no-hwaccel")
+    result, = json_lines(*args)
+    return result
 
 
-def run_segments(video: str, profile, seconds: float, start: float, jobs: int,
-                 codec: str | None = None) -> dict:
+def run_segments(video: str, profile, seconds: float, start: float, jobs: int) -> dict:
     from concurrent.futures import ThreadPoolExecutor
-    from aditor.decode import FrameStream
-    from aditor.detect import Detector
-
     seg = seconds / jobs
-
-    used: list[bool] = []
-
-    def work(i: int) -> int:
-        s0 = start + i * seg
-        detector = Detector(profile, 1.0)
-        stream = FrameStream(video, profile, start=s0, end=s0 + seg, hwaccel=True, codec=codec)
-        n = 0
-        try:
-            for _t, banner, spec in stream:
-                detector.detect(banner, spec)
-                n += 1
-        finally:
-            used.append(stream.used_hwaccel)
-            stream.close()
-        return n
-
     t0 = time.perf_counter()
-    with ThreadPoolExecutor(max_workers=jobs) as ex:
-        frames = sum(ex.map(work, range(jobs)))
+    with ThreadPoolExecutor(max_workers=jobs) as pool:
+        results = list(pool.map(lambda i: run_once(video, profile, seg, start + i * seg, True), range(jobs)))
     wall = time.perf_counter() - t0
-    video_s = frames * 0.25
-    return {"hwaccel": True, "used_hwaccel": all(used), "frames": frames, "video_s": video_s, "wall_s": wall,
-            "startup_s": 0.0, "speed": video_s / wall if wall > 0 else 0.0}
+    video_s = sum(r["video_s"] for r in results)
+    return {"hwaccel": True, "used_hwaccel": all(r["used_hwaccel"] for r in results),
+            "frames": sum(r["frames"] for r in results), "video_s": video_s, "wall_s": wall,
+            "startup_s": max(r["startup_s"] for r in results), "speed": video_s / wall}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -89,15 +49,14 @@ def main(argv: list[str] | None = None) -> int:
     a = ap.parse_args(argv)
     for s in (sys.stdout, sys.stderr):
         s.reconfigure(encoding="utf-8")
-    from aditor.profile import load_profile
-    profile = load_profile(Path(a.profile_dir))
-    from aditor.probe import probe
-    codec = probe(a.video).codec
+    if a.jobs < 1 or a.seconds <= 0 or a.start < 0:
+        ap.error("jobs/seconds must be positive and start nonnegative")
+    profile = Path(a.profile_dir)
     for hw in ((True,) if a.hw_only else (True, False)):
         if hw and a.jobs > 1:
-            r = run_segments(a.video, profile, a.seconds, a.start, a.jobs, codec)
+            r = run_segments(a.video, profile, a.seconds, a.start, a.jobs)
         else:
-            r = run_once(a.video, profile, a.seconds, a.start, hw, codec)
+            r = run_once(a.video, profile, a.seconds, a.start, hw)
         label = f"Hardware jobs={a.jobs}" if hw else "Software decode"
         note = "" if r["used_hwaccel"] == hw else " (hardware decoding failed; fell back to software)"
         print(f"{label}: {r['video_s']:.1f} s video / {r['wall_s']:.1f} s elapsed = "

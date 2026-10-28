@@ -14,7 +14,7 @@ vi.mock('@sentry/electron/main', () => ({
 
 function diagnostic(overrides: Partial<ChildDiagnostic> = {}): ChildDiagnostic {
   return {
-    component: 'python-engine',
+    component: 'rust-engine',
     code: 'internal',
     message: 'Cannot read C:\\Users\\Alice\\private.mp4',
     exception: {
@@ -108,17 +108,26 @@ describe('telemetry consent', () => {
 })
 
 describe('child diagnostics', () => {
+  it('accepts the Rust exception envelope with empty frames as a native event', async () => {
+    const { initializeTelemetry, reportChildDiagnostic } = await import('./telemetry')
+    initializeTelemetry(true)
+    expect(reportChildDiagnostic(diagnostic({ exception: { type: 'RuntimeError', frames: [] } }))).toBe('test-event')
+    expect(fake.captureEvent.mock.calls[0][0]).toMatchObject({
+      platform: 'native', exception: { values: [{ type: 'rust-engine:internal:RuntimeError' }] }
+    })
+  })
+
   it('filters routine errors and sanitizes reportable failures', async () => {
     const { initializeTelemetry, reportChildDiagnostic } = await import('./telemetry')
     initializeTelemetry(true)
     reportChildDiagnostic({ component: 'rust-recorder', code: 'disk_full', message: 'Disk full' })
-    reportChildDiagnostic({ component: 'python-engine', code: 'cancelled', message: 'Cancelled' })
+    reportChildDiagnostic({ component: 'rust-engine', code: 'cancelled', message: 'Cancelled' })
     expect(fake.captureEvent).not.toHaveBeenCalled()
 
     expect(reportChildDiagnostic(diagnostic())).toBe('test-event')
     const event = fake.captureEvent.mock.calls[0][0]
-    expect(event.platform).toBe('python')
-    expect(event.exception.values[0].type).toBe('python-engine:internal:TypeError')
+    expect(event.platform).toBe('native')
+    expect(event.exception.values[0].type).toBe('rust-engine:internal:TypeError')
     expect(event.exception.values[0].stacktrace.frames).toEqual([{ filename: 'aditor/ipc.py', function: '_run', lineno: 150, in_app: true }])
     expect(JSON.stringify(event)).not.toContain('Alice')
   })

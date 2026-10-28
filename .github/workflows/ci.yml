@@ -27,10 +27,14 @@ jobs:
           python-version: "3.12"
 
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
 
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: recorder
+          workspaces: |
+            engine
+            recorder
 
       - uses: actions/cache@v4
         with:
@@ -45,11 +49,24 @@ jobs:
         working-directory: app
         run: npm ci
 
-      - name: Set up engine venv
-        shell: pwsh
+      - name: Test Python tools
         run: |
-          python -m venv engine/.venv
-          engine/.venv/Scripts/python.exe -m pip install -c engine/constraints.txt -e "engine[dev]"
+          python -m pip install -r tools/requirements.txt
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -m pytest tools/tests -q
+
+      - name: Check Rust engine
+        shell: pwsh
+        env:
+          CARGO_BUILD_JOBS: 4
+        run: |
+          cargo fmt --manifest-path engine/Cargo.toml --check
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo clippy --manifest-path engine/Cargo.toml --all-targets -- -D warnings
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ./scripts/build.ps1 -EngineOnly
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Add-Content $env:GITHUB_PATH "$pwd/build/ffmpeg/bin"
 
       # Same fast tier developers run before committing.
       - name: Fast test tier

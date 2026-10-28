@@ -1,0 +1,17 @@
+usage: aditor matches [-h] [--fps FPS] [--timeline] [--no-hwaccel]
+                      [--aspect ASPECT] [--scene-dir SCENE_DIR]
+                      video
+
+positional arguments:
+  video
+
+options:
+  -h, --help            show this help message and exit
+  --fps FPS
+  --timeline            Include a per-frame scene timeline
+  --no-hwaccel
+  --aspect ASPECT       Game render aspect or resolution (16:9, 16:10, 4:3,
+                        5:4, or WxH); offline default: video metadata,
+                        otherwise 16:9
+  --scene-dir SCENE_DIR
+                        Scene template directory (default: templates/scene)

@@ -1,7 +1,7 @@
 # scripts/test.ps1
 # Run the project test suites in one place.
-#   fast: typecheck + vitest (no real-binary tests) + pytest (excluding slow) + cargo test. Run before every commit.
-#   full: fast + real engine/ffmpeg vitest tests + slow pytest + Playwright e2e. Run before a PR or release.
+#   fast: typecheck + vitest (no real-binary tests) + engine/recorder cargo test. Run before every commit.
+#   full: fast + real engine/ffmpeg vitest tests + gated ignored cargo tests + Playwright e2e. Run before a PR or release.
 param(
     [ValidateSet("fast", "full")]
     [string]$Tier = "fast",
@@ -10,7 +10,6 @@ param(
 
 $ErrorActionPreference = "Stop"
 $root = [System.IO.Path]::GetFullPath("$PSScriptRoot\..")
-$python = Join-Path $root "engine\.venv\Scripts\python.exe"
 $failures = New-Object System.Collections.Generic.List[string]
 
 function Invoke-Step {
@@ -29,12 +28,10 @@ function Invoke-Step {
     }
 }
 
-if (-not (Test-Path $python)) { throw "Engine venv not found: $python" }
 $app = Join-Path $root "app"
 
 # Every suite must exercise the same bundled FFmpeg. Use PATH rather than
-# ADITOR_FFMPEG: ffbin's missing-binary tests intentionally replace PATH and
-# BUNDLED_DIR, and an inherited override would bypass those checks.
+# ADITOR_FFMPEG: subprocess lookup tests control their own overrides.
 $ffmpegRoot = Join-Path $root "build/ffmpeg"
 foreach ($binary in @('ffmpeg.exe', 'ffprobe.exe')) {
     if (-not (Test-Path -LiteralPath (Join-Path $ffmpegRoot "bin/$binary"))) {
@@ -42,7 +39,7 @@ foreach ($binary in @('ffmpeg.exe', 'ffprobe.exe')) {
     }
 }
 $savedEnvironment = @{}
-foreach ($name in @('PATH', 'ADITOR_FFMPEG', 'ADITOR_FFPROBE', 'ADITORREC_FFMPEG_DIR')) {
+foreach ($name in @('PATH', 'ADITOR_FFMPEG', 'ADITOR_FFPROBE', 'ADITORREC_FFMPEG_DIR', 'CARGO_BUILD_JOBS')) {
     $savedEnvironment[$name] = [Environment]::GetEnvironmentVariable($name, 'Process')
 }
 try {
@@ -50,9 +47,14 @@ try {
     $env:ADITOR_FFMPEG = $null
     $env:ADITOR_FFPROBE = $null
     $env:ADITORREC_FFMPEG_DIR = $ffmpegRoot
+    $env:CARGO_BUILD_JOBS = '4'
 
     Invoke-Step "FFmpeg components" $root {
         & "$PSScriptRoot/verify-ffmpeg-components.ps1" -FfmpegPath (Join-Path $ffmpegRoot 'bin/ffmpeg.exe')
+    }
+
+    if ($Tier -eq "full") {
+        Invoke-Step "engine release build for real app tests" (Join-Path $root "engine") { cargo build --release }
     }
 
     Invoke-Step "app typecheck" $app { npm run typecheck }
@@ -64,8 +66,15 @@ try {
         Invoke-Step "app vitest (all, incl. real engine/ffmpeg)" $app { npm test }
     }
 
-    $pytestMarker = if ($Tier -eq "fast") { "not slow" } else { "slow or not slow" }
-    Invoke-Step "engine pytest ($Tier)" (Join-Path $root "engine") { & $python -m pytest -q -m $pytestMarker }
+    Invoke-Step "engine cargo test" (Join-Path $root "engine") { cargo test -- --test-threads=4 }
+    if ($Tier -eq "full") {
+        if ($env:ADITOR_GOLDEN_VIDEO) {
+            Invoke-Step "engine golden tests" (Join-Path $root "engine") { cargo test --test analyze --test live golden -- --include-ignored --test-threads=4 }
+        }
+        if ($env:ADITOR_MATCH_DIR) {
+            Invoke-Step "engine match acceptance" (Join-Path $root "engine") { cargo test --test matches --test live recording -- --include-ignored --test-threads=4 }
+        }
+    }
 
     # The recorder tests link against the bundled FFmpeg DLLs.
     # GitHub-hosted runners have no hardware D3D11 adapter or audio devices, so skip the tests that need them

@@ -4,7 +4,8 @@ There is no CI, so this checklist is the release gate. Complete every item befor
 
 ## 1. Automated tests
 
-- [ ] `scripts\test.ps1 -Tier full` passes (typecheck, vitest incl. real engine/ffmpeg tests, pytest, cargo test, Playwright e2e).
+- [ ] Tool tests pass: `python -m pytest tools/tests -q` using `tools/requirements.txt`.
+- [ ] `scripts\test.ps1 -Tier full` passes (typecheck, vitest incl. real engine/ffmpeg tests, engine/recorder cargo test, Playwright e2e).
 - [ ] If the analysis engine changed: set `ADITOR_GOLDEN_VIDEO` and confirm the golden tests ran (not skipped).
 
 ## 2. Packaged build smoke test

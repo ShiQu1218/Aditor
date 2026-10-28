@@ -14,6 +14,8 @@ files:
 extraResources:
   - from: ../build/engine/aditor
     to: engine/aditor
+    filter:
+      - aditor.exe
   - from: ../build/ffmpeg
     to: ffmpeg
     filter:

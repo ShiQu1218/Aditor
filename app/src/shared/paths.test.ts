@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import fs from 'fs'
 import path from 'path'
-import { aditorrecCommand, cacheDir, chromiumUserDataDir, liveEngineCommand, sceneDir } from './paths'
+import { aditorrecCommand, cacheDir, chromiumUserDataDir, engineCommand, liveEngineCommand, sceneDir } from './paths'
 
 describe('chromiumUserDataDir', () => {
   afterEach(() => vi.unstubAllEnvs())
@@ -15,6 +15,12 @@ describe('chromiumUserDataDir', () => {
 })
 
 describe('liveEngineCommand', () => {
+  afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs() })
+
+  it('falls back to the debug engine', () => {
+    vi.spyOn(fs, 'existsSync').mockReturnValue(false)
+    expect(engineCommand(false).command).toBe(path.join(root, 'engine/target/debug/aditor.exe'))
+  })
   const root = path.resolve(__dirname, '../../..')
   const resources = process as unknown as { resourcesPath?: string }
   const originalResources = resources.resourcesPath
@@ -23,17 +29,28 @@ describe('liveEngineCommand', () => {
     else resources.resourcesPath = originalResources
   })
 
-  it('Development: uses the same venv Python, switches the subcommand to live, and places scene templates in templates/scene', () => {
+  it('Development: prefers release and shares the executable with live', () => {
+    vi.spyOn(fs, 'existsSync').mockReturnValue(true)
+    expect(engineCommand(false)).toEqual({ command: path.join(root, 'engine/target/release/aditor.exe'), args: ['ipc'] })
     expect(liveEngineCommand(false)).toEqual({
-      command: path.join(root, 'engine/.venv/Scripts/python.exe'), args: ['-m', 'aditor', 'live'],
-      env: { PYTHONPATH: path.join(root, 'engine') }
+      command: path.join(root, 'engine/target/release/aditor.exe'), args: ['live']
     })
     expect(sceneDir(false)).toBe(path.join(root, 'templates/scene'))
   })
 
+  it('preserves explicit FFmpeg overrides and lets ffbin resolve the sibling probe', () => {
+    vi.stubEnv('ADITOR_FFMPEG', 'custom/ffmpeg.exe')
+    expect(engineCommand(true).env).toEqual({ ADITOR_FFMPEG: 'custom/ffmpeg.exe' })
+  })
+
   it('Packaged: runs aditor.exe live under resources', () => {
     resources.resourcesPath = path.resolve('installed/resources')
-    expect(liveEngineCommand(true)).toEqual({ command: path.join(resources.resourcesPath, 'engine/aditor/aditor.exe'), args: ['live'] })
+    vi.stubEnv('ADITOR_FFMPEG', '')
+    vi.stubEnv('ADITOR_FFPROBE', '')
+    expect(liveEngineCommand(true)).toEqual({
+      command: path.join(resources.resourcesPath, 'engine/aditor/aditor.exe'), args: ['live'],
+      env: { ADITOR_FFMPEG: path.join(resources.resourcesPath, 'ffmpeg/bin/ffmpeg.exe') }
+    })
     expect(sceneDir(true)).toBe(path.join(resources.resourcesPath, 'templates/scene'))
   })
 })

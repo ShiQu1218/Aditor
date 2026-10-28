@@ -28,7 +28,7 @@ describe('cache save/load roundtrip', () => {
 describe('cacheFilePath', () => {
   // path.resolve is platform-specific, and drive-letter paths are meaningful only on Windows → explicitly skip off win32 (reported in results).
   it.skipIf(process.platform !== 'win32')('matches the engine naming (sha1 of lowercased, slash-normalised absolute path) [win32 only: path.resolve drive semantics]', () => {
-    // python: hashlib.sha1(b'd:/v/a.mp4').hexdigest()
+    // SHA-1 of UTF-8 d:/v/a.mp4 (existing cache key contract)
     const expected = path.join('C:/cache', '10ad1835deb8203d4d73f32ede655b294e165740.json')
     expect(cacheFilePath('D:/v/a.mp4', 'C:/cache')).toBe(expected)
     expect(cacheFilePath('d:\\V\\A.mp4', 'C:/cache')).toBe(expected)

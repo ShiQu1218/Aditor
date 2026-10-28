@@ -3,10 +3,10 @@
 組織：`luis12182`；專案：`aditor-desktop`。
 
 目前接入 Electron／React 的 JavaScript 錯誤與啟動／畫面效能追蹤，
-以及 Python 離線分析、即時偵測與 Rust 錄影子程序的錯誤。
+以及 Rust 離線分析、即時偵測與錄影子程序的錯誤。
 所有網路回報集中於 Electron；子程序不另裝 Sentry SDK，也不保存權杖。
 
-Python 例外會保留 `aditor/` 底下的相對檔名、函式與行號，不含變數或來源程式內容。
+Rust 引擎例外保留 type 與空 frames 陣列；不提供來源堆疊。元件識別為 `rust-engine`（離線分析）、`rust-live`（即時偵測）與 `rust-recorder`（錄影），platform 皆為 `native`；改名前的 `python-engine`／`python-live` 舊 issue 不會與新事件合併。
 錄影端會回報擷取／編碼／音訊失敗、通訊異常與非預期退出；目前不擷取 Rust 原生崩潰的記憶體傾印或完整原生堆疊。
 
 ## 使用者選擇與資料範圍
@@ -82,17 +82,19 @@ npm --prefix app run verify:sentry
 測試觸發器只在未打包的 E2E 模式且 `ADITOR_SENTRY_VERIFY=1` 時執行，
 一般啟動與正式安裝版不會觸發，也不會替使用者啟用診斷。
 
-若要連同真實 Python 與錄影子程序驗證，可在未打包的測試環境額外設定：
+若要連同真實分析引擎與錄影子程序驗證，可在未打包的測試環境額外設定：
 
 ```powershell
 $env:ADITOR_SENTRY_VERIFY_CHILDREN = '1'
-$env:ADITOR_VERIFY_PYTHON = '完整路徑/engine/.venv/Scripts/python.exe'
+$env:ADITOR_VERIFY_ENGINE = '完整路徑/engine/target/release/aditor.exe'
 $env:ADITOR_VERIFY_RECORDER = '完整路徑/build/ffmpeg/bin/aditorrec.exe'
 npm --prefix app run verify:sentry
 ```
 
-會觸發 Python 的受控 IPC 例外、即時引擎的範本載入失敗，再終止本次測試啟動的錄影子程序以驗證異常退出回報。
+會觸發分析引擎的受控 IPC 範本載入例外、即時引擎的範本載入失敗，再終止本次測試啟動的錄影子程序以驗證異常退出回報。
 此驗證不開始錄影，也不操作遊戲或終止使用者的其他程序。
+
+以下是移植前的歷史驗證紀錄；Rust 不會產生 Python 來源堆疊。
 
 2026-10-22 已驗證：`ADITOR-DESKTOP-3` 的新事件成功還原至
 `src/main/telemetry-verification.ts` 第 16 行，包含原始碼內容。

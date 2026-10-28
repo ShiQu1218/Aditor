@@ -45,19 +45,18 @@ export function engineCommand(isPackaged: boolean): {
     const exe = path.join(resPath, 'engine', 'aditor', 'aditor.exe')
     return {
       command: exe,
-      args: ['ipc']
+      args: ['ipc'],
+      env: {
+        ADITOR_FFMPEG: process.env.ADITOR_FFMPEG || path.join(resPath, 'ffmpeg', 'bin', 'ffmpeg.exe')
+      }
     }
   }
 
-  // Development mode: look for engine/.venv/Scripts/python.exe relative to repo root
   const root = path.resolve(__dirname, '../../..')
-  const pythonExe = path.join(root, 'engine', '.venv', 'Scripts', 'python.exe')
+  const release = path.join(root, 'engine', 'target', 'release', 'aditor.exe')
   return {
-    command: pythonExe,
-    args: ['-m', 'aditor', 'ipc'],
-    env: {
-      PYTHONPATH: path.join(root, 'engine')
-    }
+    command: fs.existsSync(release) ? release : path.join(root, 'engine', 'target', 'debug', 'aditor.exe'),
+    args: ['ipc']
   }
 }
 

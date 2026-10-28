@@ -4,7 +4,7 @@ import { app } from 'electron'
 /**
  * E2E test hooks (enabled only by `ADITOR_E2E=1`; returns null when the environment variable is absent, leaving production behavior unchanged).
  * - `ADITOR_APPDATA`: replace %APPDATA% (and Electron userData) so tests do not touch user data
- * - `ADITOR_ENGINE=fake`: run `app/test/fake-engine.mjs` with node (FAKE_ENGINE_MODE=e2e) instead of the Python engine
+ * - `ADITOR_ENGINE=fake`: run `app/test/fake-engine.mjs` with node (FAKE_ENGINE_MODE=e2e) instead of the analysis engine
  * - `ADITOR_E2E_FAKE_FFMPEG=1`: use `app/test/fake-ffmpeg.mjs` (a real child process for cancellation tests) for exports
  * - `ADITOR_E2E_NODE`: node executable used to run the scripts above (the test runner's process.execPath)
  */

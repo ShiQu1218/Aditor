@@ -1,4 +1,4 @@
-engine/.venv/
+tools/.venv/
 __pycache__/
 *.pyc
 *.egg-info/
@@ -11,9 +11,13 @@ dist/
 out/
 build/
 recorder/target/
+engine/target/
 .worktrees/
 .claude/worktrees/
 .env.sentry-build-plugin
 
 # Synthetic AV1 decoding fixture (no bundled AV1 software encoder required).
 !engine/tests/fixtures/media/av1-1s-640x360-60.mp4
+
+# Frozen Rust engine reference videos and optional Python tool environment.
+!engine/tests/parity/media/*.mp4

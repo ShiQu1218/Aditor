@@ -58,12 +58,15 @@ ZIP 保留單一頂層目錄，包含 `bin/*.exe`、shared DLL、`lib/*.lib`、G
 5. 從 release 的 `SHA256SUMS` 更新 fetch 的 tag、asset、SHA256、URL；
    完整重建 recorder／engine／app，執行下列驗收後更新 THIRD_PARTY_NOTICES。
 
+先依 `tools/README.md` 建立工具 venv，並以 `cargo build --release --manifest-path engine/Cargo.toml` 建置引擎。
+`ADITOR_ENGINE` 可指定引擎路徑，預設使用 `engine/target/release/aditor.exe`。
+
 以下驗收指令在 **Aditor 主專案根目錄**執行；FFmpeg fork 本身不包含 engine／app／recorder。
 
 ```powershell
 ./scripts/verify-ffmpeg-components.ps1 -Strict -CheckPackage
 ./ffmpeg-build/smoke-test.ps1 -FfmpegPath ./build/ffmpeg/bin/ffmpeg.exe
-./engine/.venv/Scripts/python.exe ./ffmpeg-build/acceptance.py `
+./tools/.venv/Scripts/python.exe ./ffmpeg-build/acceptance.py `
   --ffmpeg ./build/ffmpeg/bin/ffmpeg.exe `
   --fixture-ffmpeg C:/path/to/developer/ffmpeg.exe `
   --baseline-ffmpeg C:/path/to/original/BtbN/bin/ffmpeg.exe

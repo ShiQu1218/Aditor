@@ -13,7 +13,17 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "engine"))
+sys.path.insert(0, str(ROOT / "tools"))
+
+from engine_cli import command, json_lines
+
+
+def decode(video, hardware):
+    args = ["debug-benchmark", video, "--profile-dir", ROOT / "templates/icons", "--decode-only"]
+    if not hardware:
+        args.append("--no-hwaccel")
+    result, = json_lines(*args)
+    return result
 
 
 def run(binary, arguments):
@@ -24,9 +34,6 @@ def run(binary, arguments):
 
 
 def main(args):
-    from aditor.decode import FrameStream, GPU_CODECS
-    from aditor.profile import load_profile
-    profile = load_profile(ROOT / "templates/icons")
     args.output.mkdir(parents=True, exist_ok=True)
     os.environ["ADITOR_FFMPEG"] = str(args.ffmpeg.resolve())
     cases = [
@@ -54,17 +61,17 @@ def main(args):
             if not source.exists():
                 run(args.fixture_ffmpeg, ["-f", "lavfi", "-i", "testsrc2=size=640x360:rate=30:duration=2", "-f", "lavfi", "-i", "sine=sample_rate=48000:duration=2", *video, *audio, "-shortest", str(source)])
             for hardware in (False, True):
-                if hardware and codec not in GPU_CODECS:
+                if hardware and codec not in ("av1", "h264", "hevc", "vp9"):
                     record["paths"]["d3d11va"] = {"status": "unavailable", "reason": "The engine has no explicit D3D11VA surface path for this codec; auto decoding cannot prove hardware use"}
                     continue
-                stream = FrameStream(str(source), profile, hwaccel=hardware, codec=codec)
-                frames = list(stream)
-                if len(frames) != 8:
-                    raise AssertionError(f"Expected 8 engine samples, got {len(frames)}")
+                result = decode(source, hardware)
+                frames = result["frames"]
+                if frames != 8:
+                    raise AssertionError(f"Expected 8 engine samples, got {frames}")
                 record["paths"]["d3d11va" if hardware else "software"] = {
-                    "status": "pass" if not hardware or stream.used_hwaccel else "unavailable",
-                    "frames": len(frames),
-                    "reason": "" if not hardware or stream.used_hwaccel else "Hardware path fell back to software; no GPU success claimed",
+                    "status": "pass" if not hardware or result["used_hwaccel"] else "unavailable",
+                    "frames": frames,
+                    "reason": "" if not hardware or result["used_hwaccel"] else "Hardware path fell back to software; no GPU success claimed",
                 }
             run(args.ffmpeg, ["-i", str(source), "-frames:v", "1", "-vf", "scale=320:180:force_original_aspect_ratio=decrease", str(args.output / f"{name}.jpg")])
             run(args.ffmpeg, ["-i", str(source), "-vf", "scale=320:180", "-c:v", "libopenh264", "-b:v", "2M", "-allow_skip_frames", "0", "-c:a", "aac", str(args.output / f"{name}-proxy.mp4")])
@@ -95,7 +102,7 @@ def main(args):
                     start = time.perf_counter()
                     if operation == "engine-software":
                         os.environ["ADITOR_FFMPEG"] = str(binary.resolve())
-                        count = sum(1 for _ in FrameStream(str(source), profile, hwaccel=False, codec="h264"))
+                        count = decode(source, False)["frames"]
                         if not count:
                             raise AssertionError("Benchmark produced no engine samples")
                         if expected_frames is None:
@@ -105,12 +112,12 @@ def main(args):
                     elif operation == "engine-analyze":
                         environment = dict(os.environ, ADITOR_FFMPEG=str(binary.resolve()))
                         environment.pop("ADITOR_FFPROBE", None)
-                        result = subprocess.run([
-                            sys.executable, "-m", "aditor", "analyze", str(source.resolve()),
+                        result = subprocess.run(command(
+                            "analyze", str(source.resolve()),
                             "--profile-dir", str(ROOT / "templates/icons"),
                             "--cache-dir", str(args.output / f"benchmark-{name}-cache"),
                             "--force", "--no-hwaccel", "--jobs", "1", "--game", "apex", "--aspect", "16:9",
-                        ], env=environment, cwd=ROOT / "engine", capture_output=True)
+                        ), env=environment, cwd=ROOT, capture_output=True)
                         if result.returncode:
                             raise RuntimeError(result.stderr.decode(errors="replace")[-4000:])
                     else:

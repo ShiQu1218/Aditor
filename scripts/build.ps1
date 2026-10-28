@@ -2,6 +2,7 @@
 # Build the engine, LGPL FFmpeg, OBS hook, Rust recorder, and Electron installer.
 param(
     [switch]$SkipEngine,
+    [switch]$EngineOnly,
     [switch]$SkipFfmpeg,
     [switch]$SkipObsHook
 )
@@ -16,28 +17,33 @@ Write-Host "========================================"
 
 # 1. Build Engine
 if (-not $SkipEngine) {
-    Write-Host "`n[1/6] Building Engine with PyInstaller..."
-    $python = Join-Path $root "engine\.venv\Scripts\python.exe"
-    & $python -m pip install -c (Join-Path $root "engine\constraints.txt") -e (Join-Path $root "engine") pyinstaller
-    if ($LASTEXITCODE -ne 0) { throw "Pinned engine dependency installation failed" }
-
-    $distPath = Join-Path $root "build\engine"
-    $workPath = Join-Path $root "build\pyinstaller-temp"
-    $specPath = Join-Path $root "engine\aditor.spec"
-
-    $buildStarted = [DateTime]::UtcNow
-    & $python -m PyInstaller --distpath $distPath --workpath $workPath -y $specPath
-    if ($LASTEXITCODE -ne 0) { throw "PyInstaller build failed" }
-    $engineExe = Join-Path $distPath "aditor\aditor.exe"
-    if (-not (Test-Path $engineExe)) {
-        throw "Engine build failed: $engineExe not found!"
-    }
-    if ((Get-Item -LiteralPath $engineExe).LastWriteTimeUtc -le $buildStarted) {
-        throw "Engine build failed: $engineExe was not rebuilt during this run!"
+    Write-Host "`n[1/6] Building Rust engine..."
+    $releaseExe = Join-Path $root "engine/target/release/aditor.exe"
+    # Cargo relinks whenever sources change; its uplifted exe keeps the link time, so compare hashes, not mtimes.
+    cargo build --release --manifest-path (Join-Path $root "engine/Cargo.toml")
+    if ($LASTEXITCODE -ne 0) { throw "Rust engine build failed" }
+    if (-not (Test-Path -LiteralPath $releaseExe)) { throw "Engine build failed: $releaseExe not found!" }
+    $distPath = Join-Path $root "build/engine/aditor"
+    New-Item -ItemType Directory -Force -Path $distPath | Out-Null
+    $engineExe = Join-Path $distPath "aditor.exe"
+    Copy-Item -LiteralPath $releaseExe -Destination $engineExe -Force
+    if ((Get-FileHash -LiteralPath $engineExe).Hash -ne (Get-FileHash -LiteralPath $releaseExe).Hash) {
+        throw "Engine build failed: staged $engineExe does not match the cargo release build!"
     }
     Write-Host "✓ Engine built successfully: $engineExe"
 } else {
     Write-Host "`n[1/6] Skipping engine build."
+    $releaseExe = Join-Path $root "engine/target/release/aditor.exe"
+    $engineExe = Join-Path $root "build/engine/aditor/aditor.exe"
+    if (-not (Test-Path -LiteralPath $releaseExe) -or -not (Test-Path -LiteralPath $engineExe) -or
+        (Get-FileHash -LiteralPath $engineExe).Hash -ne (Get-FileHash -LiteralPath $releaseExe).Hash) {
+        throw "Staged engine does not match the cargo release build; run scripts/build.ps1 -EngineOnly first"
+    }
+}
+
+if ($EngineOnly) {
+    & "$PSScriptRoot/verify-live-engine.ps1"
+    return
 }
 
 # 2. Fetch & verify LGPL FFmpeg
