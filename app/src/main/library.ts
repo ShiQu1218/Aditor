@@ -366,16 +366,25 @@ export function watchFolder(dir: string, onAdd: (paths: string[]) => void, opts:
 
   const probe = opts.isFileReleased ?? (process.platform === 'win32' ? isFileReleased : undefined)
   const pending = new Map<string, ReturnType<typeof setTimeout> | undefined>()
+  /** Files still locked at the wait bound; a later write event starts a new bounded check instead of polling. */
+  const timedOut = new Set<string>()
   let closed = false
   const close = watcher.close.bind(watcher)
   watcher.close = () => {
     closed = true
     for (const timer of pending.values()) clearTimeout(timer)
     pending.clear()
+    timedOut.clear()
     return close()
   }
 
-  watcher.on('add', (filePath) => {
+  watcher.on('change', (filePath) => {
+    if (timedOut.delete(filePath)) track(filePath)
+  })
+  watcher.on('unlink', (filePath) => timedOut.delete(filePath))
+  watcher.on('add', (filePath) => track(filePath))
+
+  function track(filePath: string): void {
     if (closed || pending.has(filePath)) return
     if (!probe) {
       onAdd([filePath])
@@ -393,6 +402,7 @@ export function watchFolder(dir: string, onAdd: (paths: string[]) => void, opts:
           onAdd([filePath])
         } else if (Date.now() >= deadline) {
           pending.delete(filePath)
+          timedOut.add(filePath)
           console.warn(`[Watch] Timed out waiting for file release: ${filePath}`)
         } else {
           pending.set(filePath, setTimeout(() => void check(), Math.min(opts.stabilityMs ?? 5000, deadline - Date.now())))
@@ -405,7 +415,7 @@ export function watchFolder(dir: string, onAdd: (paths: string[]) => void, opts:
       }
     }
     void check()
-  })
+  }
 
   return watcher
 }

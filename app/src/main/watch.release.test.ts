@@ -62,6 +62,31 @@ describe('watched file release', () => {
     expect(vi.getTimerCount()).toBe(0)
   })
 
+  test('after the wait bound, a later write to the file starts a new bounded check and imports it once released', async () => {
+    vi.useFakeTimers()
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    let released = false
+    const probe = vi.fn(async (_file: string) => released)
+    const { watcher, onAdd } = setup(probe)
+    watcher.emit('add', 'slow-copy.mp4')
+    await vi.advanceTimersByTimeAsync(WATCH_RELEASE_TIMEOUT_MS)
+    expect(vi.getTimerCount()).toBe(0)
+    // No polling while it waits; a change to another, already imported file is not probed.
+    watcher.emit('change', 'other.mp4')
+    await vi.advanceTimersByTimeAsync(WATCH_RELEASE_TIMEOUT_MS)
+    const calls = probe.mock.calls.length
+    expect(probe.mock.calls.every(([file]) => file === 'slow-copy.mp4')).toBe(true)
+    released = true
+    watcher.emit('change', 'slow-copy.mp4')
+    await vi.advanceTimersByTimeAsync(0)
+    expect(probe).toHaveBeenCalledTimes(calls + 1)
+    expect(onAdd.mock.calls).toEqual([[['slow-copy.mp4']]])
+    watcher.emit('change', 'slow-copy.mp4')
+    await vi.advanceTimersByTimeAsync(0)
+    expect(onAdd).toHaveBeenCalledTimes(1)
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
   test('silently drops a file removed while busy', async () => {
     vi.useFakeTimers()
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
