@@ -23,7 +23,10 @@ use std::{
 };
 
 use anyhow::{bail, ensure, Context, Result};
-use windows::Win32::Graphics::Direct3D11::ID3D11Texture2D;
+use windows::Win32::Graphics::Direct3D11::{
+    ID3D11Texture2D, D3D11_BIND_RENDER_TARGET, D3D11_TEXTURE2D_DESC, D3D11_USAGE_DEFAULT,
+};
+use windows::Win32::Graphics::Dxgi::Common::{DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_SAMPLE_DESC};
 
 use crate::gpu::Gpu;
 use crate::types::{Codec, EncodeAspect, EncodePreset};
@@ -195,6 +198,14 @@ fn probe(gpu: &Gpu, name: &str) -> Result<ffi::AVPixelFormat> {
             let hardware = Hardware::new(gpu, &params, format)?;
             let encoder = hardware.encoder(name, &params)?;
             let frame = hardware.surface()?;
+            // Exercise the BGRA-to-surface copy too: NV12 always goes through the video processor,
+            // which the encoder alone does not test.
+            let source = probe_source(gpu, (params.width, params.height))?;
+            Copier::new(gpu, &params, format).copy(
+                &source,
+                (params.width, params.height),
+                &frame,
+            )?;
             // SAFETY: This thread exclusively owns the frame and sets its initial encoding timestamp.
             unsafe {
                 (*frame.0).pts = 0;
@@ -214,6 +225,31 @@ fn probe(gpu: &Gpu, name: &str) -> Result<ffi::AVPixelFormat> {
     }
     let failure = failure.unwrap_or_else(|| anyhow::anyhow!("No pixel format was tried"));
     Err(failure.context("Trial encoding failed"))
+}
+
+/// A blank BGRA render-target texture shaped like a captured frame.
+fn probe_source(gpu: &Gpu, size: (u32, u32)) -> Result<ID3D11Texture2D> {
+    let desc = D3D11_TEXTURE2D_DESC {
+        Width: size.0,
+        Height: size.1,
+        MipLevels: 1,
+        ArraySize: 1,
+        Format: DXGI_FORMAT_B8G8R8A8_UNORM,
+        SampleDesc: DXGI_SAMPLE_DESC {
+            Count: 1,
+            Quality: 0,
+        },
+        Usage: D3D11_USAGE_DEFAULT,
+        BindFlags: D3D11_BIND_RENDER_TARGET.0 as u32,
+        ..Default::default()
+    };
+    let mut texture = None;
+    // SAFETY: Valid device and single-mip BGRA description; the windows crate manages the output reference.
+    unsafe {
+        gpu.device
+            .CreateTexture2D(&desc, None, Some(&mut texture))?
+    };
+    texture.context("Probe texture was not created")
 }
 
 /// Builds the no_hw_encoder message; flags an outdated NVIDIA driver so the app can show an update hint.

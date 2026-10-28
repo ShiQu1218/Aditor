@@ -331,7 +331,13 @@ fn pointer_shape(info: &DXGI_OUTDUPL_POINTER_SHAPE_INFO, bytes: &[u8]) -> Result
                     info.Type != 4 || p[3] == 0 || p[3] == 255,
                     "Invalid masked cursor alpha"
                 );
-                [p[2], p[1], p[0], p[3]]
+                let pixel = [p[2], p[1], p[0], p[3]];
+                // Filtering for a scaled cursor needs premultiplied texels; DDA color shapes are straight alpha.
+                if info.Type == 2 {
+                    premultiply(pixel)
+                } else {
+                    pixel
+                }
             };
             pixels.push(pixel);
         }
@@ -404,15 +410,9 @@ fn bitmap_pixels(bitmap: HBITMAP) -> Result<BitmapPixels> {
     })
 }
 
-fn unpremultiply(pixels: &mut [[u8; 4]]) {
-    for pixel in pixels {
-        let alpha = u32::from(pixel[3]);
-        if alpha > 0 && alpha < 255 {
-            for channel in &mut pixel[..3] {
-                *channel = ((u32::from(*channel) * 255 + alpha / 2) / alpha).min(255) as u8;
-            }
-        }
-    }
+fn premultiply([r, g, b, a]: [u8; 4]) -> [u8; 4] {
+    let scale = |c: u8| ((u32::from(c) * u32::from(a) + 127) / 255) as u8;
+    [scale(r), scale(g), scale(b), a]
 }
 
 fn icon_shape(icon: &ICONINFO) -> Result<PointerShape> {
@@ -441,10 +441,8 @@ fn icon_shape(icon: &ICONINFO) -> Result<PointerShape> {
     let BitmapPixels { size, mut pixels } = bitmap_pixels(icon.hbmColor)?;
     ensure!(mask_size == size, "Cursor mask size mismatch");
     let alpha = pixels.iter().any(|p| p[3] != 0);
-    if alpha {
-        // Win32 color bitmaps are premultiplied, but the shader expects straight alpha.
-        unpremultiply(&mut pixels);
-    } else {
+    // Win32 alpha bitmaps are already premultiplied, which is what the shader blends.
+    if !alpha {
         for (p, mask) in pixels.iter_mut().zip(mask) {
             p[3] = mask[0];
         }
@@ -802,12 +800,9 @@ mod tests {
                 1 => (dest[i] & cursor[3]) ^ cursor[i],
                 4 if cursor[3] == 255 => dest[i] ^ cursor[i],
                 4 => cursor[i],
-                2 => {
-                    ((u32::from(cursor[i]) * u32::from(cursor[3])
-                        + u32::from(dest[i]) * (255 - u32::from(cursor[3]))
-                        + 127)
-                        / 255) as u8
-                }
+                2 => (u32::from(cursor[i])
+                    + (u32::from(dest[i]) * (255 - u32::from(cursor[3])) + 127) / 255)
+                    .min(255) as u8,
                 _ => panic!("Unknown pointer type"),
             };
         }
@@ -815,28 +810,27 @@ mod tests {
     }
 
     #[test]
-    fn win32_alpha_converts_to_straight_and_preserves_blending() {
-        let premultiplied = [[42, 16, 64, 64], [133, 86, 0, 172]];
-        let mut straight = premultiplied;
-        unpremultiply(&mut straight);
-        assert_eq!(straight, [[167, 64, 255, 64], [197, 128, 0, 172]]);
-        for (input, output) in premultiplied.into_iter().zip(straight) {
-            for background in [[0, 0, 0, 255], [255; 4]] {
-                let actual = blend(2, output, background);
+    fn premultiplied_shapes_blend_like_straight_alpha() {
+        for straight in [
+            [255, 128, 0, 64],
+            [200, 10, 90, 172],
+            [12, 34, 56, 255],
+            [12, 34, 56, 0],
+        ] {
+            let premultiplied = premultiply(straight);
+            for background in [[0, 0, 0, 255], [255; 4], [90, 160, 30, 255]] {
+                let actual = blend(2, premultiplied, background);
                 for channel in 0..3 {
-                    let expected = u32::from(input[channel])
-                        + (u32::from(background[channel]) * (255 - u32::from(input[3])) + 127)
-                            / 255;
+                    let a = u32::from(straight[3]);
+                    let expected = (u32::from(straight[channel]) * a
+                        + u32::from(background[channel]) * (255 - a)
+                        + 127)
+                        / 255;
                     assert!(u32::from(actual[channel]).abs_diff(expected) <= 1);
                 }
             }
         }
-        let mut edges = [[12, 34, 56, 0], [12, 34, 56, 255], [2, 1, 0, 1]];
-        unpremultiply(&mut edges);
-        assert_eq!(
-            edges,
-            [[12, 34, 56, 0], [12, 34, 56, 255], [255, 255, 0, 1]]
-        );
+        assert_eq!(premultiply([12, 34, 56, 0]), [0, 0, 0, 0]);
     }
 
     #[test]
@@ -853,7 +847,7 @@ mod tests {
         ];
         assert_eq!(
             pointer_shape(&info, &bytes).unwrap().pixels,
-            [[30, 20, 10, 128], [60, 50, 40, 255]]
+            [[15, 10, 5, 128], [60, 50, 40, 255]]
         );
         assert!(pointer_shape(&info, &bytes[..15]).is_err());
         let mono = DXGI_OUTDUPL_POINTER_SHAPE_INFO {
@@ -900,9 +894,12 @@ mod tests {
             blend(4, [0xf0, 0x0f, 0xff, 255], dest),
             [0xe2, 0x3b, 0xa9, 255]
         );
-        assert_eq!(blend(2, [200, 100, 0, 0], dest), dest);
+        assert_eq!(blend(2, premultiply([200, 100, 0, 0]), dest), dest);
         assert_eq!(blend(2, [200, 100, 0, 255], dest), [200, 100, 0, 255]);
-        assert_eq!(blend(2, [200, 100, 0, 128], dest), [109, 76, 43, 255]);
+        assert_eq!(
+            blend(2, premultiply([200, 100, 0, 128]), dest),
+            [109, 76, 43, 255]
+        );
     }
 
     fn read_pixels(gpu: &Gpu, texture: &ID3D11Texture2D) -> Vec<[u8; 4]> {

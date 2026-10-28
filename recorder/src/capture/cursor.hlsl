@@ -16,7 +16,7 @@ float4 pixel(float4 position : SV_Position) : SV_Target {
     else if (kind == 2) cursor = pointerShape.SampleLevel(linearClamp, uv, 0);
     else cursor = pointerShape.Load(int3(int2(uv * shapeSize), 0));
     float4 dest = background.Load(int3(p, 0));
-    if (kind == 2) return float4(cursor.rgb * cursor.a + dest.rgb * (1 - cursor.a), dest.a);
+    if (kind == 2) return float4(cursor.rgb + dest.rgb * (1 - cursor.a), dest.a);
     uint3 rgb = (uint3)round(cursor.rgb * 255);
     uint3 screen = (uint3)round(dest.rgb * 255);
     uint mask = (uint)round(cursor.a * 255);
