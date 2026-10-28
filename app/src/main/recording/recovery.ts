@@ -6,6 +6,13 @@ import { finalizeSession } from './finalize'
 import type { RecordingDeps } from './index'
 import { tr } from '../../shared/locale'
 
+/** Folders whose `.sessions` startup recovery scans: the output folder, watched folders and the default, deduplicated. */
+export function sessionRoots(deps: RecordingDeps): string[] {
+  const folders = [deps.getSettings().outputDir, ...deps.getWatchFolders(), deps.defaultOutputDir]
+    .filter((dir): dir is string => isSafeLocalDirPath(dir))
+  return [...new Map(folders.map((dir) => [process.platform === 'win32' ? path.resolve(dir).toLowerCase() : path.resolve(dir), dir])).values()]
+}
+
 /** Serialize startup recovery with new recordings so an active write is not mistaken for a crash remnant. */
 export async function recoverSessions(
   deps: RecordingDeps,
@@ -13,10 +20,7 @@ export async function recoverSessions(
   failed: (error: unknown) => void,
   cancelled: () => boolean = () => false
 ): Promise<void> {
-  const folders = [deps.getSettings().outputDir, ...deps.getWatchFolders(), deps.defaultOutputDir]
-    .filter((dir): dir is string => isSafeLocalDirPath(dir))
-  const unique = new Map(folders.map((dir) => [process.platform === 'win32' ? path.resolve(dir).toLowerCase() : path.resolve(dir), dir]))
-  for (const dir of unique.values()) {
+  for (const dir of sessionRoots(deps)) {
     if (cancelled()) return
     const root = path.join(dir, '.sessions')
     try {

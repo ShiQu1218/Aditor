@@ -511,6 +511,11 @@ export async function finalizeSession(dir: string, deps: RecordingDeps): Promise
       throw error
     }
   }
+  // The user deleted the finished output from the library; keeping the session would fail on it at every recovery.
+  if (outputWasRemoved(dir, marker.outputPath)) {
+    await fs.promises.rm(dir, { recursive: true })
+    return []
+  }
   if (!inOutputDir(marker.outputPath, outputDir) ||
       path.extname(marker.outputPath).toLowerCase() !== '.mp4' ||
       !(await fs.promises.lstat(marker.outputPath)).isFile()) throw new Error(tr('已收尾的影片路徑無效或檔案遺失'))
