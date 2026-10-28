@@ -236,6 +236,8 @@ describe('export drawer', () => {
 
       // Consent dialog.
       await act(async () => {
+        // Consent is asked only once detection has confirmed there is no H.264 encoder.
+        await ctl.init(null)
         await ctl.setQuality('precise')
       })
       const consent = expectModalDialog(m.container.querySelector('.xd-consent'))

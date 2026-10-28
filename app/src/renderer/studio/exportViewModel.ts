@@ -1,5 +1,5 @@
 import { Project } from '../editor/project'
-import { concatCompatible, extraSecondsForCopy, StreamProbe } from '../../shared/exportCompat'
+import { concatCompatible, extraSecondsForCopy, StreamProbe, UNKNOWN_PROBE } from '../../shared/exportCompat'
 import { estimateOutputBytes } from '../../shared/exportEstimate'
 import { i18n } from '../i18n'
 import { tr } from '../../shared/locale'
@@ -36,6 +36,8 @@ export interface ExportEncoders {
   encoders: string[]
 /** Whether the OpenH264 DLL is installed. */
   openh264: boolean
+  /** False while detection is still running; an empty list then means unknown. */
+  detected?: boolean
 }
 
 export interface ExportViewModel {
@@ -77,7 +79,8 @@ export function exportViewModel(project: Project, plan: ExportPlan | null, enc: 
   const probes = new Map<string, StreamProbe>()
   for (const src of new Set(items.map((it) => it.source))) {
     const info = plan?.sources[src]
-    if (info) probes.set(src, toProbe(info))
+    // Main substitutes the same unknown probe for a failed probe, which rules out stream copy; match it here.
+    probes.set(src, info ? toProbe(info) : UNKNOWN_PROBE)
   }
   let copyAvailable = true
   if (plan && plan.mode === 'concat') {
@@ -103,11 +106,11 @@ export function exportViewModel(project: Project, plan: ExportPlan | null, enc: 
   }
 
   const needsEncoder = plan !== null && effectiveQuality === 'precise'
-  const noEncoder = enc.encoders.length === 0
+  const noEncoder = enc.detected !== false && enc.encoders.length === 0
   const openh264Required = needsEncoder && noEncoder && !enc.openh264
   if (needsEncoder && noEncoder && enc.openh264) blockers.push(t.blockNoEncoder)
 
-  const canStart = plan !== null && items.length > 0 && missingSources.length === 0 && !(needsEncoder && noEncoder)
+  const canStart = plan !== null && items.length > 0 && missingSources.length === 0 && !(needsEncoder && (noEncoder || enc.detected === false))
   const estimatedBytes = estimateOutputBytes(project, effectiveQuality, probes, plan?.mode)
   return { notices, estimatedBytes, copyAvailable, extraSecondsHint, canStart, blockers, effectiveQuality, openh264Required }
 }

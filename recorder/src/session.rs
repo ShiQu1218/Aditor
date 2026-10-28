@@ -21,6 +21,7 @@ use crate::{
 use anyhow::{bail, ensure, Context, Result};
 use std::{
     cell::{Cell, RefCell},
+    collections::VecDeque,
     fs,
     os::windows::ffi::OsStrExt,
     path::{Component, Path, Prefix},
@@ -444,7 +445,20 @@ struct Session {
     previous: EncodeStats,
     audio_stall_warned: bool,
     /// DDA records the real desktop while the game is hidden; detection still needs black frames to split matches there.
+    /// Visibility as of the oldest queued change; small frames read back one sample late, so they are judged by their own pts.
     game_hidden: bool,
+    visibility_changes: VecDeque<(i64, bool)>,
+}
+/// Whether the game was hidden when the frame at `pts` was captured; applies and drops the changes that frame has passed.
+fn hidden_at(hidden: &mut bool, changes: &mut VecDeque<(i64, bool)>, pts: i64) -> bool {
+    while let Some(&(at, next)) = changes.front() {
+        if at > pts {
+            break;
+        }
+        *hidden = next;
+        changes.pop_front();
+    }
+    *hidden
 }
 fn blank_small_frames(small: &mut SmallFrames) {
     for buf in [&mut small.banner, &mut small.spec]
@@ -570,6 +584,7 @@ impl Session {
             previous: EncodeStats::default(),
             audio_stall_warned: false,
             game_hidden: false,
+            visibility_changes: VecDeque::new(),
         };
         let (source_w, source_h) = match session.notices.recv_timeout(Duration::from_secs(5)) {
             Ok(CaptureNotice::WindowFound { width, height, .. }) => (width, height),
@@ -736,25 +751,11 @@ impl Session {
             }
             self.published += 1;
         }
-        for mut small in self.small.try_iter() {
-            if self.game_hidden {
-                blank_small_frames(&mut small);
-            }
-            self.shm
-                .write(
-                    small.pts,
-                    &small.banner,
-                    &small.spec,
-                    small.thumb.as_deref(),
-                    small.killfeed.as_deref(),
-                )
-                .map_err(|e| failure(ErrorCode::Internal, e))?;
-        }
         loop {
             let notice = self.notices.try_recv();
             match notice {
-                Ok(CaptureNotice::GameHidden { .. }) => self.game_hidden = true,
-                Ok(CaptureNotice::GameVisible { .. }) => self.game_hidden = false,
+                Ok(CaptureNotice::GameHidden { pts }) => self.visibility_changes.push_back((pts, true)),
+                Ok(CaptureNotice::GameVisible { pts }) => self.visibility_changes.push_back((pts, false)),
                 _ => {}
             }
             match notice {
@@ -784,6 +785,21 @@ impl Session {
                 }
                 Err(mpsc::TryRecvError::Disconnected) => break,
             }
+        }
+        // After the notices, so a change in this batch already applies to samples captured after it.
+        for mut small in self.small.try_iter() {
+            if hidden_at(&mut self.game_hidden, &mut self.visibility_changes, small.pts) {
+                blank_small_frames(&mut small);
+            }
+            self.shm
+                .write(
+                    small.pts,
+                    &small.banner,
+                    &small.spec,
+                    small.thumb.as_deref(),
+                    small.killfeed.as_deref(),
+                )
+                .map_err(|e| failure(ErrorCode::Internal, e))?;
         }
         let warnings = self
             .audio
@@ -1005,6 +1021,18 @@ mod tests {
     use super::*;
     use serde_json::{json, Value};
     use std::{io, sync::Mutex};
+
+    #[test]
+    fn late_samples_use_the_visibility_at_their_own_pts() {
+        let mut hidden = false;
+        let mut changes = VecDeque::from([(100, true), (200, false)]);
+        // Captured before the game was hidden, read back after: keep it.
+        assert!(!hidden_at(&mut hidden, &mut changes, 50));
+        // Desktop frame captured while hidden, read back after the game returned: blank it.
+        assert!(hidden_at(&mut hidden, &mut changes, 150));
+        assert!(!hidden_at(&mut hidden, &mut changes, 200));
+        assert!(changes.is_empty());
+    }
 
     #[test]
     fn hidden_game_blanks_every_detection_buffer() {

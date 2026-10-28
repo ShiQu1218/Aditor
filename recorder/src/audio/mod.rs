@@ -102,6 +102,15 @@ fn source_lost_warning(mic: bool, error: &anyhow::Error) -> AudioWarning {
     }
 }
 
+/// Process-loopback variant of system audio.
+#[derive(Clone, Copy)]
+enum Loopback {
+    /// Only the game's process tree.
+    Game(u32),
+    /// Everything except this process tree.
+    Exclude(u32),
+}
+
 impl AudioCapture {
     /// `origin_ticks`: session start in QPC ticks; emitted pts = sample QPC − origin.
     #[allow(dead_code)] // Keep the existing device capture interface for integration tests.
@@ -124,11 +133,15 @@ impl AudioCapture {
             warning_tx,
         };
         let system = if cfg.render_enabled {
-            capture.optional_endpoint(
-                cfg.render.clone(),
-                false,
-                (cfg.render_source == RenderSource::Game).then_some(pid),
-            )?
+            let loopback = if cfg.render_source == RenderSource::Game {
+                Some(Loopback::Game(pid))
+            } else {
+                // Process loopback has no endpoint choice, so exclusion applies only to the default device.
+                cfg.exclude_pid
+                    .filter(|_| cfg.render == "default")
+                    .map(Loopback::Exclude)
+            };
+            capture.optional_endpoint(cfg.render.clone(), false, loopback)?
         } else {
             None
         };
@@ -180,9 +193,9 @@ impl AudioCapture {
         &mut self,
         id: String,
         mic: bool,
-        pid: Option<u32>,
+        loopback: Option<Loopback>,
     ) -> Result<Option<Source>> {
-        match self.spawn_endpoint(id, mic, pid) {
+        match self.spawn_endpoint(id, mic, loopback) {
             Ok(source) => Ok(Some(source)),
             Err(error) if missing_endpoint(&error) => {
                 // Keep the silent AAC track and audio=true metadata; only surface the missing source to the user.
@@ -195,7 +208,7 @@ impl AudioCapture {
         }
     }
 
-    fn spawn_endpoint(&mut self, id: String, mic: bool, pid: Option<u32>) -> Result<Source> {
+    fn spawn_endpoint(&mut self, id: String, mic: bool, loopback: Option<Loopback>) -> Result<Source> {
         let (packets_tx, packets_rx) = mpsc::sync_channel(PACKET_CAPACITY);
         let (ready_tx, ready_rx) = mpsc::sync_channel(1);
         let stop = Arc::clone(&self.stop);
@@ -210,16 +223,20 @@ impl AudioCapture {
                 .into(),
             )
             .spawn(move || {
-                let opened = if let Some(pid) = pid {
-                    EndpointStream::open_process(pid).or_else(|error| {
+                let opened = match loopback {
+                    Some(Loopback::Game(pid)) => EndpointStream::open_process(pid, true).or_else(|error| {
                         let _ = warning_tx.send(AudioWarning {
                             code: "game_audio_unavailable",
                             message: format!("Game-only audio unavailable; switched to system audio: {error:#}"),
                         });
                         EndpointStream::open(&id, false)
-                    })
-                } else {
-                    EndpointStream::open(&id, mic)
+                    }),
+                    // Older Windows builds lack process loopback; plain device loopback is the previous behavior.
+                    Some(Loopback::Exclude(pid)) => EndpointStream::open_process(pid, false).or_else(|error| {
+                        eprintln!("Excluding Aditor audio unavailable; recording all system audio: {error:#}");
+                        EndpointStream::open(&id, false)
+                    }),
+                    None => EndpointStream::open(&id, mic),
                 };
                 let stream = match opened {
                     Ok(stream) => stream,
@@ -427,9 +444,9 @@ impl EndpointStream {
         Self::initialize(client, raw.0, format, mic, apartment)
     }
 
-    fn open_process(pid: u32) -> Result<Self> {
+    fn open_process(pid: u32, include: bool) -> Result<Self> {
         let apartment = Apartment::enter()?;
-        let client = process::activate(pid)?;
+        let client = process::activate(pid, include)?;
         let raw = WAVEFORMATEX {
             wFormatTag: WAVE_FORMAT_IEEE_FLOAT as u16,
             nChannels: 2,

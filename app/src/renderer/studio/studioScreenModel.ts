@@ -1,6 +1,7 @@
 import type { CacheDoc, EventType } from '../../shared/types'
 import type { PlayabilityResult } from '../media/playability'
 import type { ViewerState } from '../viewer/state'
+import { normalizeClips } from '../../shared/clips'
 
 export interface ProjectPlaybackRequest {
   playItemId: string
@@ -51,7 +52,8 @@ export function initViewerState(init: { videoPath: string; doc?: CacheDoc }): Vi
   return {
     doc: init.doc ?? initialDoc(init.videoPath),
     filter: new Set(DEFAULT_FILTER),
-    clips: [],
+    // A preloaded doc skips the analysisResult load, so seed its clips here.
+    clips: init.doc ? normalizeClips(init.doc.clips) : [],
     dirty: false
   }
 }

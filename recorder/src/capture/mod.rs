@@ -608,10 +608,11 @@ impl CallbackState {
                 }
                 self.visibility.is_visible()
             } else {
-                // A monitor fallback may have hidden the game before capture was rebuilt as a window.
+                // A monitor fallback may have hidden the game before capture was rebuilt as a window. Window capture
+                // records only the game itself, so it is visible regardless of which window has focus.
                 if !self.visibility.is_visible() {
-                    let game = self.hwnd;
-                    if let Some(notice) = self.visibility.update(self.pid, pts, || dda::foreground_state(Some(game))) {
+                    let pid = self.pid;
+                    if let Some(notice) = self.visibility.update(pid, pts, || (Some(pid), false)) {
                         let _ = self.notices.send(notice);
                     }
                 }
@@ -740,14 +741,19 @@ fn run(
         next_check = Instant::now() + Duration::from_secs(1);
         // A closed item or an HWND that no longer belongs to the target PID invalidates the capture.
         // Check this before any rebuild so a reused HWND owned by another process is never captured.
-        if active.as_ref().is_some_and(|capture| {
-            capture.signals.closed.load(Ordering::Acquire)
-                || !window_matches(capture.hwnd, opts.pid)
-                // SAFETY: Query only; restore window capture after the minimized fallback ends.
-                || (capture.minimized_fallback && !unsafe { IsIconic(capture.hwnd).as_bool() })
-        }) {
+        let lost = active.as_ref().is_some_and(|capture| {
+            capture.signals.closed.load(Ordering::Acquire) || !window_matches(capture.hwnd, opts.pid)
+        });
+        // SAFETY: Query only; restore window capture after the minimized fallback ends.
+        let restored = active.as_ref().is_some_and(|capture| {
+            capture.minimized_fallback && !unsafe { IsIconic(capture.hwnd).as_bool() }
+        });
+        if lost || restored {
             drop(active.take());
-            let _ = notices.send(CaptureNotice::WindowLost);
+            // A restore is rebuilt as window capture below; the window was never lost.
+            if lost {
+                let _ = notices.send(CaptureNotice::WindowLost);
+            }
         }
         if let Some(capture) = &active {
             // A static window also stops delivering frames; silence alone must not widen capture to the desktop.

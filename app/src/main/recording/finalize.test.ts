@@ -49,6 +49,18 @@ describe('recording index and safety boundaries', () => {
     expect(fs.existsSync(missing)).toBe(true)
   })
 
+  it('recovering from a finalized marker keeps the recorded game tag', async () => {
+    const base = root(); const deps = makeDeps(base)
+    deps.addToLibrary = vi.fn(); deps.enqueueAnalysis = vi.fn()
+    const dir = sessionDir(base)
+    const outputPath = path.join(base, 'videos', 'valorant.mp4')
+    fs.writeFileSync(outputPath, 'already finalized')
+    fs.writeFileSync(path.join(dir, 'recording.json'), JSON.stringify({ startedAt: Date.now(), postAnalysis: 'none', game: 'valorant' }))
+    fs.writeFileSync(path.join(dir, 'finalized.json'), JSON.stringify({ outputPath, postAnalysis: 'none', analysisQueued: false, liveCached: true }))
+    expect(await finalizeSession(dir, deps)).toEqual([outputPath])
+    expect(deps.addToLibrary).toHaveBeenCalledWith([outputPath], 'valorant')
+  })
+
   it('recovers legacy markers in outputDir and markers in date folders, while rejecting other subfolders and non-date folders', async () => {
     const base = root(); const deps = makeDeps(base)
     deps.addToLibrary = vi.fn()

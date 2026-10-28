@@ -137,6 +137,9 @@ pub struct AudioConfig {
     pub mic_mono: bool,
     #[serde(default)]
     pub render_source: RenderSource,
+    /// Process tree left out of default-device system audio (Aditor itself), so its preview playback is not re-recorded.
+    #[serde(default)]
+    pub exclude_pid: Option<u32>,
 }
 
 fn enabled() -> bool {
@@ -165,6 +168,7 @@ impl Default for AudioConfig {
             render_gain: 1.0,
             mic_mono: false,
             render_source: RenderSource::Device,
+            exclude_pid: None,
         }
     }
 }
