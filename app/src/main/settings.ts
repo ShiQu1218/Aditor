@@ -179,17 +179,18 @@ export function migrateSettings(raw: unknown): Settings {
 /**
  * Read settings: missing file → defaults (do not create a file);
  * corrupt JSON → rename the original to `<file>.bak` and return defaults; otherwise normalize through `migrateSettings`.
+ * Any other read failure (locked, permission) returns null: the file may hold user choices that must not be replaced.
  */
-export function loadSettings(file: string): Settings {
+function readSettings(file: string): Settings | null {
   let raw: string
   try {
-    if (!fs.existsSync(file)) {
-      return cloneSettings(DEFAULT_SETTINGS)
-    }
     raw = fs.readFileSync(file, 'utf-8')
   } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+      return cloneSettings(DEFAULT_SETTINGS)
+    }
     console.error('Failed to read settings:', err)
-    return cloneSettings(DEFAULT_SETTINGS)
+    return null
   }
 
   let parsed: unknown
@@ -200,6 +201,16 @@ export function loadSettings(file: string): Settings {
     return cloneSettings(DEFAULT_SETTINGS)
   }
   return migrateSettings(parsed)
+}
+
+/** Defaults for an unreadable file: telemetry and auto-recording stay off rather than overriding a possible opt-out. */
+function unreadableDefaults(): Settings {
+  const s = cloneSettings(DEFAULT_SETTINGS)
+  return { ...s, telemetryEnabled: false, recording: { ...s.recording, autoRecord: false } }
+}
+
+export function loadSettings(file: string): Settings {
+  return readSettings(file) ?? unreadableDefaults()
 }
 
 /** Rename a corrupt file to `<file>.bak` (log failures without affecting the returned defaults). */
@@ -246,10 +257,14 @@ export class SettingsStore {
   private listeners: Array<(s: Settings) => void> = []
   /** True when memory is ahead of disk (the previous write failed). */
   private dirty = false
+  /** True while the existing file could not be read; writing then would replace the user's saved settings. */
+  private unreadable: boolean
 
   constructor(file: string) {
     this.file = file
-    this.settings = loadSettings(file)
+    const loaded = readSettings(file)
+    this.unreadable = loaded === null
+    this.settings = loaded ?? unreadableDefaults()
   }
 
   get(): Settings {
@@ -257,6 +272,13 @@ export class SettingsStore {
   }
 
   set(partial: Partial<Settings>): SettingsSetResult {
+    if (this.unreadable) {
+      const loaded = readSettings(this.file)
+      if (loaded) {
+        this.settings = loaded
+        this.unreadable = false
+      }
+    }
     const next = applySettings(this.settings, partial)
     const errors: NonNullable<SettingsSetResult['errors']> = {}
     const recordingInput = isPlainObject(partial.recording) ? partial.recording : {}
@@ -271,7 +293,9 @@ export class SettingsStore {
     const changed = JSON.stringify(next) !== JSON.stringify(this.settings)
     this.settings = next
     let persisted = true
-    if (changed || this.dirty) {
+    if (this.unreadable) {
+      persisted = false
+    } else if (changed || this.dirty) {
       persisted = saveSettings(this.file, this.settings)
       this.dirty = !persisted
     }
