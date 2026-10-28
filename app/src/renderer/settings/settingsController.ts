@@ -128,6 +128,7 @@ export class SettingsController {
   private unsubscribe: (() => void) | null = null
   private unsubscribeUpdate: (() => void) | null = null
   private recordingWrites: Promise<void> = Promise.resolve()
+  private autoclipWrites: Promise<void> = Promise.resolve()
 
   constructor(
     private api: SettingsApi,
@@ -316,14 +317,18 @@ export class SettingsController {
     await this.commit('beforeAfter', { [field]: v } as Partial<Settings>)
   }
 
-  async setAutoclip(key: keyof AutoClipParams, value: number): Promise<void> {
+  /** Sequential like setRecording: each full autoclip object is built from the result of the previous write. */
+  setAutoclip(key: keyof AutoClipParams, value: number): Promise<void> {
     const v = clampToRange(SETTINGS_RANGES.autoclip[key], value)
-    const base = this.state.settings?.autoclip ?? DEFAULT_SETTINGS.autoclip
     if (v === null) {
       this.patch({})
-      return
+      return Promise.resolve()
     }
-    await this.commit('autoclip', { autoclip: { ...base, [key]: v } })
+    this.autoclipWrites = this.autoclipWrites.then(async () => {
+      const base = this.state.settings?.autoclip ?? DEFAULT_SETTINGS.autoclip
+      await this.commit('autoclip', { autoclip: { ...base, [key]: v } })
+    })
+    return this.autoclipWrites
   }
 
   // ── Storage location (root folder for recordings and exports; main syncs recording.outputDir/defaultOutDir) ──

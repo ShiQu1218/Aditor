@@ -156,6 +156,21 @@ describe('SettingsController', () => {
     expect(c.getState().settings?.autoclip[key]).toBe(expected)
   })
 
+  test('quick successive autoclip edits to different fields both persist', async () => {
+    let server: Settings = { ...DEFAULT_SETTINGS }
+    const { c } = await started({
+      // Like main: each write is applied to the current stored value after an IPC round trip.
+      set: async (partial) => {
+        await new Promise((resolve) => setTimeout(resolve, 5))
+        server = { ...server, ...partial } as Settings
+        return { settings: server, persisted: true }
+      }
+    })
+    await Promise.all([c.setAutoclip('n', 5), c.setAutoclip('gap', 30)])
+    expect(server.autoclip).toMatchObject({ n: 5, gap: 30 })
+    expect(c.getState().settings?.autoclip).toMatchObject({ n: 5, gap: 30 })
+  })
+
   test('storageRoot validation error from main is shown on the row and not stored', async () => {
     const { c } = await started({
       set: async () => ({
