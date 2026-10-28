@@ -39,10 +39,11 @@ function gameAspect(text) {
 }
 
 class RecorderWorkload {
-  constructor(config, metadata, killTree) {
+  constructor(config, metadata, killTree, gameExited = () => false) {
     this.config = config;
     this.metadata = metadata;
     this.killTree = killTree;
+    this.gameExited = gameExited;
     this.children = [];
     this.pending = new Map();
     this.seq = 0;
@@ -108,7 +109,10 @@ class RecorderWorkload {
       if (typeof msg.id === 'number') this.pending.set(msg.id, msg);
       if (msg.ev === 'started') this.started = metadata.recording_started = msg;
       if (msg.ev === 'stopped') this.stopped = msg;
-      if (msg.ev === 'error') this.failure = new Error(`Recorder ${msg.code}: ${msg.message}`);
+      if (msg.ev === 'error') {
+        if (this.gameExited()) (metadata.recorder_errors_after_game_exit ??= []).push(msg);
+        else this.failure = new Error(`Recorder ${msg.code}: ${msg.message}`);
+      }
     });
     metadata.recorder_capabilities = await this.request('hello');
     await this.request('start', args);
@@ -203,9 +207,12 @@ async function selfTest() {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'aditor-recorder-self-test-'));
   try {
     const meta = {};
-    const peer = new RecorderWorkload({ ...config, runDir: tmp, startTimeoutS: 1, ffmpeg: 'ffmpeg.exe' }, meta, () => {});
+    let gameExited = false;
+    let recorderMessage;
+    const peer = new RecorderWorkload({ ...config, runDir: tmp, startTimeoutS: 1, ffmpeg: 'ffmpeg.exe' }, meta, () => {}, () => gameExited);
     let liveProcessed = false;
     peer.launch = function(name, exe, argv, env, onLine) {
+      if (name === 'recorder') recorderMessage = onLine;
       const child = { benchName: name, exitCode: null, signalCode: null, benchClosed: false };
       child.stdin = {
         write: line => {
@@ -228,6 +235,16 @@ async function selfTest() {
     };
     await peer.start(123);
     assert(liveProcessed, 'Live ready alone must not release the gate');
+    const captureError = { ev: 'error', code: 'hook_unavailable', message: 'Game capture window disappeared' };
+    recorderMessage(captureError);
+    assert.throws(() => peer.check(), /hook_unavailable/);
+    gameExited = true;
+    recorderMessage(captureError);
+    assert.throws(() => peer.check(), /hook_unavailable/);
+    peer.failure = null;
+    recorderMessage(captureError);
+    peer.check();
+    assert.deepEqual(meta.recorder_errors_after_game_exit, [captureError, captureError]);
     fs.writeFileSync(path.join(tmp, 'session', 'init.mp4'), 'init');
     await assert.rejects(peer.stop(), /segments missing/);
     fs.writeFileSync(path.join(tmp, 'session', 'seg_000001.m4s'), 'segment');

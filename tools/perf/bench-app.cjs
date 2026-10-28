@@ -21,12 +21,24 @@ function samePath(a, b) {
   return typeof a === 'string' && path.resolve(a).toLowerCase() === path.resolve(b).toLowerCase();
 }
 
+function processAlive(pid) {
+  try { process.kill(pid, 0); return true; } catch (error) { return error.code === 'EPERM'; }
+}
+
+// A restart replaces the process, so checking the original pids catches both a stop and a restart.
+function checkLiveEngine(pids, alive = processAlive) {
+  assert(pids.length > 0 && pids.every(alive), 'Live engine stopped or restarted during measurement');
+}
+
 if (process.argv[2] === '--self-test') {
   assert.equal(measuredSeconds('frame_index,qpc_ms,frame_ms\n0,10,10\n1,30,20\n'), 0.03);
   assert.throws(() => measuredSeconds('bad\n'));
   assert.throws(() => measuredSeconds('frame_index,qpc_ms,frame_ms\n0,0,NaN'));
   assert(samePath(path.resolve('Apex.mp4'), path.resolve('apex.mp4')));
   assert(!samePath(null, 'apex.mp4'));
+  checkLiveEngine([process.pid]);
+  assert.throws(() => checkLiveEngine([]), /stopped or restarted/);
+  assert.throws(() => checkLiveEngine([1, 2], pid => pid === 1), /stopped or restarted/);
   console.log('driver self-test passed');
 } else {
   run(JSON.parse(fs.readFileSync(process.argv[2], 'utf8').replace(/^\uFEFF/, '')))
@@ -45,6 +57,7 @@ async function run(config) {
   let liveSeen = false;
   let copied = false;
   let measuring = false;
+  let liveEngine;
   let analysisProgress = false;
   let gameExit;
   const killTree = pid => {
@@ -77,11 +90,11 @@ async function run(config) {
     }
     throw new Error(`Timed out waiting for ${label}; see app.log and app-state.jsonl in ${runDir}`);
   }
-  function liveEngineRunning() {
+  function liveEnginePids() {
     const result = spawnSync('powershell.exe', ['-NoProfile', '-Command',
-      "@(Get-CimInstance Win32_Process -Filter \"Name='aditor.exe'\" | Where-Object { $_.CommandLine -like '*--shm*' }).Count"],
+      "@(Get-CimInstance Win32_Process -Filter \"Name='aditor.exe'\" | Where-Object { $_.CommandLine -like '*--shm*' }).ProcessId"],
       { windowsHide: true, encoding: 'utf8' });
-    return result.status === 0 && Number(result.stdout.trim()) > 0;
+    return result.status === 0 ? result.stdout.split(/\s+/).filter(Boolean).map(Number) : [];
   }
   async function sample() {
     const state = await page.evaluate(async () => ({
@@ -95,6 +108,8 @@ async function run(config) {
     if (idle) assert.equal(state.recording.phase, 'idle', 'app_idle unexpectedly started recording');
     if (state.recording.phase === 'error') throw new Error(`Recording failed: ${JSON.stringify(state.recording.error)}`);
     if (!idle && measuring && gameExit === undefined && state.recording.phase !== 'recording') throw new Error(`Recording stopped during measurement: ${state.recording.phase}`);
+    // The pid probe is a cheap syscall; the CIM query that finds the pids runs only before measurement.
+    if (!idle && measuring && gameExit === undefined) checkLiveEngine(liveEngine);
     if (copied && samePath(state.queue.current?.path, config.analysisDestination) && state.queue.current.progress > 0) {
       metadata.analysis_first_progress_epoch_ms ??= epochMs;
       metadata.analysis_last_progress = state.queue.current.progress;
@@ -147,14 +162,16 @@ async function run(config) {
     await waitFor('GPU footage upload', () => fs.existsSync(file('ready')));
     if (direct) {
       const { RecorderWorkload } = require('./bench-recorder.cjs');
-      recorder = new RecorderWorkload(config, metadata, killTree);
+      recorder = new RecorderWorkload(config, metadata, killTree, () => gameExit !== undefined);
       await recorder.start(game.pid);
     }
     if (page && !idle) {
       await waitFor('active recording and running live engine', async () => {
         const state = await sample();
         // Snapshots arrive only when detected events change, so a quiet clip never sends one; require the live process instead.
-        if (state.recording.phase !== 'recording' || !liveEngineRunning()) return false;
+        if (state.recording.phase !== 'recording') return false;
+        liveEngine = liveEnginePids();
+        if (!liveEngine.length) return false;
         metadata.recording_started = state.recording;
         return true;
       });
