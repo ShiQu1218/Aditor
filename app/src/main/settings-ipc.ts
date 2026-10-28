@@ -62,13 +62,19 @@ export function validateOutDir(dir: unknown): string {
   return resolved
 }
 
-/** Whether a recording folder still holds session work that startup recovery finds only while it is the output folder. */
-function hasUnfinishedSessions(outputDir: string): boolean {
+/**
+ * Error text when a recording folder may still hold session work that startup recovery finds only while it is the output folder;
+ * null when it has none. A folder that cannot be read is treated as unsafe to leave.
+ */
+function unfinishedSessionsError(outputDir: string): string | null {
+  let found: boolean
   try {
-    return fs.readdirSync(path.join(outputDir, '.sessions'), { withFileTypes: true }).some((entry) => entry.isDirectory())
-  } catch {
-    return false
+    found = fs.readdirSync(path.join(outputDir, '.sessions'), { withFileTypes: true }).some((entry) => entry.isDirectory())
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return null
+    return tr('無法確認目前的錄影資料夾是否還有尚未完成收尾的錄影，暫不變更儲存位置：{path}（{error}）', { path: outputDir, error: (err as Error).message })
   }
+  return found ? tr('目前的錄影資料夾還有尚未完成收尾的錄影，請先完成或恢復錄影後再變更儲存位置：{path}', { path: outputDir }) : null
 }
 
 const samePath = (a: string, b: string): boolean =>
@@ -78,14 +84,17 @@ const samePath = (a: string, b: string): boolean =>
 function applyStorageRoot(partial: Partial<Settings>, errors: NonNullable<SettingsSetResult['errors']>, currentOutputDir: string | null): void {
   if (!('storageRoot' in partial) || partial.storageRoot === null) return
   if (currentOutputDir && typeof partial.storageRoot === 'string' && isSafeLocalDirPath(partial.storageRoot) &&
-      !samePath(path.join(partial.storageRoot, RECORDINGS_DIRNAME), currentOutputDir) && hasUnfinishedSessions(currentOutputDir)) {
-    errors.storageRoot = tr('目前的錄影資料夾還有尚未完成收尾的錄影，請先完成或恢復錄影後再變更儲存位置：{path}', { path: currentOutputDir })
-    delete partial.storageRoot
-    if (partial.recording && typeof partial.recording === 'object') {
-      const { outputDir: _keep, ...recording } = partial.recording
-      partial.recording = recording as Settings['recording']
+      !samePath(path.join(partial.storageRoot, RECORDINGS_DIRNAME), currentOutputDir)) {
+    const blocked = unfinishedSessionsError(currentOutputDir)
+    if (blocked) {
+      errors.storageRoot = blocked
+      delete partial.storageRoot
+      if (partial.recording && typeof partial.recording === 'object') {
+        const { outputDir: _keep, ...recording } = partial.recording
+        partial.recording = recording as Settings['recording']
+      }
+      return
     }
-    return
   }
   try {
     const { root, recordingsDir, exportsDir } = prepareStorageRoot(partial.storageRoot)
