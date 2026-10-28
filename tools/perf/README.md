@@ -131,8 +131,8 @@ direct scenarios do not silently retry with DDA. The live engine uses Apex's
 `templates/icons` and `templates/scene`; `--aspect` follows the user's Apex video
 config, with the same missing/unsupported-config fallback as the app. Apex is
 the engine default, so `--game` is omitted. Keep that config unchanged across runs
-and ensure its HUD aspect agrees with the source footage. Both children run at
-below-normal priority.
+and ensure its HUD aspect agrees with the source footage. As in the app, the live
+engine runs at below-normal priority and the recorder at normal priority.
 
 After the game's `ready` file, direct scenarios send `hello` and `start` and wait
 for both a successful start reply and the `started` notification. `rec_live`

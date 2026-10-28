@@ -157,12 +157,16 @@ async function run(config) {
     game.stdout.on('data', data => { stdout += data; });
     game.stderr.on('data', data => fs.appendFileSync(file('game.stderr.log'), data));
     game.on('error', error => { gameExit = error.message; });
-    game.on('exit', code => { gameExit = code ?? 'signal'; });
+    // 'close' waits for stdout/stderr to drain, so the stats JSON and the stderr log are complete.
+    game.on('close', code => { gameExit = code ?? 'signal'; });
     metadata.game_pid = game.pid;
     await waitFor('GPU footage upload', () => fs.existsSync(file('ready')));
     if (direct) {
       const { RecorderWorkload } = require('./bench-recorder.cjs');
-      recorder = new RecorderWorkload(config, metadata, killTree, () => gameExit !== undefined);
+      // The recorder can report window or hook loss before Node sees the game's exit, so the end of the
+      // measured window counts as exited too.
+      recorder = new RecorderWorkload(config, metadata, killTree, () => gameExit !== undefined
+        || (metadata.measurement !== undefined && Date.now() >= metadata.measurement.epoch_ms + config.durationS * 1000));
       await recorder.start(game.pid);
     }
     if (page && !idle) {

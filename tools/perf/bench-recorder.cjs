@@ -50,6 +50,8 @@ class RecorderWorkload {
   }
   check() {
     if (this.failure) throw this.failure;
+    // Losing the window or hook is expected once the game is done; failures during measurement were already stored.
+    if (this.gameExited()) return;
     for (const child of this.children) {
       if (child.exitCode !== null || child.signalCode !== null) throw new Error(`${child.benchName} exited during workload`);
     }
@@ -61,7 +63,8 @@ class RecorderWorkload {
     child.benchName = name;
     this.children.push(child);
     this.metadata[`${name}_pid`] = child.pid;
-    child.on('spawn', () => {
+    // Match the app, which lowers only the live engine; the recorder keeps normal priority.
+    if (name === 'live_engine') child.on('spawn', () => {
       try { os.setPriority(child.pid, os.constants.priority.PRIORITY_BELOW_NORMAL); }
       catch (error) { this.failure = error; }
     });
