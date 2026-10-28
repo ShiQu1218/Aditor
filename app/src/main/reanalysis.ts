@@ -120,6 +120,8 @@ export interface PriorCache {
   fingerprint: string
   /** Preferred cache path whose backup must survive cancellation/failure. */
   backupPath: string
+  /** Source backup copied to backupPath; removed once its clips are merged, or switching back would replay it. */
+  sourceBackupPath?: string
 }
 
 const fingerprintOf = (doc: Partial<CacheDoc>): string => JSON.stringify([doc.video ?? null, doc.analysis ?? null])
@@ -147,7 +149,8 @@ export function capturePriorCache(videoPath: string, cacheDir: string, beside = 
   const docClips = hasDoc && Array.isArray(doc!.clips) ? doc!.clips! : []
 
   // A backup still beside a done cache was never merged back (restore write failed or the app quit first); keep it.
-  const unconsumed = docDone && !editing ? readReanalysisBackup(cachePath) : null
+  // A migrated source carries its own unmerged backup; the newest copy (resolveCacheFile) decides which one applies.
+  const unconsumed = docDone && !editing ? readReanalysisBackup(cachePath) ?? sourceBackup : null
   if (docDone && !editing && !unconsumed && !writeReanalysisBackup(cachePath, (doc!.events ?? []) as EngineEvent[], docClips as Clip[])) {
     throw new Error(tr('無法備份編輯內容，已停止重新分析'))
   }
@@ -166,7 +169,8 @@ export function capturePriorCache(videoPath: string, cacheDir: string, beside = 
     clips: backup?.clips ?? docClips as Clip[],
     done: docDone || backup !== null,
     fingerprint: hasDoc ? fingerprintOf(doc!) : '',
-    backupPath: cachePath
+    backupPath: cachePath,
+    ...(backup && backup === sourceBackup && sourcePath !== cachePath ? { sourceBackupPath: sourcePath } : {})
   }
 }
 
@@ -209,7 +213,7 @@ export function preserveClipsAfterReanalysis(
   const ok = saveCacheDoc(doc)
   // Delete the backup only after the rewrite succeeds; keep it on failure for the next attempt.
   if (ok) {
-    for (const backupPath of new Set([cachePath, prior?.backupPath, editing?.path])) if (backupPath) deleteClipsBackup(backupPath)
+    for (const backupPath of new Set([cachePath, prior?.backupPath, prior?.sourceBackupPath, editing?.path])) if (backupPath) deleteClipsBackup(backupPath)
     for (const candidate of [cacheFilePath(videoPath, cacheDir, !beside), legacyCacheFilePath(videoPath, cacheDir, true)]) {
       const edited = readReanalysisBackup(candidate)?.document
       if (edited && path.resolve(edited.video.path).toLowerCase() === path.resolve(videoPath).toLowerCase()) deleteClipsBackup(candidate)

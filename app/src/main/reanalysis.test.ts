@@ -540,6 +540,66 @@ describe('clips backup across cancelled re-analysis (F2)', () => {
       fs.rmSync(besideDir, { recursive: true, force: true })
     }
   })
+
+  describe('an unmerged backup beside the source when switching cache locations', () => {
+    const besideFile = (): string => cacheFilePath(V1, dir, true)
+    const settings = { beside: { cacheLocation: 'besideVideo' }, appdata: { cacheLocation: 'appData' } } as const
+    /** Engine that writes a done document (manual clips only) to the location it is asked for. */
+    const locEngine = (mtime: number): EngineClient => ({
+      request: (_m: string, args: { beside: boolean }) => {
+        const d = doc('done', mtime, [manual], [], cacheFilePath(V1, dir, args.beside))
+        saveCacheDoc(d as { cache_path: string })
+        return { id: 'r', promise: Promise.resolve(d) }
+      },
+      cancel: () => {}
+    }) as unknown as EngineClient
+    const run = async (mtime: number, where: keyof typeof settings): Promise<void> => {
+      const q = new AnalysisQueue(locEngine(mtime), lib, { profileDir: '/p', cacheDir: dir, getSettings: () => settings[where] as any })
+      ;(q as any)._generateThumbnail = async () => undefined
+      q.enqueue(V1, true)
+      await tick(60)
+    }
+    /** Beside: reanalysis replaced the cache but the merge write failed, leaving a1 only in the beside backup. */
+    const failBesideMerge = async (): Promise<void> => {
+      saveCacheDoc(doc('done', 1, [manual], [], cache()) as { cache_path: string })
+      saveCacheDoc(doc('done', 1, [clip('a1', 100), manual], [], besideFile()) as { cache_path: string })
+      const rename = fs.renameSync.bind(fs)
+      vi.spyOn(console, 'error').mockImplementation(() => {})
+      const failMerge = vi.spyOn(fs, 'renameSync').mockImplementation((from, to) => {
+        if (to === besideFile() && fs.readFileSync(from, 'utf8').includes('suggestionsPending')) throw new Error('EPERM')
+        return rename(from, to)
+      })
+      await run(2, 'beside')
+      failMerge.mockRestore()
+      expect(readClipsBackup(besideFile())?.map((c) => c.id)).toContain('a1')
+    }
+    afterEach(() => {
+      vi.restoreAllMocks()
+      // Beside files live next to the shared V1 path, outside the per-test dir.
+      for (const f of [besideFile(), clipsBackupPath(besideFile()), `${besideFile()}.tmp`]) fs.rmSync(f, { force: true })
+    })
+
+    it('restores its accepted AI clips into the new location when the source copy is newer', async () => {
+      await failBesideMerge()
+      fs.utimesSync(cache(), new Date(1000), new Date(1000))
+      await run(3, 'appdata')
+      expect(summary(readDoc().clips)).toEqual([
+        ['a1', 'accepted', true],
+        ['m1', 'accepted', false]
+      ])
+      expect(fs.existsSync(backup())).toBe(false)
+      // Consumed: switching back must not resurrect this snapshot over later edits.
+      expect(fs.existsSync(clipsBackupPath(besideFile()))).toBe(false)
+    })
+
+    it('keeps the source backup on disk when the target copy is newer (newest copy wins)', async () => {
+      await failBesideMerge()
+      fs.utimesSync(besideFile(), new Date(1000), new Date(1000))
+      await run(3, 'appdata')
+      expect(summary(readDoc().clips)).toEqual([['m1', 'accepted', false]])
+      expect(readClipsBackup(besideFile())?.map((c) => c.id)).toContain('a1')
+    })
+  })
 })
 
 describe('re-analysis with cacheLocation=besideVideo', () => {
