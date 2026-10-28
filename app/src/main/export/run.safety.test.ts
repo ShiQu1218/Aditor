@@ -69,3 +69,17 @@ describe('runExport intermediates (I9)', () => {
     expect(fs.readdirSync(outDir)).toEqual(['final.mp4'])
   })
 })
+
+describe('runExport progress', () => {
+  it('weights percent by job length so two equal clips report 0-50% then 50-100%', async () => {
+    const script = path.join(tempDir, 'ffmpeg.cjs')
+    fs.writeFileSync(script, "const fs=require('fs');const a=process.argv.slice(2);for(const us of [0,5e6,10e6])process.stdout.write('out_time_us='+us+String.fromCharCode(10));fs.writeFileSync(a.at(-1),'x');")
+    const seen: number[] = []
+    const r = await runExport(
+      { ...opts([job('a.mp4', { durationSec: 10 }), job('b.mp4', { durationSec: 10 })]), totalEstimatedSeconds: 20, ffmpeg: { bin: process.execPath, prefixArgs: [script] } },
+      { onProgress: (p) => seen.push(p.percent) }
+    )
+    expect(r).toEqual({ ok: true, outputs: [path.join(outDir, 'a.mp4'), path.join(outDir, 'b.mp4')] })
+    expect(seen).toEqual([0, 25, 50, 50, 75, 100])
+  })
+})

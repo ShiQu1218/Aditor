@@ -140,6 +140,11 @@ export async function runExport(opts: RunExportOptions, control: RunExportContro
     extraEnv.PATH = `${cDir}${path.delimiter}${process.env.PATH || ''}`
   }
 
+  // Progress is weighted by each job's output length; jobs without one share the estimate evenly.
+  const jobSeconds = jobs.map((j) => j.durationSec ?? opts.totalEstimatedSeconds / jobs.length)
+  const totalJobSeconds = jobSeconds.reduce((s, d) => s + d, 0)
+  let doneSeconds = 0
+
   try {
     for (let i = 0; i < jobs.length; i++) {
       if (signal?.aborted) return { ok: false, cancelled: true, outputs: completed }
@@ -191,10 +196,9 @@ export async function runExport(opts: RunExportOptions, control: RunExportContro
             const us = parseInt(line.split('=')[1], 10)
             if (isNaN(us)) continue
             const outSec = us / 1000000
-            const percent = Math.min(
-              100,
-              Math.round(((i + outSec / Math.max(1, opts.totalEstimatedSeconds)) / jobs.length) * 100)
-            )
+            const percent = totalJobSeconds > 0
+              ? Math.min(100, Math.round(((doneSeconds + Math.min(outSec, jobSeconds[i])) / totalJobSeconds) * 100))
+              : 0
             try {
               onProgress?.({ jobIndex: i, totalJobs: jobs.length, percent, outTimeSeconds: outSec })
             } catch {
@@ -251,6 +255,7 @@ export async function runExport(opts: RunExportOptions, control: RunExportContro
       }
       if (!job.intermediate) completed.push(finalPath)
       else tempFilesToClean.push(finalPath)
+      doneSeconds += jobSeconds[i]
     }
   } catch (err) {
     return { ok: false, error: (err as Error).message, outputs: completed }

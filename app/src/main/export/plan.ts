@@ -16,6 +16,8 @@ export interface FfmpegJob {
   tempFiles?: string[]
   /** Intermediate file (a normalized segment): not a final output and deleted after the job. */
   intermediate?: boolean
+  /** Seconds of output this job produces, used to weight export progress. */
+  durationSec?: number
 }
 
 export class NoEncoderError extends Error {
@@ -85,6 +87,8 @@ const videoBsf = (videoCutRel?: number): string[] => [
   `noise=drop=${DROP_LEADING_PICTURES}${videoCutRel === undefined ? '' : `+gte(dts*tb\\,${preciseSecs(videoCutRel)})`}`
 ]
 const durationOf = (item: ProjectItem): string => secs(Math.max(0.1, item.end - item.start))
+const clipSeconds = (item: ProjectItem): number => Math.max(0, item.end - item.start)
+const totalSeconds = (items: ProjectItem[]): number => items.reduce((s, it) => s + clipSeconds(it), 0)
 
 /**
  * Fast stream-copy a segment:
@@ -178,11 +182,12 @@ export function buildJobs(
 
   const jobs: FfmpegJob[] = items.map((item, idx) => {
     const output = path.join(opts.outDir, `${opts.baseName}_${idx + 1}.mp4`)
-    if (quality === 'copy') return { args: copyCutArgs(item, opts.copyCuts?.[idx], output), output }
+    const durationSec = clipSeconds(item)
+    if (quality === 'copy') return { args: copyCutArgs(item, opts.copyCuts?.[idx], output), output, durationSec }
     // Put -ss before -i: precise seeking when transcoding, without decoding from the start of the file to the cut (I8).
     const video = videoEncodeArgs(opts.encoder!, sourceSpec(probes.get(item.source)))
     const args = ['-ss', secs(item.start), '-i', item.source, '-t', durationOf(item), ...STREAM_SELECT, ...video, ...AUDIO_AAC, ...STRIP_METADATA, ...VIDEO_TIMESCALE, '-y', output]
-    return { args, output }
+    return { args, output, durationSec }
   })
   return { jobs, notices }
 }
@@ -225,11 +230,12 @@ function buildCopyConcat(
   const tag = segmentTag()
   const segments: FfmpegJob[] = items.map((item, idx) => {
     const output = segmentPath(opts.outDir, tag, idx, '.mp4')
-    return { intermediate: true, output, args: copyCutArgs(item, opts.copyCuts?.[idx], output) }
+    return { intermediate: true, output, args: copyCutArgs(item, opts.copyCuts?.[idx], output), durationSec: clipSeconds(item) }
   })
   const output = path.join(opts.outDir, `${opts.baseName}.mp4`)
   const final: FfmpegJob = {
     output,
+    durationSec: totalSeconds(items),
     args: [...CONCAT_INPUT, ...STREAM_SELECT, '-c', 'copy', ...VIDEO_TIMESCALE, '-y', output]
   }
   return { jobs: [...segments, final], notices, concatListContent: listOf(segments) }
@@ -266,12 +272,14 @@ function buildPreciseConcat(
     return {
       intermediate: true,
       output,
+      durationSec: clipSeconds(item),
       args: ['-ss', secs(item.start), '-i', item.source, ...audioInput, '-t', durationOf(item), ...streams, ...vf, ...video, '-c:a', 'pcm_s16le', '-ar', '48000', '-ac', '2', ...(silent ? ['-shortest'] : []), ...STRIP_METADATA, ...VIDEO_TIMESCALE, '-y', output]
     }
   })
   const output = path.join(opts.outDir, `${opts.baseName}.mp4`)
   const final: FfmpegJob = {
     output,
+    durationSec: totalSeconds(items),
     // Fill small gaps in audio timestamps; sources without audio already have silence in their intermediate files.
     args: [...CONCAT_INPUT, ...STREAM_SELECT, '-c:v', 'copy', '-af', 'aresample=async=1:first_pts=0', ...AUDIO_AAC, ...VIDEO_TIMESCALE, '-y', output]
   }
