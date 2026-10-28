@@ -19,7 +19,7 @@ beforeEach(() => { installDomShims() })
 afterEach(() => { cleanupMounted(); restore?.(); restore = undefined; studio?.restore(); studio = undefined; vi.restoreAllMocks() })
 async function start(entries: LibraryEntry[], autoSuggestOnOpen = false) {
   fake = createFakeApi({ entries, settings: { autoSuggestOnOpen }, overrides: {
-    cache: { loadByVideo: async (path: string) => ({ ...buildLongDoc(path), clips: [] }) },
+    cache: { loadByVideo: vi.fn(async (path: string) => ({ ...buildLongDoc(path), clips: [] })) },
     engine: { autoclip: async () => ({ clips: [{ id: 'ai-test', start: 1, end: 3, origin: 'ai', event_ids: [] }] }) }
   } })
   restore = installFakeApi(fake)
@@ -87,6 +87,70 @@ describe('Studio navigation', () => {
     await flush()
     expect(document.querySelector('.studio-file')?.textContent).toBe('Apex_2026-10-18_01-00.mp4')
   })
+  test('queued analysis reloads only when the selected video has a usable completed cache', async () => {
+    await start([entry(A)])
+    const loadCache = vi.spyOn(window.api.cache, 'loadByVideo').mockResolvedValue(null)
+    fake.api.engine.analyze.mockImplementation(async () => {
+      fake.setEntries([{ ...entry(A), status: 'pending' }])
+      return null
+    })
+    navigate('studio'); await flush()
+    await act(async () => fake.emit('library:updated', { queue: { analyzing: null, queued: [A], waitingForGame: true }, current: null }))
+    await flush()
+    expect(document.querySelector('.studio-blocked')?.textContent).toContain(i18n.queue.waitingForGame)
+    expect(document.querySelector('.studio-blocked')?.textContent).not.toContain(i18n.studio.openBlocked)
+    fake.setEntries([{ ...entry(A), status: 'pending' }, entry(B)])
+    await act(async () => fake.emit('library:updated')); await flush()
+    expect(document.querySelector('.studio-file')).toBeNull()
+    fake.setEntries([entry(A)])
+    await act(async () => fake.emit('library:updated')); await flush()
+    expect(document.querySelector('.studio-file')).toBeNull()
+    loadCache.mockResolvedValue({ ...buildLongDoc(A), analysis: { ...buildLongDoc(A).analysis, status: 'partial' } })
+    await act(async () => fake.emit('library:updated')); await flush()
+    expect(document.querySelector('.studio-file')).toBeNull()
+    loadCache.mockResolvedValue({ ...buildLongDoc(A), clips: [] })
+    await act(async () => fake.emit('library:updated')); await flush()
+    expect(document.querySelector('.studio-file')?.textContent).toBe(A.split('/').pop())
+    expect(fake.api.engine.analyze).toHaveBeenCalledTimes(1)
+  })
+
+  test('queued completion during an in-flight cache read is not lost', async () => {
+    await start([entry(A)])
+    const loadCache = vi.spyOn(window.api.cache, 'loadByVideo').mockResolvedValue(null)
+    navigate('studio'); await flush()
+    let resolve!: (doc: null) => void
+    loadCache.mockImplementationOnce(() => new Promise((done) => { resolve = done }))
+    await act(async () => fake.emit('library:updated')); await flush()
+    loadCache.mockResolvedValue({ ...buildLongDoc(A), clips: [] })
+    await act(async () => fake.emit('library:updated'))
+    await act(async () => resolve(null)); await flush()
+    expect(document.querySelector('.studio-file')?.textContent).toBe(A.split('/').pop())
+    expect(fake.api.engine.analyze).toHaveBeenCalledTimes(1)
+  })
+
+  test('queued analysis failure surfaces the existing load error state', async () => {
+    await start([entry(A)])
+    vi.spyOn(window.api.cache, 'loadByVideo').mockResolvedValue(null)
+    navigate('studio'); await flush()
+    fake.setEntries([{ ...entry(A), status: 'error', error: 'Analysis failed', errorCode: 'unknown_game' }])
+    await act(async () => fake.emit('library:updated')); await flush()
+    expect(document.querySelector('[role="alert"]')?.textContent).toContain(i18n.studio.loadFailed.title)
+    expect(document.querySelector('.studio-error-detail')?.textContent).toBe('Analysis failed')
+    expect(document.querySelector('[role="alert"]')?.textContent).toContain('unknown_game')
+    expect(document.querySelector('.studio-file')).toBeNull()
+  })
+
+  test('ordinary blocked analysis does not reload on library completion', async () => {
+    await start([{ ...entry(A), status: 'pending' }])
+    navigate('studio'); await flush()
+    expect(document.querySelector('.studio-blocked')?.textContent).toContain(i18n.studio.openBlocked)
+    fake.setEntries([entry(A)])
+    await act(async () => fake.emit('library:updated')); await flush()
+    expect(document.querySelector('.studio-blocked')?.textContent).toContain(i18n.studio.openBlocked)
+    expect(fake.api.engine.analyze).not.toHaveBeenCalled()
+    expect(fake.api.cache.loadByVideo).not.toHaveBeenCalled()
+  })
+
   test('Empty library stays in the studio empty state with a button back to the library', async () => {
     await start([])
     navigate('studio'); await flush()

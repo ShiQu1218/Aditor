@@ -75,11 +75,11 @@ describe('loadStudioDoc', () => {
     expect(d.analyze).not.toHaveBeenCalled()
   })
 
-  test('queued analysis is blocked and a non-done result is an error', async () => {
+  test('queued analysis is distinct from blocked and a non-done result is an error', async () => {
     for (const res of [null, doc('partial')]) {
       const d = deps({ cacheLoad: vi.fn(async () => null), analyze: vi.fn(async () => res) })
       const out = await loadStudioDoc('a.mp4', d)
-      expect(out.kind).toBe(res ? 'error' : 'blocked')
+      expect(out.kind).toBe(res ? 'error' : 'queued')
     }
   })
 
@@ -105,11 +105,11 @@ describe('loadStudioDoc', () => {
     expect(await loadStudioDoc('b', d, true)).toMatchObject({ kind: 'error', message: expect.stringContaining('duration 0') })
   })
 
-  test('unusable analysis reports its status and queued analysis stays blocked', async () => {
+  test('unusable analysis reports its status and queued analysis stays queued', async () => {
     const partial = deps({ cacheLoad: async () => null, analyze: async () => doc('partial') })
     expect(await loadStudioDoc('a', partial)).toMatchObject({ kind: 'error', message: expect.stringContaining('status: partial') })
     const none = deps({ cacheLoad: async () => null, analyze: async () => null })
-    expect(await loadStudioDoc('a', none)).toEqual({ kind: 'blocked' })
+    expect(await loadStudioDoc('a', none)).toEqual({ kind: 'queued' })
   })
 
   test('non-Error throws are stringified once', async () => {

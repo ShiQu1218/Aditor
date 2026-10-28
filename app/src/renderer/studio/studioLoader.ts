@@ -19,6 +19,7 @@ export interface LoaderDeps {
 export type LoadOutcome =
   | { kind: 'ready'; doc: CacheDoc; from: 'cache' | 'analyze' | 'metadata' }
   | { kind: 'blocked' }
+  | { kind: 'queued' }
   | { kind: 'error'; message: string; code?: string | number }
 
 const isDone = (d: CacheDoc | null | undefined): d is CacheDoc => d?.analysis?.status === 'done'
@@ -52,7 +53,7 @@ export async function loadStudioDoc(path: string, deps: LoaderDeps, allowUnanaly
     }
     if (cached) return isDone(cached) ? { kind: 'ready', doc: cached, from: 'cache' } : { kind: 'blocked' }
     const res = await deps.analyze({ path })
-    if (!res) return { kind: 'blocked' }
+    if (!res) return { kind: 'queued' }
     if (isDone(res)) return { kind: 'ready', doc: res, from: 'analyze' }
     return { kind: 'error', message: `Analysis finished but its result is not usable (status: ${(res as CacheDoc | null)?.analysis?.status ?? 'none'})` }
   } catch (err) {
