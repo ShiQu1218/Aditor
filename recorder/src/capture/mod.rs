@@ -361,6 +361,9 @@ struct CallbackState {
     origin: i64,
     probe: LumaProbe,
     color: color::SdrConverter,
+    pool_monitor: Option<HMONITOR>,
+    pool_format: DirectXPixelFormat,
+    pool_refresh: Instant,
     hwnd: HWND,
     black: BlackStreak,
     visibility: dda::Visibility,
@@ -437,11 +440,19 @@ impl ActiveCapture {
         if size.Width <= 0 || size.Height <= 0 {
             bail!("capture_failed: Invalid capture target dimensions");
         }
+        // SAFETY: Querying the capture window monitor does not mutate the window.
+        let monitor_handle = monitor_target
+            .unwrap_or_else(|| unsafe { MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST) });
+        let display = color::display_state(monitor_handle);
+        let format = display.pool_format();
         let device = {
             let mut state = shared
                 .lock()
                 .map_err(|_| anyhow::anyhow!("capture_failed: Capture state is poisoned"))?;
             state.hwnd = hwnd;
+            state.pool_monitor = monitor_target;
+            state.pool_format = format;
+            state.pool_refresh = Instant::now() + Duration::from_secs(1);
             state.black = BlackStreak::default();
             state.probe.reset();
             state.monitor_black = if monitor {
@@ -454,12 +465,7 @@ impl ActiveCapture {
             };
             state.device.clone()
         };
-        let pool = Direct3D11CaptureFramePool::CreateFreeThreaded(
-            &device,
-            DirectXPixelFormat::R16G16B16A16Float,
-            2,
-            size,
-        )?;
+        let pool = Direct3D11CaptureFramePool::CreateFreeThreaded(&device, format, 2, size)?;
         let session = pool.CreateCaptureSession(&item)?;
         if let Err(error) = session.SetIsCursorCaptureEnabled(opts.capture_cursor) {
             // The cursor property needs Windows 10 2004+; failing to set it must not abort capture.
@@ -576,6 +582,18 @@ impl CallbackState {
         }
         let raw_pts = frame.0.SystemRelativeTime()?.Duration - self.origin;
         let resized = signals.size.load(Ordering::Acquire) != pack_size(size);
+        // SAFETY: Querying the capture window monitor does not mutate the window.
+        let monitor_handle = self
+            .pool_monitor
+            .unwrap_or_else(|| unsafe { MonitorFromWindow(self.hwnd, MONITOR_DEFAULTTONEAREST) });
+        let display = if Instant::now() >= self.pool_refresh {
+            let display = color::display_state(monitor_handle);
+            self.pool_refresh = Instant::now() + Duration::from_secs(1);
+            Some(display)
+        } else {
+            None
+        };
+        let format = display.map_or(self.pool_format, color::DisplayState::pool_format);
         if let Some(pts) = self.gate.accept(raw_pts) {
             let visible = if monitor {
                 // Minimized fallback stays black until window capture resumes, including the restore polling gap.
@@ -615,9 +633,6 @@ impl CallbackState {
                         .context("capture_failed: Missing monitor black frame")?
                         .deliver(&mut *self.consumer, pts);
                 } else {
-                    // SAFETY: Querying the capture window monitor does not mutate the window.
-                    let monitor_handle =
-                        unsafe { MonitorFromWindow(self.hwnd, MONITOR_DEFAULTTONEAREST) };
                     let texture = self.color.convert(&texture, monitor_handle)?;
                     self.consumer.on_frame(&CapturedFrame {
                         texture: &texture,
@@ -644,10 +659,18 @@ impl CallbackState {
         } else {
             signals.dropped.fetch_add(1, Ordering::Relaxed);
         }
-        // Return the old frame before recreating the pool for either a larger or smaller capture target.
+        // Return the old frame before recreating the pool for size or display mode changes.
         drop(frame);
+        if resized || format != self.pool_format {
+            pool.Recreate(&self.device, format, 2, size)?;
+            if format != self.pool_format {
+                self.pool_format = format;
+                if let Some(display) = display {
+                    display.log_pool_format();
+                }
+            }
+        }
         if resized {
-            pool.Recreate(&self.device, DirectXPixelFormat::R16G16B16A16Float, 2, size)?;
             signals.size.store(pack_size(size), Ordering::Release);
             let _ = self.notices.send(CaptureNotice::WindowFound {
                 width: size.Width as u32,
@@ -682,6 +705,9 @@ fn run(
         origin: opts.origin_ticks,
         probe,
         color: color::SdrConverter::new(&gpu)?,
+        pool_monitor: None,
+        pool_format: DirectXPixelFormat::R16G16B16A16Float,
+        pool_refresh: Instant::now(),
         hwnd,
         black: BlackStreak::default(),
         visibility: dda::Visibility::new(),
