@@ -318,6 +318,27 @@ export interface WatchFolderOptions {
   stabilityMs?: number
   /** File-size polling interval in milliseconds (default 500). */
   pollMs?: number
+  /** Release probe override for tests; false means busy, ENOENT means removed. */
+  isFileReleased?: (filePath: string) => Promise<boolean>
+}
+
+export const WATCH_RELEASE_TIMEOUT_MS = 10 * 60 * 1000
+
+async function isFileReleased(filePath: string): Promise<boolean> {
+  try {
+    // Windows copies preallocate the final size before releasing the destination handle.
+    const handle = await fs.promises.open(filePath, 'r+').catch(async (err: NodeJS.ErrnoException) => {
+      if (!['EPERM', 'EACCES'].includes(err.code ?? '')) throw err
+      const stat = await fs.promises.stat(filePath)
+      if ((stat.mode & 0o200) !== 0) throw err
+      return fs.promises.open(filePath, 'r')
+    })
+    await handle.close()
+    return true
+  } catch (err) {
+    if (['EBUSY', 'EPERM', 'EACCES'].includes((err as NodeJS.ErrnoException).code ?? '')) return false
+    throw err
+  }
 }
 
 export function watchFolder(dir: string, onAdd: (paths: string[]) => void, opts: WatchFolderOptions = {}): FSWatcher {
@@ -331,8 +352,47 @@ export function watchFolder(dir: string, onAdd: (paths: string[]) => void, opts:
     }
   })
 
+  const probe = opts.isFileReleased ?? (process.platform === 'win32' ? isFileReleased : undefined)
+  const pending = new Map<string, ReturnType<typeof setTimeout> | undefined>()
+  let closed = false
+  const close = watcher.close.bind(watcher)
+  watcher.close = () => {
+    closed = true
+    for (const timer of pending.values()) clearTimeout(timer)
+    pending.clear()
+    return close()
+  }
+
   watcher.on('add', (filePath) => {
-    onAdd([filePath])
+    if (closed || pending.has(filePath)) return
+    if (!probe) {
+      onAdd([filePath])
+      return
+    }
+    pending.set(filePath, undefined)
+    const deadline = Date.now() + WATCH_RELEASE_TIMEOUT_MS
+    const check = async (): Promise<void> => {
+      if (closed) return
+      try {
+        const released = await probe(filePath)
+        if (closed) return
+        if (released) {
+          pending.delete(filePath)
+          onAdd([filePath])
+        } else if (Date.now() >= deadline) {
+          pending.delete(filePath)
+          console.warn(`[Watch] Timed out waiting for file release: ${filePath}`)
+        } else {
+          pending.set(filePath, setTimeout(() => void check(), Math.min(opts.stabilityMs ?? 5000, deadline - Date.now())))
+        }
+      } catch (err) {
+        pending.delete(filePath)
+        if (!closed && (err as NodeJS.ErrnoException).code !== 'ENOENT') {
+          console.warn(`[Watch] Failed to check file release: ${filePath}`, err)
+        }
+      }
+    }
+    void check()
   })
 
   return watcher

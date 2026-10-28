@@ -83,7 +83,7 @@ interface Activating {
  * Watched-folder manager (main):
  * - Settings (`settings.watchFolders`) are the single source of truth; `add`/`remove` update settings and sync watchers,
  *   and `start()` restores from settings (including direct external changes to `watchFolders` through Settings).
- * - Import new videos only after their size stabilizes (chokidar awaitWriteFinish); enqueue them automatically when `autoAnalyze` is enabled.
+ * - Import new videos after their size stabilizes and Windows writers release them; enqueue automatically when `autoAnalyze` is enabled.
  * - Missing or removed folders do not throw; keep them in the list (`missing()` marks them missing) and warn only once.
  *   Retry quietly every `retryMs` (30 seconds by default) while the app is running and after each settings change.
  *   Close a watcher when its folder is deleted and create a new watcher if the folder is recreated.
