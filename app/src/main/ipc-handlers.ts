@@ -226,9 +226,9 @@ export function registerIpcHandlers(
         return { ok: false, canceled: true, ...watchStatus() }
       }
       try {
-        await watch.add(res.filePaths[0])
+        const persisted = await watch.add(res.filePaths[0])
         broadcastUpdated()
-        return { ok: true, ...watchStatus() }
+        return persisted ? { ok: true, ...watchStatus() } : { ok: false, error: tr('無法儲存設定，請再試一次。'), ...watchStatus() }
       } catch (err) {
         return { ok: false, error: (err as Error).message, ...watchStatus() }
       }
@@ -238,9 +238,9 @@ export function registerIpcHandlers(
       if (typeof dir !== 'string' || dir.length === 0) {
         return { ok: false, error: 'invalid folder path', ...watchStatus() }
       }
-      await watch.remove(dir)
+      const persisted = await watch.remove(dir)
       broadcastUpdated()
-      return { ok: true, ...watchStatus() }
+      return persisted ? { ok: true, ...watchStatus() } : { ok: false, error: tr('無法儲存設定，請再試一次。'), ...watchStatus() }
     })
   }
 

@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from 'vitest'
+import { afterEach, describe, expect, test, vi } from 'vitest'
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
@@ -186,4 +186,29 @@ describe('WatchManager', () => {
     await waitFor(() => rig.library.getEntries().length === 1)
     await waitFor(() => rig.enqueued.length === 1)
   }, 20000)
+
+  test('add/remove report a failed settings write, apply in memory, and a retry persists', async () => {
+    const rig = makeRig()
+    const watch = rig.managers[0]
+    const file = path.join(rig.root, 'settings.json')
+    const failRename = vi.spyOn(fs, 'renameSync').mockImplementation(() => { throw new Error('EPERM') })
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      expect(await watch.add(rig.watchDir)).toBe(false)
+      expect(watch.list()).toEqual([path.resolve(rig.watchDir)])
+      failRename.mockRestore()
+      expect(await watch.add(rig.watchDir)).toBe(true)
+      expect(JSON.parse(fs.readFileSync(file, 'utf-8')).watchFolders).toEqual([path.resolve(rig.watchDir)])
+
+      const failAgain = vi.spyOn(fs, 'renameSync').mockImplementation(() => { throw new Error('EPERM') })
+      expect(await watch.remove(rig.watchDir)).toBe(false)
+      expect(watch.list()).toEqual([])
+      expect(JSON.parse(fs.readFileSync(file, 'utf-8')).watchFolders).toEqual([path.resolve(rig.watchDir)])
+      failAgain.mockRestore()
+      expect(await watch.remove(rig.watchDir)).toBe(true)
+      expect(JSON.parse(fs.readFileSync(file, 'utf-8')).watchFolders).toEqual([])
+    } finally {
+      vi.restoreAllMocks()
+    }
+  })
 })
