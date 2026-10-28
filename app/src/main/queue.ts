@@ -254,8 +254,8 @@ export class AnalysisQueue extends EventEmitter {
         hl: undefined
       })
     } catch (err) {
-      if (run.cancelled) {
-        // Interrupted runs remain pending, including jobs deferred until the game exits.
+      if (run.cancelled || (err instanceof EngineError && err.code === 'engine_stopped')) {
+        // Interrupted runs remain pending, including jobs deferred until the game exits and runs cut off by quitting.
         this.library.update(videoPath, { status: 'pending', progress: 0, error: undefined, analyzingSince: undefined })
       } else {
         if (err instanceof EngineError && err.code === 'unknown_game') {
