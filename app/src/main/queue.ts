@@ -24,6 +24,7 @@ interface CurrentRun {
   reqId: string | null
   /** Interrupted: hide the active run, but wait for the engine to stop before starting another item. */
   cancelled: boolean
+  engineFinished: boolean
   force: boolean
   done: Promise<void>
   cachePath?: string
@@ -52,7 +53,8 @@ export class AnalysisQueue extends EventEmitter {
     if (this.gameRunning === running) return
     this.gameRunning = running
     const run = this.current
-    if (running && run && !run.cancelled) {
+    // Once the engine finishes, preserve clips before another run can replace their backup.
+    if (running && run && !run.cancelled && !run.engineFinished) {
       // Reuse engine cancellation, but retain the job and its explicit reanalysis intent.
       this.cancel(run.path)
       this.queue.unshift(run.path)
@@ -168,7 +170,7 @@ export class AnalysisQueue extends EventEmitter {
     const force = this.forced.delete(normalizePath(videoPath))
     let finish!: () => void
     const done = new Promise<void>((resolve) => { finish = resolve })
-    const run: CurrentRun = { path: videoPath, reqId: null, cancelled: false, force, done }
+    const run: CurrentRun = { path: videoPath, reqId: null, cancelled: false, engineFinished: false, force, done }
     this.current = run
 
     this.library.update(videoPath, {
@@ -213,6 +215,7 @@ export class AnalysisQueue extends EventEmitter {
         this.engine.cancel(req.id)
       }
       let doc = await req.promise
+      run.engineFinished = true
       if (run.cancelled) return
 
       const duration = doc.video?.duration || 0

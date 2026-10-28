@@ -5,6 +5,8 @@ import path from 'path'
 import { AnalysisQueue } from './queue'
 import { Library } from './library'
 import type { EngineClient } from './engine'
+import { generateThumbnail } from './thumbnail'
+import * as reanalysis from './reanalysis'
 
 vi.mock('./thumbnail', () => ({ generateThumbnail: vi.fn(async () => undefined) }))
 
@@ -28,11 +30,15 @@ function rig(gameRunning = false) {
 }
 
 beforeEach(() => {
+  vi.mocked(generateThumbnail).mockReset().mockResolvedValue(undefined)
   dir = fs.mkdtempSync(path.join(os.tmpdir(), 'aditor-game-queue-'))
   library = new Library(path.join(dir, 'library.json'))
   library.add([first, second])
 })
-afterEach(() => fs.rmSync(dir, { recursive: true, force: true }))
+afterEach(() => {
+  vi.restoreAllMocks()
+  fs.rmSync(dir, { recursive: true, force: true })
+})
 
 test('blocks every enqueued item until the game exits', async () => {
   const { queue, engine, runs } = rig(true)
@@ -69,6 +75,25 @@ test('cancels an active engine and retries it first with force preserved after t
   expect(engine.request).toHaveBeenNthCalledWith(3, 'analyze', expect.objectContaining({ path: second }), expect.any(Function))
   runs[2].resolve(doc)
   await vi.waitFor(() => expect(library.get(second)?.status).toBe('done'))
+})
+
+test('finishes preserving clips when the game starts after the engine resolves', async () => {
+  const { queue, engine, runs } = rig()
+  const preserve = vi.spyOn(reanalysis, 'preserveClipsAfterReanalysis')
+  let finishThumbnail!: (thumb: string) => void
+  vi.mocked(generateThumbnail).mockReturnValueOnce(new Promise((resolve) => { finishThumbnail = resolve }))
+  queue.enqueue(first, true)
+  runs[0].resolve(doc)
+  await vi.waitFor(() => expect(generateThumbnail).toHaveBeenCalledOnce())
+  queue.setGameRunning(true)
+  finishThumbnail('thumbnail.jpg')
+  await vi.waitFor(() => expect(queue.snapshot().analyzing).toBeNull())
+  expect(library.get(first)).toMatchObject({ status: 'done', thumb: 'thumbnail.jpg' })
+  expect(preserve).toHaveBeenCalledOnce()
+  expect(queue.snapshot().queued).toEqual([])
+  expect(engine.cancel).not.toHaveBeenCalled()
+  queue.setGameRunning(false)
+  expect(engine.request).toHaveBeenCalledOnce()
 })
 
 test.each([false, true])('user cancellation drops a deferred item, acknowledged=%s', async (acknowledged) => {
