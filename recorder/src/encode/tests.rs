@@ -7,6 +7,7 @@ use std::{
     time::{Instant, SystemTime, UNIX_EPOCH},
 };
 
+use windows::core::Interface;
 use windows::Win32::Graphics::{Direct3D11::*, Dxgi::Common::*};
 
 use super::*;
@@ -74,7 +75,9 @@ fn nvenc_requirement_matches_the_loaded_avcodec_build() {
         )
     });
     let contains = |needle: &[u8]| dll.windows(needle.len()).any(|window| window == needle);
-    assert!(contains(b"The minimum required Nvidia driver for nvenc is %s or newer"));
+    assert!(contains(
+        b"The minimum required Nvidia driver for nvenc is %s or newer"
+    ));
     assert!(
         contains(format!("\0{}\0", nvenc::MIN_DRIVER).as_bytes()),
         "avcodec no longer requires driver {}; update nvenc::REQUIRED_API and MIN_DRIVER",
@@ -226,10 +229,7 @@ fn encoder_names_preserve_vendor_order_and_hevc_fallback_for_every_codec() {
             Codec::H264,
             ["h264_nvenc", "h264_amf", "h264_qsv"].as_slice(),
         ),
-        (
-            Codec::Av1,
-            ["av1_nvenc", "av1_amf", "av1_qsv"].as_slice(),
-        ),
+        (Codec::Av1, ["av1_nvenc", "av1_amf", "av1_qsv"].as_slice()),
     ] {
         assert_eq!(candidate_names(codec, "auto"), expected, "{codec:?}");
         assert_eq!(candidates(&params(codec)), expected, "{codec:?}");
@@ -350,7 +350,10 @@ fn record(
     writer.finish().unwrap();
     segments.extend(rx.try_iter());
     if frame_count >= 240 {
-        assert!(delivered_live, "A complete segment must be delivered before finish");
+        assert!(
+            delivered_live,
+            "A complete segment must be delivered before finish"
+        );
     }
     let expected_segments = (frame_count + 119) / 120;
     assert_eq!(segments.len() as i64, expected_segments);
@@ -376,7 +379,10 @@ fn record(
             .filter(|p| p["stream_index"] == 0)
             .map(|p| p["duration_time"].as_str().unwrap().parse::<f64>().unwrap())
             .sum();
-        assert!((duration - expected).abs() < 0.05, "Actual segment duration={duration}");
+        assert!(
+            (duration - expected).abs() < 0.05,
+            "Actual segment duration={duration}"
+        );
     }
     let combined = dir.join("combined.mp4");
     concatenate(&dir, &segments, &combined);
@@ -411,9 +417,15 @@ fn record(
             .filter(|s| s[0] <= 0. && s[1] > 0.)
             .count();
         let frequency = crossings as f64 / (interval.len() as f64 / 48_000.);
-        assert!((frequency - 440.).abs() < 3., "AAC decoded frequency={frequency}");
+        assert!(
+            (frequency - 440.).abs() < 3.,
+            "AAC decoded frequency={frequency}"
+        );
         let rms = (interval.iter().map(|s| s * s).sum::<f32>() / interval.len() as f32).sqrt();
-        assert!((rms - 0.2 / 2f32.sqrt()).abs() < 0.02, "AAC decoded amplitude={rms}");
+        assert!(
+            (rms - 0.2 / 2f32.sqrt()).abs() < 0.02,
+            "AAC decoded amplitude={rms}"
+        );
     }
     let duration = json["format"]["duration"]
         .as_str()
@@ -512,11 +524,154 @@ fn gpu_recording_and_scaling_have_independent_keyframe_segments() {
     }
 }
 
+/// A BGRA texture with only the shader-resource binding, which cannot back a video-processor input view.
+fn shader_only_texture(gpu: &Gpu, size: (u32, u32)) -> ID3D11Texture2D {
+    let desc = D3D11_TEXTURE2D_DESC {
+        Width: size.0,
+        Height: size.1,
+        MipLevels: 1,
+        ArraySize: 1,
+        Format: DXGI_FORMAT_B8G8R8A8_UNORM,
+        SampleDesc: DXGI_SAMPLE_DESC {
+            Count: 1,
+            Quality: 0,
+        },
+        Usage: D3D11_USAGE_DEFAULT,
+        BindFlags: D3D11_BIND_SHADER_RESOURCE.0 as u32,
+        ..Default::default()
+    };
+    let mut texture = None;
+    // SAFETY: Valid device and single-mip BGRA description; output reference managed by the windows crate.
+    unsafe {
+        gpu.device
+            .CreateTexture2D(&desc, None, Some(&mut texture))
+            .unwrap();
+    }
+    texture.unwrap()
+}
+
+/// `scale` is the source-to-target ratio; `shader_only` exercises the input-view copy fallback.
+fn check_nv12_range_and_edges(gpu: &Gpu, size: (u32, u32), scale: u32, shader_only: bool) {
+    let video = VideoParams {
+        width: size.0,
+        height: size.1,
+        ..params(Codec::Hevc)
+    };
+    let hardware = Hardware::new(gpu, &video, ffi::AV_PIX_FMT_NV12).unwrap();
+    let frame = hardware.surface().unwrap();
+    let source_size = (size.0 * scale, size.1 * scale);
+    let source = if shader_only {
+        shader_only_texture(gpu, source_size)
+    } else {
+        texture(gpu, source_size).0
+    };
+    let colors = [
+        [0, 0, 0, 255],
+        [255, 255, 255, 255],
+        [0, 0, 255, 255],
+        [255, 0, 0, 255],
+    ];
+    let row: Vec<u8> = (0..source_size.0)
+        .flat_map(|x| colors[(x * 4 / source_size.0) as usize])
+        .collect();
+    let pixels = row.repeat(source_size.1 as usize);
+    let mut staging = None;
+    let mut desc = D3D11_TEXTURE2D_DESC::default();
+    // SAFETY: The frame owns a live D3D11 texture; from_raw_borrowed retains frame ownership.
+    let target = unsafe {
+        ID3D11Texture2D::from_raw_borrowed(&(*frame.0).data[0].cast())
+            .unwrap()
+            .clone()
+    };
+    // SAFETY: The source upload covers all rows; the staging texture matches the target and is CPU-readable.
+    unsafe {
+        gpu.context.UpdateSubresource(
+            &source,
+            0,
+            None,
+            pixels.as_ptr().cast(),
+            source_size.0 * 4,
+            0,
+        );
+        target.GetDesc(&mut desc);
+        desc.Usage = D3D11_USAGE_STAGING;
+        desc.BindFlags = 0;
+        desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ.0 as u32;
+        desc.MiscFlags = 0;
+        gpu.device
+            .CreateTexture2D(&desc, None, Some(&mut staging))
+            .unwrap();
+    }
+    Copier::new(gpu, &video, hardware.format)
+        .copy(&source, source_size, &frame)
+        .unwrap();
+    let staging = staging.unwrap();
+    let mut mapped = D3D11_MAPPED_SUBRESOURCE::default();
+    // SAFETY: Test-only blocking readback follows the conversion; all plane offsets respect RowPitch.
+    unsafe {
+        gpu.context.CopyResource(&staging, &target);
+        gpu.context
+            .Map(&staging, 0, D3D11_MAP_READ, 0, Some(&mut mapped))
+            .unwrap();
+        let pitch = mapped.RowPitch as usize;
+        let data =
+            std::slice::from_raw_parts(mapped.pData.cast::<u8>(), pitch * size.1 as usize * 3 / 2);
+        for (stripe, expected) in [
+            [16u8, 128, 128],
+            [235, 128, 128],
+            [63, 102, 240],
+            [32, 240, 118],
+        ]
+        .iter()
+        .enumerate()
+        {
+            let left = stripe * size.0 as usize / 4;
+            let right = (stripe + 1) * size.0 as usize / 4;
+            for x in [
+                if stripe == 0 { left } else { left + 2 },
+                if stripe == 3 { right - 2 } else { right - 4 },
+            ] {
+                for y in [0, size.1 as usize / 2, size.1 as usize - 1] {
+                    let uv = pitch * size.1 as usize + y / 2 * pitch + (x & !1);
+                    let actual = [data[y * pitch + x], data[uv], data[uv + 1]];
+                    for (actual, expected) in actual.into_iter().zip(*expected) {
+                        assert!(
+                            actual.abs_diff(expected) <= 3,
+                            "{size:?} at ({x}, {y}): {actual} != {expected}"
+                        );
+                    }
+                }
+            }
+        }
+        gpu.context.Unmap(&staging, 0);
+    }
+}
+
 #[test]
 fn gpu_nv12_conversion_and_error_propagation() {
     let _guard = GPU_TEST.lock().unwrap();
     let gpu = Gpu::create().unwrap();
-    let video = params(Codec::Hevc);
+    for name in ENCODERS {
+        let expected = if name.ends_with("_nvenc") {
+            [ffi::AV_PIX_FMT_NV12, ffi::AV_PIX_FMT_BGRA]
+        } else {
+            [ffi::AV_PIX_FMT_BGRA, ffi::AV_PIX_FMT_NV12]
+        };
+        assert_eq!(input_formats(name), expected);
+    }
+    assert_eq!(probe(&gpu, "hevc_nvenc").unwrap(), ffi::AV_PIX_FMT_NV12);
+    for size in [(256, 144), (1920, 1080)] {
+        check_nv12_range_and_edges(&gpu, size, 2, false);
+    }
+    // Native-size NV12 always goes through the video processor, including sources it cannot view directly.
+    for shader_only in [false, true] {
+        check_nv12_range_and_edges(&gpu, (256, 144), 1, shader_only);
+    }
+    let video = VideoParams {
+        width: 1920,
+        height: 1080,
+        ..params(Codec::Hevc)
+    };
     let hardware = Hardware::new(&gpu, &video, ffi::AV_PIX_FMT_NV12).unwrap();
     let encoder = hardware.encoder("hevc_nvenc", &video).unwrap();
     let frame = hardware.surface().unwrap();
@@ -551,6 +706,24 @@ fn gpu_nv12_conversion_and_error_propagation() {
     drop(muxer);
     let combined = dir.join("nv12.mp4");
     concatenate(&dir, &rx.try_iter().collect::<Vec<_>>(), &combined);
+    let metadata = Command::new(executable("ffprobe"))
+        .args(["-v", "error", "-show_streams", "-of", "json"])
+        .arg(&combined)
+        .output()
+        .unwrap();
+    assert!(
+        metadata.status.success(),
+        "{}",
+        String::from_utf8_lossy(&metadata.stderr)
+    );
+    let metadata: serde_json::Value = serde_json::from_slice(&metadata.stdout).unwrap();
+    let stream = &metadata["streams"][0];
+    assert_eq!(stream["width"], 1920);
+    assert_eq!(stream["height"], 1080);
+    assert_eq!(stream["color_range"], "tv");
+    for key in ["color_space", "color_primaries", "color_transfer"] {
+        assert_eq!(stream[key], "bt709", "{key}");
+    }
     let pixels = Command::new(executable("ffmpeg"))
         .args(["-v", "error", "-i"])
         .arg(&combined)
@@ -636,6 +809,12 @@ fn gpu_nv12_conversion_and_error_propagation() {
     let (tx, _rx) = mpsc::channel();
     let writer = SegmentWriter::open(&gpu, &dir, video.clone(), false, tx).unwrap();
     let lock = writer.producer.lock().unwrap();
+    // SAFETY: The locked producer retains the D3D11 frame and its hardware frame context.
+    unsafe {
+        let frames = (*lock.pool[0].frame.0).hw_frames_ctx;
+        let context = &*((*frames).data as *const ffi::AVHWFramesContext);
+        assert_eq!(context.sw_format, ffi::AV_PIX_FMT_NV12);
+    }
     assert_eq!(
         writer.push_video(&source, 1920, 1080, 0),
         PushResult::Dropped
@@ -713,7 +892,10 @@ fn gpu_static_capture_keeps_cfr_and_silent_audio_running() {
     assert_eq!(writer.stats().frames_in, 1);
     assert!(writer.stats().frames_encoded >= 120);
     let mut segments: Vec<_> = rx.try_iter().collect();
-    assert!(!segments.is_empty(), "Segments should still finish while recording a static image");
+    assert!(
+        !segments.is_empty(),
+        "Segments should still finish while recording a static image"
+    );
     writer.finish().unwrap();
     segments.extend(rx.try_iter());
     assert_eq!(segments.len(), 2);
@@ -726,7 +908,10 @@ fn gpu_static_capture_keeps_cfr_and_silent_audio_running() {
         .unwrap()
         .parse::<f64>()
         .unwrap();
-    assert!((duration - 2.6).abs() < 0.1, "Static-image recording duration={duration}");
+    assert!(
+        (duration - 2.6).abs() < 0.1,
+        "Static-image recording duration={duration}"
+    );
     let silence = Command::new(executable("ffmpeg"))
         .args(["-v", "error", "-i"])
         .arg(&combined)

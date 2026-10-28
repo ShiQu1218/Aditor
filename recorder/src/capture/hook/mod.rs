@@ -439,6 +439,7 @@ mod tests {
         let error = run_loop(gpu, CaptureOptions {
             pid: std::process::id(), max_fps: 30, capture_cursor: false,
             origin_ticks: clock::now_ticks(),
+            sdr_size: None,
         }, texture, info.format, source, window, consumer, notices, stopped, &ready).unwrap_err();
         assert!(error.to_string().contains("hook_unavailable:"));
         assert!(events.try_iter().any(|e| e == CaptureNotice::WindowLost));
@@ -471,6 +472,7 @@ mod tests {
             max_fps: 30,
             capture_cursor: false,
             origin_ticks: clock::now_ticks(),
+            sdr_size: None,
         };
         let loop_gpu = gpu.clone();
         let worker = thread::spawn(move || {

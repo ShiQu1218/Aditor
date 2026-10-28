@@ -105,12 +105,15 @@ impl LumaProbe {
                 let commands = self.commands(&scaler.output)?;
                 self.source = Some((scaler, commands));
             }
-            let (scaler, commands) = self.source.as_ref().context("Missing black-frame detection scaler")?;
+            let (scaler, commands) = self
+                .source
+                .as_mut()
+                .context("Missing black-frame detection scaler")?;
             scaler.scale(&self.gpu, texture)?;
             let slot = &mut self.slots[self.next];
             // SAFETY: The command list accesses only this probe's resources; ExecuteCommandList submits atomically and preserves shared context state.
             unsafe {
-                self.gpu.context.ExecuteCommandList(commands, true);
+                self.gpu.context.ExecuteCommandList(&*commands, true);
                 self.gpu.context.CopyResource(&slot.staging, &self.sum);
                 self.gpu.context.End(&slot.ready);
                 self.gpu.context.Flush();
@@ -256,10 +259,16 @@ mod tests {
             loop {
                 if let Some((pts, detected)) = probe.on_frame(&texture, (960, 540), 1).unwrap() {
                     assert_eq!(pts, 0);
-                    assert_eq!(detected, black, "Incorrect black-frame classification for color {color:?}");
+                    assert_eq!(
+                        detected, black,
+                        "Incorrect black-frame classification for color {color:?}"
+                    );
                     break;
                 }
-                assert!(Instant::now() < deadline, "GPU luminance computation timed out");
+                assert!(
+                    Instant::now() < deadline,
+                    "GPU luminance computation timed out"
+                );
                 std::thread::sleep(Duration::from_millis(5));
             }
         }

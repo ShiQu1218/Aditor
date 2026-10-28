@@ -12,7 +12,7 @@ pub mod small;
 
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
@@ -48,6 +48,7 @@ use small::LumaProbe;
 /// consumers must copy it on the GPU during the call to retain it (`CopyResource`/`CopySubresourceRegion`).
 pub struct CapturedFrame<'a> {
     pub texture: &'a ID3D11Texture2D,
+    /// Dimensions of the delivered texture, which may be smaller than the capture target.
     pub width: u32,
     pub height: u32,
     /// 100 ns ticks, with 0 at session start (see `clock`).
@@ -86,6 +87,9 @@ pub struct CaptureOptions {
     pub capture_cursor: bool,
     /// QPC tick of the first frame (`clock::now_ticks()`); pts = frame system time − origin.
     pub origin_ticks: i64,
+    /// Encoder dimensions, published after target discovery; unset keeps HDR at native size.
+    /// None disables reduction; (0, 0) keeps only the analysis reference requirement.
+    pub sdr_size: Option<Arc<OnceLock<(u32, u32)>>>,
 }
 
 pub struct Capture {
@@ -634,16 +638,18 @@ impl CallbackState {
                         .deliver(&mut *self.consumer, pts);
                 } else {
                     let texture = self.color.convert(&texture, monitor_handle)?;
+                    // SAFETY: The converted texture is owned locally through all consumers.
+                    unsafe { texture.GetDesc(&mut desc) };
                     self.consumer.on_frame(&CapturedFrame {
                         texture: &texture,
-                        width: size.Width as u32,
-                        height: size.Height as u32,
+                        width: desc.Width,
+                        height: desc.Height,
                         pts,
                     });
                     if !monitor {
                         if let Some((pts, black)) = self.probe.on_frame(
                             &texture,
-                            (size.Width as u32, size.Height as u32),
+                            (desc.Width, desc.Height),
                             pts,
                         )? {
                             if self.black.observe(pts, black) {
@@ -704,7 +710,7 @@ fn run(
         gate: dda::SlotGate::new(opts.max_fps),
         origin: opts.origin_ticks,
         probe,
-        color: color::SdrConverter::new(&gpu)?,
+        color: color::SdrConverter::new(&gpu, opts.sdr_size.clone())?,
         pool_monitor: None,
         pool_format: DirectXPixelFormat::R16G16B16A16Float,
         pool_refresh: Instant::now(),
@@ -938,6 +944,7 @@ mod tests {
                 max_fps: 60,
                 capture_cursor: false,
                 origin_ticks: 0,
+                sdr_size: None,
             },
             Box::new(NoopConsumer),
             notices,

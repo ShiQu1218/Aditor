@@ -3,8 +3,7 @@
 //! DDA reads the entire output desktop and does not request composition for a game window (latency differences require an on-device A/B test).
 //! Like WGC, this is an official Windows API and does not inject into or access the game process.
 //!
-//! - Frames: pass the DDA desktop texture directly to the consumer, then release it after the consumer returns to avoid a full-frame copy.
-//!   Calls ReleaseFrame after the consumer returns, avoiding one full-frame copy.
+//! - Frames: pass the desktop texture directly to the consumer and retain ownership until the next acquisition.
 //! - Optionally composite the separately supplied desktop cursor after SDR conversion.
 //! - Records the whole monitor, including other windows; foreground changes only emit game_hidden/game_visible events.
 //! - DXGI_ERROR_ACCESS_LOST (resolution change, fullscreen transition, UAC secure desktop): discard and recreate duplication.
@@ -21,7 +20,7 @@ use windows::Win32::Graphics::Direct3D11::{
     ID3D11Texture2D, D3D11_BIND_RENDER_TARGET, D3D11_TEXTURE2D_DESC, D3D11_USAGE_DEFAULT,
 };
 use windows::Win32::Graphics::Dxgi::Common::{
-    DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_FORMAT_R16G16B16A16_FLOAT, DXGI_MODE_ROTATION,
+    DXGI_FORMAT, DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_FORMAT_R16G16B16A16_FLOAT, DXGI_MODE_ROTATION,
     DXGI_MODE_ROTATION_IDENTITY, DXGI_MODE_ROTATION_UNSPECIFIED, DXGI_SAMPLE_DESC,
 };
 use windows::Win32::Graphics::Dxgi::{
@@ -169,8 +168,8 @@ fn output_monitors(adapter: &IDXGIAdapter) -> Result<Vec<(IDXGIOutput, isize)>> 
         match unsafe { adapter.EnumOutputs(index) } {
             Ok(output) => {
                 // SAFETY: output is a valid COM object just enumerated.
-                let desc =
-                    unsafe { output.GetDesc() }.context("capture_failed: Failed to read output information")?;
+                let desc = unsafe { output.GetDesc() }
+                    .context("capture_failed: Failed to read output information")?;
                 outputs.push((output, desc.Monitor.0 as isize));
             }
             Err(error) if error.code() == DXGI_ERROR_NOT_FOUND => break,
@@ -266,7 +265,9 @@ pub(super) fn foreground_state(game: Option<HWND>) -> (Option<u32>, bool) {
     unsafe {
         let foreground = GetForegroundWindow();
         let hwnd = match game {
-            Some(game) if !foreground.is_invalid() && monitor_of(foreground) != monitor_of(game) => {
+            Some(game)
+                if !foreground.is_invalid() && monitor_of(foreground) != monitor_of(game) =>
+            {
                 game
             }
             _ => foreground,
@@ -389,7 +390,10 @@ impl Output {
     fn track_visibility(&mut self, pts: i64) {
         // AcquireNextFrame has returned; no GPU or consumer lock is held here.
         let game = self.hwnd;
-        if let Some(notice) = self.visibility.update(self.pid, pts, || foreground_state(game)) {
+        if let Some(notice) = self
+            .visibility
+            .update(self.pid, pts, || foreground_state(game))
+        {
             let _ = self.notices.send(notice);
         }
     }
@@ -436,22 +440,24 @@ fn classify(code: HRESULT) -> Option<AcquireError> {
 
 fn check_device(gpu: &Gpu) -> Result<()> {
     // SAFETY: Only checks whether the shared device was removed; does not modify the device or context.
-    unsafe { gpu.device.GetDeviceRemovedReason() }.context("capture_failed: D3D11 device was removed")
+    unsafe { gpu.device.GetDeviceRemovedReason() }
+        .context("capture_failed: D3D11 device was removed")
 }
 
 struct Duplication {
+    held: Option<Acquired>,
     dup: IDXGIOutputDuplication,
     size: (u32, u32),
 }
 
 /// Acquired DDA frame; calls ReleaseFrame when it leaves scope.
-struct Acquired<'a> {
-    dup: &'a IDXGIOutputDuplication,
+struct Acquired {
+    dup: IDXGIOutputDuplication,
     info: DXGI_OUTDUPL_FRAME_INFO,
     resource: Option<IDXGIResource>,
 }
 
-impl Drop for Acquired<'_> {
+impl Drop for Acquired {
     fn drop(&mut self) {
         // SAFETY: Created only after AcquireNextFrame succeeds and paired with that acquisition exactly once.
         let _ = unsafe { self.dup.ReleaseFrame() };
@@ -463,7 +469,8 @@ impl Duplication {
     fn open(gpu: &Gpu, monitor: HMONITOR) -> Result<Self> {
         let dxgi: IDXGIDevice = gpu.device.cast()?;
         // SAFETY: DXGI interface from the shared device; reads only its adapter.
-        let adapter = unsafe { dxgi.GetAdapter() }.context("capture_failed: Failed to get adapter")?;
+        let adapter =
+            unsafe { dxgi.GetAdapter() }.context("capture_failed: Failed to get adapter")?;
         let Some((output, _)) = output_monitors(&adapter)?
             .into_iter()
             .find(|(_, m)| *m == monitor.0 as isize)
@@ -472,7 +479,7 @@ impl Duplication {
                 "capture_failed: The game monitor is not driven by the recording adapter; DDA cannot capture it (use window capture)"
             );
         };
-        let dup = duplicate(&output, gpu)?;
+        let dup = duplicate(&output, gpu, monitor)?;
         // SAFETY: dup was just created and is valid.
         let desc = unsafe { dup.GetDesc() };
         if desc.DesktopImageInSystemMemory.as_bool() {
@@ -487,25 +494,29 @@ impl Duplication {
             );
         }
         Ok(Self {
+            held: None,
             dup,
             size: (desc.ModeDesc.Width, desc.ModeDesc.Height),
         })
     }
 
-    /// Waits for the next frame; timeout returns Ok(None).
-    fn next(&self, timeout_ms: u32) -> Result<Option<Acquired<'_>>, AcquireError> {
+    /// Release only immediately before polling; keeping ownership during pacing avoids desktop copies.
+    fn next(&mut self) -> Result<Option<&Acquired>, AcquireError> {
         let mut info = DXGI_OUTDUPL_FRAME_INFO::default();
         let mut resource = None;
-        // SAFETY: Output pointers reference local variables; the Acquired guard pairs success with ReleaseFrame.
-        match unsafe {
-            self.dup
-                .AcquireNextFrame(timeout_ms, &mut info, &mut resource)
-        } {
-            Ok(()) => Ok(Some(Acquired {
-                dup: &self.dup,
-                info,
-                resource,
-            })),
+        let result = acquire_after_release(&mut self.held, || {
+            // SAFETY: Output pointers remain live; the stored guard pairs success with ReleaseFrame.
+            unsafe { self.dup.AcquireNextFrame(0, &mut info, &mut resource) }
+        });
+        match result {
+            Ok(()) => {
+                self.held = Some(Acquired {
+                    dup: self.dup.clone(),
+                    info,
+                    resource,
+                });
+                Ok(self.held.as_ref())
+            }
             Err(error) => match classify(error.code()) {
                 None => Ok(None),
                 Some(error) => Err(error),
@@ -514,17 +525,24 @@ impl Duplication {
     }
 }
 
-fn duplicate(output: &IDXGIOutput, gpu: &Gpu) -> Result<IDXGIOutputDuplication> {
+fn acquire_after_release<T, R>(held: &mut Option<T>, acquire: impl FnOnce() -> R) -> R {
+    drop(held.take());
+    acquire()
+}
+
+fn duplication_formats(state: super::color::DisplayState) -> &'static [DXGI_FORMAT] {
+    match state {
+        super::color::DisplayState::Sdr => &[DXGI_FORMAT_B8G8R8A8_UNORM],
+        _ => &[DXGI_FORMAT_R16G16B16A16_FLOAT, DXGI_FORMAT_B8G8R8A8_UNORM],
+    }
+}
+
+fn duplicate(output: &IDXGIOutput, gpu: &Gpu, monitor: HMONITOR) -> Result<IDXGIOutputDuplication> {
     // Preserve HDR values until our SDR tone mapping; SDR desktops remain BGRA.
     if let Ok(output5) = output.cast::<IDXGIOutput5>() {
+        let formats = duplication_formats(super::color::display_state(monitor));
         // SAFETY: The device belongs to this output adapter; the format array remains valid for the call.
-        match unsafe {
-            output5.DuplicateOutput1(
-                &gpu.device,
-                0,
-                &[DXGI_FORMAT_R16G16B16A16_FLOAT, DXGI_FORMAT_B8G8R8A8_UNORM],
-            )
-        } {
+        match unsafe { output5.DuplicateOutput1(&gpu.device, 0, formats) } {
             Ok(dup) => return Ok(dup),
             Err(error) => {
                 eprintln!("DDA: DuplicateOutput1 failed ({error}); falling back to DuplicateOutput")
@@ -651,7 +669,7 @@ fn pointer_visible(previous: bool, info: &DXGI_OUTDUPL_FRAME_INFO) -> bool {
 
 /// Passes the acquired frame to the consumer; returns `Err` if the frame format does not match (logged only once).
 fn deliver(
-    frame: &Acquired<'_>,
+    frame: &Acquired,
     consumer: &mut dyn FrameConsumer,
     output: &mut Output,
     freq: i64,
@@ -659,6 +677,9 @@ fn deliver(
 ) -> Result<Option<(u32, u32)>> {
     // Pointer metadata is valid only on mouse updates; keep it even when the frame is throttled.
     output.cursor_visible = pointer_visible(output.cursor_visible, &frame.info);
+    if let Some(cursor) = &mut output.cursor {
+        cursor.update(&frame.dup, &frame.info);
+    }
     let Some(pts) = frame_pts(
         if output.cursor.is_some() && frame.info.AccumulatedFrames == 0 {
             0
@@ -695,6 +716,7 @@ fn deliver(
             desc.Format.0
         );
     }
+    let source_size = (desc.Width, desc.Height);
     output.track_visibility(pts);
     let texture = output.color.convert(&texture, output.monitor)?;
     let texture = if output.cursor_visible {
@@ -702,7 +724,9 @@ fn deliver(
             match cursor.draw(&texture, output.monitor) {
                 Ok(texture) => texture,
                 Err(error) => {
-                    eprintln!("Could not draw cursor; continuing without cursor overlay: {error:#}");
+                    eprintln!(
+                        "Could not draw cursor; continuing without cursor overlay: {error:#}"
+                    );
                     output.cursor = None;
                     texture
                 }
@@ -713,13 +737,15 @@ fn deliver(
     } else {
         texture
     };
+    // SAFETY: The converted/overlaid texture remains alive through delivery.
+    unsafe { texture.GetDesc(&mut desc) };
     consumer.on_frame(&CapturedFrame {
         texture: &texture,
         width: desc.Width,
         height: desc.Height,
         pts,
     });
-    Ok(Some((desc.Width, desc.Height)))
+    Ok(Some(source_size))
 }
 
 pub(super) fn run(
@@ -743,7 +769,7 @@ pub(super) fn run(
         pid: opts.pid,
         gate: SlotGate::new(opts.max_fps),
         visibility: Visibility::new(),
-        color: super::color::SdrConverter::new(&gpu)?,
+        color: super::color::SdrConverter::new(&gpu, opts.sdr_size.clone())?,
         cursor: opts
             .capture_cursor
             .then(|| super::cursor::CursorOverlay::new(&gpu)),
@@ -782,21 +808,24 @@ pub(super) fn run(
         }
         if tracker.dup.is_none() {
             output.cursor_visible = false;
+            if let Some(cursor) = &mut output.cursor {
+                cursor.reset();
+            }
             tracker.reopen(&gpu)?;
         }
-        let Some(dup) = &tracker.dup else {
+        let Some(dup) = &mut tracker.dup else {
             output.idle(clock::now_ticks() - opts.origin_ticks);
             match stopped.recv_timeout(poll) {
                 Ok(()) | Err(mpsc::RecvTimeoutError::Disconnected) => break,
                 Err(mpsc::RecvTimeoutError::Timeout) => continue,
             }
         };
-        // Process the frame within the borrowed duplication scope (frame drop -> ReleaseFrame), then update state.
-        let outcome = match dup.next(0) {
+        // The duplication retains this frame through pacing and releases it before the next poll.
+        let outcome = match dup.next() {
             Ok(None) => Ok(None),
             Ok(Some(frame)) => Ok(
                 match deliver(
-                    &frame,
+                    frame,
                     consumer.as_mut(),
                     &mut output,
                     freq,
@@ -815,9 +844,12 @@ pub(super) fn run(
             Err(error) => Err(error),
         };
         match outcome {
-            Ok(Some(size)) => tracker.announce(size),
-            Ok(None) => {
-                output.idle(clock::now_ticks() - opts.origin_ticks);
+            Ok(size) => {
+                if let Some(size) = size {
+                    tracker.announce(size);
+                } else {
+                    output.idle(clock::now_ticks() - opts.origin_ticks);
+                }
                 thread::sleep(poll);
             }
             Err(AcquireError::Lost) => {
@@ -846,6 +878,45 @@ pub(super) fn run(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn sdr_excludes_fp16_and_hdr_or_unknown_preserves_it() {
+        use super::super::color::DisplayState;
+        assert_eq!(
+            duplication_formats(DisplayState::Sdr),
+            [DXGI_FORMAT_B8G8R8A8_UNORM]
+        );
+        for state in [DisplayState::Hdr, DisplayState::Unknown] {
+            assert_eq!(
+                duplication_formats(state),
+                [DXGI_FORMAT_R16G16B16A16_FLOAT, DXGI_FORMAT_B8G8R8A8_UNORM]
+            );
+        }
+    }
+
+    #[test]
+    fn ownership_is_retained_until_acquisition_or_shutdown() {
+        use std::cell::RefCell;
+        struct Lease<'a>(&'a RefCell<Vec<&'static str>>);
+        impl Drop for Lease<'_> {
+            fn drop(&mut self) {
+                self.0.borrow_mut().push("release");
+            }
+        }
+        let events = RefCell::new(Vec::new());
+        let mut held = Some(Lease(&events));
+        events.borrow_mut().push("pace");
+        acquire_after_release(&mut held, || events.borrow_mut().push("acquire"));
+        assert_eq!(*events.borrow(), ["pace", "release", "acquire"]);
+        acquire_after_release(&mut held, || events.borrow_mut().push("timeout"));
+        assert_eq!(
+            events.borrow().iter().filter(|&&e| e == "release").count(),
+            1
+        );
+        held = Some(Lease(&events));
+        drop(held);
+        assert_eq!(events.borrow().last(), Some(&"release"));
+    }
 
     #[test]
     fn pointer_visibility_survives_desktop_only_and_throttled_mouse_updates() {
@@ -919,7 +990,10 @@ mod tests {
                 }),
                 expected
             );
-            assert_eq!(visibility.update(42, pts, || panic!("duplicate query in the same slot")), None);
+            assert_eq!(
+                visibility.update(42, pts, || panic!("duplicate query in the same slot")),
+                None
+            );
         }
         assert_eq!(queries, 5);
         let mut initially_hidden = Visibility::new();
@@ -932,7 +1006,10 @@ mod tests {
     #[test]
     fn cross_adapter_requires_a_positive_luid_match_on_another_adapter() {
         let snapshot = [(1, vec![0x10]), (2, vec![0x20]), (3, vec![])];
-        assert_eq!(monitor_on_other_adapter_snapshot(1, &snapshot, 0x20), Some(1));
+        assert_eq!(
+            monitor_on_other_adapter_snapshot(1, &snapshot, 0x20),
+            Some(1)
+        );
         assert_eq!(
             monitor_on_other_adapter_snapshot(1, &snapshot, 0x10),
             None,

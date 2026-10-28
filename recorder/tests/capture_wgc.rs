@@ -329,6 +329,7 @@ fn wgc_captures_pixels_resizes_reconnects_and_falls_back_to_monitor() {
             pid: std::process::id(),
             max_fps: 60,
             origin_ticks: clock::now_ticks(),
+            sdr_size: None,
         },
         Box::new(Consumer {
             small: SmallFrameExtractor::new(&gpu, FRAMES).unwrap(),
@@ -500,6 +501,7 @@ fn start_reports_missing_window_and_rejects_zero_fps() {
                 pid: u32::MAX,
                 max_fps: fps,
                 origin_ticks: clock::now_ticks(),
+                sdr_size: None,
             },
             Box::new(Empty),
             notices,

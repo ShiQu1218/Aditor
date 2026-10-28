@@ -23,7 +23,10 @@ use std::{
 };
 
 use anyhow::{bail, ensure, Context, Result};
-use windows::Win32::Graphics::Direct3D11::ID3D11Texture2D;
+use windows::Win32::Graphics::Direct3D11::{
+    ID3D11Texture2D, D3D11_BIND_RENDER_TARGET, D3D11_TEXTURE2D_DESC, D3D11_USAGE_DEFAULT,
+};
+use windows::Win32::Graphics::Dxgi::Common::{DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_SAMPLE_DESC};
 
 use crate::gpu::Gpu;
 use crate::types::{Codec, EncodeAspect, EncodePreset};
@@ -170,6 +173,14 @@ pub(crate) fn codec_of(name: &str) -> Codec {
         Codec::H264
     }
 }
+fn input_formats(name: &str) -> [ffi::AVPixelFormat; 2] {
+    if name.ends_with("_nvenc") {
+        [ffi::AV_PIX_FMT_NV12, ffi::AV_PIX_FMT_BGRA]
+    } else {
+        [ffi::AV_PIX_FMT_BGRA, ffi::AV_PIX_FMT_NV12]
+    }
+}
+
 fn probe(gpu: &Gpu, name: &str) -> Result<ffi::AVPixelFormat> {
     let params = VideoParams {
         width: 256,
@@ -182,11 +193,19 @@ fn probe(gpu: &Gpu, name: &str) -> Result<ffi::AVPixelFormat> {
         aspect: EncodeAspect::Native,
     };
     let mut failure = None;
-    for format in [ffi::AV_PIX_FMT_BGRA, ffi::AV_PIX_FMT_NV12] {
+    for format in input_formats(name) {
         let attempt = || -> Result<()> {
             let hardware = Hardware::new(gpu, &params, format)?;
             let encoder = hardware.encoder(name, &params)?;
             let frame = hardware.surface()?;
+            // Exercise the BGRA-to-surface copy too: NV12 always goes through the video processor,
+            // which the encoder alone does not test.
+            let source = probe_source(gpu, (params.width, params.height))?;
+            Copier::new(gpu, &params, format).copy(
+                &source,
+                (params.width, params.height),
+                &frame,
+            )?;
             // SAFETY: This thread exclusively owns the frame and sets its initial encoding timestamp.
             unsafe {
                 (*frame.0).pts = 0;
@@ -206,6 +225,31 @@ fn probe(gpu: &Gpu, name: &str) -> Result<ffi::AVPixelFormat> {
     }
     let failure = failure.unwrap_or_else(|| anyhow::anyhow!("No pixel format was tried"));
     Err(failure.context("Trial encoding failed"))
+}
+
+/// A blank BGRA render-target texture shaped like a captured frame.
+fn probe_source(gpu: &Gpu, size: (u32, u32)) -> Result<ID3D11Texture2D> {
+    let desc = D3D11_TEXTURE2D_DESC {
+        Width: size.0,
+        Height: size.1,
+        MipLevels: 1,
+        ArraySize: 1,
+        Format: DXGI_FORMAT_B8G8R8A8_UNORM,
+        SampleDesc: DXGI_SAMPLE_DESC {
+            Count: 1,
+            Quality: 0,
+        },
+        Usage: D3D11_USAGE_DEFAULT,
+        BindFlags: D3D11_BIND_RENDER_TARGET.0 as u32,
+        ..Default::default()
+    };
+    let mut texture = None;
+    // SAFETY: Valid device and single-mip BGRA description; the windows crate manages the output reference.
+    unsafe {
+        gpu.device
+            .CreateTexture2D(&desc, None, Some(&mut texture))?
+    };
+    texture.context("Probe texture was not created")
 }
 
 /// Builds the no_hw_encoder message; flags an outdated NVIDIA driver so the app can show an update hint.
@@ -295,9 +339,24 @@ impl SegmentWriter {
         for name in candidates(&video) {
             let attempt = || -> Result<_> {
                 let format = probe(gpu, name)?;
-                let hardware = Hardware::new(gpu, &video, format)?;
-                let encoder = hardware.encoder(name, &video)?;
-                Ok((hardware, encoder))
+                let mut failure = None;
+                // The recording size can reject a format that passed the small probe.
+                for candidate in std::iter::once(format).chain(
+                    input_formats(name)
+                        .into_iter()
+                        .filter(|candidate| *candidate != format),
+                ) {
+                    let attempt = || -> Result<_> {
+                        let hardware = Hardware::new(gpu, &video, candidate)?;
+                        let encoder = hardware.encoder(name, &video)?;
+                        Ok((hardware, encoder))
+                    };
+                    match attempt() {
+                        Ok(selected) => return Ok(selected),
+                        Err(error) => failure = Some(error),
+                    }
+                }
+                Err(failure.context("No recording pixel format was tried")?)
             };
             match attempt() {
                 Ok((hardware, encoder)) => {
@@ -408,7 +467,8 @@ impl SegmentWriter {
                 .copier
                 .copy(texture, (src_w, src_h), &surface.frame)
             {
-                self.counts.fail(format!("GPU frame copy failed: {error:#}"));
+                self.counts
+                    .fail(format!("GPU frame copy failed: {error:#}"));
                 return None;
             }
             self.counts.queue.fetch_add(1, Ordering::Relaxed);
@@ -487,9 +547,9 @@ impl SegmentWriter {
         self.video_tx.take();
         self.audio_tx.take();
         if let Some(worker) = self.worker.take() {
-            worker
-                .join()
-                .map_err(|_| anyhow::anyhow!("encode_failed: Encoder thread terminated unexpectedly"))??;
+            worker.join().map_err(|_| {
+                anyhow::anyhow!("encode_failed: Encoder thread terminated unexpectedly")
+            })??;
         }
         let audio_dropped = self.counts.audio_dropped.swap(0, Ordering::Relaxed);
         if audio_dropped > 0 {

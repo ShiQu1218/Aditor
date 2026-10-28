@@ -82,7 +82,7 @@ try {
     $cargoSkips = if ($env:GITHUB_ACTIONS -eq "true") {
         @("gpu_idle_black_frames", "opens_shared_texture", "shared_texture_open_and_convert", "capture_loop_delivers_frames",
           "gpu_luma_uses_full_thumb", "gpu_nv12_conversion", "gpu_recording_and_scaling", "gpu_static_capture",
-          "actual_default_loopback_and_microphone", "gpu_small_frames_preserve_roi", "wgc_captures_pixels_resizes") | ForEach-Object { "--skip", $_ }
+          "actual_default_loopback_and_microphone", "gpu_small_frames_preserve_roi", "gpu_scaler_caches_direct_views", "wgc_captures_pixels_resizes") | ForEach-Object { "--skip", $_ }
     } else { @() }
     Invoke-Step "recorder cargo test" (Join-Path $root "recorder") { if ($cargoSkips) { cargo test --no-fail-fast --bins --test audio_capture --test capture_dda --test capture_wgc --test ipc_process -- @cargoSkips } else { cargo test } }
 
