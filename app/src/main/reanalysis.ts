@@ -104,6 +104,10 @@ export function saveCacheEdits(doc: CacheDoc, cacheDir: string, beside: boolean,
   return saveCacheDoc(doc)
 }
 
+function backupTime(cachePath: string): number {
+  return fs.statSync(clipsBackupPath(cachePath)).mtimeMs
+}
+
 function deleteClipsBackup(cachePath: string): void {
   try {
     fs.unlinkSync(clipsBackupPath(cachePath))
@@ -120,6 +124,8 @@ export interface PriorCache {
   fingerprint: string
   /** Preferred cache path whose backup must survive cancellation/failure. */
   backupPath: string
+  /** Source backup copied to backupPath; removed once its clips are merged, or switching back would replay it. */
+  sourceBackupPath?: string
 }
 
 const fingerprintOf = (doc: Partial<CacheDoc>): string => JSON.stringify([doc.video ?? null, doc.analysis ?? null])
@@ -146,12 +152,17 @@ export function capturePriorCache(videoPath: string, cacheDir: string, beside = 
   const docDone = hasDoc && doc!.analysis?.status === 'done'
   const docClips = hasDoc && Array.isArray(doc!.clips) ? doc!.clips! : []
 
-  if (docDone && !editing && !writeReanalysisBackup(cachePath, (doc!.events ?? []) as EngineEvent[], docClips as Clip[])) {
+  // A backup still beside a done cache was never merged back (restore write failed or the app quit first); keep it.
+  // A migrated source carries its own unmerged backup; when both locations have one, the newer backup wins.
+  const ownBackup = readReanalysisBackup(cachePath)
+  const sourceWins = sourcePath !== cachePath && !!sourceBackup && (!ownBackup || backupTime(sourcePath) > backupTime(cachePath))
+  const unconsumed = docDone && !editing ? (sourceWins ? sourceBackup : ownBackup) : null
+  if (docDone && !editing && !unconsumed && !writeReanalysisBackup(cachePath, (doc!.events ?? []) as EngineEvent[], docClips as Clip[])) {
     throw new Error(tr('無法備份編輯內容，已停止重新分析'))
   }
   const targetBackup = readReanalysisBackup(cachePath)
-  const backup = editing ?? targetBackup ?? sourceBackup ?? legacyBackup
-  if (backup && (!targetBackup || editing) && !writeReanalysisBackup(cachePath, backup.events, backup.clips, backup.document)) {
+  const backup = editing ?? (sourceWins ? sourceBackup : targetBackup) ?? sourceBackup ?? legacyBackup
+  if (backup && (backup !== targetBackup || editing) && !writeReanalysisBackup(cachePath, backup.events, backup.clips, backup.document)) {
     throw new Error(tr('無法備份編輯內容，已停止重新分析'))
   }
   if (hasDoc && !docDone && backup?.events.length && !Array.isArray(doc!.base_events)) {
@@ -164,7 +175,9 @@ export function capturePriorCache(videoPath: string, cacheDir: string, beside = 
     clips: backup?.clips ?? docClips as Clip[],
     done: docDone || backup !== null,
     fingerprint: hasDoc ? fingerprintOf(doc!) : '',
-    backupPath: cachePath
+    backupPath: cachePath,
+    // Merged or superseded either way; leaving it would replay old state after switching back.
+    ...(sourceBackup && sourcePath !== cachePath ? { sourceBackupPath: sourcePath } : {})
   }
 }
 
@@ -207,7 +220,7 @@ export function preserveClipsAfterReanalysis(
   const ok = saveCacheDoc(doc)
   // Delete the backup only after the rewrite succeeds; keep it on failure for the next attempt.
   if (ok) {
-    for (const backupPath of new Set([cachePath, prior?.backupPath, editing?.path])) if (backupPath) deleteClipsBackup(backupPath)
+    for (const backupPath of new Set([cachePath, prior?.backupPath, prior?.sourceBackupPath, editing?.path])) if (backupPath) deleteClipsBackup(backupPath)
     for (const candidate of [cacheFilePath(videoPath, cacheDir, !beside), legacyCacheFilePath(videoPath, cacheDir, true)]) {
       const edited = readReanalysisBackup(candidate)?.document
       if (edited && path.resolve(edited.video.path).toLowerCase() === path.resolve(videoPath).toLowerCase()) deleteClipsBackup(candidate)

@@ -57,11 +57,22 @@ export class Library {
   corruptBackup: string | null = null
   private saveTimer: ReturnType<typeof setTimeout> | null = null
   private dirty = false
+  /** Set when library.json exists but could not be read or backed up; saving then would overwrite the user's library with partial data. */
+  private saveBlocked = false
 
   load(): void {
     if (!fs.existsSync(this.file)) return
+    let raw: string
     try {
-      const parsed: unknown = JSON.parse(fs.readFileSync(this.file, 'utf-8'))
+      raw = fs.readFileSync(this.file, 'utf-8')
+    } catch (err) {
+      // Unreadable (e.g. locked) is not corrupt: keep the file untouched and refuse to save over it.
+      this.saveBlocked = true
+      console.error('Failed to read library, saving is disabled for this session:', err)
+      return
+    }
+    try {
+      const parsed: unknown = JSON.parse(raw)
       if (!Array.isArray(parsed)) throw new Error('library.json is not an array')
       // One malformed entry would crash later startup code; treat it as corruption so the file is backed up.
       if (!parsed.every((e) => e && typeof e === 'object' && typeof e.path === 'string' && typeof e.status === 'string')) {
@@ -76,7 +87,8 @@ export class Library {
         fs.renameSync(this.file, bak)
         this.corruptBackup = bak
       } catch (e) {
-        console.error('Failed to back up corrupt library:', e)
+        this.saveBlocked = true
+        console.error('Failed to back up corrupt library, saving is disabled for this session:', e)
       }
       console.error('Library file is corrupt, moved aside:', err)
     }
@@ -89,6 +101,7 @@ export class Library {
       this.saveTimer = null
     }
     this.dirty = true
+    if (this.saveBlocked) return false
     const tmp = `${this.file}.tmp`
     try {
       fs.mkdirSync(path.dirname(this.file), { recursive: true })
@@ -353,16 +366,25 @@ export function watchFolder(dir: string, onAdd: (paths: string[]) => void, opts:
 
   const probe = opts.isFileReleased ?? (process.platform === 'win32' ? isFileReleased : undefined)
   const pending = new Map<string, ReturnType<typeof setTimeout> | undefined>()
+  /** Files still locked at the wait bound; a later write event starts a new bounded check instead of polling. */
+  const timedOut = new Set<string>()
   let closed = false
   const close = watcher.close.bind(watcher)
   watcher.close = () => {
     closed = true
     for (const timer of pending.values()) clearTimeout(timer)
     pending.clear()
+    timedOut.clear()
     return close()
   }
 
-  watcher.on('add', (filePath) => {
+  watcher.on('change', (filePath) => {
+    if (timedOut.delete(filePath)) track(filePath)
+  })
+  watcher.on('unlink', (filePath) => timedOut.delete(filePath))
+  watcher.on('add', (filePath) => track(filePath))
+
+  function track(filePath: string): void {
     if (closed || pending.has(filePath)) return
     if (!probe) {
       onAdd([filePath])
@@ -380,6 +402,7 @@ export function watchFolder(dir: string, onAdd: (paths: string[]) => void, opts:
           onAdd([filePath])
         } else if (Date.now() >= deadline) {
           pending.delete(filePath)
+          timedOut.add(filePath)
           console.warn(`[Watch] Timed out waiting for file release: ${filePath}`)
         } else {
           pending.set(filePath, setTimeout(() => void check(), Math.min(opts.stabilityMs ?? 5000, deadline - Date.now())))
@@ -392,7 +415,7 @@ export function watchFolder(dir: string, onAdd: (paths: string[]) => void, opts:
       }
     }
     void check()
-  })
+  }
 
   return watcher
 }

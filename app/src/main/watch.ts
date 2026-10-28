@@ -123,32 +123,32 @@ export class WatchManager extends EventEmitter {
   /**
    * Add a watched folder: validate with the shared validator (absolute path, exists, directory; otherwise throw an error with a reason),
    * update settings, and return only after the watcher is ready. Alternate spellings of the same folder are treated as one.
+   * Returns false when settings could not be written; the change still applies in memory and a retry rewrites it.
    */
-  async add(dir: string): Promise<void> {
+  async add(dir: string): Promise<boolean> {
     const resolved = validateWatchDir(dir)
     const key = watchKey(resolved)
     const current = this.opts.settings.get().watchFolders
-    if (!current.some((d) => watchKey(d) === key)) {
-      this.opts.settings.set({ watchFolders: [...current, resolved] })
-    }
+    // Set even when already listed, so a retry rewrites settings left unsaved by a failed write.
+    const { persisted } = this.opts.settings.set({ watchFolders: current.some((d) => watchKey(d) === key) ? current : [...current, resolved] })
     this.ensureRetryTimer()
     await this.activateIfPossible(key, resolved)
     this.emit('update')
+    return persisted
   }
 
   /** Remove a watched folder (safe when it is not in the list): stop its watcher and remove it from settings. */
-  async remove(dir: string): Promise<void> {
+  async remove(dir: string): Promise<boolean> {
     if (typeof dir !== 'string') {
-      return
+      return true
     }
     const key = watchKey(dir)
     const current = this.opts.settings.get().watchFolders
-    if (current.some((d) => watchKey(d) === key)) {
-      this.opts.settings.set({ watchFolders: current.filter((d) => watchKey(d) !== key) })
-    }
+    const { persisted } = this.opts.settings.set({ watchFolders: current.filter((d) => watchKey(d) !== key) })
     this.deactivate(key)
     this.warned.delete(key)
     this.emit('update')
+    return persisted
   }
 
   /** Watched-folder list (settings order; includes folders that are currently missing). */

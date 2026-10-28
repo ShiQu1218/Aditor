@@ -235,10 +235,11 @@ export class AnalysisQueue extends EventEmitter {
 
       const duration = doc.video?.duration || 0
       const thumb = await this._generateThumbnail(videoPath, duration).catch(() => undefined)
-      if (run.cancelled) return
 
-      // After the thumbnail, so edits saved while it was generated are merged too.
+      // After the thumbnail, so edits saved while it was generated are merged too;
+      // a cancel during the thumbnail still needs it, as the engine already replaced the cache.
       preserve()
+      if (run.cancelled) return
 
       this.library.update(videoPath, {
         status: 'done',
@@ -247,14 +248,15 @@ export class AnalysisQueue extends EventEmitter {
         counts: countEvents(doc.events || []),
         game: gameOf(doc.game),
         durationSec: duration,
-        thumb,
+        // A failed generation keeps the thumbnail the entry already has.
+        ...(thumb ? { thumb } : {}),
         codec: doc.video?.codec,
         // Reanalysis completed: invalidate the old N highlights count and let lazy computation recalculate it.
         hl: undefined
       })
     } catch (err) {
-      if (run.cancelled) {
-        // Interrupted runs remain pending, including jobs deferred until the game exits.
+      if (run.cancelled || (err instanceof EngineError && err.code === 'engine_stopped')) {
+        // Interrupted runs remain pending, including jobs deferred until the game exits and runs cut off by quitting.
         this.library.update(videoPath, { status: 'pending', progress: 0, error: undefined, analyzingSince: undefined })
       } else {
         if (err instanceof EngineError && err.code === 'unknown_game') {

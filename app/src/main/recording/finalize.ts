@@ -511,13 +511,18 @@ export async function finalizeSession(dir: string, deps: RecordingDeps): Promise
       throw error
     }
   }
+  // The user deleted the finished output from the library; keeping the session would fail on it at every recovery.
+  if (outputWasRemoved(dir, marker.outputPath)) {
+    await fs.promises.rm(dir, { recursive: true })
+    return []
+  }
   if (!inOutputDir(marker.outputPath, outputDir) ||
       path.extname(marker.outputPath).toLowerCase() !== '.mp4' ||
       !(await fs.promises.lstat(marker.outputPath)).isFile()) throw new Error(tr('已收尾的影片路徑無效或檔案遺失'))
   // Legacy markers store only the output path; recovery adds the file to the library without re-enqueuing analysis.
   if (marker.postAnalysis === undefined) marker.postAnalysis = 'none'
   if (!['none', 'afterExit', 'perMatch'].includes(marker.postAnalysis)) throw new Error(tr('已收尾的分析設定無效'))
-  // Recovery from an existing marker skips the snapshot above, so read the game from recording.json directly.
+  // recording.json outlives the marker, so recovery keeps the game even without a live cache.
   addRecorded(deps, [marker.outputPath], gameOf(recording?.game))
   if (!marker.liveCached) {
       // Live events are best-effort: conversion failure does not block finalization; full or manual analysis can fill them in later.

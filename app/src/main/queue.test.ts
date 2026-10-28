@@ -22,6 +22,21 @@ describe('AnalysisQueue', () => {
     lib = new Library(tmpFile)
   })
 
+  it('keeps the existing thumbnail when the new one cannot be generated', async () => {
+    const video = 'D:/Videos/thumb.mp4'
+    lib.add([video])
+    lib.update(video, { thumb: 'C:/thumbs/old.jpg' })
+    const engineMock = {
+      request: () => ({ id: 'r1', promise: Promise.resolve({ video: { duration: 10 }, events: [] }) }),
+      cancel: () => {}
+    } as unknown as EngineClient
+    const queue = new AnalysisQueue(engineMock, lib, { profileDir: '/p', cacheDir: path.join(os.tmpdir(), 'aditor-queue-thumb') })
+    ;(queue as any)._generateThumbnail = async () => undefined
+    queue.enqueue(video)
+    await waitFor(() => lib.get(video)?.status === 'done')
+    expect(lib.get(video)?.thumb).toBe('C:/thumbs/old.jpg')
+  })
+
   it('asks the user for the game when the engine cannot recognise it, then analyzes with the chosen game', async () => {
     const calls: Array<{ game?: string }> = []
     const engineMock = {
@@ -331,5 +346,34 @@ describe('AnalysisQueue game aspect', () => {
     finish[1]()
     await waitFor(() => queue.snapshot().analyzing === null)
     expect(forces).toEqual([undefined, undefined])
+  })
+})
+
+describe('AnalysisQueue when the app stops the engine', () => {
+  it('keeps the interrupted video pending and does not start another engine for the next one', async () => {
+    const fs = await import('fs')
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'aditor-queue-stop-'))
+    const script = path.join(dir, 'engine.cjs')
+    const starts = path.join(dir, 'starts')
+    // Counts engine starts; never answers analyze, like a long analysis still running at quit.
+    fs.writeFileSync(script, `require('fs').appendFileSync(process.argv[2],'s');console.log(JSON.stringify({type:'ready'}));require('readline').createInterface({input:process.stdin}).on('line',()=>{});`)
+    const engine = new EngineClient({ command: process.execPath, args: [script, starts] })
+    const lib = new Library(path.join(dir, 'library.json'))
+    try {
+      await engine.start()
+      lib.add(['D:/Videos/a.mp4', 'D:/Videos/b.mp4'])
+      const queue = new AnalysisQueue(engine, lib, { profileDir: '/p', cacheDir: dir })
+      queue.enqueue('D:/Videos/a.mp4')
+      queue.enqueue('D:/Videos/b.mp4')
+      await waitFor(() => queue.snapshot().analyzing === 'D:/Videos/a.mp4')
+      await engine.stop()
+      await new Promise((resolve) => setTimeout(resolve, 300))
+      expect(lib.get('D:/Videos/a.mp4')).toMatchObject({ status: 'pending' })
+      expect(lib.get('D:/Videos/a.mp4')?.error).toBeUndefined()
+      expect(fs.readFileSync(starts, 'utf8')).toBe('s')
+    } finally {
+      await engine.stop()
+      fs.rmSync(dir, { recursive: true, force: true })
+    }
   })
 })

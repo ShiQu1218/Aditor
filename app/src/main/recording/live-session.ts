@@ -192,7 +192,8 @@ export class LiveSession extends EventEmitter {
     try { await this.engine?.stop() } catch (error) { console.warn('[live] Stop failed:', error) }
     await this.flush()
     // Set the marker only if detection stayed healthy throughout. In per-match mode, no matches at finalization means the user stayed in the lobby, so do not output the full recording.
-    if (!this.engine || !this.healthy || this.failed) return
+    // A killed engine sends no final snapshot and a lossy one reports incomplete; both may have missed a match, so keep the footage.
+    if (!this.engine || !this.healthy || this.failed || this.engine.quality()?.complete !== true) return
     try { await writeJson(path.join(this.options.dir, LIVE_COMPLETE_FILE), { version: 1 }) }
     catch (error) { console.warn('[live] Failed to write detection completion marker:', error) }
   }

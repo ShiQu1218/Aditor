@@ -4,6 +4,7 @@ import path from 'path'
 import { spawnSync } from 'child_process'
 import { finalizeSession, readIndex } from './finalize'
 import { recoverSessions } from './recovery'
+import { RecordingSessionService } from './session'
 import { copySegments, createSegments, ffmpeg, makeDeps, sessionDir, tempRoot } from './test-support'
 
 const roots: string[] = []
@@ -49,13 +50,46 @@ describe('recording index and safety boundaries', () => {
     expect(fs.existsSync(missing)).toBe(true)
   })
 
-  it('recovering from a finalized marker keeps the recorded game tag', async () => {
+  it.each(['videos', path.join('videos', '2026-10-18')])('a kept session whose finalized output (in %s) the user deleted is cleaned up instead of failing forever', async (folder) => {
+    const base = root(); const deps = makeDeps(base)
+    deps.addToLibrary = vi.fn()
+    const dir = sessionDir(base)
+    fs.mkdirSync(path.join(base, folder), { recursive: true })
+    const outputPath = path.join(base, folder, 'finished.mp4')
+    fs.writeFileSync(outputPath, 'already finalized')
+    fs.writeFileSync(path.join(dir, 'finalized.json'), JSON.stringify({ outputPath, postAnalysis: 'none', analysisQueued: true }))
+    // The library's removal hook runs before the unlink; no session is active.
+    new RecordingSessionService(deps).noteOutputRemoval(outputPath)
+    fs.unlinkSync(outputPath)
+    expect(await finalizeSession(dir, deps)).toEqual([])
+    expect(deps.addToLibrary).not.toHaveBeenCalled()
+    expect(fs.existsSync(dir)).toBe(false)
+  })
+
+  it('a kept OBS per-match session whose recorded file the user deleted outside the output folder still finalizes', async () => {
+    const base = root(); const deps = makeDeps(base)
+    deps.addToLibrary = vi.fn()
+    const dir = sessionDir(base)
+    fs.writeFileSync(path.join(dir, 'recording.json'), JSON.stringify({ startedAt: 0, postAnalysis: 'none', backend: 'obs' }))
+    fs.mkdirSync(path.join(base, 'obs'))
+    const file = path.join(base, 'obs', 'OBS_1.mkv')
+    fs.writeFileSync(file, 'obs video')
+    fs.writeFileSync(path.join(dir, 'obs.json'), JSON.stringify({ captureStartedAt: 0, recordStartedAt: 0 }))
+    fs.writeFileSync(path.join(dir, 'obs-matches.json'), JSON.stringify([{ index: 1, recordStartedAt: 0, stopped: true,
+      outputPath: file, added: true, liveCached: true, liveTrusted: false, analysisQueued: true }]))
+    new RecordingSessionService(deps).noteOutputRemoval(file)
+    fs.unlinkSync(file)
+    expect(await finalizeSession(dir, deps)).toEqual([])
+    expect(fs.existsSync(dir)).toBe(false)
+  })
+
+  it('a finalized marker adds the output with the game recorded in recording.json', async () => {
     const base = root(); const deps = makeDeps(base)
     deps.addToLibrary = vi.fn(); deps.enqueueAnalysis = vi.fn()
     const dir = sessionDir(base)
-    const outputPath = path.join(base, 'videos', 'valorant.mp4')
+    const outputPath = path.join(base, 'videos', 'Valorant.mp4')
     fs.writeFileSync(outputPath, 'already finalized')
-    fs.writeFileSync(path.join(dir, 'recording.json'), JSON.stringify({ startedAt: Date.now(), postAnalysis: 'none', game: 'valorant' }))
+    fs.writeFileSync(path.join(dir, 'recording.json'), JSON.stringify({ startedAt: 1, postAnalysis: 'none', mode: 'session', game: 'valorant' }))
     fs.writeFileSync(path.join(dir, 'finalized.json'), JSON.stringify({ outputPath, postAnalysis: 'none', analysisQueued: false, liveCached: true }))
     expect(await finalizeSession(dir, deps)).toEqual([outputPath])
     expect(deps.addToLibrary).toHaveBeenCalledWith([outputPath], 'valorant')

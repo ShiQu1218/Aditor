@@ -208,7 +208,9 @@ export class EngineClient extends EventEmitter {
     const pendingList = Array.from(this.pending.values())
     this.pending.clear()
     for (const req of pendingList) {
-      req.reject(new EngineError('engine_crashed', `Engine process crashed during the request (${reason})`))
+      req.reject(this.isStopping
+        ? new EngineError('engine_stopped', 'Engine was stopped during the request')
+        : new EngineError('engine_crashed', `Engine process crashed during the request (${reason})`))
     }
 
     if (this.isStopping) {
@@ -237,6 +239,8 @@ export class EngineClient extends EventEmitter {
     const id = `req_${Date.now()}_${++this.reqSeq}`
 
     const promise = new Promise<T>((resolve, reject) => {
+      // After stop() (app quitting), do not spawn a new engine that would outlive the app.
+      if (this.isStopping && !this.proc) return reject(new EngineError('engine_stopped', 'Engine is stopped'))
       // Check if dead due to repeated crashes
       const now = Date.now()
       this.crashTimes = this.crashTimes.filter((t) => now - t <= this.crashWindowMs)

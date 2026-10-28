@@ -165,6 +165,21 @@ describe('per-match clipping and recovery', () => {
     expect(fs.existsSync(r.dir)).toBe(false)
   })
 
+  it('finalizes a session kept for recovery after one of its published matches is deleted', async () => {
+    const r = rig()
+    // No active session: the session dir was kept by an earlier failed or interrupted finalization.
+    const service = new RecordingSessionService(r.deps)
+    const library = new Library(path.join(r.root, 'library.json'), (file) => service.noteOutputRemoval(file))
+    r.deps.addToLibrary = (files) => { library.add(files, 'recording') }
+    const outputs = await cutMatches(r.dir, r.deps)
+    expect(outputs).toHaveLength(2)
+    expect(library.remove(outputs[0])).toBe(true)
+    await finalizeSession(r.dir, r.deps)
+    expect(fs.existsSync(outputs[0])).toBe(false)
+    expect(library.get(outputs[1])).toBeDefined()
+    expect(fs.existsSync(r.dir)).toBe(false)
+  })
+
   it('queues post-recording analysis when final live cache persistence fails', async () => {
     const r = rig('afterExit')
     r.saveLive({ ...r.live, quality: { complete: true } })

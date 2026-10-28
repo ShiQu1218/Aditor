@@ -38,8 +38,20 @@ export interface ThumbnailDeps {
   ffmpeg?: { bin: string; prefixArgs?: string[] }
 }
 
+/** Recording finalization and the analysis queue can ask for the same thumbnail at once; they share one ffmpeg run and tmp file. */
+const inflight = new Map<string, Promise<string | undefined>>()
+
+export function generateThumbnail(videoPath: string, duration: number, deps: ThumbnailDeps = {}): Promise<string | undefined> {
+  const key = thumbnailPath(videoPath)
+  const existing = inflight.get(key)
+  if (existing) return existing
+  const job = renderThumbnail(videoPath, duration, deps).finally(() => inflight.delete(key))
+  inflight.set(key, job)
+  return job
+}
+
 /** Write `<hash>.tmp.jpg` first and rename only on success; remove partial files on failure so they are not mistaken for usable thumbnails. */
-export async function generateThumbnail(videoPath: string, duration: number, deps: ThumbnailDeps = {}): Promise<string | undefined> {
+async function renderThumbnail(videoPath: string, duration: number, deps: ThumbnailDeps): Promise<string | undefined> {
   if (!fs.existsSync(videoPath)) return undefined
   const stamp = sourceStamp(videoPath)
   const outPath = thumbnailPath(videoPath)

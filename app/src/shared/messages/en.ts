@@ -17,6 +17,8 @@ const messages: MessageTable = {
   '錄影服務不支援錄影中觀看': 'The recording service does not support watching while recording.',
   'proxy:generate 需要本機影片路徑': 'proxy:generate requires a local video path.',
   '儲存位置必須是本機絕對路徑：{path}': 'The storage location must be an absolute local path: {path}',
+  '無法確認目前的錄影資料夾是否還有尚未完成收尾的錄影，暫不變更儲存位置：{path}（{error}）': 'Cannot check whether the current recording folder still has recordings that were not finalized, so the storage location was not changed: {path} ({error})',
+  '目前的錄影資料夾還有尚未完成收尾的錄影，請先完成或恢復錄影後再變更儲存位置：{path}': 'The current recording folder still has recordings that were not finalized. Finish or recover them before changing the storage location: {path}',
   '無法建立或寫入儲存位置：{path}（{error}）': 'Cannot create or write to the storage location: {path} ({error})',
   'OBS 連線測試失敗，請檢查設定': 'OBS connection test failed. Please check your settings.',
   '無法新增資料夾': 'Cannot add the folder.',

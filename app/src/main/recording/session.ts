@@ -15,7 +15,7 @@ import { diskFreeBytes, diskLevel } from './disk'
 import { probeStorageKind } from './storage-location'
 import { readGameAspect } from './game-aspect'
 import { MATCH_POST_PAD_SEC, cutMatches, finalizeSession, validateSessionDir, writeJson } from './finalize'
-import { recoverSessions } from './recovery'
+import { recoverSessions, sessionRoots } from './recovery'
 import { LiveSession } from './live-session'
 import { ObsClient } from './obs-client'
 import { finalizeObsMatches } from './obs-finalize'
@@ -275,6 +275,18 @@ export class RecordingSessionService implements RecordingService {
   noteOutputRemoval(videoPath: string): void {
     for (const session of [this.active, ...this.pendingObs.values()]) {
       if (session) recordOutputRemoval(session.dir, videoPath)
+    }
+    // Sessions kept for recovery need the marker too, or their next finalization fails on the deleted output forever.
+    // Mark every session recovery can reach (OBS files live outside the output folder); an unrelated session ignores it.
+    for (const root of [path.dirname(path.dirname(videoPath)), ...sessionRoots(this.deps)]) {
+      const sessions = path.join(root, '.sessions')
+      let entries: fs.Dirent[]
+      try { entries = fs.readdirSync(sessions, { withFileTypes: true }) } catch { continue }
+      for (const entry of entries) {
+        if (!entry.isDirectory() || entry.isSymbolicLink()) continue
+        try { recordOutputRemoval(path.join(sessions, entry.name), videoPath) }
+        catch (error) { console.error('[recording] Failed to record output removal for a kept session:', error) }
+      }
     }
   }
 

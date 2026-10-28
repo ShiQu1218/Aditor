@@ -126,6 +126,8 @@ describe('LiveEngine process management', () => {
     const started = performance.now()
     await stuck.stop()
     expect(performance.now() - started).toBeLessThan(3000)
+    // A killed engine never sent its final snapshot, so the session must not treat it as a clean finish.
+    expect(stuck.quality()).toBeNull()
   })
 })
 

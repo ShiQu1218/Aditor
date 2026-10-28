@@ -248,6 +248,78 @@ describe('clips backup across cancelled re-analysis (F2)', () => {
     expect(fs.existsSync(backup())).toBe(false)
   })
 
+  it('a failed restore write keeps its backup through the next run, which then restores accepted AI clips', async () => {
+    seedDone()
+    const rename = fs.renameSync.bind(fs)
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    // Fail only the post-analysis merge write (the one that sets suggestionsPending), as on EPERM or a full disk.
+    const failMerge = vi.spyOn(fs, 'renameSync').mockImplementation((from, to) => {
+      if (to === cache() && fs.readFileSync(from, 'utf8').includes('suggestionsPending')) throw new Error('EPERM')
+      return rename(from, to)
+    })
+    try {
+      const q1 = new AnalysisQueue(engine('done'), lib, { profileDir: '/p', cacheDir: dir })
+      ;(q1 as any)._generateThumbnail = async () => undefined
+      q1.enqueue(V1, true)
+      await tick(60)
+      expect(readDoc().clips.map((c: any) => c.id)).toEqual(['m1'])
+      expect(readClipsBackup(cache())?.some((c) => c.id === 'a1')).toBe(true)
+      failMerge.mockRestore()
+
+      const q2 = new AnalysisQueue(engine('done', 3), lib, { profileDir: '/p', cacheDir: dir })
+      ;(q2 as any)._generateThumbnail = async () => undefined
+      q2.enqueue(V1, true)
+      await tick(60)
+      expect(summary(readDoc().clips)).toEqual([
+        ['a1', 'accepted', true],
+        ['m1', 'accepted', false]
+      ])
+      expect(fs.existsSync(backup())).toBe(false)
+    } finally {
+      vi.restoreAllMocks()
+    }
+  })
+
+  it('a cancel during thumbnail generation still restores accepted AI clips before a later run backs up the cache', async () => {
+    seedDone()
+    let thumbnailDone!: () => void
+    const q1 = new AnalysisQueue(engine('done'), lib, { profileDir: '/p', cacheDir: dir })
+    ;(q1 as any)._generateThumbnail = () => new Promise<void>((resolve) => { thumbnailDone = resolve })
+    q1.enqueue(V1, true)
+    await tick()
+    q1.cancel(V1)
+    thumbnailDone()
+    await tick()
+    expect(readDoc().clips.map((c: any) => c.id)).toContain('a1')
+    expect(lib.get(V1)?.status).toBe('pending')
+
+    const q2 = new AnalysisQueue(engine('done', 3), lib, { profileDir: '/p', cacheDir: dir })
+    q2.enqueue(V1, true)
+    await tick(60)
+    expect(summary(readDoc().clips)).toEqual([
+      ['a1', 'accepted', true],
+      ['m1', 'accepted', false]
+    ])
+  })
+
+  it('removing a video cancelled during thumbnail generation does not bring its cache back', async () => {
+    seedDone()
+    let thumbnailDone!: () => void
+    const q = new AnalysisQueue(engine('done'), lib, { profileDir: '/p', cacheDir: dir })
+    ;(q as any)._generateThumbnail = () => new Promise<void>((resolve) => { thumbnailDone = resolve })
+    q.enqueue(V1, true)
+    await tick()
+    const removed = q.withStoppedAnalysis([V1], () => {
+      fs.rmSync(cache(), { force: true })
+      fs.rmSync(backup(), { force: true })
+    })
+    thumbnailDone()
+    await removed
+    await tick()
+    expect(fs.existsSync(cache())).toBe(false)
+    expect(fs.existsSync(backup())).toBe(false)
+  })
+
   it('a second cancel keeps using the first backup (partial doc never replaces it)', async () => {
     seedDone()
     for (let i = 0; i < 2; i++) {
@@ -467,6 +539,106 @@ describe('clips backup across cancelled re-analysis (F2)', () => {
     } finally {
       fs.rmSync(besideDir, { recursive: true, force: true })
     }
+  })
+
+  describe('an unmerged backup beside the source when switching cache locations', () => {
+    const besideFile = (): string => cacheFilePath(V1, dir, true)
+    const settings = { beside: { cacheLocation: 'besideVideo' }, appdata: { cacheLocation: 'appData' } } as const
+    /** Engine that writes a done document (manual clips only) to the location it is asked for. */
+    const locEngine = (mtime: number): EngineClient => ({
+      request: (_m: string, args: { beside: boolean }) => {
+        const d = doc('done', mtime, [manual], [], cacheFilePath(V1, dir, args.beside))
+        saveCacheDoc(d as { cache_path: string })
+        return { id: 'r', promise: Promise.resolve(d) }
+      },
+      cancel: () => {}
+    }) as unknown as EngineClient
+    const run = async (mtime: number, where: keyof typeof settings): Promise<void> => {
+      const q = new AnalysisQueue(locEngine(mtime), lib, { profileDir: '/p', cacheDir: dir, getSettings: () => settings[where] as any })
+      ;(q as any)._generateThumbnail = async () => undefined
+      q.enqueue(V1, true)
+      await tick(60)
+    }
+    /** Beside: reanalysis replaced the cache but the merge write failed, leaving a1 only in the beside backup. */
+    const failBesideMerge = async (): Promise<void> => {
+      saveCacheDoc(doc('done', 1, [manual], [], cache()) as { cache_path: string })
+      saveCacheDoc(doc('done', 1, [clip('a1', 100), manual], [], besideFile()) as { cache_path: string })
+      const rename = fs.renameSync.bind(fs)
+      vi.spyOn(console, 'error').mockImplementation(() => {})
+      const failMerge = vi.spyOn(fs, 'renameSync').mockImplementation((from, to) => {
+        if (to === besideFile() && fs.readFileSync(from, 'utf8').includes('suggestionsPending')) throw new Error('EPERM')
+        return rename(from, to)
+      })
+      await run(2, 'beside')
+      failMerge.mockRestore()
+      expect(readClipsBackup(besideFile())?.map((c) => c.id)).toContain('a1')
+    }
+    afterEach(() => {
+      vi.restoreAllMocks()
+      // Beside files live next to the shared V1 path, outside the per-test dir.
+      for (const f of [besideFile(), clipsBackupPath(besideFile()), `${besideFile()}.tmp`]) fs.rmSync(f, { force: true })
+    })
+
+    it('restores its accepted AI clips into the new location when the source copy is newer', async () => {
+      await failBesideMerge()
+      fs.utimesSync(cache(), new Date(1000), new Date(1000))
+      await run(3, 'appdata')
+      expect(summary(readDoc().clips)).toEqual([
+        ['a1', 'accepted', true],
+        ['m1', 'accepted', false]
+      ])
+      expect(fs.existsSync(backup())).toBe(false)
+      // Consumed: switching back must not resurrect this snapshot over later edits.
+      expect(fs.existsSync(clipsBackupPath(besideFile()))).toBe(false)
+    })
+
+    it('keeps the source backup on disk when the target copy is newer (newest copy wins)', async () => {
+      await failBesideMerge()
+      fs.utimesSync(besideFile(), new Date(1000), new Date(1000))
+      await run(3, 'appdata')
+      expect(summary(readDoc().clips)).toEqual([['m1', 'accepted', false]])
+      expect(readClipsBackup(besideFile())?.map((c) => c.id)).toContain('a1')
+    })
+
+    /** Both locations hold done caches (beside newest) and an unmerged v2 backup each, written at the given times. */
+    const seedBoth = (besideAt: number, appdataAt: number): void => {
+      saveCacheDoc(doc('done', 1, [manual], [], cache()) as { cache_path: string })
+      saveCacheDoc(doc('done', 1, [manual], [], besideFile()) as { cache_path: string })
+      fs.utimesSync(cache(), new Date(1000), new Date(1000))
+      fs.writeFileSync(clipsBackupPath(besideFile()), JSON.stringify({ version: 2, events: [], clips: [clip('beside-ai', 100), manual] }))
+      fs.writeFileSync(backup(), JSON.stringify({ version: 2, events: [], clips: [clip('appdata-ai', 200), manual] }))
+      fs.utimesSync(clipsBackupPath(besideFile()), new Date(besideAt), new Date(besideAt))
+      fs.utimesSync(backup(), new Date(appdataAt), new Date(appdataAt))
+    }
+
+    for (const [label, besideAt, appdataAt, kept] of [
+      ['the source backup is newer', 3000, 2000, 'beside-ai'],
+      ['the target backup is newer', 2000, 3000, 'appdata-ai']
+    ] as const) {
+      it(`with unmerged backups in both locations, restores the newer one and clears both when ${label}`, async () => {
+        seedBoth(besideAt, appdataAt)
+        await run(3, 'appdata')
+        expect(summary(readDoc().clips)).toEqual([
+          [kept, 'accepted', true],
+          ['m1', 'accepted', false]
+        ])
+        expect(fs.existsSync(backup())).toBe(false)
+        expect(fs.existsSync(clipsBackupPath(besideFile()))).toBe(false)
+      })
+    }
+
+    it('edits saved at the target win over a source v2 backup, which is cleared after the merge', async () => {
+      seedBoth(3000, 2000)
+      const edited = { ...doc('done', 1, [clip('edited-ai', 300), manual], [], cache()) }
+      fs.writeFileSync(backup(), JSON.stringify({ version: 3, document: edited }))
+      await run(3, 'appdata')
+      expect(summary(readDoc().clips)).toEqual([
+        ['edited-ai', 'accepted', true],
+        ['m1', 'accepted', false]
+      ])
+      expect(fs.existsSync(backup())).toBe(false)
+      expect(fs.existsSync(clipsBackupPath(besideFile()))).toBe(false)
+    })
   })
 })
 

@@ -98,6 +98,35 @@ describe('Library durability (I3)', () => {
     expect(fs.readFileSync(lib.corruptBackup!, 'utf-8')).toBe('[{"path":"D:/a.mp4",')
   })
 
+  it('an unreadable library.json (locked) is never overwritten, even when the backup rename also fails', () => {
+    const original = JSON.stringify([{ path: 'D:/a.mp4', status: 'done', favorite: true }])
+    fs.writeFileSync(file, original)
+    const read = vi.spyOn(fs, 'readFileSync').mockImplementationOnce(() => {
+      throw Object.assign(new Error('EBUSY'), { code: 'EBUSY' })
+    })
+    const rename = vi.spyOn(fs, 'renameSync').mockImplementation(() => {
+      throw new Error('EBUSY')
+    })
+    const lib = new Library(file)
+    read.mockRestore()
+    rename.mockRestore()
+    lib.add(['D:/Videos/new.mp4'])
+    expect(lib.flush()).toBe(false)
+    expect(fs.readFileSync(file, 'utf-8')).toBe(original)
+  })
+
+  it('a corrupt library.json whose backup fails is never overwritten', () => {
+    fs.writeFileSync(file, '[{"path":')
+    const rename = vi.spyOn(fs, 'renameSync').mockImplementationOnce(() => {
+      throw new Error('EBUSY')
+    })
+    const lib = new Library(file)
+    rename.mockRestore()
+    expect(lib.corruptBackup).toBeNull()
+    lib.add(['D:/Videos/new.mp4'])
+    expect(fs.readFileSync(file, 'utf-8')).toBe('[{"path":')
+  })
+
   it('a JSON value that is not an array is treated as corrupt too', () => {
     fs.writeFileSync(file, '{"entries":[]}')
     const lib = new Library(file)

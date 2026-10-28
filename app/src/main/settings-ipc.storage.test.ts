@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
@@ -77,5 +77,49 @@ describe('settings:set storageRoot', () => {
     const root = path.join(dir, 'Mine')
     call('settings:set', { storageRoot: root })
     expect(call(STORAGE_SUGGEST_CHANNEL)).toBe(root)
+  })
+
+  test('refuses to move away from a recording folder that still has unfinished sessions, which recovery would no longer scan', () => {
+    const oldRoot = path.join(dir, 'Old')
+    const newRoot = path.join(dir, 'New')
+    call('settings:set', { storageRoot: oldRoot })
+    const session = path.join(oldRoot, 'Recordings', '.sessions', '20260101-000000-abcd')
+    fs.mkdirSync(session, { recursive: true })
+
+    const res = call('settings:set', { storageRoot: newRoot, before: 5 })
+    expect(res.errors?.storageRoot).toBeTruthy()
+    expect(res.settings.storageRoot).toBe(oldRoot)
+    expect(res.settings.recording.outputDir).toBe(path.join(oldRoot, 'Recordings'))
+    expect(res.settings.defaultOutDir).toBe(path.join(oldRoot, 'Exports'))
+    expect(res.settings.before).toBe(5)
+    expect(fs.existsSync(session)).toBe(true)
+
+    expect(call('settings:set', { storageRoot: oldRoot }).errors).toBeUndefined()
+    fs.rmSync(session, { recursive: true })
+    expect(call('settings:set', { storageRoot: newRoot }).settings.storageRoot).toBe(newRoot)
+  })
+
+  test('refuses to move when the current recording folder cannot be checked for unfinished sessions', () => {
+    const oldRoot = path.join(dir, 'Old')
+    const newRoot = path.join(dir, 'New')
+    call('settings:set', { storageRoot: oldRoot })
+    const sessions = path.join(oldRoot, 'Recordings', '.sessions')
+    const readdir = fs.readdirSync
+    const spy = vi.spyOn(fs, 'readdirSync').mockImplementation(((p: fs.PathLike, ...rest: unknown[]) => {
+      if (String(p) === sessions) throw Object.assign(new Error('EACCES: permission denied'), { code: 'EACCES' })
+      return (readdir as (...a: unknown[]) => unknown)(p, ...rest)
+    }) as typeof fs.readdirSync)
+    try {
+      const res = call('settings:set', { storageRoot: newRoot })
+      expect(res.errors?.storageRoot).toContain('EACCES')
+      expect(res.errors?.storageRoot).toMatch(/^無法確認/)
+      expect(res.settings.storageRoot).toBe(oldRoot)
+      expect(res.settings.recording.outputDir).toBe(path.join(oldRoot, 'Recordings'))
+      expect(fs.existsSync(newRoot)).toBe(false)
+    } finally {
+      spy.mockRestore()
+    }
+    // A missing .sessions folder means nothing is waiting for recovery.
+    expect(call('settings:set', { storageRoot: newRoot }).settings.storageRoot).toBe(newRoot)
   })
 })
