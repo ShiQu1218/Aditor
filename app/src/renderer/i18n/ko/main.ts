@@ -120,6 +120,7 @@ export const i18n: Messages['i18n'] = {
     title: '분석 대기열',
     oneAtATime: '한 번에 한 개씩 분석',
     analyzing: '분석 중 {i}/{n}',
+    waitingForGame: '게임 종료 후 분석 재개',
     queuedOnly: '분석 대기 {n}개',
     analyzingPct: '분석 중 {n}%',
     view: '대기열 보기',

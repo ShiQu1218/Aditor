@@ -87,6 +87,8 @@ const OBS_STOP_GRACE_MS = 30_000
  * A game already running when Aditor starts is past that phase and starts without the delay.
  */
 const GAME_START_DELAY_MS = 20_000
+/** Failed game queries in a row, with no game known, before analysis stops waiting for the game to exit. */
+const POLL_FAILURES_BEFORE_ANALYSIS = 3
 
 function sessionId(): string {
   const date = new Date()
@@ -131,6 +133,8 @@ export class RecordingSessionService implements RecordingService {
   private operations: Promise<void> = Promise.resolve()
   private recovery: Promise<void> = Promise.resolve()
   private pollWarning = false
+  /** Consecutive failed game queries; analysis fails open after a few while no game is known. */
+  private pollFailures = 0
   private blocked = false
   private manualStopped = false
   private restartTimes: number[] = []
@@ -156,6 +160,8 @@ export class RecordingSessionService implements RecordingService {
     this.watcher = new GameWatcher<GameProcess>(() => this.findGame(), deps.pollMs ?? 3000,
       (found) => {
         this.pollWarning = false
+        this.pollFailures = 0
+        this.deps.onGameRunning?.(found !== null)
         const pid = found?.pid ?? null
         const exited = this.gamePid !== null && pid === null
         if (!sameProcess(found, this.current())) {
@@ -181,6 +187,8 @@ export class RecordingSessionService implements RecordingService {
       }, (error) => {
         // Startup presence is unknown after a failed first query, so a game found later gets the launch delay.
         this.firstPoll = false
+        // Fail open while no game is known, or a persistently failing query would hold analysis forever.
+        if (++this.pollFailures >= POLL_FAILURES_BEFORE_ANALYSIS && this.gamePid === null) this.deps.onGameRunning?.(false)
         if (!this.pollWarning) this.notice('error', tr('無法偵測遊戲程序：{error}', { error: String(error) }))
         this.pollWarning = true
       }, sameProcess)
@@ -230,6 +238,7 @@ export class RecordingSessionService implements RecordingService {
       if (this.active) return this.state.phase === 'recording'
       const found = await this.findGame()
       if (!found || !this.running) return false
+      this.deps.onGameRunning?.(true)
       const { pid } = found
       if (!sameProcess(found, this.current())) {
         this.builtinFallbackPid = null

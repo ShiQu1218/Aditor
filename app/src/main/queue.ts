@@ -13,6 +13,8 @@ import { generateThumbnail } from './thumbnail'
 export interface AnalysisQueueOptions {
   profileDir: string
   cacheDir: string
+  /** Block startup until the first successful game query. */
+  gameRunning?: boolean
   /** Read before each analysis (setting changes take effect without a restart): decode → hwaccel, cacheLocation → beside. */
   getSettings?: () => AnalyzeSettings | undefined
 }
@@ -20,8 +22,10 @@ export interface AnalysisQueueOptions {
 interface CurrentRun {
   path: string
   reqId: string | null
-  /** Cancelled by the user: report idle externally, but do not start the next item until the engine actually stops. */
+  /** Interrupted: hide the active run, but wait for the engine to stop before starting another item. */
   cancelled: boolean
+  engineFinished: boolean
+  force: boolean
   done: Promise<void>
   cachePath?: string
 }
@@ -35,12 +39,29 @@ export class AnalysisQueue extends EventEmitter {
   private removing = new Set<string>()
   /** Normalized paths the user explicitly asked to reanalyze; their run bypasses the engine cache. */
   private forced = new Set<string>()
+  private gameRunning: boolean
 
   constructor(engine: EngineClient, library: Library, opts: AnalysisQueueOptions) {
     super()
     this.engine = engine
     this.library = library
     this.opts = opts
+    this.gameRunning = opts.gameRunning ?? false
+  }
+
+  setGameRunning(running: boolean): void {
+    if (this.gameRunning === running) return
+    this.gameRunning = running
+    const run = this.current
+    // Once the engine finishes, preserve clips before another run can replace their backup.
+    if (running && run && !run.cancelled && !run.engineFinished) {
+      // Reuse engine cancellation, but retain the job and its explicit reanalysis intent.
+      this.cancel(run.path)
+      this.queue.unshift(run.path)
+      if (run.force) this.forced.add(normalizePath(run.path))
+    }
+    this.emit('update')
+    if (!running) void this._processNext()
   }
 
   /**
@@ -51,7 +72,8 @@ export class AnalysisQueue extends EventEmitter {
   snapshot(): QueueSnapshot {
     return {
       analyzing: this.current && !this.current.cancelled ? this.current.path : null,
-      queued: [...this.queue]
+      queued: [...this.queue],
+      ...(this.gameRunning ? { waitingForGame: true } : {})
     }
   }
 
@@ -140,7 +162,7 @@ export class AnalysisQueue extends EventEmitter {
   }
 
   private async _processNext(): Promise<void> {
-    if (this.current || this.queue.length === 0) {
+    if (this.gameRunning || this.current || this.queue.length === 0) {
       return
     }
 
@@ -148,7 +170,7 @@ export class AnalysisQueue extends EventEmitter {
     const force = this.forced.delete(normalizePath(videoPath))
     let finish!: () => void
     const done = new Promise<void>((resolve) => { finish = resolve })
-    const run: CurrentRun = { path: videoPath, reqId: null, cancelled: false, done }
+    const run: CurrentRun = { path: videoPath, reqId: null, cancelled: false, engineFinished: false, force, done }
     this.current = run
 
     this.library.update(videoPath, {
@@ -193,20 +215,30 @@ export class AnalysisQueue extends EventEmitter {
         this.engine.cancel(req.id)
       }
       let doc = await req.promise
-      if (run.cancelled) return
+      run.engineFinished = true
+      // Rewrite the cache only after success (cancellation/failure leaves the old cache untouched).
+      const preserve = (): void => {
+        try {
+          if (preserveClipsAfterReanalysis(prior, doc, videoPath, this.opts.cacheDir, extra.beside, force)) {
+            doc = (loadCacheDoc(doc.cache_path || run.cachePath!) as CacheDoc | null) ?? doc
+          }
+        } catch (err) {
+          console.error('[Queue] failed to preserve clips after re-analysis:', err)
+        }
+      }
+      if (run.cancelled) {
+        // The engine finished before it saw the cancellation and already replaced the cache;
+        // restore clips now, or the retry would back up the replaced cache and lose them.
+        preserve()
+        return
+      }
 
       const duration = doc.video?.duration || 0
       const thumb = await this._generateThumbnail(videoPath, duration).catch(() => undefined)
       if (run.cancelled) return
 
-      // Rewrite the cache only after success (cancellation/failure leaves the old cache untouched).
-      try {
-        if (preserveClipsAfterReanalysis(prior, doc, videoPath, this.opts.cacheDir, extra.beside, force)) {
-          doc = (loadCacheDoc(doc.cache_path || run.cachePath!) as CacheDoc | null) ?? doc
-        }
-      } catch (err) {
-        console.error('[Queue] failed to preserve clips after re-analysis:', err)
-      }
+      // After the thumbnail, so edits saved while it was generated are merged too.
+      preserve()
 
       this.library.update(videoPath, {
         status: 'done',
@@ -222,7 +254,7 @@ export class AnalysisQueue extends EventEmitter {
       })
     } catch (err) {
       if (run.cancelled) {
-        // User cancelled: keep idle (already updated by cancel()), not an error.
+        // Interrupted runs remain pending, including jobs deferred until the game exits.
         this.library.update(videoPath, { status: 'pending', progress: 0, error: undefined, analyzingSince: undefined })
       } else {
         if (err instanceof EngineError && err.code === 'unknown_game') {

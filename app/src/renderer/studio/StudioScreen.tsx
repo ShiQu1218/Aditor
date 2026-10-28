@@ -187,7 +187,7 @@ export function StudioScreen({ videoPath, onBack, onRegisterLeaveGuard, onVideoR
   // Analysis generation (increment after each load or reanalysis): plan suggestions only once per generation.
   const [analysisGen, setAnalysisGen] = useState(preloadedDoc ? 1 : 0)
 
-  const { cacheSaver, canLeaveStudio } = useStudioDocument({
+  const { cacheSaver, canLeaveStudio, queued } = useStudioDocument({
     videoPath, reloadKey, preloadedDoc, allowUnanalyzed, loaded, state, stateRef, dispatch, exportCtl, toast,
     onRegisterLeaveGuard, setBlocked, setLoadError, setLoaded, setAnalysisGen, setPlayability, setProxyPath, setProxyState
   })
@@ -474,7 +474,7 @@ export function StudioScreen({ videoPath, onBack, onRegisterLeaveGuard, onVideoR
           onRetry={() => handleNoticeAction('resume')}
           onCopy={() => handleNoticeAction('copyError')}
           onBack={onBack}
-        /> : blocked ? <StudioBlockedView onBack={onBack} /> : <StudioLoadingView />}
+        /> : blocked ? <StudioBlockedView onBack={onBack} /> : <StudioLoadingView queued={queued} />}
       </div>
     )
   }

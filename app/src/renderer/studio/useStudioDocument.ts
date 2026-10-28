@@ -1,5 +1,7 @@
-import { useCallback, useEffect, useRef, type Dispatch, type MutableRefObject, type SetStateAction } from 'react'
+import { useCallback, useEffect, useRef, useState, type Dispatch, type MutableRefObject, type SetStateAction } from 'react'
+import type { LibraryEntry } from '../../main/library'
 import type { CacheDoc } from '../../shared/types'
+import { queueItemState, summarizeQueue, type QueuePayload } from '../../shared/queueState'
 import { viewerReducer, type ViewerAction, type ViewerState } from '../viewer/state'
 import { AutosaveController } from '../editor/useAutosave'
 import { checkSmooth, type PlayabilityResult } from '../media/playability'
@@ -7,7 +9,7 @@ import { longFixtureRequested } from '../dev/fixture'
 import { i18n } from '../i18n'
 import type { useToast } from '../shell/ToastHost'
 import type { createExportController } from './exportController'
-import { loadStudioDoc } from './studioLoader'
+import { loadStudioDoc, type LoadOutcome } from './studioLoader'
 import { normPath } from './studioScreenModel'
 
 interface StudioDocumentOptions {
@@ -51,12 +53,18 @@ export function useStudioDocument({
   setPlayability,
   setProxyPath,
   setProxyState
-}: StudioDocumentOptions): { cacheSaver: MutableRefObject<AutosaveController<CacheDoc> | null>; canLeaveStudio: () => boolean } {
+}: StudioDocumentOptions): { cacheSaver: MutableRefObject<AutosaveController<CacheDoc> | null>; canLeaveStudio: () => boolean; queued: boolean } {
+  const [queued, setQueued] = useState(false)
+  const failedAnalysisPath = useRef<string | null>(null)
   /* ---------------- Loading (check entry status → cache:load → analyze if needed; see studioLoader) ---------------- */
 
   useEffect(() => {
     if (preloadedDoc) return
+    const retryAnalysis = failedAnalysisPath.current === videoPath
+    failedAnalysisPath.current = null
     let cancelled = false
+    let offQueued: (() => void) | undefined
+    setQueued(false)
     setBlocked(false)
     setLoadError(null)
     const load = async (): Promise<void> => {
@@ -78,8 +86,71 @@ export function useStudioDocument({
         cacheLoad: async (p) => ((await api?.cache?.loadByVideo?.(p)) as CacheDoc | null) ?? null,
         analyze: async (args) => ((await api?.engine?.analyze?.(args)) as CacheDoc | null) ?? null,
         probe: async (p) => (await api?.engine?.probe?.(p)) ?? null
-      }, allowUnanalyzed)
+      }, allowUnanalyzed, retryAnalysis)
       if (cancelled) return
+      if (outcome.kind === 'queued') {
+        setQueued(true)
+        let refreshing = false
+        let refreshPending = false
+        let finished = false
+        const refresh = async (): Promise<void> => {
+          if (cancelled || finished) return
+          if (refreshing) {
+            refreshPending = true
+            return
+          }
+          refreshPending = false
+          refreshing = true
+          try {
+            const queue: QueuePayload = await api.queue.getState()
+            const entries: LibraryEntry[] = await api.library.getEntries()
+            if (cancelled) return
+            const entry = entries.find((e) => normPath(e.path) === normPath(videoPath))
+            const idle = queueItemState(summarizeQueue(queue, Date.now()), videoPath) === 'idle'
+            if (entry?.status === 'error') {
+              failedAnalysisPath.current = videoPath
+              finished = true
+              offQueued?.()
+              await applyOutcome({ kind: 'error', message: entry.error ?? i18n.studio.toast.analysisRefreshFailed, code: entry.errorCode })
+            } else if (entry?.status === 'done') {
+              const doc: CacheDoc | null = await api.cache.loadByVideo(videoPath)
+              if (cancelled) return
+              if (doc?.analysis.status !== 'done') {
+                // Nothing else will update this entry once its job is gone, so offer Retry instead of waiting forever.
+                if (!idle || refreshPending) return
+                failedAnalysisPath.current = videoPath
+                finished = true
+                offQueued?.()
+                await applyOutcome({ kind: 'error', message: i18n.studio.toast.analysisRefreshFailed })
+                return
+              }
+              finished = true
+              offQueued?.()
+              await applyOutcome({ kind: 'ready', doc, from: 'cache' })
+            } else if (idle) {
+              finished = true
+              offQueued?.()
+              await applyOutcome({ kind: 'blocked' })
+            }
+          } catch (err) {
+            finished = true
+            offQueued?.()
+            await applyOutcome({ kind: 'error', message: err instanceof Error ? err.message : String(err) })
+          } finally {
+            refreshing = false
+            if (refreshPending) void refresh()
+          }
+        }
+        offQueued = api.library.onUpdated(() => { void refresh() })
+        void refresh()
+        return
+      }
+      await applyOutcome(outcome)
+    }
+    const applyOutcome = async (outcome: LoadOutcome): Promise<void> => {
+      if (cancelled) return
+      if (outcome.kind === 'queued') return
+      setQueued(false)
       if (outcome.kind === 'blocked') {
         setBlocked(true)
         return
@@ -95,9 +166,9 @@ export function useStudioDocument({
       void checkSmooth(outcome.doc.video).then((pl) => {
         if (!cancelled) setPlayability(pl)
       })
-      if (api?.proxy?.get) {
+      if (window.api?.proxy?.get) {
         try {
-          const pp: string | null = await api.proxy.get(videoPath)
+          const pp: string | null = await window.api.proxy.get(videoPath)
           if (!cancelled && pp) {
             setProxyPath(pp)
             setProxyState('available')
@@ -110,6 +181,7 @@ export function useStudioDocument({
     void load()
     return () => {
       cancelled = true
+      offQueued?.()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [videoPath, reloadKey])
@@ -190,5 +262,5 @@ export function useStudioDocument({
     return () => { cancelled = true; off?.() }
   }, [loaded, state.doc.analysis.status, videoPath, toast])
 
-  return { cacheSaver, canLeaveStudio }
+  return { cacheSaver, canLeaveStudio, queued }
 }

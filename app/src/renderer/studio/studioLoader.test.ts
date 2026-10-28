@@ -68,6 +68,13 @@ describe('loadStudioDoc', () => {
     expect(d.analyze).toHaveBeenCalledTimes(1)
   })
 
+  test('explicit analysis retry bypasses error status and any incomplete cache', async () => {
+    const d = deps({ getStatus: async () => 'error', cacheLoad: vi.fn(async () => doc('partial')), analyze: vi.fn(async () => null) })
+    expect(await loadStudioDoc('a.mp4', d, false, true)).toEqual({ kind: 'queued' })
+    expect(d.analyze).toHaveBeenCalledWith({ path: 'a.mp4' })
+    expect(d.cacheLoad).not.toHaveBeenCalled()
+  })
+
   test('cache doc that is not done is blocked (analyze not called)', async () => {
     const d = deps({ cacheLoad: vi.fn(async () => doc('partial')) })
     const out = await loadStudioDoc('a.mp4', d)
@@ -75,11 +82,11 @@ describe('loadStudioDoc', () => {
     expect(d.analyze).not.toHaveBeenCalled()
   })
 
-  test('analyze returns null or non-done: error outcome (never a default doc)', async () => {
+  test('queued analysis is distinct from blocked and a non-done result is an error', async () => {
     for (const res of [null, doc('partial')]) {
       const d = deps({ cacheLoad: vi.fn(async () => null), analyze: vi.fn(async () => res) })
       const out = await loadStudioDoc('a.mp4', d)
-      expect(out.kind).toBe('error')
+      expect(out.kind).toBe(res ? 'error' : 'queued')
     }
   })
 
@@ -105,11 +112,11 @@ describe('loadStudioDoc', () => {
     expect(await loadStudioDoc('b', d, true)).toMatchObject({ kind: 'error', message: expect.stringContaining('duration 0') })
   })
 
-  test('unusable analysis result reports its status, or none for null', async () => {
+  test('unusable analysis reports its status and queued analysis stays queued', async () => {
     const partial = deps({ cacheLoad: async () => null, analyze: async () => doc('partial') })
     expect(await loadStudioDoc('a', partial)).toMatchObject({ kind: 'error', message: expect.stringContaining('status: partial') })
     const none = deps({ cacheLoad: async () => null, analyze: async () => null })
-    expect(await loadStudioDoc('a', none)).toMatchObject({ kind: 'error', message: expect.stringContaining('status: none') })
+    expect(await loadStudioDoc('a', none)).toEqual({ kind: 'queued' })
   })
 
   test('non-Error throws are stringified once', async () => {

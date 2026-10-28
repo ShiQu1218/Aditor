@@ -119,6 +119,7 @@ export const i18n: Messages['i18n'] = {
     title: '分析队列',
     oneAtATime: '一次分析一个',
     analyzing: '正在分析 {i}/{n}',
+    waitingForGame: '等待游戏关闭后分析',
     queuedOnly: '等待分析 {n} 个',
     analyzingPct: '分析中 {n}%',
     view: '查看队列',

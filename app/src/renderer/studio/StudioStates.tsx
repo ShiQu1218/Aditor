@@ -1,9 +1,11 @@
+import { QueueStrip } from '../library/QueueStrip'
 import { i18n } from '../i18n'
 
 /** Full-page states before studio loading, when blocked, or after load failure (never show fabricated data). */
-export function StudioLoadingView(): JSX.Element {
+export function StudioLoadingView({ queued = false }: { queued?: boolean } = {}): JSX.Element {
   return (
     <div className="studio-blocked" role="status">
+      {queued && <QueueStrip />}
       <p>{i18n.studio.loading}</p>
     </div>
   )

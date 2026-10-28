@@ -119,6 +119,7 @@ export const i18n: Messages['i18n'] = {
     title: '分析キュー',
     oneAtATime: '一度に 1 本ずつ分析',
     analyzing: '分析中 {i}/{n}',
+    waitingForGame: 'ゲーム終了後に分析を再開',
     queuedOnly: '分析待ち {n} 本',
     analyzingPct: '分析中 {n}%',
     view: 'キューを表示',
