@@ -16,7 +16,7 @@ const FIELD_CONSUMERS: Record<string, Array<[string, RegExp]>> = {
   storageRoot: [['main/settings-ipc.ts', /storageRoot/]],
   onboardingDone: [['renderer/shell/AppShell.tsx', /onboardingDone/]],
   autoAnalyze: [['main/watch.ts', /\.autoAnalyze/]],
-  decode: [['main/settings-derived.ts', /\.decode/], ['main/queue.ts', /analyzeSettingArgs/], ['main/index.ts', /buildAnalyzeArgs/]],
+  decode: [['main/settings-derived.ts', /\.decode/], ['main/queue.ts', /analyzeSettingArgs/]],
   cacheLocation: [
     ['main/settings-derived.ts', /\.cacheLocation/],
     ['main/ipc-handlers.ts', /cacheLocation/],

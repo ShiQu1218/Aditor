@@ -269,6 +269,30 @@ describe('clips backup across cancelled re-analysis (F2)', () => {
     expect(readClipsBackup(cache())?.some((c) => c.id === 'a1')).toBe(true)
   })
 
+  it('preserves accepted clips and saved edits across game deferral and forced retry', async () => {
+    seedDone()
+    const interrupted = cancellableEngine()
+    const completed = engine('done', 2)
+    const request = vi.spyOn(interrupted, 'request')
+    const q = new AnalysisQueue(interrupted, lib, { profileDir: '/p', cacheDir: dir })
+    q.enqueue(V1, true)
+    q.setGameRunning(true)
+    await tick()
+    expect(lib.get(V1)?.status).toBe('pending')
+    expect(lib.get(V1)?.error).toBeUndefined()
+    expect(readClipsBackup(cache())?.some((c) => c.id === 'a1')).toBe(true)
+    const edited = loadCacheWithEdits(V1, dir) as CacheDoc
+    expect(saveCacheEdits({ ...edited, events: [event('saved', 5, { source: 'manual' })] } as unknown as CacheDoc, dir, false)).toBe(true)
+    request.mockImplementation(completed.request.bind(completed))
+    q.setGameRunning(false)
+    await tick(60)
+    expect(request.mock.calls[1][1]).toMatchObject({ force: true })
+    expect(lib.get(V1)?.status).toBe('done')
+    expect(readDoc().events.map((e: any) => e.id)).toContain('saved')
+    expect(summary(readDoc().clips)).toContainEqual(['a1', 'accepted', true])
+    expect(fs.existsSync(backup())).toBe(false)
+  })
+
   it('first analysis (no prior doc, no backup) writes no flag and no backup', async () => {
     const q = new AnalysisQueue(engine('done'), lib, { profileDir: '/p', cacheDir: dir })
     q.enqueue(V1)

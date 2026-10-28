@@ -51,7 +51,7 @@ function QueuePopoverBody({ onClose, variant = 'rail', anchorRef }: Omit<QueuePo
     <div ref={popRef} className={`pop qpop${variant === 'strip' ? ' strip' : ''}`} role="dialog" aria-labelledby={titleId}>
       <header className="qpop-head">
         <h3 id={titleId}>{t.title}</h3>
-        <span className="dim">{t.oneAtATime}</span>
+        <span className="dim">{summary.waitingForGame ? t.waitingForGame : t.oneAtATime}</span>
       </header>
       {summary.total === 0 ? (
         <p className="qpop-empty">{t.empty}</p>

@@ -4,6 +4,7 @@ import { estimateEta } from './eta'
 export interface QueueSnapshot {
   analyzing: string | null
   queued: string[]
+  waitingForGame?: boolean
 }
 
 /** Payload for the `library:updated` event and `queue:getState`. */
@@ -23,6 +24,7 @@ export interface QueueRow {
 }
 
 export interface QueueSummary {
+  waitingForGame?: boolean
   /** Item being analyzed first, followed by queued items in order. */
   rows: QueueRow[]
   analyzing: QueueRow | null
@@ -64,7 +66,7 @@ export function summarizeQueue(payload: QueuePayload | null | undefined, now: nu
   for (const p of queue.queued) {
     rows.push({ path: p, state: 'queued', progress: 0, etaMs: null })
   }
-  return { rows, analyzing, total: rows.length, progress: analyzing?.progress ?? 0 }
+  return { rows, analyzing, total: rows.length, progress: analyzing?.progress ?? 0, waitingForGame: queue.waitingForGame }
 }
 
 /** Card state: analyzing/queued come from actual queue state; all others (including imported-but-not-queued/cancelled) are idle = "not yet analyzed." */

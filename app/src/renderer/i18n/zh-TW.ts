@@ -118,6 +118,7 @@ const i18n = {
     title: '分析佇列',
     oneAtATime: '一次分析一支',
     analyzing: '正在分析 {i}/{n}',
+    waitingForGame: '等待遊戲關閉後分析',
     queuedOnly: '等待分析 {n} 支',
     analyzingPct: '分析中 {n}%',
     view: '檢視佇列',

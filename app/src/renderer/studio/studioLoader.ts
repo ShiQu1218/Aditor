@@ -4,7 +4,7 @@ import type { CacheDoc, VideoInfo } from '../../shared/types'
  * Studio loading flow (pure logic with injected dependencies for testing):
  * 1. Check the library entry status first; reject anything other than 'done' without calling engine/cache IPC.
  * 2. Load the document with cache:load, which has no side effects.
- * 3. Call analyze only when the entry is done but has no cached document.
+ * 3. Request queued analysis only when the entry is done but has no cached document; null means queued.
  * 4. Return an error for any failure; never return a fabricated default document.
  * Project switching may bypass the analysis restriction: if there is no cache, create a blank track from the actual video metadata without starting analysis.
  */
@@ -52,6 +52,7 @@ export async function loadStudioDoc(path: string, deps: LoaderDeps, allowUnanaly
     }
     if (cached) return isDone(cached) ? { kind: 'ready', doc: cached, from: 'cache' } : { kind: 'blocked' }
     const res = await deps.analyze({ path })
+    if (!res) return { kind: 'blocked' }
     if (isDone(res)) return { kind: 'ready', doc: res, from: 'analyze' }
     return { kind: 'error', message: `Analysis finished but its result is not usable (status: ${(res as CacheDoc | null)?.analysis?.status ?? 'none'})` }
   } catch (err) {

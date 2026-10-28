@@ -24,7 +24,7 @@ export function QueueStrip(): JSX.Element | null {
 
   const current = summary.analyzing
   const pct = Math.round((current?.progress ?? 0) * 100)
-  const label = current
+  const label = summary.waitingForGame ? t.waitingForGame : current
     ? t.analyzing.replace('{i}', '1').replace('{n}', String(summary.total))
     : t.queuedOnly.replace('{n}', String(summary.total))
 

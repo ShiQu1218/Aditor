@@ -117,6 +117,7 @@ export const i18n: Messages['i18n'] = {
     title: 'Analysis queue',
     oneAtATime: 'One video at a time',
     analyzing: 'Analyzing {i}/{n}',
+    waitingForGame: 'Waiting for the game to close',
     queuedOnly: 'Waiting to analyze: {n}',
     analyzingPct: 'Analyzing {n}%',
     view: 'View queue',

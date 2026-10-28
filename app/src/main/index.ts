@@ -10,7 +10,6 @@ import { WatchManager } from './watch'
 import { ProjectStore } from './projects'
 import { registerIpcHandlers } from './ipc-handlers'
 import { createCloseGate } from './project-ipc'
-import { buildAnalyzeArgs } from './settings-derived'
 import { currentE2EConfig } from './e2e'
 import { applyWindowSecurity } from './window-security'
 import { sanitizeAnalyzeArgs, sanitizeAutoclipArgs, sanitizeDeriveArgs, sanitizeProbeArgs } from './ipc-guards'
@@ -185,6 +184,7 @@ async function initEngineAndServices(): Promise<void> {
   queue = new AnalysisQueue(engineClient, library, {
     profileDir: templateProfileDir,
     cacheDir: cacheDir(),
+    gameRunning: !e2e,
     // Read decode/cacheLocation for each analysis so setting changes take effect without a restart.
     getSettings: () => settingsStore?.get()
   })
@@ -230,6 +230,7 @@ async function initEngineAndServices(): Promise<void> {
     enqueueAnalysis: (videoPath) => queue!.enqueue(videoPath),
     notify,
     onGameExit: () => showMainWindow(),
+    onGameRunning: (running) => queue!.setGameRunning(running),
     liveEngineCommand: liveEngineCommand(app.isPackaged),
     sceneDir: sceneDir(app.isPackaged),
     liveCachePath: (videoPath) => cacheFilePath(videoPath, cacheDir(), settingsStore!.get().cacheLocation === 'besideVideo'),
@@ -296,12 +297,11 @@ async function initEngineAndServices(): Promise<void> {
     return engineClient?.request('probe', sanitizeProbeArgs(videoPath)).promise
   })
 
-  ipcMain.handle('engine:analyze', async (event, args: unknown) => {
-    // The renderer knows only the video path; main adds the engine's profile_dir/cache_dir (return directly on a cache hit).
-    const req = engineClient?.request('analyze', buildAnalyzeArgs({ profile_dir: templateProfileDir, cache_dir: cacheDir() }, settingsStore?.get(), sanitizeAnalyzeArgs(args)), (progress) => {
-      event.sender.send('engine:progress', progress)
-    })
-    return req?.promise
+  ipcMain.handle('engine:analyze', async (_, args: unknown) => {
+    // Missing Studio caches must use the same game-aware queue as every other background analysis.
+    const { path, force } = sanitizeAnalyzeArgs(args)
+    queue!.enqueue(path, force)
+    return null
   })
 
   ipcMain.handle('engine:cancel', async (_, targetId: string) => {

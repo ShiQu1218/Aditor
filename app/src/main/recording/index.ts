@@ -81,6 +81,8 @@ export interface RecordingDeps {
   onLiveAnalysis?: (videoPath: string, summary: LiveAnalysisSummary) => void
   /** Called once when Apex changes from running to closed while `openOnGameExit` is enabled. */
   onGameExit?: () => void
+  /** Shared game presence, independent of recording settings and backend; failed queries retain the last state. */
+  onGameRunning?: (running: boolean) => void
 }
 
 export interface LiveAnalysisSummary {

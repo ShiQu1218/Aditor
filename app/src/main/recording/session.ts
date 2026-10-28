@@ -156,6 +156,7 @@ export class RecordingSessionService implements RecordingService {
     this.watcher = new GameWatcher<GameProcess>(() => this.findGame(), deps.pollMs ?? 3000,
       (found) => {
         this.pollWarning = false
+        this.deps.onGameRunning?.(found !== null)
         const pid = found?.pid ?? null
         const exited = this.gamePid !== null && pid === null
         if (!sameProcess(found, this.current())) {
@@ -230,6 +231,7 @@ export class RecordingSessionService implements RecordingService {
       if (this.active) return this.state.phase === 'recording'
       const found = await this.findGame()
       if (!found || !this.running) return false
+      this.deps.onGameRunning?.(true)
       const { pid } = found
       if (!sameProcess(found, this.current())) {
         this.builtinFallbackPid = null
