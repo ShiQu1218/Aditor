@@ -441,7 +441,7 @@ export const LIVE_COMPLETE_FILE = 'live-complete.json'
 /** Persist finalized.json before library/analysis side effects so recovery does not generate the video twice. */
 export async function finalizeSession(dir: string, deps: RecordingDeps): Promise<string[]> {
   dir = await validateSessionDir(dir)
-  const recording = await readOptional<{ backend?: unknown; livePending?: unknown }>(path.join(dir, 'recording.json'))
+  const recording = await readOptional<{ backend?: unknown; livePending?: unknown; game?: unknown }>(path.join(dir, 'recording.json'))
   if (recording?.backend === 'obs') return finalizeObsSession(dir, deps, await snapshot(dir, deps.getSettings().postAnalysis))
   const outputDir = path.dirname(path.dirname(dir))
   const markerPath = path.join(dir, 'finalized.json')
@@ -517,7 +517,8 @@ export async function finalizeSession(dir: string, deps: RecordingDeps): Promise
   // Legacy markers store only the output path; recovery adds the file to the library without re-enqueuing analysis.
   if (marker.postAnalysis === undefined) marker.postAnalysis = 'none'
   if (!['none', 'afterExit', 'perMatch'].includes(marker.postAnalysis)) throw new Error(tr('已收尾的分析設定無效'))
-  deps.addToLibrary([marker.outputPath])
+  // Recovery from an existing marker skips the snapshot above, so read the game from recording.json directly.
+  addRecorded(deps, [marker.outputPath], gameOf(recording?.game))
   if (!marker.liveCached) {
       // Live events are best-effort: conversion failure does not block finalization; full or manual analysis can fill them in later.
     try {

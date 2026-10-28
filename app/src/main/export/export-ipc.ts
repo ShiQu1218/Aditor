@@ -5,6 +5,7 @@
 import fs from 'fs'
 import path from 'path'
 import { buildJobs, concatList, resolveFreeBaseName, resolveQuality, StreamProbe } from './plan'
+import { UNKNOWN_PROBE } from '../../shared/exportCompat'
 import { AudioProbe, createAudioProbe, createCutLookup, createMediaEndProbe, CutLookup, lookupCopyCuts, MediaEndProbe, measureMediaEnds } from './keyframe'
 import { runExport, RunExportOptions, RunProgress } from './run'
 import { isSafeLocalDirPath, isSafeLocalVideoPath, fileExistsSafe } from '../safe-path'
@@ -122,17 +123,6 @@ export async function validateExportRequest(raw: unknown): Promise<ValidatedRequ
   return { items, mode: r.mode, quality: r.quality, encoder, outDir, outputDir, baseName: sanitizeBaseName(r.baseName) }
 }
 
-/** Defaults when metadata is unavailable: use common codec/resolution values and mark frame rate, pixel format, and audio specs as unknown (0/empty); compatibility checks then remain conservative. */
-const DEFAULT_PROBE: StreamProbe = {
-  vcodec: 'h264',
-  width: 1920,
-  height: 1080,
-  fps: 0,
-  pix_fmt: '',
-  acodec: '',
-  sample_rate: 0,
-  channels: 0
-}
 
 const posNum = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : 0)
 const str = (v: unknown): string => (typeof v === 'string' ? v : '')
@@ -162,7 +152,7 @@ export function createExportService(deps: ExportServiceDeps = {}) {
       const probes = new Map<string, StreamProbe>()
       for (const item of req.items) {
         if (probes.has(item.source)) continue
-        let info: StreamProbe = { ...DEFAULT_PROBE }
+        let info: StreamProbe = { ...UNKNOWN_PROBE }
         if (deps.probe) {
           try {
             const p = (await deps.probe(item.source)) as Record<string, unknown> | null

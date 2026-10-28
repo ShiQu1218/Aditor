@@ -380,7 +380,7 @@ export function ExportDrawer({ controller, project, base, onClose }: ExportDrawe
 
   const items: ExportItem[] = project.items.map((i) => ({ id: i.id, source: i.source, start: i.start, end: i.end }))
   const plan: ExportPlan | null = base ? { ...base, mode: state.settings.mode, quality: state.settings.quality } : null
-  const vm = exportViewModel(project, plan, { encoders: state.encoders, openh264: state.openh264Installed })
+  const vm = exportViewModel(project, plan, { encoders: state.encoders, openh264: state.openh264Installed, detected: state.detected })
   const sourceCount = new Set(project.items.map((i) => i.source)).size
 
   const closeNow = (): void => {

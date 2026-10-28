@@ -174,9 +174,12 @@ export function createExportController(api: ExportApi, initialName = 'highlight'
   async function init(defaultOutDir: string | null): Promise<void> {
     setSettings({ outDir: defaultOutDir })
     await Promise.all([detect(), refreshDisk(defaultOutDir)])
+    // Precise may have been picked while detection was still running; ask for consent now that the answer is known.
+    if (state.settings.quality === 'precise' && needsConsent() && state.h264.step === 'idle') set({ h264: { step: 'consent', ratio: 0, error: null } })
   }
 
-  const needsConsent = (): boolean => state.encoders.length === 0 && !state.openh264Installed
+  // Before detection finishes the empty encoder list means "unknown", not "none".
+  const needsConsent = (): boolean => state.detected && state.encoders.length === 0 && !state.openh264Installed
 
   async function setQuality(q: 'copy' | 'precise'): Promise<void> {
     setSettings({ quality: q })

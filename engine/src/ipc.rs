@@ -154,6 +154,7 @@ fn handle<W: Write + Send>(
             let duration = v
                 .as_f64()
                 .or_else(|| v.as_str().and_then(|s| s.parse().ok()))
+                .filter(|d: &f64| d.is_finite() && *d >= 0.)
                 .ok_or_else(|| bad("Invalid arguments: duration must be a number"))?;
             Ok(json!({"clips":autoclip::auto_clips(&events,&params,duration)}))
         }
@@ -226,9 +227,13 @@ pub fn serve<R: BufRead, W: Write + Send + Sync + 'static>(input: R, output: W) 
             }
             threads = active;
             threads.push(thread::spawn(move || {
-                let result = handle(&id, &cmd, &args, cancel.as_deref(), &out);
+                // A panicking analysis must still release the busy slot and answer the request.
+                let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    handle(&id, &cmd, &args, cancel.as_deref(), &out)
+                }))
+                .unwrap_or_else(|_| Err(anyhow::anyhow!("{cmd} panicked")));
                 if cancel.is_some() {
-                    *current.lock().unwrap() = None;
+                    *current.lock().unwrap_or_else(|e| e.into_inner()) = None;
                 }
                 let response = match result {
                     Ok(data) => json!({"id":id,"type":"result","data":data}),

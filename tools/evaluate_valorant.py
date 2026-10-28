@@ -47,7 +47,9 @@ def match_events(truth: list[float], predicted: list[float], tolerance: float) -
 def evaluate(truth_doc: dict, videos: list[dict], tolerance: float) -> dict:
     results = []
     for window in truth_doc["windows"]:
-        video = next(v for v in videos if v["filename"] == window["filename"])
+        video = next((v for v in videos if v["filename"] == window["filename"]), None)
+        if video is None:
+            raise SystemExit(f"No analysis result for {window['filename']} (window {window['id']})")
         times = [e["t"] for e in video["events"] if e.get("type", "kill") == "kill"
                  and window["start"] <= e["t"] < window["end"]]
         result = match_events([e["t"] for e in window["kills"]], times, tolerance)
