@@ -548,7 +548,8 @@ export class RecordingSessionService implements RecordingService {
           preset: settings.preset, aspect: settings.forceAspect ? settings.aspectMode : 'native' },
         audio: current.backend === 'obs' ? null : { render: settings.renderDevice, capture: settings.captureDevice, mic_gain: settings.micGain, mic_enabled: settings.micEnabled,
           render_enabled: settings.systemAudioEnabled, render_gain: settings.systemGain, render_source: settings.gameAudioOnly ? 'game' : 'device',
-          mic_mono: settings.micMono }, frames,
+          // Aditor's preview playback would otherwise be re-recorded and pile up in system audio.
+          exclude_pid: process.pid, mic_mono: settings.micMono }, frames,
         capture, ...(capture === 'hook' ? { hook_dir: this.deps.obsHookDir } : {}), capture_cursor: settings.captureCursor })
       await current.writes
       if (this.active !== current || current.ending) return false

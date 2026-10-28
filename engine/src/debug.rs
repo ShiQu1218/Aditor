@@ -9,16 +9,22 @@ pub fn run(cmd: &Command) -> Result<()> {
     let video = cmd.video.as_deref().unwrap();
     let dir = Path::new(value("--profile-dir").unwrap());
     if cmd.name == "debug-valorant-feed" {
-        let p = crate::valorant::load_valorant_profile(dir)?;
+        // Same layout and capture crops as valorant::analyze_valorant, so 4:3/16:10 recordings decode identically.
+        let info = crate::probe::probe(video)?;
+        let (layout, _) = crate::aspect::resolve_layout(None, &info);
+        let p =
+            crate::valorant::load_valorant_profile(dir)?.with_layout(layout.unwrap_or_default());
         let detector = crate::valorant::FeedDetector::new(&p);
         let mut tracker = crate::valorant::FeedTracker::default();
-        let stream = crate::decode::FrameStream::new(
+        let stream = crate::decode::FrameStream::for_capture(
             video,
             p.decoder_profile(),
             DecodeOptions {
                 hwaccel: false,
                 ..Default::default()
             },
+            p.capture_banner,
+            p.capture_spec,
         );
         for frame in stream {
             let (t, b, s) = frame?;

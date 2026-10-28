@@ -6,5 +6,7 @@ lines = open(p, encoding="utf-8").read().split("\n")
 for a in sys.argv[2:]:
     lo, _, hi = a.partition("-")
     for n in range(int(lo), int(hi or lo) + 1):
+        if not 1 <= n <= len(lines):
+            sys.exit(f"line {n} is outside 1..{len(lines)}")
         lines[n - 1] = lines[n - 1].replace("- [ ]", "- [x]", 1)
 open(p, "w", encoding="utf-8", newline="\n").write("\n".join(lines))

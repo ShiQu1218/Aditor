@@ -258,9 +258,12 @@ export async function finalizeObsMatches(dir: string, deps: RecordingDeps, confi
         await persist()
         outputs.push(file)
       }
-      const summary = await writeLiveCache(dir, file, deps, { ...info, duration: info.duration,
-        offset: (match.recordStartedAt - meta.captureStartedAt) / 1000 }, { forceUntrusted: !finishing, overwriteLive: trusted })
-      if (summary) { deps.onLiveAnalysis?.(file, summary); match.liveTrusted = summary.trusted }
+      // Best-effort like the other finalizers: a cache failure must not skip analysis or drop the output on retry.
+      try {
+        const summary = await writeLiveCache(dir, file, deps, { ...info, duration: info.duration,
+          offset: (match.recordStartedAt - meta.captureStartedAt) / 1000 }, { forceUntrusted: !finishing, overwriteLive: trusted })
+        if (summary) { deps.onLiveAnalysis?.(file, summary); match.liveTrusted = summary.trusted }
+      } catch (error) { console.error('[recording] Failed to write OBS live event cache:', error) }
       match.liveCached = true
       await persist()
     }

@@ -560,7 +560,7 @@ impl HookSession {
         }
         if wait != WAIT_OBJECT_0 {
             bail!(
-                "hook_unavailable: Failed while waiting for CaptureHook_HookReady event(status 0x{:x}",
+                "hook_unavailable: Failed while waiting for CaptureHook_HookReady event (status 0x{:x})",
                 wait.0
             );
         }

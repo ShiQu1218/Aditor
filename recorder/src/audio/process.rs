@@ -12,7 +12,7 @@ use windows::{
             IActivateAudioInterfaceCompletionHandler_Impl, IAudioClient,
             AUDIOCLIENT_ACTIVATION_PARAMS, AUDIOCLIENT_ACTIVATION_PARAMS_0,
             AUDIOCLIENT_ACTIVATION_TYPE_PROCESS_LOOPBACK, AUDIOCLIENT_PROCESS_LOOPBACK_PARAMS,
-            PROCESS_LOOPBACK_MODE_INCLUDE_TARGET_PROCESS_TREE,
+            PROCESS_LOOPBACK_MODE_EXCLUDE_TARGET_PROCESS_TREE, PROCESS_LOOPBACK_MODE_INCLUDE_TARGET_PROCESS_TREE,
             VIRTUAL_AUDIO_DEVICE_PROCESS_LOOPBACK,
         },
         System::{
@@ -46,14 +46,19 @@ impl IActivateAudioInterfaceCompletionHandler_Impl for Completion_Impl {
     }
 }
 
-pub(super) fn activate(pid: u32) -> Result<IAudioClient> {
+/// `include`: capture only the process tree; otherwise capture everything except it.
+pub(super) fn activate(pid: u32, include: bool) -> Result<IAudioClient> {
     ensure!(pid != 0, "Process audio capture requires a valid PID");
     let mut params = Box::new(AUDIOCLIENT_ACTIVATION_PARAMS {
         ActivationType: AUDIOCLIENT_ACTIVATION_TYPE_PROCESS_LOOPBACK,
         Anonymous: AUDIOCLIENT_ACTIVATION_PARAMS_0 {
             ProcessLoopbackParams: AUDIOCLIENT_PROCESS_LOOPBACK_PARAMS {
                 TargetProcessId: pid,
-                ProcessLoopbackMode: PROCESS_LOOPBACK_MODE_INCLUDE_TARGET_PROCESS_TREE,
+                ProcessLoopbackMode: if include {
+                    PROCESS_LOOPBACK_MODE_INCLUDE_TARGET_PROCESS_TREE
+                } else {
+                    PROCESS_LOOPBACK_MODE_EXCLUDE_TARGET_PROCESS_TREE
+                },
             },
         },
     });

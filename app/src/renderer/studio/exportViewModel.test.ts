@@ -52,6 +52,20 @@ describe('exportViewModel', () => {
     expect(exportViewModel(p, mixed, HW).copyAvailable).toBe(true)
   })
 
+  test('concat: a source that failed to probe rules out stream copy, as main does', () => {
+    const p = proj([['1', A, 0, 10], ['2', B, 5, 15]])
+    const full = { codec: 'h264', width: 1920, height: 1080, fps: 60, pix_fmt: 'yuv420p', acodec: 'aac', sample_rate: 48000, channels: 2 }
+    expect(exportViewModel(p, plan({ sources: { [A]: full, [B]: full } }), HW).copyAvailable).toBe(true)
+    expect(exportViewModel(p, plan({ sources: { [A]: full } }), HW).copyAvailable).toBe(false)
+  })
+
+  test('precise export waits for encoder detection instead of asking for OpenH264', () => {
+    const p = proj([['1', A, 0, 10]])
+    const vm = exportViewModel(p, plan({ quality: 'precise' }), { encoders: [], openh264: false, detected: false })
+    expect(vm.openh264Required).toBe(false)
+    expect(vm.canStart).toBe(false)
+  })
+
   test('missing source files become blockers and disable start', () => {
     const p = proj([['1', A, 0, 10], ['2', B, 5, 15]])
     const vm = exportViewModel(p, plan({ missingItemIds: new Set(['2']) }), HW)

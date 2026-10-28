@@ -12,6 +12,18 @@ export interface StreamProbe {
   channels: number
 }
 
+/** Defaults when metadata is unavailable: use common codec/resolution values and mark frame rate, pixel format, and audio specs as unknown (0/empty); compatibility checks then remain conservative. */
+export const UNKNOWN_PROBE: StreamProbe = {
+  vcodec: 'h264',
+  width: 1920,
+  height: 1080,
+  fps: 0,
+  pix_fmt: '',
+  acodec: '',
+  sample_rate: 0,
+  channels: 0
+}
+
 export function extraSecondsForCopy(start: number, keyframes: number[]): number {
   if (!keyframes || keyframes.length === 0) {
     return Math.round(start * 1000) / 1000

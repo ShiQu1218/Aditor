@@ -146,7 +146,7 @@ describe('recording service state machine', () => {
     expect(start.frames).toEqual({ banner: [560, 700, 800, 180], spec: [60, 1028, 480, 40], base: [1920, 1080] })
     expect(start.encode).toMatchObject({ height: 1080, codec: 'hevc', gpu: '10de:2684', bitrate_kbps: 10000, preset: 'speed', aspect: 'native' })
     expect(start.audio).toEqual({ render: 'speaker', capture: 'mic', mic_enabled: false, mic_gain: 0.4,
-      render_enabled: true, render_gain: 1, render_source: 'device', mic_mono: false })
+      render_enabled: true, render_gain: 1, render_source: 'device', exclude_pid: process.pid, mic_mono: false })
     expect(start.capture).toBe('dda')
     expect(start.capture_cursor).toBe(true)
     await waitFor(() => fs.existsSync(path.join(start.session_dir, 'events.jsonl')) &&

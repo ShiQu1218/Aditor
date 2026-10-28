@@ -77,11 +77,18 @@ fn build_filter_rects(
     } else {
         format!("fps={FPS}")
     };
+    let width = stack_width(bw, sw, profile.capture_killfeed());
     if let Some([fx, fy, fw, fh]) = profile.capture_killfeed() {
-        let width = bw.max(sw).max(fw);
         return format!("[0:v]{pre},scale=1920:1080,split=4[a][b][c][d];[a]crop={bw}:{bh}:{bx}:{by},pad={width}:ih[a1];[b]crop={sw}:{sh}:{sx}:{sy},pad={width}:ih[b1];[c]crop={fw}:{fh}:{fx}:{fy},pad={width}:ih[c1];[d]scale=640:360,pad={width}:360[d1];[a1][b1][c1][d1]vstack=inputs=4");
     }
-    format!("[0:v]{pre},scale=1920:1080,split[a][b];[a]crop={bw}:{bh}:{bx}:{by}[a1];[b]crop={sw}:{sh}:{sx}:{sy},pad={bw}:ih[b1];[a1][b1]vstack")
+    format!("[0:v]{pre},scale=1920:1080,split[a][b];[a]crop={bw}:{bh}:{bx}:{by},pad={width}:ih[a1];[b]crop={sw}:{sh}:{sx}:{sy},pad={width}:ih[b1];[a1][b1]vstack")
+}
+/// Width of the stacked rawvideo frame: vstack needs equal widths, and the 640-wide thumbnail joins the feed stack.
+fn stack_width(bw: i32, sw: i32, killfeed: Option<crate::layout::Rect>) -> i32 {
+    match killfeed {
+        Some([_, _, fw, _]) => bw.max(sw).max(fw).max(640),
+        None => bw.max(sw),
+    }
 }
 #[derive(Clone, Debug)]
 pub struct DecodeOptions {
@@ -300,11 +307,9 @@ impl FrameStream {
                 }
             }
             let ([_, _, bw, bh], [_, _, sw, sh]) = self.rects();
-            let (width, height) = if let Some([_, _, fw, fh]) = self.profile.capture_killfeed() {
-                (bw.max(sw).max(fw) as usize, (bh + sh + fh + 360) as usize)
-            } else {
-                (bw as usize, (bh + sh) as usize)
-            };
+            let killfeed = self.profile.capture_killfeed();
+            let width = stack_width(bw, sw, killfeed) as usize;
+            let height = (bh + sh + killfeed.map_or(0, |[_, _, _, fh]| fh + 360)) as usize;
             let mut buf = vec![0u8; width * height * 3];
             let read = crate::process::read_exact(
                 self.proc.as_mut().unwrap().stdout.as_mut().unwrap(),
