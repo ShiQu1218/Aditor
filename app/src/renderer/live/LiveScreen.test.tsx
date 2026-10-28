@@ -5,7 +5,7 @@ import { IDLE_RECORDING_STATUS, type LiveState, type LiveUpdate, type RecordingS
 import type { EngineEvent } from '../../shared/types'
 import { formatTime } from '../../shared/time'
 import type { RecordingApi } from '../global'
-import { liveI18n as t, recordingI18n as rt } from '../i18n'
+import { i18n, liveI18n as t, recordingI18n as rt } from '../i18n'
 import { RecordingPanel } from '../shell/RecordingPanel'
 import { LiveScreen } from './LiveScreen'
 import { applyLiveUpdate, fill, newCountedEvents, pct } from './liveModel'
@@ -404,6 +404,40 @@ describe('LiveScreen', () => {
     expect(document.body.textContent).toContain(t.ended)
     click(buttonByText(document.body, t.openStudio)!)
     expect(onOpenVideo).toHaveBeenCalledWith('D:\\videos\\Apex_2026-10-18_12-34.mp4')
+  })
+
+  test('Switches to a new recording that starts while the screen stays open, ignoring late updates from the old one', async () => {
+    const ID2 = '20261018-130000-beef'
+    const LIVE2: LiveState = { ...LIVE, sessionId: ID2, events: [ev('b5000', 5, 'elim')], matches: [{ start: 0, end: null }] }
+    const r = rig(RECORDING, LIVE)
+    screen()
+    await settle()
+    r.push({ sessionId: ID, finalized: ['D:\videos\old.mp4'] })
+    r.status({ ...IDLE_RECORDING_STATUS })
+    expect(document.body.textContent).toContain(t.ended)
+    vi.mocked(r.api.getLive!).mockResolvedValue(LIVE2)
+    r.status({ ...RECORDING, sessionId: ID2 })
+    r.push({ sessionId: ID2, segment: { seq: 11, pts: 20, dur: 2 } })
+    await settle()
+    expect(document.body.textContent).not.toContain(t.ended)
+    const list = (): string => document.querySelector('.live-aside')!.textContent!
+    expect(list()).toContain(fill(t.eventItem, { type: i18n.timeline.types.elim, time: formatTime(5) }))
+    r.push({ sessionId: ID, events: [ev('late', 30)] })
+    await settle()
+    expect(list()).not.toContain(formatTime(30))
+  })
+
+  test('Shows a recording that starts after the screen opened with nothing to watch', async () => {
+    const r = rig()
+    screen()
+    await flush()
+    expect(document.body.textContent).toContain(t.notRecording)
+    vi.mocked(r.api.getLive!).mockResolvedValue(LIVE)
+    r.status(RECORDING)
+    r.push({ sessionId: ID, segment: { seq: 11, pts: 20, dur: 2 } })
+    await settle()
+    expect(document.body.textContent).not.toContain(t.notRecording)
+    expect(document.querySelector('.live-aside')!.textContent).toContain(formatTime(12))
   })
 
   test('When the current recording ends without an output file, offers navigation to the library', async () => {
