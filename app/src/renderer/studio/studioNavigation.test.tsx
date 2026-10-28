@@ -115,8 +115,32 @@ describe('Studio navigation', () => {
     expect(fake.api.engine.analyze).toHaveBeenCalledTimes(1)
   })
 
+  test('completed queued analysis without a usable cache offers Retry instead of waiting forever', async () => {
+    await start([entry(A)])
+    const loadCache = vi.spyOn(window.api.cache, 'loadByVideo').mockResolvedValue(null)
+    const getState = vi.spyOn(window.api.queue, 'getState').mockResolvedValue({ queue: { analyzing: A, queued: [] }, current: null })
+    fake.api.engine.analyze.mockImplementation(async () => {
+      fake.setEntries([{ ...entry(A), status: 'analyzing' }])
+      return null
+    })
+    navigate('studio'); await flush()
+    getState.mockResolvedValue({ queue: { analyzing: null, queued: [] }, current: null })
+    fake.setEntries([entry(A)])
+    await act(async () => fake.emit('library:updated')); await flush()
+    expect(document.querySelector('[role="alert"]')?.textContent).toContain(i18n.studio.loadFailed.title)
+    getState.mockResolvedValue({ queue: { analyzing: null, queued: [A] }, current: null })
+    click(buttonByText(document, i18n.studio.loadFailed.retry)!); await flush()
+    expect(fake.api.engine.analyze).toHaveBeenCalledTimes(2)
+    fake.setEntries([entry(A)])
+    loadCache.mockResolvedValue({ ...buildLongDoc(A), clips: [] })
+    getState.mockResolvedValue({ queue: { analyzing: null, queued: [] }, current: null })
+    await act(async () => fake.emit('library:updated')); await flush()
+    expect(document.querySelector('.studio-file')?.textContent).toBe(A.split('/').pop())
+  })
+
   test('queued completion during an in-flight cache read is not lost', async () => {
     await start([entry(A)])
+    vi.spyOn(window.api.queue, 'getState').mockResolvedValue({ queue: { analyzing: null, queued: [A] }, current: null })
     const loadCache = vi.spyOn(window.api.cache, 'loadByVideo').mockResolvedValue(null)
     navigate('studio'); await flush()
     let resolve!: (doc: null) => void

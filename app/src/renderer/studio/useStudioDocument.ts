@@ -106,6 +106,7 @@ export function useStudioDocument({
             const entries: LibraryEntry[] = await api.library.getEntries()
             if (cancelled) return
             const entry = entries.find((e) => normPath(e.path) === normPath(videoPath))
+            const idle = queueItemState(summarizeQueue(queue, Date.now()), videoPath) === 'idle'
             if (entry?.status === 'error') {
               failedAnalysisPath.current = videoPath
               finished = true
@@ -113,11 +114,20 @@ export function useStudioDocument({
               await applyOutcome({ kind: 'error', message: entry.error ?? i18n.studio.toast.analysisRefreshFailed, code: entry.errorCode })
             } else if (entry?.status === 'done') {
               const doc: CacheDoc | null = await api.cache.loadByVideo(videoPath)
-              if (cancelled || doc?.analysis.status !== 'done') return
+              if (cancelled) return
+              if (doc?.analysis.status !== 'done') {
+                // Nothing else will update this entry once its job is gone, so offer Retry instead of waiting forever.
+                if (!idle || refreshPending) return
+                failedAnalysisPath.current = videoPath
+                finished = true
+                offQueued?.()
+                await applyOutcome({ kind: 'error', message: i18n.studio.toast.analysisRefreshFailed })
+                return
+              }
               finished = true
               offQueued?.()
               await applyOutcome({ kind: 'ready', doc, from: 'cache' })
-            } else if (queueItemState(summarizeQueue(queue, Date.now()), videoPath) === 'idle') {
+            } else if (idle) {
               finished = true
               offQueued?.()
               await applyOutcome({ kind: 'blocked' })

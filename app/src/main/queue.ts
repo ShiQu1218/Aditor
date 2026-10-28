@@ -216,20 +216,29 @@ export class AnalysisQueue extends EventEmitter {
       }
       let doc = await req.promise
       run.engineFinished = true
-      if (run.cancelled) return
+      // Rewrite the cache only after success (cancellation/failure leaves the old cache untouched).
+      const preserve = (): void => {
+        try {
+          if (preserveClipsAfterReanalysis(prior, doc, videoPath, this.opts.cacheDir, extra.beside, force)) {
+            doc = (loadCacheDoc(doc.cache_path || run.cachePath!) as CacheDoc | null) ?? doc
+          }
+        } catch (err) {
+          console.error('[Queue] failed to preserve clips after re-analysis:', err)
+        }
+      }
+      if (run.cancelled) {
+        // The engine finished before it saw the cancellation and already replaced the cache;
+        // restore clips now, or the retry would back up the replaced cache and lose them.
+        preserve()
+        return
+      }
 
       const duration = doc.video?.duration || 0
       const thumb = await this._generateThumbnail(videoPath, duration).catch(() => undefined)
       if (run.cancelled) return
 
-      // Rewrite the cache only after success (cancellation/failure leaves the old cache untouched).
-      try {
-        if (preserveClipsAfterReanalysis(prior, doc, videoPath, this.opts.cacheDir, extra.beside, force)) {
-          doc = (loadCacheDoc(doc.cache_path || run.cachePath!) as CacheDoc | null) ?? doc
-        }
-      } catch (err) {
-        console.error('[Queue] failed to preserve clips after re-analysis:', err)
-      }
+      // After the thumbnail, so edits saved while it was generated are merged too.
+      preserve()
 
       this.library.update(videoPath, {
         status: 'done',

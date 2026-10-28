@@ -50,3 +50,24 @@ test.each(['builtin', 'obs'] as const)('shares game detection with analysis whil
     fs.rmSync(root, { recursive: true, force: true })
   }
 })
+
+test('releases analysis after repeated failed game queries while no game is known', async () => {
+  vi.useFakeTimers()
+  const root = tempRoot()
+  const deps = makeDeps(root)
+  deps.findGame = vi.fn().mockRejectedValue(new Error('tasklist failed'))
+  deps.pollMs = 3000
+  const running: boolean[] = []
+  deps.onGameRunning = (value) => running.push(value)
+  const service = createRecordingService(deps)
+  try {
+    service.start()
+    await vi.advanceTimersByTimeAsync(3000)
+    expect(running).toEqual([])
+    await vi.advanceTimersByTimeAsync(3000)
+    expect(running).toEqual([false])
+  } finally {
+    await service.stop()
+    fs.rmSync(root, { recursive: true, force: true })
+  }
+})

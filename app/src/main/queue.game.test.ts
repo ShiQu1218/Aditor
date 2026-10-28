@@ -77,6 +77,20 @@ test('cancels an active engine and retries it first with force preserved after t
   await vi.waitFor(() => expect(library.get(second)?.status).toBe('done'))
 })
 
+test('preserves clips when the engine completes a run the game already interrupted', async () => {
+  const { queue, engine, runs } = rig()
+  const preserve = vi.spyOn(reanalysis, 'preserveClipsAfterReanalysis')
+  queue.enqueue(first)
+  queue.setGameRunning(true)
+  expect(engine.cancel).toHaveBeenCalledOnce()
+  // The engine finished and replaced the cache before it saw the cancellation.
+  runs[0].resolve(doc)
+  await vi.waitFor(() => expect(queue.activeCachePath(first)).toBeUndefined())
+  expect(preserve).toHaveBeenCalledOnce()
+  expect(queue.snapshot()).toEqual({ analyzing: null, queued: [first], waitingForGame: true })
+  expect(library.get(first)).toMatchObject({ status: 'pending' })
+})
+
 test('finishes preserving clips when the game starts after the engine resolves', async () => {
   const { queue, engine, runs } = rig()
   const preserve = vi.spyOn(reanalysis, 'preserveClipsAfterReanalysis')
