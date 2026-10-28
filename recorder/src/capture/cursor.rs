@@ -404,6 +404,17 @@ fn bitmap_pixels(bitmap: HBITMAP) -> Result<BitmapPixels> {
     })
 }
 
+fn unpremultiply(pixels: &mut [[u8; 4]]) {
+    for pixel in pixels {
+        let alpha = u32::from(pixel[3]);
+        if alpha > 0 && alpha < 255 {
+            for channel in &mut pixel[..3] {
+                *channel = ((u32::from(*channel) * 255 + alpha / 2) / alpha).min(255) as u8;
+            }
+        }
+    }
+}
+
 fn icon_shape(icon: &ICONINFO) -> Result<PointerShape> {
     let BitmapPixels {
         size: mask_size,
@@ -430,7 +441,10 @@ fn icon_shape(icon: &ICONINFO) -> Result<PointerShape> {
     let BitmapPixels { size, mut pixels } = bitmap_pixels(icon.hbmColor)?;
     ensure!(mask_size == size, "Cursor mask size mismatch");
     let alpha = pixels.iter().any(|p| p[3] != 0);
-    if !alpha {
+    if alpha {
+        // Win32 color bitmaps are premultiplied, but the shader expects straight alpha.
+        unpremultiply(&mut pixels);
+    } else {
         for (p, mask) in pixels.iter_mut().zip(mask) {
             p[3] = mask[0];
         }
@@ -798,6 +812,31 @@ mod tests {
             };
         }
         result
+    }
+
+    #[test]
+    fn win32_alpha_converts_to_straight_and_preserves_blending() {
+        let premultiplied = [[42, 16, 64, 64], [133, 86, 0, 172]];
+        let mut straight = premultiplied;
+        unpremultiply(&mut straight);
+        assert_eq!(straight, [[167, 64, 255, 64], [197, 128, 0, 172]]);
+        for (input, output) in premultiplied.into_iter().zip(straight) {
+            for background in [[0, 0, 0, 255], [255; 4]] {
+                let actual = blend(2, output, background);
+                for channel in 0..3 {
+                    let expected = u32::from(input[channel])
+                        + (u32::from(background[channel]) * (255 - u32::from(input[3])) + 127)
+                            / 255;
+                    assert!(u32::from(actual[channel]).abs_diff(expected) <= 1);
+                }
+            }
+        }
+        let mut edges = [[12, 34, 56, 0], [12, 34, 56, 255], [2, 1, 0, 1]];
+        unpremultiply(&mut edges);
+        assert_eq!(
+            edges,
+            [[12, 34, 56, 0], [12, 34, 56, 255], [255, 255, 0, 1]]
+        );
     }
 
     #[test]
