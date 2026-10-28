@@ -7,7 +7,7 @@
 
 use std::mem::ManuallyDrop;
 
-use anyhow::{bail, Context, Result};
+use anyhow::{bail, ensure, Context, Result};
 use windows::core::Interface;
 use windows::Win32::Foundation::RECT;
 use windows::Win32::Graphics::Direct3D11::*;
@@ -133,7 +133,10 @@ impl SmallFrameExtractor {
             if self.scaler.as_ref().map(|s| s.input_size) != Some((width, height)) {
                 self.scaler = Some(Scaler::new(&self.gpu, (width, height), (1920, 1080))?);
             }
-            let scaler = self.scaler.as_ref().context("Missing reference-resolution scaler")?;
+            let scaler = self
+                .scaler
+                .as_mut()
+                .context("Missing reference-resolution scaler")?;
             scaler.scale(&self.gpu, texture)?;
             &scaler.output
         };
@@ -176,7 +179,10 @@ fn validate_spec(frames: FramesSpec) -> Result<()> {
     if frames.base != [1920, 1080] {
         bail!("Thumbnail reference resolution must be 1920×1080");
     }
-    for roi in [Some(frames.banner), Some(frames.spec), frames.killfeed].into_iter().flatten() {
+    for roi in [Some(frames.banner), Some(frames.spec), frames.killfeed]
+        .into_iter()
+        .flatten()
+    {
         let [x, y, w, h] = roi;
         if w == 0 || h == 0 || x as u64 + w as u64 > 1920 || y as u64 + h as u64 > 1080 {
             bail!("Thumbnail ROI must fit within the reference frame and have nonzero width and height");
@@ -210,7 +216,10 @@ impl Readback {
         Ok(Self {
             banner: texture(gpu, (frames.banner[2], frames.banner[3]), true)?,
             spec: texture(gpu, (frames.spec[2], frames.spec[3]), true)?,
-            killfeed: frames.killfeed.map(|r| texture(gpu, (r[2], r[3]), true)).transpose()?,
+            killfeed: frames
+                .killfeed
+                .map(|r| texture(gpu, (r[2], r[3]), true))
+                .transpose()?,
             thumb: texture(gpu, (THUMB_W, THUMB_H), true)?,
             pending: None,
             ready: ready.context("Missing thumbnail completion event")?,
@@ -250,7 +259,9 @@ impl Readback {
             None
         };
         let killfeed = if let Some(texture) = &self.killfeed {
-            let Some(mapped) = Mapped::try_new(gpu, texture)? else { return Ok(None) };
+            let Some(mapped) = Mapped::try_new(gpu, texture)? else {
+                return Ok(None);
+            };
             Some(mapped)
         } else {
             None
@@ -396,6 +407,9 @@ struct Scaler {
     input: ID3D11Texture2D,
     output: ID3D11Texture2D,
     input_view: ID3D11VideoProcessorInputView,
+    device: ID3D11VideoDevice,
+    enumerator: ID3D11VideoProcessorEnumerator,
+    sources: Vec<(ID3D11Texture2D, Option<ID3D11VideoProcessorInputView>)>,
     output_view: ID3D11VideoProcessorOutputView,
     processor: ID3D11VideoProcessor,
     context: ID3D11VideoContext,
@@ -434,7 +448,7 @@ impl Scaler {
         let mut input_view = None;
         let mut output_view = None;
         // SAFETY: The processor and views all belong to the same device; input and output are single-layer BGRA textures.
-        let processor = unsafe {
+        let (processor, enumerator) = unsafe {
             let enumerator = device.CreateVideoProcessorEnumerator(&desc)?;
             let support = enumerator.CheckVideoProcessorFormat(DXGI_FORMAT_B8G8R8A8_UNORM)?;
             if support & 3 != 3 {
@@ -478,20 +492,72 @@ impl Scaler {
             let color = D3D11_VIDEO_PROCESSOR_COLOR_SPACE::default();
             context.VideoProcessorSetStreamColorSpace(&processor, 0, &color);
             context.VideoProcessorSetOutputColorSpace(&processor, &color);
-            processor
+            (processor, enumerator)
         };
         Ok(Self {
             input_size,
             input,
             output,
             input_view: input_view.context("Missing VideoProcessor input view")?,
+            device,
+            enumerator,
+            sources: Vec::new(),
             output_view: output_view.context("Missing VideoProcessor output view")?,
             processor,
             context,
         })
     }
 
-    fn scale(&self, gpu: &Gpu, source: &ID3D11Texture2D) -> Result<()> {
+    fn scale(&mut self, gpu: &Gpu, source: &ID3D11Texture2D) -> Result<()> {
+        // SAFETY: The source is live; reject cross-device resources before issuing GPU work.
+        ensure!(
+            unsafe { source.GetDevice()? } == gpu.device,
+            "Scaler source belongs to another GPU device"
+        );
+        let mut desc = D3D11_TEXTURE2D_DESC::default();
+        // SAFETY: The source is valid and desc is writable.
+        unsafe { source.GetDesc(&mut desc) };
+        ensure!(
+            desc.Width >= self.input_size.0
+                && desc.Height >= self.input_size.1
+                && desc.Format == DXGI_FORMAT_B8G8R8A8_UNORM
+                && desc.SampleDesc.Count == 1,
+            "Scaler source must be a sufficiently large, single-sample BGRA texture"
+        );
+        let index = if let Some(index) = self
+            .sources
+            .iter()
+            .position(|(texture, _)| texture == source)
+        {
+            index
+        } else {
+            let mut view = None;
+            // Preserve filtering at cropped source boundaries by retaining the normalized-size copy.
+            if (desc.Width, desc.Height) == self.input_size {
+                // SAFETY: The source and enumerator use the same device and select mip 0.
+                let result = unsafe {
+                    self.device.CreateVideoProcessorInputView(
+                        source,
+                        &self.enumerator,
+                        &D3D11_VIDEO_PROCESSOR_INPUT_VIEW_DESC {
+                            ViewDimension: D3D11_VPIV_DIMENSION_TEXTURE2D,
+                            ..Default::default()
+                        },
+                        Some(&mut view),
+                    )
+                };
+                if result.is_err() {
+                    view = None;
+                }
+            }
+            // Bound retained pool textures, including sources that require the copy fallback.
+            if self.sources.len() == 4 {
+                self.sources.remove(0);
+            }
+            self.sources.push((source.clone(), view));
+            self.sources.len() - 1
+        };
+        let direct = self.sources[index].1.as_ref();
         let region = D3D11_BOX {
             right: self.input_size.0,
             bottom: self.input_size.1,
@@ -500,13 +566,23 @@ impl Scaler {
         };
         let mut stream = D3D11_VIDEO_PROCESSOR_STREAM {
             Enable: true.into(),
-            pInputSurface: ManuallyDrop::new(Some(self.input_view.clone())),
+            pInputSurface: ManuallyDrop::new(Some(direct.unwrap_or(&self.input_view).clone())),
             ..Default::default()
         };
         // SAFETY: The copy region uses validated frame dimensions; views remain valid during Blt, with no past or future frames used.
         let result = unsafe {
-            gpu.context
-                .CopySubresourceRegion(&self.input, 0, 0, 0, 0, source, 0, Some(&region));
+            if direct.is_none() {
+                gpu.context.CopySubresourceRegion(
+                    &self.input,
+                    0,
+                    0,
+                    0,
+                    0,
+                    source,
+                    0,
+                    Some(&region),
+                );
+            }
             self.context.VideoProcessorBlt(
                 &self.processor,
                 &self.output_view,
@@ -525,6 +601,56 @@ mod tests {
     use super::*;
 
     #[test]
+    fn gpu_scaler_caches_direct_views_and_preserves_copy_fallback() {
+        let gpu = Gpu::create().unwrap();
+        let source = texture(&gpu, (3840, 2160), false).unwrap();
+        let fallback = texture(&gpu, (3840, 2160), true).unwrap();
+        let mut view = None;
+        // SAFETY: The render target and staging texture have matching BGRA dimensions on the same device.
+        unsafe {
+            gpu.device
+                .CreateRenderTargetView(&source, None, Some(&mut view))
+                .unwrap();
+            gpu.context
+                .ClearRenderTargetView(&view.unwrap(), &[0.8, 0.2, 0.1, 1.0]);
+            gpu.context.CopyResource(&fallback, &source);
+        }
+        let mut scaler = Scaler::new(&gpu, (3840, 2160), (1920, 1080)).unwrap();
+        let staging = texture(&gpu, (1920, 1080), true).unwrap();
+        let mut results = Vec::new();
+        for source in [&source, &source, &fallback, &fallback] {
+            scaler.scale(&gpu, source).unwrap();
+            let mut data = D3D11_MAPPED_SUBRESOURCE::default();
+            // SAFETY: Test-only blocking readback waits for the matching output copy and is paired with Unmap.
+            unsafe {
+                gpu.context.CopyResource(&staging, &scaler.output);
+                gpu.context
+                    .Map(&staging, 0, D3D11_MAP_READ, 0, Some(&mut data))
+                    .unwrap();
+                results.push(std::slice::from_raw_parts(data.pData.cast::<u8>(), 4).to_vec());
+                gpu.context.Unmap(&staging, 0);
+            }
+        }
+        assert_eq!(scaler.sources.len(), 2);
+        assert!(scaler.sources[0].1.is_some());
+        assert!(
+            scaler.sources[1].1.is_none(),
+            "Staging sources must use the copy fallback"
+        );
+        for pixel in results {
+            for (actual, expected) in pixel.into_iter().zip([26u8, 51, 204, 255]) {
+                assert!(actual.abs_diff(expected) <= 2);
+            }
+        }
+        for _ in 0..5 {
+            scaler
+                .scale(&gpu, &texture(&gpu, (3840, 2160), false).unwrap())
+                .unwrap();
+        }
+        assert_eq!(scaler.sources.len(), 4);
+    }
+
+    #[test]
     fn validates_roi_without_overflow() {
         let valid = FramesSpec {
             banner: [10, 20, 30, 40],
@@ -533,7 +659,11 @@ mod tests {
             killfeed: None,
         };
         assert!(validate_spec(valid).is_ok());
-        assert!(validate_spec(FramesSpec { killfeed: Some([1919, 0, 2, 1]), ..valid }).is_err());
+        assert!(validate_spec(FramesSpec {
+            killfeed: Some([1919, 0, 2, 1]),
+            ..valid
+        })
+        .is_err());
         for roi in [
             [0, 0, 0, 1],
             [1919, 0, 2, 1],

@@ -170,6 +170,14 @@ pub(crate) fn codec_of(name: &str) -> Codec {
         Codec::H264
     }
 }
+fn input_formats(name: &str) -> [ffi::AVPixelFormat; 2] {
+    if name.ends_with("_nvenc") {
+        [ffi::AV_PIX_FMT_NV12, ffi::AV_PIX_FMT_BGRA]
+    } else {
+        [ffi::AV_PIX_FMT_BGRA, ffi::AV_PIX_FMT_NV12]
+    }
+}
+
 fn probe(gpu: &Gpu, name: &str) -> Result<ffi::AVPixelFormat> {
     let params = VideoParams {
         width: 256,
@@ -182,7 +190,7 @@ fn probe(gpu: &Gpu, name: &str) -> Result<ffi::AVPixelFormat> {
         aspect: EncodeAspect::Native,
     };
     let mut failure = None;
-    for format in [ffi::AV_PIX_FMT_BGRA, ffi::AV_PIX_FMT_NV12] {
+    for format in input_formats(name) {
         let attempt = || -> Result<()> {
             let hardware = Hardware::new(gpu, &params, format)?;
             let encoder = hardware.encoder(name, &params)?;
@@ -295,9 +303,24 @@ impl SegmentWriter {
         for name in candidates(&video) {
             let attempt = || -> Result<_> {
                 let format = probe(gpu, name)?;
-                let hardware = Hardware::new(gpu, &video, format)?;
-                let encoder = hardware.encoder(name, &video)?;
-                Ok((hardware, encoder))
+                let mut failure = None;
+                // The recording size can reject a format that passed the small probe.
+                for candidate in std::iter::once(format).chain(
+                    input_formats(name)
+                        .into_iter()
+                        .filter(|candidate| *candidate != format),
+                ) {
+                    let attempt = || -> Result<_> {
+                        let hardware = Hardware::new(gpu, &video, candidate)?;
+                        let encoder = hardware.encoder(name, &video)?;
+                        Ok((hardware, encoder))
+                    };
+                    match attempt() {
+                        Ok(selected) => return Ok(selected),
+                        Err(error) => failure = Some(error),
+                    }
+                }
+                Err(failure.context("No recording pixel format was tried")?)
             };
             match attempt() {
                 Ok((hardware, encoder)) => {
@@ -408,7 +431,8 @@ impl SegmentWriter {
                 .copier
                 .copy(texture, (src_w, src_h), &surface.frame)
             {
-                self.counts.fail(format!("GPU frame copy failed: {error:#}"));
+                self.counts
+                    .fail(format!("GPU frame copy failed: {error:#}"));
                 return None;
             }
             self.counts.queue.fetch_add(1, Ordering::Relaxed);
@@ -487,9 +511,9 @@ impl SegmentWriter {
         self.video_tx.take();
         self.audio_tx.take();
         if let Some(worker) = self.worker.take() {
-            worker
-                .join()
-                .map_err(|_| anyhow::anyhow!("encode_failed: Encoder thread terminated unexpectedly"))??;
+            worker.join().map_err(|_| {
+                anyhow::anyhow!("encode_failed: Encoder thread terminated unexpectedly")
+            })??;
         }
         let audio_dropped = self.counts.audio_dropped.swap(0, Ordering::Relaxed);
         if audio_dropped > 0 {

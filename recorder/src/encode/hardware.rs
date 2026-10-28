@@ -78,7 +78,10 @@ impl Hardware {
             let d3d = &mut *(context.hwctx as *mut AVD3D11VADeviceContext);
             d3d.device = gpu.device.clone().into_raw().cast();
             d3d.device_context = gpu.context.clone().into_raw().cast();
-            check(av_hwdevice_ctx_init(device.0), "Initialize D3D11 hardware device")?;
+            check(
+                av_hwdevice_ctx_init(device.0),
+                "Initialize D3D11 hardware device",
+            )?;
             let frames = Buffer::owned(av_hwframe_ctx_alloc(device.0))?;
             let context = &mut *((*frames.0).data as *mut AVHWFramesContext);
             context.format = AV_PIX_FMT_D3D11;
@@ -101,6 +104,12 @@ impl Hardware {
                 av_hwframe_get_buffer(self.frames.0, frame.0, 0),
                 "Allocate GPU surface",
             )?;
+            if self.format == AV_PIX_FMT_NV12 {
+                (*frame.0).color_range = AVCOL_RANGE_MPEG;
+                (*frame.0).colorspace = AVCOL_SPC_BT709;
+                (*frame.0).color_primaries = AVCOL_PRI_BT709;
+                (*frame.0).color_trc = AVCOL_TRC_BT709;
+            }
         }
         Ok(frame)
     }
@@ -252,7 +261,10 @@ impl Copier {
                 self.aspect,
             )?);
         }
-        let processor = self.processor.as_ref().context("GPU scaler was not created")?;
+        let processor = self
+            .processor
+            .as_ref()
+            .context("GPU scaler was not created")?;
         processor.copy(source, &target)
     }
 }
