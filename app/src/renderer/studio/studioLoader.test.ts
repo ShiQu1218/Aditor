@@ -68,6 +68,13 @@ describe('loadStudioDoc', () => {
     expect(d.analyze).toHaveBeenCalledTimes(1)
   })
 
+  test('explicit analysis retry bypasses error status and any incomplete cache', async () => {
+    const d = deps({ getStatus: async () => 'error', cacheLoad: vi.fn(async () => doc('partial')), analyze: vi.fn(async () => null) })
+    expect(await loadStudioDoc('a.mp4', d, false, true)).toEqual({ kind: 'queued' })
+    expect(d.analyze).toHaveBeenCalledWith({ path: 'a.mp4' })
+    expect(d.cacheLoad).not.toHaveBeenCalled()
+  })
+
   test('cache doc that is not done is blocked (analyze not called)', async () => {
     const d = deps({ cacheLoad: vi.fn(async () => doc('partial')) })
     const out = await loadStudioDoc('a.mp4', d)

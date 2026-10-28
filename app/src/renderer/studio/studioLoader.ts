@@ -6,6 +6,7 @@ import type { CacheDoc, VideoInfo } from '../../shared/types'
  * 2. Load the document with cache:load, which has no side effects.
  * 3. Request queued analysis only when the entry is done but has no cached document; null means queued.
  * 4. Return an error for any failure; never return a fabricated default document.
+ * An explicit retry after queued analysis fails bypasses the status and cache gates to enqueue analysis again.
  * Project switching may bypass the analysis restriction: if there is no cache, create a blank track from the actual video metadata without starting analysis.
  */
 export interface LoaderDeps {
@@ -30,11 +31,11 @@ function toError(err: unknown): LoadOutcome {
   return typeof code === 'string' || typeof code === 'number' ? { kind: 'error', message, code } : { kind: 'error', message }
 }
 
-export async function loadStudioDoc(path: string, deps: LoaderDeps, allowUnanalyzed = false): Promise<LoadOutcome> {
+export async function loadStudioDoc(path: string, deps: LoaderDeps, allowUnanalyzed = false, retryAnalysis = false): Promise<LoadOutcome> {
   try {
     const status = await deps.getStatus(path)
-    if (status !== 'done' && !allowUnanalyzed) return { kind: 'blocked' }
-    const cached = await deps.cacheLoad(path)
+    if (status !== 'done' && !allowUnanalyzed && !retryAnalysis) return { kind: 'blocked' }
+    const cached = retryAnalysis ? null : await deps.cacheLoad(path)
     if (allowUnanalyzed) {
       if (cached) return { kind: 'ready', doc: cached, from: 'cache' }
       const video = await deps.probe?.(path)
