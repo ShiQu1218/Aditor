@@ -235,10 +235,11 @@ export class AnalysisQueue extends EventEmitter {
 
       const duration = doc.video?.duration || 0
       const thumb = await this._generateThumbnail(videoPath, duration).catch(() => undefined)
-      if (run.cancelled) return
 
-      // After the thumbnail, so edits saved while it was generated are merged too.
+      // After the thumbnail, so edits saved while it was generated are merged too;
+      // a cancel during the thumbnail still needs it, as the engine already replaced the cache.
       preserve()
+      if (run.cancelled) return
 
       this.library.update(videoPath, {
         status: 'done',

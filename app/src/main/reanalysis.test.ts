@@ -248,6 +248,46 @@ describe('clips backup across cancelled re-analysis (F2)', () => {
     expect(fs.existsSync(backup())).toBe(false)
   })
 
+  it('a cancel during thumbnail generation still restores accepted AI clips before a later run backs up the cache', async () => {
+    seedDone()
+    let thumbnailDone!: () => void
+    const q1 = new AnalysisQueue(engine('done'), lib, { profileDir: '/p', cacheDir: dir })
+    ;(q1 as any)._generateThumbnail = () => new Promise<void>((resolve) => { thumbnailDone = resolve })
+    q1.enqueue(V1, true)
+    await tick()
+    q1.cancel(V1)
+    thumbnailDone()
+    await tick()
+    expect(readDoc().clips.map((c: any) => c.id)).toContain('a1')
+    expect(lib.get(V1)?.status).toBe('pending')
+
+    const q2 = new AnalysisQueue(engine('done', 3), lib, { profileDir: '/p', cacheDir: dir })
+    q2.enqueue(V1, true)
+    await tick(60)
+    expect(summary(readDoc().clips)).toEqual([
+      ['a1', 'accepted', true],
+      ['m1', 'accepted', false]
+    ])
+  })
+
+  it('removing a video cancelled during thumbnail generation does not bring its cache back', async () => {
+    seedDone()
+    let thumbnailDone!: () => void
+    const q = new AnalysisQueue(engine('done'), lib, { profileDir: '/p', cacheDir: dir })
+    ;(q as any)._generateThumbnail = () => new Promise<void>((resolve) => { thumbnailDone = resolve })
+    q.enqueue(V1, true)
+    await tick()
+    const removed = q.withStoppedAnalysis([V1], () => {
+      fs.rmSync(cache(), { force: true })
+      fs.rmSync(backup(), { force: true })
+    })
+    thumbnailDone()
+    await removed
+    await tick()
+    expect(fs.existsSync(cache())).toBe(false)
+    expect(fs.existsSync(backup())).toBe(false)
+  })
+
   it('a second cancel keeps using the first backup (partial doc never replaces it)', async () => {
     seedDone()
     for (let i = 0; i < 2; i++) {
