@@ -197,6 +197,9 @@ pub(super) struct Copier {
 }
 struct Processor {
     source: (u32, u32),
+    gpu: Gpu,
+    /// Copy of sources that cannot back a video-processor input view (e.g. shader-resource-only).
+    fallback: Option<(ID3D11Texture2D, ID3D11VideoProcessorInputView)>,
     device: ID3D11VideoDevice,
     context: ID3D11VideoContext,
     enumerator: ID3D11VideoProcessorEnumerator,
@@ -263,7 +266,7 @@ impl Copier {
         }
         let processor = self
             .processor
-            .as_ref()
+            .as_mut()
             .context("GPU scaler was not created")?;
         processor.copy(source, &target)
     }
@@ -352,6 +355,8 @@ impl Processor {
             );
             Ok(Self {
                 source,
+                gpu: gpu.clone(),
+                fallback: None,
                 device,
                 context,
                 enumerator,
@@ -359,25 +364,67 @@ impl Processor {
             })
         }
     }
-    fn copy(&self, source: &ID3D11Texture2D, target: &ID3D11Texture2D) -> Result<()> {
-        let input_desc = D3D11_VIDEO_PROCESSOR_INPUT_VIEW_DESC {
+    fn input_view(&self, texture: &ID3D11Texture2D) -> Result<ID3D11VideoProcessorInputView> {
+        let desc = D3D11_VIDEO_PROCESSOR_INPUT_VIEW_DESC {
             ViewDimension: D3D11_VPIV_DIMENSION_TEXTURE2D,
             ..Default::default()
         };
+        let mut view = None;
+        // SAFETY: The texture and enumerator use the same device; the description selects mip 0 of a texture2D.
+        unsafe {
+            self.device.CreateVideoProcessorInputView(
+                texture,
+                &self.enumerator,
+                &desc,
+                Some(&mut view),
+            )?;
+        }
+        view.context("Missing input view")
+    }
+    /// Copies the source into a private render-target texture that can back an input view.
+    fn fallback_input(
+        &mut self,
+        source: &ID3D11Texture2D,
+    ) -> Result<ID3D11VideoProcessorInputView> {
+        if self.fallback.is_none() {
+            let desc = D3D11_TEXTURE2D_DESC {
+                Width: self.source.0,
+                Height: self.source.1,
+                MipLevels: 1,
+                ArraySize: 1,
+                Format: DXGI_FORMAT_B8G8R8A8_UNORM,
+                SampleDesc: DXGI_SAMPLE_DESC {
+                    Count: 1,
+                    Quality: 0,
+                },
+                Usage: D3D11_USAGE_DEFAULT,
+                BindFlags: D3D11_BIND_RENDER_TARGET.0 as u32,
+                ..Default::default()
+            };
+            let mut texture = None;
+            // SAFETY: Valid device and single-mip BGRA description; the windows crate manages the output reference.
+            unsafe {
+                self.gpu
+                    .device
+                    .CreateTexture2D(&desc, None, Some(&mut texture))?
+            };
+            let texture = texture.context("Missing video processor fallback texture")?;
+            let view = self.input_view(&texture)?;
+            self.fallback = Some((texture, view));
+        }
+        let (texture, view) = self.fallback.as_ref().context("Missing fallback input")?;
+        // SAFETY: Same device, size and BGRA format as the validated source; the copy is ordered before the Blt.
+        unsafe { self.gpu.context.CopyResource(texture, source) };
+        Ok(view.clone())
+    }
+    fn copy(&mut self, source: &ID3D11Texture2D, target: &ID3D11Texture2D) -> Result<()> {
         let output_desc = D3D11_VIDEO_PROCESSOR_OUTPUT_VIEW_DESC {
             ViewDimension: D3D11_VPOV_DIMENSION_TEXTURE2D,
             ..Default::default()
         };
-        let mut input = None;
         let mut output = None;
-        // SAFETY: All views and the processor use the same device; the description selects mip 0 of a texture2D.
+        // SAFETY: The target and enumerator use the same device; the description selects mip 0 of a texture2D.
         unsafe {
-            self.device.CreateVideoProcessorInputView(
-                source,
-                &self.enumerator,
-                &input_desc,
-                Some(&mut input),
-            )?;
             self.device.CreateVideoProcessorOutputView(
                 target,
                 &self.enumerator,
@@ -386,7 +433,10 @@ impl Processor {
             )?;
         }
         let output = output.context("Missing output view")?;
-        let input = input.context("Missing input view")?;
+        let input = match self.input_view(source) {
+            Ok(view) => view,
+            Err(_) => self.fallback_input(source)?,
+        };
         let mut stream = D3D11_VIDEO_PROCESSOR_STREAM {
             Enable: true.into(),
             pInputSurface: ManuallyDrop::new(Some(input)),

@@ -524,7 +524,34 @@ fn gpu_recording_and_scaling_have_independent_keyframe_segments() {
     }
 }
 
-fn check_nv12_range_and_edges(gpu: &Gpu, size: (u32, u32)) {
+/// A BGRA texture with only the shader-resource binding, which cannot back a video-processor input view.
+fn shader_only_texture(gpu: &Gpu, size: (u32, u32)) -> ID3D11Texture2D {
+    let desc = D3D11_TEXTURE2D_DESC {
+        Width: size.0,
+        Height: size.1,
+        MipLevels: 1,
+        ArraySize: 1,
+        Format: DXGI_FORMAT_B8G8R8A8_UNORM,
+        SampleDesc: DXGI_SAMPLE_DESC {
+            Count: 1,
+            Quality: 0,
+        },
+        Usage: D3D11_USAGE_DEFAULT,
+        BindFlags: D3D11_BIND_SHADER_RESOURCE.0 as u32,
+        ..Default::default()
+    };
+    let mut texture = None;
+    // SAFETY: Valid device and single-mip BGRA description; output reference managed by the windows crate.
+    unsafe {
+        gpu.device
+            .CreateTexture2D(&desc, None, Some(&mut texture))
+            .unwrap();
+    }
+    texture.unwrap()
+}
+
+/// `scale` is the source-to-target ratio; `shader_only` exercises the input-view copy fallback.
+fn check_nv12_range_and_edges(gpu: &Gpu, size: (u32, u32), scale: u32, shader_only: bool) {
     let video = VideoParams {
         width: size.0,
         height: size.1,
@@ -532,8 +559,12 @@ fn check_nv12_range_and_edges(gpu: &Gpu, size: (u32, u32)) {
     };
     let hardware = Hardware::new(gpu, &video, ffi::AV_PIX_FMT_NV12).unwrap();
     let frame = hardware.surface().unwrap();
-    let source_size = (size.0 * 2, size.1 * 2);
-    let (source, _) = texture(gpu, source_size);
+    let source_size = (size.0 * scale, size.1 * scale);
+    let source = if shader_only {
+        shader_only_texture(gpu, source_size)
+    } else {
+        texture(gpu, source_size).0
+    };
     let colors = [
         [0, 0, 0, 255],
         [255, 255, 255, 255],
@@ -630,7 +661,11 @@ fn gpu_nv12_conversion_and_error_propagation() {
     }
     assert_eq!(probe(&gpu, "hevc_nvenc").unwrap(), ffi::AV_PIX_FMT_NV12);
     for size in [(256, 144), (1920, 1080)] {
-        check_nv12_range_and_edges(&gpu, size);
+        check_nv12_range_and_edges(&gpu, size, 2, false);
+    }
+    // Native-size NV12 always goes through the video processor, including sources it cannot view directly.
+    for shader_only in [false, true] {
+        check_nv12_range_and_edges(&gpu, (256, 144), 1, shader_only);
     }
     let video = VideoParams {
         width: 1920,

@@ -160,8 +160,10 @@ impl SdrConverter {
         // SAFETY: source remains alive throughout conversion.
         unsafe { source.GetDesc(&mut desc) };
         if desc.Format == DXGI_FORMAT_B8G8R8A8_UNORM {
-            // After an HDR-to-SDR switch nothing would evict the cached FP16 pool textures.
+            // After an HDR-to-SDR switch nothing would release the HDR-only textures; they are rebuilt on demand.
             self.sources.clear();
+            self.input = None;
+            self.surfaces = None;
             return Ok(source.clone());
         }
         ensure!(
