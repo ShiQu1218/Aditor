@@ -132,6 +132,47 @@ describe('exportController wiring', () => {
     expect(c.getState().outDirError).toContain('ipc down')
   })
 
+  test.each([
+    ['checkOutDir', 'invalid'],
+    ['checkOutDir', 'reject'],
+    ['checkOutDir', 'resolve'],
+    ['diskSpace', 'reject'],
+    ['diskSpace', 'resolve']
+  ] as const)('a stale %s %s cannot overwrite the newly selected folder', async (stage, outcome) => {
+    let resolveOld!: (value: unknown) => void
+    let rejectOld!: (reason: Error) => void
+    const oldRequest = new Promise((resolve, reject) => {
+      resolveOld = resolve
+      rejectOld = reject
+    })
+    const newDisk = { freeBytes: 100, totalBytes: 200 }
+    const f = fake({
+      checkOutDir: (dir: string) => stage === 'checkOutDir' && dir === 'D:/old'
+        ? oldRequest : Promise.resolve({ ok: true }),
+      diskSpace: (dir: string) => dir === 'D:/old'
+        ? (stage === 'diskSpace' ? oldRequest : Promise.resolve({ freeBytes: 1, totalBytes: 2 }))
+        : Promise.resolve(newDisk)
+    })
+    const c = createExportController(f.api)
+    const initializing = c.init('D:/old')
+    await flush()
+    await c.chooseOutDir()
+    expect(c.getState().disk).toEqual(newDisk)
+
+    if (outcome === 'reject') rejectOld(new Error('old folder unavailable'))
+    else resolveOld(stage === 'diskSpace' ? { freeBytes: 1, totalBytes: 2 }
+      : outcome === 'invalid' ? { ok: false, reason: 'old folder unavailable' } : { ok: true })
+    await initializing
+
+    expect(c.getState().settings.outDir).toBe('D:/out2')
+    expect(c.getState().outDirError).toBeNull()
+    expect(c.getState().disk).toEqual(newDisk)
+    const exporting = c.start(ITEMS)
+    expect(f.calls.find(([name]) => name === 'start')?.[1]).toMatchObject({ outDir: 'D:/out2' })
+    f.resolveStart({ ok: true, outputs: [] })
+    await exporting
+  })
+
   test('null defaultOutDir → outDirError set (must choose a folder)', async () => {
     const c = createExportController(fake().api)
     await c.init(null)

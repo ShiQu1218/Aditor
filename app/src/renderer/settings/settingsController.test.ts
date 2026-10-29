@@ -80,6 +80,21 @@ describe('SettingsController', () => {
     expect(listeners.size).toBe(0)
   })
 
+  test('a late startup snapshot cannot replace newer changed settings or undo them in the next recording edit', async () => {
+    const rig = makeApi()
+    let resolveGet!: (settings: Settings) => void
+    rig.api.settings.get = () => new Promise((resolve) => { resolveGet = resolve })
+    const c = new SettingsController(rig.api)
+    const starting = c.start()
+    const micEnabled = !DEFAULT_SETTINGS.recording.micEnabled
+    rig.emit({ ...DEFAULT_SETTINGS, recording: { ...DEFAULT_SETTINGS.recording, micEnabled } })
+    resolveGet(DEFAULT_SETTINGS)
+    await starting
+    expect(c.getState().settings?.recording.micEnabled).toBe(micEnabled)
+    await c.setRecording('notifyMatch', false)
+    expect(rig.calls[0].recording?.micEnabled).toBe(micEnabled)
+  })
+
   test('setBool sends only that field and shows the RETURNED settings', async () => {
     const { c, calls } = await started()
     await c.setBool('autoAnalyze', false)

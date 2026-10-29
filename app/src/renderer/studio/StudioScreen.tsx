@@ -302,7 +302,7 @@ export function StudioScreen({ videoPath, onBack, onRegisterLeaveGuard, onVideoR
     guarded, splitProjectAtPlayhead, toggleBlade, handleQuickOrSplit, createBladeClip, bladeActive, previewClip, acceptClip,
     skipClip, restoreClip, removeFromProject, addAllSuggestions, handleAcceptSuggestion, handleSkipSuggestion
   } = useStudioSourceEdits({
-    videoPath, videoRef, mode, modeRef, dispatchMode, dispatch, apply, toast, projectRef, previewRef, currentTime, shownClips,
+    videoPath, videoRef, mode, modeRef, dispatchMode, dispatch, apply, toast, projectRef, projectId: project.id, mountedRef, previewRef, currentTime, shownClips,
     activeClipId, setActiveClipId, setSelProjId, bladeMode, setBladeMode, backToSource, seekTo
   })
 

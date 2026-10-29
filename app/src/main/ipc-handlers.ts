@@ -78,6 +78,12 @@ export function registerIpcHandlers(
   }
   const updatedThrottle = createThrottle(sendUpdated, LIBRARY_UPDATE_INTERVAL_MS)
   const broadcastUpdated = () => updatedThrottle.trigger()
+  const requireLibrarySaved = (): void => {
+    if (!library.flush()) {
+      broadcastUpdated()
+      throw new Error(tr('無法儲存媒體庫，變更尚未寫入磁碟。請確認磁碟空間與檔案權限後重試。'))
+    }
+  }
 
   queue.on('update', () => {
     broadcastUpdated()
@@ -93,6 +99,7 @@ export function registerIpcHandlers(
 
   ipcMain.handle('library:add', (_, paths: string[]) => {
     const added = library.add(paths)
+    requireLibrarySaved()
     for (const entry of added) {
       queue.enqueue(entry.path)
     }
@@ -102,6 +109,7 @@ export function registerIpcHandlers(
 
   ipcMain.handle('library:remove', async (_, videoPath: string, options?: unknown) => {
     const res = await queue.withStoppedAnalysis([videoPath], () => library.remove(videoPath, sanitizeRemoveOptions(options)))
+    requireLibrarySaved()
     broadcastUpdated()
     return res
   })
@@ -112,6 +120,7 @@ export function registerIpcHandlers(
       return { removed: [], failed: [] }
     }
     const res = await queue.withStoppedAnalysis(paths, () => library.removeMany(paths, sanitizeRemoveOptions(options)))
+    requireLibrarySaved()
     broadcastUpdated()
     return res
   })
@@ -120,6 +129,7 @@ export function registerIpcHandlers(
   ipcMain.handle('library:setGame', (_, videoPath: unknown, game: unknown) => {
     if (typeof videoPath !== 'string' || !isGameId(game) || !library.get(videoPath)) return false
     library.update(videoPath, { game, status: 'pending', progress: 0, error: undefined, errorCode: undefined })
+    requireLibrarySaved()
     queue.enqueue(videoPath)
     broadcastUpdated()
     return true
@@ -127,6 +137,7 @@ export function registerIpcHandlers(
 
   ipcMain.handle('library:toggleFavorite', (_, videoPath: string) => {
     const res = library.toggleFavorite(videoPath)
+    requireLibrarySaved()
     broadcastUpdated()
     return res
   })
@@ -140,6 +151,7 @@ export function registerIpcHandlers(
     })
     if (!res.canceled && res.filePaths.length > 0) {
       const added = library.add(res.filePaths)
+      requireLibrarySaved()
       for (const entry of added) {
         queue.enqueue(entry.path)
       }
@@ -160,6 +172,7 @@ export function registerIpcHandlers(
       const videos = findVideosInDir(folder)
       if (videos.length > 0) {
         const added = library.add(videos)
+        requireLibrarySaved()
         for (const entry of added) {
           queue.enqueue(entry.path)
         }

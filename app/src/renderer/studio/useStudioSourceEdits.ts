@@ -1,4 +1,4 @@
-import { useCallback, useEffect, type Dispatch, type MutableRefObject, type RefObject, type SetStateAction } from 'react'
+import { useCallback, useEffect, useRef, type Dispatch, type MutableRefObject, type RefObject, type SetStateAction } from 'react'
 import type { Clip } from '../../shared/types'
 import type { ViewerAction } from '../viewer/state'
 import { addItems, splitItem, type Project, type ProjectItem } from '../editor/project'
@@ -27,6 +27,8 @@ interface StudioSourceEditsOptions {
   apply: (next: Project) => void
   toast: ReturnType<typeof useToast>
   projectRef: MutableRefObject<Project>
+  projectId: string
+  mountedRef: MutableRefObject<boolean>
   previewRef: MutableRefObject<{ item: ProjectItem | null }>
   currentTime: number
   shownClips: Clip[]
@@ -50,6 +52,8 @@ export function useStudioSourceEdits({
   apply,
   toast,
   projectRef,
+  projectId,
+  mountedRef,
   previewRef,
   currentTime,
   shownClips,
@@ -61,17 +65,20 @@ export function useStudioSourceEdits({
   backToSource,
   seekTo
 }: StudioSourceEditsOptions) {
+  const currentProjectId = useRef(projectId)
+  currentProjectId.current = projectId
   /** Project-mode guard: ignore source-document editing actions (including Toast Undo/Create Project) and show a notice. */
   const guarded = useCallback(
     <A extends unknown[]>(cmd: Command | SourceEditCommand, fn: (...a: A) => void) =>
       (...a: A): void => {
+        if (!mountedRef.current || currentProjectId.current !== projectId) return
         if (guardCommand(modeRef.current.mode, cmd) === 'blocked') {
           toast({ message: i18n.studio.toast.sourceOnlyEdit })
           return
         }
         fn(...a)
       },
-    [toast]
+    [toast, projectId, mountedRef]
   )
 
   /** Split (Ctrl+Q or track-head scissors in project mode): the playhead must be within the current clip, with a ±0.5-second boundary. */

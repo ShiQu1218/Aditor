@@ -28,6 +28,7 @@ export interface ObsMetadata {
   recordStartedAt: number
   captureStartedAt: number
   adopted: boolean
+  stopPending?: boolean
 }
 
 /** OBS connection and file timeline; disconnects do not affect aditorrec or the live engine. */
@@ -60,6 +61,7 @@ export class ObsRecording extends EventEmitter {
         this.persist()
       }
       if (event.outputState === 'OBS_WEBSOCKET_OUTPUT_STOPPED') {
+        this.meta.stopPending = false
         this.stopped = true
         const match = this.matches.at(-1)
         if (match && !match.stopped) { match.stopped = true; match.outputPath = event.outputPath || match.outputPath }
@@ -183,6 +185,8 @@ export class ObsRecording extends EventEmitter {
     if (this.timer) clearTimeout(this.timer)
     this.timer = null
     if (!this.stopped) {
+      this.meta.stopPending = true
+      this.persist()
       try {
         if (this.reconnecting) await this.reconnecting
         if (!this.client.connected) await this.ensureConnected()
@@ -190,6 +194,7 @@ export class ObsRecording extends EventEmitter {
           const outputPath = await this.client.stop()
           if (outputPath) this.meta.outputPath = outputPath
           this.stopped = true
+          this.meta.stopPending = false
           const match = this.matches.at(-1)
           if (match) { match.stopped = true; match.outputPath = outputPath || match.outputPath }
           this.persist()
@@ -199,7 +204,7 @@ export class ObsRecording extends EventEmitter {
       }
     }
     await this.flush()
-    return this.perMatch ? this.stopped : true
+    return this.stopped
   }
 
   async close(): Promise<void> {

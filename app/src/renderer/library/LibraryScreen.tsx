@@ -206,12 +206,12 @@ export function LibraryScreen({ onSelectVideo, onOpenSettings }: LibraryScreenPr
   }, [entries, selected, finishManyRemove])
 
   const handleImportFiles = useCallback(() => {
-    void window.api?.library?.selectFiles?.()
-  }, [])
+    void window.api?.library?.selectFiles?.().catch((error: unknown) => toast({ message: String(error) }))
+  }, [toast])
 
   const handleImportFolder = useCallback(() => {
-    void window.api?.library?.selectFolder?.()
-  }, [])
+    void window.api?.library?.selectFolder?.().catch((error: unknown) => toast({ message: String(error) }))
+  }, [toast])
 
   const handleOpen = useCallback(
     (entry: LibraryEntry) => {
@@ -224,8 +224,8 @@ export function LibraryScreen({ onSelectVideo, onOpenSettings }: LibraryScreenPr
   )
 
   const handleToggleFavorite = useCallback((path: string) => {
-    void window.api?.library?.toggleFavorite?.(path)
-  }, [])
+    void window.api?.library?.toggleFavorite?.(path).catch((error: unknown) => toast({ message: String(error) }))
+  }, [toast])
 
   const handleRemove = useCallback(
     async (path: string) => {
@@ -274,8 +274,8 @@ export function LibraryScreen({ onSelectVideo, onOpenSettings }: LibraryScreenPr
   }, [])
 
   const handleSetGame = useCallback((path: string, game: GameId) => {
-    void window.api?.library?.setGame?.(path, game)
-  }, [])
+    void window.api?.library?.setGame?.(path, game).catch((error: unknown) => toast({ message: String(error) }))
+  }, [toast])
 
   const handleDrop = useCallback(
     (e: React.DragEvent) => {
@@ -283,10 +283,10 @@ export function LibraryScreen({ onSelectVideo, onOpenSettings }: LibraryScreenPr
       setDragging(false)
       const files = Array.from(e.dataTransfer.files)
       if (files.length > 0) {
-        void window.api?.library?.addDroppedFiles?.(files)
+        void window.api?.library?.addDroppedFiles?.(files).catch((error: unknown) => toast({ message: String(error) }))
       }
     },
-    []
+    [toast]
   )
 
   /** Texts of the removal dialog for the pending request (single video or a whole selection). */

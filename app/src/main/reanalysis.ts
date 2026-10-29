@@ -126,6 +126,8 @@ export interface PriorCache {
   backupPath: string
   /** Source backup copied to backupPath; removed once its clips are merged, or switching back would replay it. */
   sourceBackupPath?: string
+  /** A prior merge failed; a cache hit still needs to restore this backup. */
+  pendingRestore?: boolean
 }
 
 const fingerprintOf = (doc: Partial<CacheDoc>): string => JSON.stringify([doc.video ?? null, doc.analysis ?? null])
@@ -176,6 +178,7 @@ export function capturePriorCache(videoPath: string, cacheDir: string, beside = 
     done: docDone || backup !== null,
     fingerprint: hasDoc ? fingerprintOf(doc!) : '',
     backupPath: cachePath,
+    pendingRestore: !!unconsumed,
     // Merged or superseded either way; leaving it would replay old state after switching back.
     ...(sourceBackup && sourcePath !== cachePath ? { sourceBackupPath: sourcePath } : {})
   }
@@ -204,7 +207,7 @@ export function preserveClipsAfterReanalysis(
   if (!editing && (!prior || !prior.done)) return false
   const saved = editing?.backup ?? prior!
   const cachePath = result.cache_path || prior?.backupPath || cacheFilePath(videoPath, cacheDir, beside)
-  const cacheHit = !force && prior?.fingerprint === fingerprintOf(result)
+  const cacheHit = !force && !prior?.pendingRestore && prior?.fingerprint === fingerprintOf(result)
   if (cacheHit && !editing) {
     // The engine returned the cache directly: no reanalysis occurred, so the backup just created is no longer needed.
     deleteClipsBackup(cachePath)

@@ -404,6 +404,19 @@ describe('clips backup across cancelled re-analysis (F2)', () => {
     expect(readDoc().app).toBeUndefined()
   })
 
+  it('restores an unconsumed backup even when the next analysis returns a cache hit', () => {
+    const result = doc('done', 2, [manual]) as unknown as CacheDoc
+    saveCacheDoc(result)
+    fs.writeFileSync(backup(), JSON.stringify({ version: 2, events: [], clips: [clip('a1', 10), manual] }))
+    const prior = capturePriorCache(V1, dir)
+    expect(preserveClipsAfterReanalysis(prior, result, V1, dir)).toBe(true)
+    expect(summary(readDoc().clips)).toEqual([
+      ['a1', 'accepted', true],
+      ['m1', 'accepted', false]
+    ])
+    expect(fs.existsSync(backup())).toBe(false)
+  })
+
   it('cache hit (same doc returned) is not a re-analysis: no flag, backup cleaned up', async () => {
     seedDone()
     const same = readDoc()

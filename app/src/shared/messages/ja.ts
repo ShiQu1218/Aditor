@@ -2,6 +2,9 @@ import type { MessageTable } from '../locale'
 
 /** Translations for scattered in-app messages (notifications and errors); keys are Traditional Chinese source strings looked up by tr(). */
 const messages: MessageTable = {
+  '無法儲存媒體庫，變更尚未寫入磁碟。請確認磁碟空間與檔案權限後重試。': 'メディアライブラリを保存できませんでした。変更はまだディスクに書き込まれていません。ディスクの空き容量とファイルのアクセス権を確認してから、もう一度お試しください。',
+  'OBS 尚未確認停止，已保留工作；請在 OBS 確認錄影狀態並手動匯入影片': 'OBS で録画停止を確認できませんでした。録画ジョブは保持されています。OBS で録画状態を確認し、動画を手動でインポートしてください。',
+  'OBS 錄影尚未停止，已保留工作': 'OBS の録画がまだ停止していません。録画ジョブは保持されています。',
   '無法備份編輯內容，已停止重新分析': '編集内容をバックアップできなかったため、再解析を中止しました。',
   '系統加密服務無法使用，無法讀取 OBS 密碼': 'システムの暗号化機能を利用できないため、OBS パスワードを読み取れません。',
   '無法解密 OBS 密碼，請重新設定': 'OBS パスワードを復号できません。再設定してください。',

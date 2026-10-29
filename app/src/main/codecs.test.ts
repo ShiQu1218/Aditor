@@ -1,10 +1,12 @@
-import { describe, expect, test } from 'vitest'
+import { afterEach, describe, expect, test, vi } from 'vitest'
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
 import { createHash } from 'crypto'
 import { Readable } from 'stream'
 import { downloadOpenH264, isAllowedOpenH264Url, openh264Url, OPENH264_BZ2_SHA256, OPENH264_BZ2_SIZE } from './codecs'
+
+afterEach(() => vi.restoreAllMocks())
 
 describe('isAllowedOpenH264Url', () => {
   test('the built-in URL is allowed and is https on the Cisco host', () => {
@@ -32,6 +34,26 @@ function tmpDir(): string {
 }
 
 describe('downloadOpenH264', () => {
+  test('closes a rejected response before returning a content-length error', async () => {
+    const dir = tmpDir()
+    const stream = new Readable({ read() {} })
+    try {
+      await expect(downloadOpenH264({ dir, fetchStream: async () => ({ stream, contentLength: 1 }) })).rejects.toThrow('大小')
+      expect(stream.destroyed).toBe(true)
+    } finally { stream.destroy(); fs.rmSync(dir, { recursive: true, force: true }) }
+  })
+
+  test('stops the network source when opening the download destination fails', async () => {
+    const dir = tmpDir()
+    const create = fs.createWriteStream.bind(fs)
+    vi.spyOn(fs, 'createWriteStream').mockImplementation(() => create(path.join(dir, 'missing', 'download.part')))
+    const stream = new Readable({ read() {} })
+    try {
+      await expect(downloadOpenH264({ dir, fetchStream: async () => ({ stream, contentLength: OPENH264_BZ2_SIZE }) })).rejects.toThrow('ENOENT')
+      expect(stream.destroyed).toBe(true)
+      expect(fs.readdirSync(dir)).toEqual([])
+    } finally { stream.destroy(); fs.rmSync(dir, { recursive: true, force: true }) }
+  })
   test('refuses a non-allow-listed URL before any request', async () => {
     let called = false
     await expect(
