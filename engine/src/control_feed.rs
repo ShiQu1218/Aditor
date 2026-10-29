@@ -90,6 +90,7 @@ pub struct ControlFeed {
     names: MixtapeDetector,
     scene: SceneMatcher,
     br_counters: Vec<Image<u8>>,
+    gunrun_damage: Image<u8>,
     pub active: bool,
     player: Option<Image<f32>>,
     entries: Vec<Entry>,
@@ -136,6 +137,7 @@ impl ControlFeed {
                     )
                 })
                 .collect::<Result<_>>()?,
+            gunrun_damage: cv::read_png(&p.dir.join("gunrun_damage.png"), true)?,
             active: false,
             player: None,
             entries: vec![],
@@ -173,6 +175,19 @@ impl ControlFeed {
         Ok(glyph(&crop(&mask, 0, 0, limit as i32, mask.height as i32)))
     }
     pub fn rows(&mut self, feed: &Image<u8>, spec: &Image<u8>) -> Result<Vec<Image<f32>>> {
+        let rows = self.rows_color(feed, spec, false)?;
+        if rows.is_empty() {
+            self.rows_color(feed, spec, true)
+        } else {
+            Ok(rows)
+        }
+    }
+    fn rows_color(
+        &mut self,
+        feed: &Image<u8>,
+        spec: &Image<u8>,
+        blue: bool,
+    ) -> Result<Vec<Image<f32>>> {
         let player = match &self.player {
             Some(player) => Some(player.clone()),
             None => self.player_name(spec)?,
@@ -193,12 +208,17 @@ impl ControlFeed {
                     .0
                     .iter()
                     .map(|p| {
-                        u8::from(
+                        u8::from(if blue {
+                            p[0] > 110
+                                && p[1] > 60
+                                && (p[2] as f32) < p[1] as f32 * 0.8
+                                && (p[0] as f32) > p[1] as f32 * 0.8
+                        } else {
                             p[0] > 110
                                 && p[1] > 140
                                 && (p[2] as f32) < p[1] as f32 * 0.8
-                                && (p[0] as f32) < p[1] as f32 * 1.12,
-                        )
+                                && (p[0] as f32) < p[1] as f32 * 1.12
+                        })
                     })
                     .collect(),
             ),
@@ -377,8 +397,15 @@ impl ControlFeed {
         if !self.active && (!objectives || scene.is_some_and(|kind| kind != "in_match_hud")) {
             return Ok(());
         }
-        // BR's kill and assist counters outweigh accidental objective matches in the compass.
-        if self.battle_royale_hud(&gray)? {
+        // BR and Gun Run counters override accidental objective matches.
+        let damage = crop(&gray, 1765 - x, 60 - y, 1820 - x, 85 - y);
+        let gunrun = damage.width >= self.gunrun_damage.width
+            && damage.height >= self.gunrun_damage.height
+            && cv::match_template(&damage, &self.gunrun_damage, None)?
+                .data
+                .iter()
+                .any(|&score| score >= 0.85);
+        if gunrun || self.battle_royale_hud(&gray)? {
             self.active = false;
             self.player = None;
             self.entries.clear();

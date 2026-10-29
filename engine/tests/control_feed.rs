@@ -116,3 +116,27 @@ fn inventory_false_positive_cannot_arm_control_with_scene_evidence() {
     c.feed(0.25, Some(&control), &spec, Some(&thumb)).unwrap();
     assert!(c.active);
 }
+
+#[test]
+fn japanese_control_blue_names_and_gunrun_counter() {
+    let p = common::profile();
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/control_feed");
+    let read = |mode: &str, roi: &str| {
+        aditor::cv::read_png(&root.join(format!("ja_{mode}_{roi}.png")), false).unwrap()
+    };
+    let feed = read("control", "feed");
+    let spec = read("control", "spec");
+    let mut c = ControlFeed::new(&p).unwrap();
+    assert_eq!(c.rows(&feed, &spec).unwrap().len(), 2);
+    c.feed(0., Some(&feed), &spec, None).unwrap();
+    c.feed(0.25, Some(&feed), &spec, None).unwrap();
+    assert!(c.active);
+    assert_eq!(c.events.len(), 2);
+    let gunrun = read("gunrun", "feed");
+    let spec = read("gunrun", "spec");
+    c.feed(0.5, Some(&gunrun), &spec, None).unwrap();
+    assert!(!c.active);
+    let mut c = ControlFeed::new(&p).unwrap();
+    c.feed(0., Some(&gunrun), &spec, None).unwrap();
+    assert!(!c.active);
+}

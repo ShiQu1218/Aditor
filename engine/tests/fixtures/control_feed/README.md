@@ -22,3 +22,11 @@ These exercise the non-HUD activation guard when BR counters are hidden.
 All four PNGs together total less than 1 MB. Existing frozen oracle entries
 remain unchanged; these new cases intentionally reject Python's inherited
 false-Control behavior.
+
+## Japanese Control and Gun Run
+
+`ja_control_{feed,spec}.png`: `Apex_2026-10-29_16-26.mp4`, 140 s.
+Two blue `shiqu030` weapon kills against orange victims.
+`ja_gunrun_{feed,spec}.png`: `Apex_2026-10-29_15-54.mp4`, 350 s.
+The damage counter must disarm Control without suppressing central kill banners.
+Both use normalized 1920x1080 feed `(850,60,1070,420)` and spec `(60,950,480,118)` crops.
