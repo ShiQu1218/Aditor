@@ -50,29 +50,41 @@ export function engineMatches(video: string, engineCommand: string, sceneDir: st
   return async (run, signal) => parseMatches(await run(engineCommand, ['matches', video, '--scene-dir', sceneDir], signal))
 }
 
+/** Shortest time from a match's last round to the next match's first round (agent select alone takes 85 s). */
+export const VALORANT_MATCH_GAP_SEC = 100
+
+/** Standard win condition: 13 rounds with a two-round lead (overtime included). */
+const decided = (r: Round): boolean => Math.max(r.ally, r.enemy) >= 13 && Math.abs(r.ally - r.enemy) >= 2
+
 /**
- * VALORANT: group the analysis cache's rounds into matches. The round tracker restarts the score after the score HUD
- * has been gone for a minute (agent select and loading), so a round with one round won in total opens a new match.
+ * VALORANT: group the analysis cache's rounds into matches. The round tracker restarts the score whenever the score HUD
+ * has been gone for a minute, so a total that stops increasing marks a reset. A reset opens a new match only after a
+ * decided match or a gap long enough for agent select and loading; a shorter reset (alt-tab, menu) stays in the match.
  * Rounds list only finished rounds, so a match ends at its last round or its last kill/death, whichever is later
  * (an abandoned match keeps its unfinished last round).
  */
 export function roundMatches(rounds: unknown, events: unknown, duration: number): MatchRange[] {
   if (!Array.isArray(rounds)) return []
+  const videoEnd = Number.isFinite(duration) && duration > 0 ? duration : Infinity
   const valid = rounds
     .filter((r): r is Round => !!r && Number.isFinite(r.start) && Number.isFinite(r.end) && r.start >= 0 &&
-      r.end >= r.start && Number.isInteger(r.ally) && Number.isInteger(r.enemy))
+      r.end >= r.start && r.start < videoEnd && Number.isInteger(r.ally) && Number.isInteger(r.enemy) &&
+      r.ally >= 0 && r.enemy >= 0)
     .sort((a, b) => a.start - b.start)
   const groups: Round[][] = []
   for (const round of valid) {
-    if (groups.length === 0 || round.ally + round.enemy === 1) groups.push([round])
-    else groups[groups.length - 1].push(round)
+    const group = groups[groups.length - 1]
+    const prev = group?.[group.length - 1]
+    const reset = !prev || round.ally + round.enemy <= prev.ally + prev.enemy
+    if (reset && (!prev || decided(prev) || round.start - prev.end >= VALORANT_MATCH_GAP_SEC)) groups.push([round])
+    else group.push(round)
   }
   const times = (Array.isArray(events) ? events : [])
     .filter((e): e is { t: number } => !!e && !e.deleted && Number.isFinite(e.t))
     .map((e) => e.t)
   return groups
     .map((group, index) => {
-      const next = groups[index + 1]?.[0].start ?? duration
+      const next = Math.min(groups[index + 1]?.[0].start ?? videoEnd, videoEnd)
       const last = Math.max(group[group.length - 1].end, ...times.filter((t) => t >= group[0].start && t < next))
       return { start: group[0].start, end: Math.min(last + VALORANT_TAIL_SEC, next) }
     })

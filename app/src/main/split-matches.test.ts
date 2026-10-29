@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
-import { VALORANT_TAIL_SEC, cutArgs, engineMatches, matchOutputPath, parseMatches, partialPath, roundMatches, splitMatches, type RunCommand } from './split-matches'
+import { VALORANT_MATCH_GAP_SEC, VALORANT_TAIL_SEC, cutArgs, engineMatches, matchOutputPath, parseMatches, partialPath, roundMatches, splitMatches, type RunCommand } from './split-matches'
 
 let dir: string
 let video: string
@@ -66,8 +66,35 @@ describe('roundMatches', () => {
   })
 
   it('clamps the tail to the next match and the video end, and sorts rounds', () => {
-    const rounds = [round(205, 300, 1, 0), round(10, 200, 1, 0)]
+    // A decided match (13:11) may be followed closely by the next one.
+    const rounds = [round(205, 300, 1, 0), round(10, 200, 13, 11)]
     expect(roundMatches(rounds, [], 305)).toEqual([{ start: 10, end: 205 }, { start: 205, end: 305 }])
+  })
+
+  it('keeps a short mid-match reset (alt-tab, menu) in the same match', () => {
+    const gap = VALORANT_MATCH_GAP_SEC - 1
+    const rounds = [round(10, 100, 3, 3), round(100 + gap, 250, 1, 0), round(250, 330, 1, 1)]
+    expect(roundMatches(rounds, [], 1000)).toEqual([{ start: 10, end: 330 + VALORANT_TAIL_SEC }])
+  })
+
+  it('splits when the next match starts after a missed first round', () => {
+    const rounds = [round(10, 100, 5, 4), round(400, 500, 1, 1), round(500, 600, 2, 1)]
+    expect(roundMatches(rounds, [], 1000).map((m) => m.start)).toEqual([10, 400])
+  })
+
+  it('ignores an invalid duration and rounds past the end of the video', () => {
+    const rounds = [round(10, 100, 1, 0), round(400, 500, 0, 1)]
+    expect(roundMatches(rounds, [], 0)).toHaveLength(2)
+    expect(roundMatches(rounds, [], Number.NaN)).toHaveLength(2)
+    expect(roundMatches(rounds, [], 300)).toEqual([{ start: 10, end: 100 + VALORANT_TAIL_SEC }])
+    expect(roundMatches([round(10, 100, 1, 0), round(200, 400, 0, 1)], [], 210)).toEqual([
+      { start: 10, end: 130 }, { start: 200, end: 210 }
+    ])
+  })
+
+  it('rejects negative scores from a damaged cache', () => {
+    const rounds = [round(10, 100, 3, 3), round(300, 400, 2, -1)]
+    expect(roundMatches(rounds, [], 1000)).toEqual([{ start: 10, end: 100 + VALORANT_TAIL_SEC }])
   })
 
   it('treats a recording that starts mid-match as one match and ignores malformed rounds', () => {

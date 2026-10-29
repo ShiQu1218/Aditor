@@ -45,11 +45,11 @@ describe('library:splitMatches', () => {
   })
 
   const invoke = (videoPath: unknown) => handlers.get('library:splitMatches')!({}, videoPath)
-  /** A library entry for a file on disk with the given status and game. */
-  const entry = (name: string, status: 'done' | 'pending' = 'done', game: 'apex' | 'valorant' = 'apex'): string => {
+  /** A library entry for a file on disk with the given status and game (none: a legacy entry from before multi-game). */
+  const entry = (name: string, status: 'done' | 'pending' = 'done', game: 'apex' | 'valorant' | null = 'apex'): string => {
     const file = path.join(dir, name)
     fs.writeFileSync(file, 'video')
-    library.add([file], 'external', game)
+    library.add([file], 'external', game ?? undefined)
     library.update(file, { status })
     return file
   }
@@ -85,6 +85,17 @@ describe('library:splitMatches', () => {
     expect(await invoke(source)).toEqual({ ok: true, files: parts })
     expect(library.get(parts[0])?.game).toBe('apex')
     expect(enqueue.mock.calls).toEqual([[parts[0], true], [parts[1], true]])
+  })
+
+  test('splits legacy entries without a game with the Apex engine scan', async () => {
+    const video = entry('old.mp4', 'done', null)
+    expect(library.get(video)?.game).toBeUndefined()
+    split.mockResolvedValue({ ok: false, reason: 'single' })
+    await invoke(video)
+    const run = vi.fn().mockResolvedValue(JSON.stringify({ matches: [] }))
+    await split.mock.calls[0][1].detect(run, new AbortController().signal)
+    expect(run.mock.calls[0][1].slice(0, 2)).toEqual(['matches', video])
+    expect(loadCache).not.toHaveBeenCalled()
   })
 
   test('runs one split at a time and stops it when the window closes', async () => {
