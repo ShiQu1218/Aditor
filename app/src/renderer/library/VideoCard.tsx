@@ -8,7 +8,7 @@ import { useQueueEta, useQueueItemState } from '../queue/QueueProvider'
 import { i18n } from '../i18n'
 import { nextTrapIndex } from '../a11y/focusTrap'
 import { rovingStep } from '../a11y/roving'
-import { AlertTriangle, Check, ImageOff, MoreHorizontal, RefreshCw, Star, Trash2 } from '../components/icons'
+import { AlertTriangle, Check, ImageOff, MoreHorizontal, RefreshCw, Scissors, Star, Trash2 } from '../components/icons'
 import { cardStatusText, fileName, thumbnailUrl } from './cardLogic'
 import { GAMES, GAME_IDS, gameOf, type GameId } from '../../shared/games'
 import { entryGame } from '../lib/libraryFilter'
@@ -28,6 +28,8 @@ export interface VideoCardProps {
   onRetry: (path: string, force?: boolean) => void
   /** The user picks the game after recognition failed; main records it and analyzes the video again. */
   onSetGame?: (path: string, game: GameId) => void
+  /** Split a long Apex video into one file per match. */
+  onSplitMatches?: (path: string) => void
   /** Report when the card menu opens/closes (include a close function when opening); keymap handles Esc in menu-then-search order. */
   onMenuChange?: (path: string, close: (() => void) | null) => void
   /** Proxy suggestion setting: hide the proxy-suggestion badge when false (defaults to true). */
@@ -81,7 +83,7 @@ export function sameCardEntry(a: LibraryEntry, b: LibraryEntry): boolean {
   )
 }
 
-function VideoCardView({ entry, onOpen, onToggleFavorite, onRemove, onRetry, onSetGame, onMenuChange, proxySuggest = true, active = true, selectionMode = false, selected = false, onToggleSelect }: VideoCardProps): JSX.Element {
+function VideoCardView({ entry, onOpen, onToggleFavorite, onRemove, onRetry, onSetGame, onSplitMatches, onMenuChange, proxySuggest = true, active = true, selectionMode = false, selected = false, onToggleSelect }: VideoCardProps): JSX.Element {
   const [menuOpen, setMenuOpen] = useState(false)
   const rootRef = useRef<HTMLElement>(null)
   const moreRef = useRef<HTMLButtonElement>(null)
@@ -386,6 +388,20 @@ function VideoCardView({ entry, onOpen, onToggleFavorite, onRemove, onRetry, onS
                   {t.analyzeAs.replace('{game}', GAMES[game].displayName)}
                 </button>
               ))}
+              {done && onSplitMatches && gameOf(entry.game) === 'apex' && (
+                <button
+                  type="button"
+                  role="menuitem"
+                  tabIndex={-1}
+                  onClick={() => {
+                    setMenuOpen(false)
+                    onSplitMatches(entry.path)
+                  }}
+                >
+                  <Scissors className="ic sm" />
+                  {t.splitMatches}
+                </button>
+              )}
               <button
                 type="button"
                 role="menuitem"

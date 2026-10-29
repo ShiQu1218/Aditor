@@ -277,6 +277,24 @@ export function LibraryScreen({ onSelectVideo, onOpenSettings }: LibraryScreenPr
     void window.api?.library?.setGame?.(path, game)
   }, [])
 
+  const handleSplitMatches = useCallback(
+    async (path: string) => {
+      toast({ message: t.card.splitStarted })
+      const messages: Record<string, string> = {
+        none: t.card.splitNone, single: t.card.splitSingle, exists: t.card.splitExists, busy: t.card.splitBusy
+      }
+      try {
+        const res: { ok: boolean; files?: string[]; reason?: string } | undefined = await window.api?.library?.splitMatches?.(path)
+        if (!res) return
+        if (res.ok) toast({ message: t.card.splitDone.replace('{n}', String(res.files?.length ?? 0)) })
+        else if (res.reason !== 'cancelled') toast({ message: messages[res.reason ?? ''] ?? t.card.splitFailed })
+      } catch {
+        toast({ message: t.card.splitFailed })
+      }
+    },
+    [toast]
+  )
+
   const handleDrop = useCallback(
     (e: React.DragEvent) => {
       e.preventDefault()
@@ -326,6 +344,7 @@ export function LibraryScreen({ onSelectVideo, onOpenSettings }: LibraryScreenPr
         onRemove={handleRemove}
         onRetry={handleRetry}
         onSetGame={handleSetGame}
+        onSplitMatches={handleSplitMatches}
         onMenuChange={handleMenuChange}
         proxySuggest={proxySuggest}
         active={active}
@@ -339,6 +358,7 @@ export function LibraryScreen({ onSelectVideo, onOpenSettings }: LibraryScreenPr
       handleToggleFavorite,
       handleRemove,
       handleRetry,
+      handleSplitMatches,
       handleSetGame,
       handleMenuChange,
       proxySuggest,

@@ -276,13 +276,14 @@ describe('card ⋯ menu', () => {
       expect(menu).not.toBeNull()
       expect(menu.getAttribute('aria-labelledby')).toBe(more.id)
       const items = Array.from(menu.querySelectorAll<HTMLElement>('[role="menuitem"]'))
-      // Reanalyze, re-analyze as the other game, remove.
-      expect(items.length).toBe(3)
-      const last = items[2]
+      // Reanalyze, re-analyze as the other game, split matches (Apex), remove.
+      expect(items.length).toBe(4)
+      const last = items[3]
       expect(document.activeElement).toBe(items[0])
       press(items[0], 'ArrowDown')
       expect(document.activeElement).toBe(items[1])
       press(items[1], 'ArrowDown')
+      press(items[2], 'ArrowDown')
       press(last, 'ArrowDown')
       expect(document.activeElement).toBe(items[0]) // Wrap around.
       press(items[0], 'ArrowUp')

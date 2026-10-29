@@ -76,6 +76,7 @@ const api = {
     removeMany: (paths: string[], opts?: { deleteSource?: boolean }) => ipcRenderer.invoke('library:removeMany', paths, opts),
     toggleFavorite: (path: string) => ipcRenderer.invoke('library:toggleFavorite', path),
     setGame: (path: string, game: string) => ipcRenderer.invoke('library:setGame', path, game),
+    splitMatches: (path: string) => ipcRenderer.invoke('library:splitMatches', path),
     selectFiles: () => ipcRenderer.invoke('library:selectFiles'),
     selectFolder: () => ipcRenderer.invoke('library:selectFolder'),
     getWatchFolders: () => ipcRenderer.invoke('library:getWatchFolders'),
