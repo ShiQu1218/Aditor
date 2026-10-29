@@ -104,8 +104,9 @@ Zoom in to see individual knockdown and assist markers, then add a suggested hig
 | Game | Detected | Notes |
 |---|---|---|
 | Apex Legends: Battle Royale (casual), Ranked, Wildcard | Knockdowns and assists | Solo eliminations and squad wipes add no extra kills; any game language (icon matching) |
-| Apex Legends: Mixtape, Team Deathmatch | Kills and assists | Traditional Chinese and English text banners |
-| Apex Legends: Mixtape, Control | Local-player kills from the top-right feed | Traditional Chinese only, verified on one recording; English Control and Control assists are unsupported |
+| Apex Legends: Mixtape, Team Deathmatch | Kills and assists | Traditional Chinese and English text banners; Japanese kills only |
+| Apex Legends: Mixtape, Control | Local-player kills from the top-right feed | Traditional Chinese (one recording) and Japanese (three recordings); English Control and Control assists are unsupported |
+| Apex Legends: Mixtape, Gun Run | Kills | Japanese, verified on one recording |
 | Other Apex Mixtape modes | Unverified | See the [validation scope](docs/accuracy-report-mixtape.md) |
 | VALORANT | Kills, deaths, rounds, multi-kills, aces | Deathmatch records kills and deaths but has no rounds. 16:9, 16:10, 4:3 and 5:4 layouts |
 
@@ -119,7 +120,7 @@ Zoom in to see individual knockdown and assist markers, then add a suggested hig
 
 ## Known limitations
 
-- **Apex Legends:** Team Deathmatch text banners support Traditional Chinese and English. Control local-player kills use the top-right feed, verified on one Traditional Chinese recording; English Control remains unsupported. Other languages, HUD configurations, Control assists and other Mixtape modes remain unverified.
+- **Apex Legends:** Team Deathmatch text banners support Traditional Chinese and English; Japanese supports kills only (no assist sample yet). Control local-player kills use the top-right feed, verified on one Traditional Chinese and three Japanese recordings; English Control remains unsupported. Japanese Gun Run kills were verified on one recording. Other languages, HUD configurations, Control assists and other Mixtape modes remain unverified.
 - **Apex Legends:** Battle Royale and Wildcard detect **knockdowns** and **assists**; Mixtape also detects direct kills. BR solo eliminations and squad wipes do not produce additional kills.
 - **Apex Legends:** the spectate filter recognizes the hint bar in Traditional/Simplified Chinese, English, Japanese and Korean only.
 - **VALORANT:** detection assumes the default HUD position; overlays that cover the top-right kill feed can cause missed kills.

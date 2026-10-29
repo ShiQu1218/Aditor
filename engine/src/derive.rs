@@ -5,6 +5,9 @@ use crate::{
 };
 use std::collections::VecDeque;
 
+// Longer than one knock banner, shorter than the revive needed before the same enemy is knocked again.
+const REKNOCK_WINDOW: f64 = 4.0;
+
 pub fn sig_similar(a: Option<&str>, b: Option<&str>, threshold: f64) -> bool {
     let a = a.and_then(|s| NameSig::from_b64(s).ok());
     let b = b.and_then(|s| NameSig::from_b64(s).ok());
@@ -58,10 +61,16 @@ pub fn derive(events: &[Event], spectating: &[SpecInterval], profile: &Profile) 
                 .as_ref()
                 .and_then(serde_json::Value::as_str)
                 .and_then(|s| decoded(&mut signatures, s).as_ref());
+            // A new knock can follow a revive; a nearby repeat is one banner split by occlusion.
+            let window = if matches!(event.kind.as_str(), "knock" | "assist_knock") {
+                REKNOCK_WINDOW
+            } else {
+                profile.dedupe_window
+            };
             if sig.as_ref().is_some_and(|sig| {
                 first.iter().any(|(t, s)| {
                     event.t >= *t
-                        && event.t - t <= profile.dedupe_window
+                        && event.t - t <= window
                         && same_name(Some(s), Some(sig), profile.name_sig_threshold)
                 })
             }) {

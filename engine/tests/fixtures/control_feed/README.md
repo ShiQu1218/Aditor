@@ -22,3 +22,63 @@ These exercise the non-HUD activation guard when BR counters are hidden.
 All four PNGs together total less than 1 MB. Existing frozen oracle entries
 remain unchanged; these new cases intentionally reject Python's inherited
 false-Control behavior.
+
+## Japanese Control and Gun Run
+
+`ja_yellow_{feed,spec}.png`: `Apex_2026-10-29_18-32.mp4`, 599.25 s.
+The local player `shiqu030` has a yellow feed name, with one weapon kill against
+an orange victim among other players' kills. Actor identity and victim/weapon
+validation must still exclude those unrelated rows.
+The test also converts just the player's name to grayscale and black/white,
+keeping the victim and weapon unchanged, to verify color-independent localization.
+`ja_yellow_notice_feed.png`: 235.75 s in the same recording. The rating-leader
+announcement repeats the local player's name above one actual weapon kill;
+only the weapon row counts. Whole-feed/HUD grayscale variants of the Traditional
+Chinese and Japanese crops are also checked without retaining any hue channels.
+`ja_short_victim_{early,late}.png`: feed rows from 321.5 s (`y=148,h=32`) and
+327.75 s (`y=212,h=32`) of that recording. The same victim `a` moves down the
+feed while the background becomes bright. Panel padding must not replace the
+victim glyph or create a second kill. Tests pad the omitted rows with black.
+`ja_melee_row.png` and `ja_melee_spec.png`: 345.5 s in `Apex_2026-10-29_17-49.mp4`.
+The feed row (`y=148,h=32`) has a faint local name followed by the bracketed melee
+marker. Both the original crop and its grayscale variant must count that kill.
+
+`ja_control_{feed,spec}.png`: `Apex_2026-10-29_16-26.mp4`, 140 s.
+Two blue `shiqu030` weapon kills against orange victims.
+`ja_gunrun_{feed,spec}.png`: `Apex_2026-10-29_15-54.mp4`, 350 s.
+The damage counter must disarm Control without suppressing central kill banners.
+Both use normalized 1920x1080 feed `(850,60,1070,420)` and spec `(60,950,480,118)` crops.
+
+## Muted pink player feed (2026-10-29)
+
+`ja_muted_{feed,spec}.png`: `Apex_2026-10-29_17-49.mp4`, 240 s, same normalized ROIs.
+The local player's feed name is muted pink; cyan and blue masks miss it.
+`pink_trace/trace.json` and its grayscale signatures retain every 4 fps observation from
+345–364.75 s of the same video, including empty observations. Each PNG is a 400x24
+victim signature after the existing color mask and normalization (rounded to 8-bit).
+The melee kill at 345 s must not be counted again as its glyphs shift during fade;
+the different victim at 359.25 s must still count.
+
+`pink_late_trace/` similarly preserves 657–684.75 s: a 2.5-second loss of the dim actor
+name while the original victim stays visible must not create a second kill. The same
+victim killed again at 681.5 s must count after the earlier entry has expired.
+
+Both trace directories hold victim signatures from the earlier color-mask extractor, so
+they exercise only `ControlFeed::feed_rows` (tracking and fade tolerance), not the
+grayscale extraction in `ControlFeed::rows`. Real-frame coverage of `rows` comes from the
+`*_feed.png` crops above.
+
+## Negative feed rows (2026-10-29)
+
+Each is a single 1070x32 feed row; tests pad the omitted rows with black and use
+`ja_yellow_spec.png` (local player `shiqu030`).
+
+- `notice_leader_en.png`, `notice_ping_en.png`: English system announcements that repeat
+  the player's name without a weapon icon. Neither is a kill.
+- `other_victim_row.png`: synthetic `shiqu030 [weapon] Enemy`, one kill. The test also
+  pastes `Enemy` 2 px left of the name to form `Enemyshiqu030`, which must not count:
+  a match whose left edge touches other strokes is the suffix of a longer name.
+- `self_victim_row.png`: synthetic `shiqu030 [weapon] shiqu030`. The player is the victim,
+  so it is not a kill. The actor's own feed pixels are matched past the weapon (about
+  0.88 here; real kills stay below 0.55); the HUD name glyph is a different font and
+  cannot separate these cases.

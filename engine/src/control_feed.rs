@@ -1,15 +1,47 @@
 use crate::{
     cv::{self, Image, Interpolation},
-    detect::{crop, despeckle, white_mask},
+    detect::{crop, ink_mask},
     mixtape::{text_match, MixtapeDetector},
     models::Event,
     profile::Profile,
     scene::SceneMatcher,
 };
 use anyhow::Result;
-use serde_json::json;
 
+// Self-victim rows score about 0.88; real kills stay below 0.55 even for short names.
+const SELF_VICTIM_MIN: f32 = 0.75;
+
+fn gray_strokes(image: &Image<u8>) -> Result<Image<u8>> {
+    let gray = cv::gray(image)?;
+    let kernel = cv::rect_kernel(7, 7)?;
+    let light = cv::morphology(&gray, &kernel, cv::Morphology::TopHat);
+    let dark = cv::morphology(&gray, &kernel, cv::Morphology::BlackHat);
+    Ok(Image {
+        data: light
+            .data
+            .iter()
+            .zip(&dark.data)
+            .map(|(&a, &b)| a.max(b))
+            .collect(),
+        ..gray
+    })
+}
 fn glyph(mask: &Image<u8>) -> Option<Image<f32>> {
+    // Isolated 1–2 px specks would stretch the bounding box and the normalized aspect ratio.
+    let components = cv::connected_components(&Image {
+        data: mask.data.iter().map(|&v| u8::from(v != 0)).collect(),
+        ..mask.clone()
+    })
+    .ok()?;
+    let mask = &Image {
+        data: components
+            .labels
+            .data
+            .iter()
+            .map(|&l| u8::from(l > 0 && components.stats[l as usize][4] >= 3))
+            .collect(),
+        ..mask.clone()
+    };
     let points: Vec<_> = mask
         .data
         .iter()
@@ -27,42 +59,54 @@ fn glyph(mask: &Image<u8>) -> Option<Image<f32>> {
     Some(crop(mask, x0 as i32, y0 as i32, x1 as i32, y1 as i32).float())
 }
 fn similarity(a: &Image<f32>, b: &Image<f32>) -> Result<f64> {
-    Ok(cv::match_template(a, b, None)?.data[0] as f64)
+    let score = cv::match_template(a, b, None)?.data[0] as f64;
+    if score >= 0.60 {
+        return Ok(score);
+    }
+    // Fading feed text shifts by a few pixels while retaining the same victim.
+    Ok(cv::match_template(&a.border(2, 2, 2, 2, 0.), b, None)?
+        .data
+        .into_iter()
+        .map(f64::from)
+        .fold(score, f64::max))
 }
-fn player_similarity(actor: Option<Image<f32>>, player: &Image<f32>) -> Result<f64> {
-    let Some(actor) = actor else {
-        return Ok(0.);
+fn weapon_shape(gray: &Image<u8>) -> Result<bool> {
+    let mask = Image {
+        data: gray.data.iter().map(|&v| u8::from(v >= 170)).collect(),
+        ..gray.clone()
     };
-    let ratio =
-        (actor.width as f64 / actor.height as f64) / (player.width as f64 / player.height as f64);
-    if !(0.8..=1.25).contains(&ratio) {
-        return Ok(0.);
+    let components = cv::connected_components(&mask)?;
+    let stats: Vec<_> = components
+        .stats
+        .iter()
+        .skip(1)
+        .filter(|s| s[4] >= 3)
+        .collect();
+    let total: i32 = stats.iter().map(|s| s[4]).sum();
+    if total < 20 || total as usize * 10 > gray.width * gray.height * 9 {
+        return Ok(false);
     }
-    let actor = cv::resize(&actor, 128, 24, Interpolation::Linear)?.border(1, 1, 1, 1, 0.);
-    let player = cv::resize(player, 128, 24, Interpolation::Linear)?;
-    let mut best = f64::NEG_INFINITY;
-    for k in [1, 3] {
-        // Binary glyph dilation keeps the interpolated float values, as OpenCV does.
-        let mut dilated = player.clone();
-        for y in 0..24 {
-            for x in 0..128 {
-                dilated.data[y * 128 + x] = (y.saturating_sub(k / 2)..=(y + k / 2).min(23))
-                    .flat_map(|yy| {
-                        (x.saturating_sub(k / 2)..=(x + k / 2).min(127)).map(move |xx| (yy, xx))
-                    })
-                    .map(|(yy, xx)| player.data[yy * 128 + xx])
-                    .fold(0., f32::max);
-            }
-        }
-        best = best.max(
-            cv::match_template(&actor, &dilated, None)?
-                .data
-                .into_iter()
-                .map(f64::from)
-                .fold(f64::NEG_INFINITY, f64::max),
-        );
+    if stats.iter().any(|s| s[2] >= 12 && s[4] * 3 >= total * 2) {
+        return Ok(true);
     }
-    Ok(best)
+    if stats.len() < 3 {
+        return Ok(false);
+    }
+    let first = stats.iter().min_by_key(|s| s[0]).unwrap();
+    let last = stats.iter().max_by_key(|s| s[0] + s[2]).unwrap();
+    let height = stats.iter().map(|s| s[1] + s[3]).max().unwrap()
+        - stats.iter().map(|s| s[1]).min().unwrap();
+    let edge = |s: &[i32; 5], x: usize| {
+        (s[1] as usize..(s[1] + s[3]) as usize)
+            .filter(|&y| mask.data[y * mask.width + x] != 0)
+            .count()
+    };
+    Ok((2..=5).contains(&first[2])
+        && (2..=5).contains(&last[2])
+        && first[3] * 4 >= height * 3
+        && last[3] * 4 >= height * 3
+        && edge(first, first[0] as usize) * 4 >= height as usize * 3
+        && edge(last, (last[0] + last[2] - 1) as usize) * 4 >= height as usize * 3)
 }
 fn parts(xs: &[usize], gap: usize) -> Vec<&[usize]> {
     let mut start = 0;
@@ -90,6 +134,7 @@ pub struct ControlFeed {
     names: MixtapeDetector,
     scene: SceneMatcher,
     br_counters: Vec<Image<u8>>,
+    gunrun_damage: Image<u8>,
     pub active: bool,
     player: Option<Image<f32>>,
     entries: Vec<Entry>,
@@ -136,6 +181,7 @@ impl ControlFeed {
                     )
                 })
                 .collect::<Result<_>>()?,
+            gunrun_damage: cv::read_png(&p.dir.join("gunrun_damage.png"), true)?,
             active: false,
             player: None,
             entries: vec![],
@@ -151,18 +197,19 @@ impl ControlFeed {
         if hud.data.is_empty() {
             return Ok(None);
         }
-        let binary = |mut im: Image<u8>| {
-            for v in &mut im.data {
-                *v = u8::from(*v != 0);
-            }
-            im
+        let gray = cv::gray(&hud)?;
+        let binary = |level: f64| Image {
+            data: gray
+                .data
+                .iter()
+                .map(|&v| u8::from(v as f64 >= level))
+                .collect(),
+            ..gray.clone()
         };
-        let mask = binary(white_mask(&hud, &self.profile.white)?);
+        let mask = binary(self.profile.white["v_min"].as_f64().unwrap());
         let mut limit = hud.width;
         for level in [200, 170, 140] {
-            let mut white = self.profile.white.clone();
-            white["v_min"] = level.into();
-            let hm = binary(white_mask(&hud, &white)?).float();
+            let hm = binary(level as f64).float();
             for speaker in &self.names.speakers {
                 let (score, x, _) = text_match(&hm, speaker)?;
                 if score >= 0.75 {
@@ -180,144 +227,150 @@ impl ControlFeed {
         let Some(player) = player else {
             return Ok(vec![]);
         };
-        let mask = |data| Image {
-            width: feed.width,
-            height: feed.height,
-            channels: 1,
-            data,
-        };
-        let cyan = despeckle(
-            &mask(
-                feed.data
-                    .as_chunks::<3>()
-                    .0
-                    .iter()
-                    .map(|p| {
-                        u8::from(
-                            p[0] > 110
-                                && p[1] > 140
-                                && (p[2] as f32) < p[1] as f32 * 0.8
-                                && (p[0] as f32) < p[1] as f32 * 1.12,
-                        )
-                    })
-                    .collect(),
-            ),
-            3,
-        )?;
-        let ys: Vec<_> = (0..cyan.height)
-            .filter(|&y| {
-                cyan.data[y * cyan.width..(y + 1) * cyan.width]
-                    .iter()
-                    .filter(|&&v| v != 0)
-                    .count()
-                    >= 4
-            })
-            .collect();
-        let mut rows = vec![];
-        for band in parts(&ys, 3) {
-            if band.len() < 7 || band[0] as i32 + self.profile.killfeed_roi.unwrap()[1] < 180 {
+        if player.data.iter().all(|&v| v == player.data[0]) {
+            return Ok(vec![]);
+        }
+        let ink = ink_mask(feed)?;
+        let [roi_x, roi_y, _, _] = self.profile.killfeed_roi.unwrap();
+        // Feed rows start at y=180 and end before the recorded feed's right padding.
+        let top = (180 - roi_y).max(0) as usize;
+        let search = crop(&ink, 0, top as i32, 1814 - roi_x, ink.height as i32);
+        let mut candidates = vec![];
+        // shortcut: normalized names are 14–22 px tall; expand for custom HUD text sizes.
+        for height in [14, 16, 18, 20, 22] {
+            let width = (player.width as f64 * height as f64 / player.height as f64)
+                .round()
+                .max(1.) as usize;
+            if width > search.width || height > search.height {
                 continue;
             }
-            let (y0, y1) = (
-                band[0].saturating_sub(2),
-                (band[band.len() - 1] + 3).min(feed.height),
-            );
-            let name = crop(&cyan, 0, y0 as i32, cyan.width as i32, y1 as i32);
-            let xs: Vec<_> = (0..name.width)
-                .filter(|&x| (0..name.height).any(|y| name.data[y * name.width + x] != 0))
-                .collect();
-            let mut best = None;
-            for cols in parts(&xs, 12) {
-                let score = player_similarity(
-                    glyph(&crop(
-                        &name,
-                        cols[0] as i32,
-                        0,
-                        (cols[cols.len() - 1] + 1) as i32,
-                        name.height as i32,
-                    )),
-                    &player,
-                )?;
-                if best.is_none_or(|(s, _)| score > s) {
-                    best = Some((score, cols[cols.len() - 1]));
+            let template = cv::resize(&player, width, height, Interpolation::Linear)?;
+            if template.data.iter().all(|&v| v == template.data[0]) {
+                continue;
+            }
+            let scores = cv::match_template(&search, &template, None)?;
+            for (i, &score) in scores.data.iter().enumerate() {
+                if score.is_finite() && score >= 0.5 {
+                    let (x, y) = (i % scores.width, i / scores.width + top);
+                    candidates.push((score, x, y, width, height));
                 }
             }
-            let Some((score, end)) = best else {
-                continue;
-            };
-            if score < 0.50 {
+        }
+        candidates.sort_by(|a, b| b.0.total_cmp(&a.0));
+        let mut names: Vec<(usize, usize, usize, usize)> = vec![];
+        for (_, x, y, width, height) in candidates {
+            if !names.iter().any(|&(nx, ny, nw, nh)| {
+                x < nx + nw && nx < x + width && y < ny + nh && ny < y + height
+            }) {
+                names.push((x, y, width, height));
+            }
+        }
+        names.sort_by_key(|name| name.1);
+        let mut rows = vec![];
+        for (x, y, width, height) in names {
+            // Strokes just left of the match mean it is the suffix of a longer name.
+            let left = crop(&ink, x as i32 - 6, y as i32, x as i32, (y + height) as i32);
+            if left.data.iter().any(|&v| v >= 0.5) {
                 continue;
             }
-            // shortcut: fixed recorded HUD edge; calibrate when custom HUD safe areas are supported.
+            let end = x + width - 1;
+            let y0 = y;
+            let y1 = y + height;
+            // shortcut: exclude the recorded feed's right padding; calibrate for custom HUD safe areas.
             let row = crop(
                 feed,
-                end as i32 + 12,
+                end as i32 + 1,
                 y0 as i32,
-                1820 - self.profile.killfeed_roi.unwrap()[0],
+                1814 - self.profile.killfeed_roi.unwrap()[0],
                 y1 as i32,
             );
             if row.data.is_empty() {
                 continue;
             }
-            let mask = despeckle(
-                &Image {
-                    width: row.width,
-                    height: row.height,
-                    channels: 1,
-                    data: row
-                        .data
-                        .as_chunks::<3>()
-                        .0
-                        .iter()
-                        .map(|p| {
-                            u8::from(
-                                p[2] > 140
-                                    && p[2] as f32 > p[1] as f32 * 1.15
-                                    && p[2] as f32 > p[0] as f32 * 1.5,
-                            )
-                        })
-                        .collect(),
-                },
-                3,
-            )?;
-            let Some(victim) = glyph(&mask) else {
+            let mut contrast = gray_strokes(&row)?;
+            let mut mask = Image {
+                data: contrast.data.iter().map(|&v| u8::from(v >= 35)).collect(),
+                ..contrast.clone()
+            };
+            // Long, thin horizontal scene edges cannot be a weapon or a name glyph. BlackHat
+            // fills the gaps inside bright text, so keep long runs that are also tall.
+            let lines = cv::morphology(&mask, &cv::rect_kernel(81, 1)?, cv::Morphology::Open);
+            let bands = cv::morphology(&lines, &cv::rect_kernel(1, 5)?, cv::Morphology::Open);
+            for (i, (&line, &band)) in lines.data.iter().zip(&bands.data).enumerate() {
+                if line != 0 && band == 0 {
+                    mask.data[i] = 0;
+                    contrast.data[i] = 0;
+                }
+            }
+            let xs: Vec<_> = (0..mask.width)
+                .filter(|&x| (0..mask.height).any(|y| mask.data[y * mask.width + x] != 0))
+                .collect();
+            let blocks = parts(&xs, 6);
+            let Some(weapon) = blocks.first() else {
                 continue;
             };
-            if victim.height < 8 || victim.width < 8 {
+            let weapon_width = weapon.last().unwrap() - weapon[0] + 1;
+            if !(6..=60).contains(&weapon[0]) || !(12..=80).contains(&weapon_width) {
                 continue;
             }
-            let left = (0..mask.width)
-                .find(|&x| (0..mask.height).any(|y| mask.data[y * mask.width + x] != 0))
-                .unwrap();
-            if left == 0 {
+            let shape = cv::gray(&crop(
+                &row,
+                weapon[0] as i32,
+                0,
+                *weapon.last().unwrap() as i32 + 1,
+                row.height as i32,
+            ))?;
+            if !weapon_shape(&shape)? {
                 continue;
             }
-            let weapon = white_mask(
-                &crop(&row, 0, 0, left as i32, row.height as i32),
-                &json!({"v_min":170,"s_max":80}),
-            )?;
-            if weapon.data.iter().filter(|&&v| v != 0).count() < 20
-                || (0..weapon.width)
-                    .filter(|&x| (0..weapon.height).any(|y| weapon.data[y * weapon.width + x] != 0))
-                    .count()
-                    < 12
+            let start = *weapon.last().unwrap() + 8;
+            // The player is the victim when the actor's own feed pixels reappear past the weapon;
+            // the HUD name is a different font, so it cannot make this comparison.
+            let actor = crop(&ink, x as i32, y as i32, (end + 1) as i32, y1 as i32);
+            let victim_area = crop(
+                &ink,
+                (end + 1 + start) as i32 - 3,
+                y as i32 - 3,
+                1814 - roi_x,
+                y1 as i32 + 3,
+            );
+            if victim_area.width >= actor.width
+                && victim_area.height >= actor.height
+                && cv::match_template(&victim_area, &actor, None)?
+                    .data
+                    .iter()
+                    .any(|&score| score >= SELF_VICTIM_MIN)
             {
                 continue;
             }
-            let width = 400.min(mask.width);
-            let resized = cv::resize(
-                &crop(
-                    &mask,
-                    (mask.width - width) as i32,
-                    0,
-                    mask.width as i32,
-                    mask.height as i32,
-                )
-                .float(),
-                width,
-                24,
-                Interpolation::Linear,
-            )?;
+            let contrast = crop(
+                &contrast,
+                start as i32,
+                0,
+                contrast.width as i32,
+                contrast.height as i32,
+            );
+            let peak = contrast.data.iter().copied().max().unwrap_or(0);
+            let mask = Image {
+                data: contrast
+                    .data
+                    .iter()
+                    .map(|&v| u8::from(v >= peak.max(12) / 3))
+                    .collect(),
+                ..contrast.clone()
+            };
+            let Some(victim) = glyph(&mask) else {
+                continue;
+            };
+            if victim.height < 8
+                || victim.width < 8
+                || victim.data.iter().filter(|&&v| v != 0.).count() < 35
+            {
+                continue;
+            }
+            let width =
+                ((victim.width as f64 * 24. / victim.height as f64).round() as usize).clamp(1, 400);
+            let resized = cv::resize(&victim, width, 24, Interpolation::Linear)?;
             let sig = resized.border(0, 0, 400 - width, 0, 0.);
             if sig.data.iter().filter(|&&v| v != 0.).count() >= 15 {
                 rows.push(sig);
@@ -377,8 +430,15 @@ impl ControlFeed {
         if !self.active && (!objectives || scene.is_some_and(|kind| kind != "in_match_hud")) {
             return Ok(());
         }
-        // BR's kill and assist counters outweigh accidental objective matches in the compass.
-        if self.battle_royale_hud(&gray)? {
+        // BR and Gun Run counters override accidental objective matches.
+        let damage = crop(&gray, 1765 - x, 60 - y, 1820 - x, 85 - y);
+        let gunrun = damage.width >= self.gunrun_damage.width
+            && damage.height >= self.gunrun_damage.height
+            && cv::match_template(&damage, &self.gunrun_damage, None)?
+                .data
+                .iter()
+                .any(|&score| score >= 0.85);
+        if gunrun || self.battle_royale_hud(&gray)? {
             self.active = false;
             self.player = None;
             self.entries.clear();
@@ -389,7 +449,8 @@ impl ControlFeed {
         self.feed_rows(t, rows)
     }
     pub fn feed_rows(&mut self, t: f64, rows: Vec<Image<f32>>) -> Result<()> {
-        self.entries.retain(|e| t - e.last < 2.);
+        // Low-contrast actor names can disappear for 2.5 seconds while the feed row remains visible.
+        self.entries.retain(|e| t - e.last < 3.);
         let mut used = vec![];
         for sig in rows {
             let mut best = (0., None);

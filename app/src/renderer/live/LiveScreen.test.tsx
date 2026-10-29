@@ -495,6 +495,32 @@ describe('LiveScreen', () => {
     expect(r.api.readInit).toHaveBeenCalled()
   })
 
+  test('live volume changes the video and mute preserves the chosen level', async () => {
+    rig(RECORDING, LIVE)
+    screen()
+    await settle()
+    const video = document.querySelector('video')!
+    const slider = document.querySelector<HTMLInputElement>('.live-volume input')!
+    const mute = document.querySelector<HTMLButtonElement>('.live-volume button')!
+    const volume = (value: number): void => act(() => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(slider, String(value))
+      slider.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    volume(35)
+    expect(video.volume).toBe(0.35)
+    expect(slider.getAttribute('aria-valuetext')).toBe('35%')
+    click(mute)
+    expect(video.muted).toBe(true)
+    expect(video.volume).toBe(0.35)
+    click(mute)
+    expect(video.muted).toBe(false)
+    volume(0)
+    expect(video.volume).toBe(0)
+    click(mute)
+    expect(video.volume).toBe(1)
+    expect(video.muted).toBe(false)
+  })
+
   test('No serious or critical axe violations', async () => {
     rig(RECORDING, LIVE)
     screen()

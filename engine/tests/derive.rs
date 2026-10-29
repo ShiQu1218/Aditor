@@ -13,7 +13,51 @@ fn signature(width: usize) -> String {
     .to_b64()
 }
 fn event(t: f64, sig: Value) -> Event {
-    serde_json::from_value(json!({"id":format!("e{t}"),"t":t,"type":"knock","score":0.9,"damage_line":false,"name_sig":sig})).unwrap()
+    serde_json::from_value(json!({"id":format!("e{t}"),"t":t,"type":"elim","score":0.9,"damage_line":false,"name_sig":sig})).unwrap()
+}
+#[test]
+fn revived_enemy_knocks_count_again_and_their_eliminations_stay_duplicates() {
+    let p = common::profile();
+    let sig = signature(60);
+    for kind in ["knock", "assist_knock"] {
+        let events: Vec<_> = [(0., kind), (10., "elim"), (80., kind), (100., "elim")]
+            .into_iter()
+            .map(|(t, kind)| {
+                let mut e = event(t, json!(sig));
+                e.kind = kind.into();
+                e
+            })
+            .collect();
+        let result = derive(&events, &[], &p);
+        assert_eq!(
+            result.iter().map(|e| e.counted).collect::<Vec<_>>(),
+            [true, false, true, false],
+            "{kind}"
+        );
+    }
+}
+#[test]
+fn a_knock_banner_split_by_occlusion_counts_once() {
+    let p = common::profile();
+    let sig = signature(60);
+    for kind in ["knock", "assist_knock"] {
+        let events: Vec<_> = [0., 2., 6.]
+            .into_iter()
+            .map(|t| {
+                let mut e = event(t, json!(sig));
+                e.kind = kind.into();
+                e
+            })
+            .collect();
+        assert_eq!(
+            derive(&events, &[], &p)
+                .iter()
+                .map(|e| e.counted_reason.as_str())
+                .collect::<Vec<_>>(),
+            ["first", "duplicate", "first"],
+            "{kind}"
+        );
+    }
 }
 #[test]
 fn signature_helpers_reject_missing_invalid_and_different_widths() {

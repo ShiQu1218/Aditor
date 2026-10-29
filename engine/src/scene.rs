@@ -145,22 +145,34 @@ impl SceneMatcher {
             };
             templates.push((name, roi, read("")?, read("_mask")?));
         }
+        for name in ["control_objectives_ja", "control_objectives_compact"] {
+            templates.push((
+                "control_objectives",
+                [287, 24, 60, 30],
+                cv::read_png(&dir.join(format!("{name}.png")), true)?,
+                cv::read_png(&dir.join(format!("{name}_mask.png")), true)?,
+            ));
+        }
         Ok(Self { templates })
     }
     pub fn match_score(&self, image: &Image<u8>, key: &str) -> Result<f64> {
-        let (_, [x, y, w, h], template, mask) = self
-            .templates
-            .iter()
-            .find(|t| t.0 == key)
-            .ok_or_else(|| anyhow::anyhow!("Unknown scene template: {key}"))?;
-        let result = cv::match_template(&image.crop(*x, *y, *w, *h)?, template, Some(mask))?;
-        Ok(result
-            .data
-            .iter()
-            .filter(|s| s.is_finite())
-            .copied()
-            .reduce(f32::max)
-            .unwrap_or(0.) as f64)
+        let mut best = f64::NEG_INFINITY;
+        for (_, [x, y, w, h], template, mask) in self.templates.iter().filter(|t| t.0 == key) {
+            let result = cv::match_template(&image.crop(*x, *y, *w, *h)?, template, Some(mask))?;
+            best = best.max(
+                result
+                    .data
+                    .iter()
+                    .filter(|s| s.is_finite())
+                    .copied()
+                    .reduce(f32::max)
+                    .unwrap_or(0.) as f64,
+            );
+        }
+        if best == f64::NEG_INFINITY {
+            bail!("Unknown scene template: {key}");
+        }
+        Ok(best)
     }
     pub fn scores(&self, image: &Image<u8>) -> Result<BTreeMap<String, f64>> {
         self.templates

@@ -67,9 +67,11 @@ impl<'a> TextMatcher<'a> {
         ))
     }
 }
+/// (kind, keyword ink, whether the victim name precedes the keyword, as in Japanese `NAMEを撃破`).
+type Keyword = (String, Image<f32>, bool);
 pub struct MixtapeDetector {
     profile: Profile,
-    templates: Vec<(String, Image<f32>)>,
+    templates: Vec<Keyword>,
     pub(crate) speakers: Vec<Image<f32>>,
 }
 fn unit(im: &Image<u8>) -> Image<f32> {
@@ -107,17 +109,19 @@ impl MixtapeDetector {
                 )?));
             }
         }
-        for (kind, name) in [
-            ("kill", "mixtape_elim_zh"),
-            ("assist_elim", "mixtape_assist_zh"),
-            ("kill", "mixtape_elim_en"),
-            ("assist_elim", "mixtape_assist_en"),
+        for (kind, name, name_first) in [
+            ("kill", "mixtape_elim_zh", false),
+            ("assist_elim", "mixtape_assist_zh", false),
+            ("kill", "mixtape_elim_en", false),
+            ("assist_elim", "mixtape_assist_en", false),
+            ("kill", "mixtape_elim_ja", true),
         ] {
             if let Ok(t) = cv::read_png(&profile.dir.join(format!("{name}.png")), true) {
                 for s in [0.9, 0.95, 1., 1.05, 1.1] {
                     templates.push((
                         kind.into(),
                         unit(&cv::resize_factor(&t, s, s, Interpolation::Linear)?),
+                        name_first,
                     ));
                 }
             }
@@ -144,20 +148,36 @@ impl MixtapeDetector {
         }
         let band = crop(banner, 0, 50, banner.width as i32, 110);
         let ink = ink_mask(&band)?;
-        let mut best: Option<(f64, i32, i32, &str, &Image<f32>)> = None;
+        let mut best: Option<(f64, i32, i32, &Keyword)> = None;
         let matcher = TextMatcher::new(&ink);
-        for (kind, t) in &self.templates {
-            let (score, x, y) = matcher.best(t)?;
+        for template in &self.templates {
+            let (score, x, y) = matcher.best(&template.1)?;
             if score >= 0.80
-                && best
-                    .as_ref()
-                    .is_none_or(|b| (kind == "assist_elim", score) > (b.3 == "assist_elim", b.0))
+                && best.as_ref().is_none_or(|b| {
+                    (template.0 == "assist_elim", score) > (b.3 .0 == "assist_elim", b.0)
+                })
             {
-                best = Some((score, x, y, kind, t));
+                best = Some((score, x, y, template));
             }
         }
-        let Some((score, x, y, kind, tpl)) = best else {
+        let Some((score, x, y, (kind, tpl, name_first))) = best else {
             return Ok(None);
+        };
+        let name_first = *name_first;
+        // The whole message is centered at x=400; `row_x` maps row columns back to band columns.
+        let keyword_end = x + tpl.width as i32;
+        let row_x = if name_first {
+            (800 - keyword_end - 4).max(0)
+        } else {
+            keyword_end
+        };
+        let centered = |name_x0: i32, name_x1: i32| {
+            let (left, right) = if name_first {
+                (row_x + name_x0, keyword_end)
+            } else {
+                (x, row_x + name_x1)
+            };
+            ((left + right) as f64 / 2. - 400.).abs()
         };
         let uncertain = || {
             Some(FrameResult {
@@ -170,13 +190,11 @@ impl MixtapeDetector {
                 hint: Some("plain_cont".into()),
             })
         };
-        let row = crop(
-            &band,
-            x + tpl.width as i32,
-            y,
-            800.min(800 - x + 4),
-            y + tpl.height as i32,
-        );
+        let row = if name_first {
+            crop(&band, row_x, y, x, y + tpl.height as i32)
+        } else {
+            crop(&band, row_x, y, 800.min(800 - x + 4), y + tpl.height as i32)
+        };
         if row.data.is_empty() {
             return Ok(None);
         }
@@ -208,23 +226,32 @@ impl MixtapeDetector {
             strokes = despeckle(&mask, 3)?;
         }
         let cols = columns(&strokes);
-        if cols.len() < 4 || cols[0] > 15 {
+        // The name must touch the keyword: its first column after it, or its last column before it.
+        let (mut start, mut end) = match (cols.first(), cols.last()) {
+            (Some(&first), Some(&last)) => (first, last + 1),
+            _ => return Ok(uncertain()),
+        };
+        let gap = if name_first { row.width - end } else { start };
+        if cols.len() < 4 || gap > 15 {
             return Ok(uncertain());
         }
-        let (start, mut end) = (cols[0], cols.last().unwrap() + 1);
+        // A wide gap may separate the name from unrelated strokes on its far side; cut there if it centers the text.
         for pair in cols.windows(2) {
             if pair[1] - pair[0] > 18 {
-                let candidate = pair[0] + 1;
-                if candidate - start >= 8
-                    && ((2 * x + tpl.width as i32 + candidate as i32) as f64 / 2. - 400.).abs()
-                        <= 4.
-                {
-                    end = candidate;
-                    break;
+                let (s, e) = if name_first {
+                    (pair[1], end)
+                } else {
+                    (start, pair[0] + 1)
+                };
+                if e - s >= 8 && centered(s as i32, e as i32) <= 4. {
+                    (start, end) = (s, e);
+                    if !name_first {
+                        break;
+                    }
                 }
             }
         }
-        if ((2 * x + tpl.width as i32 + end as i32) as f64 / 2. - 400.).abs() > 24. {
+        if centered(start as i32, end as i32) > 24. {
             return Ok(uncertain());
         }
         let glyph = crop(&strokes, start as i32, 0, end as i32, strokes.height as i32);
@@ -380,7 +407,7 @@ mod tests {
         let detector = MixtapeDetector::new(&p).unwrap();
         for level in [0., 0.001, 0.5, 1.] {
             let ink = Image::new(800, 60, 1, vec![level; 800 * 60]).unwrap();
-            for (_, template) in &detector.templates {
+            for (_, template, _) in &detector.templates {
                 assert_eq!(text_match(&ink, template).unwrap().0, 0.);
             }
         }
