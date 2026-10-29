@@ -13,14 +13,24 @@ fn cases() -> Value {
     serde_json::from_str(include_str!("parity/phase_b.json")).unwrap()
 }
 fn revive_aware_expected(mut events: Value) -> Value {
-    // Revives make separate knocks count; retain the frozen Python oracle on disk.
-    for e in events.as_array_mut().unwrap() {
-        if matches!(e["type"].as_str(), Some("knock" | "assist_knock"))
-            && e["counted_reason"] == "duplicate"
+    // Revives make knocks over 4 s apart count; retain the frozen Python oracle on disk.
+    let threshold = common::profile().name_sig_threshold;
+    let events_mut = events.as_array_mut().unwrap();
+    for i in 0..events_mut.len() {
+        let e = &events_mut[i];
+        if !matches!(e["type"].as_str(), Some("knock" | "assist_knock"))
+            || !matches!(e["counted_reason"].as_str(), Some("first" | "duplicate"))
         {
-            e["counted"] = json!(true);
-            e["counted_reason"] = json!("first");
+            continue;
         }
+        let same_banner = events_mut[..i].iter().any(|old| {
+            old["counted"] == true
+                && e["t"].as_f64().unwrap() - old["t"].as_f64().unwrap() <= 4.
+                && derive::sig_similar(old["name_sig"].as_str(), e["name_sig"].as_str(), threshold)
+        });
+        let reason = if same_banner { "duplicate" } else { "first" };
+        events_mut[i]["counted"] = json!(!same_banner);
+        events_mut[i]["counted_reason"] = json!(reason);
     }
     events
 }

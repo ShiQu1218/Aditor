@@ -62,3 +62,23 @@ the different victim at 359.25 s must still count.
 `pink_late_trace/` similarly preserves 657–684.75 s: a 2.5-second loss of the dim actor
 name while the original victim stays visible must not create a second kill. The same
 victim killed again at 681.5 s must count after the earlier entry has expired.
+
+Both trace directories hold victim signatures from the earlier color-mask extractor, so
+they exercise only `ControlFeed::feed_rows` (tracking and fade tolerance), not the
+grayscale extraction in `ControlFeed::rows`. Real-frame coverage of `rows` comes from the
+`*_feed.png` crops above.
+
+## Negative feed rows (2026-10-29)
+
+Each is a single 1070x32 feed row; tests pad the omitted rows with black and use
+`ja_yellow_spec.png` (local player `shiqu030`).
+
+- `notice_leader_en.png`, `notice_ping_en.png`: English system announcements that repeat
+  the player's name without a weapon icon. Neither is a kill.
+- `other_victim_row.png`: synthetic `shiqu030 [weapon] Enemy`, one kill. The test also
+  pastes `Enemy` 2 px left of the name to form `Enemyshiqu030`, which must not count:
+  a match whose left edge touches other strokes is the suffix of a longer name.
+- `self_victim_row.png`: synthetic `shiqu030 [weapon] shiqu030`. The player is the victim,
+  so it is not a kill. The actor's own feed pixels are matched past the weapon (about
+  0.88 here; real kills stay below 0.55); the HUD name glyph is a different font and
+  cannot separate these cases.

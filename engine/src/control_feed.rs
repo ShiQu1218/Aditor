@@ -8,6 +8,9 @@ use crate::{
 };
 use anyhow::Result;
 
+// Self-victim rows score about 0.88; real kills stay below 0.55 even for short names.
+const SELF_VICTIM_MIN: f32 = 0.75;
+
 fn gray_strokes(image: &Image<u8>) -> Result<Image<u8>> {
     let gray = cv::gray(image)?;
     let kernel = cv::rect_kernel(7, 7)?;
@@ -24,6 +27,21 @@ fn gray_strokes(image: &Image<u8>) -> Result<Image<u8>> {
     })
 }
 fn glyph(mask: &Image<u8>) -> Option<Image<f32>> {
+    // Isolated 1–2 px specks would stretch the bounding box and the normalized aspect ratio.
+    let components = cv::connected_components(&Image {
+        data: mask.data.iter().map(|&v| u8::from(v != 0)).collect(),
+        ..mask.clone()
+    })
+    .ok()?;
+    let mask = &Image {
+        data: components
+            .labels
+            .data
+            .iter()
+            .map(|&l| u8::from(l > 0 && components.stats[l as usize][4] >= 3))
+            .collect(),
+        ..mask.clone()
+    };
     let points: Vec<_> = mask
         .data
         .iter()
@@ -213,26 +231,27 @@ impl ControlFeed {
             return Ok(vec![]);
         }
         let ink = ink_mask(feed)?;
+        let [roi_x, roi_y, _, _] = self.profile.killfeed_roi.unwrap();
+        // Feed rows start at y=180 and end before the recorded feed's right padding.
+        let top = (180 - roi_y).max(0) as usize;
+        let search = crop(&ink, 0, top as i32, 1814 - roi_x, ink.height as i32);
         let mut candidates = vec![];
         // shortcut: normalized names are 14–22 px tall; expand for custom HUD text sizes.
         for height in [14, 16, 18, 20, 22] {
             let width = (player.width as f64 * height as f64 / player.height as f64)
                 .round()
                 .max(1.) as usize;
-            if width > feed.width || height > feed.height {
+            if width > search.width || height > search.height {
                 continue;
             }
             let template = cv::resize(&player, width, height, Interpolation::Linear)?;
             if template.data.iter().all(|&v| v == template.data[0]) {
                 continue;
             }
-            let scores = cv::match_template(&ink, &template, None)?;
+            let scores = cv::match_template(&search, &template, None)?;
             for (i, &score) in scores.data.iter().enumerate() {
-                let (x, y) = (i % scores.width, i / scores.width);
-                if score.is_finite()
-                    && score >= 0.5
-                    && y + (self.profile.killfeed_roi.unwrap()[1] as usize) >= 180
-                {
+                if score.is_finite() && score >= 0.5 {
+                    let (x, y) = (i % scores.width, i / scores.width + top);
                     candidates.push((score, x, y, width, height));
                 }
             }
@@ -248,12 +267,10 @@ impl ControlFeed {
         }
         names.sort_by_key(|name| name.1);
         let mut rows = vec![];
-        for &(x, y, width, height) in &names {
-            // A second player-name match on the same row means the player is the victim.
-            if names
-                .iter()
-                .any(|&(nx, ny, _, nh)| nx > x + width && ny < y + height && y < ny + nh)
-            {
+        for (x, y, width, height) in names {
+            // Strokes just left of the match mean it is the suffix of a longer name.
+            let left = crop(&ink, x as i32 - 6, y as i32, x as i32, (y + height) as i32);
+            if left.data.iter().any(|&v| v >= 0.5) {
                 continue;
             }
             let end = x + width - 1;
@@ -307,6 +324,25 @@ impl ControlFeed {
                 continue;
             }
             let start = *weapon.last().unwrap() + 8;
+            // The player is the victim when the actor's own feed pixels reappear past the weapon;
+            // the HUD name is a different font, so it cannot make this comparison.
+            let actor = crop(&ink, x as i32, y as i32, (end + 1) as i32, y1 as i32);
+            let victim_area = crop(
+                &ink,
+                (end + 1 + start) as i32 - 3,
+                y as i32 - 3,
+                1814 - roi_x,
+                y1 as i32 + 3,
+            );
+            if victim_area.width >= actor.width
+                && victim_area.height >= actor.height
+                && cv::match_template(&victim_area, &actor, None)?
+                    .data
+                    .iter()
+                    .any(|&score| score >= SELF_VICTIM_MIN)
+            {
+                continue;
+            }
             let contrast = crop(
                 &contrast,
                 start as i32,

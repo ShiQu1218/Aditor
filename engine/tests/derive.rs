@@ -37,6 +37,29 @@ fn revived_enemy_knocks_count_again_and_their_eliminations_stay_duplicates() {
     }
 }
 #[test]
+fn a_knock_banner_split_by_occlusion_counts_once() {
+    let p = common::profile();
+    let sig = signature(60);
+    for kind in ["knock", "assist_knock"] {
+        let events: Vec<_> = [0., 2., 6.]
+            .into_iter()
+            .map(|t| {
+                let mut e = event(t, json!(sig));
+                e.kind = kind.into();
+                e
+            })
+            .collect();
+        assert_eq!(
+            derive(&events, &[], &p)
+                .iter()
+                .map(|e| e.counted_reason.as_str())
+                .collect::<Vec<_>>(),
+            ["first", "duplicate", "first"],
+            "{kind}"
+        );
+    }
+}
+#[test]
 fn signature_helpers_reject_missing_invalid_and_different_widths() {
     let sig = signature(60);
     assert!(sig_similar(Some(&sig), Some(&sig), 0.32));

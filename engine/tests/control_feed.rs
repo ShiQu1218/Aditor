@@ -324,6 +324,29 @@ fn faint_melee_name_is_recognized_in_color_and_monochrome() {
 }
 
 #[test]
+fn a_longer_name_ending_with_the_player_name_is_not_the_player() {
+    let p = common::profile();
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/control_feed");
+    let spec = aditor::cv::read_png(&root.join("ja_yellow_spec.png"), false).unwrap();
+    let mut row = aditor::cv::read_png(&root.join("other_victim_row.png"), false).unwrap();
+    // Copy "Enemy" (x=800..856) to end 2 px before "shiqu030" (x=617): "Enemyshiqu030".
+    for y in 0..row.height {
+        for x in 0..56 {
+            for c in 0..3 {
+                let from = (y * row.width + 800 + x) * 3 + c;
+                row.data[(y * row.width + 559 + x) * 3 + c] = row.data[from];
+            }
+        }
+    }
+    let feed = row.border(148, 420 - 148 - row.height, 0, 0, 0);
+    assert!(ControlFeed::new(&p)
+        .unwrap()
+        .rows(&feed, &spec)
+        .unwrap()
+        .is_empty());
+}
+
+#[test]
 fn system_messages_and_self_kills_are_not_control_kills() {
     let p = common::profile();
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/control_feed");
