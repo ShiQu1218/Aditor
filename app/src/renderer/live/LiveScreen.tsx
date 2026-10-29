@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { isCounted } from '../../shared/types'
 import { formatTime } from '../../shared/time'
-import { ChevronLeft, Pause, Play, SkipBack, SkipForward } from '../components/icons'
+import { ChevronLeft, Pause, Play, SkipBack, SkipForward, Volume2, VolumeX } from '../components/icons'
 import { i18n, liveI18n as t, recordingI18n as rt } from '../i18n'
 import { useOptionalOverlay } from '../shell/OverlayHost'
 import { useRecordingStatus } from '../shell/useRecordingStatus'
@@ -47,6 +47,12 @@ export function LiveScreen({ onBack, onOpenVideo, onOpenLibrary }: LiveScreenPro
   const bounds = useCallback(() => boundsRef.current, [])
   const player = useLivePlayer({ sessionId: obs ? null : state?.sessionId ?? null, mime: obs ? null : state?.mime ?? null, segments: obs ? [] : state?.segments ?? [], bounds })
   const { addSegment, seek, togglePlay, jumpLive, current } = player
+  const [volume, setVolume] = useState(100)
+  const [muted, setMuted] = useState(false)
+  useEffect(() => {
+    const video = player.videoRef.current
+    if (video) { video.volume = volume / 100; video.muted = muted }
+  }, [player.videoRef, volume, muted, obs])
   useEffect(() => {
     live.onSegment.current = obs ? null : addSegment
     return () => { live.onSegment.current = null }
@@ -134,6 +140,18 @@ export function LiveScreen({ onBack, onOpenVideo, onOpenLibrary }: LiveScreenPro
               <button type="button" className="icon-btn" aria-label={t.forward5} onClick={() => seek(current + SEEK_STEP_SEC)} disabled={!state}><SkipForward className="ic" /></button>
               <button type="button" className="lib-btn sm" onClick={jumpLive} disabled={!state || atLive}>{atLive ? t.atLive : t.jumpLive}</button>
               <span className="live-time">{fill(t.time, { cur: formatTime(current), end: formatTime(end) })}</span>
+              <div className="live-volume">
+                <button type="button" className="icon-btn" aria-label={muted || volume === 0 ? i18n.studio.transport.unmute : i18n.studio.transport.mute}
+                  aria-pressed={muted || volume === 0} disabled={!state} onClick={() => {
+                    if (volume === 0) { setVolume(100); setMuted(false) } else setMuted(!muted)
+                  }}>
+                  {muted || volume === 0 ? <VolumeX className="ic" aria-hidden="true" /> : <Volume2 className="ic" aria-hidden="true" />}
+                </button>
+                <input type="range" min={0} max={100} step={1} value={volume} disabled={!state}
+                  aria-label={i18n.studio.transport.volume} aria-valuetext={`${volume}%`}
+                  onChange={(e) => { setVolume(Number(e.currentTarget.value)); setMuted(false) }} />
+                <span className="mono">{volume}%</span>
+              </div>
               <span className="live-keys">{t.keys}</span>
             </div>
             <LiveTimeline current={current} end={end} retainStart={retainStart} events={events}

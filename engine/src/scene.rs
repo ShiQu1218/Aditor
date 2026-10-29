@@ -145,12 +145,14 @@ impl SceneMatcher {
             };
             templates.push((name, roi, read("")?, read("_mask")?));
         }
-        templates.push((
-            "control_objectives",
-            [287, 24, 60, 30],
-            cv::read_png(&dir.join("control_objectives_ja.png"), true)?,
-            cv::read_png(&dir.join("control_objectives_ja_mask.png"), true)?,
-        ));
+        for name in ["control_objectives_ja", "control_objectives_compact"] {
+            templates.push((
+                "control_objectives",
+                [287, 24, 60, 30],
+                cv::read_png(&dir.join(format!("{name}.png")), true)?,
+                cv::read_png(&dir.join(format!("{name}_mask.png")), true)?,
+            ));
+        }
         Ok(Self { templates })
     }
     pub fn match_score(&self, image: &Image<u8>, key: &str) -> Result<f64> {

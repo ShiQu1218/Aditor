@@ -30,3 +30,17 @@ Two blue `shiqu030` weapon kills against orange victims.
 `ja_gunrun_{feed,spec}.png`: `Apex_2026-10-29_15-54.mp4`, 350 s.
 The damage counter must disarm Control without suppressing central kill banners.
 Both use normalized 1920x1080 feed `(850,60,1070,420)` and spec `(60,950,480,118)` crops.
+
+## Muted pink player feed (2026-10-29)
+
+`ja_muted_{feed,spec}.png`: `Apex_2026-10-29_17-49.mp4`, 240 s, same normalized ROIs.
+The local player's feed name is muted pink; cyan and blue masks miss it.
+`pink_trace/trace.json` and its grayscale signatures retain every 4 fps observation from
+345–364.75 s of the same video, including empty observations. Each PNG is a 400x24
+victim signature after the existing color mask and normalization (rounded to 8-bit).
+The melee kill at 345 s must not be counted again as its glyphs shift during fade;
+the different victim at 359.25 s must still count.
+
+`pink_late_trace/` similarly preserves 657–684.75 s: a 2.5-second loss of the dim actor
+name while the original victim stays visible must not create a second kill. The same
+victim killed again at 681.5 s must count after the earlier entry has expired.

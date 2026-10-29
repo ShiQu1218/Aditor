@@ -140,3 +140,58 @@ fn japanese_control_blue_names_and_gunrun_counter() {
     c.feed(0., Some(&gunrun), &spec, None).unwrap();
     assert!(!c.active);
 }
+
+#[test]
+fn japanese_control_muted_pink_player_name() {
+    let p = common::profile();
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/control_feed");
+    let feed = aditor::cv::read_png(&root.join("ja_muted_feed.png"), false).unwrap();
+    let spec = aditor::cv::read_png(&root.join("ja_muted_spec.png"), false).unwrap();
+    let mut c = ControlFeed::new(&p).unwrap();
+    assert_eq!(c.rows(&feed, &spec).unwrap().len(), 1);
+    c.feed(0., Some(&feed), &spec, None).unwrap();
+    c.feed(0.25, Some(&feed), &spec, None).unwrap();
+    assert!(c.active);
+    assert_eq!(c.events.len(), 1);
+    let banner = Image::new(800, 180, 3, vec![0; 800 * 180 * 3]).unwrap();
+    let mut live = LiveKills::new(&p, KillLimits::default()).unwrap();
+    for t in [0., 0.25] {
+        live.feed(t, &banner, &spec, Some(&feed), None).unwrap();
+    }
+    assert_eq!(live.snapshot().0.len(), 1);
+    assert_eq!(live.finish().unwrap().0.len(), 1);
+}
+
+#[test]
+fn fading_pink_feed_keeps_one_kill_then_counts_the_next_victim() {
+    let p = common::profile();
+    for (name, expected) in [
+        ("pink_trace", vec![345., 359.25]),
+        ("pink_late_trace", vec![657.5, 673., 681.5]),
+    ] {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/control_feed")
+            .join(name);
+        let trace: Value =
+            serde_json::from_slice(&std::fs::read(root.join("trace.json")).unwrap()).unwrap();
+        let mut c = ControlFeed::new(&p).unwrap();
+        for call in trace.as_array().unwrap() {
+            let rows = call[1]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|name| {
+                    let mut sig = aditor::cv::read_png(&root.join(name.as_str().unwrap()), true)
+                        .unwrap()
+                        .float();
+                    for v in &mut sig.data {
+                        *v /= 255.;
+                    }
+                    sig
+                })
+                .collect();
+            c.feed_rows(call[0].as_f64().unwrap(), rows).unwrap();
+        }
+        assert_eq!(c.events.iter().map(|e| e.t).collect::<Vec<_>>(), expected);
+    }
+}

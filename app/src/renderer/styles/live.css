@@ -34,6 +34,9 @@
 .live-message .live-message-actions { display: flex; gap: var(--sp-2); }
 .live-controls { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
 .live-controls .icon-btn { width: 32px; height: 32px; }
+.live-volume { display: flex; align-items: center; gap: var(--sp-1); }
+.live-volume input { width: 80px; accent-color: var(--accent); }
+.live-volume .mono { min-width: 4ch; color: var(--text-2); font-size: var(--fs-small); }
 .live-time { font-family: var(--font-mono); color: var(--text-2); font-variant-numeric: tabular-nums; margin-left: var(--sp-2); }
 .live-keys { margin-left: auto; color: var(--text-3); font-size: var(--fs-small); }
 .live-timeline {

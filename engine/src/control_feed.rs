@@ -27,7 +27,16 @@ fn glyph(mask: &Image<u8>) -> Option<Image<f32>> {
     Some(crop(mask, x0 as i32, y0 as i32, x1 as i32, y1 as i32).float())
 }
 fn similarity(a: &Image<f32>, b: &Image<f32>) -> Result<f64> {
-    Ok(cv::match_template(a, b, None)?.data[0] as f64)
+    let score = cv::match_template(a, b, None)?.data[0] as f64;
+    if score >= 0.60 {
+        return Ok(score);
+    }
+    // Fading feed text shifts by a few pixels while retaining the same victim.
+    Ok(cv::match_template(&a.border(2, 2, 2, 2, 0.), b, None)?
+        .data
+        .into_iter()
+        .map(f64::from)
+        .fold(score, f64::max))
 }
 fn player_similarity(actor: Option<Image<f32>>, player: &Image<f32>) -> Result<f64> {
     let Some(actor) = actor else {
@@ -175,18 +184,19 @@ impl ControlFeed {
         Ok(glyph(&crop(&mask, 0, 0, limit as i32, mask.height as i32)))
     }
     pub fn rows(&mut self, feed: &Image<u8>, spec: &Image<u8>) -> Result<Vec<Image<f32>>> {
-        let rows = self.rows_color(feed, spec, false)?;
-        if rows.is_empty() {
-            self.rows_color(feed, spec, true)
-        } else {
-            Ok(rows)
+        for palette in 0..3 {
+            let rows = self.rows_color(feed, spec, palette)?;
+            if !rows.is_empty() {
+                return Ok(rows);
+            }
         }
+        Ok(vec![])
     }
     fn rows_color(
         &mut self,
         feed: &Image<u8>,
         spec: &Image<u8>,
-        blue: bool,
+        palette: u8,
     ) -> Result<Vec<Image<f32>>> {
         let player = match &self.player {
             Some(player) => Some(player.clone()),
@@ -208,7 +218,13 @@ impl ControlFeed {
                     .0
                     .iter()
                     .map(|p| {
-                        u8::from(if blue {
+                        u8::from(if palette == 2 {
+                            p[2] > 95
+                                && p[0] > 70
+                                && (p[2] as f32) > p[1] as f32 * 1.08
+                                && (p[0] as f32) > p[1] as f32 * 0.95
+                                && (p[2] as f32) < p[0] as f32 * 1.35
+                        } else if palette == 1 {
                             p[0] > 110
                                 && p[1] > 60
                                 && (p[2] as f32) < p[1] as f32 * 0.8
@@ -416,7 +432,8 @@ impl ControlFeed {
         self.feed_rows(t, rows)
     }
     pub fn feed_rows(&mut self, t: f64, rows: Vec<Image<f32>>) -> Result<()> {
-        self.entries.retain(|e| t - e.last < 2.);
+        // Low-contrast actor names can disappear for 2.5 seconds while the feed row remains visible.
+        self.entries.retain(|e| t - e.last < 3.);
         let mut used = vec![];
         for sig in rows {
             let mut best = (0., None);
