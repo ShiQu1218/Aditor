@@ -9,7 +9,8 @@ use crate::{
     },
     clock::{self, TICKS_PER_SEC},
     encode::{
-        candidate_names, codec_of, EncodeStats, SegmentInfo, SegmentWriter, VideoParams, ENCODERS,
+        candidate_names, codec_of, probe_diagnostic, EncodeStats, SegmentInfo, SegmentWriter,
+        VideoParams, ENCODERS,
     },
     gpu::{auto_order, AdapterDesc, Gpu, Vendor},
     index::{self, IndexWriter, SessionMeta},
@@ -85,20 +86,25 @@ struct WorkerGuard {
     active: Arc<AtomicBool>,
     events: EventSink,
     announced: bool,
+    failure: Option<ErrorCode>,
 }
 
 impl WorkerGuard {
+    fn report_error(&mut self, error: &BackendError) {
+        if self.failure.is_none() {
+            self.failure = Some(error.0);
+            self.events.emit(&Event::Error {
+                code: error.0,
+                message: error.1.clone(),
+            });
+        }
+    }
+
     fn complete(&mut self, result: &Result<(), BackendError>) {
-        let reason = match result {
-            Ok(()) => "requested",
-            Err((code, message)) => {
-                self.events.emit(&Event::Error {
-                    code: *code,
-                    message: message.clone(),
-                });
-                code.as_str()
-            }
-        };
+        if let Err(error) = result {
+            self.report_error(error);
+        }
+        let reason = self.failure.map_or("requested", |code| code.as_str());
         self.active.store(false, Ordering::Release);
         self.announced = false;
         self.events.emit(&Event::Stopped {
@@ -119,12 +125,14 @@ impl Drop for WorkerGuard {
 
 impl Backend for Recorder {
     fn hello(&mut self) -> HelloInfo {
+        probe_diagnostic("gpu_enumerate", "none");
         let (gpus, encoders) = match Gpu::enumerate() {
             Ok(adapters) => {
                 let gpus: Vec<GpuInfo> = adapters
                     .iter()
                     .filter(|adapter| !adapter.desc.software)
                     .filter_map(|adapter| {
+                        probe_diagnostic("gpu_create", "none");
                         let gpu = adapter.create_gpu().ok()?;
                         let vendor = Vendor::from_vendor_id(adapter.desc.vendor_id);
                         Some(GpuInfo {
@@ -149,11 +157,14 @@ impl Backend for Recorder {
                     .unwrap_or_default(),
             ),
         };
+        probe_diagnostic("audio_devices", "none");
+        let audio = audio::list_devices().unwrap_or_default();
+        probe_diagnostic("ready", "none");
         HelloInfo {
             version: env!("CARGO_PKG_VERSION").to_owned(),
             encoders,
             gpus,
-            audio: audio::list_devices().unwrap_or_default(),
+            audio,
         }
     }
     fn start(&mut self, args: StartArgs, events: EventSink) -> Result<(), BackendError> {
@@ -179,6 +190,7 @@ impl Backend for Recorder {
                         active: worker_active,
                         events: events.clone(),
                         announced: false,
+                        failure: None,
                     };
                     let mut session = match Session::open(&args, events) {
                         Ok(session) => session,
@@ -190,6 +202,10 @@ impl Backend for Recorder {
                     guard.announced = true;
                     let _ = ready.send(Ok(()));
                     let result = session.run(&args.session_dir, &stopped);
+                    // Cleanup can wait on a stuck driver or disk; report the original failure first.
+                    if let Err(error) = &result {
+                        guard.report_error(error);
+                    }
                     let finish = session.finish();
                     let result = result.and(finish);
                     guard.complete(&result);
@@ -854,7 +870,10 @@ impl Session {
         if stalled {
             return Err((
                 ErrorCode::EncodeFailed,
-                "Encoder has processed no frames for over five seconds".into(),
+                format!(
+                    "Encoder has processed no frames for over five seconds; {}",
+                    self.writer.as_ref().unwrap().diagnostics()
+                ),
             ));
         }
         Ok(())
@@ -1162,6 +1181,7 @@ mod tests {
             active: active.clone(),
             events: output.sink(),
             announced: true,
+            failure: None,
         };
         assert!(thread::spawn(move || {
             let _guard = guard;
@@ -1190,6 +1210,7 @@ mod tests {
                 active: active.clone(),
                 events: output.sink(),
                 announced: true,
+                failure: None,
             };
             let (stop, _stopped) = mpsc::channel();
             let (done, finished) = mpsc::channel();
@@ -1226,9 +1247,75 @@ mod tests {
             active: active.clone(),
             events: output.sink(),
             announced: false,
+            failure: None,
         });
         assert!(!active.load(Ordering::Acquire));
         assert!(output.events().is_empty());
+    }
+
+    #[test]
+    fn original_error_is_emitted_once_before_cleanup_completes() {
+        let active = Arc::new(AtomicBool::new(true));
+        let output = Output::default();
+        let mut guard = WorkerGuard {
+            active: active.clone(),
+            events: output.sink(),
+            announced: true,
+            failure: None,
+        };
+        let (reported, observed) = mpsc::channel();
+        let (release, cleanup) = mpsc::channel();
+        let worker = thread::spawn(move || {
+            let error = (ErrorCode::EncodeFailed, "Test mux timeout".into());
+            guard.report_error(&error);
+            guard.report_error(&error);
+            reported.send(()).unwrap();
+            cleanup.recv().unwrap();
+            guard.complete(&Err(error));
+        });
+        observed.recv_timeout(Duration::from_secs(2)).unwrap();
+        let before_cleanup = output.events();
+        let still_active = active.load(Ordering::Acquire);
+        release.send(()).unwrap();
+        worker.join().unwrap();
+        assert!(still_active);
+        assert_eq!(
+            before_cleanup,
+            vec![json!({"ev": "error", "code": "encode_failed", "message": "Test mux timeout"})]
+        );
+        let events = output.events();
+        assert_eq!(events.len(), 2);
+        assert_eq!(
+            events[1],
+            json!({"ev": "stopped", "reason": "encode_failed"})
+        );
+        assert!(!active.load(Ordering::Acquire));
+    }
+
+    #[test]
+    fn panic_during_cleanup_keeps_the_previously_reported_failure() {
+        let active = Arc::new(AtomicBool::new(true));
+        let output = Output::default();
+        let mut guard = WorkerGuard {
+            active: active.clone(),
+            events: output.sink(),
+            announced: true,
+            failure: None,
+        };
+        assert!(thread::spawn(move || {
+            guard.report_error(&(ErrorCode::EncodeFailed, "Test mux timeout".into()));
+            panic!("test cleanup panic");
+        })
+        .join()
+        .is_err());
+        let events = output.events();
+        assert_eq!(events.len(), 2);
+        assert_eq!(events[0]["message"], "Test mux timeout");
+        assert_eq!(
+            events[1],
+            json!({"ev": "stopped", "reason": "encode_failed"})
+        );
+        assert!(!active.load(Ordering::Acquire));
     }
 
     #[test]

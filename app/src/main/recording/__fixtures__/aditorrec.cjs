@@ -8,6 +8,14 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
   const req = JSON.parse(line)
   if (process.env.FAKE_RECORDER_TRACE) fs.appendFileSync(process.env.FAKE_RECORDER_TRACE, line + '\n')
   if (req.cmd === 'hello') {
+    if (mode === 'probe-exit') {
+      process.stderr.write('private device name\nADITORREC_DIAG probe_stage=probe_')
+      return setTimeout(() => {
+        process.stderr.write('send probe_encoder=av1_nvenc\nADITORREC_DIAG probe_stage=private probe_encoder=secret\n')
+        process.exit(7)
+      }, 20)
+    }
+    if (mode === 'policy-exit') return process.exit(0xC0E90002)
     if (mode === 'hello-timeout') return
     if (mode === 'invalid-json') return process.stdout.write('{oops}\n')
     if (mode === 'oversize') return process.stdout.write('x'.repeat(65537))

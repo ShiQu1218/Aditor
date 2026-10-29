@@ -104,3 +104,36 @@ npm --prefix app run verify:sentry
 
 參考：[Sentry Electron](https://docs.sentry.io/platforms/javascript/guides/electron/)、
 [Vite source map 上傳](https://docs.sentry.io/platforms/javascript/guides/electron/sourcemaps/uploading/vite/)。
+
+## 錄影錯誤定位（0.4.0 後的診斷）
+
+舊事件沒有原生堆疊、操作軌跡及 stderr，無法回溯是哪個驅動呼叫卡住。
+新診斷仍不傳送原始 stderr、裝置 ID 或本機路徑，只保留固定階段標記與數值；須使用包含本次修改的新建置重現，舊事件不會補上資料。
+Electron 啟動錄影程序時會設定 `ADITORREC_DIAGNOSTICS=1`，才啟用 stderr 探測標記；直接執行原生程序／CLI 時預設不輸出進度，維持既有 JSON 輸出契約。
+
+- `recorder_timeout`：查看 `probe_stage`、`probe_encoder`。`gpu_enumerate`／`gpu_create` 是顯卡初始化，`probe_open` 是建立硬體編碼器，`probe_copy` 是試拷貝，`probe_send`／`probe_flush` 是 FFmpeg 編碼呼叫，`probe_close` 是釋放資源，`audio_devices` 是音訊列舉。這是最後一個探測階段，不代表呼叫已完成；沒有標記表示尚未進入探測，需查程序載入。hello 整體仍有 30 秒逾時，不嘗試強制中斷驅動執行緒。
+- 無影格錯誤：訊息含 `stage`、`input`、`encoded`、`dropped`、`queue`、`audio_dropped`、`mux_busy`、`mux_max_ms`。`video_send` 指向 FFmpeg／GPU 編碼路徑，`mux_enqueue` 指向封裝背壓，`audio_encode` 指向音訊處理；`mux_busy=1` 表示封裝尚未返回，`mux_max_ms` 是已完成封裝呼叫的最長時間，不是當下卡住時間。
+- 音訊間隔錯誤：保留五秒記憶體保護，新增 `target_samples`、`written_samples`、`encoded_samples`、`gap_samples`（48 kHz）。從音訊輸入觸發時另含 `pts`（每秒一千萬刻度）、`video_next_slot`、`fps` 與佇列計數，可分辨音訊時間超前影片、開頭尚未寫入，或累積丟棄後的缺口。單筆快照仍無法證明驅動或排程的因果關係。
+- 封裝佇列：保留 256 筆上限，滿載時只讓編碼執行緒最多等待兩秒，擷取端仍以原本上限丟影格；持續滿載才停止，且不再直接歸咎於磁碟。已保留的分段依既有復原流程處理。
+
+編碼錯誤會在可能阻塞的資源釋放前鎖存；管理執行緒先送出一次 `Error`，清理完成後才送 `Stopped`。兩秒只限制佇列等待，不保證驅動／磁碟清理能在兩秒內完成；停止仍無回應時，由應用程式既有的 15 秒逾時終止子程序。
+
+若新事件仍只停在 `video_send`／`probe_send` 等原生呼叫，需要在受影響電腦重現當下取得 aditorrec 的程序傾印或 Windows Performance Recorder 追蹤，才能分辨 FFmpeg、顯卡驅動及鎖定等待。程序傾印可能包含記憶體中的私人資料，應留在本機分析，不自動上傳 Sentry。
+
+### `0xC0E90002`：找出 Windows 封鎖的檔案
+
+此碼表示 Application Control 政策封鎖檔案；程序可能在 Rust main 執行前就被擋，因此應用程式無法報出 DLL 名稱。新事件保留十六進位 `exit_code` 並顯示政策封鎖提示，但不能僅憑此碼判定是 Smart App Control 或哪一個檔案。
+
+在**受影響電腦**重現後查最近十分鐘的 CodeIntegrity 記錄：
+
+```powershell
+Get-WinEvent -FilterHashtable @{
+  LogName = 'Microsoft-Windows-CodeIntegrity/Operational'
+  StartTime = (Get-Date).AddMinutes(-10)
+} | Where-Object { $_.Id -in 3033, 3077, 3089 } |
+  Select-Object TimeCreated, Id, Message | Format-List
+```
+
+記錄會指出被封鎖的檔案及政策。對該檔案執行 `Get-AuthenticodeSignature -LiteralPath '記錄中的完整檔案路徑'`，檢查簽章狀態與簽署者，再確認它是否與發布產物相符。這些記錄可能含本機路徑，分享前須遮蔽個人資訊。
+
+發布流程目前設定 `CSC_IDENTITY_AUTO_DISCOVERY=false`；這不足以證明某個發布檔案未簽章，但應檢查實際發布的 `aditorrec.exe` 與相依 DLL。修復應針對被擋檔案的可信簽章／發布完整性或由管理員調整明確允許政策，不要求使用者關閉 Windows 安全功能。取得真正被擋檔案與政策前，不能宣稱已修復此問題。

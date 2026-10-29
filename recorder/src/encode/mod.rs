@@ -49,6 +49,15 @@ pub(crate) const ENCODERS: [&str; 9] = [
 const QUEUE_SIZE: usize = 8;
 const POOL_SIZE: usize = 12;
 
+pub(crate) fn probe_diagnostic(stage: &str, encoder: &str) {
+    static ENABLED: OnceLock<bool> = OnceLock::new();
+    if *ENABLED
+        .get_or_init(|| std::env::var_os("ADITORREC_DIAGNOSTICS").is_some_and(|value| value == "1"))
+    {
+        eprintln!("ADITORREC_DIAG probe_stage={stage} probe_encoder={encoder}");
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct VideoParams {
     /// Output dimensions (must be even).Scale on the GPU when source dimensions differ.
@@ -103,9 +112,27 @@ struct Counts {
     dropped: AtomicU64,
     queue: AtomicU64,
     audio_dropped: AtomicU64,
+    worker_stage: AtomicU64,
+    mux_busy: AtomicU64,
+    mux_max_ms: AtomicU64,
     error: OnceLock<String>,
 }
 impl Counts {
+    fn diagnostics(&self) -> String {
+        let stage = match self.worker_stage.load(Ordering::Relaxed) {
+            1 => "video_send",
+            2 => "mux_enqueue",
+            3 => "audio_encode",
+            4 => "finish",
+            _ => "receive",
+        };
+        format!("stage={stage} input={} encoded={} dropped={} queue={} audio_dropped={} mux_busy={} mux_max_ms={}",
+            self.input.load(Ordering::Relaxed), self.encoded.load(Ordering::Relaxed),
+            self.dropped.load(Ordering::Relaxed), self.queue.load(Ordering::Relaxed),
+            self.audio_dropped.load(Ordering::Relaxed), self.mux_busy.load(Ordering::Relaxed),
+            self.mux_max_ms.load(Ordering::Relaxed))
+    }
+
     fn fail(&self, error: impl std::fmt::Display) {
         let _ = self.error.set(format!("{error:#}"));
     }
@@ -195,12 +222,14 @@ fn probe(gpu: &Gpu, name: &str) -> Result<ffi::AVPixelFormat> {
     let mut failure = None;
     for format in input_formats(name) {
         let attempt = || -> Result<()> {
+            probe_diagnostic("probe_open", name);
             let hardware = Hardware::new(gpu, &params, format)?;
             let encoder = hardware.encoder(name, &params)?;
             let frame = hardware.surface()?;
             // Exercise the BGRA-to-surface copy too: NV12 always goes through the video processor,
             // which the encoder alone does not test.
             let source = probe_source(gpu, (params.width, params.height))?;
+            probe_diagnostic("probe_copy", name);
             Copier::new(gpu, &params, format).copy(
                 &source,
                 (params.width, params.height),
@@ -210,12 +239,15 @@ fn probe(gpu: &Gpu, name: &str) -> Result<ffi::AVPixelFormat> {
             unsafe {
                 (*frame.0).pts = 0;
             }
+            probe_diagnostic("probe_send", name);
             let packets = encoder.send(Some(&frame))?;
+            probe_diagnostic("probe_flush", name);
             let tail = encoder.send(None)?;
             ensure!(
                 !packets.is_empty() || !tail.is_empty(),
                 "Trial encoding produced no packets"
             );
+            probe_diagnostic("probe_close", name);
             Ok(())
         };
         match attempt() {
@@ -375,7 +407,7 @@ impl SegmentWriter {
                 frame: hardware.surface()?,
             }));
         }
-        let audio = audio.then(aac::Audio::new).transpose()?;
+        let mut audio = audio.then(aac::Audio::new).transpose()?;
         let muxer = mux::Muxer::new(
             dir,
             &encoder,
@@ -385,17 +417,18 @@ impl SegmentWriter {
         let (video_tx, video_rx) = mpsc::sync_channel(QUEUE_SIZE);
         let (audio_tx, audio_rx) = mpsc::sync_channel(64);
         let counts = Arc::new(Counts::default());
-        let muxer = mux::MuxWorker::new(muxer, counts.clone())?;
+        let mut muxer = mux::MuxWorker::new(muxer, counts.clone())?;
         let worker_counts = counts.clone();
         let fps = video.fps;
         let worker = thread::Builder::new()
             .name("aditorrec-encode".into())
             .spawn(move || {
+                // Keep resources outside monitoring so errors are latched before a blocking Drop/join.
                 monitor_worker(&worker_counts, || {
                     run_worker(
-                        encoder,
-                        audio,
-                        muxer,
+                        &encoder,
+                        &mut audio,
+                        &mut muxer,
                         video_rx,
                         audio_rx,
                         worker_counts.clone(),
@@ -536,6 +569,10 @@ impl SegmentWriter {
         self.counts.check_error()
     }
 
+    pub fn diagnostics(&self) -> String {
+        self.counts.diagnostics()
+    }
+
     /// Flush the encoder, write the final segment, and close.
     pub fn finish(mut self) -> Result<()> {
         self.close()?;
@@ -590,6 +627,7 @@ fn encode_frame(
             ffi::AV_PICTURE_TYPE_NONE
         };
     }
+    counts.worker_stage.store(1, Ordering::Relaxed);
     let packets = encoder.send(Some(&frame))?;
     // SAFETY: This packet is exclusively owned and not yet handed to the muxer; some encoders do not set duration.
     unsafe {
@@ -599,6 +637,7 @@ fn encode_frame(
             }
         }
     }
+    counts.worker_stage.store(2, Ordering::Relaxed);
     muxer.push(packets, true)?;
     counts.encoded.fetch_add(1, Ordering::Relaxed);
     Ok(())
@@ -614,9 +653,9 @@ fn monitor_worker(counts: &Counts, run: impl FnOnce() -> Result<()>) -> Result<(
 }
 
 fn run_worker(
-    encoder: Encoder,
-    mut audio: Option<aac::Audio>,
-    mut muxer: mux::MuxWorker,
+    encoder: &Encoder,
+    audio: &mut Option<aac::Audio>,
+    muxer: &mut mux::MuxWorker,
     video_rx: Receiver<VideoJob>,
     audio_rx: Receiver<AudioJob>,
     counts: Arc<Counts>,
@@ -630,11 +669,22 @@ fn run_worker(
     let mut last_arrival = std::time::Instant::now();
     loop {
         counts.check_error()?;
+        counts.worker_stage.store(0, Ordering::Relaxed);
         for _ in 0..8 {
             match audio_rx.try_recv() {
                 Ok(job) => {
-                    if let Some(audio) = &mut audio {
-                        muxer.push(audio.push(&job.samples, job.pts)?, false)?;
+                    if let Some(audio) = audio.as_mut() {
+                        counts.worker_stage.store(3, Ordering::Relaxed);
+                        let packets = audio.push(&job.samples, job.pts).with_context(|| {
+                            format!(
+                                "Audio input pts={} video_next_slot={} fps={fps}; {}",
+                                job.pts,
+                                next_slot,
+                                counts.diagnostics()
+                            )
+                        })?;
+                        counts.worker_stage.store(2, Ordering::Relaxed);
+                        muxer.push(packets, false)?;
                     }
                 }
                 Err(TryRecvError::Disconnected) => {
@@ -678,22 +728,17 @@ fn run_worker(
             if job.slot >= next_slot {
                 if let Some(last) = &previous {
                     while next_slot < job.slot {
-                        encode_frame(&encoder, &mut muxer, &last.frame, next_slot, fps, &counts)?;
+                        encode_frame(encoder, muxer, &last.frame, next_slot, fps, &counts)?;
                         next_slot += 1;
-                        advance_audio(&mut audio, &mut muxer, next_slot, fps)?;
+                        counts.worker_stage.store(3, Ordering::Relaxed);
+                        advance_audio(audio, muxer, next_slot, fps)?;
                     }
                 }
-                encode_frame(
-                    &encoder,
-                    &mut muxer,
-                    &job.surface.frame,
-                    job.slot,
-                    fps,
-                    &counts,
-                )?;
+                encode_frame(encoder, muxer, &job.surface.frame, job.slot, fps, &counts)?;
                 next_slot = job.slot + 1;
                 previous = Some(job.surface);
-                advance_audio(&mut audio, &mut muxer, next_slot, fps)?;
+                counts.worker_stage.store(3, Ordering::Relaxed);
+                advance_audio(audio, muxer, next_slot, fps)?;
             } else {
                 counts.dropped.fetch_add(1, Ordering::Relaxed);
             }
@@ -705,6 +750,7 @@ fn run_worker(
             thread::yield_now();
         }
     }
+    counts.worker_stage.store(4, Ordering::Relaxed);
     let tail = encoder.send(None)?;
     // SAFETY: The flush packet is exclusively owned by this thread; the final frame also needs a duration to remain included when splitting segments.
     unsafe {
@@ -717,8 +763,13 @@ fn run_worker(
         }
     }
     muxer.push(tail, true)?;
-    if let Some(audio) = &mut audio {
-        muxer.push(audio.finish(frame_tick(next_slot, fps))?, false)?;
+    if let Some(audio) = audio.as_mut() {
+        muxer.push(
+            audio
+                .finish(frame_tick(next_slot, fps))
+                .context("Audio finalization")?,
+            false,
+        )?;
     }
     muxer.finish()
 }
@@ -732,7 +783,12 @@ fn advance_audio(
     if let Some(audio) = audio {
         // When audio falls more than 200 ms behind, fill with silence; advance one frame at a time during long capture interruptions to maintain segment and memory limits.
         let safe = (frame_tick(next_slot, fps) as i128 * 48_000 / 10_000_000 - 9_600).max(0) as i64;
-        muxer.push(audio.advance(safe)?, false)?;
+        muxer.push(
+            audio
+                .advance(safe)
+                .with_context(|| format!("Audio catch-up video_next_slot={next_slot} fps={fps}"))?,
+            false,
+        )?;
     }
     Ok(())
 }

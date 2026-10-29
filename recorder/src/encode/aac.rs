@@ -55,7 +55,8 @@ impl Audio {
     pub fn advance(&mut self, target: i64) -> Result<Vec<Packet>> {
         ensure!(
             target.saturating_sub(self.written) <= MAX_SILENCE_SAMPLES,
-            "Audio timestamp gap exceeds five seconds; stop encoding to limit memory usage"
+            "Audio timestamp gap exceeds five seconds; target_samples={target} written_samples={} encoded_samples={} gap_samples={}; stop encoding to limit memory usage",
+            self.written, self.encoded, target.saturating_sub(self.written)
         );
         let silence = [0f32; 2048];
         let mut packets = Vec::new();
@@ -141,7 +142,14 @@ mod tests {
     fn excessive_silence_is_rejected_without_advancing() {
         let mut audio = Audio::new().unwrap();
         assert!(audio.push(&[0.; 2048], i64::MAX).is_err());
-        assert!(audio.advance(MAX_SILENCE_SAMPLES + 1).is_err());
+        let error = audio
+            .advance(MAX_SILENCE_SAMPLES + 1)
+            .err()
+            .unwrap()
+            .to_string();
+        assert!(error.contains(
+            "target_samples=240001 written_samples=0 encoded_samples=0 gap_samples=240001"
+        ));
         assert!(audio.finish(i64::MAX).is_err());
         assert_eq!(audio.written, 0);
         assert_eq!(audio.encoded, 0);
