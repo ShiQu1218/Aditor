@@ -11,7 +11,18 @@ pub struct SceneFrame {
     pub scores: BTreeMap<String, f64>,
     pub blank: bool,
 }
+/// Minimum score for the mode card arrow shown by the opening screens.
+const CHEVRON_MIN: f64 = 0.75;
 impl SceneFrame {
+    /// Mode card arrow without the loading footer: the map and legend select screens that come before loading.
+    /// Summary screens belong to the previous match and never count.
+    pub fn opening_hint(&self) -> bool {
+        self.kind == "other"
+            && !self.match_context
+            && ["mode_chevron", "ranked_chevron"]
+                .iter()
+                .any(|k| self.scores.get(*k).is_some_and(|&v| v >= CHEVRON_MIN))
+    }
     pub fn new(kind: &'static str) -> Self {
         Self {
             kind,
@@ -75,11 +86,11 @@ impl SceneMatcher {
             Ok(v)
         };
         let mut chevron = score("mode_chevron")?;
-        if chevron < 0.75 {
+        if chevron < CHEVRON_MIN {
             chevron = score("ranked_chevron")?;
         }
         let mut kind = "other";
-        if chevron >= 0.75 {
+        if chevron >= CHEVRON_MIN {
             let mut footer = score("loading_footer")?;
             if footer < 0.75 {
                 footer = score("wildcard_footer")?;
