@@ -196,6 +196,77 @@ describe('quit guard critical finalization (D5)', () => {
 })
 
 describe('main quit wiring (D5)', () => {
+  it('waits until recording finalization before cancelling thumbnails and waits for their cleanup before quitting', async () => {
+    vi.useFakeTimers()
+    const finalized = deferred()
+    const thumbnails = deferred()
+    const cancelThumbnails = vi.fn(() => thumbnails.promise)
+    const quit = vi.fn()
+    const deps = {
+      stopRecording: () => finalized.promise,
+      flushLibrary: () => true,
+      stopEngine: () => undefined,
+      cancelExport: () => undefined,
+      cancelProxies: () => undefined,
+      cancelThumbnails,
+      stopWatcher: () => undefined,
+      quit,
+      timeoutMs: 5000
+    }
+    const guard = createAppQuitGuard(deps)
+    guard.onBeforeQuit(ev())
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(cancelThumbnails).not.toHaveBeenCalled()
+    finalized.resolve()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(cancelThumbnails).toHaveBeenCalledTimes(1)
+    expect(quit).not.toHaveBeenCalled()
+    thumbnails.resolve()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(quit).toHaveBeenCalledTimes(1)
+  })
+
+  it('blocks quitting and installing when the final library flush fails, then allows retry', async () => {
+    vi.useFakeTimers()
+    const flushLibrary = vi.fn(() => false)
+    const stopEngine = vi.fn()
+    const cancelThumbnails = vi.fn()
+    const quit = vi.fn()
+    const installUpdate = vi.fn(() => false)
+    const onQuitBlocked = vi.fn()
+    const cancelled = deferred()
+    const guard = createAppQuitGuard({
+      stopRecording: () => undefined,
+      flushLibrary,
+      stopEngine,
+      cancelThumbnails,
+      cancelExport: () => cancelled.promise,
+      cancelProxies: () => undefined,
+      stopWatcher: () => undefined,
+      onQuitBlocked,
+      installUpdate,
+      quit,
+      timeoutMs: 5000
+    })
+    guard.onBeforeQuit(ev())
+    await vi.advanceTimersByTimeAsync(6000)
+    expect(onQuitBlocked).not.toHaveBeenCalled()
+    cancelled.resolve()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(onQuitBlocked).toHaveBeenCalledTimes(1)
+    expect(stopEngine).not.toHaveBeenCalled()
+    expect(cancelThumbnails).not.toHaveBeenCalled()
+    expect(installUpdate).not.toHaveBeenCalled()
+    expect(quit).not.toHaveBeenCalled()
+    flushLibrary.mockReturnValue(true)
+    guard.onBeforeQuit(ev())
+    await vi.advanceTimersByTimeAsync(0)
+    expect(quit).toHaveBeenCalledTimes(1)
+    expect(cancelThumbnails).toHaveBeenCalledTimes(1)
+    const finalEvent = ev()
+    guard.onBeforeQuit(finalEvent)
+    expect(finalEvent.prevented).toBe(false)
+  })
   afterEach(() => {
     vi.useRealTimers()
     vi.restoreAllMocks()

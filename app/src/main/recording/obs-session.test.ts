@@ -3,8 +3,10 @@ import fs from 'fs'
 import path from 'path'
 import { createRecordingService } from './index'
 import type { RecordingService } from '../../shared/recording'
-import { createSegments, ffmpeg, fakeCommand, fakeLiveCommand, makeDeps, tempRoot, waitFor } from './test-support'
+import { createSegments, ffmpeg, fakeCommand, fakeLiveCommand, makeDeps, sessionDir, tempRoot, waitFor } from './test-support'
 import { fakeObs } from './obs-test-support'
+import { finalizeSession, writeJson } from './finalize'
+import { ObsClient } from './obs-client'
 
 const cleanup: Array<() => Promise<void> | void> = []
 afterEach(async () => { for (const fn of cleanup.splice(0).reverse()) await fn(); vi.restoreAllMocks() })
@@ -25,6 +27,41 @@ async function rig(server: Awaited<ReturnType<typeof fakeObs>> | null, fallback 
   return { service, deps, trace, root }
 }
 describe('OBS recording lifecycle', () => {
+  it('keeps the job when capture startup and stopping the owned OBS recording both fail', async () => {
+    const server = await fakeObs(); cleanup.push(server.close)
+    const r = await rig(server)
+    r.deps.recorderCommand = fakeCommand('no-hw')
+    vi.spyOn(ObsClient.prototype, 'stop').mockRejectedValue(new Error('OBS unavailable'))
+    expect(await r.service.startManual()).toBe(false)
+    const sessions = path.join(r.root, 'videos', '.sessions')
+    const jobs = fs.readdirSync(sessions)
+    expect(jobs).toHaveLength(1)
+    const metadata = JSON.parse(fs.readFileSync(path.join(sessions, jobs[0], 'obs.json'), 'utf8'))
+    expect(metadata.stopPending).toBe(true)
+    expect(r.service.status().error?.code).toBe('finalize_failed')
+  })
+  it('preserves recovery metadata when an owned OBS recording has an unconfirmed stop', async () => {
+    const root = tempRoot(); cleanup.push(() => fs.rmSync(root, { recursive: true, force: true }))
+    const deps = makeDeps(root)
+    const dir = sessionDir(root)
+    await writeJson(path.join(dir, 'recording.json'), { backend: 'obs', mode: 'session', startedAt: Date.now(), postAnalysis: 'none' })
+    await writeJson(path.join(dir, 'obs.json'), { recordStartedAt: Date.now(), captureStartedAt: Date.now(), adopted: false, stopPending: true })
+    await expect(finalizeSession(dir, deps)).rejects.toThrow('unconfirmed')
+    expect(fs.existsSync(path.join(dir, 'obs.json'))).toBe(true)
+  })
+  it('retains an owned session after StopRecord fails and finalizes when OBS later stops', async () => {
+    const server = await fakeObs(); cleanup.push(server.close)
+    const r = await rig(server)
+    await r.service.startManual()
+    const active = (r.service as any).active
+    vi.spyOn(active.obs.client, 'stop').mockRejectedValue(new Error('OBS unavailable'))
+    await r.service.stopManual()
+    expect(JSON.parse(fs.readFileSync(path.join(active.dir, 'obs.json'), 'utf8')).stopPending).toBe(true)
+    expect(fs.existsSync(active.dir)).toBe(true)
+    expect((r.service as any).pendingObs.has(active.id)).toBe(true)
+    server.event('OBS_WEBSOCKET_OUTPUT_STOPPED')
+    await waitFor(() => !fs.existsSync(active.dir))
+  })
   it.skipIf(!ffmpeg)('Add the original recording to the library after stopping, offsetting live events by obs.json', async () => {
     const root = tempRoot(); cleanup.push(() => fs.rmSync(root, { recursive: true, force: true }))
     createSegments(root)

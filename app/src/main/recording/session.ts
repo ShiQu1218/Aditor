@@ -778,7 +778,7 @@ export class RecordingSessionService implements RecordingService {
         // Capture never started (for example, the game was closing), so there are no aligned detection results.
         // Leave reused recordings alone; stop recordings started by this app without adding an almost-empty OBS file to the library.
         if (!session.obs.meta.adopted) {
-          await session.obs.stop()
+          if (!await session.obs.stop()) throw new Error(tr('OBS 錄影尚未停止，已保留工作'))
           this.obsStoppedAt = Date.now()
         }
         await session.obs.close()

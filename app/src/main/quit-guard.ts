@@ -17,6 +17,9 @@ export interface QuitGuardOptions {
   tasks: Array<() => Promise<unknown> | undefined | void>
   /** Work that must settle before quitting (for example recording finalization/remux). No timeout is applied. */
   criticalTasks?: Array<() => Promise<unknown> | undefined | void>
+  /** Refuse quitting when unsaved user data remains; the next quit request may retry. */
+  canQuit?: () => boolean
+  onQuitBlocked?: () => void
   quit: () => void
   timeoutMs: number
 }
@@ -46,6 +49,12 @@ export function createQuitGuard(opts: QuitGuardOptions): QuitGuard {
         const early = Promise.all((opts.earlyTasks ?? []).map(run))
         const criticalTasks = opts.criticalTasks ?? []
         if (criticalTasks.length) await Promise.all(criticalTasks.map(run))
+        if (opts.canQuit && !opts.canQuit()) {
+          await early
+          state = 'idle'
+          opts.onQuitBlocked?.()
+          return
+        }
         let timer: ReturnType<typeof setTimeout> | undefined
         try {
           const all = Promise.all([early, ...opts.tasks.map(run)])
@@ -67,10 +76,12 @@ export function createQuitGuard(opts: QuitGuardOptions): QuitGuard {
 /** Main-process wiring for the quit guard: recording finalization is critical, while everything else keeps the bounded timeout. */
 export interface AppQuitGuardDeps {
   stopRecording: () => Promise<unknown> | undefined | void
-  flushLibrary: () => void
+  flushLibrary: () => unknown
+  onQuitBlocked?: () => void
   stopEngine: () => Promise<unknown> | undefined | void
   cancelExport: () => Promise<unknown> | undefined | void
   cancelProxies: () => Promise<unknown> | undefined | void
+  cancelThumbnails?: () => Promise<unknown> | undefined | void
   stopWatcher: () => void
   /** Start a manually requested update after finalization; return true when it has taken over quitting. */
   installUpdate?: () => boolean
@@ -88,18 +99,12 @@ export function createAppQuitGuard(deps: AppQuitGuardDeps): QuitGuard {
       // Persist pending library changes immediately; entries added by finalization are flushed again after recording stop.
       () => deps.flushLibrary()
     ],
-    criticalTasks: [
-      async () => {
-        try {
-          await deps.stopRecording()
-        } finally {
-          // Finalization adds library entries even when stopping fails partway; persist them before the bounded cleanup starts.
-          deps.flushLibrary()
-        }
-      }
-    ],
-    // The engine is stopped after recording finalization, and its timeout starts here rather than while waiting for the remux.
-    tasks: [() => deps.stopEngine()],
+    criticalTasks: [() => deps.stopRecording()],
+    // Finalization can add entries even when stopping fails; save again before stopping the engine or installing an update.
+    canQuit: () => deps.flushLibrary() !== false,
+    onQuitBlocked: deps.onQuitBlocked,
+    // Finalization can start thumbnails; cancel them alongside the engine only after it finishes, with a fresh cleanup timeout.
+    tasks: [() => deps.stopEngine(), () => deps.cancelThumbnails?.()],
     quit: () => {
       // A manual update installer replaces Aditor's files and may terminate the process, so spawn it only after every
       // finalization/cleanup step above has settled. Ordinary quits, including after a download, call app.quit() without installing.

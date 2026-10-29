@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
@@ -14,6 +14,7 @@ beforeEach(() => {
   tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'aditor-safe-tmp-'))
 })
 afterEach(() => {
+  vi.restoreAllMocks()
   for (const d of [outDir, tempDir]) fs.rmSync(d, { recursive: true, force: true })
 })
 const job = (name: string, extra: Partial<FfmpegJob> = {}): FfmpegJob => {
@@ -23,6 +24,38 @@ const job = (name: string, extra: Partial<FfmpegJob> = {}): FfmpegJob => {
 const opts = (jobs: FfmpegJob[]) => ({ jobs, totalEstimatedSeconds: 10, outDir, estimatedBytes: 1, ffmpeg, tempDir })
 
 describe('runExport never overwrites an existing file (I6)', () => {
+  it.each([false, true])('keeps a destination created at publication, with unsupported hard links: %s', async (fallback) => {
+    const target = path.join(outDir, 'race.mp4')
+    const link = fs.promises.link.bind(fs.promises)
+    const copy = fs.promises.copyFile.bind(fs.promises)
+    vi.spyOn(fs.promises, 'link').mockImplementation(async (source, destination) => {
+      if (fallback) throw Object.assign(new Error('unsupported'), { code: 'ENOTSUP' })
+      if (String(destination) === target) fs.writeFileSync(target, 'other process')
+      return link(source, destination)
+    })
+    vi.spyOn(fs.promises, 'copyFile').mockImplementation(async (source, destination, flags) => {
+      if (String(destination) === target) fs.writeFileSync(target, 'other process')
+      return copy(source, destination, flags)
+    })
+    const result = await runExport(opts([job('race.mp4')]))
+    expect(result).toEqual({ ok: true, outputs: [path.join(outDir, 'race (2).mp4')] })
+    expect(fs.readFileSync(target, 'utf8')).toBe('other process')
+    expect(fs.readFileSync(result.outputs[0], 'utf8')).toBe('complete-data')
+    expect(fs.readdirSync(outDir).sort()).toEqual(['race (2).mp4', 'race.mp4'])
+  })
+
+  it('does not replace an intermediate destination created at publication', async () => {
+    const target = path.join(outDir, 'segment.mp4')
+    const link = fs.promises.link.bind(fs.promises)
+    vi.spyOn(fs.promises, 'link').mockImplementation(async (source, destination) => {
+      fs.writeFileSync(target, 'other process')
+      return link(source, destination)
+    })
+    const result = await runExport(opts([job('segment.mp4', { intermediate: true })]))
+    expect(result.ok).toBe(false)
+    expect(fs.readFileSync(target, 'utf8')).toBe('other process')
+    expect(fs.readdirSync(outDir)).toEqual(['segment.mp4'])
+  })
   it.each([0, 1])('keeps an existing partial source on success or failure (exit %s)', async (exitCode) => {
     const source = path.join(outDir, 'highlight_1.partial.mp4')
     fs.writeFileSync(source, 'precious-source')

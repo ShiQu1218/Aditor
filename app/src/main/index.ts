@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, safeStorage } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, safeStorage } from 'electron'
 import { createAppQuitGuard } from './quit-guard'
 import { delimiter, join, resolve } from 'path'
 import { EngineClient } from './engine'
@@ -15,7 +15,7 @@ import { applyWindowSecurity } from './window-security'
 import { sanitizeAnalyzeArgs, sanitizeAutoclipArgs, sanitizeDeriveArgs, sanitizeProbeArgs } from './ipc-guards'
 import { aditorrecCommand, appDataDir, cacheDir, chromiumUserDataDir, engineCommand, ffmpegExecutable, liveEngineCommand, obsHookDir, profileDir, sceneDir } from '../shared/paths'
 import { cacheFilePath } from './cache-io'
-import { generateThumbnail } from './thumbnail'
+import { generateThumbnail, cancelAllThumbnails } from './thumbnail'
 import { createRecordingService } from './recording'
 import { registerRecordingIpc } from './recording-ipc'
 import { createRecordingTray } from './tray'
@@ -324,9 +324,17 @@ async function initEngineAndServices(): Promise<void> {
 const quitGuard = createAppQuitGuard({
   stopRecording: () => recordingService?.stop(),
   flushLibrary: () => library?.flush(),
+  onQuitBlocked: () => {
+    quitting = false
+    watchManager?.start()
+    if (!e2e) recordingService?.start()
+    showMainWindow()
+    dialog.showErrorBox('Aditor', tr('無法儲存媒體庫，變更尚未寫入磁碟。請確認磁碟空間與檔案權限後重試。'))
+  },
   stopEngine: () => engineClient?.stop(),
   cancelExport: () => cancelExport?.(),
   cancelProxies: async () => (await import('./proxy')).cancelAllProxies(),
+  cancelThumbnails: () => cancelAllThumbnails(),
   stopWatcher: () => watchManager?.stop(),
   installUpdate: () => appUpdater?.installIfRequested() ?? false,
   quit: () => app.quit(),

@@ -229,9 +229,9 @@ export function useStudioProjectTrack({
         const api = window.api
         if (!api) return
         const paths: string[] = await api.library.selectFiles()
-        if (paths.length === 0 || !mountedRef.current) return
+        if (paths.length === 0 || !mountedRef.current || currentProjectId.current !== projectId) return
         const { items, failed } = await importExternalVideos(paths, api)
-        if (!mountedRef.current || switchingSourceRef.current) return
+        if (!mountedRef.current || switchingSourceRef.current || currentProjectId.current !== projectId) return
         if (failed.length) toast({ message: i18n.studio.toast.externalVideoIncomplete.replace('{names}', failed.map(baseName).join('、')) })
         if (exportCtl.getState().phase === 'running') {
           toast({ message: i18n.export.backBlocked })
@@ -248,7 +248,7 @@ export function useStudioProjectTrack({
         importingRef.current = false
       }
     })()
-  }, [toast, exportCtl, apply, playProjectItem])
+  }, [toast, exportCtl, apply, playProjectItem, projectId])
 
   /** Add from source: add the first pending suggestion (mock behavior); show a Toast when none exists. */
   const addFirstSuggestion = useCallback(() => {

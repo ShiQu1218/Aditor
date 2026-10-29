@@ -98,6 +98,10 @@ export async function finalizeObsSession(dir: string, deps: RecordingDeps, confi
   const recordedMatches = await readOptional<ObsMatch[]>(path.join(dir, 'obs-matches.json'))
   if (recordedMatches) return finalizeObsMatches(dir, deps, config, recordedMatches, true)
   const meta = await readOptional<ObsMetadata>(path.join(dir, 'obs.json'))
+  if (meta?.stopPending) {
+    deps.notify('warning', tr('OBS 尚未確認停止，已保留工作；請在 OBS 確認錄影狀態並手動匯入影片'))
+    throw new ObsRecoveryPending('OBS recording stop is unconfirmed')
+  }
   if (!meta?.outputPath || !await localFile(meta.outputPath)) {
     // A local path that is unreadable right now (drive offline, file locked) may come back; keep live.json for a retry.
     if (localVideoPath(meta?.outputPath)) {

@@ -33,6 +33,7 @@ describe('library:remove / library:removeMany (source file option)', () => {
     registerIpcHandlers(library, queueMock, () => [])
   })
   afterEach(() => {
+    vi.restoreAllMocks()
     fs.rmSync(dir, { recursive: true, force: true })
   })
 
@@ -43,6 +44,23 @@ describe('library:remove / library:removeMany (source file option)', () => {
     library.add([file], 'external')
     return file
   }
+
+  test.each(['library:add', 'library:toggleFavorite', 'library:setGame', 'library:remove', 'library:removeMany'])('%s rejects failed persistence and retains changes for retry', async (channel) => {
+    const file = imported('save-failure.mp4')
+    const rename = vi.spyOn(fs, 'renameSync').mockImplementation(() => {
+      throw new Error('disk full')
+    })
+    const args = channel === 'library:add' ? [[path.join(dir, 'new.mp4')]]
+      : channel === 'library:removeMany' ? [[file]]
+        : channel === 'library:setGame' ? [file, 'valorant'] : [file]
+    await expect(Promise.resolve().then(() => handlers.get(channel)!({}, ...args))).rejects.toThrow('無法儲存媒體庫')
+    expect(queue.enqueue).not.toHaveBeenCalled()
+    expect(fs.existsSync(file)).toBe(true)
+    rename.mockRestore()
+    expect(library.flush()).toBe(true)
+    const reloaded = new Library(path.join(dir, 'library.json'))
+    expect(reloaded.getEntries()).toEqual(library.getEntries())
+  })
 
   test('deletes the source file only when deleteSource is exactly true', async () => {
     const file = imported('a.mp4')

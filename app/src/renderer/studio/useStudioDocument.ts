@@ -235,8 +235,14 @@ export function useStudioDocument({
     if (!loaded || state.doc.analysis.status === 'done') return
     let cancelled = false
     let refreshing = false
+    let refreshPending = false
     const refresh = async (): Promise<void> => {
-      if (refreshing) return
+      if (cancelled) return
+      if (refreshing) {
+        refreshPending = true
+        return
+      }
+      refreshPending = false
       refreshing = true
       try {
         const entries = await window.api.library.getEntries()
@@ -255,6 +261,7 @@ export function useStudioDocument({
         if (!cancelled) toast({ message: i18n.studio.toast.analysisRefreshFailed })
       } finally {
         refreshing = false
+        if (refreshPending) void refresh()
       }
     }
     const off = window.api?.library?.onUpdated?.(() => { void refresh() })

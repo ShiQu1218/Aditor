@@ -3,6 +3,7 @@ import fs from 'fs'
 import path from 'path'
 import { createHash } from 'crypto'
 import { Readable } from 'stream'
+import { pipeline } from 'stream/promises'
 import { codecsDir } from '../shared/paths'
 import { decompressBz2File } from './bz2'
 import { tr } from '../shared/locale'
@@ -86,33 +87,28 @@ export async function downloadOpenH264(opts: DownloadOptions = {}): Promise<stri
   const bz2Path = path.join(dir, OPENH264_FILE + '.part')
   const dllPath = path.join(dir, OPENH264_DLL)
   const dllTmp = dllPath + '.part'
-  let out: fs.WriteStream | null = null
+  let source: Readable | null = null
   const cleanup = (): void => {
-    out?.destroy()
+    source?.destroy()
     for (const f of [bz2Path, dllTmp]) fs.rmSync(f, { force: true })
   }
   try {
     const { stream, contentLength } = await (opts.fetchStream ?? httpsFetch)(url)
+    source = stream
     if (contentLength > 0 && contentLength !== expected.size) throw new Error(tr('OpenH264 檔案大小與預期不符'))
     const hash = createHash('sha256')
     let downloaded = 0
     const ws = fs.createWriteStream(bz2Path)
-    out = ws
-    await new Promise<void>((resolve, reject) => {
-      stream.on('data', (chunk: Buffer) => {
-        downloaded += chunk.length
-        if (downloaded > expected.size) {
-          stream.destroy(new Error(tr('OpenH264 檔案大小超過預期')))
-          return
-        }
-        hash.update(chunk)
-        opts.onProgress?.(Math.min(1, downloaded / expected.size))
-      })
-      stream.on('error', reject)
-      ws.on('error', reject)
-      ws.on('finish', () => resolve())
-      stream.pipe(ws)
+    stream.on('data', (chunk: Buffer) => {
+      downloaded += chunk.length
+      if (downloaded > expected.size) {
+        stream.destroy(new Error(tr('OpenH264 檔案大小超過預期')))
+        return
+      }
+      hash.update(chunk)
+      opts.onProgress?.(Math.min(1, downloaded / expected.size))
     })
+    await pipeline(stream, ws)
     if (downloaded !== expected.size) throw new Error(tr('OpenH264 檔案大小與預期不符'))
     if (hash.digest('hex') !== expected.sha256) throw new Error(tr('OpenH264 檔案雜湊校驗失敗，已拒絕使用'))
     await (opts.decompress ?? decompressBz2File)(bz2Path, dllTmp)

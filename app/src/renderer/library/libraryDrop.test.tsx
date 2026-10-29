@@ -60,4 +60,11 @@ describe('library file drops', () => {
     expect(fake.api.library.addDroppedFiles).not.toHaveBeenCalled()
     expect(fake.api.library.add).not.toHaveBeenCalled()
   })
+
+  test('shows an error when importing cannot persist the library', async () => {
+    fake.api.library.addDroppedFiles.mockRejectedValueOnce(new Error('無法儲存媒體庫'))
+    dispatch('drop', [new File(['a'], 'a.mp4')])
+    await flush()
+    expect(document.body.textContent).toContain('無法儲存媒體庫')
+  })
 })

@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, test, vi } from 'vitest'
+import { act } from 'react'
 import { buttonByText, cleanupMounted, click, flush, press } from '../../../test/dom'
 import { mountStudio, type StudioMount } from '../../../test/studioHarness'
 import { i18n } from '../i18n'
@@ -92,6 +93,48 @@ describe('Studio layout and interactions', () => {
     await flush()
     expect(s.fake.api.library.add).not.toHaveBeenCalled()
     expect(s.fake.api.queue.enqueue).not.toHaveBeenCalled()
+  })
+
+  test('closing the project manager and creating a project invalidates an earlier pending load', async () => {
+    let resolve!: (project: unknown) => void
+    const pending = new Promise((done) => { resolve = done })
+    const initial = { version: 1, name: 'Initial', items: [{ id: 'initial', source: 'fixture://long', start: 0, end: 1 }] }
+    const load = vi.fn((id: string) => id === 'p_test' ? Promise.resolve(initial) : pending)
+    s = await mountStudio({ api: { overrides: { projects: {
+      load,
+      list: async () => [{ id: 'p_old', name: 'Stored', updatedAt: 1, items: 1 }]
+    } } } })
+    click(buttonByText(document, T.track.projectManager)!)
+    await flush()
+    click(buttonByText(document.querySelector('.pm-row')!, T.projectManagerDlg.open)!)
+    await flush()
+    expect(load).toHaveBeenCalledWith('p_old')
+    click(buttonByText(document.querySelector('.pm-dlg')!, T.projectManagerDlg.close)!)
+    click(buttonByText(document, T.track.newProject)!)
+    click(document.querySelector('.np-dlg .btn-accent')!)
+    expect(document.querySelectorAll('.pclip')).toHaveLength(0)
+    await act(async () => resolve({ ...initial, name: 'Stored' }))
+    await flush()
+    expect(document.querySelectorAll('.pclip')).toHaveLength(0)
+  })
+
+  test.each(['selection', 'probe'] as const)('an external-video import cannot add to a project opened during %s', async (stage) => {
+    let resolve!: (value: any) => void
+    const delayed = new Promise((done) => { resolve = done })
+    const onOpenVideo = vi.fn()
+    s = await mountStudio({ onOpenVideo, items: [{ id: 'old', source: 'fixture://long', start: 0, end: 1 }], api: { overrides: {
+      library: { selectFiles: () => stage === 'selection' ? delayed : Promise.resolve(['D:/external.mp4']) },
+      engine: { probe: () => stage === 'probe' ? delayed : Promise.resolve({ duration: 42 }) }
+    } } })
+    click(buttonByText(document, T.track.addExternalVideo)!)
+    await flush()
+    click(buttonByText(s.m.container, T.track.newProject)!)
+    click(document.querySelector('.np-dlg .btn-accent')!)
+    await act(async () => resolve(stage === 'selection' ? ['D:/external.mp4'] : { duration: 42 }))
+    await flush()
+    expect(document.querySelectorAll('.pclip')).toHaveLength(0)
+    expect(onOpenVideo).not.toHaveBeenCalled()
+    if (stage === 'selection') expect(s.fake.api.library.add).not.toHaveBeenCalled()
   })
 
   test('A partial duration-probe failure shows a notice, keeps library imports, and plays the other successfully added clips', async () => {

@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
-import { buildThumbnailArgs, generateThumbnail, thumbnailPath } from './thumbnail'
+import { buildThumbnailArgs, cancelAllThumbnails, generateThumbnail, thumbnailPath } from './thumbnail'
 
 const FAKE = path.resolve(__dirname, '../../test/fake-thumb-ffmpeg.mjs')
 const ffmpeg = { bin: process.execPath, prefixArgs: [FAKE] }
@@ -18,7 +18,8 @@ beforeEach(() => {
   video = path.join(appData, 'v.mp4')
   fs.writeFileSync(video, 'x')
 })
-afterEach(() => {
+afterEach(async () => {
+  await cancelAllThumbnails()
   for (const [k, v] of Object.entries(saved)) {
     if (v === undefined) delete process.env[k]
     else process.env[k] = v
@@ -31,6 +32,14 @@ describe('thumbnails (I14)', () => {
     const args = buildThumbnailArgs('in.mp4', 'out.jpg', 12)
     const vf = args[args.indexOf('-vf') + 1]
     expect(vf).toBe('scale=320:180:force_original_aspect_ratio=decrease')
+  })
+
+  it('seeks inside a video shorter than one second', async () => {
+    await generateThumbnail(video, 0.5, { ffmpeg })
+    const { args } = JSON.parse(fs.readFileSync(process.env.FAKE_LOG!, 'utf-8').trim())
+    const seek = Number(args[args.indexOf('-ss') + 1])
+    expect(seek).toBeGreaterThanOrEqual(0)
+    expect(seek).toBeLessThan(0.5)
   })
 
   it('writes a temp file and renames it on success; passes the scale filter to ffmpeg', async () => {
@@ -72,5 +81,25 @@ describe('thumbnails (I14)', () => {
     expect(results).toEqual([thumbnailPath(video), thumbnailPath(video)])
     expect(fs.readFileSync(thumbnailPath(video), 'utf-8')).toBe('jpg-data')
     expect(fs.readdirSync(path.dirname(thumbnailPath(video)))).toEqual([path.basename(thumbnailPath(video))])
+  })
+
+  it('cancels a running child, removes its temporary file, and allows generation again afterward', async () => {
+    process.env.FAKE_DELAY_MS = '30000'
+    const pending = generateThumbnail(video, 100, { ffmpeg })
+    const tmp = thumbnailPath(video).replace(/\.jpg$/i, '.tmp.jpg')
+    for (let i = 0; i < 100 && !fs.existsSync(tmp); i++) await new Promise((resolve) => setTimeout(resolve, 20))
+    expect(fs.existsSync(tmp)).toBe(true)
+    const cancelling = cancelAllThumbnails()
+    const another = path.join(appData, 'another.mp4')
+    fs.writeFileSync(another, 'x')
+    expect(await generateThumbnail(another, 100, { ffmpeg })).toBeUndefined()
+    await cancelling
+    expect(await pending).toBeUndefined()
+    expect(fs.existsSync(tmp)).toBe(false)
+    expect(fs.existsSync(thumbnailPath(video))).toBe(false)
+    expect(fs.readFileSync(process.env.FAKE_LOG!, 'utf-8').trim().split('\n')).toHaveLength(1)
+
+    delete process.env.FAKE_DELAY_MS
+    expect(await generateThumbnail(video, 100, { ffmpeg })).toBe(thumbnailPath(video))
   })
 })

@@ -242,10 +242,13 @@ export class SettingsController {
   }
 
   private async loadSettings(): Promise<void> {
+    const previous = this.state.settings
     try {
       const s = await this.api.settings.get()
+      if (this.state.settings !== previous) return
       this.patch({ settings: s, loadFailed: false })
     } catch {
+      if (this.state.settings !== previous) return
       this.patch({ settings: this.state.settings ?? { ...DEFAULT_SETTINGS }, loadFailed: true })
     }
   }

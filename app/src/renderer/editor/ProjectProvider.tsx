@@ -78,6 +78,7 @@ export function ProjectProvider({ children }: { children: React.ReactNode }): JS
   const state = useSyncExternalStore(session.subscribe, session.getState, session.getState)
   const [lastMissingSources, setLastMissingSources] = useState<string[]>([])
   const [restoreNotice, setRestoreNotice] = useState<'corrupt' | 'unsupported' | null>(null)
+  const openRequest = useRef(0)
 
   // Startup: load settings before restoring the last project; the session decides whether to apply the result.
   useEffect(() => {
@@ -178,13 +179,15 @@ export function ProjectProvider({ children }: { children: React.ReactNode }): JS
       openProject: async (id: string) => {
         const api = window.api
         if (isEditorLocked() || !api?.projects) return false
+        const request = ++openRequest.current
+        const snapshot = session.getState().project
         let stored: Project | null = null
         try {
           stored = await api.projects.load(id)
         } catch {
           return false
         }
-        if (!stored || isEditorLocked()) return false
+        if (!stored || isEditorLocked() || request !== openRequest.current || session.getState().project !== snapshot) return false
         const opened: ProjectWithId = { ...stored, id }
         if (!session.openProject(opened)) return false
         void Promise.resolve(api.projects.markOpened?.(id)).catch(() => {})

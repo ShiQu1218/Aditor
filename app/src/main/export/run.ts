@@ -98,20 +98,29 @@ async function removeFile(p: string): Promise<void> {
 
 class JobFailure extends Error {}
 
-/** If the target exists, use `<name> (2).mp4`, `<name> (3).mp4`…; otherwise return it unchanged. */
-export function freeOutputPath(target: string): string {
-  if (!fs.existsSync(target)) return target
+/** Publish without replacing a file created by another process, including between name selection and publication. */
+async function publishOutput(partial: string, target: string, intermediate: boolean): Promise<string> {
   const ext = path.extname(target)
   const stem = path.join(path.dirname(target), path.basename(target, ext))
-  for (let n = 2; n < 10000; n++) {
-    const candidate = `${stem} (${n})${ext}`
-    if (!fs.existsSync(candidate)) return candidate
+  for (let n = 1; ; n++) {
+    const candidate = n === 1 ? target : `${stem} (${n})${ext}`
+    try {
+      try {
+        await fs.promises.link(partial, candidate)
+      } catch (err) {
+        // FAT/exFAT and some network filesystems do not support hard links.
+        if (!['EPERM', 'ENOTSUP', 'EOPNOTSUPP', 'ENOSYS', 'EXDEV'].includes((err as NodeJS.ErrnoException).code ?? '')) throw err
+        await fs.promises.copyFile(partial, candidate, fs.constants.COPYFILE_EXCL)
+      }
+      return candidate
+    } catch (err) {
+      if (intermediate || (err as NodeJS.ErrnoException).code !== 'EEXIST') throw err
+    }
   }
-  return `${stem} (${Date.now()})${ext}`
 }
 
 /**
- * Run ffmpeg jobs in order. Write each output to `<name>.partial.mp4` first, then rename it to the final filename on success.
+ * Run ffmpeg jobs in order. Write each output to `<name>.partial.mp4` first, then publish it without overwriting existing files.
  * On cancellation (signal), kill ffmpeg and its descendants, remove the current job's partial file, keep completed outputs,
  * and return `{ ok:false, cancelled:true, outputs }`. On failure (non-zero exit code, etc.), also remove the partial and return the last 4 KB of stderr.
  */
@@ -246,9 +255,10 @@ export async function runExport(opts: RunExportOptions, control: RunExportContro
       }
 
       // Keep intermediate files until final cleanup; never overwrite a final file that appeared during export, and use a name such as " (2)" instead (I6).
-      const finalPath = job.intermediate ? job.output : freeOutputPath(job.output)
+      let finalPath: string
       try {
-        await fs.promises.rename(partial, finalPath)
+        finalPath = await publishOutput(partial, job.output, !!job.intermediate)
+        await removeFile(partial)
       } catch (err) {
         await removeFile(partial)
         throw new JobFailure(tr('無法完成輸出檔：{message}', { message: (err as Error).message }))

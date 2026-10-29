@@ -118,6 +118,7 @@ export function createExportController(api: ExportApi, initialName = 'highlight'
   let lastItems: ExportItem[] | null = null
   let offProgress: (() => void) | null = null
   let offH264: (() => void) | null = null
+  let diskRequestId = 0
 
   function set(patch: Partial<ExportState>): void {
     state = { ...state, ...patch }
@@ -126,6 +127,7 @@ export function createExportController(api: ExportApi, initialName = 'highlight'
   const setSettings = (patch: Partial<ExportSettings>): void => set({ settings: { ...state.settings, ...patch } })
 
   async function refreshDisk(dir: string | null): Promise<void> {
+    const requestId = ++diskRequestId
     if (!dir) {
       set({ disk: null, outDirError: i18n.export.blockNoOutDir })
       return
@@ -133,18 +135,22 @@ export function createExportController(api: ExportApi, initialName = 'highlight'
     // Verify the directory exists and is writable first: an invalid directory blocks in Settings rather than failing only after Start is pressed.
     try {
       const check = await api.checkOutDir(dir)
+      if (requestId !== diskRequestId) return
       if (!check.ok) {
         set({ disk: null, outDirError: tr('{label}（{detail}）', { label: i18n.export.blockOutDirInvalid, detail: check.reason }) })
         return
       }
     } catch (e) {
+      if (requestId !== diskRequestId) return
       set({ disk: null, outDirError: tr('{label}（{detail}）', { label: i18n.export.blockOutDirInvalid, detail: errMsg(e) }) })
       return
     }
     try {
       const d = await api.diskSpace(dir)
+      if (requestId !== diskRequestId) return
       set({ disk: d, outDirError: null })
     } catch (e) {
+      if (requestId !== diskRequestId) return
       set({ disk: null, outDirError: tr('{label}（{detail}）', { label: i18n.export.blockOutDirInvalid, detail: errMsg(e) }) })
     }
   }
