@@ -11,6 +11,7 @@ use std::{
         Arc,
     },
     thread::{self, JoinHandle},
+    time::{Duration, Instant},
 };
 
 use anyhow::{ensure, Context, Result};
@@ -37,7 +38,19 @@ impl MuxWorker {
             .spawn(move || {
                 monitor_worker(&worker_counts, || {
                     for (packets, video) in receiver {
-                        muxer.push(packets, video)?;
+                        worker_counts
+                            .mux_busy
+                            .store(1, std::sync::atomic::Ordering::Relaxed);
+                        let started = Instant::now();
+                        let result = muxer.push(packets, video);
+                        worker_counts.mux_max_ms.fetch_max(
+                            started.elapsed().as_millis() as u64,
+                            std::sync::atomic::Ordering::Relaxed,
+                        );
+                        worker_counts
+                            .mux_busy
+                            .store(0, std::sync::atomic::Ordering::Relaxed);
+                        result?;
                     }
                     muxer.finish()
                 })
@@ -47,16 +60,37 @@ impl MuxWorker {
     }
 
     pub fn push(&mut self, packets: Vec<Packet>, video: bool) -> Result<()> {
+        self.push_timeout(packets, video, Duration::from_secs(2))
+    }
+
+    fn push_timeout(&mut self, packets: Vec<Packet>, video: bool, timeout: Duration) -> Result<()> {
         self.counts.check_error()?;
         if packets.is_empty() {
             return Ok(());
         }
-        self.sender.as_ref().context("Muxer is closed")?
-            .try_send((packets, video))
-            .map_err(|error| match error {
-                mpsc::TrySendError::Full(_) => anyhow::anyhow!("Recording disk cannot keep up; muxer queue is full"),
-                mpsc::TrySendError::Disconnected(_) => anyhow::anyhow!("Muxer thread has exited"),
-            })
+        let sender = self.sender.as_ref().context("Muxer is closed")?;
+        let started = Instant::now();
+        let mut job = (packets, video);
+        loop {
+            self.counts.check_error()?;
+            match sender.try_send(job) {
+                Ok(()) => return Ok(()),
+                Err(mpsc::TrySendError::Full(pending)) => {
+                    anyhow::ensure!(
+                        started.elapsed() < timeout,
+                        "Muxer queue remained full for {} ms; {}",
+                        started.elapsed().as_millis(),
+                        self.counts.diagnostics()
+                    );
+                    job = pending;
+                    // Only the encoder worker waits; capture keeps its bounded, nonblocking frame queue.
+                    thread::sleep(Duration::from_millis(5));
+                }
+                Err(mpsc::TrySendError::Disconnected(_)) => {
+                    anyhow::bail!("Muxer thread has exited")
+                }
+            }
+        }
     }
 
     pub fn finish(&mut self) -> Result<()> {
@@ -366,12 +400,102 @@ mod tests {
             results.push(muxer.push(vec![packet], video));
         }
         let empty = muxer.push(Vec::new(), true);
-        let full = muxer.push(vec![Packet::new().unwrap()], true);
+        let full = muxer.push_timeout(
+            vec![Packet::new().unwrap()],
+            true,
+            Duration::from_millis(10),
+        );
         release.send(()).unwrap();
         muxer.finish().unwrap();
         assert!(results.into_iter().all(|result| result.is_ok()));
         assert!(empty.is_ok());
-        assert!(full.unwrap_err().to_string().contains("queue is full"));
+        assert!(full
+            .unwrap_err()
+            .to_string()
+            .contains("queue remained full"));
+    }
+
+    #[test]
+    fn temporary_full_queue_recovers_without_losing_packets() {
+        let counts = Arc::new(Counts::default());
+        let (sender, receiver) = mpsc::sync_channel(1);
+        sender.send((vec![Packet::new().unwrap()], true)).unwrap();
+        let worker = thread::spawn(move || {
+            thread::sleep(Duration::from_millis(30));
+            let jobs: Vec<_> = receiver.into_iter().collect();
+            assert_eq!(jobs.len(), 2);
+            assert!(jobs[0].1);
+            assert!(!jobs[1].1);
+            Ok(())
+        });
+        let mut muxer = MuxWorker {
+            sender: Some(sender),
+            worker: Some(worker),
+            counts,
+        };
+        muxer.push(vec![Packet::new().unwrap()], false).unwrap();
+        muxer.finish().unwrap();
+    }
+
+    #[test]
+    fn full_queue_reports_original_worker_failure() {
+        let counts = Arc::new(Counts::default());
+        let (sender, _receiver) = mpsc::sync_channel(1);
+        sender.send((vec![Packet::new().unwrap()], true)).unwrap();
+        let worker_counts = counts.clone();
+        let worker = thread::spawn(move || {
+            thread::sleep(Duration::from_millis(20));
+            worker_counts.fail("Test disk sync failed");
+            Ok(())
+        });
+        let mut muxer = MuxWorker {
+            sender: Some(sender),
+            worker: Some(worker),
+            counts,
+        };
+        let error = muxer.push(vec![Packet::new().unwrap()], true).unwrap_err();
+        assert!(error.to_string().contains("Test disk sync failed"));
+    }
+
+    #[test]
+    fn encoder_error_is_latched_before_blocked_mux_cleanup() {
+        let counts = Arc::new(Counts::default());
+        let worker_counts = counts.clone();
+        let (sender, _receiver) = mpsc::sync_channel(1);
+        sender.send((vec![Packet::new().unwrap()], true)).unwrap();
+        let (release, cleanup) = mpsc::channel();
+        let mux_thread = thread::spawn(move || {
+            cleanup.recv().unwrap();
+            Ok(())
+        });
+        let (reported, observed) = mpsc::channel();
+        let encoder = thread::spawn(move || {
+            let mut muxer = MuxWorker {
+                sender: Some(sender),
+                worker: Some(mux_thread),
+                counts: worker_counts.clone(),
+            };
+            // Like the encoder thread, borrow resources so monitoring runs before their Drop/join.
+            let result = monitor_worker(&worker_counts, || {
+                muxer.push_timeout(
+                    vec![Packet::new().unwrap()],
+                    true,
+                    Duration::from_millis(10),
+                )
+            });
+            reported.send(()).unwrap();
+            result
+        });
+        observed.recv_timeout(Duration::from_secs(2)).unwrap();
+        let error = counts.check_error();
+        let cleanup_is_blocked = !encoder.is_finished();
+        release.send(()).unwrap();
+        assert!(encoder.join().unwrap().is_err());
+        assert!(cleanup_is_blocked);
+        assert!(error
+            .unwrap_err()
+            .to_string()
+            .contains("queue remained full"));
     }
 
     #[test]

@@ -87,7 +87,10 @@ const SAFE_TAG_VALUES: Record<string, RegExp> = {
   mic: /^(?:on|off)$/,
   system_audio: /^(?:on|off)$/,
   phase: /^(?:startup|recording)$/,
-  uptime: /^(?:<10s|<1m|<10m|<1h|>=1h)$/
+  uptime: /^(?:<10s|<1m|<10m|<1h|>=1h)$/,
+  probe_stage: /^(?:gpu_enumerate|gpu_create|probe_open|probe_copy|probe_send|probe_flush|probe_close|audio_devices|ready)$/,
+  probe_encoder: /^(?:none|(?:hevc|h264|av1)_(?:nvenc|amf|qsv))$/,
+  exit_code: /^0x[0-9A-F]{8}$/
 }
 
 function safeTags(tags: Event['tags']): Record<string, string> | undefined {

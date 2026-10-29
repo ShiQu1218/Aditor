@@ -33,11 +33,29 @@ describe('recorderTags', () => {
     const value = new AditorrecClient(fakeCommand('stderr-exit'), onDiagnostic)
     clients.push(value)
     await expect(value.hello()).rejects.toBeDefined()
-    expect(onDiagnostic).toHaveBeenCalledWith(expect.objectContaining({ tags: { phase: 'startup' } }))
+    expect(onDiagnostic).toHaveBeenCalledWith(expect.objectContaining({ tags: expect.objectContaining({ phase: 'startup' }) }))
   })
 })
 
 describe('aditorrec JSON-lines client', () => {
+  it('keeps only allowlisted probe progress across stderr chunks', async () => {
+    const onDiagnostic = vi.fn()
+    const value = new AditorrecClient(fakeCommand('probe-exit'), onDiagnostic)
+    clients.push(value)
+    await expect(value.hello()).rejects.toMatchObject({ code: 'recorder_crashed' })
+    expect(onDiagnostic).toHaveBeenCalledWith(expect.objectContaining({ tags: {
+      phase: 'startup', probe_stage: 'probe_send', probe_encoder: 'av1_nvenc', exit_code: '0x00000007'
+    } }))
+    expect(JSON.stringify(onDiagnostic.mock.calls)).not.toMatch(/private|secret/)
+  })
+
+  it.skipIf(process.platform !== 'win32')('identifies Windows application-control blocks', async () => {
+    const onDiagnostic = vi.fn()
+    const value = new AditorrecClient(fakeCommand('policy-exit'), onDiagnostic)
+    clients.push(value)
+    await expect(value.hello()).rejects.toMatchObject({ code: 'recorder_crashed', message: expect.stringContaining('Windows Application Control') })
+    expect(onDiagnostic).toHaveBeenCalledWith(expect.objectContaining({ tags: { phase: 'startup', exit_code: '0xC0E90002' } }))
+  })
   it('reports abnormal exits without forwarding stderr logs to monitoring', async () => {
     const onDiagnostic = vi.fn()
     const value = new AditorrecClient(fakeCommand('stderr-exit'), onDiagnostic)

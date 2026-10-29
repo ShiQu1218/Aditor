@@ -56,6 +56,8 @@ export class AditorrecClient extends EventEmitter {
   private seq = 0
   private buffer = ''
   private stderr = Buffer.alloc(0)
+  private diagnosticBuffer = ''
+  private probeTags: Record<string, string> = {}
   private decoder = new StringDecoder('utf8')
   private closing = false
   private closed: Promise<void> = Promise.resolve()
@@ -88,13 +90,16 @@ export class AditorrecClient extends EventEmitter {
 
   private launch(): void {
     const proc = spawn(this.command.command, this.command.args, {
-      env: { ...process.env, ...this.command.env }, windowsHide: true, stdio: 'pipe'
+      env: { ...process.env, ADITORREC_DIAGNOSTICS: '1', ...this.command.env }, windowsHide: true, stdio: 'pipe'
     })
     this.proc = proc
     this.closed = new Promise((resolve) => {
       proc.once('close', (code, signal) => {
         this.proc = null
-        const error = this.error('recorder_crashed', tr('錄影程序已結束（{code}）', { code: code ?? signal }))
+        const exitCode: Record<string, string> = code === null ? {} : { exit_code: `0x${(code >>> 0).toString(16).toUpperCase().padStart(8, '0')}` }
+        const blocked = code !== null && (code >>> 0) === 0xC0E90002
+        const hint = blocked ? ' Windows Application Control blocked the recorder or a dependency (0xC0E90002).' : ''
+        const error = this.error('recorder_crashed', tr('錄影程序已結束（{code}）', { code: code ?? signal }) + hint, exitCode)
         this.rejectAll(error)
         if (!this.closing) this.emit('crash', error)
         resolve()
@@ -103,6 +108,16 @@ export class AditorrecClient extends EventEmitter {
     proc.stdout.on('data', (chunk: Buffer) => this.onData(chunk))
     proc.stderr.on('data', (chunk: Buffer) => {
       this.stderr = Buffer.concat([this.stderr, chunk]).subarray(-MAX_BYTES)
+      // Only fixed native progress markers cross the telemetry boundary; raw stderr stays local.
+      this.diagnosticBuffer += chunk.toString('utf8')
+      let end: number
+      while ((end = this.diagnosticBuffer.indexOf('\n')) >= 0) {
+        const line = this.diagnosticBuffer.slice(0, end).trim()
+        this.diagnosticBuffer = this.diagnosticBuffer.slice(end + 1)
+        const match = line.match(/^ADITORREC_DIAG probe_stage=(gpu_enumerate|gpu_create|probe_open|probe_copy|probe_send|probe_flush|probe_close|audio_devices|ready) probe_encoder=(none|(?:hevc|h264|av1)_(?:nvenc|amf|qsv))$/)
+        if (match) this.probeTags = { probe_stage: match[1], probe_encoder: match[2] }
+      }
+      if (this.diagnosticBuffer.length > MAX_BYTES) this.diagnosticBuffer = ''
     })
     proc.stdin.on('error', (error) => this.rejectAll(this.error('recorder_io', error.message)))
     proc.once('error', (error) => this.rejectAll(this.error('recorder_spawn', error.message)))
@@ -207,10 +222,10 @@ export class AditorrecClient extends EventEmitter {
     this.proc?.kill()
   }
 
-  private error(code: string, message: string): RecorderError {
+  private error(code: string, message: string, tags: Record<string, string> = {}): RecorderError {
     if (!this.closing) {
       const phase: Record<string, string> = this.recordingSince === null ? { phase: 'startup' } : { phase: 'recording', uptime: uptimeBucket(Date.now() - this.recordingSince) }
-      emitChildDiagnostic(this.onDiagnostic, { component: 'rust-recorder', code, message, tags: { ...this.startTags, ...phase } })
+      emitChildDiagnostic(this.onDiagnostic, { component: 'rust-recorder', code, message, tags: { ...this.startTags, ...this.probeTags, ...phase, ...tags } })
     }
     const log = this.stderr.toString('utf8').trim()
     return new RecorderError(code, log ? `${message}\n${log}` : message)

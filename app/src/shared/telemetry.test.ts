@@ -3,6 +3,12 @@ import { redactTelemetryText, sanitizeTelemetryEvent } from './telemetry'
 import { migrateSettings } from '../main/settings'
 
 describe('telemetry privacy boundary', () => {
+  it('preserves fixed probe progress and exit codes without arbitrary stderr data', () => {
+    const clean = sanitizeTelemetryEvent({ tags: { component: 'rust-recorder', probe_stage: 'probe_send', probe_encoder: 'av1_nvenc', exit_code: '0xC0E90002', stderr: 'private' } })
+    expect(clean.tags).toEqual({ component: 'rust-recorder', probe_stage: 'probe_send', probe_encoder: 'av1_nvenc', exit_code: '0xC0E90002' })
+    expect(sanitizeTelemetryEvent({ tags: { component: 'rust-recorder', probe_stage: 'private', probe_encoder: 'C:/private', exit_code: 'private' } }).tags)
+      .toEqual({ component: 'rust-recorder' })
+  })
   it('redacts file paths containing spaces, including UNC and file URLs', () => {
     for (const value of ['C:\\Users\\Alice Smith\\private video.mp4', '\\\\server\\Alice Smith\\private video.mp4', 'file:///C:/Users/Alice Smith/private video.mp4']) {
       expect(redactTelemetryText(`Cannot read '${value}'`)).toBe("Cannot read '[local path]'")
