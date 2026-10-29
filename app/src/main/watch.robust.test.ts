@@ -127,7 +127,7 @@ describe('path normalisation', () => {
     const ready = wm.add(rig.watchDir)
     made[0].emitter.emit('ready')
     await ready
-    made[0].onAdd(['clip.part.mp4', 'clip.partial.mp4', 'clip.PARTIAL.MP4'].map((name) => path.join(rig.watchDir, name)))
+    made[0].onAdd(['clip.part.mp4', 'clip.partial.mp4', 'clip.PARTIAL.MP4', 'clip_match01.partial.mkv'].map((name) => path.join(rig.watchDir, name)))
     expect(rig.library.getEntries()).toEqual([])
     expect(rig.imports).toEqual([])
     const final = path.join(rig.watchDir, 'clip.mp4')

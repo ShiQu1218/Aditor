@@ -43,6 +43,8 @@ pub struct MatchTracker {
     end_pending: Option<f64>,
     end_pending_left: bool,
     recover_initial: bool,
+    backdate_openings: bool,
+    opening_hint: Option<f64>,
     finished: bool,
     pub matches: Vec<Match>,
     pub events: Vec<MatchEvent>,
@@ -65,10 +67,18 @@ impl MatchTracker {
             end_pending: None,
             end_pending_left: false,
             recover_initial: true,
+            backdate_openings: false,
+            opening_hint: None,
             finished: false,
             matches: vec![],
             events: vec![],
         })
+    }
+    /// Offline only: a match recovered from the HUD starts at an opening screen seen shortly before it.
+    /// Live keeps the plain HUD start because footage before a match is pruned after a few seconds.
+    pub fn backdate_openings(mut self) -> Self {
+        self.backdate_openings = true;
+        self
     }
     fn event(&mut self, kind: &str, t: f64, reason: &str) {
         self.events.push(MatchEvent {
@@ -80,6 +90,7 @@ impl MatchTracker {
     fn start(&mut self, t: f64, reason: &str) {
         self.active = Some(t);
         self.hud_first = None;
+        self.opening_hint = None;
         self.event("match_start", t, reason);
     }
     fn end(&mut self, t: f64, reason: &str) {
@@ -119,6 +130,16 @@ impl MatchTracker {
         if gap || !scene.blank {
             self.blank_first = None;
         }
+        if gap || self.opening_hint.is_some_and(|v| t - v > 180.) {
+            self.opening_hint = None;
+        }
+        if self.backdate_openings
+            && self.active.is_none()
+            && self.pending.is_none()
+            && scene.opening_hint()
+        {
+            self.opening_hint.get_or_insert(t);
+        }
         if self.pending.is_some_and(|v| t - v > 180.) {
             self.event("match_cancel", t, "timeout");
             self.pending = None;
@@ -129,6 +150,7 @@ impl MatchTracker {
                 self.settle();
                 self.end(start, "hidden");
                 self.recover_initial = false;
+                self.opening_hint = None;
             }
         }
         match scene.kind {
@@ -136,6 +158,7 @@ impl MatchTracker {
                 let new = self.pre_last.is_none_or(|v| t - v >= 10.);
                 self.pre_last = Some(t);
                 self.recover_initial = false;
+                self.opening_hint = None;
                 if new && self.pending.is_none() {
                     if self.end_pending.is_some() {
                         self.settle();
@@ -148,6 +171,7 @@ impl MatchTracker {
             }
             "lobby" => {
                 self.recover_initial = false;
+                self.opening_hint = None;
                 if self.pending.take().is_some() {
                     self.event("match_cancel", t, "lobby");
                 }
@@ -168,7 +192,10 @@ impl MatchTracker {
                 } else if self.active.is_none() {
                     let start = *self.hud_first.get_or_insert(t);
                     if t - start >= 3. {
-                        self.start(start, "hud_resume");
+                        match self.opening_hint {
+                            Some(opening) => self.start(opening, "opening_screen"),
+                            None => self.start(start, "hud_resume"),
+                        }
                     }
                 }
             }
@@ -381,7 +408,7 @@ pub fn analyze_matches(
         None => aspect::detect_aspect(path, &info, scene_dir, hwaccel, None)?.layout,
     };
     let detector = SceneMatcher::new(scene_dir)?;
-    let mut tracker = MatchTracker::new(1. / fps)?;
+    let mut tracker = MatchTracker::new(1. / fps)?.backdate_openings();
     let mut scenes = vec![];
     for frame in VideoFrames::new(path, fps, hwaccel, &info.codec) {
         let (t, frame) = frame?;
