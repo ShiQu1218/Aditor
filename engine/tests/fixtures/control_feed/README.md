@@ -25,6 +25,24 @@ false-Control behavior.
 
 ## Japanese Control and Gun Run
 
+`ja_yellow_{feed,spec}.png`: `Apex_2026-10-29_18-32.mp4`, 599.25 s.
+The local player `shiqu030` has a yellow feed name, with one weapon kill against
+an orange victim among other players' kills. Actor identity and victim/weapon
+validation must still exclude those unrelated rows.
+The test also converts just the player's name to grayscale and black/white,
+keeping the victim and weapon unchanged, to verify color-independent localization.
+`ja_yellow_notice_feed.png`: 235.75 s in the same recording. The rating-leader
+announcement repeats the local player's name above one actual weapon kill;
+only the weapon row counts. Whole-feed/HUD grayscale variants of the Traditional
+Chinese and Japanese crops are also checked without retaining any hue channels.
+`ja_short_victim_{early,late}.png`: feed rows from 321.5 s (`y=148,h=32`) and
+327.75 s (`y=212,h=32`) of that recording. The same victim `a` moves down the
+feed while the background becomes bright. Panel padding must not replace the
+victim glyph or create a second kill. Tests pad the omitted rows with black.
+`ja_melee_row.png` and `ja_melee_spec.png`: 345.5 s in `Apex_2026-10-29_17-49.mp4`.
+The feed row (`y=148,h=32`) has a faint local name followed by the bracketed melee
+marker. Both the original crop and its grayscale variant must count that kill.
+
 `ja_control_{feed,spec}.png`: `Apex_2026-10-29_16-26.mp4`, 140 s.
 Two blue `shiqu030` weapon kills against orange victims.
 `ja_gunrun_{feed,spec}.png`: `Apex_2026-10-29_15-54.mp4`, 350 s.

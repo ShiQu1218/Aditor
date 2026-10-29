@@ -28,6 +28,14 @@ mode explicitly. Hidden `debug-valorant-feed` / `debug-benchmark` commands suppo
 
 ## Known differences and verification limits
 
+- Control feed HUD names, weapons and victims use grayscale contrast and glyphs;
+  Traditional Chinese, English and Japanese share the same path without hue rules.
+  Legacy confidence scores can change with the grayscale crop bounds; the live reference
+  test still checks event identity/timing and bounds confidence to 0.6–1.0.
+- Separate knock/assist-knock banners count again after a revive, even for the
+  same name within 90 seconds. Elimination deduplication still applies against
+  each counted knock. Phase B derives adjust these expectations from the frozen
+  Python oracle; continuous banner frames are still merged by the event tracker.
 - Malformed JSON/ffprobe fields and invalid arguments can have different diagnostic
   text from the former Python parser. Live errors retain the error code/message/exception envelope but have an
   empty traceback frames array; unexpected live work errors currently use
