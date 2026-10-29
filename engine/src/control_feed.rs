@@ -248,7 +248,14 @@ impl ControlFeed {
         }
         names.sort_by_key(|name| name.1);
         let mut rows = vec![];
-        for (x, y, width, height) in names {
+        for &(x, y, width, height) in &names {
+            // A second player-name match on the same row means the player is the victim.
+            if names
+                .iter()
+                .any(|&(nx, ny, _, nh)| nx > x + width && ny < y + height && y < ny + nh)
+            {
+                continue;
+            }
             let end = x + width - 1;
             let y0 = y;
             let y1 = y + height;
@@ -268,10 +275,12 @@ impl ControlFeed {
                 data: contrast.data.iter().map(|&v| u8::from(v >= 35)).collect(),
                 ..contrast.clone()
             };
-            // Long horizontal scene edges cannot be a weapon or a name glyph.
+            // Long, thin horizontal scene edges cannot be a weapon or a name glyph. BlackHat
+            // fills the gaps inside bright text, so keep long runs that are also tall.
             let lines = cv::morphology(&mask, &cv::rect_kernel(81, 1)?, cv::Morphology::Open);
-            for (i, &line) in lines.data.iter().enumerate() {
-                if line != 0 {
+            let bands = cv::morphology(&lines, &cv::rect_kernel(1, 5)?, cv::Morphology::Open);
+            for (i, (&line, &band)) in lines.data.iter().zip(&bands.data).enumerate() {
+                if line != 0 && band == 0 {
                     mask.data[i] = 0;
                     contrast.data[i] = 0;
                 }

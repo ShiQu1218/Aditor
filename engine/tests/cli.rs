@@ -142,7 +142,7 @@ fn analyze_cache_hit_summary_and_out_document() {
     );
     assert_eq!(
         String::from_utf8(output.stdout).unwrap(),
-        format!("2 events (1 counted), cache: {}\n", cp.display())
+        format!("2 events (2 counted), cache: {}\n", cp.display())
     );
     assert_eq!(String::from_utf8(output.stderr).unwrap(), "\n");
     assert_eq!(

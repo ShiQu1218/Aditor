@@ -354,6 +354,25 @@ fn control_feed_reference_crops() {
         for t in [0., 0.25] {
             detector.feed(t, Some(&feed), &spec, None).unwrap();
         }
+        // The compact objectives template recognizes these Control frames and the
+        // player's visible kills; the frozen Python oracle missed them. 1880 has two rows,
+        // one over a dark backdrop where BlackHat fills the victim text into a solid band.
+        if let Some(&(_, kills)) = [("1807_75", 1), ("1808_0", 1), ("1874_0", 1), ("1880_0", 2)]
+            .iter()
+            .find(|(f, _)| name == format!("{f}_feed.png"))
+        {
+            assert!(detector.active, "{name}");
+            assert_eq!(
+                detector
+                    .events
+                    .iter()
+                    .map(|e| (e.t, e.kind.as_str()))
+                    .collect::<Vec<_>>(),
+                vec![(0., "kill"); kills],
+                "{name}"
+            );
+            continue;
+        }
         assert_eq!(json!(detector.active), c["active"], "{name}");
         close(&json!(detector.events), &c["events"], name);
     }
