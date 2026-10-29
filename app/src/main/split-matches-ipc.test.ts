@@ -15,7 +15,12 @@ vi.mock('electron', () => ({
   safeStorage: { isEncryptionAvailable: () => false }
 }))
 const split = vi.fn()
-vi.mock('./split-matches', () => ({ splitMatches: (...args: unknown[]) => split(...args) }))
+vi.mock('./split-matches', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./split-matches')>()),
+  splitMatches: (...args: unknown[]) => split(...args)
+}))
+const loadCache = vi.fn()
+vi.mock('./reanalysis', () => ({ loadCacheWithEdits: (...args: unknown[]) => loadCache(...args), saveCacheEdits: () => true }))
 
 import { registerIpcHandlers } from './ipc-handlers'
 import { Library } from './library'
@@ -49,12 +54,27 @@ describe('library:splitMatches', () => {
     return file
   }
 
-  test('rejects unknown, unanalyzed and non-Apex videos without running the split', async () => {
+  test('rejects unknown and unanalyzed videos without running the split', async () => {
     expect(await invoke(path.join(dir, 'missing.mp4'))).toEqual({ ok: false, reason: 'failed' })
     expect(await invoke(42)).toEqual({ ok: false, reason: 'failed' })
     expect(await invoke(entry('pending.mp4', 'pending'))).toEqual({ ok: false, reason: 'failed' })
-    expect(await invoke(entry('valo.mp4', 'done', 'valorant'))).toEqual({ ok: false, reason: 'failed' })
     expect(split).not.toHaveBeenCalled()
+  })
+
+  test('detects VALORANT matches from the cached rounds instead of the engine', async () => {
+    const video = entry('valo.mp4', 'done', 'valorant')
+    loadCache.mockReturnValue({ video: { duration: 900 }, rounds: [
+      { start: 10, end: 100, winner: 'ally', ally: 1, enemy: 0 },
+      { start: 400, end: 500, winner: 'enemy', ally: 0, enemy: 1 }
+    ] })
+    split.mockResolvedValue({ ok: false, reason: 'single' })
+    await invoke(video)
+    const run = vi.fn()
+    expect(await split.mock.calls[0][1].detect(run, new AbortController().signal)).toEqual([
+      { start: 10, end: 130 }, { start: 400, end: 530 }
+    ])
+    expect(loadCache.mock.calls[0][0]).toBe(video)
+    expect(run).not.toHaveBeenCalled()
   })
 
   test('imports and force-queues every part, including one already in the library', async () => {

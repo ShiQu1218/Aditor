@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
-import { cutArgs, matchOutputPath, parseMatches, partialPath, splitMatches, type RunCommand } from './split-matches'
+import { VALORANT_TAIL_SEC, cutArgs, engineMatches, matchOutputPath, parseMatches, partialPath, roundMatches, splitMatches, type RunCommand } from './split-matches'
 
 let dir: string
 let video: string
@@ -38,7 +38,7 @@ function fakeRun(engineOut: string, opts: { failAt?: number; onCut?: (index: num
 }
 
 const engineJson = (matches: unknown): string => JSON.stringify({ matches })
-const deps = (run: RunCommand) => ({ engine: { command: 'aditor' }, sceneDir: 'scene', ffmpegPath: 'ffmpeg', run })
+const deps = (run: RunCommand) => ({ detect: engineMatches(video, 'aditor', 'scene'), ffmpegPath: 'ffmpeg', run })
 const split = (run: RunCommand, signal = new AbortController().signal) => splitMatches(video, deps(run), signal)
 /** Files in the temp dir other than the source. */
 const leftovers = (): string[] => fs.readdirSync(dir).filter((name) => name !== 'stream.mp4').sort()
@@ -51,6 +51,42 @@ describe('parseMatches', () => {
 
   it('rejects output without a matches array', () => {
     expect(() => parseMatches('{}')).toThrow()
+  })
+})
+
+describe('roundMatches', () => {
+  const round = (start: number, end: number, ally: number, enemy: number) => ({ start, end, winner: 'ally', ally, enemy })
+
+  it('starts a new match where the score restarts and keeps the result screen', () => {
+    const rounds = [round(10, 100, 1, 0), round(100, 200, 1, 1), round(400, 480, 0, 1), round(480, 600, 1, 1)]
+    expect(roundMatches(rounds, [], 1000)).toEqual([
+      { start: 10, end: 200 + VALORANT_TAIL_SEC },
+      { start: 400, end: 600 + VALORANT_TAIL_SEC }
+    ])
+  })
+
+  it('clamps the tail to the next match and the video end, and sorts rounds', () => {
+    const rounds = [round(205, 300, 1, 0), round(10, 200, 1, 0)]
+    expect(roundMatches(rounds, [], 305)).toEqual([{ start: 10, end: 205 }, { start: 205, end: 305 }])
+  })
+
+  it('treats a recording that starts mid-match as one match and ignores malformed rounds', () => {
+    const rounds = [round(50, 100, 3, 2), round(100, 150, 4, 2), null, { start: 'x' }, round(160, 150, 1, 0)]
+    expect(roundMatches(rounds, [], 1000)).toEqual([{ start: 50, end: 150 + VALORANT_TAIL_SEC }])
+  })
+
+  it('keeps an unfinished last round that has kills, but not deleted events or the next match', () => {
+    const rounds = [round(10, 100, 1, 0), round(500, 600, 1, 0)]
+    const events = [{ t: 150 }, { t: 400, deleted: true }, { t: 650 }, { t: 'x' }]
+    expect(roundMatches(rounds, events, 1000)).toEqual([
+      { start: 10, end: 150 + VALORANT_TAIL_SEC },
+      { start: 500, end: 650 + VALORANT_TAIL_SEC }
+    ])
+  })
+
+  it('returns no matches without rounds', () => {
+    expect(roundMatches(undefined, undefined, 100)).toEqual([])
+    expect(roundMatches([], [{ t: 5 }], 100)).toEqual([])
   })
 })
 

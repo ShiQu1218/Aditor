@@ -19,7 +19,7 @@ import { gameOf, isGameId } from '../shared/games'
 import { DEFAULT_SETTINGS } from '../shared/settings'
 import { currentE2EConfig } from './e2e'
 import { cacheDir, engineCommand, ffmpegExecutable, noticesFile, sceneDir } from '../shared/paths'
-import { splitMatches } from './split-matches'
+import { engineMatches, roundMatches, splitMatches, type DetectMatches } from './split-matches'
 import { computeHlCount, createHlGuard, createSerialQueue, hlForSavedDoc } from './hl'
 import { createThrottle } from '../shared/throttle'
 import type { CacheDoc, Clip } from '../shared/types'
@@ -137,21 +137,27 @@ export function registerIpcHandlers(
   })
 
   /**
-   * Split an analyzed Apex video holding several matches into one file per match; the parts are imported and force-queued
+   * Split an analyzed video holding several matches into one file per match; the parts are imported and force-queued
    * (a part may reuse the path of an earlier split whose library entry and cache are stale), the source is kept.
+   * Apex matches come from the engine's scene tracker, VALORANT matches from the cached rounds.
    * One split at a time: each one runs its own engine and ffmpeg outside the analysis queue.
    */
   let activeSplit: { controller: AbortController; done: Promise<unknown> } | null = null
   ipcMain.handle('library:splitMatches', async (_, videoPath: unknown) => {
     const entry = typeof videoPath === 'string' ? library.get(videoPath) : undefined
-    if (!entry || entry.status !== 'done' || gameOf(entry.game) !== 'apex' || !isSafeLocalVideoPath(entry.path)) {
+    if (!entry || entry.status !== 'done' || !isSafeLocalVideoPath(entry.path)) {
       return { ok: false, reason: 'failed' }
     }
     if (activeSplit) return { ok: false, reason: 'busy' }
     const controller = new AbortController()
-    const done = splitMatches(entry.path, {
-      engine: engineCommand(app.isPackaged), sceneDir: sceneDir(app.isPackaged), ffmpegPath: ffmpegExecutable(app.isPackaged)
-    }, controller.signal)
+    const engine = engineCommand(app.isPackaged)
+    const detect: DetectMatches = gameOf(entry.game) === 'valorant'
+      ? async () => {
+        const doc = loadCacheWithEdits(entry.path, cacheDir(), cacheBeside()) as CacheDoc | null
+        return roundMatches(doc?.rounds, doc?.events, doc?.video?.duration ?? Infinity)
+      }
+      : engineMatches(entry.path, engine.command, sceneDir(app.isPackaged))
+    const done = splitMatches(entry.path, { detect, env: engine.env, ffmpegPath: ffmpegExecutable(app.isPackaged) }, controller.signal)
     activeSplit = { controller, done }
     try {
       const res = await done

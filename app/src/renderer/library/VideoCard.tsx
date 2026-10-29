@@ -28,7 +28,7 @@ export interface VideoCardProps {
   onRetry: (path: string, force?: boolean) => void
   /** The user picks the game after recognition failed; main records it and analyzes the video again. */
   onSetGame?: (path: string, game: GameId) => void
-  /** Split a long Apex video into one file per match. */
+  /** Split an analyzed video that holds several matches into one file per match. */
   onSplitMatches?: (path: string) => void
   /** Report when the card menu opens/closes (include a close function when opening); keymap handles Esc in menu-then-search order. */
   onMenuChange?: (path: string, close: (() => void) | null) => void
@@ -388,7 +388,7 @@ function VideoCardView({ entry, onOpen, onToggleFavorite, onRemove, onRetry, onS
                   {t.analyzeAs.replace('{game}', GAMES[game].displayName)}
                 </button>
               ))}
-              {done && onSplitMatches && gameOf(entry.game) === 'apex' && (
+              {done && onSplitMatches && (
                 <button
                   type="button"
                   role="menuitem"
