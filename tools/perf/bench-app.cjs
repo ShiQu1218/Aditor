@@ -30,6 +30,13 @@ function checkLiveEngine(pids, alive = processAlive) {
   assert(pids.length > 0 && pids.every(alive), 'Live engine stopped or restarted during measurement');
 }
 
+function checkDeferredAnalysis(payload, destination) {
+  assert.equal(payload.queue.waitingForGame, true, 'Analysis queue is not waiting for game exit');
+  assert.equal(payload.queue.analyzing, null, 'Offline analysis started while the game was running');
+  assert.equal(payload.current, null, 'Offline analysis is active while the game is running');
+  return payload.queue.queued.some(item => samePath(item, destination));
+}
+
 if (process.argv[2] === '--self-test') {
   assert.equal(measuredSeconds('frame_index,qpc_ms,frame_ms\n0,10,10\n1,30,20\n'), 0.03);
   assert.throws(() => measuredSeconds('bad\n'));
@@ -39,6 +46,11 @@ if (process.argv[2] === '--self-test') {
   checkLiveEngine([process.pid]);
   assert.throws(() => checkLiveEngine([]), /stopped or restarted/);
   assert.throws(() => checkLiveEngine([1, 2], pid => pid === 1), /stopped or restarted/);
+  const deferred = { queue: { waitingForGame: true, analyzing: null, queued: ['apex.mp4'] }, current: null };
+  assert(checkDeferredAnalysis(deferred, 'APEX.mp4'));
+  assert(!checkDeferredAnalysis(deferred, 'other.mp4'));
+  assert.throws(() => checkDeferredAnalysis({ ...deferred, queue: { ...deferred.queue, waitingForGame: false } }, 'apex.mp4'));
+  assert.throws(() => checkDeferredAnalysis({ ...deferred, queue: { ...deferred.queue, analyzing: 'other.mp4' } }, 'apex.mp4'));
   console.log('driver self-test passed');
 } else {
   run(JSON.parse(fs.readFileSync(process.argv[2], 'utf8').replace(/^\uFEFF/, '')))
@@ -49,6 +61,8 @@ async function run(config) {
   const { appDir, runDir, scenario } = config;
   const direct = scenario.startsWith('rec_');
   const idle = scenario === 'app_idle';
+  const deferred = scenario === 'record_deferred_analysis';
+  assert.notEqual(scenario, 'record_analyze', 'record_analyze was retired; use record_deferred_analysis (a different workload)');
   const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
   const file = name => path.join(runDir, name);
   const metadata = JSON.parse(fs.readFileSync(file('metadata.json'), 'utf8').replace(/^\uFEFF/, ''));
@@ -58,7 +72,6 @@ async function run(config) {
   let copied = false;
   let measuring = false;
   let liveEngine;
-  let analysisProgress = false;
   let gameExit;
   const killTree = pid => {
     if (!pid) return;
@@ -105,6 +118,7 @@ async function run(config) {
     const state = await page.evaluate(async () => ({
       recording: await window.api.recording.getStatus(),
       queue: await window.api.queue.getState(),
+      analysisStarts: window.benchAnalysisStarts ?? [],
       liveSeen: window.benchLiveSeen === true
     }));
     liveSeen ||= state.liveSeen;
@@ -115,10 +129,15 @@ async function run(config) {
     if (!idle && measuring && !measurementOver() && state.recording.phase !== 'recording') throw new Error(`Recording stopped during measurement: ${state.recording.phase}`);
     // The pid probe is a cheap syscall; the CIM query that finds the pids runs only before measurement.
     if (!idle && measuring && !measurementOver()) checkLiveEngine(liveEngine);
+    if (deferred && measuring && !measurementOver() && checkDeferredAnalysis(state.queue, config.analysisDestination)) {
+      metadata.analysis_queued_epoch_ms ??= epochMs;
+    }
+    metadata.analysis_starts = state.analysisStarts;
+    const started = state.analysisStarts.find(item => samePath(item.path, config.analysisDestination));
+    if (started) metadata.analysis_started_epoch_ms ??= started.epoch_ms;
     if (copied && samePath(state.queue.current?.path, config.analysisDestination) && state.queue.current.progress > 0) {
       metadata.analysis_first_progress_epoch_ms ??= epochMs;
       metadata.analysis_last_progress = state.queue.current.progress;
-      analysisProgress = true;
     }
     return state;
   }
@@ -141,6 +160,13 @@ async function run(config) {
       await page.waitForSelector('.app', { timeout: config.startTimeoutS * 1000 });
       await page.evaluate(() => {
         window.benchLiveSeen = false;
+        window.benchAnalysisStarts = [];
+        window.api.library.onUpdated(payload => {
+          if (payload?.queue?.analyzing && window.benchAnalysisStarts.at(-1)?.path !== payload.queue.analyzing) {
+            window.benchAnalysisStarts.push({ path: payload.queue.analyzing,
+              epoch_ms: payload.current?.analyzingSince ?? Date.now() });
+          }
+        });
         window.api.recording.onLive(update => {
           if (Array.isArray(update.events)) window.benchLiveSeen = true;
         });
@@ -162,8 +188,11 @@ async function run(config) {
     game.stdout.on('data', data => { stdout += data; });
     game.stderr.on('data', data => fs.appendFileSync(file('game.stderr.log'), data));
     game.on('error', error => { gameExit = error.message; });
+    game.on('exit', () => { metadata.game_exit_epoch_ms ??= Date.now(); });
     // 'close' waits for stdout/stderr to drain, so the stats JSON and the stderr log are complete.
-    game.on('close', code => { gameExit = code ?? 'signal'; });
+    game.on('close', code => {
+      gameExit = code ?? 'signal';
+    });
     metadata.game_pid = game.pid;
     await waitFor('GPU footage upload', () => fs.existsSync(file('ready')));
     if (direct) {
@@ -201,7 +230,7 @@ async function run(config) {
     const deadline = Date.now() + (config.durationS + 30) * 1000;
     while (gameExit === undefined) {
       if (Date.now() > deadline) throw new Error('Game did not finish within measurement deadline');
-      if (scenario === 'record_analyze' && !copied && Date.now() >= measurement.epoch_ms + config.analyzeAtS * 1000) {
+      if (deferred && !copied && !measurementOver() && Date.now() >= measurement.epoch_ms + config.analyzeAtS * 1000) {
         copied = true;
         metadata.analysis_copy_start_epoch_ms = Date.now();
         // Include the actual copy/import cost in this scenario's measured workload.
@@ -225,25 +254,51 @@ async function run(config) {
     const seconds = measuredSeconds(fs.readFileSync(file('frames.csv'), 'utf8'));
     assert(seconds >= config.durationS * 0.95, `Game closed early: only ${seconds.toFixed(2)} measured seconds`);
     metadata.measured_seconds = seconds;
-    if (scenario === 'record_analyze') {
+    if (deferred) {
       assert(copied, 'Analysis copy was never triggered');
-      assert(analysisProgress, 'No real background analysis progress during measurement; increase duration');
+      assert(metadata.analysis_queued_epoch_ms, 'Imported video was not observed queued during measurement; increase duration');
     }
-    if (recorder) await recorder.stop();
-    if (page && !idle) {
-      await waitFor('recording finalization', async () => (await sample()).recording.phase === 'idle', config.finalizeTimeoutS * 1000, true);
-      const outputs = [];
-      function findOutputs(dir) {
-        for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-          const item = path.join(dir, entry.name);
-          if (entry.isDirectory() && entry.name !== '.sessions') findOutputs(item);
-          else if (entry.isFile() && entry.name.endsWith('.mp4')) outputs.push(item);
+    await Promise.all([(async () => {
+      if (recorder) await recorder.stop();
+      if (page && !idle) {
+        await waitFor('recording finalization', async () => (await sample()).recording.phase === 'idle', config.finalizeTimeoutS * 1000, true);
+        const outputs = [];
+        function findOutputs(dir) {
+          for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+            const item = path.join(dir, entry.name);
+            if (entry.isDirectory() && entry.name !== '.sessions') findOutputs(item);
+            else if (entry.isFile() && entry.name.endsWith('.mp4')) outputs.push(item);
+          }
         }
+        findOutputs(config.recordings);
+        assert(outputs.length, 'Finalized recording output missing');
+        for (const output of outputs) {
+          assert(fs.statSync(output).size > 0, `Empty recording: ${output}`);
+          const info = await page.evaluate(video => window.api.engine.probe(video), output);
+          assert(info.duration > 0, `Invalid recording: ${output}`);
+        }
+        metadata.recording_outputs = outputs;
       }
-      findOutputs(config.recordings);
-      assert(outputs.length, 'Finalized recording output missing');
-      metadata.recording_outputs = outputs;
-    }
+    })(), (async () => {
+      if (deferred) {
+        await waitFor('deferred analysis completion', async () => {
+          await sample();
+          const entries = await page.evaluate(() => window.api.library.getEntries());
+          const entry = entries.find(item => samePath(item.path, config.analysisDestination));
+          assert.notEqual(entry?.status, 'error', `Deferred analysis failed: ${entry?.error}`);
+          return entry?.status === 'done';
+        }, config.analysisTimeoutS * 1000, true);
+        metadata.analysis_completed_epoch_ms = Date.now();
+        assert(metadata.analysis_started_epoch_ms, 'Target analysis start was not observed');
+        const measurementEnd = fs.statSync(file('measurement.done')).mtimeMs;
+        assert(metadata.analysis_starts.every(item => item.epoch_ms >= measurementEnd), 'Offline analysis started before game measurement ended');
+        const cache = await page.evaluate(video => window.api.cache.loadByVideo(video), config.analysisDestination);
+        assert(cache?.analysis?.status === 'done' && samePath(cache.video?.path, config.analysisDestination), 'Completed target analysis cache missing');
+        assert(metadata.analysis_started_epoch_ms >= metadata.game_exit_epoch_ms, 'Target analysis started before game exit');
+        metadata.analysis_resume_wait_ms = metadata.analysis_started_epoch_ms - metadata.game_exit_epoch_ms;
+        metadata.analysis_after_exit_ms = metadata.analysis_completed_epoch_ms - metadata.game_exit_epoch_ms;
+      }
+    })()]);
     const gpuLog = fs.readFileSync(file('game.stderr.log'), 'utf8');
     metadata.render_gpu = gpuLog.split(/\r?\n/).find(line => line.startsWith('GPU:'));
     metadata.live_engine_snapshot_observed = liveSeen;

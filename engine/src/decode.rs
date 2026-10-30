@@ -123,6 +123,7 @@ pub struct FrameStream {
     attempt_start: usize,
     closed: bool,
     capture: Option<(crate::layout::Rect, crate::layout::Rect)>,
+    stacked: Image<u8>,
 }
 impl FrameStream {
     pub fn new(path: impl Into<String>, profile: Profile, options: DecodeOptions) -> Self {
@@ -149,6 +150,12 @@ impl FrameStream {
             attempt_start: 0,
             closed: false,
             capture: None,
+            stacked: Image {
+                width: 0,
+                height: 0,
+                channels: 3,
+                data: Vec::new(),
+            },
         }
     }
     pub fn for_capture(
@@ -251,8 +258,9 @@ impl FrameStream {
         self.closed = true;
         self.reap(true);
     }
-    fn frame(&mut self, arr: Image<u8>) -> anyhow::Result<Frame> {
+    fn frame(&mut self) -> anyhow::Result<Frame> {
         let ([_, _, bw, bh], [_, _, sw, sh]) = self.rects();
+        let arr = &self.stacked;
         let banner = arr.crop(0, 0, bw as usize, bh as usize)?;
         let spec = arr.crop(0, bh as usize, sw as usize, sh as usize)?;
         let (banner, spec) = if self.capture.is_none() {
@@ -310,19 +318,16 @@ impl FrameStream {
             let killfeed = self.profile.capture_killfeed();
             let width = stack_width(bw, sw, killfeed) as usize;
             let height = (bh + sh + killfeed.map_or(0, |[_, _, _, fh]| fh + 360)) as usize;
-            let mut buf = vec![0u8; width * height * 3];
+            self.stacked.width = width;
+            self.stacked.height = height;
+            self.stacked.data.resize(width * height * 3, 0);
             let read = crate::process::read_exact(
                 self.proc.as_mut().unwrap().stdout.as_mut().unwrap(),
-                &mut buf,
+                &mut self.stacked.data,
                 stopped,
             );
             match read {
-                Ok(()) => match self.frame(Image {
-                    width,
-                    height,
-                    channels: 3,
-                    data: buf,
-                }) {
+                Ok(()) => match self.frame() {
                     Ok(frame) => return Some(Ok(frame)),
                     Err(e) => {
                         let e = self.error(e.to_string());
