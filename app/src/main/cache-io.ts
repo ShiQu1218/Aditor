@@ -64,9 +64,12 @@ function readCacheObject(cachePath: string): { video?: { path?: unknown } } | nu
   }
 }
 
-export function cacheBelongsToVideo(cachePath: string, videoPath: string): boolean {
-  const doc = readCacheObject(cachePath)
+function docBelongsToVideo(doc: { video?: { path?: unknown } } | null, videoPath: string): boolean {
   return typeof doc?.video?.path === 'string' && normalizedVideoPath(doc.video.path) === normalizedVideoPath(videoPath)
+}
+
+export function cacheBelongsToVideo(cachePath: string, videoPath: string): boolean {
+  return docBelongsToVideo(readCacheObject(cachePath), videoPath)
 }
 
 function modifiedTime(cachePath: string): number {
@@ -89,13 +92,16 @@ export function resolveCacheFile(videoPath: string, cacheDir: string, beside: bo
   const candidates = beside
     ? [[preferred, false], [legacy, true], [other, false]] as const
     : [[preferred, false], [other, false], [legacy, true]] as const
-  const valid = candidates.filter(([candidate, oldName]) => {
-    if (!fs.existsSync(candidate) || !readCacheObject(candidate)) return false
-    return !oldName || cacheBelongsToVideo(candidate, videoPath)
+  // Each candidate is read once; ownership is derived from the parsed document.
+  const valid = candidates.flatMap(([candidate, oldName]) => {
+    const doc = readCacheObject(candidate)
+    if (!doc) return []
+    const owned = docBelongsToVideo(doc, videoPath)
+    return !oldName || owned ? [{ candidate, owned }] : []
   })
   if (valid.length === 0) return preferred
-  const sameVideo = valid.filter(([candidate]) => cacheBelongsToVideo(candidate, videoPath))
-  if (sameVideo.length === 0) return valid[0][0]
+  const sameVideo = valid.filter((v) => v.owned).map((v) => v.candidate)
+  if (sameVideo.length === 0) return valid[0].candidate
   // shortcut: mtime orders copies; use explicit revisions if external sync must preserve conflicting edits.
-  return sameVideo.reduce((best, current) => modifiedTime(current[0]) > modifiedTime(best[0]) ? current : best)[0]
+  return sameVideo.reduce((best, current) => modifiedTime(current) > modifiedTime(best) ? current : best)
 }

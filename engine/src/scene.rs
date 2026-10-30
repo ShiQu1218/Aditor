@@ -175,10 +175,14 @@ impl SceneMatcher {
         Ok(best)
     }
     pub fn scores(&self, image: &Image<u8>) -> Result<BTreeMap<String, f64>> {
-        self.templates
-            .iter()
-            .map(|t| Ok((t.0.to_owned(), self.match_score(image, t.0)?)))
-            .collect()
+        let mut scores = BTreeMap::new();
+        // `match_score` already takes the best of every variant sharing a name.
+        for (name, ..) in &self.templates {
+            if !scores.contains_key(*name) {
+                scores.insert(name.to_string(), self.match_score(image, name)?);
+            }
+        }
+        Ok(scores)
     }
     pub fn classify(&self, image: &Image<u8>, layout: Layout) -> Result<&'static str> {
         Ok(self.classify_frame(image, layout, false)?.kind)
