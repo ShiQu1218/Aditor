@@ -1,9 +1,96 @@
 use super::{Image, Pixel};
 use anyhow::{ensure, Result};
+use std::sync::Arc;
+
+struct TemplateStats {
+    weights: Vec<Vec<(usize, usize, f64)>>,
+    means: Vec<f64>,
+    variance: f64,
+}
+
+fn template_stats<T: Pixel>(template: &Image<T>) -> TemplateStats {
+    let n = (template.width * template.height) as f64;
+    let mut weights = vec![vec![]; template.channels];
+    let mut means = vec![0.; template.channels];
+    let mut variance = 0.;
+    for c in 0..template.channels {
+        let (mut sum, mut square) = (0., 0.);
+        for y in 0..template.height {
+            for x in 0..template.width {
+                let column = x * template.channels + c;
+                let v =
+                    template.data[y * template.width * template.channels + column].float() as f64;
+                sum += v;
+                square += v * v;
+                if v != 0. {
+                    // Coordinates remain valid when the same template is matched against different ROI widths.
+                    weights[c].push((y, column, v));
+                }
+            }
+        }
+        means[c] = sum / n;
+        variance += square - sum * sum / n;
+    }
+    TemplateStats {
+        weights,
+        means,
+        variance,
+    }
+}
+
+pub struct PreparedTemplate {
+    width: usize,
+    height: usize,
+    channels: usize,
+    data: Arc<Vec<f64>>,
+    stats: TemplateStats,
+}
+
+impl PreparedTemplate {
+    pub fn new<T: Pixel>(template: &Image<T>) -> Self {
+        Self {
+            width: template.width,
+            height: template.height,
+            channels: template.channels,
+            data: Arc::new(template.data.iter().map(|v| v.float() as f64).collect()),
+            stats: template_stats(template),
+        }
+    }
+
+    fn matches<T: Pixel>(&self, template: &Image<T>) -> bool {
+        self.width == template.width
+            && self.height == template.height
+            && self.channels == template.channels
+            && self.data.len() == template.data.len()
+            && self
+                .data
+                .iter()
+                .zip(&template.data)
+                .all(|(a, b)| *a == b.float() as f64)
+    }
+}
+
+pub fn match_prepared<T: Pixel>(
+    src: &Image<T>,
+    template: &Image<T>,
+    prepared: &PreparedTemplate,
+) -> Result<Image<f32>> {
+    match_template_impl(src, template, None, Some(prepared))
+}
+
 pub fn match_template<T: Pixel>(
     src: &Image<T>,
     template: &Image<T>,
     mask: Option<&Image<u8>>,
+) -> Result<Image<f32>> {
+    match_template_impl(src, template, mask, None)
+}
+
+fn match_template_impl<T: Pixel>(
+    src: &Image<T>,
+    template: &Image<T>,
+    mask: Option<&Image<u8>>,
+    prepared: Option<&PreparedTemplate>,
 ) -> Result<Image<f32>> {
     ensure!(
         src.channels == template.channels
@@ -43,7 +130,7 @@ pub fn match_template<T: Pixel>(
             .chain(&template.data)
             .all(|v| v.float().is_finite())
     {
-        return cached_unmasked(src, template);
+        return cached_unmasked(src, template, prepared);
     }
     let source: Vec<_> = src.data.iter().map(|v| v.float() as f64).collect();
     // Keep raster order so sparse masked sums retain the reference accumulation order.
@@ -102,11 +189,15 @@ struct CachedMatch {
     result: Image<f32>,
 }
 thread_local! {static MATCHES:std::cell::RefCell<std::collections::VecDeque<CachedMatch>>=const{std::cell::RefCell::new(std::collections::VecDeque::new())};}
-fn cached_unmasked<T: Pixel>(src: &Image<T>, template: &Image<T>) -> Result<Image<f32>> {
+fn cached_unmasked<T: Pixel>(
+    src: &Image<T>,
+    template: &Image<T>,
+    prepared: Option<&PreparedTemplate>,
+) -> Result<Image<f32>> {
     let width = src.width - template.width + 1;
     let height = src.height - template.height + 1;
     if src.channels != 1 || width * height * template.data.len() < 2_000_000 {
-        return unmasked(src, template);
+        return unmasked(src, template, prepared);
     }
     let convert = |im: &Image<T>| Image {
         width: im.width,
@@ -136,7 +227,7 @@ fn cached_unmasked<T: Pixel>(src: &Image<T>, template: &Image<T>) -> Result<Imag
             cache.push_back(c);
             return Ok(out);
         }
-        let result = unmasked(src, template)?;
+        let result = unmasked(src, template, prepared)?;
         let bytes = (src.data.len() + template.data.len() + result.data.len()) * 4;
         while cache.len() >= 64
             || cache
@@ -217,7 +308,12 @@ fn moments<T: Pixel>(src: &Image<T>) -> std::sync::Arc<Moments> {
     })
 }
 
-fn unmasked<T: Pixel>(src: &Image<T>, template: &Image<T>) -> Result<Image<f32>> {
+fn unmasked<T: Pixel>(
+    src: &Image<T>,
+    template: &Image<T>,
+    prepared: Option<&PreparedTemplate>,
+) -> Result<Image<f32>> {
+    let prepared = prepared.filter(|p| p.matches(template));
     let (width, height) = (
         src.width - template.width + 1,
         src.height - template.height + 1,
@@ -227,34 +323,35 @@ fn unmasked<T: Pixel>(src: &Image<T>, template: &Image<T>) -> Result<Image<f32>>
     let (source, sums, squares) = (&moments.source, &moments.sums, &moments.squares);
     let stride = (src.width + 1) * channels;
     let n = (template.width * template.height) as f64;
-    let mut weights = vec![vec![]; channels];
-    let mut means = vec![0.; channels];
-    let mut variance = 0.;
-    for c in 0..channels {
-        let (mut sum, mut square) = (0., 0.);
-        for y in 0..template.height {
-            for x in 0..template.width {
-                let v = template.data[(y * template.width + x) * channels + c].float() as f64;
-                sum += v;
-                square += v * v;
-                if v != 0. {
-                    weights[c].push(((y * src.width + x) * channels + c, v));
-                }
-            }
-        }
-        means[c] = sum / n;
-        variance += square - sum * sum / n;
-    }
+    let stats;
+    let stats = if let Some(p) = prepared {
+        &p.stats
+    } else {
+        stats = template_stats(template);
+        &stats
+    };
+    let TemplateStats {
+        weights,
+        means,
+        variance,
+    } = stats;
+    let variance = *variance;
     if variance < f64::EPSILON {
         return Image::new(width, height, 1, vec![1.; width * height]);
     }
     let convolution = if channels == 1 && width * height * weights[0].len() > 2_000_000 {
-        let tpl = std::sync::Arc::new(template.data.iter().map(|v| v.float() as f64).collect());
+        let values;
+        let tpl = if let Some(p) = prepared {
+            &p.data
+        } else {
+            values = Arc::new(template.data.iter().map(|v| v.float() as f64).collect());
+            &values
+        };
         Some(super::correlation::correlate(
             source,
             src.width,
             src.height,
-            &tpl,
+            tpl,
             template.width,
             template.height,
         ))
@@ -279,7 +376,7 @@ fn unmasked<T: Pixel>(src: &Image<T>, template: &Image<T>) -> Result<Image<f32>>
                 } else {
                     weights[c]
                         .iter()
-                        .map(|&(i, v)| source[base + i] * v)
+                        .map(|&(y, x, v)| source[base + y * src.width * channels + x] * v)
                         .sum::<f64>()
                 };
                 num += dot - sum * means[c];
@@ -319,11 +416,69 @@ mod tests {
     use super::*;
 
     #[test]
+    fn prepared_templates_match_existing_paths_across_strides_and_changes() {
+        for channels in [1, 3] {
+            let mut tpl = Image::new(
+                27,
+                17,
+                channels,
+                (0..27 * 17 * channels)
+                    .map(|i| {
+                        if i % 3 == 0 {
+                            0.
+                        } else {
+                            (i % 19) as f32 / 7. - 1.
+                        }
+                    })
+                    .collect(),
+            )
+            .unwrap();
+            let prepared = PreparedTemplate::new(&tpl);
+            for width in [27, 64, 129, 257] {
+                let mut src = Image::new(
+                    width,
+                    65,
+                    channels,
+                    (0..width * 65 * channels)
+                        .map(|i| (i % 251) as f32 / 127. - 1.)
+                        .collect(),
+                )
+                .unwrap();
+                let expected = match_template(&src, &tpl, None).unwrap();
+                MATCHES.with(|cache| cache.borrow_mut().clear());
+                assert_eq!(match_prepared(&src, &tpl, &prepared).unwrap(), expected);
+                src.data.fill(0.);
+                assert_eq!(
+                    match_prepared(&src, &tpl, &prepared).unwrap(),
+                    match_template(&src, &tpl, None).unwrap()
+                );
+            }
+            tpl.data[0] += 0.5;
+            let src = Image::new(
+                35,
+                21,
+                channels,
+                (0..35 * 21 * channels).map(|i| (i % 17) as f32).collect(),
+            )
+            .unwrap();
+            assert_eq!(
+                match_prepared(&src, &tpl, &prepared).unwrap(),
+                match_template(&src, &tpl, None).unwrap()
+            );
+            let constant = Image::new(27, 17, channels, vec![7.; 27 * 17 * channels]).unwrap();
+            assert_eq!(
+                match_prepared(&src, &constant, &PreparedTemplate::new(&constant)).unwrap(),
+                match_template(&src, &constant, None).unwrap()
+            );
+        }
+    }
+
+    #[test]
     fn result_cache_preserves_float_equality_dimensions_and_owned_results() {
         MATCHES.with(|cache| cache.borrow_mut().clear());
         let src = Image::new(129, 65, 1, (0..129 * 65).map(|i| (i % 251) as u8).collect()).unwrap();
         let tpl = src.crop(17, 9, 27, 17).unwrap();
-        let expected = unmasked(&src, &tpl).unwrap();
+        let expected = unmasked(&src, &tpl, None).unwrap();
         let mut first = match_template(&src, &tpl, None).unwrap();
         first.data.fill(-2.);
         let mut float_src = src.float();
@@ -337,18 +492,18 @@ mod tests {
         float_src.data[0] = 0.25;
         assert_eq!(
             match_template(&float_src, &float_tpl, None).unwrap(),
-            unmasked(&float_src, &float_tpl).unwrap()
+            unmasked(&float_src, &float_tpl, None).unwrap()
         );
         let reshaped = Image::new(65, 129, 1, float_src.data.clone()).unwrap();
         assert_eq!(
             match_template(&reshaped, &float_tpl, None).unwrap(),
-            unmasked(&reshaped, &float_tpl).unwrap()
+            unmasked(&reshaped, &float_tpl, None).unwrap()
         );
         let mut changed_tpl = float_tpl;
         changed_tpl.data[0] += 0.5;
         assert_eq!(
             match_template(&float_src, &changed_tpl, None).unwrap(),
-            unmasked(&float_src, &changed_tpl).unwrap()
+            unmasked(&float_src, &changed_tpl, None).unwrap()
         );
         MATCHES.with(|cache| assert_eq!(cache.borrow().len(), 4));
     }

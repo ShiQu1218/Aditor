@@ -1,6 +1,6 @@
 use crate::{
     cv::{self, Image, Interpolation, Morphology},
-    detect::{crop, match_best},
+    detect::{best_result, crop},
     profile::ICON_NAMES,
 };
 use anyhow::Result;
@@ -120,6 +120,7 @@ pub struct IconDetector {
     pub diag: bool,
     pub base: Vec<Image<u8>>,
     pub tpl: Vec<Vec<Image<u8>>>,
+    prepared: Vec<Vec<cv::PreparedTemplate>>,
 }
 impl IconDetector {
     pub fn new(dir: &Path, scales: &[f64], params: Option<IconParams>, diag: bool) -> Result<Self> {
@@ -128,7 +129,7 @@ impl IconDetector {
             .iter()
             .map(|k| cv::read_png(&dir.join(format!("{k}.png")), true))
             .collect::<Result<_>>()?;
-        let tpl = base
+        let tpl: Vec<Vec<Image<u8>>> = base
             .iter()
             .map(|im| {
                 scales
@@ -152,12 +153,17 @@ impl IconDetector {
                     .collect::<Result<Vec<_>>>()
             })
             .collect::<Result<_>>()?;
+        let prepared = tpl
+            .iter()
+            .map(|scales| scales.iter().map(cv::PreparedTemplate::new).collect())
+            .collect();
         Ok(Self {
             scales: scales.to_vec(),
             p: params.unwrap_or_default(),
             diag,
             base,
             tpl,
+            prepared,
         })
     }
     fn best(&self, g: &Image<u8>, key: usize, near: Option<f64>) -> Result<(f64, i32, i32, usize)> {
@@ -171,7 +177,12 @@ impl IconDetector {
             if near.is_some_and(|v| (s - v).abs() > 0.051) {
                 continue;
             }
-            let (score, x, y) = match_best(g, &self.tpl[key][i])?;
+            let t = &self.tpl[key][i];
+            let (score, x, y) = if g.width < t.width || g.height < t.height {
+                (0., 0, 0)
+            } else {
+                best_result(cv::match_prepared(g, t, &self.prepared[key][i])?)?
+            };
             if score > out.0 {
                 out = (score, x, y, i);
             }
@@ -183,7 +194,7 @@ impl IconDetector {
         if g.width < t.width || g.height < t.height {
             return Ok(0);
         }
-        let r = cv::match_template(g, t, None)?;
+        let r = cv::match_prepared(g, t, &self.prepared[key][scale])?;
         let (mut n, mut x) = (0, 0);
         while x < r.width {
             if (0..r.height).any(|y| {

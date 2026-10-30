@@ -330,6 +330,10 @@ pub fn match_best<T: cv::Pixel>(im: &Image<T>, tpl: &Image<T>) -> Result<(f64, i
         return Ok((0., 0, 0));
     }
     let r = cv::match_template(im, tpl, None)?;
+    best_result(r)
+}
+
+pub(crate) fn best_result(r: Image<f32>) -> Result<(f64, i32, i32)> {
     let mut best = (f32::NEG_INFINITY, 0);
     for (i, &v) in r.data.iter().enumerate() {
         if v.is_finite() && v > best.0 {
