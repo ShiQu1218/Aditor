@@ -359,6 +359,7 @@ fn unmasked<T: Pixel>(
         None
     };
     let mut data = vec![0.; width * height];
+    let row = src.width * channels;
     // Window moments and template statistics are shared; only the dot product depends on each placement.
     for y in 0..height {
         for x in 0..width {
@@ -376,7 +377,7 @@ fn unmasked<T: Pixel>(
                 } else {
                     weights[c]
                         .iter()
-                        .map(|&(y, x, v)| source[base + y * src.width * channels + x] * v)
+                        .map(|&(y, x, v)| source[base + y * row + x] * v)
                         .sum::<f64>()
                 };
                 num += dot - sum * means[c];

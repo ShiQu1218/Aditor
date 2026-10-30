@@ -80,18 +80,20 @@ fn software_mid_stream_failure_is_not_silently_successful() {
     let [_, _, sw, sh] = p.capture_spec();
     let [_, _, fw, fh] = p.capture_killfeed().unwrap();
     let bytes = bw.max(sw).max(fw) * (bh + sh + fh + 360) * 3;
-    let mut fs = FrameStream::new(
-        "unused",
-        p,
-        DecodeOptions {
-            hwaccel: false,
-            ..Default::default()
-        },
-    );
-    fs.plans.clear();
-    fs.proc=Some(crate::process::spawn(Command::new("powershell").args(["-NoProfile","-NonInteractive","-Command",&format!("$out=[Console]::OpenStandardOutput(); $out.Write([byte[]]::new({bytes}),0,{bytes}); $out.Write([byte[]]::new(100),0,100); $out.Flush(); exit 7")]).stdout(Stdio::piped()).stderr(Stdio::null())).unwrap());
-    fs.next().unwrap().unwrap();
-    let error = fs.next().unwrap().unwrap_err();
-    assert_eq!(error.message, "ffmpeg exited unexpectedly (7)");
-    assert!(fs.next().is_none());
+    for extra in [0, 100] {
+        let mut fs = FrameStream::new(
+            "unused",
+            p.clone(),
+            DecodeOptions {
+                hwaccel: false,
+                ..Default::default()
+            },
+        );
+        fs.plans.clear();
+        fs.proc=Some(crate::process::spawn(Command::new("powershell").args(["-NoProfile","-NonInteractive","-Command",&format!("$out=[Console]::OpenStandardOutput(); $out.Write([byte[]]::new({bytes}),0,{bytes}); $out.Write([byte[]]::new({extra}),0,{extra}); $out.Flush(); exit 7")]).stdout(Stdio::piped()).stderr(Stdio::null())).unwrap());
+        fs.next().unwrap().unwrap();
+        let error = fs.next().unwrap().unwrap_err();
+        assert_eq!(error.message, "ffmpeg exited unexpectedly (7)");
+        assert!(fs.next().is_none());
+    }
 }

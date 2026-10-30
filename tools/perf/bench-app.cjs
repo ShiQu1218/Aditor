@@ -118,7 +118,7 @@ async function run(config) {
     const state = await page.evaluate(async () => ({
       recording: await window.api.recording.getStatus(),
       queue: await window.api.queue.getState(),
-      analysisStarts: window.benchAnalysisStarts,
+      analysisStarts: window.benchAnalysisStarts ?? [],
       liveSeen: window.benchLiveSeen === true
     }));
     liveSeen ||= state.liveSeen;
@@ -188,10 +188,10 @@ async function run(config) {
     game.stdout.on('data', data => { stdout += data; });
     game.stderr.on('data', data => fs.appendFileSync(file('game.stderr.log'), data));
     game.on('error', error => { gameExit = error.message; });
+    game.on('exit', () => { metadata.game_exit_epoch_ms ??= Date.now(); });
     // 'close' waits for stdout/stderr to drain, so the stats JSON and the stderr log are complete.
     game.on('close', code => {
       gameExit = code ?? 'signal';
-      metadata.game_exit_epoch_ms = Date.now();
     });
     metadata.game_pid = game.pid;
     await waitFor('GPU footage upload', () => fs.existsSync(file('ready')));
