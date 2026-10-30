@@ -1,6 +1,6 @@
 {
   "name": "aditor",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Apex Legends highlight detector and clip editor",
   "main": "./out/main/index.js",
   "author": "ShiQu1218",
