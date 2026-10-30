@@ -37,10 +37,10 @@ From the repository root:
 pwsh -File tools/perf/run-fakegame-bench.ps1 -Source D:/footage/apex.mp4 `
   -ClipStart 216 -ClipSeconds 12 -LoadPasses 6 -Scenarios baseline,record -Repeat 3
 
-# Include analysis; allow enough time after import for actual analysis progress.
+# Import during play; analysis must wait until game exit, then finish.
 pwsh -File tools/perf/run-fakegame-bench.ps1 -Source D:/footage/apex.mp4 `
   -AnalysisSource D:/footage/other-apex.mp4 `
-  -Scenarios baseline,record,record_analyze -Repeat 3 `
+  -Scenarios baseline,record,record_deferred_analysis -Repeat 3 `
   -DurationS 90 -WarmupS 10 -AnalyzeAtS 30 `
   -LoadPasses 4 -CaptureMethod wgc -Preset balanced
 
@@ -70,10 +70,11 @@ or the script's parameter block for all defaults):
 | `FpsCap` | `0` | Uncapped; independent of footage playback rate |
 | `DurationS`, `WarmupS` | `60`, `5` | Measured duration and excluded warmup after capture/live readiness |
 | `AnalyzeAtS` | `30` | Copy trigger relative to measurement start, not process launch |
-| `AnalysisSource` | required for `record_analyze` | Fixed background analysis input |
+| `AnalysisSource` | required for `record_deferred_analysis` | Fixed input queued during play and analyzed after exit |
 | `CaptureMethod`, `Preset` | `auto`, `speed` | Real Aditor recording settings |
 | `Repeat`, `CooldownS` | `3`, `10` | Repetitions and cooldown after each sample |
 | `StartTimeoutS`, `FinalizeTimeoutS` | `120`, `120` | Readiness/finalization deadlines |
+| `AnalysisTimeoutS` | `600` | Analysis completion deadline after game exit |
 | `CacheDir`, `ResultsDir` | system temp subdirectories | Persistent predecode cache and per-invocation result parent |
 | `Python` | `python` | Python executable |
 
@@ -104,11 +105,19 @@ file. No video decoder, texture upload, or file read runs in its render loop.
   live engine runs. All other recording defaults (HEVC, 1080p60, 10 Mbps, system
   audio and microphone enabled) come from the application. Effective recording
   capabilities and settings are retained with the isolated data.
-- `record_analyze`: the same recording settings, plus `autoAnalyze=true`. At
+- `record_deferred_analysis`: the same recording settings, plus `autoAnalyze=true`. At
   `AnalyzeAtS`, the fixed input is copied into an initially empty watched folder.
-  This deliberately includes copy/import work as well as analysis contention.
-  A run fails if no positive real analysis progress is observed before game exit.
+  The game-only FPS interval includes copy/import work. The imported file must
+  enter the queue with `waitingForGame=true`, with no offline analysis starting
+  during play; recording and the original live-engine process must keep running.
+  After game exit, the target must start and finish analysis, with both a done
+  library entry and a completed cache. Resume wait and exit-to-completion times
+  are recorded separately from FPS. Allow enough game time for import to finish.
   The source is not shortened or re-encoded, and each run uses a fresh cache.
+
+`record_analyze` is retired and rejected with a migration message. Its historical
+results measured concurrent analysis during play and are not comparable to the
+deferred scenario. The summarizer keeps their names separate and flags legacy data.
 
 For repeats, scenario order is interleaved: baseline, record, baseline, record,
 and so on (or A/B/C/A/B/C). The script builds the standalone Cargo crate and the
@@ -203,7 +212,8 @@ Each invocation prints its result path and creates:
 
 Metadata includes the actual D3D rendering adapter and driver,
 requested/actual capture method, effective settings, preset, clip cache identity, Git revision, run order, launch arguments,
-timing, recording status/output paths, and analysis-copy/progress timestamps.
+timing, recording status/output paths, and analysis copy/queue/start/completion
+timestamps, resume wait, and exit-to-completion time.
 Application diagnostics in `appdata/Aditor` record capture selection/fallback.
 Do not merge results from different invocations with different configurations.
 
@@ -307,6 +317,7 @@ Apex clip with two knockdowns, `-LoadPasses 6` (GPU-bound, baseline ~176.6 FPS),
 
 Capture plus small-frame extraction accounted for roughly 80-90% of the recording
 cost and encode/mux/writes for the rest; the Electron app, audio, and the live
-engine were within run-to-run noise. Background analysis during play was the
+engine were within run-to-run noise. Historical `record_analyze` allowed analysis
+during play, before the current game-exit deferral policy, and was the
 largest tail-latency cost. These numbers compare Aditor components on one machine;
 they do not predict real Apex frame rates.

@@ -46,6 +46,7 @@ def component_breakdown(groups):
 def summarize(root):
     groups = {}
     excluded = {}
+    deferred = []
     for file in sorted(root.glob("*/metadata.json")):
         meta = json.loads(file.read_text(encoding="utf-8-sig"))
         if meta.get("status") != "complete":
@@ -58,6 +59,13 @@ def summarize(root):
         if any(not isinstance(stats.get(k), (int, float)) or not math.isfinite(stats[k])
                or stats[k] < 0 for k in METRICS):
             raise ValueError(f"Invalid stats: {file.parent}")
+        if meta["scenario"] == "record_deferred_analysis":
+            times = [meta.get(k) for k in ("analysis_queued_epoch_ms", "game_exit_epoch_ms",
+                     "analysis_started_epoch_ms", "analysis_completed_epoch_ms")]
+            if (any(not isinstance(t, (int, float)) or not math.isfinite(t) for t in times)
+                    or not times[0] < times[1] <= times[2] <= times[3]):
+                raise ValueError(f"Invalid deferred analysis lifecycle: {file.parent}")
+            deferred.append(((times[2] - times[1]) / 1000, (times[3] - times[1]) / 1000))
         groups.setdefault(meta["scenario"], []).append(stats)
     if not groups:
         raise ValueError("No completed runs" + (
@@ -82,6 +90,15 @@ def summarize(root):
             cells.append(cell)
         lines.append(f"| {scenario} | {len(runs)} | " + " | ".join(cells) + " |")
     lines += component_breakdown(groups)
+    if "record_analyze" in groups:
+        lines += ["", "Legacy record_analyze measured concurrent analysis during play. "
+                  "It is a different workload from record_deferred_analysis; do not combine their results."]
+    if deferred:
+        lines += ["", "## Analysis after game exit", "",
+                  "These times are separate from the game-only FPS measurement (median [min, max]).", "",
+                  "| Runs | Resume wait (s) | Exit to completed analysis (s) |", "| ---: | ---: | ---: |"]
+        cells = [f"{statistics.median(v):.2f} [{min(v):.2f}, {max(v):.2f}]" for v in zip(*deferred)]
+        lines.append(f"| {len(deferred)} | " + " | ".join(cells) + " |")
     if excluded:
         counts = ", ".join(f"{s}: {n}" for s, n in excluded.items())
         lines += ["", f"Background runs excluded ({counts}): background_frames > 0; "
@@ -120,6 +137,27 @@ def self_test():
         assert "| app_idle |" not in report
         (root / "2" / "metadata.json").write_text('{"status":"failed"}')
         assert "Incomplete/failed runs excluded: 1" in summarize(root)
+        run = root / "deferred"
+        run.mkdir()
+        lifecycle = dict(status="complete", scenario="record_deferred_analysis", analysis_queued_epoch_ms=1000,
+                         game_exit_epoch_ms=2000, analysis_started_epoch_ms=4000, analysis_completed_epoch_ms=7000)
+        (run / "metadata.json").write_text(json.dumps(lifecycle))
+        (run / "stats.json").write_text(json.dumps(dict.fromkeys(METRICS, 90)))
+        assert "| 1 | 2.00 [2.00, 2.00] | 5.00 [5.00, 5.00] |" in summarize(root)
+        legacy = root / "legacy"
+        legacy.mkdir()
+        (legacy / "metadata.json").write_text(json.dumps(dict(status="complete", scenario="record_analyze")))
+        (legacy / "stats.json").write_text(json.dumps(dict.fromkeys(METRICS, 70)))
+        assert "different workload" in summarize(root)
+        for change in ({"analysis_started_epoch_ms": 1500}, {"analysis_completed_epoch_ms": None}):
+            (run / "metadata.json").write_text(json.dumps(lifecycle | change))
+            try:
+                summarize(root)
+            except ValueError as error:
+                assert "lifecycle" in str(error)
+            else:
+                raise AssertionError("Invalid deferred lifecycle accepted")
+        (run / "metadata.json").write_text(json.dumps(lifecycle))
         (root / "0" / "stats.json").write_text('{"avg_fps": -1}')
         try:
             summarize(root)

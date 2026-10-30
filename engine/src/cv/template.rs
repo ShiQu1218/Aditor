@@ -114,13 +114,22 @@ fn cached_unmasked<T: Pixel>(src: &Image<T>, template: &Image<T>) -> Result<Imag
         channels: im.channels,
         data: im.data.iter().map(|v| v.float()).collect(),
     };
-    let source = convert(src);
-    let tpl = convert(template);
+    let same = |cached: &Image<f32>, input: &Image<T>| {
+        cached.width == input.width
+            && cached.height == input.height
+            && cached.channels == input.channels
+            && cached.data.len() == input.data.len()
+            && cached
+                .data
+                .iter()
+                .zip(&input.data)
+                .all(|(a, b)| *a == b.float())
+    };
     MATCHES.with(|cache| {
         let mut cache = cache.borrow_mut();
         if let Some(i) = cache
             .iter()
-            .position(|c| c.template == tpl && c.source == source)
+            .position(|c| same(&c.template, template) && same(&c.source, src))
         {
             let c = cache.remove(i).unwrap();
             let out = c.result.clone();
@@ -128,7 +137,7 @@ fn cached_unmasked<T: Pixel>(src: &Image<T>, template: &Image<T>) -> Result<Imag
             return Ok(out);
         }
         let result = unmasked(src, template)?;
-        let bytes = (source.data.len() + tpl.data.len() + result.data.len()) * 4;
+        let bytes = (src.data.len() + template.data.len() + result.data.len()) * 4;
         while cache.len() >= 64
             || cache
                 .iter()
@@ -142,8 +151,8 @@ fn cached_unmasked<T: Pixel>(src: &Image<T>, template: &Image<T>) -> Result<Imag
             }
         }
         cache.push_back(CachedMatch {
-            source,
-            template: tpl,
+            source: convert(src),
+            template: convert(template),
             result: result.clone(),
         });
         Ok(result)
@@ -308,6 +317,41 @@ pub fn min_max_loc(src: &Image<f32>) -> (f64, f64, (i32, i32), (i32, i32)) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn result_cache_preserves_float_equality_dimensions_and_owned_results() {
+        MATCHES.with(|cache| cache.borrow_mut().clear());
+        let src = Image::new(129, 65, 1, (0..129 * 65).map(|i| (i % 251) as u8).collect()).unwrap();
+        let tpl = src.crop(17, 9, 27, 17).unwrap();
+        let expected = unmasked(&src, &tpl).unwrap();
+        let mut first = match_template(&src, &tpl, None).unwrap();
+        first.data.fill(-2.);
+        let mut float_src = src.float();
+        let float_tpl = tpl.float();
+        float_src.data[0] = -0.;
+        assert_eq!(
+            match_template(&float_src, &float_tpl, None).unwrap(),
+            expected
+        );
+        MATCHES.with(|cache| assert_eq!(cache.borrow().len(), 1));
+        float_src.data[0] = 0.25;
+        assert_eq!(
+            match_template(&float_src, &float_tpl, None).unwrap(),
+            unmasked(&float_src, &float_tpl).unwrap()
+        );
+        let reshaped = Image::new(65, 129, 1, float_src.data.clone()).unwrap();
+        assert_eq!(
+            match_template(&reshaped, &float_tpl, None).unwrap(),
+            unmasked(&reshaped, &float_tpl).unwrap()
+        );
+        let mut changed_tpl = float_tpl;
+        changed_tpl.data[0] += 0.5;
+        assert_eq!(
+            match_template(&float_src, &changed_tpl, None).unwrap(),
+            unmasked(&float_src, &changed_tpl).unwrap()
+        );
+        MATCHES.with(|cache| assert_eq!(cache.borrow().len(), 4));
+    }
 
     fn reference<T: Pixel>(src: &Image<T>, tpl: &Image<T>, mask: Option<&Image<u8>>) -> Vec<f32> {
         let mut out = Vec::new();

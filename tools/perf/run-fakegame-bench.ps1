@@ -1,7 +1,7 @@
 #Requires -Version 7.0
 [CmdletBinding()]
 param(
-    [string[]]$Scenarios = @('baseline', 'record', 'record_analyze'),
+    [string[]]$Scenarios = @('baseline', 'record', 'record_deferred_analysis'),
     [ValidateRange(1, 1000)][int]$Repeat = 3,
     [Parameter(Mandatory)][string]$Source,
     [ValidateRange(0, 86400)][double]$ClipStart = 0,
@@ -21,6 +21,7 @@ param(
     [ValidateSet('speed', 'balanced', 'quality')][string]$Preset = 'speed',
     [ValidateRange(30, 180)][int]$StartTimeoutS = 120,
     [ValidateRange(10, 600)][int]$FinalizeTimeoutS = 120,
+    [ValidateRange(10, 86400)][int]$AnalysisTimeoutS = 600,
     [string]$CacheDir = (Join-Path ([IO.Path]::GetTempPath()) 'aditor-fakegame-cache'),
     [string]$ResultsDir = (Join-Path ([IO.Path]::GetTempPath()) 'aditor-fakegame-results'),
     [string]$Python = 'python'
@@ -30,13 +31,14 @@ $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $appDir = Join-Path $repo 'app'
 $crate = Join-Path $repo 'tools/fakegame'
 $Scenarios = @($Scenarios | ForEach-Object { $_.Split(',') } | ForEach-Object { $_.Trim() })
-$allowedScenarios = @('baseline', 'record', 'record_analyze', 'app_idle', 'rec_capture', 'rec_encode', 'rec_audio', 'rec_live')
-$appScenarios = @('record', 'record_analyze', 'app_idle')
+if ($Scenarios -contains 'record_analyze') { throw 'record_analyze was retired; use record_deferred_analysis (a different workload, not comparable to historical record_analyze results).' }
+$allowedScenarios = @('baseline', 'record', 'record_deferred_analysis', 'app_idle', 'rec_capture', 'rec_encode', 'rec_audio', 'rec_live')
+$appScenarios = @('record', 'record_deferred_analysis', 'app_idle')
 if (!$Scenarios.Count -or @($Scenarios | Where-Object { $_ -notin $allowedScenarios }).Count) {
     throw "Scenarios must be selected from: $($allowedScenarios -join ', ')."
 }
 if (@($Scenarios | Select-Object -Unique).Count -ne $Scenarios.Count) { throw 'Duplicate scenarios are not allowed.' }
-if ($Scenarios -contains 'record_analyze' -and $AnalyzeAtS -ge $DurationS) { throw 'AnalyzeAtS must be less than DurationS.' }
+if ($Scenarios -contains 'record_deferred_analysis' -and $AnalyzeAtS -ge $DurationS) { throw 'AnalyzeAtS must be less than DurationS.' }
 foreach ($value in @($ClipStart, $ClipSeconds, $AnalyzeAtS, $DurationS, $WarmupS, $CooldownS, $FpsCap)) {
     if (![double]::IsFinite($value)) { throw 'Numeric parameters must be finite.' }
 }
@@ -64,8 +66,8 @@ function Assert-NoAditor {
 }
 $Source = (Resolve-Path -LiteralPath $Source).Path
 $Ffmpeg = (Resolve-Path -LiteralPath $Ffmpeg).Path
-if ($Scenarios -contains 'record_analyze') {
-    if (!$AnalysisSource) { throw 'record_analyze requires -AnalysisSource (a video to analyze in the background).' }
+if ($Scenarios -contains 'record_deferred_analysis') {
+    if (!$AnalysisSource) { throw 'record_deferred_analysis requires -AnalysisSource (a video to queue during play and analyze after exit).' }
     $AnalysisSource = (Resolve-Path -LiteralPath $AnalysisSource).Path
 }
 $CacheDir = [IO.Path]::GetFullPath($CacheDir)
@@ -76,7 +78,7 @@ Assert-NoAditor
 foreach ($executable in @('cargo', 'node', 'npm.cmd', $Python)) { Get-Command $executable -ErrorAction Stop | Out-Null }
 $requiredFiles = @()
 if (@($Scenarios | Where-Object { $_ -ne 'baseline' }).Count) { $requiredFiles += 'recorder/target/release/aditorrec.exe' }
-if (@($Scenarios | Where-Object { $_ -in @('record', 'record_analyze', 'app_idle', 'rec_live') }).Count) { $requiredFiles += 'engine/target/release/aditor.exe' }
+if (@($Scenarios | Where-Object { $_ -in @('record', 'record_deferred_analysis', 'app_idle', 'rec_live') }).Count) { $requiredFiles += 'engine/target/release/aditor.exe' }
 if (@($Scenarios | Where-Object { $_ -in $appScenarios }).Count) { $requiredFiles += 'app/node_modules/electron/dist/electron.exe' }
 foreach ($required in $requiredFiles) {
     if (!(Test-Path -LiteralPath (Join-Path $repo $required))) { throw "Missing prerequisite: $required. See tools/perf/README.md." }
@@ -131,7 +133,7 @@ try {
             $watched = Join-Path $runDir 'watched'
             foreach ($dir in @($runDir, (Join-Path $appData 'Aditor'), $recordings, $watched)) { [IO.Directory]::CreateDirectory($dir) | Out-Null }
             $settings = @{ version = 2; onboardingDone = $true; lowPerfAsked = $true; language = 'en'
-                telemetryEnabled = $false; autoUpdate = $false; autoAnalyze = ($scenario -eq 'record_analyze')
+                telemetryEnabled = $false; autoUpdate = $false; autoAnalyze = ($scenario -eq 'record_deferred_analysis')
                 watchFolders = @($watched); recording = @{ autoRecord = ($scenario -ne 'app_idle'); backend = 'builtin'; mode = 'session'
                     launchAtLogin = $false; closeToTray = $false; outputDir = $recordings; postAnalysis = 'none'
                     captureMethod = $CaptureMethod; preset = $Preset; openOnGameExit = $false } }
@@ -139,7 +141,7 @@ try {
             $config = @{ repo = $repo; captureMethod = $CaptureMethod; preset = $Preset; appDir = $appDir; runDir = $runDir; scenario = $scenario; appData = $appData
                 recordings = $recordings; gameExe = $gameExe; raw = $raw; size = $Size; clipFps = $ClipFps
                 loadPasses = $LoadPasses; fpsCap = $FpsCap; windowed = $Windowed; durationS = $DurationS
-                warmupS = $WarmupS; startTimeoutS = $StartTimeoutS; finalizeTimeoutS = $FinalizeTimeoutS
+                warmupS = $WarmupS; startTimeoutS = $StartTimeoutS; finalizeTimeoutS = $FinalizeTimeoutS; analysisTimeoutS = $AnalysisTimeoutS
                 analyzeAtS = $AnalyzeAtS; analysisSource = $AnalysisSource
                 analysisDestination = (Join-Path $watched 'Apex_bench_analysis.mp4'); ffmpeg = $Ffmpeg; source = $Source }
             $metadata = @{ status = 'running'; scenario = $scenario; repeat = $iteration; order = $runIndex
