@@ -110,6 +110,11 @@ export class EngineClient extends EventEmitter {
           }
         })
 
+        // A write callback does not consume the stream's error event; close rejects pending requests and restarts.
+        p.stdin?.on('error', () => {
+          if (this.proc === p) p.kill()
+        })
+
         p.on('error', (err) => {
           emitChildDiagnostic(this.opts.onDiagnostic, { component: 'rust-engine', code: 'engine_spawn', message: err.message })
           if (this.readyReject) {
@@ -266,7 +271,7 @@ export class EngineClient extends EventEmitter {
         this.proc.stdin.write(line, 'utf-8', (err) => {
           if (err) {
             this.pending.delete(id)
-            reject(err)
+            reject(new EngineError('engine_crashed', `Engine input pipe failed: ${redactHome(err.message)}`))
           }
         })
       }
