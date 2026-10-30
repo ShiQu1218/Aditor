@@ -303,6 +303,17 @@ pub(in crate::capture) fn window_matches(hwnd: HWND, pid: u32) -> bool {
     }
 }
 
+/// WGC minimum update interval as a percentage of one output frame. 75% by default: at 50% a 144+ FPS game has WGC
+/// copy ~2 frames per output slot (118/s for 60 recorded); 100% skips frames presented slightly early, which the
+/// encoder then fills with duplicates. The environment override exists to measure that trade-off.
+fn min_interval_percent() -> i64 {
+    std::env::var("ADITOR_WGC_MIN_INTERVAL_PCT")
+        .ok()
+        .and_then(|v| v.parse::<i64>().ok())
+        .filter(|v| (1..=100).contains(v))
+        .unwrap_or(75)
+}
+
 /// Limit average frame rate using QPC time buckets so slight 60 Hz timestamp jitter does not reduce frame-interval comparisons to 30 fps.
 struct FrameGate {
     fps: u32,
@@ -385,6 +396,10 @@ struct Signals {
     fallback: AtomicBool,
     size: AtomicU64,
     dropped: AtomicU64,
+    /// Frames WGC delivered, before slot selection; `accepted` is how many of them filled an output slot.
+    arrived: AtomicU64,
+    accepted: AtomicU64,
+    started: Instant,
     last_frame: AtomicU64,
 }
 
@@ -477,9 +492,9 @@ impl ActiveCapture {
         }
         // Older Windows versions lack these two interfaces; capture still works without them.
         let _ = session.SetIsBorderRequired(false);
-        // Half a frame: a full-frame interval makes WGC skip frames presented slightly early, which the encoder then fills with duplicates.
+        // Less than a full frame: a full-frame interval makes WGC skip frames presented slightly early, which the encoder then fills with duplicates.
         let _ = session.SetMinUpdateInterval(TimeSpan {
-            Duration: TICKS_PER_SEC / opts.max_fps as i64 / 2,
+            Duration: TICKS_PER_SEC / opts.max_fps as i64 * min_interval_percent() / 100,
         });
         let signals = Arc::new(Signals {
             alive: AtomicBool::new(true),
@@ -487,6 +502,9 @@ impl ActiveCapture {
             fallback: AtomicBool::new(false),
             size: AtomicU64::new(pack_size(size)),
             dropped: AtomicU64::new(0),
+            arrived: AtomicU64::new(0),
+            accepted: AtomicU64::new(0),
+            started: Instant::now(),
             last_frame: AtomicU64::new(crate::clock::now_ticks() as u64),
         });
         let mut active = Self {
@@ -552,6 +570,17 @@ impl ActiveCapture {
 impl Drop for ActiveCapture {
     fn drop(&mut self) {
         self.signals.alive.store(false, Ordering::Release);
+        let secs = self.signals.started.elapsed().as_secs_f64().max(f64::EPSILON);
+        let (arrived, accepted) = (
+            self.signals.arrived.load(Ordering::Relaxed),
+            self.signals.accepted.load(Ordering::Relaxed),
+        );
+        eprintln!(
+            "WGC stats: {secs:.1}s arrived={arrived} ({:.1}/s) accepted={accepted} ({:.1}/s) min_interval={}%",
+            arrived as f64 / secs,
+            accepted as f64 / secs,
+            min_interval_percent()
+        );
         if let Some(token) = self.frame_token.take() {
             let _ = self.pool.RemoveFrameArrived(token);
         }
@@ -580,6 +609,7 @@ impl CallbackState {
         signals: &Signals,
     ) -> Result<()> {
         let frame = Frame(pool.TryGetNextFrame()?);
+        signals.arrived.fetch_add(1, Ordering::Relaxed);
         let size = frame.0.ContentSize()?;
         if size.Width <= 0 || size.Height <= 0 {
             return Ok(());
@@ -599,6 +629,7 @@ impl CallbackState {
         };
         let format = display.map_or(self.pool_format, color::DisplayState::pool_format);
         if let Some(pts) = self.gate.accept(raw_pts) {
+            signals.accepted.fetch_add(1, Ordering::Relaxed);
             let visible = if monitor {
                 // Minimized fallback stays black until window capture resumes, including the restore polling gap.
                 if let Some(notice) = self.visibility.update(self.pid, pts, || {
