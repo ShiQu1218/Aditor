@@ -105,6 +105,20 @@ DDA 不含游標，錄影器每張畫面要自己疊上去：整幀 `CopyResourc
 
 編碼器輸入／輸出 view 快取、延後游標形狀 GPU 上傳、快取螢幕查詢：都是 CPU 端呼叫，量級約每秒 60 次，預期量不出 GPU 限制下的 FPS 差異。合併 HDR 路徑的 `Flush` 只影響 HDR，量測需要切換顯示器 HDR 狀態，沒有做。
 
+## 4.5 三種擷取方式比較（2026-10-31 晚間，`main` `5aeadb6`）
+
+`baseline` 與 `rec_capture`，LoadPasses 6，60 秒量測、10 秒暖機，DDA 與 hook 各 3 輪交錯執行；WGC 取自同設定的元件拆解（2 輪，非交錯）。metadata 的 `capture_method_actual` 皆與要求一致，hook 沒有退回 DDA。
+
+| 擷取方式 | 平均 FPS 成本（中位數） | 1% low 成本 |
+|---|---:|---:|
+| hook（OBS graphics-hook 32.1.2） | -0.62% | -1.4% |
+| WGC | -1.88% | -1.6% |
+| DDA（Windows 10 的自動選擇） | -5.81% | -6.7% |
+
+- DDA 三輪 -5.8% 到 -5.9%；hook 三輪 -1.6%、-0.6%、-0.7%（第 1 輪 baseline 偏高）。
+- 設定頁的擷取方式選項依此標示高／中／低效率。
+- 假遊戲為 D3D11；沒有在真實 Apex 上驗證 hook 與 EasyAntiCheat 的相容性。
+
 ## 5. 耗能模組排序（以對遊戲 FPS 的影響衡量）
 
 遊戲進行中，WGC＋SDR（#37 之後）：

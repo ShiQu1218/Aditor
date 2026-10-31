@@ -913,9 +913,9 @@ const recordingI18n = {
   analysisNone: '不分析',
   analysisAfterExit: '關閉 Apex 後',
   analysisPerMatch: '每局結束後',
-  captureHook: 'Hook擷取',
-  captureWgc: '視窗擷取（WGC）',
-  captureDda: '螢幕擷取（DDA）',
+  captureHook: 'Hook擷取（高效率）',
+  captureWgc: '視窗擷取（WGC，中效率）',
+  captureDda: '螢幕擷取（DDA，低效率）',
   captureAuto: '自動（Windows 10 用螢幕擷取）',
   captureHookWarning: {
     title: '使用 Hook擷取前請注意',

@@ -444,7 +444,7 @@ describe('Recording settings screen and controller', () => {
     expect(document.querySelector('[role="alertdialog"]')).toBeNull()
     expect(r.controller.getState().settings?.recording.captureMethod).toBe('hook')
     expect(control<HTMLSelectElement>('captureMethod').value).toBe('hook')
-    expect(control<HTMLSelectElement>('captureMethod').querySelector('option[value="hook"]')?.textContent).toBe('Hook擷取')
+    expect(control<HTMLSelectElement>('captureMethod').querySelector('option[value="hook"]')?.textContent).toBe('Hook擷取（高效率）')
     expect(control<HTMLInputElement>('captureCursor').disabled).toBe(true)
     expect(control<HTMLInputElement>('captureCursor').checked).toBe(false)
     expect(r.controller.getState().settings?.recording.captureCursor).toBe(true)

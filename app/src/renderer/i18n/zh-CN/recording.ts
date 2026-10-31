@@ -67,9 +67,9 @@ export const recordingI18n: Messages['recordingI18n'] = {
   analysisNone: '不分析',
   analysisAfterExit: '关闭 Apex 后',
   analysisPerMatch: '每局结束后',
-  captureHook: 'Hook捕获',
-  captureWgc: '窗口捕获（WGC）',
-  captureDda: '屏幕捕获（DDA）',
+  captureHook: 'Hook捕获（高效率）',
+  captureWgc: '窗口捕获（WGC，中效率）',
+  captureDda: '屏幕捕获（DDA，低效率）',
   captureAuto: '自动（Windows 10 用屏幕捕获）',
   captureHookWarning: {
     title: '使用Hook捕获前请注意',

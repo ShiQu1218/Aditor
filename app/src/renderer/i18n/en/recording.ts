@@ -66,9 +66,9 @@ export const recordingI18n: Messages['recordingI18n'] = {
   analysisNone: 'No analysis',
   analysisAfterExit: 'After closing Apex',
   analysisPerMatch: 'After each match',
-  captureHook: 'Hook capture',
-  captureWgc: 'Window capture (WGC)',
-  captureDda: 'Screen capture (DDA)',
+  captureHook: 'Hook capture (high efficiency)',
+  captureWgc: 'Window capture (WGC, medium efficiency)',
+  captureDda: 'Screen capture (DDA, low efficiency)',
   captureAuto: 'Automatic (screen capture on Windows 10)',
   captureHookWarning: {
     title: 'Before using Hook capture',

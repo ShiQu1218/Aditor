@@ -67,9 +67,9 @@ export const recordingI18n: Messages['recordingI18n'] = {
   analysisNone: '分析しない',
   analysisAfterExit: 'Apex 終了後',
   analysisPerMatch: '各試合の終了後',
-  captureHook: 'Hookキャプチャ',
-  captureWgc: 'ウィンドウキャプチャ（WGC）',
-  captureDda: '画面キャプチャ（DDA）',
+  captureHook: 'Hookキャプチャ（高効率）',
+  captureWgc: 'ウィンドウキャプチャ（WGC、中効率）',
+  captureDda: '画面キャプチャ（DDA、低効率）',
   captureAuto: '自動（Windows 10 は画面キャプチャ）',
   captureHookWarning: {
     title: 'Hookキャプチャを使用する前のご注意',
