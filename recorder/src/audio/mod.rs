@@ -180,11 +180,6 @@ impl AudioCapture {
         self.warnings.try_iter().collect()
     }
 
-    /// Legacy single-warning accessor used by the device integration tests.
-    pub fn take_warning(&mut self) -> Option<String> {
-        self.warnings.try_recv().ok().map(|warning| warning.message)
-    }
-
     pub fn stop(mut self) {
         self.shutdown();
     }
@@ -685,12 +680,13 @@ impl Source {
             .anchor
             .map(|anchor| anchor + self.input_frames * TICKS_PER_SEC / i64::from(self.format.rate));
         let discontinuity = packet.flags & AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY.0 as u32 != 0;
-        let pts =
-            if packet.flags & AUDCLNT_BUFFERFLAGS_TIMESTAMP_ERROR.0 as u32 != 0 && !discontinuity {
-                expected.unwrap_or(packet.pts)
-            } else {
-                packet.pts
-            };
+        // After a packet-free silent gap the sample clock lags the mixed-out cursor; trust the QPC fallback then.
+        let stale = expected.is_some_and(|expected| frames_from_ticks(expected - origin) < timeline.cursor);
+        let pts = if packet.flags & AUDCLNT_BUFFERFLAGS_TIMESTAMP_ERROR.0 as u32 != 0 && !discontinuity && !stale {
+            expected.unwrap_or(packet.pts)
+        } else {
+            packet.pts
+        };
         if discontinuity || expected.is_none_or(|expected| (expected - pts).abs() > 20_000) {
             self.anchor = Some(pts);
             self.input_frames = 0;
@@ -900,6 +896,27 @@ mod tests {
         assert_eq!(timeline.take(480), vec![[0.2; 2]; 480]);
         assert_eq!(timeline.take(960), vec![[0.0; 2]; 960]);
         assert_eq!(timeline.take(480), vec![[0.3; 2]; 480]);
+    }
+
+    #[test]
+    fn bad_timestamp_after_silent_gap_uses_qpc_fallback() {
+        let (_, receiver) = mpsc::sync_channel(1);
+        let mut source = Source::new(
+            Format::new(48_000, 2, 8, Sample::Float(32), 3).unwrap(),
+            receiver,
+        );
+        let mut timeline = Timeline::new(0);
+        source.convert(packet(0, 0, 0.1, 480), &mut timeline, 0).unwrap();
+        // One silent second without packets has already been mixed out.
+        timeline.take(48_000);
+        source
+            .convert(
+                packet(TICKS_PER_SEC, AUDCLNT_BUFFERFLAGS_TIMESTAMP_ERROR.0 as u32, 0.2, 480),
+                &mut timeline,
+                0,
+            )
+            .unwrap();
+        assert_eq!(timeline.take(480), vec![[0.2; 2]; 480]);
     }
 
     #[test]

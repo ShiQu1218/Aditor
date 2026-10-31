@@ -509,7 +509,11 @@ export class RecordingSessionService implements RecordingService {
         gameClient.on('event', (ev: PresenceEvent) => {
           if ((ev.type === 'match_start' || ev.type === 'match_end') && this.active === session && !session!.ending) session!.live.clientMatch(ev.type, ev.at)
         })
-        gameClient.on('unavailable', (error: Error) => this.log(`riot client unavailable: ${error.message}`))
+        gameClient.on('unavailable', (error: Error) => {
+          this.log(`riot client unavailable: ${error.message}`)
+          // A match_start may be missed while the client is down; keep the footage instead of pruning it as lobby time.
+          if (this.active === session && !session!.ending) session!.live.distrust()
+        })
         gameClient.start()
       }
       this.active = session

@@ -121,6 +121,9 @@ describe('recording service state machine', () => {
     await waitFor(() => fs.existsSync(path.join(dir, 'events.jsonl')) &&
       fs.readFileSync(path.join(dir, 'events.jsonl'), 'utf8').includes('"reason":"game_client"'))
     expect(vi.mocked(value.deps.notify).mock.calls.some(([, message]) => message.includes('逐局分割'))).toBe(false)
+    const distrust = vi.spyOn(LiveSession.prototype, 'distrust')
+    client.emit('unavailable', new Error('offline'))
+    expect(distrust).toHaveBeenCalledOnce()
   })
 
   it('keeps recording when the storage probe fails', async () => {

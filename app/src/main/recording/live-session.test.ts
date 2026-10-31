@@ -397,4 +397,11 @@ it('marks detection as healthy throughout only when live detection is healthy at
   lossy.engine.quality.mockReturnValue({ complete: false, reasons: ['frames_lost'] })
   await lossy.live.stop()
   expect(marker(lossy.dir)).toBe(false)
+  // External match boundaries (the Riot Client) dropped out, so a match may have been missed.
+  const distrusted = make()
+  distrusted.internal.engine = distrusted.engine; distrusted.internal.listen(distrusted.engine)
+  distrusted.engine.emit('progress', 10)
+  distrusted.live.distrust()
+  await distrusted.live.stop()
+  expect(marker(distrusted.dir)).toBe(false)
 })

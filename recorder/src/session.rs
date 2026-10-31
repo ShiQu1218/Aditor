@@ -770,8 +770,13 @@ impl Session {
         loop {
             let notice = self.notices.try_recv();
             match notice {
-                Ok(CaptureNotice::GameHidden { pts }) => self.visibility_changes.push_back((pts, true)),
-                Ok(CaptureNotice::GameVisible { pts }) => self.visibility_changes.push_back((pts, false)),
+                // Small frames carry recording-relative pts; visibility notices carry raw capture ticks.
+                Ok(CaptureNotice::GameHidden { pts }) => {
+                    self.visibility_changes.push_back(((pts - self.capture_origin).max(0), true))
+                }
+                Ok(CaptureNotice::GameVisible { pts }) => {
+                    self.visibility_changes.push_back(((pts - self.capture_origin).max(0), false))
+                }
                 _ => {}
             }
             match notice {
@@ -1107,11 +1112,8 @@ mod tests {
         .unwrap()
     }
 
-    #[test]
-    fn runtime_capture_failures_preserve_the_specific_error_code() {
-        let (notices_tx, notices) = mpsc::channel();
-        let name = shm::shm_name(&format!("runtime-failure-{}", std::process::id()));
-        let mut session = Session {
+    fn test_session(notices: Receiver<CaptureNotice>, tag: &str) -> Session {
+        Session {
             announced: true,
             capture_origin: 0,
             dir: std::env::temp_dir(),
@@ -1121,7 +1123,7 @@ mod tests {
             writer: None,
             index: None,
             shm: ShmWriter::create(
-                &name,
+                &shm::shm_name(&format!("{tag}-{}", std::process::id())),
                 ShmLayout {
                     banner: (2, 2),
                     spec: (2, 2),
@@ -1140,7 +1142,24 @@ mod tests {
             audio_stall_warned: false,
             game_hidden: false,
             visibility_changes: VecDeque::new(),
-        };
+        }
+    }
+
+    #[test]
+    fn visibility_changes_use_the_recording_relative_timeline() {
+        let (notices_tx, notices) = mpsc::channel();
+        let mut session = test_session(notices, "visibility-origin");
+        session.capture_origin = 5_000_000;
+        notices_tx.send(CaptureNotice::GameHidden { pts: 5_000_100 }).unwrap();
+        session.drain().unwrap();
+        assert_eq!(session.visibility_changes.front(), Some(&(100, true)));
+        assert!(hidden_at(&mut session.game_hidden, &mut session.visibility_changes, 150));
+    }
+
+    #[test]
+    fn runtime_capture_failures_preserve_the_specific_error_code() {
+        let (notices_tx, notices) = mpsc::channel();
+        let mut session = test_session(notices, "runtime-failure");
         for (message, expected) in [
             (
                 "window_not_found: Game capture window disappeared",
