@@ -5,7 +5,7 @@ import type { RecordingDeps } from './index'
 import type { ObsMatch, ObsMetadata } from './obs-session'
 import { ALLOWED_VIDEO_EXTS, isSafeLocalDirPath } from '../safe-path'
 import { addRecorded, MATCH_POST_PAD_SEC, MATCH_PRE_PAD_SEC, inOutputDir, liveMatches, outputBase, readOptional, reserveOutput,
-  resumeMatchPart, writeJson, gameMetadataArgs, type SessionSnapshot } from './finalize'
+  resumeMatchPart, publishRecordingPart, writeJson, gameMetadataArgs, type SessionSnapshot } from './finalize'
 import { isTrusted, writeLiveCache, type LiveCacheRange, type LiveFile } from './live-cache'
 import { createCutLookup, createMediaEndProbe } from '../export/keyframe'
 import { ObsClient } from './obs-client'
@@ -162,7 +162,7 @@ export async function finalizeObsSession(dir: string, deps: RecordingDeps, confi
           analysisQueued: false, liveCached: false, liveTrusted: false })
         await writeJson(markerFile, marker)
         recorded = true
-        await fs.promises.rename(part, output)
+        await publishRecordingPart(part, output)
         await fs.promises.unlink(path.join(dir, 'match-part.json'))
       } catch (error) {
         if (!recorded) {

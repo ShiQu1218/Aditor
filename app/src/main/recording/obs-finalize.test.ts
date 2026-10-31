@@ -173,13 +173,13 @@ describe.skipIf(!ffmpeg)('OBS finalization and recovery (real ffmpeg)', () => {
     expect(r.deps.addToLibrary).not.toHaveBeenCalled()
     expect(fs.existsSync(r.dir)).toBe(false)
   })
-  it.each([false, true])('recovers after rename fails with a persisted marker (part missing: %s)', async (missingPart) => {
+  it.each([false, true])('recovers after publication fails with a persisted marker (part missing: %s)', async (missingPart) => {
     const r = await rig('match')
-    const rename = fs.promises.rename.bind(fs.promises)
+    const link = fs.promises.link.bind(fs.promises)
     let interrupted = false
-    vi.spyOn(fs.promises, 'rename').mockImplementation(async (from, to) => {
+    vi.spyOn(fs.promises, 'link').mockImplementation(async (from, to) => {
       if (!interrupted && String(from).endsWith('.part.mp4')) { interrupted = true; throw new Error('模擬中斷') }
-      return rename(from, to)
+      return link(from, to)
     })
     await expect(finalizeSession(r.dir, r.deps)).rejects.toThrow('模擬中斷')
     const marker = JSON.parse(fs.readFileSync(path.join(r.dir, 'matches.json'), 'utf8'))

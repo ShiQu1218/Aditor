@@ -194,6 +194,8 @@ describe('recording service integration with the live engine', () => {
     expect(fs.readFileSync(path.join(sessionDir, 'events.jsonl'), 'utf8')).toContain('"ev":"match_start"')
     expect(r.deps.notify).toHaveBeenCalledWith('matchStart', '第 1 局開始')
 
+    // This fixture only serves the live read above; it is not a finalized, indexed recording.
+    fs.unlinkSync(path.join(sessionDir, 'seg_000001.m4s'))
     // Read the final live.json before finalization to prevent the work directory from being deleted.
     const rm = vi.spyOn(fs.promises, 'rm')
     let finalLive: Record<string, any> | null = null

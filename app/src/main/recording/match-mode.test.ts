@@ -116,6 +116,30 @@ describe('per-match segment ranges', () => {
 })
 
 describe('per-match clipping and recovery', () => {
+  it.each(['session', 'match'])('preserves footage when a competing output appears after the %s marker is written', async (mode) => {
+    const r = rig()
+    const config = read(path.join(r.dir, 'recording.json'))
+    fs.writeFileSync(path.join(r.dir, 'recording.json'), JSON.stringify({ ...config, mode }))
+    const rename = fs.promises.rename.bind(fs.promises)
+    const markerName = mode === 'session' ? 'finalized.json' : 'matches.json'
+    let output = ''
+    const spy = vi.spyOn(fs.promises, 'rename').mockImplementation(async (from, to) => {
+      await rename(from, to)
+      if (String(to) === path.join(r.dir, markerName)) {
+        const marker = read(String(to))
+        output = mode === 'session' ? marker.outputPath : marker.cuts[0].outputPath
+        fs.writeFileSync(output, 'competing video')
+      }
+    })
+    await expect(finalizeSession(r.dir, r.deps)).rejects.toMatchObject({ code: 'EEXIST' })
+    spy.mockRestore()
+    await expect(finalizeSession(r.dir, r.deps)).rejects.toThrow('已存在')
+    expect(fs.readFileSync(output, 'utf8')).toBe('competing video')
+    expect(fs.existsSync(output.replace('.mp4', '.part.mp4'))).toBe(true)
+    expect(fs.existsSync(path.join(r.dir, 'seg_000001.m4s'))).toBe(true)
+    expect(r.deps.addToLibrary).not.toHaveBeenCalled()
+  })
+
   it.each(['pending', 'temporary snapshot'])('preserves unregistered match footage during restart recovery: %s', async (failure) => {
     const r = rig('afterExit')
     const firstMatch = r.live.matches.slice(0, 1)
@@ -362,18 +386,18 @@ describe('per-match clipping and recovery', () => {
     expect(remux.inputs).toHaveLength(2)
   })
 
-  it('writes the marker before rename and side effects, and reuses the concatenated file after an interrupted rename', async () => {
+  it('writes the marker before publication and side effects, and reuses the concatenated file after interrupted publication', async () => {
     const r = rig()
-    const rename = fs.promises.rename.bind(fs.promises)
+    const link = fs.promises.link.bind(fs.promises)
     let interrupted = false
-    vi.spyOn(fs.promises, 'rename').mockImplementation(async (from, to) => {
+    vi.spyOn(fs.promises, 'link').mockImplementation(async (from, to) => {
       if (String(from).endsWith('.part.mp4') && !interrupted) {
         interrupted = true
         expect(r.marker().cuts).toHaveLength(1)
         expect(r.deps.addToLibrary).not.toHaveBeenCalled()
         throw new Error('模擬改名時中斷')
       }
-      await rename(from, to)
+      await link(from, to)
     })
     await expect(finalizeSession(r.dir, r.deps)).rejects.toThrow('中斷')
     const outputs = await finalizeSession(r.dir, r.deps)
@@ -384,14 +408,14 @@ describe('per-match clipping and recovery', () => {
 
   it('cuts a match again when its reserved part disappeared after the marker was written', async () => {
     const r = rig()
-    const rename = fs.promises.rename.bind(fs.promises)
+    const link = fs.promises.link.bind(fs.promises)
     let interrupted = false
-    const spy = vi.spyOn(fs.promises, 'rename').mockImplementation(async (from, to) => {
+    const spy = vi.spyOn(fs.promises, 'link').mockImplementation(async (from, to) => {
       if (String(from).endsWith('.part.mp4') && !interrupted) {
         interrupted = true
         throw new Error('模擬改名時中斷')
       }
-      await rename(from, to)
+      await link(from, to)
     })
     await expect(cutMatches(r.dir, r.deps)).rejects.toThrow('中斷')
     spy.mockRestore()
@@ -692,10 +716,10 @@ it('keeps skipped matches recorded when a later cut is interrupted after marker 
   const r = rig()
   r.deps.notify = vi.fn()
   for (const entry of entries.slice(2, 12)) fs.unlinkSync(path.join(r.dir, `seg_${String(entry.seq).padStart(6, '0')}.m4s`))
-  const rename = fs.promises.rename.bind(fs.promises)
-  const spy = vi.spyOn(fs.promises, 'rename').mockImplementation(async (from, to) => {
+  const link = fs.promises.link.bind(fs.promises)
+  const spy = vi.spyOn(fs.promises, 'link').mockImplementation(async (from, to) => {
     if (String(from).endsWith('.part.mp4')) throw new Error('interrupted rename')
-    await rename(from, to)
+    await link(from, to)
   })
   await expect(finalizeSession(r.dir, r.deps)).rejects.toThrow('interrupted rename')
   expect(fs.existsSync(r.dir)).toBe(true)
