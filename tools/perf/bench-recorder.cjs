@@ -107,7 +107,7 @@ class RecorderWorkload {
     fs.mkdirSync(args.session_dir);
     metadata.recorder_start = args;
     metadata.capture_method_actual = args.capture;
-    const env = { ...process.env, PATH: path.dirname(config.ffmpeg) + path.delimiter + process.env.PATH };
+    const env = { ...process.env, ADITORREC_DIAGNOSTICS: '1', PATH: path.dirname(config.ffmpeg) + path.delimiter + process.env.PATH };
     this.recorder = this.launch('recorder', path.join(config.repo, 'recorder', 'target', 'release', 'aditorrec.exe'), [], env, msg => {
       if (typeof msg.id === 'number') this.pending.set(msg.id, msg);
       if (msg.ev === 'started') this.started = metadata.recording_started = msg;

@@ -139,4 +139,4 @@ pwsh -File tools/perf/run-fakegame-bench.ps1 -Source engine/tests/golden/golden.
   -DurationS 30 -WarmupS 5 -CooldownS 5 -LoadPasses 6 -CaptureMethod wgc -Preset speed
 ```
 
-WGC 間隔實驗在執行前設定 `$env:ADITOR_WGC_MIN_INTERVAL_PCT`（50、75、100）；擷取結束時的 `WGC stats:` 行在各 run 目錄的 `recorder.stderr.log`。DDA 游標開關與 `DDA stats:` 統計是實驗用的本地修補，**沒有合併**。
+WGC 間隔實驗在執行前設定 `$env:ADITOR_WGC_MIN_INTERVAL_PCT`（50、75、100）；擷取結束時的 `WGC stats:` 行在各 run 目錄的 `recorder.stderr.log`（只在 `ADITORREC_DIAGNOSTICS=1` 時輸出；app 與 `tools/perf` 都會設定）。DDA 游標開關與 `DDA stats:` 統計是實驗用的本地修補，**沒有合併**。
