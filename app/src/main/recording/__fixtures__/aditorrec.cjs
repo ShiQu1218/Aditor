@@ -2,6 +2,7 @@ const fs = require('fs')
 const path = require('path')
 const readline = require('readline')
 const mode = process.env.FAKE_RECORDER_MODE || 'normal'
+const windowErrorCode = process.env.FAKE_WINDOW_ERROR_CODE || 'window_not_found'
 const send = (value) => process.stdout.write(JSON.stringify(value) + '\n')
 let sessionDir
 readline.createInterface({ input: process.stdin }).on('line', (line) => {
@@ -44,7 +45,7 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
       return send({ id: req.id, ok: false, code: 'hook_unavailable', message: 'hook_unavailable: 注入逾時' })
     }
     if (mode === 'async-window-lost' && fs.existsSync(process.env.FAKE_WINDOW_GONE)) {
-      return send({ id: req.id, ok: false, code: 'window_not_found', message: `window_not_found: No visible window found for PID ${req.pid}` })
+      return send({ id: req.id, ok: false, code: windowErrorCode, message: `window_not_found: No visible window found for PID ${req.pid}` })
     }
     if (mode === 'start-stall') return send({ id: req.id, ok: true })
     sessionDir = req.session_dir
@@ -94,7 +95,7 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
     // The game is closing: its window is destroyed while the process is still alive.
     if (mode === 'async-window-lost') setTimeout(() => {
       fs.writeFileSync(process.env.FAKE_WINDOW_GONE, '')
-      send({ ev: 'error', code: 'window_not_found', message: 'window_not_found: Game capture window disappeared; restart capture on the current game window' })
+      send({ ev: 'error', code: windowErrorCode, message: 'window_not_found: Game capture window disappeared; restart capture on the current game window' })
       send({ ev: 'stopped', reason: 'error' })
     }, 30)
     if (mode === 'async-hook-unavailable' && req.capture === 'hook') setTimeout(() => {
@@ -105,6 +106,9 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
   }
   if (req.cmd === 'stop') {
     if (mode === 'stop-stall') return
+    if (mode === 'async-window-lost' && process.env.FAKE_WINDOW_STOP_ERROR && fs.existsSync(process.env.FAKE_WINDOW_GONE)) {
+      return send({ id: req.id, ok: false, code: windowErrorCode, message: 'window_not_found: Game capture window disappeared' })
+    }
     send({ ev: 'stopped', reason: 'requested' })
     send({ id: req.id, ok: true })
     return
