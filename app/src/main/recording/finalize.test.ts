@@ -2,7 +2,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest
 import fs from 'fs'
 import path from 'path'
 import { spawnSync } from 'child_process'
-import { finalizeSession, readIndex } from './finalize'
+import { finalizeSession, publishRecordingPart, readIndex, resumeMatchPart } from './finalize'
 import { recoverSessions } from './recovery'
 import { RecordingSessionService } from './session'
 import { copySegments, createSegments, ffmpeg, makeDeps, sessionDir, tempRoot } from './test-support'
@@ -32,6 +32,60 @@ describe('recording index and safety boundaries', () => {
     expect(fs.existsSync(other)).toBe(true)
     await expect(finalizeSession(base, deps)).rejects.toThrow('無效')
     expect(fs.existsSync(base)).toBe(true)
+  })
+
+  it.each([undefined, '', '{"seq":1'])('preserves unindexed segments when the index is missing, empty, or interrupted: %s', async (index) => {
+    const base = root(); const dir = sessionDir(base); const deps = makeDeps(base)
+    if (index !== undefined) fs.writeFileSync(path.join(dir, 'index.jsonl'), index)
+    const segment = path.join(dir, 'seg_000001.m4s')
+    fs.writeFileSync(segment, 'recoverable footage')
+    await expect(finalizeSession(dir, deps)).rejects.toThrow('已保留工作')
+    expect(fs.readFileSync(segment, 'utf8')).toBe('recoverable footage')
+  })
+
+  it.each([false, true])('does not overwrite a competing output during publication (copy fallback: %s)', async (fallback) => {
+    const dir = sessionDir(root()); const part = path.join(dir, 'test.part.mp4'); const output = path.join(dir, 'test.mp4')
+    fs.writeFileSync(part, 'recording')
+    const link = fs.promises.link.bind(fs.promises)
+    const spy = vi.spyOn(fs.promises, 'link').mockImplementationOnce(async (from, to) => {
+      fs.writeFileSync(output, 'competing video')
+      if (fallback) throw Object.assign(new Error('unsupported'), { code: 'ENOTSUP' })
+      return link(from, to)
+    })
+    try {
+      await expect(publishRecordingPart(part, output)).rejects.toMatchObject({ code: 'EEXIST' })
+      expect(fs.readFileSync(output, 'utf8')).toBe('competing video')
+      expect(fs.readFileSync(part, 'utf8')).toBe('recording')
+    } finally { spy.mockRestore() }
+  })
+
+  it.each(['link', 'copy', 'collision', 'partial copy'])('recovers pending publication without discarding a different output: %s', async (state) => {
+    const base = root(); const dir = sessionDir(base)
+    const output = path.join(base, 'videos', 'test.mp4'); const part = output.replace('.mp4', '.part.mp4')
+    fs.writeFileSync(part, 'recording')
+    fs.writeFileSync(path.join(dir, 'match-part.json'), JSON.stringify({ output, part }))
+    if (state === 'link') fs.linkSync(part, output)
+    else fs.writeFileSync(output, state === 'copy' ? 'recording' : state === 'collision' ? 'different' : 'rec')
+    if (state === 'collision' || state === 'partial copy') {
+      await expect(resumeMatchPart(dir, { cuts: [{ outputPath: output }] })).rejects.toThrow('已存在')
+      expect(fs.readFileSync(part, 'utf8')).toBe('recording')
+      expect(fs.existsSync(path.join(dir, 'match-part.json'))).toBe(true)
+    } else {
+      expect(await resumeMatchPart(dir, { cuts: [{ outputPath: output }] })).toBeNull()
+      expect(fs.existsSync(part)).toBe(false)
+    }
+    expect(fs.readFileSync(output, 'utf8')).toBe(state === 'collision' ? 'different' : state === 'partial copy' ? 'rec' : 'recording')
+  })
+
+  it('publishes with exclusive copying when hard links are unsupported', async () => {
+    const dir = sessionDir(root()); const part = path.join(dir, 'test.part.mp4'); const output = path.join(dir, 'test.mp4')
+    fs.writeFileSync(part, 'recording')
+    const spy = vi.spyOn(fs.promises, 'link').mockRejectedValueOnce(Object.assign(new Error('unsupported'), { code: 'ENOTSUP' }))
+    try {
+      await publishRecordingPart(part, output)
+      expect(fs.readFileSync(output, 'utf8')).toBe('recording')
+      expect(fs.existsSync(part)).toBe(false)
+    } finally { spy.mockRestore() }
   })
 
   it('a finalized marker only retries library insertion and preserves the session when output is missing', async () => {
@@ -249,25 +303,25 @@ describe.skipIf(!ffmpeg)('finalization with real ffmpeg streams', () => {
   })
 
   it.each([
-    ['marker write', (operation: 'open' | 'rename', file: string) => operation === 'open' && file.endsWith('finalized.json.tmp')],
-    ['rename', (operation: 'open' | 'rename', file: string) => operation === 'rename' && file.endsWith('.part.mp4')]
+    ['marker write', (operation: 'open' | 'link', file: string) => operation === 'open' && file.endsWith('finalized.json.tmp')],
+    ['publish', (operation: 'open' | 'link', file: string) => operation === 'link' && file.endsWith('.part.mp4')]
   ] as const)('recovers from a %s failure without producing a second output', async (name, failsOn) => {
     const base = root(); const deps = makeDeps(base); deps.ffmpegPath = ffmpeg!
     const dir = sessionDir(base); copySegments(segments, dir)
     const open = fs.promises.open.bind(fs.promises)
-    const rename = fs.promises.rename.bind(fs.promises)
+    const link = fs.promises.link.bind(fs.promises)
     let failed = false
-    const fail = (operation: 'open' | 'rename', file: unknown) => {
+    const fail = (operation: 'open' | 'link', file: unknown) => {
       if (!failed && failsOn(operation, String(file))) { failed = true; throw new Error('simulated failure') }
     }
     const spies = [
       vi.spyOn(fs.promises, 'open').mockImplementation((async (file: string, ...rest: unknown[]) => { fail('open', file); return (open as any)(file, ...rest) }) as never),
-      vi.spyOn(fs.promises, 'rename').mockImplementation(async (from, to) => { fail('rename', from); return rename(from, to) })
+      vi.spyOn(fs.promises, 'link').mockImplementation(async (from, to) => { fail('link', from); return link(from, to) })
     ]
     try {
       await expect(finalizeSession(dir, deps)).rejects.toThrow('simulated failure')
-      // The rename row recovers the part left by the first attempt without remuxing again.
-      if (name === 'rename') deps.ffmpegPath = 'must-not-run'
+      // The publication row recovers the part left by the first attempt without remuxing again.
+      if (name === 'publish') deps.ffmpegPath = 'must-not-run'
       const [output] = await finalizeSession(dir, deps)
       expect(path.basename(output)).not.toMatch(/_2\.mp4$/)
       const names = fs.readdirSync(path.dirname(output))
@@ -279,11 +333,11 @@ describe.skipIf(!ffmpeg)('finalization with real ffmpeg streams', () => {
   it('re-finalizes from segments when a reserved part disappeared after the final marker was written', async () => {
     const base = root(); const deps = makeDeps(base); deps.ffmpegPath = ffmpeg!
     const dir = sessionDir(base); copySegments(segments, dir)
-    const rename = fs.promises.rename.bind(fs.promises)
+    const link = fs.promises.link.bind(fs.promises)
     let failed = false
-    const spy = vi.spyOn(fs.promises, 'rename').mockImplementation(async (from, to) => {
+    const spy = vi.spyOn(fs.promises, 'link').mockImplementation(async (from, to) => {
       if (!failed && String(from).endsWith('.part.mp4')) { failed = true; throw new Error('simulated failure') }
-      return rename(from, to)
+      return link(from, to)
     })
     try {
       await expect(finalizeSession(dir, deps)).rejects.toThrow('simulated failure')

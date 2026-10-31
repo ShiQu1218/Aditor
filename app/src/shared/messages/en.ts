@@ -151,6 +151,7 @@ const messages: MessageTable = {
   '錄影段落不是一般檔案：{file}': 'Recording segment is not a regular file: {file}',
   '有 {count} 個錄影段落檔案遺失（可能被防毒或同步程式移除），已略過缺少的部分並輸出：{output}': '{count} recording segment files were missing (possibly removed by antivirus or a sync client). The missing parts were skipped and the rest was saved: {output}',
   '錄影段落檔案全部遺失，無法輸出影片，已保留工作': 'All recording segment files are missing, so no video can be produced. The recording job has been kept.',
+  '錄影索引遺失或不完整，但仍有錄影片段，已保留工作': 'The recording index is missing or incomplete, but recording segments remain. The recording job has been kept.',
   '錄影資料夾位於雲端同步資料夾（{dir}），同步程式可能移動或鎖定錄影段落，導致即時預覽失效或影片遺失，建議改用未同步的本機資料夾': 'The recording folder is inside a cloud-synced folder ({dir}). The sync client may move or lock recording segments, breaking live preview or losing video. Use a local folder that is not synced.',
   '錄影資料夾位於網路磁碟（{dir}），寫入延遲或連線中斷可能導致即時預覽失效或影片遺失，建議改用本機磁碟': 'The recording folder is on a network drive ({dir}). Write delays or disconnections may break live preview or lose video. Use a local drive.',
   '錄影串接失敗：{stderr}': 'Recording concatenation failed: {stderr}',

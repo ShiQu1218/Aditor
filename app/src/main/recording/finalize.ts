@@ -1,6 +1,7 @@
 import fs from 'fs'
 import path from 'path'
 import { spawn } from 'child_process'
+import { createHash } from 'crypto'
 import { Readable } from 'stream'
 import { pipeline } from 'stream/promises'
 import type { LiveMatch, PostRecordAnalysis, RecordingMode } from '../../shared/recording'
@@ -140,6 +141,22 @@ export async function readOptional<T>(file: string): Promise<T | null> {
   }
 }
 
+/** Publish without replacing a file created after the output name was reserved. */
+export async function publishRecordingPart(part: string, output: string): Promise<void> {
+  try { await fs.promises.link(part, output) }
+  catch (error) {
+    if (!['EPERM', 'ENOTSUP', 'EOPNOTSUPP', 'ENOSYS', 'EXDEV'].includes((error as NodeJS.ErrnoException).code ?? '')) throw error
+    await fs.promises.copyFile(part, output, fs.constants.COPYFILE_EXCL)
+  }
+  await fs.promises.unlink(part)
+}
+
+async function fileDigest(file: string): Promise<string> {
+  const hash = createHash('sha256')
+  for await (const chunk of fs.createReadStream(file)) hash.update(chunk)
+  return hash.digest('hex')
+}
+
 /** The output file must be directly under outputDir (legacy) or outputDir/<YYYY-MM-DD>/. */
 export function inOutputDir(outputPath: unknown, outputDir: string): boolean {
   if (typeof outputPath !== 'string') return false
@@ -171,7 +188,7 @@ export async function resumeMatchPart(dir: string, marker: { cuts: { outputPath:
   if (!outputInDir(pending.output, path.dirname(path.dirname(dir))) || pending.part !== pending.output.slice(0, -4) + '.part.mp4') {
     throw new Error(tr('逐局暫存影片路徑無效'))
   }
-  if (marker.cuts.some((cut) => cut.outputPath === pending.output) && !fs.existsSync(pending.output)) {
+  if (marker.cuts.some((cut) => cut.outputPath === pending.output)) {
     let stat: fs.Stats | null = null
     try {
       stat = await fs.promises.lstat(pending.part)
@@ -179,11 +196,25 @@ export async function resumeMatchPart(dir: string, marker: { cuts: { outputPath:
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
     }
     if (!stat) {
+      if (fs.existsSync(pending.output)) {
+        await fs.promises.unlink(file)
+        return null
+      }
       // Keep the reservation until the caller has persisted removal of the stale marker.
       return pending.output
     }
     if (!stat.isFile() || stat.isSymbolicLink()) throw new Error(tr('逐局暫存影片不是一般檔案'))
-    await fs.promises.rename(pending.part, pending.output)
+    if (fs.existsSync(pending.output)) {
+      const outputStat = await fs.promises.lstat(pending.output)
+      // A completed link/copy may precede a crash; only discard the part when both files contain the same video.
+      if (!outputStat.isFile() || outputStat.isSymbolicLink() || outputStat.size !== stat.size ||
+          await fileDigest(pending.part) !== await fileDigest(pending.output)) {
+        throw new Error(tr('輸出影片已存在：{output}', { output: pending.output }))
+      }
+      await fs.promises.unlink(pending.part)
+    } else {
+      await publishRecordingPart(pending.part, pending.output)
+    }
   } else {
     await fs.promises.unlink(pending.part).catch((error: NodeJS.ErrnoException) => { if (error.code !== 'ENOENT') throw error })
   }
@@ -217,11 +248,11 @@ async function remuxMatch(dir: string, deps: RecordingDeps, config: SessionSnaps
     if (fs.existsSync(output)) throw new Error(tr('輸出影片已存在：{output}', { output }))
     const cut: MatchCut = { index, ...match, firstSeq: entries[0].seq, lastSeq: entries.at(-1)!.seq,
       outputPath: output, analysisQueued: false, liveCached: false, liveTrusted: false }
-    // Persist the marker before renaming so recovery can reuse the temporary file without leaving an unregistered final video.
+    // Persist the marker before publishing so recovery can reuse the temporary file without leaving an unregistered final video.
     await writeJson(path.join(dir, 'matches.json'), { ...marker, cuts: [...marker.cuts, cut] })
     marker.cuts.push(cut)
     recorded = true
-    await fs.promises.rename(part, output)
+    await publishRecordingPart(part, output)
     await fs.promises.unlink(pending)
     return cut
   } catch (error) {
@@ -359,7 +390,7 @@ export async function cutMatches(dir: string, deps: RecordingDeps, options: Matc
       options.onCut?.(cut.outputPath)
     } catch (error) {
       cutError(index, error, options)
-      // If the marker was written but rename failed, restore the temporary file before the next match can overwrite this reservation.
+      // If the marker was written but publication failed, restore the temporary file before the next match can overwrite this reservation.
       const stale = await resumeMatchPart(dir, marker)
       if (stale) await dropStaleCut(dir, marker, stale)
     }
@@ -451,7 +482,7 @@ export async function finalizeSession(dir: string, deps: RecordingDeps): Promise
   if (marker) {
     const stale = await resumeMatchPart(dir, { cuts: [marker] })
     if (stale === marker.outputPath) {
-      // The reserved part was deleted before its rename: drop the marker and finalize again from the segments below.
+      // The reserved part was deleted before publication: drop the marker and finalize again from the segments below.
       await fs.promises.unlink(markerPath)
       marker = null
     }
@@ -459,6 +490,9 @@ export async function finalizeSession(dir: string, deps: RecordingDeps): Promise
   if (!marker) {
     const entries = await readIndex(dir)
     if (entries.length === 0) {
+      if ((await fs.promises.readdir(dir)).some((name) => /^seg_\d+\.m4s$/i.test(name))) {
+        throw new Error(tr('錄影索引遺失或不完整，但仍有錄影片段，已保留工作'))
+      }
       await fs.promises.rm(dir, { recursive: true })
       return []
     }
@@ -491,7 +525,7 @@ export async function finalizeSession(dir: string, deps: RecordingDeps): Promise
     const pending = path.join(dir, 'match-part.json')
     let recorded = false
     try {
-      // Same order as per-match cuts: persist the reservation and marker before the rename, so recovery finishes it instead of remuxing again.
+      // Same order as per-match cuts: persist the reservation and marker before publication, so recovery finishes it instead of remuxing again.
       await writeJson(pending, { output, part })
       await remux(deps.ffmpegPath, segmentPaths(dir, present), part, config)
       await fs.promises.access(output).then(() => {
@@ -500,7 +534,7 @@ export async function finalizeSession(dir: string, deps: RecordingDeps): Promise
       marker = { outputPath: output, postAnalysis: config.postAnalysis, analysisQueued: false }
       await writeJson(markerPath, marker)
       recorded = true
-      await fs.promises.rename(part, output)
+      await publishRecordingPart(part, output)
       await fs.promises.unlink(pending)
       reportMissing(deps, missing, output)
     } catch (error) {
