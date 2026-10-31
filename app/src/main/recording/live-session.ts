@@ -164,6 +164,9 @@ export class LiveSession extends EventEmitter {
     await this.flush()
   }
 
+  /** Match boundaries came from an external source that dropped out, so lobby pruning and the completion marker are no longer safe. */
+  distrust(): void { this.failed = true }
+
   hasSegment(seq: number): boolean { return this.segmentIds.has(seq) }
 
   kills(): number { return countKills(this.snapshot.events, this.matches) }
