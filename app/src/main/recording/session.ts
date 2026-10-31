@@ -49,6 +49,10 @@ function audioDeviceHint(error: unknown): string {
   return tr('錄影音訊裝置無法使用，已停止自動重試。請在「設定 → 錄影」重新選擇系統聲音裝置或麥克風裝置，再手動開始錄影。詳細資訊：{details}', { details })
 }
 
+function windowNotFound(error: unknown): boolean {
+  return (error instanceof RecorderError && error.code === 'window_not_found') || String(error).includes('window_not_found:')
+}
+
 interface ActiveSession {
   pid: number
   game: GameId
@@ -576,7 +580,7 @@ export class RecordingSessionService implements RecordingService {
         this.notice('warning', tr('Hook擷取無法使用，本次改用螢幕擷取（DDA）：{reason}', { reason: hookReason }))
         return this.begin(pid, builtin)
       }
-      if (code === 'window_not_found') {
+      if (windowNotFound(error)) {
         // The game window is not there while the game starts or closes; retry until the watcher sees the process exit.
         this.log(`game window unavailable pid=${pid}: ${String(error)}`)
         this.idle()
@@ -706,7 +710,7 @@ export class RecordingSessionService implements RecordingService {
     const code = error instanceof RecorderError ? error.code : 'recorder_crashed'
     if (!finalized) return
     if (!this.running) return
-    if (code === 'window_not_found') {
+    if (windowNotFound(error)) {
       this.log(`game window lost pid=${session.pid}: ${error.message}`)
       this.idle()
       this.scheduleRestart()
@@ -779,7 +783,7 @@ export class RecordingSessionService implements RecordingService {
     try { await session.client.stop() }
     catch (error) {
       // The recorder already stopped because the game window closed; that is not a stop failure.
-      if (error instanceof RecorderError && error.code === 'window_not_found') this.log(`stop after window loss: ${error.message}`)
+      if (windowNotFound(error)) this.log(`stop after window loss: ${String(error)}`)
       else this.notice('error', tr('錄影程序停止失敗，將收尾已完成段落：{error}', { error: String(error) }))
     }
     this.update({ phase: 'finalizing' })

@@ -776,7 +776,7 @@ impl Session {
             }
             match notice {
                 Ok(CaptureNotice::Failed { message }) => {
-                    return Err((ErrorCode::CaptureFailed, message));
+                    return Err(failure(ErrorCode::CaptureFailed, message));
                 }
                 Ok(_) if !self.announced => {}
                 Ok(CaptureNotice::WindowLost) => self.events.emit(&Event::WindowLost),
@@ -1105,6 +1105,60 @@ mod tests {
             "frames": {"banner": [1, 2, 3, 4], "spec": [5, 6, 7, 8], "base": [1920, 1080]}
         }))
         .unwrap()
+    }
+
+    #[test]
+    fn runtime_capture_failures_preserve_the_specific_error_code() {
+        let (notices_tx, notices) = mpsc::channel();
+        let name = shm::shm_name(&format!("runtime-failure-{}", std::process::id()));
+        let mut session = Session {
+            announced: true,
+            capture_origin: 0,
+            dir: std::env::temp_dir(),
+            published: 0,
+            capture: None,
+            audio: None,
+            writer: None,
+            index: None,
+            shm: ShmWriter::create(
+                &name,
+                ShmLayout {
+                    banner: (2, 2),
+                    spec: (2, 2),
+                    thumb: (2, 2),
+                    killfeed: (0, 0),
+                },
+            )
+            .unwrap(),
+            segments: mpsc::channel().1,
+            notices,
+            small: mpsc::channel().1,
+            counts: Arc::new(Counts::default()),
+            events: Output::default().sink(),
+            last_stats: Instant::now(),
+            previous: EncodeStats::default(),
+            audio_stall_warned: false,
+            game_hidden: false,
+            visibility_changes: VecDeque::new(),
+        };
+        for (message, expected) in [
+            (
+                "window_not_found: Game capture window disappeared",
+                ErrorCode::WindowNotFound,
+            ),
+            (
+                "hook_unavailable: Capture hook stopped",
+                ErrorCode::HookUnavailable,
+            ),
+            ("Unexpected capture failure", ErrorCode::CaptureFailed),
+        ] {
+            notices_tx
+                .send(CaptureNotice::Failed {
+                    message: message.into(),
+                })
+                .unwrap();
+            assert_eq!(session.drain().unwrap_err(), (expected, message.into()));
+        }
     }
 
     #[test]

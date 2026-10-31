@@ -278,10 +278,11 @@ describe('recording service state machine', () => {
     expect(warnings).toEqual([['warning', 'Hook擷取無法使用，本次改用螢幕擷取（DDA）：遊戲材質遺失']])
   })
 
-  it('waits quietly for the game window instead of falling back or reporting errors when the game is closing', async () => {
+  it.each(['window_not_found', 'capture_failed'])('handles %s quietly when the game closes, including a concurrent stop failure', async (code) => {
     const value = rig()
     const gone = path.join(value.root, 'window-gone')
-    value.deps.recorderCommand = fakeCommand('async-window-lost', { FAKE_RECORDER_TRACE: value.trace, FAKE_WINDOW_GONE: gone })
+    value.deps.recorderCommand = fakeCommand('async-window-lost', { FAKE_RECORDER_TRACE: value.trace,
+      FAKE_WINDOW_GONE: gone, FAKE_WINDOW_ERROR_CODE: code, FAKE_WINDOW_STOP_ERROR: '1' })
     value.settings.captureMethod = 'hook'
     value.service = createRecordingService(value.deps)
     value.service.start()

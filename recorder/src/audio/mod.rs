@@ -11,7 +11,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender, SyncSender, TryRecvError, TrySendError};
 use std::sync::Arc;
 use std::thread::{self, JoinHandle};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use anyhow::{bail, Context, Result};
 use windows::core::{PCWSTR, PWSTR};
@@ -640,6 +640,8 @@ struct Source {
     anchor: Option<i64>,
     input_frames: i64,
     output_frames: i64,
+    last_packet: Instant,
+    stall_warned: bool,
 }
 
 impl Source {
@@ -651,6 +653,8 @@ impl Source {
             anchor: None,
             input_frames: 0,
             output_frames: 0,
+            last_packet: Instant::now(),
+            stall_warned: false,
         }
     }
 
@@ -661,9 +665,19 @@ impl Source {
                 Err(TryRecvError::Empty) => break,
                 Err(TryRecvError::Disconnected) => return Ok(false),
             };
+            self.last_packet = Instant::now();
+            self.stall_warned = false;
             self.convert(packet, timeline, origin)?;
         }
         Ok(true)
+    }
+
+    fn stalled(&mut self, now: Instant) -> bool {
+        if self.stall_warned || now.duration_since(self.last_packet) < Duration::from_secs(5) {
+            return false;
+        }
+        self.stall_warned = true;
+        true
     }
 
     fn convert(&mut self, packet: Packet, timeline: &mut Timeline, origin: i64) -> Result<()> {
@@ -732,6 +746,16 @@ fn mix_loop(
         }
         if matches!(mic_status, Some(Ok(false) | Err(_))) {
             mic = None;
+        }
+        // Loopback can legitimately stop delivering packets while the system is silent.
+        if mic
+            .as_mut()
+            .is_some_and(|source| source.stalled(Instant::now()))
+        {
+            let _ = warnings.send(AudioWarning {
+                code: "audio_capture_stalled",
+                message: "Microphone capture has received no packets for five seconds; continuing to record video with silence for that source".into(),
+            });
         }
         // Continue until the session stops: when all sources are gone we still emit silence so audio and video stay aligned.
         let finished = stop.load(Ordering::Acquire);
@@ -902,6 +926,67 @@ mod tests {
         drop(sender);
         assert!(!source.drain(&mut timeline, 0).unwrap());
         assert_eq!(timeline.take(480), vec![[0.5; 2]; 480]);
+    }
+
+    #[test]
+    fn microphone_stall_warns_once_and_silent_packets_reset_the_deadline() {
+        let (sender, packets) = mpsc::sync_channel(PACKET_CAPACITY);
+        let format = Format::new(48_000, 2, 8, Sample::Float(32), 3).unwrap();
+        let mut source = Source::new(format, packets);
+        let start = source.last_packet;
+        assert!(!source.stalled(start + Duration::from_millis(4999)));
+        assert!(source.stalled(start + Duration::from_secs(5)));
+        assert!(!source.stalled(start + Duration::from_secs(10)));
+
+        let mut silent = packet(0, AUDCLNT_BUFFERFLAGS_SILENT.0 as u32, 0.0, 480);
+        silent.bytes.clear();
+        sender.send(silent).unwrap();
+        let mut timeline = Timeline::new(0);
+        assert!(source.drain(&mut timeline, 0).unwrap());
+        assert_eq!(timeline.take(480), vec![[0.0; 2]; 480]);
+        assert!(!source.stalled(source.last_packet + Duration::from_millis(4999)));
+        assert!(source.stalled(source.last_packet + Duration::from_secs(5)));
+    }
+
+    #[test]
+    fn idle_microphone_warns_but_idle_loopback_does_not() {
+        for microphone in [false, true] {
+            let (_sender, packets) = mpsc::sync_channel(PACKET_CAPACITY);
+            let format = Format::new(48_000, 2, 8, Sample::Float(32), 3).unwrap();
+            let mut source = Source::new(format, packets);
+            source.last_packet = Instant::now() - Duration::from_secs(6);
+            let (system, mic) = if microphone {
+                (None, Some(source))
+            } else {
+                (Some(source), None)
+            };
+            let (warnings, observed) = mpsc::channel();
+            let stop = Arc::new(AtomicBool::new(false));
+            let worker_stop = stop.clone();
+            let blocks = Arc::new(Mutex::new(Vec::new()));
+            let worker = thread::spawn(move || {
+                mix_loop(
+                    system,
+                    mic,
+                    now_ticks(),
+                    &AudioConfig::default(),
+                    &worker_stop,
+                    Box::new(Collect(blocks)),
+                    warnings,
+                );
+            });
+            let warning = observed.recv_timeout(Duration::from_secs(1));
+            stop.store(true, Ordering::Release);
+            worker.join().unwrap();
+            if microphone {
+                let warning = warning.unwrap();
+                assert_eq!(warning.code, "audio_capture_stalled");
+                assert!(warning.message.contains("Microphone"));
+            } else {
+                assert!(warning.is_err());
+            }
+            assert!(observed.try_recv().is_err());
+        }
     }
 
     #[test]
