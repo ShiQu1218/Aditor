@@ -32,6 +32,8 @@ describe('EngineClient broken input pipe', () => {
     const processes: ReturnType<typeof fakeProcess>[] = []
     vi.mocked(spawn).mockImplementation(() => {
       const proc = fakeProcess()
+      // Real child processes announce a successful start before any output.
+      queueMicrotask(() => proc.emit('spawn'))
       processes.push(proc)
       return proc as unknown as ReturnType<typeof spawn>
     })

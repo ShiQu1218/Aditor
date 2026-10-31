@@ -152,8 +152,12 @@ describe('aditorrec JSON-lines client', () => {
 
   it('reports an error when the executable cannot be found', async () => {
     const root = tempRoot(); roots.push(root)
-    const value = new AditorrecClient({ command: path.join(root, 'missing.exe'), args: [] })
+    const onDiagnostic = vi.fn()
+    const value = new AditorrecClient({ command: path.join(root, 'missing.exe'), args: [] }, onDiagnostic)
     clients.push(value)
     await expect(value.hello()).rejects.toMatchObject({ code: 'recorder_spawn' })
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    // The stdin EPIPE and the exit that follow a failed spawn are the same failure, not separate reports.
+    expect(onDiagnostic.mock.calls.map(([diagnostic]) => diagnostic.code)).toEqual(['recorder_spawn'])
   })
 })

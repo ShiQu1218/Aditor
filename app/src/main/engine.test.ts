@@ -25,6 +25,14 @@ describe('EngineClient', () => {
     expect(res.engineVersion).toBe('0.1.0')
   })
 
+  it('reports a missing executable once as a spawn failure, not also as a crash', async () => {
+    const onDiagnostic = vi.fn()
+    client = new EngineClient({ command: path.join(os.tmpdir(), 'aditor-missing-engine.exe'), args: [], onDiagnostic })
+    await expect(client.start()).rejects.toThrow()
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(onDiagnostic.mock.calls.map(([diagnostic]) => diagnostic.code)).toEqual(['engine_spawn'])
+  })
+
   it('lowers the engine process priority after spawn', async () => {
     const setPriority = vi.fn()
     client = new EngineClient({ command: process.execPath, args: [FAKE_ENGINE], setPriority })

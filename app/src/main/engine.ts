@@ -87,7 +87,9 @@ export class EngineClient extends EventEmitter {
 
         // Analysis can start while a game is running (per-match analysis, watched folders). Below-normal lets the game
         // keep its CPU time; FFmpeg processes spawned by the engine inherit this priority class on Windows.
+        let spawned = false
         p.once('spawn', () => {
+          spawned = true
           if (p.pid === undefined) return
           try {
             if (this.opts.setPriority) this.opts.setPriority(p.pid)
@@ -125,7 +127,7 @@ export class EngineClient extends EventEmitter {
         })
 
         p.on('close', (code) => {
-          this._onClose(code)
+          this._onClose(code, spawned)
         })
       } catch (err) {
         reject(err)
@@ -196,7 +198,7 @@ export class EngineClient extends EventEmitter {
     return `exit code ${exitCode ?? 'signal'}${detail ? `: ${detail}` : ''}`
   }
 
-  private _onClose(_code: number | null): void {
+  private _onClose(_code: number | null, spawned: boolean): void {
     const reason = this._crashReason(_code)
     this.proc = null
     this.stdoutBuf = ''
@@ -221,12 +223,14 @@ export class EngineClient extends EventEmitter {
     if (this.isStopping) {
       return
     }
-    emitChildDiagnostic(this.opts.onDiagnostic, { component: 'rust-engine', code: 'engine_crashed', message: `Analysis engine exited unexpectedly (${this._crashReason(_code, true)})` })
 
     // Record crash
     const now = Date.now()
     this.crashTimes.push(now)
     this.crashTimes = this.crashTimes.filter((t) => now - t <= this.crashWindowMs)
+    // A failed spawn was already reported as engine_spawn; restarting at once would fail the same way, so the next request retries.
+    if (!spawned) return
+    emitChildDiagnostic(this.opts.onDiagnostic, { component: 'rust-engine', code: 'engine_crashed', message: `Analysis engine exited unexpectedly (${this._crashReason(_code, true)})` })
 
     this.emit('crash')
 
