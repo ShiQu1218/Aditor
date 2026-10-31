@@ -12,6 +12,22 @@ export function normalizeClips(clips: Clip[] | undefined): Clip[] {
   return out
 }
 
+/** Index only retained starts; newly generated suggestions must not suppress one another. */
+export function retainedStartLookup(clips: Clip[]): (start: number) => boolean {
+  const starts = clips.map((c) => c.start).filter(Number.isFinite).sort((a, b) => a - b)
+  return (start) => {
+    if (!Number.isFinite(start)) return false
+    let lo = 0, hi = starts.length
+    while (lo < hi) {
+      const mid = lo + Math.floor((hi - lo) / 2)
+      if (starts[mid] < start) lo = mid + 1
+      else hi = mid
+    }
+    return (lo < starts.length && Math.abs(starts[lo] - start) < 1) ||
+      (lo > 0 && Math.abs(starts[lo - 1] - start) < 1)
+  }
+}
+
 /**
  * Reanalysis merge rules (extension to spec §4.2):
  * keep all manual clips; keep accepted AI clips and mark them stale; discard old suggested/skipped AI clips;
@@ -23,11 +39,12 @@ export function mergeOnReanalyze(oldClips: Clip[], newAi: Clip[]): Clip[] {
     if (c.origin === 'manual') kept.push(c)
     else if (c.status === 'accepted') kept.push({ ...c, stale: true })
   }
+  const nearRetained = retainedStartLookup(kept)
   const ids = new Set(kept.map((c) => c.id))
   const added: Clip[] = []
   for (const n of normalizeClips(newAi)) {
     if (n.origin !== 'ai') continue
-    if (kept.some((k) => Math.abs(k.start - n.start) < 1)) continue
+    if (nearRetained(n.start)) continue
     // Generate a new ID if it collides with a retained clip, so the suggestion is not lost.
     let id = n.id
     while (ids.has(id)) id = `${id}_n`
