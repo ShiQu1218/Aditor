@@ -51,16 +51,15 @@ pub fn derive(events: &[Event], spectating: &[SpecInterval], profile: &Profile) 
     let mut first: VecDeque<(f64, NameSig)> = VecDeque::new();
     let mut signatures = VecDeque::new();
     for event in &mut result {
+        let i = specs.partition_point(|s| s.start <= event.t);
+        let spectating = i > 0 && event.t < ends[i - 1];
         let reason = if event.deleted {
             "deleted"
         } else if event.kind == "death" {
             "death"
         } else if !COUNTING_TYPES.contains(&event.kind.as_str()) {
             "not_counting_type"
-        } else if {
-            let i = specs.partition_point(|s| s.start <= event.t);
-            i > 0 && event.t < ends[i - 1]
-        } {
+        } else if spectating {
             "spectating"
         } else {
             while first
