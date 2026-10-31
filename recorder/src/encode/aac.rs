@@ -3,6 +3,8 @@ use std::{ffi::c_void, ptr};
 
 use anyhow::{ensure, Result};
 
+use crate::types::{AUDIO_RATE, AUDIO_SOURCE_GRACE_FRAMES};
+
 use super::{
     ffi::*,
     ffmpeg::{check, Encoder, Frame, Packet, AUDIO_BASE},
@@ -51,6 +53,12 @@ impl Audio {
             packets.extend(self.drain()?);
         }
         Ok(packets)
+    }
+    pub fn catch_up(&mut self, video_pts: i64) -> Result<Vec<Packet>> {
+        // Leave the mixer's source wait plus 100 ms for its block and thread scheduling.
+        let delay = AUDIO_SOURCE_GRACE_FRAMES + i64::from(AUDIO_RATE / 10);
+        let target = (i128::from(video_pts) * i128::from(AUDIO_RATE) / 10_000_000) as i64;
+        self.advance((target - delay).max(0))
     }
     pub fn advance(&mut self, target: i64) -> Result<Vec<Packet>> {
         ensure!(
@@ -137,6 +145,31 @@ impl Drop for Audio {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn mixer_source_wait_does_not_replace_real_audio_with_silence() {
+        let mut audio = Audio::new().unwrap();
+        let block_frames = i64::from(AUDIO_RATE / 100);
+        let mixer_delay =
+            (AUDIO_SOURCE_GRACE_FRAMES + block_frames) * 10_000_000 / i64::from(AUDIO_RATE);
+        for block in 0..100 {
+            let pts = block * 100_000;
+            audio.catch_up(pts + mixer_delay + 300_000).unwrap();
+            audio.push(&[0.5; 960], pts).unwrap();
+            assert_eq!(audio.written, (block + 1) * block_frames);
+        }
+        audio.finish(10_000_000).unwrap();
+    }
+
+    #[test]
+    fn missing_audio_still_catches_up_after_the_mixer_deadline() {
+        let mut audio = Audio::new().unwrap();
+        assert!(!audio.catch_up(5_000_000).unwrap().is_empty());
+        assert_eq!(audio.written, 9_600);
+        audio.push(&[0.5; 960], 2_000_000).unwrap();
+        assert_eq!(audio.written, 10_080);
+        audio.finish(5_000_000).unwrap();
+    }
 
     #[test]
     fn excessive_silence_is_rejected_without_advancing() {

@@ -781,11 +781,10 @@ fn advance_audio(
     fps: u32,
 ) -> Result<()> {
     if let Some(audio) = audio {
-        // When audio falls more than 200 ms behind, fill with silence; advance one frame at a time during long capture interruptions to maintain segment and memory limits.
-        let safe = (frame_tick(next_slot, fps) as i128 * 48_000 / 10_000_000 - 9_600).max(0) as i64;
+        // Use the last frame's start, not its future end; keep filling incrementally during capture gaps.
         muxer.push(
             audio
-                .advance(safe)
+                .catch_up(frame_tick(next_slot - 1, fps))
                 .with_context(|| format!("Audio catch-up video_next_slot={next_slot} fps={fps}"))?,
             false,
         )?;

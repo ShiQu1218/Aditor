@@ -191,6 +191,9 @@ impl AudioConfig {
 pub const AUDIO_RATE: u32 = 48_000;
 pub const AUDIO_CHANNELS: u32 = 2;
 
+/// Maximum time the mixer waits for a source before emitting silence.
+pub const AUDIO_SOURCE_GRACE_FRAMES: i64 = AUDIO_RATE as i64 / 5;
+
 /// Segment duration in seconds; GOP duration matches and is forcibly aligned.
 pub const SEGMENT_SECS: u32 = 2;
 

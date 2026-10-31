@@ -4,7 +4,7 @@ import { StringDecoder } from 'string_decoder'
 import type { RecorderCapabilities, RecorderGpu } from '../../shared/recording'
 import type { RecorderCommand } from './index'
 import { tr } from '../../shared/locale'
-import { emitChildDiagnostic, type ChildDiagnosticHandler } from '../../shared/child-diagnostics'
+import { emitChildDiagnostic, RECORDER_AUDIO_WARNING_CODES, type ChildDiagnosticHandler } from '../../shared/child-diagnostics'
 
 const MAX_BYTES = 64 * 1024
 /** `hello` may probe several GPUs and legitimately take a few seconds on some machines. */
@@ -209,6 +209,9 @@ export class AditorrecClient extends EventEmitter {
             typeof msg.message === 'string' ? msg.message : tr('錄影指令失敗')))
         } else if (typeof msg.ev === 'string') {
           if (msg.ev === 'error') this.error(String(msg.code ?? 'internal'), String(msg.message ?? 'Recorder error'))
+          if (msg.ev === 'warning' && RECORDER_AUDIO_WARNING_CODES.has(msg.code) && typeof msg.message === 'string') {
+            this.reportDiagnostic(msg.code, msg.message)
+          }
           this.emit('event', msg)
         }
         else throw new Error()
@@ -222,11 +225,15 @@ export class AditorrecClient extends EventEmitter {
     this.proc?.kill()
   }
 
-  private error(code: string, message: string, tags: Record<string, string> = {}): RecorderError {
+  private reportDiagnostic(code: string, message: string, tags: Record<string, string> = {}): void {
     if (!this.closing) {
       const phase: Record<string, string> = this.recordingSince === null ? { phase: 'startup' } : { phase: 'recording', uptime: uptimeBucket(Date.now() - this.recordingSince) }
       emitChildDiagnostic(this.onDiagnostic, { component: 'rust-recorder', code, message, tags: { ...this.startTags, ...this.probeTags, ...phase, ...tags } })
     }
+  }
+
+  private error(code: string, message: string, tags: Record<string, string> = {}): RecorderError {
+    this.reportDiagnostic(code, message, tags)
     const log = this.stderr.toString('utf8').trim()
     return new RecorderError(code, log ? `${message}\n${log}` : message)
   }

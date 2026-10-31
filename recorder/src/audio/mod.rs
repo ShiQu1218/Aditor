@@ -35,7 +35,7 @@ use windows::Win32::System::Threading::{CreateEventW, WaitForSingleObject};
 
 use crate::clock::{now_ticks, TICKS_PER_SEC};
 use crate::protocol::{AudioDevice, AudioDevices};
-use crate::types::{AudioConfig, RenderSource, AUDIO_RATE};
+use crate::types::{AudioConfig, RenderSource, AUDIO_RATE, AUDIO_SOURCE_GRACE_FRAMES};
 use mix::{
     frames_from_ticks, ticks_from_frames, Format, Resampler, Sample, Timeline, BLOCK_FRAMES,
 };
@@ -654,16 +654,16 @@ impl Source {
         }
     }
 
-    fn drain(&mut self, timeline: &mut Timeline, origin: i64) -> Result<()> {
+    fn drain(&mut self, timeline: &mut Timeline, origin: i64) -> Result<bool> {
         for _ in 0..PACKET_CAPACITY {
             let packet = match self.packets.try_recv() {
                 Ok(packet) => packet,
                 Err(TryRecvError::Empty) => break,
-                Err(TryRecvError::Disconnected) => break,
+                Err(TryRecvError::Disconnected) => return Ok(false),
             };
             self.convert(packet, timeline, origin)?;
         }
-        Ok(())
+        Ok(true)
     }
 
     fn convert(&mut self, packet: Packet, timeline: &mut Timeline, origin: i64) -> Result<()> {
@@ -713,20 +713,24 @@ fn mix_loop(
     let mut system_audio = Timeline::new(cursor);
     let mut mic_audio = Timeline::new(cursor);
     loop {
-        let system_error = system
+        let system_status = system
             .as_mut()
-            .and_then(|source| source.drain(&mut system_audio, origin).err());
-        if let Some(error) = system_error {
+            .map(|source| source.drain(&mut system_audio, origin));
+        if let Some(Err(error)) = &system_status {
             eprintln!("audio_source_lost: System audio conversion failed: {error:#}");
-            let _ = warnings.send(source_lost_warning(false, &error));
+            let _ = warnings.send(source_lost_warning(false, error));
+        }
+        if matches!(system_status, Some(Ok(false) | Err(_))) {
             system = None;
         }
-        let mic_error = mic
+        let mic_status = mic
             .as_mut()
-            .and_then(|source| source.drain(&mut mic_audio, origin).err());
-        if let Some(error) = mic_error {
+            .map(|source| source.drain(&mut mic_audio, origin));
+        if let Some(Err(error)) = &mic_status {
             eprintln!("audio_source_lost: Microphone conversion failed: {error:#}");
-            let _ = warnings.send(source_lost_warning(true, &error));
+            let _ = warnings.send(source_lost_warning(true, error));
+        }
+        if matches!(mic_status, Some(Ok(false) | Err(_))) {
             mic = None;
         }
         // Continue until the session stops: when all sources are gone we still emit silence so audio and video stay aligned.
@@ -741,7 +745,7 @@ fn mix_loop(
             if !finished
                 && (system_audio.cursor + frames as i64 > now
                     || (system.is_some() && !system_audio.ready(frames, now, 1440))
-                    || (mic.is_some() && !mic_audio.ready(frames, now, 9600)))
+                    || (mic.is_some() && !mic_audio.ready(frames, now, AUDIO_SOURCE_GRACE_FRAMES)))
             {
                 break;
             }
@@ -885,6 +889,19 @@ mod tests {
         assert_eq!(dropped.load(Ordering::Relaxed), 1000);
         drop(receiver);
         assert!(!enqueue(&sender, packet(0, 0, 0.0, 480), &dropped));
+    }
+
+    #[test]
+    fn disconnected_source_drains_buffered_audio_and_stops_waiting() {
+        let (sender, packets) = mpsc::sync_channel(PACKET_CAPACITY);
+        let format = Format::new(48_000, 2, 8, Sample::Float(32), 3).unwrap();
+        let mut source = Source::new(format, packets);
+        let mut timeline = Timeline::new(0);
+        assert!(source.drain(&mut timeline, 0).unwrap());
+        sender.send(packet(0, 0, 0.5, 480)).unwrap();
+        drop(sender);
+        assert!(!source.drain(&mut timeline, 0).unwrap());
+        assert_eq!(timeline.take(480), vec![[0.5; 2]; 480]);
     }
 
     #[test]
