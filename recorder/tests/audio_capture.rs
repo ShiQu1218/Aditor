@@ -313,7 +313,7 @@ fn unavailable_process_loopback_warns_and_falls_back_to_device() {
     let mut capture =
         audio::AudioCapture::start(&cfg, clock::now_ticks(), Box::new(Sink(recording.clone())))
             .unwrap();
-    assert!(capture.take_warning().unwrap().contains("switched to system audio"));
+    assert!(capture.drain_warnings()[0].message.contains("switched to system audio"));
     thread::sleep(Duration::from_secs(2));
     capture.stop();
     verify(&recording.lock().unwrap());
@@ -338,7 +338,7 @@ fn process_loopback_captures_own_audio_and_ignores_render_device() {
     )
     .unwrap();
     assert!(
-        capture.take_warning().is_none(),
+        capture.drain_warnings().is_empty(),
         "This test must actually enable process audio"
     );
     thread::sleep(Duration::from_secs(2));

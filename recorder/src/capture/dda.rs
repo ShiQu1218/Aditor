@@ -920,8 +920,10 @@ mod tests {
 
     #[test]
     fn pointer_visibility_survives_desktop_only_and_throttled_mouse_updates() {
-        let mut info = DXGI_OUTDUPL_FRAME_INFO::default();
-        info.LastMouseUpdateTime = 1;
+        let mut info = DXGI_OUTDUPL_FRAME_INFO {
+            LastMouseUpdateTime: 1,
+            ..Default::default()
+        };
         info.PointerPosition.Visible = true.into();
         let mut visible = pointer_visible(false, &info);
         assert!(visible);

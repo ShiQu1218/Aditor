@@ -180,11 +180,6 @@ impl AudioCapture {
         self.warnings.try_iter().collect()
     }
 
-    /// Legacy single-warning accessor used by the device integration tests.
-    pub fn take_warning(&mut self) -> Option<String> {
-        self.warnings.try_recv().ok().map(|warning| warning.message)
-    }
-
     pub fn stop(mut self) {
         self.shutdown();
     }
