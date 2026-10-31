@@ -116,6 +116,12 @@ impl Default for KillLimits {
         }
     }
 }
+#[derive(Default)]
+struct DerivedSnapshot {
+    events: Vec<Event>,
+    spec: Vec<SpecInterval>,
+    derived: Vec<Event>,
+}
 pub struct LiveKills {
     profile: Profile,
     pub control: Option<ControlFeed>,
@@ -139,6 +145,7 @@ pub struct LiveKills {
     replay: Option<Vec<(f64, Prepared)>>,
     replay_bytes: usize,
     pub logs: Vec<String>,
+    snapshot_cache: std::cell::RefCell<DerivedSnapshot>,
 }
 impl LiveKills {
     pub fn new(p: &Profile, limits: KillLimits) -> Result<Self> {
@@ -169,6 +176,7 @@ impl LiveKills {
             replay: None,
             replay_bytes: 0,
             logs: vec![],
+            snapshot_cache: std::cell::RefCell::new(DerivedSnapshot::default()),
         })
     }
     pub fn phase(&self) -> &str {
@@ -404,7 +412,13 @@ impl LiveKills {
         if let Some(c) = &self.control {
             events.extend(c.events.clone());
         }
-        (crate::derive::derive(&events, &spec, &self.profile), spec)
+        let mut cache = self.snapshot_cache.borrow_mut();
+        if cache.events != events || cache.spec != spec {
+            cache.derived = crate::derive::derive(&events, &spec, &self.profile);
+            cache.events = events;
+            cache.spec = spec.clone();
+        }
+        (cache.derived.clone(), spec)
     }
     pub fn snapshot(&self) -> (Vec<Event>, Vec<SpecInterval>) {
         let src = if self.buf.is_some() {

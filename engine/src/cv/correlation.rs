@@ -118,7 +118,8 @@ fn spectrum(
             output
         });
         let a = Arc::new(a);
-        while cache.len() >= 40
+        // Live detection touches ~41 template spectra per frame; 40 entries thrashed.
+        while cache.len() >= 128
             || cache.iter().map(|(_, _, v)| v.len() * 16).sum::<usize>() + a.len() * 16
                 > 48 * 1024 * 1024
         {
@@ -272,6 +273,44 @@ mod tests {
             assert_eq!(spectrum.as_ref(), &saved);
         }
         assert_eq!(correlate(&src, 33, 17, &tpl, 7, 5), first);
+    }
+
+    #[test]
+    fn template_spectra_survive_a_frame_with_more_templates_than_the_old_cap() {
+        // Live detection correlates ~41 constant templates per frame; an LRU smaller than that
+        // working set evicted every template spectrum each frame.
+        SPECTRA.with(|cache| cache.borrow_mut().clear());
+        let templates: Vec<Arc<Vec<f64>>> = (0..41)
+            .map(|k| {
+                Arc::new(
+                    (0..7 * 5)
+                        .map(|i| ((i * 7) % 23 + k * 100) as f64)
+                        .collect(),
+                )
+            })
+            .collect();
+        let first_spectrum = || {
+            SPECTRA.with(|cache| {
+                cache
+                    .borrow()
+                    .iter()
+                    .find(|(_, values, _)| Arc::ptr_eq(values, &templates[0]))
+                    .map(|(_, _, spectrum)| spectrum.clone())
+            })
+        };
+        let mut computed = None;
+        for frame in 0..2 {
+            let src = Arc::new((0..33 * 17).map(|i| ((i + frame) % 251) as f64).collect());
+            for tpl in &templates {
+                correlate(&src, 33, 17, tpl, 7, 5);
+                computed = computed.or_else(first_spectrum);
+            }
+        }
+        let (computed, cached) = (computed.unwrap(), first_spectrum().unwrap());
+        assert!(
+            Arc::ptr_eq(&computed, &cached),
+            "first template spectrum was evicted and recomputed"
+        );
     }
 
     #[test]

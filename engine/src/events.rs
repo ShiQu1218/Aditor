@@ -30,6 +30,10 @@ struct Run {
     damage: bool,
     times: Vec<f64>,
     pair: bool,
+    cont_max: f64,
+    kind_segment: Option<(bool, usize, usize)>,
+    stable_kind: Option<bool>,
+    cut: Option<usize>,
 }
 impl Run {
     fn new(threshold: f64, suppressed: bool) -> Self {
@@ -49,6 +53,10 @@ impl Run {
             damage: false,
             times: vec![],
             pair: false,
+            cont_max: f64::NEG_INFINITY,
+            kind_segment: None,
+            stable_kind: None,
+            cut: None,
         }
     }
     fn family(&self) -> Option<char> {
@@ -63,10 +71,7 @@ impl Run {
             .clone()
     }
     fn reach(&self) -> f64 {
-        self.cont
-            .iter()
-            .copied()
-            .fold(self.frames.last().unwrap().0, f64::max)
+        self.frames.last().unwrap().0.max(self.cont_max)
     }
     fn representative(&self) -> Option<&NameSig> {
         self.support
@@ -100,6 +105,7 @@ impl Run {
     }
     fn add_cont(&mut self, t: f64) {
         self.cont.push(t);
+        self.cont_max = self.cont_max.max(t);
         self.add_time(t);
     }
     fn add(&mut self, t: f64, r: FrameResult, tentative: bool) {
@@ -113,6 +119,18 @@ impl Run {
         };
         self.damage |= r.damage_line;
         self.add_time(t);
+        let knock = r.kind.as_deref() == Some("knock");
+        let segment = self.kind_segment.get_or_insert((knock, i, 0));
+        if segment.0 != knock {
+            *segment = (knock, i, 0);
+        }
+        segment.2 += 1;
+        if segment.2 == 3 {
+            if self.stable_kind.is_some_and(|v| v != knock) && self.cut.is_none() {
+                self.cut = Some(segment.1);
+            }
+            self.stable_kind = Some(knock);
+        }
         self.frames.push((t, r.clone()));
         if tentative {
             self.pending = Some((t, r));
@@ -161,27 +179,9 @@ impl Run {
         if self.family() != Some('P') {
             return None;
         }
-        let mut segs: Vec<(bool, usize, usize)> = vec![];
-        for (i, (_, r)) in self.frames.iter().enumerate() {
-            let v = r.kind.as_deref() == Some("knock");
-            if let Some(s) = segs.last_mut().filter(|s| s.0 == v) {
-                s.2 += 1;
-            } else {
-                segs.push((v, i, 1));
-            }
-        }
-        let mut prev = None;
-        for (v, first, n) in segs {
-            if n < 3 {
-                continue;
-            }
-            if prev.is_some_and(|p| p != v) {
-                return Some(first);
-            }
-            prev = Some(v);
-        }
-        None
+        self.cut
     }
+
     fn is_break(&self, pend: &(f64, FrameResult), r: &FrameResult) -> bool {
         if self.discontinuity {
             return true;
@@ -393,5 +393,96 @@ impl EventTracker {
         self.flush_spec();
         self.run = None;
         self.snapshot()
+    }
+}
+
+#[cfg(test)]
+mod complexity_tests {
+    use super::*;
+    fn frame(knock: bool) -> FrameResult {
+        FrameResult {
+            kind: Some(if knock { "knock" } else { "assist_knock" }.into()),
+            score: 1.,
+            x: 0,
+            damage_line: false,
+            name_sig: None,
+            spectating: false,
+            hint: None,
+        }
+    }
+    fn scanned_cut(run: &Run) -> Option<usize> {
+        let mut segments: Vec<(bool, usize, usize)> = vec![];
+        for (i, (_, r)) in run.frames.iter().enumerate() {
+            let v = r.kind.as_deref() == Some("knock");
+            if let Some(s) = segments.last_mut().filter(|s| s.0 == v) {
+                s.2 += 1;
+            } else {
+                segments.push((v, i, 1));
+            }
+        }
+        let mut prev = None;
+        for (v, first, n) in segments {
+            if n < 3 {
+                continue;
+            }
+            if prev.is_some_and(|p| p != v) {
+                return Some(first);
+            }
+            prev = Some(v);
+        }
+        None
+    }
+    #[test]
+    fn incremental_matches_scans_and_reset() {
+        let mut run = Run::new(0.8, false);
+        let mut seed = 19u64;
+        for i in 0..1000 {
+            seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1);
+            run.add(i as f64 * STEP, frame(seed >> 62 != 0), false);
+            run.add_cont(i as f64 * STEP + 0.1);
+            assert_eq!(run.kind_cut(), scanned_cut(&run));
+            assert_eq!(
+                run.reach(),
+                run.cont
+                    .iter()
+                    .copied()
+                    .fold(run.frames.last().unwrap().0, f64::max)
+            );
+            if i % 37 == 36 {
+                let frames = run.frames.split_off(run.frames.len() / 2);
+                let cont = run.cont.clone();
+                run.reset(frames, &cont);
+            }
+        }
+    }
+    #[test]
+    #[ignore = "manual performance comparison"]
+    fn benchmark_tracking() {
+        for n in [1000, 2000, 4000, 8000] {
+            let measure = |scan: bool| {
+                let mut times = vec![];
+                for _ in 0..6 {
+                    let mut run = Run::new(0.8, false);
+                    let start = std::time::Instant::now();
+                    for i in 0..n {
+                        run.add(i as f64 * STEP, frame(true), false);
+                        std::hint::black_box(if scan {
+                            scanned_cut(&run)
+                        } else {
+                            run.kind_cut()
+                        });
+                    }
+                    times.push(start.elapsed());
+                }
+                times.remove(0);
+                times.sort();
+                times[2]
+            };
+            println!(
+                "tracking {n}: scan={:?} incremental={:?}",
+                measure(true),
+                measure(false)
+            );
+        }
     }
 }
