@@ -185,40 +185,50 @@ pub fn grab(
     }
     Ok(None)
 }
-pub(crate) fn sampled_frames(
+const SAMPLE_DECODERS: usize = 4;
+/// Grab `samples` evenly spaced frames with up to four decoders in flight and hand them to
+/// `consume` in sample order. A replacement decode starts before each frame is yielded, so the
+/// consumer's per-frame work overlaps with decoding instead of waiting at batch boundaries.
+pub(crate) fn sampled_frames<R>(
     duration: f64,
     samples: usize,
     grab: impl Fn(f64) -> Result<Option<Image<u8>>> + Sync,
-) -> impl Iterator<Item = Result<Image<u8>>> {
-    // Bound decoder memory while retaining the original sample order and retry positions.
-    (0..samples)
-        .step_by(4)
-        .flat_map(move |start| {
-            std::thread::scope(|scope| {
-                let handles: Vec<_> = (start..(start + 4).min(samples))
-                    .map(|i| {
-                        let grab = &grab;
-                        scope.spawn(move || {
-                            let t = duration * (i as f64 + 0.5) / samples as f64;
-                            let frame = grab(t)?;
-                            if frame.is_none() && t > 1. {
-                                grab(t - 1.)
-                            } else {
-                                Ok(frame)
-                            }
-                        })
-                    })
-                    .collect();
-                handles
-                    .into_iter()
-                    .map(|h| {
-                        h.join()
-                            .unwrap_or_else(|_| Err(anyhow::anyhow!("Sample worker panicked")))
-                    })
-                    .collect::<Vec<_>>()
-            })
+    consume: impl FnOnce(&mut dyn Iterator<Item = Result<Image<u8>>>) -> Result<R>,
+) -> Result<R> {
+    let grab = &grab;
+    let sample = move |i: usize| {
+        let t = duration * (i as f64 + 0.5) / samples as f64;
+        let frame = grab(t)?;
+        if frame.is_none() && t > 1. {
+            grab(t - 1.)
+        } else {
+            Ok(frame)
+        }
+    };
+    std::thread::scope(|scope| {
+        let mut pending = std::collections::VecDeque::with_capacity(SAMPLE_DECODERS);
+        let mut next = 0;
+        let mut failed = false;
+        let mut frames = std::iter::from_fn(|| {
+            let mut fill = |pending: &mut std::collections::VecDeque<_>, failed: bool| {
+                while !failed && pending.len() < SAMPLE_DECODERS && next < samples {
+                    let i = next;
+                    next += 1;
+                    pending.push_back(scope.spawn(move || sample(i)));
+                }
+            };
+            fill(&mut pending, failed);
+            let result = pending
+                .pop_front()?
+                .join()
+                .unwrap_or_else(|_| Err(anyhow::anyhow!("Sample worker panicked")));
+            failed |= result.is_err();
+            fill(&mut pending, failed);
+            Some(result)
         })
-        .filter_map(Result::transpose)
+        .filter_map(Result::transpose);
+        consume(&mut frames)
+    })
 }
 pub fn detect_aspect(
     path: &str,
@@ -233,13 +243,17 @@ pub fn detect_aspect(
             found: false,
         });
     }
-    let frames = sampled_frames(info.duration, DETECT_SAMPLES, |t| {
-        if cancel.is_some_and(|c| c.load(Ordering::Relaxed)) {
-            return Err(crate::errors::Cancelled.into());
-        }
-        grab(path, t, hwaccel, cancel)
-    });
-    choose_layout_results(frames, scene_dir)
+    sampled_frames(
+        info.duration,
+        DETECT_SAMPLES,
+        |t| {
+            if cancel.is_some_and(|c| c.load(Ordering::Relaxed)) {
+                return Err(crate::errors::Cancelled.into());
+            }
+            grab(path, t, hwaccel, cancel)
+        },
+        |frames| choose_layout_results(frames, scene_dir),
+    )
 }
 pub fn detect_layout(
     path: &str,
@@ -259,18 +273,22 @@ mod tests {
     fn parallel_samples_preserve_order_retries_and_bound_decoders() {
         let active = AtomicUsize::new(0);
         let peak = AtomicUsize::new(0);
-        let frames = sampled_frames(18., 9, |t| {
-            let count = active.fetch_add(1, Ordering::SeqCst) + 1;
-            peak.fetch_max(count, Ordering::SeqCst);
-            std::thread::sleep(Duration::from_millis(if t == 1. { 5 } else { 1 }));
-            active.fetch_sub(1, Ordering::SeqCst);
-            if [3., 4., 5.].contains(&t) {
-                Ok(None)
-            } else {
-                Ok(Some(Image::new(1, 1, 1, vec![t as u8])?))
-            }
-        })
-        .collect::<Result<Vec<_>>>()
+        let frames = sampled_frames(
+            18.,
+            9,
+            |t| {
+                let count = active.fetch_add(1, Ordering::SeqCst) + 1;
+                peak.fetch_max(count, Ordering::SeqCst);
+                std::thread::sleep(Duration::from_millis(if t == 1. { 5 } else { 1 }));
+                active.fetch_sub(1, Ordering::SeqCst);
+                if [3., 4., 5.].contains(&t) {
+                    Ok(None)
+                } else {
+                    Ok(Some(Image::new(1, 1, 1, vec![t as u8])?))
+                }
+            },
+            |frames| frames.collect::<Result<Vec<_>>>(),
+        )
         .unwrap();
         assert_eq!(
             frames.iter().map(|f| f.data[0]).collect::<Vec<_>>(),
@@ -281,18 +299,57 @@ mod tests {
     }
 
     #[test]
-    fn sample_error_stops_before_starting_the_next_batch() {
-        let mut frames = sampled_frames(18., 9, |t| {
-            assert!(t <= 7.);
-            if t == 3. {
-                bail!("sample failed");
-            }
-            Ok(Some(Image::new(1, 1, 1, vec![t as u8])?))
-        });
-        assert_eq!(frames.next().unwrap().unwrap().data, vec![1]);
-        assert_eq!(
-            frames.next().unwrap().unwrap_err().to_string(),
-            "sample failed"
+    fn decoding_continues_while_the_consumer_processes_a_frame() {
+        let started = AtomicUsize::new(0);
+        let overlapped = sampled_frames(
+            16.,
+            8,
+            |t| {
+                started.fetch_add(1, Ordering::SeqCst);
+                Ok(Some(Image::new(1, 1, 1, vec![t as u8])?))
+            },
+            |frames| {
+                frames.next().unwrap()?;
+                let deadline = std::time::Instant::now() + Duration::from_secs(2);
+                while started.load(Ordering::SeqCst) < 5 && std::time::Instant::now() < deadline {
+                    std::thread::sleep(Duration::from_millis(1));
+                }
+                let overlapped = started.load(Ordering::SeqCst) >= 5;
+                frames.for_each(drop);
+                Ok(overlapped)
+            },
+        )
+        .unwrap();
+        assert!(
+            overlapped,
+            "the next sample must start before the consumer asks for it"
         );
+        assert_eq!(started.load(Ordering::SeqCst), 8);
+    }
+
+    #[test]
+    fn sample_error_stops_scheduling_further_samples() {
+        let result = sampled_frames(
+            18.,
+            9,
+            |t| {
+                // Window of four: 1, 3, 5, 7 start first; consuming 1 starts 9; error at 3 stops.
+                assert!(t <= 9.);
+                if t == 3. {
+                    bail!("sample failed");
+                }
+                Ok(Some(Image::new(1, 1, 1, vec![t as u8])?))
+            },
+            |frames| {
+                assert_eq!(frames.next().unwrap().unwrap().data, vec![1]);
+                assert_eq!(
+                    frames.next().unwrap().unwrap_err().to_string(),
+                    "sample failed"
+                );
+                Ok(frames.count())
+            },
+        )
+        .unwrap();
+        assert!(result <= 3, "only samples already in flight may finish");
     }
 }
