@@ -230,7 +230,7 @@ export function useStudioSourceEdits({
     const suggested = shownClips.filter(isSuggested)
     if (suggested.length === 0) return
     const plan = planAddAll(suggested, videoPath, projectRef.current)
-    for (const c of suggested) dispatch({ type: 'acceptClip', id: c.id })
+    dispatch({ type: 'setClipStatuses', ids: suggested.map((c) => c.id), status: 'accepted' })
     if (plan.addedIds.length === 0) return
     apply(plan.project)
     const secs = Math.round(suggested.reduce((sum, c) => sum + Math.max(0, c.end - c.start), 0))
@@ -240,7 +240,7 @@ export function useStudioSourceEdits({
         label: i18n.studio.toast.undo,
         run: guarded('editClips', () => {
           apply(removeProjectItems(projectRef.current, plan.addedIds))
-          for (const c of suggested) dispatch({ type: 'restoreClip', id: c.id })
+          dispatch({ type: 'setClipStatuses', ids: suggested.map((c) => c.id), status: 'suggested' })
         })
       }
     })

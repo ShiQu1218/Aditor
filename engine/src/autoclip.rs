@@ -2,6 +2,7 @@ use crate::{
     derive::is_counted,
     models::{AutoClipParams, Clip, Event},
 };
+use std::collections::HashMap;
 
 pub fn auto_clips(events: &[Event], p: &AutoClipParams, duration: f64) -> Vec<Clip> {
     let mut events: Vec<_> = events.iter().filter(|e| is_counted(e)).collect();
@@ -16,9 +17,11 @@ pub fn auto_clips(events: &[Event], p: &AutoClipParams, duration: f64) -> Vec<Cl
         }
         groups.last_mut().unwrap().push(e);
     }
+    let times: HashMap<_, _> = events.iter().map(|e| (e.id.as_str(), e.t)).collect();
     let n = p.n.max(1) as usize;
     let mut clips: Vec<Clip> = Vec::new();
     for g in groups {
+        let gaps = GapIndex::new(&g);
         let mut pending = vec![(0, g.len())];
         while let Some((lo, hi)) = pending.pop() {
             if hi - lo < n {
@@ -42,12 +45,7 @@ pub fn auto_clips(events: &[Event], p: &AutoClipParams, duration: f64) -> Vec<Cl
                     } else {
                         (lo, hi - 1)
                     };
-                    let mut best = a;
-                    for i in a + 1..b {
-                        if g[i + 1].t - g[i].t > g[best + 1].t - g[best].t {
-                            best = i;
-                        }
-                    }
+                    let best = gaps.largest(a, b);
                     pending.push((best + 1, hi));
                     pending.push((lo, best + 1));
                     continue;
@@ -77,11 +75,9 @@ pub fn auto_clips(events: &[Event], p: &AutoClipParams, duration: f64) -> Vec<Cl
                             clips[i].event_ids.push(id);
                         }
                     }
-                    clips[i].event_ids.sort_by(|a, b| {
-                        let time =
-                            |id: &String| events.iter().rev().find(|e| &e.id == id).unwrap().t;
-                        time(a).total_cmp(&time(b))
-                    });
+                    clips[i]
+                        .event_ids
+                        .sort_by(|a, b| times[a.as_str()].total_cmp(&times[b.as_str()]));
                     changed = true;
                     continue;
                 }
@@ -104,3 +100,50 @@ pub fn auto_clips(events: &[Event], p: &AutoClipParams, duration: f64) -> Vec<Cl
     }
     clips
 }
+
+// Equal gaps choose the leftmost index, matching the original strict-greater scan.
+struct GapIndex {
+    size: usize,
+    tree: Vec<(f64, usize)>,
+}
+impl GapIndex {
+    fn better(a: (f64, usize), b: (f64, usize)) -> (f64, usize) {
+        if b.0 > a.0 || (b.0 == a.0 && b.1 < a.1) {
+            b
+        } else {
+            a
+        }
+    }
+    fn new(events: &[&Event]) -> Self {
+        let size = events.len().max(1).next_power_of_two();
+        let mut tree = vec![(f64::NEG_INFINITY, usize::MAX); 2 * size];
+        for (i, pair) in events.windows(2).enumerate() {
+            tree[size + i] = (pair[1].t - pair[0].t, i);
+        }
+        for i in (1..size).rev() {
+            tree[i] = Self::better(tree[2 * i], tree[2 * i + 1]);
+        }
+        Self { size, tree }
+    }
+    fn largest(&self, start: usize, end: usize) -> usize {
+        let (mut lo, mut hi) = (start + self.size, end + self.size);
+        let mut best = (f64::NEG_INFINITY, usize::MAX);
+        while lo < hi {
+            if lo % 2 == 1 {
+                best = Self::better(best, self.tree[lo]);
+                lo += 1;
+            }
+            if hi % 2 == 1 {
+                hi -= 1;
+                best = Self::better(best, self.tree[hi]);
+            }
+            lo /= 2;
+            hi /= 2;
+        }
+        best.1
+    }
+}
+
+#[cfg(test)]
+#[path = "autoclip_tests.rs"]
+mod tests;

@@ -14,6 +14,8 @@ export type ViewerAction =
   | { type: 'setFilter'; filter: Set<EventType> }
   | { type: 'addClip'; clip: Clip }
   | { type: 'updateClip'; clip: Clip }
+  | { type: 'updateClips'; clips: Clip[] }
+  | { type: 'setClipStatuses'; ids: string[]; status: 'accepted' | 'suggested' }
   | { type: 'removeClip'; id: string }
   | { type: 'setAiClips'; clips: Clip[] }
   | { type: 'acceptClip' | 'skipClip' | 'restoreClip'; id: string }
@@ -70,6 +72,25 @@ export function viewerReducer(state: ViewerState, action: ViewerAction): ViewerS
         doc: { ...state.doc, clips },
         dirty: true
       }
+    }
+
+    case 'updateClips': {
+      if (action.clips.length === 0) return state
+      const updates = new Map(action.clips.map((c) => [c.id, c]))
+      const clips = state.clips.map((c) => updates.get(c.id) ?? c)
+      return { ...state, clips, doc: { ...state.doc, clips }, dirty: true }
+    }
+
+    case 'setClipStatuses': {
+      const ids = new Set(action.ids)
+      let changed = false
+      const clips = state.clips.map((c) => {
+        if (!ids.has(c.id) || (c.status ?? 'accepted') === action.status ||
+            (action.status === 'suggested' && c.origin !== 'ai')) return c
+        changed = true
+        return { ...c, status: action.status }
+      })
+      return changed ? { ...state, clips, doc: { ...state.doc, clips }, dirty: true } : state
     }
 
     case 'removeClip': {
