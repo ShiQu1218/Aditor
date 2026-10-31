@@ -430,11 +430,11 @@ export function addRecorded(deps: RecordingDeps, paths: string[], game?: GameId)
   else deps.addToLibrary(paths)
 }
 
-/** MP4 tags the engine reads back for offline analysis; Apex recordings stay untagged for the game, as before. */
+/** MP4 tags the engine reads back for offline analysis; the game tag lets it skip sampling-based game detection. */
 export function gameMetadataArgs(config: { gameAspect?: string | null; game?: GameId }): string[] {
   const tags = [
     ...(config.gameAspect ? [`aditor_game_aspect=${config.gameAspect}`] : []),
-    ...(config.game && config.game !== DEFAULT_GAME ? [`aditor_game=${config.game}`] : [])
+    ...(config.game ? [`aditor_game=${config.game}`] : [])
   ]
   return [...tags.flatMap((tag) => ['-metadata', tag]), '-movflags', tags.length ? '+faststart+use_metadata_tags' : '+faststart']
 }

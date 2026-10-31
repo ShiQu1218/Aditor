@@ -152,18 +152,26 @@ pub fn detect(
     let mut apex = 0;
     let mut valorant = 0;
     if info.duration > 0. {
-        for frame in crate::aspect::sampled_frames(info.duration, 24, |t| {
-            if crate::calibrate::stopped(cancel) {
-                return Err(crate::errors::Cancelled.into());
-            }
-            grab(path, t, hwaccel, cancel)
-        }) {
-            match frame_game(&frame?, &matcher)? {
-                Some("valorant") => valorant += 1,
-                Some("apex") => apex += 1,
-                _ => (),
-            }
-        }
+        crate::aspect::sampled_frames(
+            info.duration,
+            24,
+            |t| {
+                if crate::calibrate::stopped(cancel) {
+                    return Err(crate::errors::Cancelled.into());
+                }
+                grab(path, t, hwaccel, cancel)
+            },
+            |frames| {
+                for frame in frames {
+                    match frame_game(&frame?, &matcher)? {
+                        Some("valorant") => valorant += 1,
+                        Some("apex") => apex += 1,
+                        _ => (),
+                    }
+                }
+                Ok(())
+            },
+        )?;
     }
     match (apex, valorant) {
         (a, v) if a >= 3 && a > v => Ok("apex".into()),
