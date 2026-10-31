@@ -207,7 +207,8 @@ fn run_loop<S: TextureSource, W: WindowProbe>(
             next_window_check = Instant::now() + WINDOW_CHECK;
             if !window.alive() {
                 let _ = notices.send(CaptureNotice::WindowLost);
-                bail!("hook_unavailable: Game capture window disappeared; restart capture on the current game window");
+                // Window loss is not a hook fault: report it like WGC/DDA so the app waits for the window instead of falling back.
+                bail!("window_not_found: Game capture window disappeared; restart capture on the current game window");
             }
         }
 
@@ -441,7 +442,7 @@ mod tests {
             origin_ticks: clock::now_ticks(),
             sdr_size: None,
         }, texture, info.format, source, window, consumer, notices, stopped, &ready).unwrap_err();
-        assert!(error.to_string().contains("hook_unavailable:"));
+        assert!(error.to_string().contains("window_not_found:"));
         assert!(events.try_iter().any(|e| e == CaptureNotice::WindowLost));
     }
 
