@@ -77,6 +77,7 @@ export interface LiveSessionOptions {
 
 export class LiveSession extends EventEmitter {
   private segments: LiveSegment[] = []
+  private segmentIds = new Set<number>()
   private matches: LiveMatch[] = []
   private snapshot: LiveSnapshot = { t: 0, events: [], spectating: [] }
   private mime: string | null = null
@@ -140,8 +141,9 @@ export class LiveSession extends EventEmitter {
   }
 
   addSegment(segment: LiveSegment): void {
-    if (this.segments.some((s) => s.seq === segment.seq)) return
-    this.segments = [...this.segments, segment]
+    if (this.segmentIds.has(segment.seq)) return
+    this.segmentIds.add(segment.seq)
+    this.segments.push(segment)
     this.emitUpdate({ segment })
   }
 
@@ -154,6 +156,7 @@ export class LiveSession extends EventEmitter {
       this.pruned = true
       if (this.restartedAt >= beganAt) this.failed = true
       const removed = new Set(sequences)
+      for (const seq of removed) this.segmentIds.delete(seq)
       this.segments = this.segments.filter(s => !removed.has(s.seq))
       this.scheduleWrite()
       this.emitUpdate({ segments: [...this.segments] })
@@ -161,7 +164,7 @@ export class LiveSession extends EventEmitter {
     await this.flush()
   }
 
-  hasSegment(seq: number): boolean { return this.segments.some((s) => s.seq === seq) }
+  hasSegment(seq: number): boolean { return this.segmentIds.has(seq) }
 
   kills(): number { return countKills(this.snapshot.events, this.matches) }
   matchIndex(): number | null { return this.matches.length ? this.matches.length : null }

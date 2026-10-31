@@ -154,6 +154,7 @@ pub struct LiveEngine {
     snap_doc: Value,
     win_frames: u64,
     win_cpu: f64,
+    snapshot_cpu: f64,
     pub cpu_total: f64,
 }
 impl LiveEngine {
@@ -190,6 +191,7 @@ impl LiveEngine {
             snap_doc: Value::Null,
             win_frames: 0,
             win_cpu: 0.,
+            snapshot_cpu: 0.,
             cpu_total: 0.,
         };
         e.snap_doc = e.body((vec![], vec![]));
@@ -295,11 +297,13 @@ impl LiveEngine {
         let mut out = vec![];
         if now - self.last_snap >= 1. {
             self.last_snap = now;
+            let start = process_cpu_seconds()?;
             let body = self.body(self.kills.snapshot());
             if body != self.snap_doc {
                 self.snap_doc = body.clone();
                 out.push(self.snapshot(body, None));
             }
+            self.snapshot_cpu += process_cpu_seconds()? - start;
         }
         if now - self.last_stats >= 5. {
             self.last_stats = now;
@@ -344,9 +348,11 @@ impl LiveEngine {
         } else {
             0.
         };
+        let snapshot_ms = self.snapshot_cpu * 1000.;
+        self.snapshot_cpu = 0.;
         self.win_frames = 0;
         self.win_cpu = 0.;
-        json!({"ev":"stats","t":self.last_t.unwrap_or(0.),"frames":self.frames,"skipped":self.skipped,"torn":self.torn,"lag_s":(self.lag_seconds()*1000.).round_ties_even()/1000.,"cpu_ms_per_frame":(per*1000.).round_ties_even()/1000.})
+        json!({"snapshot_cpu_ms":snapshot_ms,"ev":"stats","t":self.last_t.unwrap_or(0.),"frames":self.frames,"skipped":self.skipped,"torn":self.torn,"lag_s":(self.lag_seconds()*1000.).round_ties_even()/1000.,"cpu_ms_per_frame":(per*1000.).round_ties_even()/1000.})
     }
     pub fn quality(&self) -> Value {
         let mut reasons = self.kills.degraded().to_vec();

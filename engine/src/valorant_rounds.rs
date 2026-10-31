@@ -210,19 +210,30 @@ impl RoundTracker {
 pub fn round_highlights(events: &[Event], rounds: &[Round]) -> Vec<Event> {
     let mut assigned = std::collections::HashSet::new();
     let mut out = vec![];
+    let mut eligible: Vec<_> = events
+        .iter()
+        .filter(|e| {
+            e.kind == "kill"
+                && !e.deleted
+                && e.counted_override.unwrap_or(e.counted)
+                && !e.t.is_nan()
+        })
+        .collect();
+    eligible.sort_by(|a, b| a.t.total_cmp(&b.t));
     for r in rounds {
-        let mut kills: Vec<_> = events
+        if r.start.is_nan() || r.end.is_nan() {
+            continue;
+        }
+        let lo = eligible.partition_point(|e| e.t < r.start);
+        let hi = eligible.partition_point(|e| e.t < r.end + 3.);
+        if hi <= lo {
+            continue;
+        }
+        let kills: Vec<_> = eligible[lo..hi]
             .iter()
-            .filter(|e| {
-                e.kind == "kill"
-                    && !e.deleted
-                    && e.counted_override.unwrap_or(e.counted)
-                    && !assigned.contains(&e.id)
-                    && r.start <= e.t
-                    && e.t < r.end + 3.
-            })
+            .copied()
+            .filter(|e| !assigned.contains(&e.id))
             .collect();
-        kills.sort_by(|a, b| a.t.total_cmp(&b.t));
         for e in &kills {
             assigned.insert(e.id.clone());
         }

@@ -35,6 +35,19 @@ fn decoded<'a>(
 pub fn derive(events: &[Event], spectating: &[SpecInterval], profile: &Profile) -> Vec<Event> {
     let mut result = events.to_vec();
     result.sort_by(|a, b| a.t.total_cmp(&b.t));
+    let mut specs: Vec<_> = spectating
+        .iter()
+        .filter(|s| !s.start.is_nan() && !s.end.is_nan())
+        .collect();
+    specs.sort_by(|a, b| a.start.total_cmp(&b.start));
+    let mut end = f64::NEG_INFINITY;
+    let ends: Vec<_> = specs
+        .iter()
+        .map(|s| {
+            end = end.max(s.end);
+            end
+        })
+        .collect();
     let mut first: VecDeque<(f64, NameSig)> = VecDeque::new();
     let mut signatures = VecDeque::new();
     for event in &mut result {
@@ -44,10 +57,10 @@ pub fn derive(events: &[Event], spectating: &[SpecInterval], profile: &Profile) 
             "death"
         } else if !COUNTING_TYPES.contains(&event.kind.as_str()) {
             "not_counting_type"
-        } else if spectating
-            .iter()
-            .any(|s| s.start <= event.t && event.t < s.end)
-        {
+        } else if {
+            let i = specs.partition_point(|s| s.start <= event.t);
+            i > 0 && event.t < ends[i - 1]
+        } {
             "spectating"
         } else {
             while first

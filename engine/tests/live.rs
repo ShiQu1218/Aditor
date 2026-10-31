@@ -302,16 +302,24 @@ fn live_cli_frozen_json_lines_parity_after_writer_disappears() {
             .unwrap();
             drop(w);
             let rust = session(command(&n, game), stop);
+            assert!(rust
+                .iter()
+                .filter(|v| v["ev"] == "stats")
+                .all(|v| v["snapshot_cpu_ms"].as_f64().is_some_and(|ms| ms >= 0.)));
             drop(rust_reader);
             let scrub = |mut lines: Vec<Value>| {
                 for v in &mut lines {
                     if v["ev"] == "stats" {
                         v.as_object_mut().unwrap().remove("cpu_ms_per_frame");
+                        if let Some(ms) = v.get("snapshot_cpu_ms") {
+                            assert!(ms.as_f64().is_some_and(|v| v >= 0.));
+                        }
+                        v.as_object_mut().unwrap().remove("snapshot_cpu_ms");
                     }
                 }
                 lines
             };
-            // Only cpu_ms_per_frame is ignored: it measures process CPU time rather than frame content.
+            // CPU timing fields measure runtime cost rather than frame content.
             parity::close(&json!(scrub(rust)), &json!(scrub(py)));
         }
     }

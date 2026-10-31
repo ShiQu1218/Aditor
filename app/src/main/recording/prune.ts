@@ -11,10 +11,7 @@ export const LOBBY_BUFFER_SEC = 15
 export async function pruneSegments(dir: string, segments: readonly LiveSegment[], matches: readonly LiveMatch[], pending: number | null,
   analyzedT = Infinity, healthy: () => boolean = () => true, onRemoved: (sequences: number[]) => void = () => {}): Promise<number[]> {
   const latest = Math.min(segments.reduce((t, s) => Math.max(t, s.pts), 0), analyzedT)
-  const obsolete = segments.filter(s => s.pts + s.dur <= latest - LOBBY_BUFFER_SEC &&
-    !(pending !== null && s.pts + s.dur > pending - MATCH_PRE_PAD_SEC) &&
-    !matches.some(m => s.pts + s.dur > m.start - MATCH_PRE_PAD_SEC &&
-      (m.end === null || s.pts < m.end + MATCH_POST_PAD_SEC)))
+  const obsolete = obsoleteSegments(segments, matches, pending, latest)
   if (!obsolete.length) return []
   dir = await validateSessionDir(dir)
   await writeJson(path.join(dir, 'pruned.json'), { version: 1 })
@@ -34,4 +31,23 @@ export async function pruneSegments(dir: string, segments: readonly LiveSegment[
     }
   } finally { onRemoved(removed) }
   return removed
+}
+
+/** Pure selection keeps deletion and its health/path checks independent of the interval index. */
+export function obsoleteSegments(segments: readonly LiveSegment[], matches: readonly LiveMatch[], pending: number | null, latest: number): LiveSegment[] {
+  const ranges = matches.map(m => ({ start: m.start - MATCH_PRE_PAD_SEC, end: m.end === null ? Infinity : m.end + MATCH_POST_PAD_SEC }))
+    .filter(m => !Number.isNaN(m.start) && !Number.isNaN(m.end)).sort((a, b) => a.start - b.start)
+  let maxEnd = -Infinity
+  const ends = ranges.map(m => (maxEnd = Math.max(maxEnd, m.end)))
+  return segments.filter(s => {
+    if (!(s.pts + s.dur <= latest - LOBBY_BUFFER_SEC) ||
+        (pending !== null && s.pts + s.dur > pending - MATCH_PRE_PAD_SEC)) return false
+    let lo = 0, hi = ranges.length
+    while (lo < hi) {
+      const mid = lo + Math.floor((hi - lo) / 2)
+      if (ranges[mid].start < s.pts + s.dur) lo = mid + 1
+      else hi = mid
+    }
+    return !(lo > 0 && ends[lo - 1] > s.pts)
+  })
 }
