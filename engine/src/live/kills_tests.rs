@@ -126,3 +126,30 @@ fn late_replay_and_pending_caps_degrade_without_losing_events() {
     assert_eq!(k.late_from, 0.25);
     assert!(k.finish().is_ok());
 }
+
+#[test]
+fn snapshot_cache_tracks_edits_and_spectating_changes() {
+    let p = profile();
+    let k = LiveKills::new(&p, KillLimits::default()).unwrap();
+    let mut event: Event = serde_json::from_value(
+        serde_json::json!({"id":"e1", "t":1.,"type":"kill","score":1.,
+        "damage_line":false,"name_sig":null,"counted":false,"counted_reason":"","source":"auto"}),
+    )
+    .unwrap();
+    for spec in [
+        vec![],
+        vec![SpecInterval { start: 0., end: 1. }],
+        vec![SpecInterval { start: 0., end: 2. }],
+    ] {
+        for deleted in [false, true] {
+            event.deleted = deleted;
+            let expected = (
+                crate::derive::derive(&[event.clone()], &spec, &p),
+                spec.clone(),
+            );
+            assert_eq!(k.derived(vec![event.clone()], spec.clone()), expected);
+            assert_eq!(k.derived(vec![event.clone()], spec.clone()), expected);
+        }
+    }
+    assert_eq!(k.derived(vec![], vec![]), (vec![], vec![]));
+}
