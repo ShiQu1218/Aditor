@@ -575,12 +575,15 @@ impl Drop for ActiveCapture {
             self.signals.arrived.load(Ordering::Relaxed),
             self.signals.accepted.load(Ordering::Relaxed),
         );
-        eprintln!(
-            "WGC stats: {secs:.1}s arrived={arrived} ({:.1}/s) accepted={accepted} ({:.1}/s) min_interval={}%",
-            arrived as f64 / secs,
-            accepted as f64 / secs,
-            min_interval_percent()
-        );
+        // Callers treat any other stderr output as a failure, so stats stay opt-in.
+        if std::env::var_os("ADITORREC_DIAGNOSTICS").is_some_and(|value| value == "1") {
+            eprintln!(
+                "WGC stats: {secs:.1}s arrived={arrived} ({:.1}/s) accepted={accepted} ({:.1}/s) min_interval={}%",
+                arrived as f64 / secs,
+                accepted as f64 / secs,
+                min_interval_percent()
+            );
+        }
         if let Some(token) = self.frame_token.take() {
             let _ = self.pool.RemoveFrameArrived(token);
         }
