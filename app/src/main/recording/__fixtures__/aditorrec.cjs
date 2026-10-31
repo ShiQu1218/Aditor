@@ -43,6 +43,9 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
     if (mode === 'hook-unavailable' && req.capture === 'hook') {
       return send({ id: req.id, ok: false, code: 'hook_unavailable', message: 'hook_unavailable: 注入逾時' })
     }
+    if (mode === 'async-window-lost' && fs.existsSync(process.env.FAKE_WINDOW_GONE)) {
+      return send({ id: req.id, ok: false, code: 'window_not_found', message: `window_not_found: No visible window found for PID ${req.pid}` })
+    }
     if (mode === 'start-stall') return send({ id: req.id, ok: true })
     sessionDir = req.session_dir
     if (process.env.FAKE_SEGMENT_DIR) {
@@ -81,6 +84,12 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
     if (mode === 'crash') setTimeout(() => process.exit(9), 30)
     if (mode === 'async-no-hw') setTimeout(() => {
       send({ ev: 'error', code: 'no_hw_encoder', message: '沒有硬體編碼器' })
+      send({ ev: 'stopped', reason: 'error' })
+    }, 30)
+    // The game is closing: its window is destroyed while the process is still alive.
+    if (mode === 'async-window-lost') setTimeout(() => {
+      fs.writeFileSync(process.env.FAKE_WINDOW_GONE, '')
+      send({ ev: 'error', code: 'window_not_found', message: 'window_not_found: Game capture window disappeared; restart capture on the current game window' })
       send({ ev: 'stopped', reason: 'error' })
     }, 30)
     if (mode === 'async-hook-unavailable' && req.capture === 'hook') setTimeout(() => {

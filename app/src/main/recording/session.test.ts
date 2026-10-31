@@ -278,6 +278,25 @@ describe('recording service state machine', () => {
     expect(warnings).toEqual([['warning', 'Hook擷取無法使用，本次改用螢幕擷取（DDA）：遊戲材質遺失']])
   })
 
+  it('waits quietly for the game window instead of falling back or reporting errors when the game is closing', async () => {
+    const value = rig()
+    const gone = path.join(value.root, 'window-gone')
+    value.deps.recorderCommand = fakeCommand('async-window-lost', { FAKE_RECORDER_TRACE: value.trace, FAKE_WINDOW_GONE: gone })
+    value.settings.captureMethod = 'hook'
+    value.service = createRecordingService(value.deps)
+    value.service.start()
+    await waitFor(() => commands(value, 'start').length >= 2, 5000)
+    value.pid = null
+    await waitFor(() => value.service.status().phase === 'idle', 5000)
+    const starts = commands(value, 'start').length
+    await new Promise((resolve) => setTimeout(resolve, 1500))
+    expect(commands(value, 'start').length).toBe(starts)
+    expect(commands(value, 'start').every((start) => start.capture === 'hook')).toBe(true)
+    const notices = vi.mocked(value.deps.notify).mock.calls.filter(([kind]) => kind === 'error' || kind === 'warning')
+    expect(notices).toEqual([])
+    expect(value.service.status().error).toBeNull()
+  })
+
   it('auto resolves to dda on Windows builds that cannot hide the window capture border', async () => {
     const value = rig()
     value.deps.borderlessCapture = false

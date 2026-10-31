@@ -576,6 +576,13 @@ export class RecordingSessionService implements RecordingService {
         this.notice('warning', tr('Hook擷取無法使用，本次改用螢幕擷取（DDA）：{reason}', { reason: hookReason }))
         return this.begin(pid, builtin)
       }
+      if (code === 'window_not_found') {
+        // The game window is not there while the game starts or closes; retry until the watcher sees the process exit.
+        this.log(`game window unavailable pid=${pid}: ${String(error)}`)
+        this.idle()
+        this.scheduleRestart()
+        return false
+      }
       const audioUnavailable = unavailableAudioDevice(code, error)
       this.fail(code, audioUnavailable ? audioDeviceHint(error) : driverHint(code, error) ?? tr('無法開始錄影：{error}', { error: String(error) }))
       if (audioUnavailable || code === 'no_hw_encoder' || code === 'disk_full' || code === 'profile_invalid' || code === 'output_invalid') this.blocked = true
@@ -699,6 +706,12 @@ export class RecordingSessionService implements RecordingService {
     const code = error instanceof RecorderError ? error.code : 'recorder_crashed'
     if (!finalized) return
     if (!this.running) return
+    if (code === 'window_not_found') {
+      this.log(`game window lost pid=${session.pid}: ${error.message}`)
+      this.idle()
+      this.scheduleRestart()
+      return
+    }
     const hookReason = this.hookUnavailableReason(code, error)
     if (hookReason !== null && this.hookFallbackPid !== session.pid) {
       this.hookFallbackPid = session.pid
@@ -764,7 +777,11 @@ export class RecordingSessionService implements RecordingService {
     await session.obsWork
     this.clearDiskTimer()
     try { await session.client.stop() }
-    catch (error) { this.notice('error', tr('錄影程序停止失敗，將收尾已完成段落：{error}', { error: String(error) })) }
+    catch (error) {
+      // The recorder already stopped because the game window closed; that is not a stop failure.
+      if (error instanceof RecorderError && error.code === 'window_not_found') this.log(`stop after window loss: ${error.message}`)
+      else this.notice('error', tr('錄影程序停止失敗，將收尾已完成段落：{error}', { error: String(error) }))
+    }
     this.update({ phase: 'finalizing' })
     // Wait for the live engine's final snapshot to be written to live.json before converting it into an analysis cache.
     try {
