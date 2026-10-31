@@ -1,6 +1,6 @@
 import type { CacheDoc, Clip, EngineEvent } from '../../shared/types'
 import { isCounted } from '../../shared/types'
-import { mergeOnReanalyze, normalizeClips } from '../../shared/clips'
+import { mergeOnReanalyze, normalizeClips, retainedStartLookup } from '../../shared/clips'
 import type { AutoClipParams } from '../../shared/types'
 import { addItems, type Project, type ProjectItem } from '../editor/project'
 import { i18n } from '../i18n'
@@ -30,11 +30,12 @@ export function toSuggestions(clips: Clip[]): Clip[] {
  */
 export function applyAutoClip(oldClips: Clip[], newClips: Clip[]): Clip[] {
   const kept = normalizeClips(oldClips).filter((c) => !(c.origin === 'ai' && c.status === 'suggested'))
+  const nearRetained = retainedStartLookup(kept)
   const ids = new Set(kept.map((c) => c.id))
   const added: Clip[] = []
   for (const n of normalizeClips(newClips)) {
     if (n.origin !== 'ai') continue
-    if (kept.some((k) => Math.abs(k.start - n.start) < 1)) continue
+    if (nearRetained(n.start)) continue
     let id = n.id
     while (ids.has(id)) id = `${id}_n`
     ids.add(id)
@@ -96,8 +97,14 @@ export function linkedItem(clip: Clip, source: string, project: Project): Projec
  * repairs the source document after trims, undo/redo, and edits made while another video was open.
  */
 export function mirrorLinkedClips(project: Project, source: string, clips: Clip[]): Clip[] {
+  const src = normPath(source)
+  const linked = new Map<string, ProjectItem | null>()
+  for (const item of project.items) {
+    if (item.clipId === undefined || normPath(item.source) !== src) continue
+    linked.set(item.clipId, linked.has(item.clipId) ? null : item)
+  }
   return clips.flatMap((clip) => {
-    const item = linkedItem(clip, source, project)
+    const item = linked.get(clip.id)
     if (!item || (item.start === clip.start && item.end === clip.end)) return []
     return [{ ...clip, start: item.start, end: item.end }]
   })
@@ -173,10 +180,19 @@ const normPath = (p: string): string => p.replace(/\\/g, '/').toLowerCase()
  */
 export function withProjectStatus(clips: Clip[], source: string, project: Project): Clip[] {
   const src = normPath(source)
-  const ranges = project.items.filter((it) => normPath(it.source) === src)
+  const ranges = project.items.filter((it) => normPath(it.source) === src && !Number.isNaN(it.start) && !Number.isNaN(it.end))
+    .sort((a, b) => a.start - b.start)
+  let maxEnd = -Infinity
+  const ends = ranges.map((it) => (maxEnd = Math.max(maxEnd, it.end)))
   return clips.map((c) => {
     if ((c.status ?? 'accepted') !== 'accepted') return c
-    const inProject = ranges.some((it) => it.start < c.end && it.end > c.start)
+    let lo = 0, hi = ranges.length
+    while (lo < hi) {
+      const mid = lo + Math.floor((hi - lo) / 2)
+      if (ranges[mid].start < c.end) lo = mid + 1
+      else hi = mid
+    }
+    const inProject = lo > 0 && ends[lo - 1] > c.start
     return inProject ? c : { ...c, status: 'suggested' }
   })
 }
@@ -211,16 +227,37 @@ export interface AddAllPlan {
   addedIds: string[]
 }
 
-/** Add all (Ctrl+E): add each with idempotent acceptToProject; repeated calls do not create duplicate clips. */
+/** Add all (Ctrl+E), preserving the same source/epsilon rule as acceptToProject. */
 export function planAddAll(suggested: Clip[], source: string, project: Project): AddAllPlan {
-  let next = project
-  const addedIds: string[] = []
-  for (const c of suggested) {
-    const res = acceptToProject(c, source, next)
-    if (res.added.length > 0) next = { ...next, items: [...next.items, ...res.added] }
-    for (const it of res.added) addedIds.push(it.id)
+  const buckets = new Map<string, ProjectItem[]>()
+  const key = (start: number, end: number): string => `${start},${end}`
+  const add = (item: ProjectItem): void => {
+    const k = key(Math.floor(item.start / SAME_EPS), Math.floor(item.end / SAME_EPS))
+    const bucket = buckets.get(k)
+    if (bucket) bucket.push(item)
+    else buckets.set(k, [item])
   }
-  return { project: addedIds.length > 0 ? next : project, addedIds }
+  for (const item of project.items) if (item.source === source) add(item)
+  const added: ProjectItem[] = []
+  for (const clip of suggested) {
+    const x = Math.floor(clip.start / SAME_EPS), y = Math.floor(clip.end / SAME_EPS)
+    let duplicate = false
+    // shortcut: crowded buckets can still scan quadratically; use a range index if measured workloads require it.
+    // Extra neighbors cover floating-point rounding at bucket boundaries.
+    for (let dx = -2; dx <= 2 && !duplicate; dx++) {
+      for (let dy = -2; dy <= 2 && !duplicate; dy++) {
+        duplicate = buckets.get(key(x + dx, y + dy))?.some((it) => sameItem(it, source, clip)) ?? false
+      }
+    }
+    if (duplicate) continue
+    const item: ProjectItem = { id: newItemId(), source, start: clip.start, end: clip.end, clipId: clip.id }
+    added.push(item)
+    add(item)
+  }
+  return {
+    project: added.length ? { ...project, items: [...project.items, ...added] } : project,
+    addedIds: added.map((it) => it.id)
+  }
 }
 
 export interface AcceptPlan {

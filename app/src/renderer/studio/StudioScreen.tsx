@@ -168,7 +168,7 @@ export function StudioScreen({ videoPath, onBack, onRegisterLeaveGuard, onVideoR
   // clips load or change membership, but not on a clip's own edge drag, which would snap it back mid-drag.
   const clipIds = useMemo(() => state.clips.map((c) => c.id).join('\n'), [state.clips])
   useEffect(() => {
-    for (const clip of mirrorLinkedClips(project, videoPath, stateRef.current.clips)) dispatch({ type: 'updateClip', clip })
+    dispatch({ type: 'updateClips', clips: mirrorLinkedClips(project, videoPath, stateRef.current.clips) })
   }, [project, videoPath, clipIds])
 
   // Project-track collapse: 'auto' collapses when the window is ≤800px high; save manual changes to settings.
