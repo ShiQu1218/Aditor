@@ -63,6 +63,8 @@ export class AditorrecClient extends EventEmitter {
   private closed: Promise<void> = Promise.resolve()
   private startTags: Record<string, string> = {}
   private recordingSince: number | null = null
+  /** Whether the current process started; a failed spawn is reported once as recorder_spawn, not again as io or exit errors. */
+  private spawned = false
 
   constructor(private command: RecorderCommand, private onDiagnostic?: ChildDiagnosticHandler) { super() }
 
@@ -93,6 +95,8 @@ export class AditorrecClient extends EventEmitter {
       env: { ...process.env, ADITORREC_DIAGNOSTICS: '1', ...this.command.env }, windowsHide: true, stdio: 'pipe'
     })
     this.proc = proc
+    this.spawned = false
+    proc.once('spawn', () => { this.spawned = true })
     this.closed = new Promise((resolve) => {
       proc.once('close', (code, signal) => {
         this.proc = null
@@ -226,7 +230,7 @@ export class AditorrecClient extends EventEmitter {
   }
 
   private reportDiagnostic(code: string, message: string, tags: Record<string, string> = {}): void {
-    if (!this.closing) {
+    if (!this.closing && (this.spawned || code === 'recorder_spawn')) {
       const phase: Record<string, string> = this.recordingSince === null ? { phase: 'startup' } : { phase: 'recording', uptime: uptimeBucket(Date.now() - this.recordingSince) }
       emitChildDiagnostic(this.onDiagnostic, { component: 'rust-recorder', code, message, tags: { ...this.startTags, ...this.probeTags, ...phase, ...tags } })
     }
