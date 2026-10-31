@@ -29,7 +29,7 @@ Run 測試為同一長 knock 提示，每新增樣本就查切割點，前後共
 - Rust library 31 項測試通過；新增增量統計與原掃描比對（包含 reset）、快照快取事件修正及觀戰區間變更檢查。
 - 新增 100 組回合精華差異測試，包含亂序、重複 ID 與重疊回合；既有 derive/autoclip parity、derive、Valorant round parity 及即時 CLI parity 通過。
 - TypeScript typecheck 通過。ESLint 配置未涵蓋這次變更的 main 檔案，未將略過視為 lint 通過。
-- synthetic_and_stretched_capture_live_match_offline 因本機 FFmpeg 不支援原測試的 allow_skip_frames 選項而失敗；未為此修改媒體測試或編碼設定。另兩個真實影片長測試仍依原設定略過。
+- synthetic_and_stretched_capture_live_match_offline 已通過（包含原比例與拉伸影格、即時／離線結果比對）。最初誤用 PATH 的 MSYS2 FFmpeg，該版本缺少 libopenh264；執行 scripts/fetch-ffmpeg.ps1 安裝專案指定版本並通過 SHA256／元件驗證後，改用 build/ffmpeg/bin 重跑成功。未修改測試斷言或編碼設定。另兩個真實影片長測試仍依原設定略過。
 
 在 app 目錄（PowerShell）：
 
@@ -38,11 +38,16 @@ $env:ADITOR_PERF='1'
 npx vitest run src/main/recording/live-complexity.test.ts --reporter=verbose --silent=false
 ```
 
-在專案根目錄：
+在專案根目錄（PowerShell，使用專案指定 FFmpeg）：
 
 ```powershell
+./scripts/fetch-ffmpeg.ps1
+$env:PATH = "$(Join-Path $PWD 'build/ffmpeg/bin');$env:PATH"
+cargo test --manifest-path engine/Cargo.toml --test live synthetic_and_stretched_capture_live_match_offline
 cargo test --manifest-path engine/Cargo.toml --lib benchmark_tracking -- --ignored --nocapture
 cargo test --manifest-path engine/Cargo.toml --test live_complexity -- --include-ignored --nocapture
 ```
 
 未改動擷取、GPU 色彩轉換、硬體編碼、補影格、封裝或磁碟同步；未新增套件。遮罩樣板比對先保留原實作，避免未量測就改動辨識的浮點累加與門檻結果。
+
+一般測試可使用 `./scripts/test.ps1 -Tier fast`；此入口會檢查隨附 FFmpeg 並自動設定測試用 PATH。直接執行 cargo test 時仍需依上方指令指定正確環境。
