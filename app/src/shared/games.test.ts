@@ -30,10 +30,12 @@ describe('game-aware recording output', () => {
     expect(recordedTime({ path: `D:/v/${outputBase(at, 'valorant')}_2.mp4`, addedAt: 0 })).toBe(at)
   })
 
-  it('tags only non-Apex games so Apex output stays as before', () => {
-    expect(gameMetadataArgs({ game: 'apex' })).toEqual(['-movflags', '+faststart'])
+  it('tags every recorded game so analysis can skip game detection', () => {
+    expect(gameMetadataArgs({})).toEqual(['-movflags', '+faststart'])
+    expect(gameMetadataArgs({ game: 'apex' }))
+      .toEqual(['-metadata', 'aditor_game=apex', '-movflags', '+faststart+use_metadata_tags'])
     expect(gameMetadataArgs({ gameAspect: '1920x1440', game: 'apex' }))
-      .toEqual(['-metadata', 'aditor_game_aspect=1920x1440', '-movflags', '+faststart+use_metadata_tags'])
+      .toEqual(['-metadata', 'aditor_game_aspect=1920x1440', '-metadata', 'aditor_game=apex', '-movflags', '+faststart+use_metadata_tags'])
     expect(gameMetadataArgs({ game: 'valorant' }))
       .toEqual(['-metadata', 'aditor_game=valorant', '-movflags', '+faststart+use_metadata_tags'])
   })
