@@ -51,3 +51,23 @@ cargo test --manifest-path engine/Cargo.toml --test live_complexity -- --include
 未改動擷取、GPU 色彩轉換、硬體編碼、補影格、封裝或磁碟同步；未新增套件。遮罩樣板比對先保留原實作，避免未量測就改動辨識的浮點累加與門檻結果。
 
 一般測試可使用 `./scripts/test.ps1 -Tier fast`；此入口會檢查隨附 FFmpeg 並自動設定測試用 PATH。直接執行 cargo test 時仍需依上方指令指定正確環境。
+
+## FFT 頻譜快取容量（2026-10-31）
+
+症狀：即時偵測每影格 20.9 ms 牆鐘時間（不重複影格）。歸因：穩態 `Detector::prepare` 每影格約 41 次頻譜快取未命中，其中約 35 次是固定不變的 mixtape／icon 樣板頻譜；每影格工作集（約 41 筆）大於 LRU 上限 40 筆，LRU 循環淘汰，樣板 FFT 每影格重算。
+
+設定：AMD Ryzen 7 7700、RTX 5080（32.0.16.2101）、release（thin LTO）、git e61bc99、`tests/parity/phase_c` 的 3 張 banner（800×180）與 8 張 spec（480×118）輪替，每次呼叫翻轉稀疏低位元使每個 ROI 裁切都不同；交錯 A/B 各 3 輪，取中位數。
+
+| 指標（ms/影格） | 上限 40 | 上限 128 |
+|---|---:|---:|
+| `LiveKills::feed` 不重複影格（新增 `unique_frame_detection_performance`） | 20.94 | 15.78 |
+| 穩態 `Detector::prepare` | 19.96 | 15.23 |
+| 校正階段（multi.features + chev_best + mixtape + spectating） | 32.8 | 23.3 |
+
+上限 256 無額外改善。48 MiB 位元組上限保留不變，且在 128 筆時成為實際上限：快取峰值由 40.1 MiB 升至 47.9 MiB（每個執行緒；離線分析每個 worker 執行緒各一份）。
+
+等價性：快取只決定是否重算，頻譜由相同輸入確定性產生，值不變；引擎全部 38 個測試執行檔（含 cv／module／phase_b／phase_c／analyze parity）通過。新增回歸測試 `template_spectra_survive_a_frame_with_more_templates_than_the_old_cap`（上限 40 時失敗）。
+
+既有 `fixture_frame_detection_performance` 重複同一影格，來源頻譜、moments 與 `MATCHES` 快取都會命中，8.6 ms 低估真實成本；故新增不重複影格版本，不修改原測試與 Python 基準比較。
+
+未量測：真實遊戲影格與事件密度、遊戲 FPS、`aditor analyze` 離線速度、process RSS（只量快取位元組）。

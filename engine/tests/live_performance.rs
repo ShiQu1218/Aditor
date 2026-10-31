@@ -54,3 +54,47 @@ fn fixture_frame_detection_performance() {
     )
     .unwrap();
 }
+#[test]
+#[ignore = "slow: run in release mode; wall ms/frame with unique frames so per-frame caches cannot hit"]
+fn unique_frame_detection_performance() {
+    let p = common::profile();
+    let frames: Vec<_> = parity::cases()["frames"]
+        .as_object()
+        .unwrap()
+        .keys()
+        .map(|k| parity::image(k))
+        .collect();
+    let pick = |w, h| -> Vec<_> {
+        frames
+            .iter()
+            .filter(|i| i.width == w && i.height == h && i.channels == 3)
+            .collect()
+    };
+    let (banners, specs) = (pick(800, 180), pick(480, 118));
+    // Live frames never repeat; flip sparse low bits so every ROI crop differs between calls.
+    let unique = |src: &[&aditor::cv::Image<u8>], i: usize| {
+        let mut im = src[i % src.len()].clone();
+        for q in (0..im.data.len()).step_by(97) {
+            im.data[q] ^= ((i >> (q % 10)) & 1) as u8;
+        }
+        im
+    };
+    let n = 200;
+    let inputs: Vec<_> = (0..n)
+        .map(|i| (unique(&banners, i), unique(&specs, i)))
+        .collect();
+    let mut results = vec![];
+    for _ in 0..3 {
+        let mut k = LiveKills::new(&p, KillLimits::default()).unwrap();
+        let start = std::time::Instant::now();
+        for (i, (b, s)) in inputs.iter().enumerate() {
+            k.feed(i as f64 * 0.25, b, s, None, None).unwrap();
+        }
+        results.push(start.elapsed().as_secs_f64() * 1000. / n as f64);
+    }
+    results.sort_by(f64::total_cmp);
+    println!(
+        "Unique-frame wall median ms/frame: {:.4}; runs: {:?}",
+        results[1], results
+    );
+}
