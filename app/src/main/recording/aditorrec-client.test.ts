@@ -38,6 +38,26 @@ describe('recorderTags', () => {
 })
 
 describe('aditorrec JSON-lines client', () => {
+  it('reports only audio warnings with recorder state while startup and recording continue', async () => {
+    const root = tempRoot(); roots.push(root)
+    const onDiagnostic = vi.fn()
+    const value = new AditorrecClient(fakeCommand('audio-warnings'), onDiagnostic)
+    clients.push(value)
+    const events: string[] = []
+    value.on('event', (event) => events.push(event.ev))
+    await value.hello()
+    await value.startRecording({ session_dir: root, capture: 'wgc', audio: { mic_enabled: true, render_enabled: true } })
+    expect(onDiagnostic.mock.calls.map(([diagnostic]) => diagnostic.code)).toEqual([
+      'audio_device_missing', 'audio_source_lost', 'audio_capture_stalled', 'game_audio_unavailable'
+    ])
+    expect(onDiagnostic).toHaveBeenCalledWith(expect.objectContaining({
+      component: 'rust-recorder', tags: { capture: 'wgc', mic: 'on', system_audio: 'on', phase: 'startup' }
+    }))
+    expect(events.filter((ev) => ev === 'warning')).toHaveLength(5)
+    await value.request('ping')
+    await value.stop()
+  })
+
   it('keeps only allowlisted probe progress across stderr chunks', async () => {
     const onDiagnostic = vi.fn()
     const value = new AditorrecClient(fakeCommand('probe-exit'), onDiagnostic)

@@ -888,7 +888,8 @@ fn gpu_static_capture_keeps_cfr_and_silent_audio_running() {
     }
     assert_eq!(writer.push_video(&source, 1280, 720, 0), PushResult::Queued);
     // Simulate WGC stopping frame delivery for a static image while WASAPI has no audio chunks.
-    thread::sleep(Duration::from_millis(2600));
+    // Allow the static-frame holdback, mixer deadline and AAC delay before a segment is ready.
+    thread::sleep(Duration::from_millis(2800));
     assert_eq!(writer.stats().frames_in, 1);
     assert!(writer.stats().frames_encoded >= 120);
     let mut segments: Vec<_> = rx.try_iter().collect();
@@ -909,7 +910,7 @@ fn gpu_static_capture_keeps_cfr_and_silent_audio_running() {
         .parse::<f64>()
         .unwrap();
     assert!(
-        (duration - 2.6).abs() < 0.1,
+        (duration - 2.8).abs() < 0.1,
         "Static-image recording duration={duration}"
     );
     let silence = Command::new(executable("ffmpeg"))

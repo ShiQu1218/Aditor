@@ -53,6 +53,11 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
     fs.writeFileSync(path.join(sessionDir, 'session.json'), JSON.stringify({ started_at: new Date().toISOString() }))
     send({ ev: 'started', encoder: req.encode === null ? null : 'hevc_nvenc', width: 1920, height: 1080, fps: 60, shm: 'Local\\fake' })
     if (mode === 'warning') send({ ev: 'warning', code: 'game_audio_unavailable', message: '無法只錄遊戲聲音，已改錄系統聲音。' })
+    if (mode === 'audio-warnings') {
+      for (const code of ['audio_device_missing', 'audio_source_lost', 'audio_capture_stalled', 'game_audio_unavailable', 'unrelated_warning']) {
+        send({ ev: 'warning', code, message: `Synthetic ${code} warning` })
+      }
+    }
     // The recorder downgrades a missing default endpoint to a warning and keeps recording with silence.
     if (mode === 'audio-default-missing') send({ ev: 'warning', code: 'audio_device_missing',
       message: 'System audio is enabled but no matching audio device was found; recording will continue with silence for that source: audio_device_missing: No default audio device' })

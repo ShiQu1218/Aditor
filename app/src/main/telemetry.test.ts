@@ -108,6 +108,24 @@ describe('telemetry consent', () => {
 })
 
 describe('child diagnostics', () => {
+  it.each(['audio_device_missing', 'audio_source_lost', 'audio_capture_stalled', 'game_audio_unavailable'])(
+    'reports %s as a warning with privacy filtering, dedupe and consent', async (code) => {
+      const { initializeTelemetry, reportChildDiagnostic, updateTelemetryConsent } = await import('./telemetry')
+      initializeTelemetry(true)
+      const warning = diagnostic({ component: 'rust-recorder', code, exception: undefined,
+        tags: { mic: 'on', system_audio: 'on' } })
+      expect(reportChildDiagnostic(warning)).toBe('test-event')
+      expect(fake.captureEvent.mock.calls[0][0]).toMatchObject({ level: 'warning',
+        tags: { component: 'rust-recorder', mic: 'on', system_audio: 'on' } })
+      expect(JSON.stringify(fake.captureEvent.mock.calls)).not.toContain('Alice')
+      expect(reportChildDiagnostic(warning)).toBeUndefined()
+      expect(reportChildDiagnostic({ ...warning, component: 'rust-engine' })).toBeUndefined()
+      updateTelemetryConsent(false)
+      expect(reportChildDiagnostic({ ...warning, message: 'Different source failure' })).toBeUndefined()
+      expect(fake.captureEvent).toHaveBeenCalledTimes(1)
+    }
+  )
+
   it('accepts the Rust exception envelope with empty frames as a native event', async () => {
     const { initializeTelemetry, reportChildDiagnostic } = await import('./telemetry')
     initializeTelemetry(true)

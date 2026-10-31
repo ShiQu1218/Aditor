@@ -2,7 +2,7 @@ import { app, ipcMain } from 'electron'
 import * as Sentry from '@sentry/electron/main'
 import { MAX_USER_REPORT_LENGTH, SENTRY_DSN, sanitizeTelemetryEvent } from '../shared/telemetry'
 import { redactTelemetryText } from '../shared/telemetry'
-import type { ChildDiagnostic } from '../shared/child-diagnostics'
+import { RECORDER_AUDIO_WARNING_CODES, type ChildDiagnostic } from '../shared/child-diagnostics'
 
 let allowed = false
 let started = false
@@ -161,7 +161,8 @@ export function reportPlaybackDesync(raw: unknown): boolean {
 
 /** Child processes have no Sentry credentials or network client; this is their only upload path. */
 export function reportChildDiagnostic(diagnostic: ChildDiagnostic): string | undefined {
-  if (!allowed || !started || !REPORTABLE_CODES.has(diagnostic.code)) return
+  const warning = diagnostic.component === 'rust-recorder' && RECORDER_AUDIO_WARNING_CODES.has(diagnostic.code)
+  if (!allowed || !started || (!REPORTABLE_CODES.has(diagnostic.code) && !warning)) return
   try {
     const now = Date.now()
     const detail = diagnostic.exception as { type?: unknown; frames?: unknown } | undefined
@@ -182,7 +183,7 @@ export function reportChildDiagnostic(diagnostic: ChildDiagnostic): string | und
     if (!withinReportBudget(now)) return
 
     const eventId = Sentry.captureEvent({
-      platform: 'native', level: 'error',
+      platform: 'native', level: warning ? 'warning' : 'error',
       tags: { ...diagnostic.tags, component: diagnostic.component },
       exception: { values: [{ type: `${diagnostic.component}:${diagnostic.code}${exceptionType ? `:${exceptionType}` : ''}`,
         value: redactTelemetryText(diagnostic.message),
