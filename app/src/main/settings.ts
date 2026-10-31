@@ -178,8 +178,8 @@ export function migrateSettings(raw: unknown): Settings {
 
 /**
  * Read settings: missing file → defaults (do not create a file);
- * corrupt JSON → rename the original to `<file>.bak` and return defaults with privacy-sensitive values off unless still visible as on; otherwise normalize through `migrateSettings`.
- * Any other read failure (locked, permission) returns null: the file may hold user choices that must not be replaced.
+ * corrupt JSON → back up the original to `<file>.bak` and persist defaults with privacy-sensitive values off unless still visible as on; otherwise normalize through `migrateSettings`.
+ * Read or recovery failures return null: the file may hold user choices that must not be replaced without a backup.
  */
 function readSettings(file: string): Settings | null {
   let raw: string
@@ -198,9 +198,8 @@ function readSettings(file: string): Settings | null {
     parsed = JSON.parse(raw)
   } catch {
     const recovered = corruptDefaults(raw)
-    // Write the recovered file so the next read (the store, or the next launch) does not see a missing file and use telemetry-on defaults.
-    if (backupCorrupt(file)) saveSettings(file, recovered)
-    return recovered
+    // Keep the damaged original until recovery succeeds, so later reads can never mistake a failed recovery for a new install.
+    return backupCorrupt(file) && saveSettings(file, recovered) ? recovered : null
   }
   return migrateSettings(parsed)
 }
@@ -225,10 +224,10 @@ export function loadSettings(file: string): Settings {
   return readSettings(file) ?? unreadableDefaults()
 }
 
-/** Rename a corrupt file to `<file>.bak` (log failures without affecting the returned defaults). */
+/** Copy a corrupt file to `<file>.bak` before replacing it with recovered settings. */
 function backupCorrupt(file: string): boolean {
   try {
-    fs.renameSync(file, `${file}.bak`)
+    fs.copyFileSync(file, `${file}.bak`)
     return true
   } catch (err) {
     console.error('Failed to back up corrupt settings:', err)
@@ -271,7 +270,7 @@ export class SettingsStore {
   private listeners: Array<(s: Settings) => void> = []
   /** True when memory is ahead of disk (the previous write failed). */
   private dirty = false
-  /** True while the existing file could not be read; writing then would replace the user's saved settings. */
+  /** True while the existing file could not be read or recovered safely. */
   private unreadable: boolean
 
   constructor(file: string) {

@@ -90,7 +90,7 @@ describe('settings store', () => {
     const optedOut = JSON.stringify({ ...DEFAULT_SETTINGS, telemetryEnabled: false, recording: { ...DEFAULT_SETTINGS.recording, autoRecord: false } })
     fs.writeFileSync(file, optedOut.slice(0, -40), 'utf-8')
     expect(loadSettings(file)).toMatchObject({ telemetryEnabled: false, recording: { autoRecord: false } })
-    // The startup read renames the file; the store created later must not fall back to telemetry-on defaults.
+    // The startup read recovers the file; the store created later must not fall back to telemetry-on defaults.
     expect(new SettingsStore(file).get()).toMatchObject({ telemetryEnabled: false, recording: { autoRecord: false } })
 
     fs.writeFileSync(file, '{ "telemetryEnabled": tru', 'utf-8')
@@ -99,6 +99,39 @@ describe('settings store', () => {
     fs.writeFileSync(file, JSON.stringify(DEFAULT_SETTINGS).slice(0, -40), 'utf-8')
     expect(loadSettings(file)).toMatchObject({ telemetryEnabled: true, recording: { autoRecord: true } })
   })
+
+  it.each(['copyFileSync', 'writeFileSync', 'renameSync'] as const)(
+    'failed corrupt-settings recovery (%s) preserves the original, blocks writes, and retries safely', (operation) => {
+      const damaged = '{"telemetryEnabled":false,"recording":{"autoRecord":false},'
+      fs.writeFileSync(file, damaged, 'utf-8')
+      vi.spyOn(console, 'error').mockImplementation(() => {})
+      const failure = vi.spyOn(fs, operation).mockImplementation(() => {
+        throw Object.assign(new Error('Recovery failed'), { code: operation === 'writeFileSync' ? 'ENOSPC' : 'EBUSY' })
+      })
+      const privateDefaults = { telemetryEnabled: false, recording: { autoRecord: false } }
+
+      // Match startup's separate settings read and store construction, then another read after failed recovery.
+      expect(loadSettings(file)).toMatchObject(privateDefaults)
+      expect(fs.readFileSync(file, 'utf-8')).toBe(damaged)
+      const store = new SettingsStore(file)
+      expect(store.get()).toMatchObject(privateDefaults)
+      expect(store.set({ before: 7 }).persisted).toBe(false)
+      expect(store.set({}).persisted).toBe(false)
+      expect(loadSettings(file)).toMatchObject(privateDefaults)
+      expect(fs.readFileSync(file, 'utf-8')).toBe(damaged)
+      expect(fs.existsSync(`${file}.tmp`)).toBe(false)
+      expect(fs.existsSync(`${file}.bak`)).toBe(operation !== 'copyFileSync')
+
+      // Recover and back up before allowing an ordinary settings update to replace the original.
+      failure.mockRestore()
+      const retried = store.set({ before: 7 })
+      expect(retried.persisted).toBe(true)
+      expect(retried.settings).toMatchObject({ ...privateDefaults, before: 7 })
+      expect(fs.readFileSync(`${file}.bak`, 'utf-8')).toBe(damaged)
+      expect(loadSettings(file)).toEqual(retried.settings)
+      expect(new SettingsStore(file).get()).toEqual(retried.settings)
+    }
+  )
 
   it('old/no-version file migrates and keeps known values', () => {
     // Legacy file without a version field: preserve known values and fill missing fields with defaults.
