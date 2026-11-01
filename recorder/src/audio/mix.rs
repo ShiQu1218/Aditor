@@ -21,7 +21,7 @@ pub(super) struct Format {
     pub block_align: usize,
     pub mono: bool,
     sample: Sample,
-    positions: [Option<usize>; 3],
+    positions: [Option<usize>; 10],
 }
 
 impl Format {
@@ -43,12 +43,14 @@ impl Format {
         {
             bail!("Invalid sample rate, channel count, or block alignment in device audio format");
         }
-        let positions = if channels == 1 {
-            [Some(0), Some(0), None]
-        } else if mask == 0 {
-            [Some(0), Some(1), (channels > 2).then_some(2)]
+        let positions = if channels == 1 || mask == 0 {
+            let mut positions = [None; 10];
+            positions[0] = Some(0);
+            positions[1] = Some(if channels == 1 { 0 } else { 1 });
+            positions[2] = (channels > 2).then_some(2);
+            positions
         } else {
-            [1u32, 2, 4]
+            [1u32, 2, 4, 0x10, 0x20, 0x200, 0x400, 0x40, 0x80, 0x100]
                 .map(|bit| (mask & bit != 0).then(|| (mask & (bit - 1)).count_ones() as usize))
         };
         Ok(Self {
@@ -108,10 +110,19 @@ impl Format {
                         / self.channels as f32;
                     return [sample; 2];
                 }
-                let center = channel(self.positions[2]) * std::f32::consts::FRAC_1_SQRT_2;
+                let center = channel(self.positions[2]) * std::f32::consts::FRAC_1_SQRT_2
+                    + channel(self.positions[9]) * 0.5;
                 [
-                    channel(self.positions[0]) + center,
-                    channel(self.positions[1]) + center,
+                    channel(self.positions[0])
+                        + channel(self.positions[7])
+                        + center
+                        + (channel(self.positions[3]) + channel(self.positions[5]))
+                            * std::f32::consts::FRAC_1_SQRT_2,
+                    channel(self.positions[1])
+                        + channel(self.positions[8])
+                        + center
+                        + (channel(self.positions[4]) + channel(self.positions[6]))
+                            * std::f32::consts::FRAC_1_SQRT_2,
                 ]
             })
             .collect())
@@ -258,19 +269,73 @@ mod tests {
     }
 
     #[test]
-    fn downmix_uses_front_and_center_only_and_respects_mask() {
+    fn downmix_preserves_front_center_and_surround_and_respects_mask() {
         let format = Format::new(48_000, 6, 24, Sample::Float(32), 0x3f).unwrap();
         let decoded = format
             .decode(&float_bytes(&[0.1, 0.2, 0.4, 0.9, 0.8, 0.7]), 1, false)
             .unwrap();
-        assert!((decoded[0][0] - (0.1 + 0.4 * 0.5f32.sqrt())).abs() < 1e-6);
-        assert!((decoded[0][1] - (0.2 + 0.4 * 0.5f32.sqrt())).abs() < 1e-6);
+        assert!((decoded[0][0] - (0.1 + (0.4 + 0.8) * 0.5f32.sqrt())).abs() < 1e-6);
+        assert!((decoded[0][1] - (0.2 + (0.4 + 0.7) * 0.5f32.sqrt())).abs() < 1e-6);
         let center_lfe = Format::new(48_000, 2, 8, Sample::Float(32), 12).unwrap();
         let center = center_lfe
             .decode(&float_bytes(&[0.5, 1.0]), 1, false)
             .unwrap();
         assert_eq!(center[0][0], center[0][1]);
         assert!((center[0][0] - 0.5 * 0.5f32.sqrt()).abs() < 1e-6);
+    }
+
+    #[test]
+    fn surround_only_samples_remain_audible_on_the_correct_side() {
+        for (channels, mask, positions) in [
+            (4, 0x33, &[(2, 0), (3, 1)][..]),
+            (6, 0x3f, &[(4, 0), (5, 1)][..]),
+            (6, 0x60f, &[(4, 0), (5, 1)][..]),
+            (8, 0x63f, &[(4, 0), (5, 1), (6, 0), (7, 1)][..]),
+            (2, 0x600, &[(0, 0), (1, 1)][..]),
+        ] {
+            let format =
+                Format::new(48_000, channels, channels * 4, Sample::Float(32), mask).unwrap();
+            for &(input, output) in positions {
+                let mut samples = vec![0.0; channels as usize];
+                samples[input] = 0.5;
+                let decoded = format.decode(&float_bytes(&samples), 1, false).unwrap();
+                assert!((decoded[0][output] - 0.5 * std::f32::consts::FRAC_1_SQRT_2).abs() < 1e-6);
+                assert_eq!(decoded[0][1 - output], 0.0);
+            }
+        }
+        // A zero mask has no speaker assignments; retain the existing front/center fallback.
+        let unknown = Format::new(48_000, 8, 32, Sample::Float(32), 0).unwrap();
+        assert_eq!(
+            unknown
+                .decode(
+                    &float_bytes(&[0.0, 0.0, 0.0, 0.0, 0.5, 0.5, 0.5, 0.5]),
+                    1,
+                    false
+                )
+                .unwrap(),
+            [[0.0; 2]]
+        );
+    }
+
+    #[test]
+    fn wide_front_and_back_center_samples_remain_audible() {
+        let wide = Format::new(48_000, 8, 32, Sample::Float(32), 0xff).unwrap();
+        for (input, output) in [(6, 0), (7, 1)] {
+            let mut samples = [0.0; 8];
+            samples[input] = 0.5;
+            let decoded = wide.decode(&float_bytes(&samples), 1, false).unwrap();
+            assert_eq!(decoded[0][output], 0.5);
+            assert_eq!(decoded[0][1 - output], 0.0);
+        }
+        for (mask, input) in [(0x70f, 4), (0x13f, 6)] {
+            let format = Format::new(48_000, 7, 28, Sample::Float(32), mask).unwrap();
+            let mut samples = [0.0; 7];
+            samples[input] = 0.5;
+            assert_eq!(
+                format.decode(&float_bytes(&samples), 1, false).unwrap(),
+                [[0.25; 2]]
+            );
+        }
     }
 
     #[test]
