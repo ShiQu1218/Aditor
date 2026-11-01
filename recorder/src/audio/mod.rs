@@ -719,7 +719,11 @@ fn mix_loop(
     mut sink: Box<dyn AudioSink>,
     warnings: Sender<AudioWarning>,
 ) {
-    let cursor = frames_from_ticks(now_ticks() - origin).max(0);
+    // Keep startup packets that the AAC writer can still accept after its catch-up delay.
+    let cursor = (frames_from_ticks(now_ticks() - origin)
+        - AUDIO_SOURCE_GRACE_FRAMES
+        - i64::from(AUDIO_RATE / 10))
+    .max(0);
     let mut system_audio = Timeline::new(cursor);
     let mut mic_audio = Timeline::new(cursor);
     loop {
@@ -1102,6 +1106,34 @@ mod tests {
             observed.try_recv().is_err(),
             "normal sender teardown is not an audio failure"
         );
+    }
+
+    #[test]
+    fn queued_startup_audio_is_not_clipped_when_mixing_starts_late() {
+        let (sender, packets) = mpsc::sync_channel(PACKET_CAPACITY);
+        let format = Format::new(48_000, 2, 8, Sample::Float(32), 3).unwrap();
+        let origin = now_ticks() - TICKS_PER_SEC * 2 / 5;
+        sender
+            .send(packet(origin + TICKS_PER_SEC / 5, 0, 0.25, 480))
+            .unwrap();
+        drop(sender);
+
+        let stop = AtomicBool::new(true);
+        let blocks = Arc::new(Mutex::new(Vec::new()));
+        let (warnings, _observed) = mpsc::channel();
+        mix_loop(
+            Some(Source::new(format, packets)),
+            None,
+            origin,
+            &AudioConfig::default(),
+            &stop,
+            Box::new(Collect(blocks.clone())),
+            warnings,
+        );
+
+        assert!(blocks.lock().unwrap().iter().any(|block| {
+            block.iter().any(|sample| (*sample - 0.25).abs() < 1e-6)
+        }));
     }
 
     #[test]
