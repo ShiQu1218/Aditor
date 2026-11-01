@@ -662,6 +662,7 @@ fn run_worker(
     fps: u32,
 ) -> Result<()> {
     let mut previous: Option<Arc<Surface>> = None;
+    let mut pending = None;
     let mut next_slot = 0;
     let mut video_closed = false;
     let mut audio_closed = false;
@@ -694,20 +695,24 @@ fn run_worker(
                 Err(TryRecvError::Empty) => break,
             }
         }
-        let mut job = match video_rx.recv_timeout(Duration::from_millis(5)) {
-            Ok(job) => {
-                counts.queue.fetch_sub(1, Ordering::Relaxed);
-                last_arrival = std::time::Instant::now();
-                if anchor.is_none() {
-                    anchor = Some((last_arrival, job.slot));
+        let mut job = if pending.is_some() {
+            pending.take()
+        } else {
+            match video_rx.recv_timeout(Duration::from_millis(5)) {
+                Ok(job) => {
+                    counts.queue.fetch_sub(1, Ordering::Relaxed);
+                    last_arrival = std::time::Instant::now();
+                    if anchor.is_none() {
+                        anchor = Some((last_arrival, job.slot));
+                    }
+                    Some(job)
                 }
-                Some(job)
+                Err(mpsc::RecvTimeoutError::Disconnected) => {
+                    video_closed = true;
+                    None
+                }
+                Err(mpsc::RecvTimeoutError::Timeout) => None,
             }
-            Err(mpsc::RecvTimeoutError::Disconnected) => {
-                video_closed = true;
-                None
-            }
-            Err(mpsc::RecvTimeoutError::Timeout) => None,
         };
         let closing = video_closed && audio_closed;
         counts.check_error()?;
@@ -727,11 +732,14 @@ fn run_worker(
         if let Some(job) = job {
             if job.slot >= next_slot {
                 if let Some(last) = &previous {
-                    while next_slot < job.slot {
+                    if next_slot < job.slot {
                         encode_frame(encoder, muxer, &last.frame, next_slot, fps, &counts)?;
                         next_slot += 1;
                         counts.worker_stage.store(3, Ordering::Relaxed);
                         advance_audio(audio, muxer, next_slot, fps)?;
+                        // Drain audio between duplicate frames before silence can replace queued samples.
+                        pending = Some(job);
+                        continue;
                     }
                 }
                 encode_frame(encoder, muxer, &job.surface.frame, job.slot, fps, &counts)?;

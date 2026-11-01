@@ -872,6 +872,111 @@ fn gpu_nv12_conversion_and_error_propagation() {
 }
 
 #[test]
+fn gpu_static_capture_catchup_preserves_queued_audio() {
+    let _guard = GPU_TEST.lock().unwrap();
+    let gpu = Gpu::create().unwrap();
+    let video = VideoParams {
+        width: 256,
+        height: 144,
+        encoder: "hevc_nvenc".into(),
+        ..params(Codec::Hevc)
+    };
+    let hardware = Hardware::new(&gpu, &video, ffi::AV_PIX_FMT_NV12).unwrap();
+    let encoder = hardware.encoder("hevc_nvenc", &video).unwrap();
+    let surface = Arc::new(Surface {
+        frame: hardware.surface().unwrap(),
+    });
+    let (source, view) = texture(&gpu, (256, 144));
+    // SAFETY: The RTV and source texture belong to the live GPU device.
+    unsafe {
+        gpu.context
+            .ClearRenderTargetView(&view, &[0.2, 0.1, 0.1, 1.]);
+    }
+    Copier::new(&gpu, &video, hardware.format)
+        .copy(&source, (256, 144), &surface.frame)
+        .unwrap();
+    let mut audio = Some(aac::Audio::new().unwrap());
+    let dir = temp_dir();
+    let (segments_tx, segments_rx) = mpsc::channel();
+    let muxer = mux::Muxer::new(
+        &dir,
+        &encoder,
+        Some(&audio.as_ref().unwrap().encoder),
+        segments_tx,
+    )
+    .unwrap();
+    let counts = Arc::new(Counts::default());
+    let mut muxer = mux::MuxWorker::new(muxer, counts.clone()).unwrap();
+    let (video_tx, video_rx) = mpsc::sync_channel(2);
+    let (audio_tx, audio_rx) = mpsc::sync_channel(64);
+    // A capture gap requires two seconds of CFR frames while real audio is already queued.
+    for slot in [0, 119] {
+        assert!(video_tx
+            .send(VideoJob {
+                surface: surface.clone(),
+                slot
+            })
+            .is_ok());
+    }
+    counts.queue.store(2, Ordering::Relaxed);
+    for block in 0..64 {
+        let samples = (0..480)
+            .flat_map(|sample| {
+                let value =
+                    ((block * 480 + sample) as f32 * 440. * std::f32::consts::TAU / 48_000.).sin()
+                        * 0.2;
+                [value, value]
+            })
+            .collect();
+        assert!(audio_tx
+            .send(AudioJob {
+                samples,
+                pts: block * 100_000
+            })
+            .is_ok());
+    }
+    drop(video_tx);
+    drop(audio_tx);
+    run_worker(
+        &encoder,
+        &mut audio,
+        &mut muxer,
+        video_rx,
+        audio_rx,
+        counts.clone(),
+        60,
+    )
+    .unwrap();
+    assert_eq!(counts.encoded.load(Ordering::Relaxed), 120);
+    let combined = dir.join("catchup.mp4");
+    concatenate(&dir, &segments_rx.try_iter().collect::<Vec<_>>(), &combined);
+    let sound = Command::new(executable("ffmpeg"))
+        .args(["-v", "error", "-i"])
+        .arg(&combined)
+        .args(["-map", "0:a:0", "-f", "f32le", "-acodec", "pcm_f32le", "-"])
+        .output()
+        .unwrap();
+    assert!(
+        sound.status.success(),
+        "{}",
+        String::from_utf8_lossy(&sound.stderr)
+    );
+    let samples: Vec<_> = sound
+        .stdout
+        .chunks_exact(4)
+        .map(|sample| f32::from_le_bytes(sample.try_into().unwrap()))
+        .collect();
+    let interval = &samples[24_000..52_800];
+    let rms =
+        (interval.iter().map(|sample| sample * sample).sum::<f32>() / interval.len() as f32).sqrt();
+    assert!(
+        rms > 0.1,
+        "Queued audio was replaced by silence during CFR catch-up: rms={rms}"
+    );
+    fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
 fn gpu_static_capture_keeps_cfr_and_silent_audio_running() {
     let _guard = GPU_TEST.lock().unwrap();
     let gpu = Gpu::create().unwrap();
