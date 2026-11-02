@@ -78,6 +78,8 @@ const SAFE_COMPONENTS = new Set(['rust-engine', 'rust-live', 'rust-recorder', 'u
 const SAFE_TAG_VALUES: Record<string, RegExp> = {
   electron: /^\d+(?:\.\d+){2}$/,
   decode: /^(?:auto|software)$/,
+  // Recorder pipeline stage named in a diagnostic (see stableDiagnosticMessage in main/telemetry.ts).
+  stage: /^[a-z_]{1,32}$/,
   // Recorder state at failure time (see recorderTags in aditorrec-client.ts).
   capture: /^(?:wgc|dda|hook)$/,
   codec: /^(?:hevc|h264|av1)$/,
@@ -121,6 +123,8 @@ export function sanitizeTelemetryEvent<T extends Event>(event: T): T {
       image.type === 'sourcemap' && safeFilename(image.code_file) !== '[external]'
         ? [{ type: 'sourcemap' as const, code_file: safeFilename(image.code_file), debug_id: image.debug_id }] : []) } : undefined,
     message: event.message ? redactTelemetryText(event.message) : undefined,
+    // The one free-text extra we allow: the full diagnostic message (redacted) whose volatile values are kept out of the title and fingerprint.
+    extra: typeof event.extra?.detail === 'string' ? { detail: redactTelemetryText(event.extra.detail) } : undefined,
     exception: event.exception ? { values: event.exception.values?.map((value) => ({
       type: value.type ? redactTelemetryText(value.type) : undefined, value: value.value ? redactTelemetryText(value.value) : undefined,
       mechanism: value.mechanism ? { type: value.mechanism.type, handled: value.mechanism.handled } : undefined,

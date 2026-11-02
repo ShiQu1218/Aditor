@@ -103,7 +103,7 @@ export class AditorrecClient extends EventEmitter {
         const exitCode: Record<string, string> = code === null ? {} : { exit_code: `0x${(code >>> 0).toString(16).toUpperCase().padStart(8, '0')}` }
         const blocked = code !== null && (code >>> 0) === 0xC0E90002
         const hint = blocked ? ' Windows Application Control blocked the recorder or a dependency (0xC0E90002).' : ''
-        const error = this.error('recorder_crashed', tr('錄影程序已結束（{code}）', { code: code ?? signal }) + hint, exitCode)
+        const error = this.error('recorder_crashed', tr('錄影程序已結束（{code}）', { code: code ?? signal }) + hint, exitCode, 'Recorder process exited unexpectedly')
         this.rejectAll(error)
         if (!this.closing) this.emit('crash', error)
         resolve()
@@ -132,11 +132,11 @@ export class AditorrecClient extends EventEmitter {
     if (!proc || this.closing) return Promise.reject(this.error('recorder_closed', tr('錄影程序未執行')))
     const id = ++this.seq
     const line = JSON.stringify({ ...args, id, cmd }) + '\n'
-    if (Buffer.byteLength(line) > MAX_BYTES) return Promise.reject(this.error('bad_request', tr('錄影指令超過 64 KB')))
+    if (Buffer.byteLength(line) > MAX_BYTES) return Promise.reject(this.error('bad_request', tr('錄影指令超過 64 KB'), {}, 'Recorder command exceeds 64 KB'))
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(id)
-        reject(this.error('recorder_timeout', tr('等待錄影指令 {cmd} 回覆逾時', { cmd })))
+        reject(this.error('recorder_timeout', tr('等待錄影指令 {cmd} 回覆逾時', { cmd }), {}, `Timed out waiting for recorder command ${cmd}`))
       }, timeoutMs)
       this.pending.set(id, { resolve, reject, timer })
       proc.stdin.write(line, (error) => {
@@ -160,7 +160,7 @@ export class AditorrecClient extends EventEmitter {
       this.on('event', onEvent)
       this.on('crash', onCrash)
       this.on('closed', onCrash)
-      timer = setTimeout(() => reject(this.error('recorder_timeout', tr('等待錄影開始事件逾時'))), 30000)
+      timer = setTimeout(() => reject(this.error('recorder_timeout', tr('等待錄影開始事件逾時'), {}, 'Timed out waiting for the recording started event')), 30000)
     })
     this.startTags = recorderTags(args)
     try {
@@ -210,7 +210,7 @@ export class AditorrecClient extends EventEmitter {
         if (typeof msg.id === 'number') {
           this.settle(msg.id, msg.ok === true ? msg : this.error(
             typeof msg.code === 'string' ? msg.code : 'bad_reply',
-            typeof msg.message === 'string' ? msg.message : tr('錄影指令失敗')))
+            typeof msg.message === 'string' ? msg.message : tr('錄影指令失敗'), {}, typeof msg.message === 'string' ? msg.message : 'Recorder command failed'))
         } else if (typeof msg.ev === 'string') {
           if (msg.ev === 'error') this.error(String(msg.code ?? 'internal'), String(msg.message ?? 'Recorder error'))
           if (msg.ev === 'warning' && RECORDER_AUDIO_WARNING_CODES.has(msg.code) && typeof msg.message === 'string') {
@@ -225,10 +225,11 @@ export class AditorrecClient extends EventEmitter {
   }
 
   private protocolError(): void {
-    this.rejectAll(this.error('bad_reply', tr('錄影程序輸出的 JSON-lines 格式錯誤')))
+    this.rejectAll(this.error('bad_reply', tr('錄影程序輸出的 JSON-lines 格式錯誤'), {}, 'Recorder output was not valid JSON lines'))
     this.proc?.kill()
   }
 
+  /** `message` may be localized for the user; Sentry must group on one language, so `report` is the English text sent instead. */
   private reportDiagnostic(code: string, message: string, tags: Record<string, string> = {}): void {
     if (!this.closing && (this.spawned || code === 'recorder_spawn')) {
       const phase: Record<string, string> = this.recordingSince === null ? { phase: 'startup' } : { phase: 'recording', uptime: uptimeBucket(Date.now() - this.recordingSince) }
@@ -236,8 +237,8 @@ export class AditorrecClient extends EventEmitter {
     }
   }
 
-  private error(code: string, message: string, tags: Record<string, string> = {}): RecorderError {
-    this.reportDiagnostic(code, message, tags)
+  private error(code: string, message: string, tags: Record<string, string> = {}, report = message): RecorderError {
+    this.reportDiagnostic(code, report, tags)
     const log = this.stderr.toString('utf8').trim()
     return new RecorderError(code, log ? `${message}\n${log}` : message)
   }

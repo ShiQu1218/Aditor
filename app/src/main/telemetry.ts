@@ -32,6 +32,53 @@ function fingerprintText(value: string | undefined): string {
     .slice(0, 200)
 }
 
+/** Known recorder faults whose message text changed between versions or carries counters; one canonical title and category each. */
+const KNOWN_FAULTS: ReadonlyArray<readonly [RegExp, string, string]> = [
+  [/Audio timestamp gap exceeds five seconds|Audio input pts=/i, 'audio_timestamp_gap', 'Audio timestamp gap exceeds five seconds'],
+  [/processed no frames for over five seconds/i, 'encoder_stalled', 'Encoder has processed no frames for over five seconds'],
+  [/queue remained full|muxer queue is full/i, 'muxer_queue_full', 'Muxer queue remained full']
+]
+
+/** Process exits caused by someone else ending it (Task Manager, debugger, Ctrl+C/console close), not by a fault in our code. */
+const EXTERNAL_TERMINATION_EXIT_CODES = new Set([0x40010004, 0xC000013A])
+
+export interface StableDiagnostic {
+  /** Grouping key: stable across counters, addresses, paths, stderr text and UI language. */
+  category: string
+  /** Event title: the category's canonical sentence, or the message with volatile values removed. */
+  title: string
+  /** Recorder pipeline stage, when the message names one. */
+  stage?: string
+}
+
+/** Remove everything that changes between occurrences of the same fault so Sentry groups them together. */
+export function stableDiagnostic(message: string): StableDiagnostic {
+  const stage = message.match(/\bstage=([a-z_]{1,32})\b/)?.[1]
+  for (const [pattern, category, title] of KNOWN_FAULTS) if (pattern.test(message)) return { category, title, stage }
+  const title = redactTelemetryText(message.split(/[;\r\n]/)[0])
+    // The text after the exit code is the process's stderr tail: different on every crash.
+    .replace(/\(exit code (-?\d+|signal)[\s\S]*$/, '(exit code $1)')
+    .replace(/\b\w+=\S+/g, '')
+    .replace(/\b0x[0-9a-f]+\b/gi, 'N')
+    .replace(/(exit code (?:-?\d+|signal))|\d+/g, (_match, exit: string | undefined) => exit ?? 'N')
+    .replace(/\s+/g, ' ').trim().slice(0, 120)
+  return { category: title, title, stage }
+}
+
+/** Exit code carried by a process-exit diagnostic, from the recorder's exit_code tag or the engine's message. */
+function diagnosticExitCode(diagnostic: ChildDiagnostic): number | undefined {
+  const tag = diagnostic.tags?.exit_code
+  if (tag && /^0x[0-9A-F]{8}$/.test(tag)) return Number.parseInt(tag.slice(2), 16)
+  const text = diagnostic.message.match(/exit code (-?\d+)/)?.[1]
+  return text === undefined ? undefined : Number(text) >>> 0
+}
+
+export function isExternalTermination(diagnostic: ChildDiagnostic): boolean {
+  if (diagnostic.code !== 'engine_crashed' && diagnostic.code !== 'recorder_crashed') return false
+  const exitCode = diagnosticExitCode(diagnostic)
+  return exitCode !== undefined && EXTERNAL_TERMINATION_EXIT_CODES.has(exitCode)
+}
+
 function hashFingerprint(value: string): string {
   let hash = 0x811c9dc5
   for (let i = 0; i < value.length; i += 1) {
@@ -48,7 +95,7 @@ function childErrorFingerprint(diagnostic: ChildDiagnostic, frames: Sentry.Stack
     diagnostic.code,
     fingerprintText(exceptionType),
     frame ? `${frame.filename}:${frame.function ?? ''}:${frame.lineno}` : '',
-    fingerprintText(diagnostic.message)
+    stableDiagnostic(diagnostic.message).category
   ].join('\u0000'))
 }
 
@@ -163,6 +210,8 @@ export function reportPlaybackDesync(raw: unknown): boolean {
 export function reportChildDiagnostic(diagnostic: ChildDiagnostic): string | undefined {
   const warning = diagnostic.component === 'rust-recorder' && RECORDER_AUDIO_WARNING_CODES.has(diagnostic.code)
   if (!allowed || !started || (!REPORTABLE_CODES.has(diagnostic.code) && !warning)) return
+  // Killed from outside (Task Manager, debugger, console close): not a fault we can fix, and it would only add noise.
+  if (isExternalTermination(diagnostic)) return
   try {
     const now = Date.now()
     const detail = diagnostic.exception as { type?: unknown; frames?: unknown } | undefined
@@ -182,11 +231,15 @@ export function reportChildDiagnostic(diagnostic: ChildDiagnostic): string | und
     if (reportedAt !== undefined && now - reportedAt < CHILD_DIAGNOSTIC_DEDUPE_WINDOW_MS) return
     if (!withinReportBudget(now)) return
 
+    // Sentry groups by title when no fingerprint is set, so counters and stderr in the message split one fault into many issues.
+    const stable = stableDiagnostic(diagnostic.message)
     const eventId = Sentry.captureEvent({
       platform: 'native', level: warning ? 'warning' : 'error',
-      tags: { ...diagnostic.tags, component: diagnostic.component },
+      fingerprint: [diagnostic.component, diagnostic.code, stable.category, ...(exceptionType ? [exceptionType] : [])],
+      tags: { ...diagnostic.tags, ...(stable.stage ? { stage: stable.stage } : {}), component: diagnostic.component },
+      extra: { detail: redactTelemetryText(diagnostic.message) },
       exception: { values: [{ type: `${diagnostic.component}:${diagnostic.code}${exceptionType ? `:${exceptionType}` : ''}`,
-        value: redactTelemetryText(diagnostic.message),
+        value: stable.title,
         mechanism: { type: 'child_process', handled: true },
         ...(frames.length ? { stacktrace: { frames } } : {}) }] }
     })
