@@ -78,7 +78,7 @@ export class EngineClient extends EventEmitter {
 
       const failed = (err: unknown): void => {
         const failure = spawnFailure(err)
-        emitChildDiagnostic(this.opts.onDiagnostic, { component: 'rust-engine', code: 'engine_spawn', ...failure })
+        emitChildDiagnostic(this.opts.onDiagnostic, { component: 'rust-engine', code: 'engine_spawn', message: failure.report, tags: failure.tags })
         this.readyReject?.(new EngineError('engine_spawn', failure.message))
         this.readyResolve = null
         this.readyReject = null

@@ -100,7 +100,7 @@ export class AditorrecClient extends EventEmitter {
       })
     } catch (error) {
       const failure = spawnFailure(error)
-      throw this.error('recorder_spawn', failure.message, failure.tags)
+      throw this.error('recorder_spawn', failure.message, failure.tags, failure.report)
     }
     this.proc = proc
     this.spawned = false
@@ -134,7 +134,7 @@ export class AditorrecClient extends EventEmitter {
     proc.stdin.on('error', (error) => this.rejectAll(this.error('recorder_io', error.message)))
     proc.once('error', (error) => {
       const failure = spawnFailure(error)
-      this.rejectAll(this.error('recorder_spawn', failure.message, failure.tags))
+      this.rejectAll(this.error('recorder_spawn', failure.message, failure.tags, failure.report))
     })
   }
 

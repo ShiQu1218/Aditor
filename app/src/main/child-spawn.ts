@@ -9,10 +9,11 @@ export function checkExecutable(command: string): void {
   }
 }
 
-export function spawnFailure(error: unknown): { message: string; tags: Record<string, string> } {
+export function spawnFailure(error: unknown): { message: string; report: string; tags: Record<string, string> } {
   const code = (error as NodeJS.ErrnoException | null)?.code
   const errno = typeof code === 'string' && /^[A-Z0-9_]{1,16}$/.test(code) ? code : 'UNKNOWN'
   return {
+    report: `Required program could not be started (${errno})`,
     message: errno === 'ENOENT' || errno === 'ENOTDIR'
       ? tr('找不到或無法啟動必要程式。請重新安裝 Aditor，並檢查防毒軟體的隔離紀錄。')
       : tr('無法啟動必要程式（{code}）。請檢查檔案權限與防毒軟體設定。', { code: errno }),

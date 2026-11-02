@@ -148,7 +148,8 @@ describe('LiveSession file reads', () => {
     expect(notice).toHaveBeenCalledWith(expect.stringContaining('錄影照常進行'))
     expect(notice.mock.calls[0][0]).not.toContain(dir)
     expect(onDiagnostic).toHaveBeenCalledOnce()
-    expect(onDiagnostic).toHaveBeenCalledWith(expect.objectContaining({ code: 'engine_spawn', tags: { spawn_errno: 'ENOENT', spawn_syscall: 'spawn' } }))
+    expect(onDiagnostic).toHaveBeenCalledWith(expect.objectContaining({ code: 'engine_spawn',
+      message: 'Required program could not be started (ENOENT)', tags: { spawn_errno: 'ENOENT', spawn_syscall: 'spawn' } }))
   })
 })
 

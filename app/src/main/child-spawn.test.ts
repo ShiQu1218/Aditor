@@ -32,6 +32,7 @@ describe('executable preflight and private spawn diagnostics', () => {
     for (const code of ['ENOENT', 'EACCES']) {
       const failure = spawnFailure(Object.assign(new Error('spawn C:/private/name.exe ' + code), { code, syscall: 'spawn C:/private/name.exe' }))
       if (code === 'ENOENT') expect(failure.message).toContain('Aditor')
+      expect(failure.report).toBe(`Required program could not be started (${code})`)
       expect(failure.message).not.toContain('private')
       expect(failure.message).not.toContain('{code}')
       if (code === 'EACCES') expect(failure.message).toContain(code)
@@ -59,6 +60,7 @@ describe('executable preflight and private spawn diagnostics', () => {
 
 describe.each(['engine', 'recorder', 'live'] as const)('%s spawn failures', (kind) => {
   it.each(['preflight', 'sync', 'async', 'race'] as const)('reports %s errors with errno and user guidance', async (mode) => {
+    setActiveLocale('ja')
     const onDiagnostic = vi.fn()
     const errno = mode === 'preflight' || mode === 'race' ? 'ENOENT' : 'EACCES'
     const error = Object.assign(new Error('spawn C:/private/app.exe ' + errno), { code: errno, syscall: 'spawn C:/private/app.exe' })
@@ -72,7 +74,7 @@ describe.each(['engine', 'recorder', 'live'] as const)('%s spawn failures', (kin
       : kind === 'recorder' ? new AditorrecClient(command, onDiagnostic)
         : new LiveEngine({ command, args: [], onDiagnostic })
     const pending = client instanceof EngineClient ? client.start() : client instanceof AditorrecClient ? client.hello() : Promise.resolve(client.start())
-    const rejected = kind === 'live' ? pending : expect(pending).rejects.toMatchObject({ code: kind === 'engine' ? 'engine_spawn' : 'recorder_spawn', message: expect.stringContaining(errno === 'ENOENT' ? '重新安裝' : errno) })
+    const rejected = kind === 'live' ? pending : expect(pending).rejects.toMatchObject({ code: kind === 'engine' ? 'engine_spawn' : 'recorder_spawn', message: expect.stringContaining(errno === 'ENOENT' ? 'Aditor' : errno) })
     if (mode === 'async' || mode === 'race') {
       proc.emit('error', error)
       expect(() => proc.stdin.emit('error', Object.assign(new Error('broken pipe'), { code: 'EPIPE' }))).not.toThrow()
@@ -82,6 +84,7 @@ describe.each(['engine', 'recorder', 'live'] as const)('%s spawn failures', (kin
     expect(onDiagnostic).toHaveBeenCalledOnce()
     expect(onDiagnostic.mock.calls[0][0]).toMatchObject({
       code: kind === 'recorder' ? 'recorder_spawn' : 'engine_spawn',
+      message: `Required program could not be started (${errno})`,
       tags: { spawn_errno: errno, spawn_syscall: 'spawn' }
     })
     expect(JSON.stringify(onDiagnostic.mock.calls)).not.toContain('private')

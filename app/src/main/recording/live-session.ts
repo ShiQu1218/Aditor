@@ -117,7 +117,7 @@ export class LiveSession extends EventEmitter {
       checkExecutable(command.command)
     } catch (error) {
       const failure = spawnFailure(error)
-      emitChildDiagnostic(this.options.onDiagnostic, { component: 'rust-live', code: 'engine_spawn', ...failure })
+      emitChildDiagnostic(this.options.onDiagnostic, { component: 'rust-live', code: 'engine_spawn', message: failure.report, tags: failure.tags })
       this.options.notice(tr('即時偵測無法啟動，錄影照常進行，收尾後再分析：{message}', { message: failure.message }))
       return
     }

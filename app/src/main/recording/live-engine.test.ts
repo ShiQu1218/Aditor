@@ -84,12 +84,16 @@ describe('LiveEngine process management', () => {
   it('restarts with backoff after a crash and preserves events from before the restart', async () => {
     const dir = root()
     const trace = path.join(dir, 'trace.jsonl')
-    const value = engine('crash-once', { FAKE_LIVE_TRACE: trace, FAKE_LIVE_STATE: path.join(dir, 'state') })
+    const onDiagnostic = vi.fn()
+    const value = engine('crash-once', { FAKE_LIVE_TRACE: trace, FAKE_LIVE_STATE: path.join(dir, 'state') }, { onDiagnostic })
     const restarting = vi.fn()
     value.on('restarting', restarting)
     value.start()
     await waitFor(() => restarting.mock.calls.length === 1 && (value.snapshot()?.events.length ?? 0) >= 2)
     expect(restarting.mock.calls[0][0].delayMs).toBe(10)
+    expect(onDiagnostic).toHaveBeenCalledOnce()
+    expect(onDiagnostic).toHaveBeenCalledWith(expect.objectContaining({ code: 'engine_crashed',
+      message: expect.stringMatching(/^Live analysis engine exited unexpectedly \(exit code \d+/) }))
     // The new process's event at t=0.5 predates the seal time (last seen at t=2), so discard it; keep a3000.
     expect(value.snapshot()!.events.map((e) => e.id)).toEqual(['a1000', 'a3000'])
     expect(value.snapshot()!.spectating).toEqual([{ start: 0.2, end: 0.4 }])

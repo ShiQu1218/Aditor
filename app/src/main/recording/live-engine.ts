@@ -152,7 +152,7 @@ export class LiveEngine extends EventEmitter {
       })
     } catch (error) {
       const failure = spawnFailure(error)
-      emitChildDiagnostic(this.options.onDiagnostic, { component: 'rust-live', code: 'engine_spawn', ...failure })
+      emitChildDiagnostic(this.options.onDiagnostic, { component: 'rust-live', code: 'engine_spawn', message: failure.report, tags: failure.tags })
       this.crashed(failure.message, undefined, true)
       return
     }
@@ -180,7 +180,7 @@ export class LiveEngine extends EventEmitter {
     proc.once('error', (error) => {
       launchError = error
       const failure = spawnFailure(error)
-      emitChildDiagnostic(this.options.onDiagnostic, { component: 'rust-live', code: 'engine_spawn', ...failure })
+      emitChildDiagnostic(this.options.onDiagnostic, { component: 'rust-live', code: 'engine_spawn', message: failure.report, tags: failure.tags })
       this.emit('warning', failure.message)
     })
     proc.stdin.on('error', () => { /* Writing stop may hit EPIPE after process exit; close handles it. */ })
