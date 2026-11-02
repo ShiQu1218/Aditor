@@ -1,7 +1,7 @@
 export type DiagnosticComponent = 'rust-engine' | 'rust-live' | 'rust-recorder'
 
-export const RECORDER_AUDIO_WARNING_CODES = new Set([
-  'audio_device_missing', 'audio_source_lost', 'audio_capture_stalled', 'game_audio_unavailable'
+export const RECORDER_WARNING_CODES = new Set([
+  'audio_device_missing', 'audio_source_lost', 'audio_capture_stalled', 'game_audio_unavailable', 'encoder_stalled'
 ])
 
 export interface ChildDiagnostic {

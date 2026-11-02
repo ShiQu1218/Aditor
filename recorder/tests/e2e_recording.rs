@@ -760,18 +760,22 @@ fn cli_records_the_requested_window_and_reports_resources() {
 }
 
 #[test]
-fn audio_start_failure_releases_resources_and_eof_flushes_encoded_tail() {
+fn invalid_audio_config_releases_resources_and_missing_device_eof_flushes_tail() {
     let _guard = HARDWARE.lock().unwrap_or_else(|e| e.into_inner());
     let _window = Window::open(1280, 720);
     let mut process = Process::open();
     let mut bad = start(&directory(), 1, true);
-    bad["audio"]["render"] = json!("不存在的音訊端點");
+    bad["audio"]["render"] = json!("bad\0endpoint");
     process.send(bad);
     assert_eq!(process.reply(1)["code"], "audio_failed");
     let dir = directory();
-    process.send(start(&dir, 2, true));
+    let mut missing = start(&dir, 2, true);
+    missing["audio"]["render"] = json!("不存在的音訊端點");
+    missing["audio"]["mic_enabled"] = json!(false);
+    process.send(missing);
     process.until(|v| v["ev"] == "started");
     assert_eq!(process.reply(2)["ok"], true);
+    assert!(process.seen.iter().any(|v| v["ev"] == "warning" && v["code"] == "audio_source_lost"));
     thread::sleep(Duration::from_secs(2));
     process.exit();
     verify_recording(&dir, &process, 2.0);

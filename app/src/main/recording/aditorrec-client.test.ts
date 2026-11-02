@@ -3,6 +3,7 @@ import fs from 'fs'
 import path from 'path'
 import { AditorrecClient, HELLO_TIMEOUT_MS, RecorderError, recorderTags } from './aditorrec-client'
 import { fakeCommand, tempRoot } from './test-support'
+import { LOCALES, setActiveLocale, tr } from '../../shared/locale'
 
 const clients: AditorrecClient[] = []
 const roots: string[] = []
@@ -12,6 +13,7 @@ function client(mode = 'normal'): AditorrecClient {
   return value
 }
 afterEach(async () => {
+  setActiveLocale('zh-TW')
   for (const value of clients.splice(0)) await value.close()
   vi.useRealTimers()
   for (const root of roots.splice(0)) fs.rmSync(root, { recursive: true, force: true })
@@ -38,6 +40,28 @@ describe('recorderTags', () => {
 })
 
 describe('aditorrec JSON-lines client', () => {
+  it.each(LOCALES)('localizes encoder stall events in %s while keeping English diagnostics', async (locale) => {
+    setActiveLocale(locale)
+    const root = tempRoot(); roots.push(root)
+    const onDiagnostic = vi.fn()
+    const value = new AditorrecClient(fakeCommand('encoder-stall'), onDiagnostic)
+    clients.push(value)
+    const events: Array<Record<string, unknown>> = []
+    value.on('event', (event) => events.push(event))
+    await value.hello()
+    await value.startRecording({ session_dir: root })
+    expect(events.find((event) => event.ev === 'warning')).toMatchObject({
+      code: 'encoder_stalled', message: tr('編碼暫時停滯，錄影仍在繼續，部分畫面可能遺失。')
+    })
+    expect(events.find((event) => event.ev === 'error')).toMatchObject({
+      code: 'encode_failed', message: tr('編碼已停滯 60 秒，錄影失敗，將嘗試保留已完成的片段。')
+    })
+    expect(onDiagnostic.mock.calls.map(([diagnostic]) => [diagnostic.code, diagnostic.message])).toEqual([
+      ['encoder_stalled', 'Encoding is temporarily stalled; recording continues with dropped video frames. stage=encode input=12'],
+      ['encode_failed', 'Encoder stalled for at least 60 seconds. stage=encode input=12']
+    ])
+  })
+
   it('reports only audio warnings with recorder state while startup and recording continue', async () => {
     const root = tempRoot(); roots.push(root)
     const onDiagnostic = vi.fn()

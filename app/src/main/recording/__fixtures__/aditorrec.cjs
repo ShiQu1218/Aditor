@@ -62,6 +62,10 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
         send({ ev: 'warning', code, message: `Synthetic ${code} warning` })
       }
     }
+    if (mode === 'encoder-stall') {
+      send({ ev: 'warning', code: 'encoder_stalled', message: 'Encoding is temporarily stalled; recording continues with dropped video frames. stage=encode input=12' })
+      send({ ev: 'error', code: 'encode_failed', message: 'Encoder stalled for at least 60 seconds. stage=encode input=12' })
+    }
     // The recorder downgrades a missing default endpoint to a warning and keeps recording with silence.
     if (mode === 'audio-default-missing') send({ ev: 'warning', code: 'audio_device_missing',
       message: 'System audio is enabled but no matching audio device was found; recording will continue with silence for that source: audio_device_missing: No default audio device' })
