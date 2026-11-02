@@ -2,7 +2,7 @@ import { app, ipcMain } from 'electron'
 import * as Sentry from '@sentry/electron/main'
 import { MAX_USER_REPORT_LENGTH, SENTRY_DSN, sanitizeTelemetryEvent } from '../shared/telemetry'
 import { redactTelemetryText } from '../shared/telemetry'
-import { RECORDER_AUDIO_WARNING_CODES, type ChildDiagnostic } from '../shared/child-diagnostics'
+import { RECORDER_WARNING_CODES, type ChildDiagnostic } from '../shared/child-diagnostics'
 
 let allowed = false
 let started = false
@@ -208,7 +208,7 @@ export function reportPlaybackDesync(raw: unknown): boolean {
 
 /** Child processes have no Sentry credentials or network client; this is their only upload path. */
 export function reportChildDiagnostic(diagnostic: ChildDiagnostic): string | undefined {
-  const warning = diagnostic.component === 'rust-recorder' && RECORDER_AUDIO_WARNING_CODES.has(diagnostic.code)
+  const warning = diagnostic.component === 'rust-recorder' && RECORDER_WARNING_CODES.has(diagnostic.code)
   if (!allowed || !started || (!REPORTABLE_CODES.has(diagnostic.code) && !warning)) return
   // Killed from outside (Task Manager, debugger, console close): not a fault we can fix, and it would only add noise.
   if (isExternalTermination(diagnostic)) return
