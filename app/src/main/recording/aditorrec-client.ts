@@ -5,7 +5,7 @@ import { checkExecutable, spawnFailure } from '../child-spawn'
 import type { RecorderCapabilities, RecorderGpu } from '../../shared/recording'
 import type { RecorderCommand } from './index'
 import { tr } from '../../shared/locale'
-import { emitChildDiagnostic, RECORDER_AUDIO_WARNING_CODES, type ChildDiagnosticHandler } from '../../shared/child-diagnostics'
+import { emitChildDiagnostic, RECORDER_WARNING_CODES, type ChildDiagnosticHandler } from '../../shared/child-diagnostics'
 
 const MAX_BYTES = 64 * 1024
 /** `hello` may probe several GPUs and legitimately take a few seconds on some machines. */
@@ -165,7 +165,8 @@ export class AditorrecClient extends EventEmitter {
     const started = new Promise<void>((resolve, reject) => {
       onEvent = (event) => {
         if (event.ev === 'started') resolve()
-        if (event.ev === 'error') reject(this.error(String(event.code), String(event.message)))
+        // onData already reported the English diagnostic before localizing the event.
+        if (event.ev === 'error') reject(new RecorderError(String(event.code), String(event.message)))
       }
       onCrash = reject
       this.on('event', onEvent)
@@ -224,8 +225,13 @@ export class AditorrecClient extends EventEmitter {
             typeof msg.message === 'string' ? msg.message : tr('錄影指令失敗'), {}, typeof msg.message === 'string' ? msg.message : 'Recorder command failed'))
         } else if (typeof msg.ev === 'string') {
           if (msg.ev === 'error') this.error(String(msg.code ?? 'internal'), String(msg.message ?? 'Recorder error'))
-          if (msg.ev === 'warning' && RECORDER_AUDIO_WARNING_CODES.has(msg.code) && typeof msg.message === 'string') {
+          if (msg.ev === 'warning' && RECORDER_WARNING_CODES.has(msg.code) && typeof msg.message === 'string') {
             this.reportDiagnostic(msg.code, msg.message)
+          }
+          if (msg.ev === 'warning' && msg.code === 'encoder_stalled') {
+            msg.message = tr('編碼暫時停滯，錄影仍在繼續，部分畫面可能遺失。')
+          } else if (msg.ev === 'error' && msg.code === 'encode_failed' && typeof msg.message === 'string' && msg.message.startsWith('Encoder stalled for at least 60 seconds.')) {
+            msg.message = tr('編碼已停滯 60 秒，錄影失敗，將嘗試保留已完成的片段。')
           }
           this.emit('event', msg)
         }

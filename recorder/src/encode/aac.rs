@@ -54,6 +54,16 @@ impl Audio {
         }
         Ok(packets)
     }
+    /// Fill a long capture gap in half-second batches so video and muxing can make progress.
+    pub fn prepare(&mut self, pts: i64) -> Result<(Vec<Packet>, bool)> {
+        let target = ((i128::from(pts) * 48_000 + 5_000_000) / 10_000_000).max(0) as i64;
+        ensure!(
+            target.saturating_sub(self.written) <= 60 * 48_000,
+            "Audio timestamp gap exceeds one minute; refusing an invalid recording clock"
+        );
+        let packets = self.advance(target.min(self.written + 24_000))?;
+        Ok((packets, self.written >= target))
+    }
     pub fn catch_up(&mut self, video_pts: i64) -> Result<Vec<Packet>> {
         // Leave the mixer's source wait plus 100 ms for its block and thread scheduling.
         let delay = AUDIO_SOURCE_GRACE_FRAMES + i64::from(AUDIO_RATE / 10);
@@ -169,6 +179,25 @@ mod tests {
         audio.push(&[0.5; 960], 2_000_000).unwrap();
         assert_eq!(audio.written, 10_080);
         audio.finish(5_000_000).unwrap();
+    }
+
+    #[test]
+    fn long_gap_is_filled_in_bounded_batches_without_losing_recovered_samples() {
+        let mut audio = Audio::new().unwrap();
+        let mut done = false;
+        for _ in 0..14 {
+            let before = audio.written;
+            let (packets, ready) = audio.prepare(70_000_000).unwrap();
+            assert!(packets.len() <= 25);
+            assert!(audio.written - before <= 24_000);
+            done = ready;
+        }
+        assert!(done);
+        assert_eq!(audio.written, 7 * 48_000);
+        audio.push(&[0.5; 960], 70_000_000).unwrap();
+        assert_eq!(audio.written, 7 * 48_000 + 480);
+        assert!(audio.prepare(i64::MAX).is_err());
+        audio.finish(71_000_000).unwrap();
     }
 
     #[test]

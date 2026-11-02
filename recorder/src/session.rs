@@ -48,7 +48,54 @@ use windows::{
 
 const DISK_RESERVE: u64 = 1024 * 1024 * 1024;
 const STATS_INTERVAL: Duration = Duration::from_secs(5);
+const ENCODER_STALL_TIMEOUT: Duration = Duration::from_secs(60);
 const AUTO_GPU: &str = "auto";
+
+#[derive(Debug, PartialEq)]
+enum StallAction {
+    None,
+    Warn,
+    Fail,
+}
+
+#[derive(Default)]
+struct EncoderStall {
+    since: Option<Instant>,
+}
+impl EncoderStall {
+    fn update(
+        &mut self,
+        now: Instant,
+        interval_start: Instant,
+        writer: bool,
+        current: &EncodeStats,
+        previous: &EncodeStats,
+    ) -> StallAction {
+        if !writer || current.frames_encoded != previous.frames_encoded {
+            self.since = None;
+            return StallAction::None;
+        }
+        if let Some(since) = self.since {
+            return if now.duration_since(since) >= ENCODER_STALL_TIMEOUT {
+                StallAction::Fail
+            } else {
+                StallAction::None
+            };
+        }
+        if now.duration_since(interval_start) >= STATS_INTERVAL
+            && current.frames_in > previous.frames_in
+        {
+            self.since = Some(interval_start);
+            if now.duration_since(interval_start) >= ENCODER_STALL_TIMEOUT {
+                StallAction::Fail
+            } else {
+                StallAction::Warn
+            }
+        } else {
+            StallAction::None
+        }
+    }
+}
 
 // Preserve the scaffold's unit struct constructor; each IPC control thread owns only one recording job.
 thread_local! {
@@ -459,6 +506,7 @@ struct Session {
     events: EventSink,
     last_stats: Instant,
     previous: EncodeStats,
+    encoder_stall: EncoderStall,
     audio_stall_warned: bool,
     /// DDA records the real desktop while the game is hidden; detection still needs black frames to split matches there.
     /// Visibility as of the oldest queued change; small frames read back one sample late, so they are judged by their own pts.
@@ -598,6 +646,7 @@ impl Session {
             events,
             last_stats: Instant::now(),
             previous: EncodeStats::default(),
+            encoder_stall: EncoderStall::default(),
             audio_stall_warned: false,
             game_hidden: false,
             visibility_changes: VecDeque::new(),
@@ -852,10 +901,13 @@ impl Session {
             |w| w.stats(),
         );
         let elapsed = self.last_stats.elapsed().as_secs_f64().max(0.001);
-        let stalled = self.writer.is_some()
-            && elapsed >= 5.0
-            && stats.frames_in > self.previous.frames_in
-            && stats.frames_encoded == self.previous.frames_encoded;
+        let stall = self.encoder_stall.update(
+            Instant::now(),
+            self.last_stats,
+            self.writer.is_some(),
+            &stats,
+            &self.previous,
+        );
         self.events.emit(&Event::Stats {
             fps_in: stats.frames_in.saturating_sub(self.previous.frames_in) as f64 / elapsed,
             fps_enc: stats
@@ -872,14 +924,23 @@ impl Session {
         });
         self.previous = stats;
         self.last_stats = Instant::now();
-        if stalled {
+        if stall == StallAction::Fail {
             return Err((
                 ErrorCode::EncodeFailed,
                 format!(
-                    "Encoder has processed no frames for over five seconds; {}",
+                    "Encoder stalled for at least 60 seconds. {}",
                     self.writer.as_ref().unwrap().diagnostics()
                 ),
             ));
+        }
+        if stall == StallAction::Warn {
+            self.events.emit(&Event::Warning {
+                code: "encoder_stalled".into(),
+                message: format!(
+                    "Encoding is temporarily stalled; recording continues with dropped video frames. {}",
+                    self.writer.as_ref().unwrap().diagnostics()
+                ),
+            });
         }
         Ok(())
     }
@@ -1139,10 +1200,186 @@ mod tests {
             events: Output::default().sink(),
             last_stats: Instant::now(),
             previous: EncodeStats::default(),
+            encoder_stall: EncoderStall::default(),
             audio_stall_warned: false,
             game_hidden: false,
             visibility_changes: VecDeque::new(),
         }
+    }
+
+    #[test]
+    fn encoder_stall_warns_once_and_fails_at_sixty_seconds_without_new_input() {
+        let start = Instant::now();
+        let previous = EncodeStats::default();
+        let current = EncodeStats {
+            frames_in: 1,
+            ..Default::default()
+        };
+        let mut stall = EncoderStall::default();
+        assert_eq!(
+            stall.update(
+                start + Duration::from_secs(4),
+                start,
+                true,
+                &current,
+                &previous
+            ),
+            StallAction::None
+        );
+        assert_eq!(
+            stall.update(start + STATS_INTERVAL, start, true, &current, &previous),
+            StallAction::Warn
+        );
+        for seconds in [10, 30, 59] {
+            assert_eq!(
+                stall.update(
+                    start + Duration::from_secs(seconds),
+                    start,
+                    true,
+                    &current,
+                    &current
+                ),
+                StallAction::None
+            );
+        }
+        assert_eq!(
+            stall.update(
+                start + ENCODER_STALL_TIMEOUT,
+                start,
+                true,
+                &current,
+                &current
+            ),
+            StallAction::Fail
+        );
+    }
+
+    #[test]
+    fn encoder_output_recovery_resets_the_warning_and_timeout() {
+        let start = Instant::now();
+        let mut stall = EncoderStall::default();
+        let first = EncodeStats {
+            frames_in: 1,
+            ..Default::default()
+        };
+        assert_eq!(
+            stall.update(
+                start + STATS_INTERVAL,
+                start,
+                true,
+                &first,
+                &EncodeStats::default()
+            ),
+            StallAction::Warn
+        );
+        let recovered = EncodeStats {
+            frames_in: 2,
+            frames_encoded: 1,
+            ..Default::default()
+        };
+        let recovery = start + Duration::from_secs(50);
+        assert_eq!(
+            stall.update(recovery, start, true, &recovered, &first),
+            StallAction::None
+        );
+        let next = EncodeStats {
+            frames_in: 3,
+            frames_encoded: 1,
+            ..Default::default()
+        };
+        assert_eq!(
+            stall.update(recovery + STATS_INTERVAL, recovery, true, &next, &recovered),
+            StallAction::Warn
+        );
+        assert_eq!(
+            stall.update(start + ENCODER_STALL_TIMEOUT, recovery, true, &next, &next),
+            StallAction::None
+        );
+        assert_eq!(
+            stall.update(
+                recovery + ENCODER_STALL_TIMEOUT,
+                recovery,
+                true,
+                &next,
+                &next
+            ),
+            StallAction::Fail
+        );
+    }
+
+    #[test]
+    fn idle_or_video_disabled_does_not_start_an_encoder_stall() {
+        let start = Instant::now();
+        let mut stall = EncoderStall::default();
+        let idle = EncodeStats::default();
+        let input = EncodeStats {
+            frames_in: 1,
+            ..Default::default()
+        };
+        assert_eq!(
+            stall.update(start + ENCODER_STALL_TIMEOUT, start, true, &idle, &idle),
+            StallAction::None
+        );
+        assert_eq!(
+            stall.update(start + ENCODER_STALL_TIMEOUT, start, false, &input, &idle),
+            StallAction::None
+        );
+        assert_eq!(
+            stall.update(start + ENCODER_STALL_TIMEOUT, start, true, &input, &idle),
+            StallAction::Fail
+        );
+    }
+
+    #[test]
+    fn gpu_temporary_encoder_stall_warns_without_stopping_the_session() {
+        use windows::Win32::Graphics::{
+            Direct3D11::D3D11_TEXTURE2D_DESC,
+            Dxgi::Common::{DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_SAMPLE_DESC},
+        };
+        let gpu = Gpu::create().unwrap();
+        let dir = std::env::temp_dir().join(format!("aditorrec-stall-{}", std::process::id()));
+        let video = VideoParams {
+            width: 256,
+            height: 144,
+            fps: 90,
+            codec: Codec::Hevc,
+            encoder: "hevc_nvenc".into(),
+            bitrate_kbps: 4000,
+            preset: crate::types::EncodePreset::Speed,
+            aspect: EncodeAspect::Native,
+        };
+        let writer =
+            Arc::new(SegmentWriter::open(&gpu, &dir, video, false, mpsc::channel().0).unwrap());
+        let desc = D3D11_TEXTURE2D_DESC {
+            Width: 2,
+            Height: 2,
+            MipLevels: 1,
+            ArraySize: 1,
+            Format: DXGI_FORMAT_B8G8R8A8_UNORM,
+            SampleDesc: DXGI_SAMPLE_DESC {
+                Count: 1,
+                Quality: 0,
+            },
+            ..Default::default()
+        };
+        let mut source = None;
+        // SAFETY: Valid device and a minimal same-device source; no desktop content is captured.
+        unsafe { gpu.device.CreateTexture2D(&desc, None, Some(&mut source)) }.unwrap();
+        // A rejected frame increments input but cannot start the encoder or its static-image filler.
+        writer.push_video(&source.unwrap(), 2, 2, -1);
+        let mut session = test_session(mpsc::channel().1, "encoder-stall");
+        session.writer = Some(writer);
+        session.last_stats = Instant::now() - Duration::from_secs(6);
+        let output = Output::default();
+        session.events = output.sink();
+        session.stats().unwrap();
+        let events = output.events();
+        assert!(events
+            .iter()
+            .any(|event| event["ev"] == "warning" && event["code"] == "encoder_stalled"));
+        assert!(!events.iter().any(|event| event["ev"] == "error"));
+        drop(session);
+        fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]
