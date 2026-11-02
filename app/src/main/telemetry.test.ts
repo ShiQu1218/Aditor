@@ -108,7 +108,7 @@ describe('telemetry consent', () => {
 })
 
 describe('child diagnostics', () => {
-  it.each(['audio_device_missing', 'audio_source_lost', 'audio_capture_stalled', 'game_audio_unavailable'])(
+  it.each(['audio_device_missing', 'audio_source_lost', 'audio_capture_stalled', 'game_audio_unavailable', 'encoder_stalled'])(
     'reports %s as a warning with privacy filtering, dedupe and consent', async (code) => {
       const { initializeTelemetry, reportChildDiagnostic, updateTelemetryConsent } = await import('./telemetry')
       initializeTelemetry(true)

@@ -115,7 +115,10 @@ struct Counts {
     worker_stage: AtomicU64,
     mux_busy: AtomicU64,
     mux_max_ms: AtomicU64,
+    mux_bytes: AtomicU64,
     error: OnceLock<String>,
+    #[cfg(test)]
+    encode_micros: Mutex<Vec<u64>>,
 }
 impl Counts {
     fn diagnostics(&self) -> String {
@@ -610,6 +613,7 @@ fn encode_frame(
     muxer: &mut mux::MuxWorker,
     source: &Frame,
     slot: i64,
+    next_slot: i64,
     fps: u32,
     counts: &Counts,
 ) -> Result<()> {
@@ -621,14 +625,24 @@ fn encode_frame(
     unsafe {
         (*frame.0).pts = pts;
         (*frame.0).duration = duration;
-        (*frame.0).pict_type = if slot % (fps as i64 * 2) == 0 {
-            ffi::AV_PICTURE_TYPE_I
-        } else {
-            ffi::AV_PICTURE_TYPE_NONE
-        };
+        (*frame.0).pict_type =
+            if next_slot == 0 || slot / (fps as i64 * 2) > (next_slot - 1) / (fps as i64 * 2) {
+                ffi::AV_PICTURE_TYPE_I
+            } else {
+                ffi::AV_PICTURE_TYPE_NONE
+            };
     }
     counts.worker_stage.store(1, Ordering::Relaxed);
+    #[cfg(test)]
+    let started = std::time::Instant::now();
     let packets = encoder.send(Some(&frame))?;
+    #[cfg(test)]
+    {
+        let mut times = counts.encode_micros.lock().unwrap();
+        if times.len() < 2048 {
+            times.push(started.elapsed().as_micros() as u64);
+        }
+    }
     // SAFETY: This packet is exclusively owned and not yet handed to the muxer; some encoders do not set duration.
     unsafe {
         for p in &packets {
@@ -663,6 +677,8 @@ fn run_worker(
 ) -> Result<()> {
     let mut previous: Option<Arc<Surface>> = None;
     let mut pending = None;
+    let mut pending_audio = None;
+    let mut recovering = false;
     let mut next_slot = 0;
     let mut video_closed = false;
     let mut audio_closed = false;
@@ -671,11 +687,18 @@ fn run_worker(
     loop {
         counts.check_error()?;
         counts.worker_stage.store(0, Ordering::Relaxed);
+        let mut audio_backlog = true;
         for _ in 0..8 {
-            match audio_rx.try_recv() {
+            match pending_audio.take().map_or_else(|| audio_rx.try_recv(), Ok) {
                 Ok(job) => {
                     if let Some(audio) = audio.as_mut() {
                         counts.worker_stage.store(3, Ordering::Relaxed);
+                        let (silence, ready) = audio.prepare(job.pts)?;
+                        muxer.push(silence, false)?;
+                        if !ready {
+                            pending_audio = Some(job);
+                            break;
+                        }
                         let packets = audio.push(&job.samples, job.pts).with_context(|| {
                             format!(
                                 "Audio input pts={} video_next_slot={} fps={fps}; {}",
@@ -690,9 +713,13 @@ fn run_worker(
                 }
                 Err(TryRecvError::Disconnected) => {
                     audio_closed = true;
+                    audio_backlog = false;
                     break;
                 }
-                Err(TryRecvError::Empty) => break,
+                Err(TryRecvError::Empty) => {
+                    audio_backlog = false;
+                    break;
+                }
             }
         }
         let mut job = if pending.is_some() {
@@ -733,20 +760,47 @@ fn run_worker(
             if job.slot >= next_slot {
                 if let Some(last) = &previous {
                     if next_slot < job.slot {
-                        encode_frame(encoder, muxer, &last.frame, next_slot, fps, &counts)?;
-                        next_slot += 1;
+                        recovering |= job.slot - next_slot > i64::from(fps) * 2;
+                        // Long stalls use sparse video; never replay seconds of duplicate GPU work.
+                        let slot = if recovering {
+                            (next_slot + i64::from(fps / 2)).min(job.slot - 1).min(
+                                ((next_slot + i64::from(fps) * 2 - 1) / (i64::from(fps) * 2))
+                                    * i64::from(fps)
+                                    * 2,
+                            )
+                        } else {
+                            next_slot
+                        };
+                        encode_frame(encoder, muxer, &last.frame, slot, next_slot, fps, &counts)?;
+                        counts
+                            .dropped
+                            .fetch_add((slot - next_slot) as u64, Ordering::Relaxed);
+                        next_slot = slot + 1;
                         counts.worker_stage.store(3, Ordering::Relaxed);
-                        advance_audio(audio, muxer, next_slot, fps)?;
+                        if !audio_backlog {
+                            advance_audio(audio, muxer, next_slot, fps)?;
+                        }
                         // Drain audio between duplicate frames before silence can replace queued samples.
                         pending = Some(job);
                         continue;
                     }
                 }
-                encode_frame(encoder, muxer, &job.surface.frame, job.slot, fps, &counts)?;
+                encode_frame(
+                    encoder,
+                    muxer,
+                    &job.surface.frame,
+                    job.slot,
+                    next_slot,
+                    fps,
+                    &counts,
+                )?;
+                recovering = false;
                 next_slot = job.slot + 1;
                 previous = Some(job.surface);
                 counts.worker_stage.store(3, Ordering::Relaxed);
-                advance_audio(audio, muxer, next_slot, fps)?;
+                if !audio_backlog {
+                    advance_audio(audio, muxer, next_slot, fps)?;
+                }
             } else {
                 counts.dropped.fetch_add(1, Ordering::Relaxed);
             }

@@ -8,7 +8,7 @@ mod process;
 
 use std::marker::PhantomData;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::mpsc::{self, Receiver, Sender, SyncSender, TryRecvError, TrySendError};
+use std::sync::mpsc::{self, Receiver, SyncSender, TryRecvError, TrySendError};
 use std::sync::Arc;
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
@@ -67,7 +67,7 @@ pub struct AudioCapture {
     stop: Arc<AtomicBool>,
     workers: Vec<JoinHandle<()>>,
     warnings: Receiver<AudioWarning>,
-    warning_tx: Sender<AudioWarning>,
+    warning_tx: SyncSender<AudioWarning>,
 }
 
 /// A user-visible audio degradation. The session turns these into one warning event each.
@@ -77,27 +77,12 @@ pub struct AudioWarning {
     pub message: String,
 }
 
-/// Missing default endpoints are expected when a device is disabled; explicit bad IDs are not.
-fn missing_endpoint(error: &anyhow::Error) -> bool {
-    format!("{error:#}").contains("audio_device_missing:")
-}
-
-fn missing_endpoint_warning(mic: bool, error: &anyhow::Error) -> AudioWarning {
-    let source = if mic { "Microphone" } else { "System audio" };
-    AudioWarning {
-        code: "audio_device_missing",
-        message: format!(
-            "{source} is enabled but no matching audio device was found; recording will continue with silence for that source: {error:#}"
-        ),
-    }
-}
-
 fn source_lost_warning(mic: bool, error: &anyhow::Error) -> AudioWarning {
     let source = if mic { "Microphone" } else { "System audio" };
     AudioWarning {
         code: "audio_source_lost",
         message: format!(
-            "{source} capture stopped unexpectedly; continuing to record video with silence for that source: {error:#}"
+            "{source} capture stopped unexpectedly; continuing to record video with silence for that source and retrying the selected device: {error:#}"
         ),
     }
 }
@@ -125,7 +110,7 @@ impl AudioCapture {
         sink: Box<dyn AudioSink>,
     ) -> Result<Self> {
         cfg.validate().context("audio_failed: Invalid audio parameters")?;
-        let (warning_tx, warnings) = mpsc::channel();
+        let (warning_tx, warnings) = mpsc::sync_channel(32);
         let mut capture = Self {
             stop: Arc::new(AtomicBool::new(false)),
             workers: Vec::new(),
@@ -141,12 +126,12 @@ impl AudioCapture {
                     .filter(|_| cfg.render == "default")
                     .map(Loopback::Exclude)
             };
-            capture.optional_endpoint(cfg.render.clone(), false, loopback)?
+            Some(capture.spawn_endpoint(cfg.render.clone(), false, loopback)?)
         } else {
             None
         };
         let mut mic = if cfg.mic_enabled {
-            capture.optional_endpoint(cfg.capture.clone(), true, None)?
+            Some(capture.spawn_endpoint(cfg.capture.clone(), true, None)?)
         } else {
             None
         };
@@ -184,26 +169,16 @@ impl AudioCapture {
         self.shutdown();
     }
 
-    fn optional_endpoint(
+    fn spawn_endpoint(
         &mut self,
         id: String,
         mic: bool,
         loopback: Option<Loopback>,
-    ) -> Result<Option<Source>> {
-        match self.spawn_endpoint(id, mic, loopback) {
-            Ok(source) => Ok(Some(source)),
-            Err(error) if missing_endpoint(&error) => {
-                // Keep the silent AAC track and audio=true metadata; only surface the missing source to the user.
-                let _ = self
-                    .warning_tx
-                    .send(missing_endpoint_warning(mic, &error));
-                Ok(None)
-            }
-            Err(error) => Err(error),
-        }
-    }
-
-    fn spawn_endpoint(&mut self, id: String, mic: bool, loopback: Option<Loopback>) -> Result<Source> {
+    ) -> Result<Source> {
+        anyhow::ensure!(
+            !id.contains('\0'),
+            "audio_failed: Audio device ID contains a NUL character"
+        );
         let (packets_tx, packets_rx) = mpsc::sync_channel(PACKET_CAPACITY);
         let (ready_tx, ready_rx) = mpsc::sync_channel(1);
         let stop = Arc::clone(&self.stop);
@@ -218,37 +193,43 @@ impl AudioCapture {
                 .into(),
             )
             .spawn(move || {
-                let opened = match loopback {
-                    Some(Loopback::Game(pid)) => EndpointStream::open_process(pid, true).or_else(|error| {
-                        let _ = warning_tx.send(AudioWarning {
-                            code: "game_audio_unavailable",
-                            message: format!("Game-only audio unavailable; switched to system audio: {error:#}"),
-                        });
-                        EndpointStream::open(&id, false)
-                    }),
-                    // Older Windows builds lack process loopback; plain device loopback is the previous behavior.
-                    Some(Loopback::Exclude(pid)) => EndpointStream::open_process(pid, false).or_else(|error| {
-                        eprintln!("Excluding Aditor audio unavailable; recording all system audio: {error:#}");
-                        EndpointStream::open(&id, false)
-                    }),
-                    None => EndpointStream::open(&id, mic),
-                };
-                let stream = match opened {
-                    Ok(stream) => stream,
-                    Err(error) => {
-                        let _ = ready_tx.send(Err(format!("{error:#}")));
-                        return;
-                    }
-                };
-                if ready_tx.send(Ok(stream.format.clone())).is_err() {
-                    return;
-                }
                 let dropped = AtomicU64::new(0);
-                if let Err(error) = stream.run(&packets_tx, &stop, &dropped) {
-                    // A single endpoint failure only loses that source; the mixer keeps producing silence and video continues.
-                    eprintln!("audio_source_lost: Audio capture interrupted: {error:#}");
-                    let _ = warning_tx.send(source_lost_warning(mic, &error));
-                }
+                let mut ready = Some(ready_tx);
+                let mut warned = false;
+                retry_source(&stop, |generation| {
+                    let opened = match loopback {
+                        Some(Loopback::Game(pid)) => EndpointStream::open_process(pid, true).or_else(|error| {
+                            let _ = warning_tx.try_send(AudioWarning {
+                                code: "game_audio_unavailable",
+                                message: format!("Game-only audio unavailable; switched to system audio: {error:#}"),
+                            });
+                            EndpointStream::open(&id, false)
+                        }),
+                        // Older Windows builds lack process loopback; plain device loopback is the previous behavior.
+                        Some(Loopback::Exclude(pid)) => EndpointStream::open_process(pid, false).or_else(|error| {
+                            eprintln!("Excluding Aditor audio unavailable; recording all system audio: {error:#}");
+                            EndpointStream::open(&id, false)
+                        }),
+                        None => EndpointStream::open(&id, mic),
+                    };
+                    // Retry only the selected ID: another microphone may not have consent.
+                    let result = opened.and_then(|stream| {
+                        if let Some(ready) = ready.take() {
+                            let _ = ready.send(());
+                        }
+                        stream.run(&packets_tx, &stop, &dropped, generation)
+                    });
+                    if let Err(error) = &result {
+                        if !warned {
+                            let _ = warning_tx.try_send(source_lost_warning(mic, error));
+                            warned = true;
+                        }
+                    }
+                    if let Some(ready) = ready.take() {
+                        let _ = ready.send(());
+                    }
+                    result
+                });
                 let dropped = dropped.load(Ordering::Relaxed);
                 if dropped != 0 {
                     eprintln!("Audio capture queue dropped {dropped} packets");
@@ -256,10 +237,10 @@ impl AudioCapture {
             })
             .context("audio_failed: Failed to create audio capture thread")?;
         self.workers.push(worker);
-        let format = ready_rx
+        ready_rx
             .recv_timeout(Duration::from_secs(5))
-            .context("audio_failed: Failed to wait for audio device startup")?
-            .map_err(|message| anyhow::anyhow!("audio_failed: {message}"))?;
+            .context("audio_failed: Failed to wait for audio device startup")?;
+        let format = Format::new(AUDIO_RATE, 2, 8, Sample::Float(32), 3)?;
         Ok(Source::new(format, packets_rx))
     }
 
@@ -277,6 +258,24 @@ impl AudioCapture {
 impl Drop for AudioCapture {
     fn drop(&mut self) {
         self.shutdown();
+    }
+}
+
+// Runs outside capture callbacks; keep retry and warning memory bounded even through a long outage.
+fn retry_source(stop: &AtomicBool, mut attempt: impl FnMut(u64) -> Result<()>) {
+    let mut generation = 0u64;
+    while !stop.load(Ordering::Acquire) {
+        generation = generation.wrapping_add(1);
+        if attempt(generation).is_ok() {
+            break;
+        }
+        // Only the failed endpoint worker waits; stop is checked every 10 ms.
+        for _ in 0..100 {
+            if stop.load(Ordering::Acquire) {
+                break;
+            }
+            thread::sleep(Duration::from_millis(10));
+        }
     }
 }
 
@@ -489,6 +488,7 @@ impl EndpointStream {
         packets: &SyncSender<Packet>,
         stop: &AtomicBool,
         dropped: &AtomicU64,
+        generation: u64,
     ) -> Result<()> {
         while !stop.load(Ordering::Acquire) {
             // SAFETY: event remains valid throughout the stream lifetime; the 10 ms timeout handles silent loopback.
@@ -500,7 +500,9 @@ impl EndpointStream {
                 if unsafe { self.capture.GetNextPacketSize() }? == 0 {
                     break;
                 }
-                let packet = self.copy_packet()?;
+                let mut packet = self.copy_packet()?;
+                // Inline format, no allocation; a full queue cannot lose the new stream format.
+                packet.stream = Some((generation, self.format.clone()));
                 if !enqueue(packets, packet, dropped) {
                     return Ok(());
                 }
@@ -528,6 +530,7 @@ impl EndpointStream {
                 now_ticks() - i64::from(frames) * TICKS_PER_SEC / i64::from(self.format.rate)
             };
             Ok(Packet {
+                stream: None,
                 bytes,
                 frames,
                 flags,
@@ -611,6 +614,7 @@ fn read_format(raw: &TaskMem<WAVEFORMATEX>) -> Result<Format> {
 }
 
 struct Packet {
+    stream: Option<(u64, Format)>,
     bytes: Vec<u8>,
     frames: u32,
     flags: u32,
@@ -635,6 +639,8 @@ struct Source {
     anchor: Option<i64>,
     input_frames: i64,
     output_frames: i64,
+    generation: u64,
+    pts_offset: Option<i64>,
     last_packet: Instant,
     stall_warned: bool,
 }
@@ -648,6 +654,8 @@ impl Source {
             anchor: None,
             input_frames: 0,
             output_frames: 0,
+            generation: 0,
+            pts_offset: None,
             last_packet: Instant::now(),
             stall_warned: false,
         }
@@ -675,7 +683,34 @@ impl Source {
         true
     }
 
-    fn convert(&mut self, packet: Packet, timeline: &mut Timeline, origin: i64) -> Result<()> {
+    fn convert(&mut self, mut packet: Packet, timeline: &mut Timeline, origin: i64) -> Result<()> {
+        if let Some((generation, mut format)) = packet.stream.take() {
+            if generation != self.generation {
+                format.mono = self.format.mono;
+                self.resampler = Resampler::new(format.rate);
+                self.format = format;
+                self.anchor = None;
+                self.input_frames = 0;
+                self.output_frames = 0;
+                self.generation = generation;
+                self.pts_offset = None;
+            }
+        }
+        // Timestamp-error packets already contain wall QPC from copy_packet, not the device clock.
+        if self.generation != 0 && packet.flags & AUDCLNT_BUFFERFLAGS_TIMESTAMP_ERROR.0 as u32 == 0
+        {
+            let offset = self.pts_offset.get_or_insert_with(|| {
+                let current = now_ticks()
+                    - i64::from(packet.frames) * TICKS_PER_SEC / i64::from(self.format.rate);
+                // Rebase reset device clocks so recovered audio stays inside the bounded timeline.
+                if current.abs_diff(packet.pts) > TICKS_PER_SEC as u64 {
+                    current.saturating_sub(packet.pts)
+                } else {
+                    0
+                }
+            });
+            packet.pts = packet.pts.saturating_add(*offset);
+        }
         let expected = self
             .anchor
             .map(|anchor| anchor + self.input_frames * TICKS_PER_SEC / i64::from(self.format.rate));
@@ -717,7 +752,7 @@ fn mix_loop(
     config: &AudioConfig,
     stop: &AtomicBool,
     mut sink: Box<dyn AudioSink>,
-    warnings: Sender<AudioWarning>,
+    warnings: SyncSender<AudioWarning>,
 ) {
     // Keep startup packets that the AAC writer can still accept after its catch-up delay.
     let cursor = (frames_from_ticks(now_ticks() - origin)
@@ -732,7 +767,7 @@ fn mix_loop(
             .map(|source| source.drain(&mut system_audio, origin));
         if let Some(Err(error)) = &system_status {
             eprintln!("audio_source_lost: System audio conversion failed: {error:#}");
-            let _ = warnings.send(source_lost_warning(false, error));
+            let _ = warnings.try_send(source_lost_warning(false, error));
         }
         if matches!(system_status, Some(Ok(false) | Err(_))) {
             system = None;
@@ -742,7 +777,7 @@ fn mix_loop(
             .map(|source| source.drain(&mut mic_audio, origin));
         if let Some(Err(error)) = &mic_status {
             eprintln!("audio_source_lost: Microphone conversion failed: {error:#}");
-            let _ = warnings.send(source_lost_warning(true, error));
+            let _ = warnings.try_send(source_lost_warning(true, error));
         }
         if matches!(mic_status, Some(Ok(false) | Err(_))) {
             mic = None;
@@ -752,7 +787,7 @@ fn mix_loop(
             .as_mut()
             .is_some_and(|source| source.stalled(Instant::now()))
         {
-            let _ = warnings.send(AudioWarning {
+            let _ = warnings.try_send(AudioWarning {
                 code: "audio_capture_stalled",
                 message: "Microphone capture has received no packets for five seconds; continuing to record video with silence for that source".into(),
             });
@@ -796,6 +831,149 @@ mod tests {
     use std::sync::Mutex;
 
     #[test]
+    fn opening_failure_and_runtime_failure_retry_until_audio_recovers() {
+        let stop = AtomicBool::new(false);
+        let (sender, packets) = mpsc::sync_channel(PACKET_CAPACITY);
+        let format = Format::new(48_000, 2, 8, Sample::Float(32), 3).unwrap();
+        let mut source = Source::new(format.clone(), packets);
+        let mut timeline = Timeline::new(0);
+        let mut attempts = 0;
+        retry_source(&stop, |generation| {
+            attempts += 1;
+            match attempts {
+                1 => bail!("Specified audio device not found (0x80070490)"),
+                2 => bail!("Failed to activate audio device: 0x88890004"),
+                3 => {
+                    let origin = now_ticks();
+                    let mut audio = packet(origin, 0, 0.25, 480);
+                    audio.stream = Some((generation, format.clone()));
+                    sender.try_send(audio).unwrap();
+                    source.drain(&mut timeline, origin)?;
+                    assert_eq!(timeline.take(480), vec![[0.25; 2]; 480]);
+                    bail!("GetNextPacketSize: device invalidated")
+                }
+                4 => {
+                    // The worker keeps the sender alive during the outage, so mixing can continue.
+                    assert!(source.drain(&mut timeline, 0)?);
+                    assert_eq!(timeline.take(480), vec![[0.0; 2]; 480]);
+                    let pts = now_ticks();
+                    let origin = pts - ticks_from_frames(timeline.cursor);
+                    let mut audio = packet(pts, 0, 0.5, 480);
+                    audio.stream = Some((generation, format.clone()));
+                    sender.try_send(audio).unwrap();
+                    source.drain(&mut timeline, origin)?;
+                    assert_eq!(timeline.take(480), vec![[0.5; 2]; 480]);
+                    Ok(())
+                }
+                _ => panic!("successful run must stop retrying"),
+            }
+        });
+        assert_eq!(attempts, 4);
+    }
+
+    #[test]
+    fn reconnect_resets_format_resampler_clock_and_preserves_mono_after_queue_drop() {
+        let (sender, packets) = mpsc::sync_channel(1);
+        let mut format = Format::new(48_000, 2, 8, Sample::Float(32), 3).unwrap();
+        format.mono = true;
+        let mut source = Source::new(format, packets);
+        let origin = now_ticks() - ticks_from_frames(480);
+        let mut timeline = Timeline::new(0);
+        source
+            .convert(packet(origin, 0, 0.25, 480), &mut timeline, origin)
+            .unwrap();
+        assert_eq!(timeline.take(480), vec![[0.25; 2]; 480]);
+        sender.try_send(packet(origin, 0, 0.0, 0)).unwrap();
+        let recovered = || {
+            let mut audio = packet(0, 0, 0.5, 960);
+            audio.stream = Some((2, Format::new(96_000, 2, 8, Sample::Float(32), 3).unwrap()));
+            audio
+        };
+        let dropped = AtomicU64::new(0);
+        assert!(enqueue(&sender, recovered(), &dropped));
+        assert_eq!(dropped.load(Ordering::Relaxed), 1);
+        source.drain(&mut timeline, origin).unwrap();
+        // Consume silence during the outage, then recover from a reset timestamp and a changed rate.
+        assert_eq!(timeline.take(480), vec![[0.0; 2]; 480]);
+        sender.try_send(recovered()).unwrap();
+        let recovery_origin = now_ticks() - ticks_from_frames(timeline.cursor + 480);
+        source.drain(&mut timeline, recovery_origin).unwrap();
+        assert_eq!(source.format.rate, 96_000);
+        assert!(source.format.mono);
+        assert_eq!(source.output_frames, 480);
+        assert!(source.pts_offset.unwrap() > 0);
+        let start = frames_from_ticks(source.anchor.unwrap() - recovery_origin);
+        assert!(start >= timeline.cursor);
+        let gap = (start - timeline.cursor) as usize;
+        assert_eq!(timeline.take(gap), vec![[0.0; 2]; gap]);
+        assert_eq!(timeline.take(480), vec![[0.5; 2]; 480]);
+        // A later timestamp-error packet is already wall QPC and must not get the reset offset twice.
+        let flags = (AUDCLNT_BUFFERFLAGS_TIMESTAMP_ERROR.0
+            | AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY.0) as u32;
+        let wall = now_ticks();
+        let mut fallback = packet(wall, flags, 0.25, 960);
+        fallback.stream = Some((2, Format::new(96_000, 2, 8, Sample::Float(32), 3).unwrap()));
+        source
+            .convert(fallback, &mut timeline, recovery_origin)
+            .unwrap();
+        assert_eq!(source.anchor, Some(wall));
+    }
+
+    #[test]
+    fn retry_stops_without_reopening_after_stop() {
+        let stop = AtomicBool::new(false);
+        let mut attempts = 0;
+        retry_source(&stop, |_| {
+            attempts += 1;
+            stop.store(true, Ordering::Release);
+            bail!("device lost")
+        });
+        assert_eq!(attempts, 1);
+    }
+
+    #[test]
+    fn missing_explicit_microphone_starts_silent_and_retains_validation() {
+        let cfg = AudioConfig {
+            render_enabled: false,
+            mic_enabled: true,
+            capture: "aditorrec-nonexistent-microphone".into(),
+            ..AudioConfig::default()
+        };
+        let blocks = Arc::new(Mutex::new(Vec::new()));
+        let mut capture =
+            AudioCapture::start(&cfg, now_ticks(), Box::new(Collect(blocks.clone()))).unwrap();
+        let warnings = capture.drain_warnings();
+        assert_eq!(warnings.len(), 1);
+        assert!(warnings[0].message.contains("Microphone"));
+        thread::sleep(Duration::from_millis(250));
+        capture.stop();
+        let blocks = blocks.lock().unwrap();
+        assert!(!blocks.is_empty());
+        assert!(blocks.iter().flatten().all(|sample| *sample == 0.0));
+        let invalid = AudioConfig {
+            mic_gain: f32::NAN,
+            ..cfg
+        };
+        assert!(AudioCapture::start(
+            &invalid,
+            now_ticks(),
+            Box::new(Collect(Arc::new(Mutex::new(Vec::new()))))
+        )
+        .is_err());
+        let invalid = AudioConfig {
+            mic_gain: 1.0,
+            capture: "bad\0id".into(),
+            ..invalid
+        };
+        assert!(AudioCapture::start(
+            &invalid,
+            now_ticks(),
+            Box::new(Collect(Arc::new(Mutex::new(Vec::new()))))
+        )
+        .is_err());
+    }
+
+    #[test]
     fn capture_copies_the_full_reported_packet() {
         // A 20 ms packet at 192 kHz must not be limited to a nominal 10 ms endpoint buffer.
         let frames = 3_840;
@@ -825,6 +1003,7 @@ mod tests {
 
     fn packet(pts: i64, flags: u32, value: f32, frames: u32) -> Packet {
         Packet {
+            stream: None,
             bytes: (0..frames * 2).flat_map(|_| value.to_le_bytes()).collect(),
             frames,
             flags,
@@ -834,6 +1013,7 @@ mod tests {
 
     fn broken_packet(pts: i64) -> Packet {
         Packet {
+            stream: None,
             bytes: vec![0; 4],
             frames: 1,
             flags: 0,
@@ -981,7 +1161,7 @@ mod tests {
             } else {
                 (Some(source), None)
             };
-            let (warnings, observed) = mpsc::channel();
+            let (warnings, observed) = mpsc::sync_channel(32);
             let stop = Arc::new(AtomicBool::new(false));
             let worker_stop = stop.clone();
             let blocks = Arc::new(Mutex::new(Vec::new()));
@@ -1025,21 +1205,6 @@ mod tests {
     }
 
     #[test]
-    fn missing_default_endpoint_warns_but_explicit_missing_device_stays_fatal() {
-        let default = anyhow::anyhow!("audio_failed: audio_device_missing: No default audio device");
-        assert!(missing_endpoint(&default));
-        let warning = missing_endpoint_warning(false, &default);
-        assert_eq!(warning.code, "audio_device_missing");
-        assert!(warning.message.contains("System audio"));
-        assert!(missing_endpoint_warning(true, &default)
-            .message
-            .contains("Microphone"));
-
-        let explicit = anyhow::anyhow!("audio_failed: Specified audio device not found: 0x80070002");
-        assert!(!missing_endpoint(&explicit));
-    }
-
-    #[test]
     fn runtime_source_loss_warning_names_the_failed_source() {
         let error = anyhow::anyhow!("WASAPI GetBuffer failed");
         let system = source_lost_warning(false, &error);
@@ -1076,7 +1241,7 @@ mod tests {
         let worker_stop = stop.clone();
         let blocks = Arc::new(Mutex::new(Vec::new()));
         let worker_blocks = blocks.clone();
-        let (warnings, observed) = mpsc::channel();
+        let (warnings, observed) = mpsc::sync_channel(32);
         let worker = thread::spawn(move || {
             mix_loop(
                 Some(source),
@@ -1120,7 +1285,7 @@ mod tests {
 
         let stop = AtomicBool::new(true);
         let blocks = Arc::new(Mutex::new(Vec::new()));
-        let (warnings, _observed) = mpsc::channel();
+        let (warnings, _observed) = mpsc::sync_channel(32);
         mix_loop(
             Some(Source::new(format, packets)),
             None,
@@ -1162,7 +1327,7 @@ mod tests {
         let worker_stop = stop.clone();
         let blocks = Arc::new(Mutex::new(Vec::new()));
         let worker_blocks = blocks.clone();
-        let (warnings, observed) = mpsc::channel();
+        let (warnings, observed) = mpsc::sync_channel(32);
         let worker = thread::spawn(move || {
             mix_loop(
                 Some(Source::new(format.clone(), system_packets)),
@@ -1216,7 +1381,7 @@ mod tests {
         let worker_stop = stop.clone();
         let blocks = Arc::new(Mutex::new(Vec::new()));
         let worker_blocks = blocks.clone();
-        let (warnings, observed) = mpsc::channel();
+        let (warnings, observed) = mpsc::sync_channel(32);
         let worker = thread::spawn(move || {
             mix_loop(
                 Some(Source::new(format.clone(), system_packets)),

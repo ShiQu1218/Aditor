@@ -2,6 +2,9 @@ import type { MessageTable } from '../locale'
 
 /** Translations for scattered in-app messages (notifications and errors); keys are Traditional Chinese source strings looked up by tr(). */
 const messages: MessageTable = {
+  '編碼暫時停滯，錄影仍在繼續，部分畫面可能遺失。': 'Encoding has temporarily stalled. Recording continues, but some video frames may be lost.',
+  '編碼已停滯 60 秒，錄影失敗，將嘗試保留已完成的片段。': 'Encoding has stalled for 60 seconds. Recording failed; completed segments will be recovered if possible.',
+
   '無法儲存媒體庫，變更尚未寫入磁碟。請確認磁碟空間與檔案權限後重試。': 'Could not save the media library. Changes have not been written to disk. Check the available disk space and file permissions, then try again.',
   'OBS 尚未確認停止，已保留工作；請在 OBS 確認錄影狀態並手動匯入影片': 'OBS has not confirmed that recording stopped. The recording job has been kept. Check the recording status in OBS and import the video manually.',
   'OBS 錄影尚未停止，已保留工作': 'The OBS recording has not stopped yet. The recording job has been kept.',

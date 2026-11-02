@@ -253,16 +253,14 @@ fn actual_default_loopback_and_microphone_capture_for_two_seconds() {
         clock::now_ticks(),
         Box::new(Sink(Arc::new(Mutex::new(Recording::default())))),
     )
-    .err()
-    .expect("Microphone startup failure must return an error and close loopback")
-    .to_string()
-    .starts_with("audio_failed:"));
+    .map(|capture| capture.stop())
+    .is_ok());
     cfg.capture.clone_from(&mic.id);
     verify(&record(&cfg));
 }
 
 #[test]
-fn invalid_configuration_and_endpoint_return_audio_failed() {
+fn invalid_configuration_fails_but_missing_endpoint_produces_silence() {
     let mut cfg = types::AudioConfig {
         render: "不存在的端點".into(),
         capture: "default".into(),
@@ -280,7 +278,9 @@ fn invalid_configuration_and_endpoint_return_audio_failed() {
         .expect("Expected an error")
         .to_string()
     };
-    assert!(start(&cfg).starts_with("audio_failed:"));
+    let recording = record(&cfg);
+    verify(&recording);
+    assert!(recording.samples.iter().all(|sample| *sample == 0.));
     cfg.mic_gain = f32::NAN;
     assert!(start(&cfg).starts_with("audio_failed:"));
     cfg.mic_gain = -1.0;
