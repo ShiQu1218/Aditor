@@ -176,8 +176,8 @@ describe('child diagnostics', () => {
     const recorder = (message: string) => diagnostic({ component: 'rust-recorder', code: 'encode_failed', exception: undefined, message })
     const stall = [
       'Audio timestamp gap exceeds five seconds; target_samples=5 written_samples=4 encoded_samples=3 gap_samples=2; stop encoding to limit memory usage',
-      'Audio input pts=72398541 video_next_slot=37 fps=90; stage=audio_encode input=710 encoded=37 dropped=694',
-      'Audio input pts=4878022291 video_next_slot=43348 fps=90; stage=video_send input=1 encoded=2'
+      'Audio input pts=72398541 video_next_slot=37 fps=90; stage=audio_encode input=710 encoded=37 dropped=694: Audio timestamp gap exceeds five seconds; gap_samples=240001',
+      'Audio input pts=4878022291 video_next_slot=43348 fps=90; stage=video_send input=1 encoded=2: Audio timestamp gap exceeds five seconds; gap_samples=480000'
     ]
     for (const message of stall) reportChildDiagnostic(recorder(message))
     const events = fake.captureEvent.mock.calls.map((call) => call[0])
@@ -192,6 +192,29 @@ describe('child diagnostics', () => {
       expect(stableDiagnostic(`Muxer queue remained full for ${ms} ms; stage=mux_enqueue input=${ms}`).category).toBe('muxer_queue_full')
     }
     expect(stableDiagnostic('Encoder has processed no frames for over five seconds; stage=video_send input=740').category).toBe('encoder_stalled')
+  })
+
+  it('reports distinct audio root causes without suppressing them as timestamp gaps', async () => {
+    const { initializeTelemetry, reportChildDiagnostic, stableDiagnostic } = await import('./telemetry')
+    initializeTelemetry(true)
+    const recorder = (message: string) => diagnostic({ component: 'rust-recorder', code: 'encode_failed', exception: undefined, message })
+    const wrap = (root: string, pts = 72398541) => `Audio input pts=${pts} video_next_slot=37 fps=90; stage=audio_encode input=710 encoded=37 dropped=694: ${root}`
+    expect(reportChildDiagnostic(recorder(wrap('Audio timestamp gap exceeds five seconds; gap_samples=240001')))).toBe('test-event')
+    for (const root of ['Write audio FIFO failed: Cannot allocate memory (-12)', 'Audio FIFO read was incomplete', 'Allocate AAC frame failed: Cannot allocate memory (-12)']) {
+      const expected = stableDiagnostic(root)
+      expect(expected.category).not.toBe('audio_timestamp_gap')
+      for (const prefix of ['', 'encode_failed: ']) {
+        expect(stableDiagnostic(prefix + wrap(root))).toEqual({ ...expected, stage: 'audio_encode' })
+      }
+      expect(reportChildDiagnostic(recorder(wrap(root)))).toBe('test-event')
+      expect(reportChildDiagnostic(recorder(wrap(root, 4878022291)))).toBeUndefined()
+    }
+    const events = fake.captureEvent.mock.calls.map((call) => call[0])
+    expect(events).toHaveLength(4)
+    expect(new Set(events.map((event) => event.fingerprint[2])).size).toBe(4)
+    expect(events[1].exception.values[0].value).toBe('Write audio FIFO failed: Cannot allocate memory (-N)')
+    expect(events[1].tags.stage).toBe('audio_encode')
+    expect(events[1].extra.detail).toContain('Audio input pts=72398541')
   })
 
   it('removes counters and stderr from unknown messages but keeps the exit code', async () => {

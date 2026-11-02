@@ -34,7 +34,7 @@ function fingerprintText(value: string | undefined): string {
 
 /** Known recorder faults whose message text changed between versions or carries counters; one canonical title and category each. */
 const KNOWN_FAULTS: ReadonlyArray<readonly [RegExp, string, string]> = [
-  [/Audio timestamp gap exceeds five seconds|Audio input pts=/i, 'audio_timestamp_gap', 'Audio timestamp gap exceeds five seconds'],
+  [/Audio timestamp gap exceeds five seconds/i, 'audio_timestamp_gap', 'Audio timestamp gap exceeds five seconds'],
   [/processed no frames for over five seconds/i, 'encoder_stalled', 'Encoder has processed no frames for over five seconds'],
   [/queue remained full|muxer queue is full/i, 'muxer_queue_full', 'Muxer queue remained full']
 ]
@@ -55,6 +55,7 @@ export interface StableDiagnostic {
 export function stableDiagnostic(message: string): StableDiagnostic {
   const stage = message.match(/\bstage=([a-z_]{1,32})\b/)?.[1]
   for (const [pattern, category, title] of KNOWN_FAULTS) if (pattern.test(message)) return { category, title, stage }
+  message = message.replace(/^(?:encode_failed:\s*)?Audio input pts=[^;]*;[^:]*:\s*/, '')
   const title = redactTelemetryText(message.split(/[;\r\n]/)[0])
     // The text after the exit code is the process's stderr tail: different on every crash.
     .replace(/\(exit code (-?\d+|signal)[\s\S]*$/, '(exit code $1)')
