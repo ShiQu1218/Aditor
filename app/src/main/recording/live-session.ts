@@ -16,7 +16,8 @@ import { initMimeType } from './mp4-codec'
 import { LIVE_COMPLETE_FILE, writeJson } from './finalize'
 import type { RecorderCommand } from './index'
 import { tr } from '../../shared/locale'
-import type { ChildDiagnosticHandler } from '../../shared/child-diagnostics'
+import { emitChildDiagnostic, type ChildDiagnosticHandler } from '../../shared/child-diagnostics'
+import { checkExecutable, spawnFailure } from '../child-spawn'
 
 const MAX_INIT_BYTES = 4 * 1024 * 1024
 /** A 2-second segment at the 150 Mbps limit is about 38 MB; allow headroom but reject abnormally large files. */
@@ -112,8 +113,12 @@ export class LiveSession extends EventEmitter {
     this.earlyClientMatch = null
     const { command } = this.options
     if (!command || this.engine) return
-    if (path.isAbsolute(command.command) && !fs.existsSync(command.command)) {
-      this.options.notice(tr('找不到即時偵測引擎（{command}），錄影照常進行，收尾後再分析', { command: command.command }))
+    try {
+      checkExecutable(command.command)
+    } catch (error) {
+      const failure = spawnFailure(error)
+      emitChildDiagnostic(this.options.onDiagnostic, { component: 'rust-live', code: 'engine_spawn', message: failure.report, tags: failure.tags })
+      this.options.notice(tr('即時偵測無法啟動，錄影照常進行，收尾後再分析：{message}', { message: failure.message }))
       return
     }
     const args = ['--shm', shm, '--profile-dir', this.options.profileDir]

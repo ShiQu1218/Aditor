@@ -81,6 +81,31 @@ describe('preview A/V desync report', () => {
 })
 
 describe('telemetry consent', () => {
+  it('keeps spawn messages and fingerprints identical across UI locales', async () => {
+    const { initializeTelemetry, reportChildDiagnostic, CHILD_DIAGNOSTIC_DEDUPE_WINDOW_MS } = await import('./telemetry')
+    const { spawnFailure } = await import('./child-spawn')
+    const { LOCALES, setActiveLocale } = await import('../shared/locale')
+    vi.useFakeTimers()
+    initializeTelemetry(true)
+    try {
+      for (const locale of LOCALES) {
+        setActiveLocale(locale)
+        for (const code of ['ENOENT', 'EACCES']) {
+          const failure = spawnFailure({ code })
+          reportChildDiagnostic({ component: 'rust-engine', code: 'engine_spawn', message: failure.report, tags: failure.tags })
+        }
+        vi.advanceTimersByTime(CHILD_DIAGNOSTIC_DEDUPE_WINDOW_MS + 1)
+      }
+      const events = fake.captureEvent.mock.calls.map(([event]) => event)
+      expect(events).toHaveLength(LOCALES.length * 2)
+      for (let index = 0; index < 2; index++) {
+        const sameErrno = events.filter((_, i) => i % 2 === index)
+        expect(new Set(sameErrno.map((event) => event.message)).size).toBe(1)
+        expect(new Set(sameErrno.map((event) => JSON.stringify(event.fingerprint))).size).toBe(1)
+      }
+    } finally { setActiveLocale('zh-TW') }
+  })
+
   it('does not initialize or enable reporting without persisted consent, even after toggling on', async () => {
     const { initializeTelemetry, updateTelemetryConsent } = await import('./telemetry')
     initializeTelemetry(false)

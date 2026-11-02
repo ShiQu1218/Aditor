@@ -2,6 +2,7 @@ import os from 'os'
 import { spawn, ChildProcess } from 'child_process'
 import { EventEmitter } from 'events'
 import { StringDecoder } from 'string_decoder'
+import { checkExecutable, spawnFailure } from './child-spawn'
 import { emitChildDiagnostic, type ChildDiagnosticHandler } from '../shared/child-diagnostics'
 
 const STDERR_TAIL_CHARS = 1000
@@ -75,7 +76,15 @@ export class EngineClient extends EventEmitter {
       this.readyResolve = resolve
       this.readyReject = reject
 
+      const failed = (err: unknown): void => {
+        const failure = spawnFailure(err)
+        emitChildDiagnostic(this.opts.onDiagnostic, { component: 'rust-engine', code: 'engine_spawn', message: failure.report, tags: failure.tags })
+        this.readyReject?.(new EngineError('engine_spawn', failure.message))
+        this.readyResolve = null
+        this.readyReject = null
+      }
       try {
+        checkExecutable(this.opts.command)
         const p = spawn(this.opts.command, this.opts.args, {
           env: { ...process.env, ...this.opts.env },
           stdio: ['pipe', 'pipe', 'pipe']
@@ -117,23 +126,18 @@ export class EngineClient extends EventEmitter {
           if (this.proc === p) p.kill()
         })
 
-        p.on('error', (err) => {
-          emitChildDiagnostic(this.opts.onDiagnostic, { component: 'rust-engine', code: 'engine_spawn', message: err.message })
-          if (this.readyReject) {
-            this.readyReject(err)
-            this.readyResolve = null
-            this.readyReject = null
-          }
-        })
+        p.on('error', failed)
 
         p.on('close', (code) => {
           this._onClose(code, spawned)
         })
       } catch (err) {
-        reject(err)
+        failed(err)
       }
     })
 
+    // A synchronous spawn/preflight failure has no close event to clear the cached startup.
+    void this.readyPromise.catch(() => { if (!this.proc) this.readyPromise = null })
     return this.readyPromise
   }
 

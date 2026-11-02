@@ -1,6 +1,7 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'child_process'
 import { EventEmitter } from 'events'
 import { StringDecoder } from 'string_decoder'
+import { checkExecutable, spawnFailure } from '../child-spawn'
 import type { RecorderCapabilities, RecorderGpu } from '../../shared/recording'
 import type { RecorderCommand } from './index'
 import { tr } from '../../shared/locale'
@@ -91,9 +92,16 @@ export class AditorrecClient extends EventEmitter {
   }
 
   private launch(): void {
-    const proc = spawn(this.command.command, this.command.args, {
-      env: { ...process.env, ADITORREC_DIAGNOSTICS: '1', ...this.command.env }, windowsHide: true, stdio: 'pipe'
-    })
+    let proc: ChildProcessWithoutNullStreams
+    try {
+      checkExecutable(this.command.command)
+      proc = spawn(this.command.command, this.command.args, {
+        env: { ...process.env, ADITORREC_DIAGNOSTICS: '1', ...this.command.env }, windowsHide: true, stdio: 'pipe'
+      })
+    } catch (error) {
+      const failure = spawnFailure(error)
+      throw this.error('recorder_spawn', failure.message, failure.tags, failure.report)
+    }
     this.proc = proc
     this.spawned = false
     proc.once('spawn', () => { this.spawned = true })
@@ -124,7 +132,10 @@ export class AditorrecClient extends EventEmitter {
       if (this.diagnosticBuffer.length > MAX_BYTES) this.diagnosticBuffer = ''
     })
     proc.stdin.on('error', (error) => this.rejectAll(this.error('recorder_io', error.message)))
-    proc.once('error', (error) => this.rejectAll(this.error('recorder_spawn', error.message)))
+    proc.once('error', (error) => {
+      const failure = spawnFailure(error)
+      this.rejectAll(this.error('recorder_spawn', failure.message, failure.tags, failure.report))
+    })
   }
 
   request(cmd: string, args: object = {}, timeoutMs = 30000): Promise<Record<string, unknown>> {

@@ -10,6 +10,7 @@ import os from 'os'
 import { spawn, type ChildProcessWithoutNullStreams } from 'child_process'
 import { EventEmitter } from 'events'
 import { StringDecoder } from 'string_decoder'
+import { checkExecutable, spawnFailure } from '../child-spawn'
 import type { LiveEvent } from '../../shared/recording'
 import type { RecorderCommand } from './index'
 import { tr } from '../../shared/locale'
@@ -145,11 +146,14 @@ export class LiveEngine extends EventEmitter {
     const { command, args } = this.options
     let proc: ChildProcessWithoutNullStreams
     try {
+      checkExecutable(command.command)
       proc = spawn(command.command, [...command.args, ...args], {
         env: { ...process.env, ...command.env }, windowsHide: true, stdio: 'pipe'
       })
     } catch (error) {
-      this.crashed(tr('無法啟動即時偵測：{error}', { error: String(error) }))
+      const failure = spawnFailure(error)
+      emitChildDiagnostic(this.options.onDiagnostic, { component: 'rust-live', code: 'engine_spawn', message: failure.report, tags: failure.tags })
+      this.crashed(failure.message, undefined, true)
       return
     }
     this.proc = proc
@@ -163,23 +167,31 @@ export class LiveEngine extends EventEmitter {
         else os.setPriority(proc.pid, os.constants.priority.PRIORITY_BELOW_NORMAL)
       } catch (error) { this.emit('warning', tr('無法降低即時偵測的優先序：{error}', { error: String(error) })) }
     })
+    let launchError: Error | undefined
     this.closed = new Promise((resolve) => {
       proc.once('close', (code, signal) => {
         this.proc = null
-        if (!this.stopping) this.crashed(tr('即時偵測已結束（{code}）', { code: code ?? signal }) + (this.stderr ? `\n${this.stderr.trim()}` : ''), `exit code ${code ?? 'signal'}`)
+        const message = launchError ? spawnFailure(launchError).message
+          : tr('即時偵測已結束（{code}）', { code: code ?? signal }) + (this.stderr ? `\n${this.stderr.trim()}` : '')
+        if (!this.stopping) this.crashed(message, `exit code ${code ?? 'signal'}`, launchError !== undefined)
         resolve()
       })
     })
-    proc.once('error', (error) => this.emit('warning', tr('即時偵測程序錯誤：{message}', { message: error.message })))
+    proc.once('error', (error) => {
+      launchError = error
+      const failure = spawnFailure(error)
+      emitChildDiagnostic(this.options.onDiagnostic, { component: 'rust-live', code: 'engine_spawn', message: failure.report, tags: failure.tags })
+      this.emit('warning', failure.message)
+    })
     proc.stdin.on('error', () => { /* Writing stop may hit EPIPE after process exit; close handles it. */ })
     proc.stdout.on('data', (chunk: Buffer) => this.onData(chunk))
     proc.stderr.on('data', (chunk: Buffer) => { this.stderr = (this.stderr + chunk.toString('utf8')).slice(-STDERR_TAIL) })
   }
 
-  private crashed(message: string, exitInfo?: string): void {
+  private crashed(message: string, exitInfo?: string, spawnFailed = false): void {
     // The exit code separates an external kill or a missing file from a real crash; the stderr tail goes to the detail only (see stableDiagnostic).
     const stderr = this.stderr.trim().slice(-300)
-    emitChildDiagnostic(this.options.onDiagnostic, { component: 'rust-live', code: 'engine_crashed',
+    if (!spawnFailed) emitChildDiagnostic(this.options.onDiagnostic, { component: 'rust-live', code: 'engine_crashed',
       message: `Live analysis engine exited unexpectedly${exitInfo ? ` (${exitInfo}${stderr ? `: ${stderr}` : ''})` : ''}` })
     // Archive current events; the new process starts at the latest frame, so accept only events after lastT.
     this.archived = this.current
