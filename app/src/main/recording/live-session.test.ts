@@ -140,10 +140,15 @@ describe('LiveSession file reads', () => {
   it('notifies once and does not start when the live engine executable cannot be found', () => {
     const dir = root()
     const notice = vi.fn()
-    const live = new LiveSession({ sessionId: 'x', dir, profileDir: dir, recordEvent: vi.fn(), notice,
+    const onDiagnostic = vi.fn()
+    const live = new LiveSession({ sessionId: 'x', dir, profileDir: dir, recordEvent: vi.fn(), notice, onDiagnostic,
       command: { command: path.join(dir, 'missing', 'aditor.exe'), args: [] } })
     live.startEngine('Local\\x', 1920, 1080)
-    expect(notice).toHaveBeenCalledWith(expect.stringContaining('找不到即時偵測引擎'))
+    expect(notice).toHaveBeenCalledOnce()
+    expect(notice).toHaveBeenCalledWith(expect.stringContaining('錄影照常進行'))
+    expect(notice.mock.calls[0][0]).not.toContain(dir)
+    expect(onDiagnostic).toHaveBeenCalledOnce()
+    expect(onDiagnostic).toHaveBeenCalledWith(expect.objectContaining({ code: 'engine_spawn', tags: { spawn_errno: 'ENOENT', spawn_syscall: 'spawn' } }))
   })
 })
 

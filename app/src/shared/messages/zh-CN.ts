@@ -2,6 +2,9 @@ import type { MessageTable } from '../locale'
 
 /** Translations for scattered in-app messages (notifications and errors); keys are Traditional Chinese source strings looked up by tr(). */
 const messages: MessageTable = {
+  '即時偵測無法啟動，錄影照常進行，收尾後再分析：{message}': '实时检测无法启动，录影照常进行，收尾后再分析：{message}',
+  '找不到或無法啟動必要程式。請重新安裝 Aditor，並檢查防毒軟體的隔離紀錄。': '找不到或无法启动必要程序。请重新安装 Aditor，并检查杀毒软件的隔离记录。',
+  '無法啟動必要程式（{code}）。請檢查檔案權限與防毒軟體設定。': '无法启动必要程序（{code}）。请检查文件权限与杀毒软件设置。',
   '無法儲存媒體庫，變更尚未寫入磁碟。請確認磁碟空間與檔案權限後重試。': '无法保存媒体库，更改尚未写入磁盘。请确认磁盘空间与文件权限后重试。',
   'OBS 尚未確認停止，已保留工作；請在 OBS 確認錄影狀態並手動匯入影片': 'OBS 尚未确认停止，已保留任务；请在 OBS 确认录制状态并手动导入视频',
   'OBS 錄影尚未停止，已保留工作': 'OBS 录制尚未停止，已保留任务',
