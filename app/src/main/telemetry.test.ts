@@ -170,6 +170,51 @@ describe('child diagnostics', () => {
     expect(fake.captureEvent).toHaveBeenCalledTimes(3)
   })
 
+  it('gives one fingerprint and one title to the same fault whatever its counters, stage or language say', async () => {
+    const { initializeTelemetry, reportChildDiagnostic } = await import('./telemetry')
+    initializeTelemetry(true)
+    const recorder = (message: string) => diagnostic({ component: 'rust-recorder', code: 'encode_failed', exception: undefined, message })
+    const stall = [
+      'Audio timestamp gap exceeds five seconds; target_samples=5 written_samples=4 encoded_samples=3 gap_samples=2; stop encoding to limit memory usage',
+      'Audio input pts=72398541 video_next_slot=37 fps=90; stage=audio_encode input=710 encoded=37 dropped=694',
+      'Audio input pts=4878022291 video_next_slot=43348 fps=90; stage=video_send input=1 encoded=2'
+    ]
+    for (const message of stall) reportChildDiagnostic(recorder(message))
+    const events = fake.captureEvent.mock.calls.map((call) => call[0])
+    // The dedupe window would suppress later reports of the same fault, so also check the grouping directly.
+    const { stableDiagnostic } = await import('./telemetry')
+    expect(new Set(stall.map((m) => stableDiagnostic(m).category)).size).toBe(1)
+    expect(events[0].fingerprint).toEqual(['rust-recorder', 'encode_failed', 'audio_timestamp_gap'])
+    expect(events[0].exception.values[0].value).toBe('Audio timestamp gap exceeds five seconds')
+    expect(events[0].extra.detail).toContain('gap_samples=2')
+    expect(stableDiagnostic(stall[1]).stage).toBe('audio_encode')
+    for (const ms of [2000, 2001, 2004]) {
+      expect(stableDiagnostic(`Muxer queue remained full for ${ms} ms; stage=mux_enqueue input=${ms}`).category).toBe('muxer_queue_full')
+    }
+    expect(stableDiagnostic('Encoder has processed no frames for over five seconds; stage=video_send input=740').category).toBe('encoder_stalled')
+  })
+
+  it('removes counters and stderr from unknown messages but keeps the exit code', async () => {
+    const { stableDiagnostic } = await import('./telemetry')
+    expect(stableDiagnostic("Engine exited unexpectedly (exit code 1: engine\\x.py line 12 'oops')").title).toBe('Engine exited unexpectedly (exit code 1)')
+    expect(stableDiagnostic('Analysis engine exited unexpectedly (exit code -4058)').title).toBe('Analysis engine exited unexpectedly (exit code -4058)')
+    expect(stableDiagnostic('Frame 120 of 900 failed at 0x7ff6 offset 12').title).toBe('Frame N of N failed at N offset N')
+    expect(stableDiagnostic('Cannot open C:\\Users\\Alice\\x.mp4 now').title).not.toContain('Alice')
+  })
+
+  it('does not report processes ended from outside, but still reports other exits', async () => {
+    const { initializeTelemetry, reportChildDiagnostic } = await import('./telemetry')
+    initializeTelemetry(true)
+    expect(reportChildDiagnostic(diagnostic({ code: 'engine_crashed', exception: undefined, message: 'Analysis engine exited unexpectedly (exit code 1073807364)' }))).toBeUndefined()
+    expect(reportChildDiagnostic(diagnostic({ code: 'engine_crashed', exception: undefined, message: 'Analysis engine exited unexpectedly (exit code 3221225786: x)' }))).toBeUndefined()
+    expect(reportChildDiagnostic(diagnostic({ component: 'rust-recorder', code: 'recorder_crashed', exception: undefined,
+      message: 'Recorder process exited unexpectedly', tags: { exit_code: '0x40010004' } }))).toBeUndefined()
+    expect(fake.captureEvent).not.toHaveBeenCalled()
+    expect(reportChildDiagnostic(diagnostic({ code: 'engine_crashed', exception: undefined, message: 'Analysis engine exited unexpectedly (exit code 3221225477)' }))).toBe('test-event')
+    expect(reportChildDiagnostic(diagnostic({ component: 'rust-recorder', code: 'recorder_crashed', exception: undefined,
+      message: 'Recorder process exited unexpectedly', tags: { exit_code: '0xC0000005' } }))).toBe('test-event')
+  })
+
   it('allows the same failure again after the dedupe window', async () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-01-01T00:00:00Z'))

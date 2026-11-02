@@ -166,7 +166,7 @@ export class LiveEngine extends EventEmitter {
     this.closed = new Promise((resolve) => {
       proc.once('close', (code, signal) => {
         this.proc = null
-        if (!this.stopping) this.crashed(tr('即時偵測已結束（{code}）', { code: code ?? signal }) + (this.stderr ? `\n${this.stderr.trim()}` : ''))
+        if (!this.stopping) this.crashed(tr('即時偵測已結束（{code}）', { code: code ?? signal }) + (this.stderr ? `\n${this.stderr.trim()}` : ''), `exit code ${code ?? 'signal'}`)
         resolve()
       })
     })
@@ -176,8 +176,11 @@ export class LiveEngine extends EventEmitter {
     proc.stderr.on('data', (chunk: Buffer) => { this.stderr = (this.stderr + chunk.toString('utf8')).slice(-STDERR_TAIL) })
   }
 
-  private crashed(message: string): void {
-    emitChildDiagnostic(this.options.onDiagnostic, { component: 'rust-live', code: 'engine_crashed', message: 'Live analysis engine exited unexpectedly' })
+  private crashed(message: string, exitInfo?: string): void {
+    // The exit code separates an external kill or a missing file from a real crash; the stderr tail goes to the detail only (see stableDiagnostic).
+    const stderr = this.stderr.trim().slice(-300)
+    emitChildDiagnostic(this.options.onDiagnostic, { component: 'rust-live', code: 'engine_crashed',
+      message: `Live analysis engine exited unexpectedly${exitInfo ? ` (${exitInfo}${stderr ? `: ${stderr}` : ''})` : ''}` })
     // Archive current events; the new process starts at the latest frame, so accept only events after lastT.
     this.archived = this.current
     this.resumeT = this.lastT

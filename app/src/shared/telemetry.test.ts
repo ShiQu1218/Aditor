@@ -9,6 +9,14 @@ describe('telemetry privacy boundary', () => {
     expect(sanitizeTelemetryEvent({ tags: { component: 'rust-recorder', probe_stage: 'private', probe_encoder: 'C:/private', exit_code: 'private' } }).tags)
       .toEqual({ component: 'rust-recorder' })
   })
+  it('keeps only the redacted diagnostic detail and a fixed-shape stage from extra data', () => {
+    const clean = sanitizeTelemetryEvent({ tags: { component: 'rust-recorder', stage: 'audio_encode', other: 'x' },
+      extra: { detail: 'Cannot read C:/Users/Alice/a.mp4', secret: 'private' }, fingerprint: ['a', 'b'] })
+    expect(clean.tags).toEqual({ component: 'rust-recorder', stage: 'audio_encode' })
+    expect(clean.extra).toEqual({ detail: 'Cannot read [local path]' })
+    expect(sanitizeTelemetryEvent({ tags: { component: 'rust-recorder', stage: 'C:/private path' } }).tags).toEqual({ component: 'rust-recorder' })
+    expect(sanitizeTelemetryEvent({ extra: { secret: 'private' } }).extra).toBeUndefined()
+  })
   it('redacts file paths containing spaces, including UNC and file URLs', () => {
     for (const value of ['C:\\Users\\Alice Smith\\private video.mp4', '\\\\server\\Alice Smith\\private video.mp4', 'file:///C:/Users/Alice Smith/private video.mp4']) {
       expect(redactTelemetryText(`Cannot read '${value}'`)).toBe("Cannot read '[local path]'")
