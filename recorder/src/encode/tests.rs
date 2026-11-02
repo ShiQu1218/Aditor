@@ -1031,3 +1031,195 @@ fn gpu_static_capture_keeps_cfr_and_silent_audio_running() {
         .all(|s| f32::from_le_bytes(s.try_into().unwrap()).abs() < 0.0001));
     fs::remove_dir_all(dir).unwrap();
 }
+
+/// Synthetic seven-second capture/worker backlog; no desktop capture or microphone access.
+#[test]
+#[ignore = "manual before/after recovery measurement"]
+fn gpu_recovery_backlog_measurement() {
+    recovery_backlog(3);
+}
+
+#[test]
+fn gpu_long_backlog_preserves_audio_and_segments() {
+    recovery_backlog(1);
+}
+
+fn recovery_backlog(trials: usize) {
+    let _guard = GPU_TEST.lock().unwrap();
+    let gpu = Gpu::create().unwrap();
+    let mut failures = Vec::new();
+    for case in ["catchup", "audio_gap"] {
+        for trial in 0..trials {
+            let video = VideoParams {
+                width: 2560,
+                height: 1440,
+                fps: 90,
+                encoder: "hevc_nvenc".into(),
+                ..params(Codec::Hevc)
+            };
+            let hardware = Hardware::new(&gpu, &video, ffi::AV_PIX_FMT_NV12).unwrap();
+            let encoder = hardware.encoder("hevc_nvenc", &video).unwrap();
+            let surface = Arc::new(Surface {
+                frame: hardware.surface().unwrap(),
+            });
+            let (source, view) = texture(&gpu, (2560, 1440));
+            // SAFETY: The texture/view belong to this GPU and remain alive for the copy.
+            unsafe {
+                gpu.context
+                    .ClearRenderTargetView(&view, &[0.2, 0.1, 0.1, 1.]);
+            }
+            Copier::new(&gpu, &video, hardware.format)
+                .copy(&source, (2560, 1440), &surface.frame)
+                .unwrap();
+            let dir = temp_dir();
+            let mut audio = Some(aac::Audio::new().unwrap());
+            let (segments_tx, segments_rx) = mpsc::channel();
+            let mux = mux::Muxer::new(
+                &dir,
+                &encoder,
+                Some(&audio.as_ref().unwrap().encoder),
+                segments_tx,
+            )
+            .unwrap();
+            let counts = Arc::new(Counts::default());
+            let mut muxer = mux::MuxWorker::new(mux, counts.clone()).unwrap();
+            let (video_tx, video_rx) = mpsc::sync_channel(8);
+            let (audio_tx, audio_rx) = mpsc::sync_channel(64);
+            for slot in [0, 638] {
+                video_tx
+                    .send(VideoJob {
+                        surface: surface.clone(),
+                        slot,
+                    })
+                    .ok()
+                    .unwrap();
+            }
+            counts.queue.store(2, Ordering::Relaxed);
+            if case == "audio_gap" {
+                for block in 0..8 {
+                    audio_tx
+                        .send(AudioJob {
+                            samples: vec![0.2; 960],
+                            pts: block * 100_000,
+                        })
+                        .ok()
+                        .unwrap();
+                }
+                audio_tx
+                    .send(AudioJob {
+                        samples: vec![0.2; 9600],
+                        pts: 70_000_000,
+                    })
+                    .ok()
+                    .unwrap();
+            }
+            drop(video_tx);
+            drop(audio_tx);
+            let started = Instant::now();
+            let result = run_worker(
+                &encoder,
+                &mut audio,
+                &mut muxer,
+                video_rx,
+                audio_rx,
+                counts.clone(),
+                90,
+            );
+            let ms = started.elapsed().as_secs_f64() * 1000.;
+            let encoded = counts.encoded.load(Ordering::Relaxed);
+            let mut times = counts.encode_micros.lock().unwrap().clone();
+            times.sort_unstable();
+            let mean_encode = times.iter().sum::<u64>() as f64 / times.len().max(1) as f64;
+            let p99_encode = times
+                .get(times.len().saturating_sub(times.len() / 100 + 1))
+                .copied()
+                .unwrap_or(0);
+            use windows::Win32::System::{
+                ProcessStatus::{GetProcessMemoryInfo, PROCESS_MEMORY_COUNTERS},
+                Threading::GetCurrentProcess,
+            };
+            let mut memory = PROCESS_MEMORY_COUNTERS {
+                cb: std::mem::size_of::<PROCESS_MEMORY_COUNTERS>() as u32,
+                ..Default::default()
+            };
+            // SAFETY: Current process pseudo-handle and a writable, correctly sized structure.
+            unsafe {
+                GetProcessMemoryInfo(
+                    GetCurrentProcess(),
+                    &mut memory,
+                    std::mem::size_of::<PROCESS_MEMORY_COUNTERS>() as u32,
+                )
+            }
+            .unwrap();
+            eprintln!("ENCODE_MEASUREMENT case={case} trial={trial} mean_us={mean_encode:.1} p99_us={p99_encode} peak_working_set_bytes={}",memory.PeakWorkingSetSize);
+            eprintln!("RECOVERY_MEASUREMENT case={case} trial={trial} ms={ms:.3} encoded={encoded} dropped={} mean_worker_ms_per_frame={:.3} result={result:?}", counts.dropped.load(Ordering::Relaxed), ms / encoded.max(1) as f64);
+            if result.is_ok() {
+                let segments: Vec<_> = segments_rx.try_iter().collect();
+                assert!(segments
+                    .windows(2)
+                    .all(
+                        |pair| (pair[0].pts_secs + pair[0].dur_secs - pair[1].pts_secs).abs()
+                            < 0.00001
+                    ));
+                let combined = dir.join("backlog.mp4");
+                concatenate(&dir, &segments, &combined);
+                let json = inspect(&combined);
+                let duration = json["format"]["duration"]
+                    .as_str()
+                    .unwrap()
+                    .parse::<f64>()
+                    .unwrap();
+                assert!((duration - 7.1).abs() < 0.04, "duration={duration}");
+                let video_duration = json["streams"][0]["duration"]
+                    .as_str()
+                    .unwrap()
+                    .parse::<f64>()
+                    .unwrap();
+                let audio_duration = json["streams"][1]["duration"]
+                    .as_str()
+                    .unwrap()
+                    .parse::<f64>()
+                    .unwrap();
+                assert!(
+                    (video_duration - audio_duration).abs() < 0.05,
+                    "A/V durations: {video_duration}/{audio_duration}"
+                );
+                assert_eq!(
+                    json["packets"]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .filter(|packet| packet["stream_index"] == 0)
+                        .count() as u64,
+                    encoded
+                );
+                let decoded = Command::new(executable("ffmpeg"))
+                    .args(["-v", "error", "-i"])
+                    .arg(&combined)
+                    .args(["-map", "0:a:0", "-f", "f32le", "-"])
+                    .output()
+                    .unwrap();
+                assert!(
+                    decoded.status.success(),
+                    "{}",
+                    String::from_utf8_lossy(&decoded.stderr)
+                );
+                if case == "audio_gap" {
+                    let samples: Vec<f32> = decoded
+                        .stdout
+                        .chunks_exact(4)
+                        .map(|s| f32::from_le_bytes(s.try_into().unwrap()))
+                        .collect();
+                    let tail = &samples[672_000..678_000];
+                    let rms = (tail.iter().map(|s| s * s).sum::<f32>() / tail.len() as f32).sqrt();
+                    assert!(rms > 0.1, "recovered audio rms={rms}");
+                }
+            } else {
+                failures.push(format!("{case}/{trial}: {result:?}"));
+            }
+            drop(muxer);
+            fs::remove_dir_all(dir).unwrap();
+        }
+    }
+    assert!(failures.is_empty(), "{failures:?}");
+}

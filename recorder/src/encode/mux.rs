@@ -22,6 +22,16 @@ use super::{
     monitor_worker, Counts, SegmentInfo,
 };
 
+const MAX_PACKET_BYTES: u64 = 64 * 1024 * 1024;
+
+fn packet_bytes(packets: &[Packet]) -> u64 {
+    // SAFETY: Packets own valid AVPackets; only read sizes, including empty flush packets.
+    packets
+        .iter()
+        .map(|packet| unsafe { (*packet.0).size.max(0) as u64 })
+        .sum()
+}
+
 pub(super) struct MuxWorker {
     sender: Option<SyncSender<(Vec<Packet>, bool)>>,
     worker: Option<JoinHandle<Result<()>>>,
@@ -42,7 +52,11 @@ impl MuxWorker {
                             .mux_busy
                             .store(1, std::sync::atomic::Ordering::Relaxed);
                         let started = Instant::now();
+                        let bytes = packet_bytes(&packets);
                         let result = muxer.push(packets, video);
+                        worker_counts
+                            .mux_bytes
+                            .fetch_sub(bytes, std::sync::atomic::Ordering::Relaxed);
                         worker_counts.mux_max_ms.fetch_max(
                             started.elapsed().as_millis() as u64,
                             std::sync::atomic::Ordering::Relaxed,
@@ -60,7 +74,7 @@ impl MuxWorker {
     }
 
     pub fn push(&mut self, packets: Vec<Packet>, video: bool) -> Result<()> {
-        self.push_timeout(packets, video, Duration::from_secs(2))
+        self.push_timeout(packets, video, Duration::from_secs(10))
     }
 
     fn push_timeout(&mut self, packets: Vec<Packet>, video: bool, timeout: Duration) -> Result<()> {
@@ -68,28 +82,53 @@ impl MuxWorker {
         if packets.is_empty() {
             return Ok(());
         }
+        let bytes = packet_bytes(&packets);
+        ensure!(
+            bytes <= MAX_PACKET_BYTES,
+            "Encoded packet batch exceeds the recording memory budget"
+        );
         let sender = self.sender.as_ref().context("Muxer is closed")?;
         let started = Instant::now();
         let mut job = (packets, video);
         loop {
             self.counts.check_error()?;
-            match sender.try_send(job) {
-                Ok(()) => return Ok(()),
-                Err(mpsc::TrySendError::Full(pending)) => {
-                    anyhow::ensure!(
-                        started.elapsed() < timeout,
-                        "Muxer queue remained full for {} ms; {}",
-                        started.elapsed().as_millis(),
-                        self.counts.diagnostics()
-                    );
-                    job = pending;
-                    // Only the encoder worker waits; capture keeps its bounded, nonblocking frame queue.
-                    thread::sleep(Duration::from_millis(5));
-                }
-                Err(mpsc::TrySendError::Disconnected(_)) => {
-                    anyhow::bail!("Muxer thread has exited")
+            let reserved = self
+                .counts
+                .mux_bytes
+                .fetch_update(
+                    std::sync::atomic::Ordering::Relaxed,
+                    std::sync::atomic::Ordering::Relaxed,
+                    |queued| {
+                        queued
+                            .checked_add(bytes)
+                            .filter(|total| *total <= MAX_PACKET_BYTES)
+                    },
+                )
+                .is_ok();
+            if reserved {
+                match sender.try_send(job) {
+                    Ok(()) => return Ok(()),
+                    Err(mpsc::TrySendError::Full(pending)) => {
+                        self.counts
+                            .mux_bytes
+                            .fetch_sub(bytes, std::sync::atomic::Ordering::Relaxed);
+                        job = pending;
+                    }
+                    Err(mpsc::TrySendError::Disconnected(_)) => {
+                        self.counts
+                            .mux_bytes
+                            .fetch_sub(bytes, std::sync::atomic::Ordering::Relaxed);
+                        anyhow::bail!("Muxer thread has exited")
+                    }
                 }
             }
+            ensure!(
+                started.elapsed() < timeout,
+                "Muxer queue remained full for {} ms; the recording drive is too slow or unavailable. Free space or choose a faster drive; completed segments are preserved. {}",
+                started.elapsed().as_millis(), self.counts.diagnostics()
+            );
+            // Only the encoder waits; capture retains its bounded, nonblocking frame queue.
+            thread::sleep(Duration::from_millis(5));
         }
     }
 
@@ -145,6 +184,7 @@ pub(super) struct Muxer {
     dir: PathBuf,
     sender: Sender<SegmentInfo>,
     pending: Vec<Pending>,
+    pending_bytes: u64,
     boundaries: Vec<i64>,
     audio: bool,
     audio_until: i64,
@@ -170,6 +210,7 @@ impl Muxer {
             dir: dir.to_owned(),
             sender,
             pending: Vec::new(),
+            pending_bytes: 0,
             boundaries: Vec::new(),
             audio: audio.is_some(),
             audio_until: i64::MIN,
@@ -243,6 +284,9 @@ impl Muxer {
     }
     pub fn push(&mut self, packets: Vec<Packet>, video: bool) -> Result<()> {
         for packet in packets {
+            let bytes = packet_bytes(std::slice::from_ref(&packet));
+            ensure!(self.pending.len() < 2048 && self.pending_bytes + bytes <= MAX_PACKET_BYTES,
+                "Audio/video timestamp gap exceeds the recording memory budget; completed segments are preserved");
             // SAFETY: The packet and stream belong to this muxer; write_header established the stream time_base.
             unsafe {
                 let p = &mut *packet.0;
@@ -267,6 +311,7 @@ impl Muxer {
                 p.stream_index = if video { 0 } else { 1 };
                 p.pos = -1;
                 av_packet_rescale_ts(packet.0, base, (*stream).time_base);
+                self.pending_bytes += bytes;
                 self.pending.push(Pending {
                     packet,
                     ticks,
@@ -274,10 +319,6 @@ impl Muxer {
                 });
             }
         }
-        ensure!(
-            self.pending.len() <= 2048,
-            "Audio/video timestamp gap is too large; stop muxing to limit memory usage"
-        );
         self.progress(false)
     }
     fn progress(&mut self, force: bool) -> Result<()> {
@@ -298,6 +339,11 @@ impl Muxer {
         let (mut current, future): (Vec<_>, Vec<_>) =
             self.pending.drain(..).partition(|p| p.ticks < end);
         self.pending = future;
+        self.pending_bytes = self
+            .pending
+            .iter()
+            .map(|pending| packet_bytes(std::slice::from_ref(&pending.packet)))
+            .sum();
         current.sort_by_key(|p| (p.ticks, !p.video));
         ensure!(current.iter().any(|p| p.video), "Segment contains no video frames");
         // SAFETY: Each packet has a valid stream_index; frag_custom completes a fragment with a null packet.
@@ -421,7 +467,7 @@ mod tests {
         let (sender, receiver) = mpsc::sync_channel(1);
         sender.send((vec![Packet::new().unwrap()], true)).unwrap();
         let worker = thread::spawn(move || {
-            thread::sleep(Duration::from_millis(30));
+            thread::sleep(Duration::from_millis(2100));
             let jobs: Vec<_> = receiver.into_iter().collect();
             assert_eq!(jobs.len(), 2);
             assert!(jobs[0].1);
@@ -435,6 +481,40 @@ mod tests {
         };
         muxer.push(vec![Packet::new().unwrap()], false).unwrap();
         muxer.finish().unwrap();
+    }
+
+    #[test]
+    fn compressed_bytes_are_bounded_even_when_job_count_is_small() {
+        let counts = Arc::new(Counts::default());
+        let (sender, receiver) = mpsc::sync_channel(256);
+        let mut muxer = MuxWorker {
+            sender: Some(sender),
+            worker: None,
+            counts: counts.clone(),
+        };
+        let packet = Packet::new().unwrap();
+        // SAFETY: Metadata-only test; no packet data is read or owned by this empty AVPacket.
+        unsafe {
+            (*packet.0).size = MAX_PACKET_BYTES as i32 + 1;
+        }
+        assert!(muxer.push(vec![packet], true).is_err());
+        assert!(receiver.try_recv().is_err());
+        counts
+            .mux_bytes
+            .store(MAX_PACKET_BYTES, std::sync::atomic::Ordering::Relaxed);
+        let packet = Packet::new().unwrap();
+        // SAFETY: Only simulate a size to test reservation; the full budget prevents delivery.
+        unsafe {
+            (*packet.0).size = 1;
+        }
+        assert!(muxer
+            .push_timeout(vec![packet], true, Duration::from_millis(10))
+            .is_err());
+        assert!(receiver.try_recv().is_err());
+        assert_eq!(
+            counts.mux_bytes.load(std::sync::atomic::Ordering::Relaxed),
+            MAX_PACKET_BYTES
+        );
     }
 
     #[test]
@@ -526,6 +606,7 @@ mod tests {
             dir: dir.clone(),
             sender,
             pending: Vec::new(),
+            pending_bytes: 0,
             boundaries: Vec::new(),
             audio: true,
             audio_until: i64::MIN,

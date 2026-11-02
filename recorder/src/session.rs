@@ -873,13 +873,13 @@ impl Session {
         self.previous = stats;
         self.last_stats = Instant::now();
         if stalled {
-            return Err((
-                ErrorCode::EncodeFailed,
-                format!(
-                    "Encoder has processed no frames for over five seconds; {}",
+            self.events.emit(&Event::Warning {
+                code: "encoder_stalled".into(),
+                message: format!(
+                    "Encoding is temporarily stalled; recording continues with dropped video frames. {}",
                     self.writer.as_ref().unwrap().diagnostics()
                 ),
-            ));
+            });
         }
         Ok(())
     }
@@ -1143,6 +1143,58 @@ mod tests {
             game_hidden: false,
             visibility_changes: VecDeque::new(),
         }
+    }
+
+    #[test]
+    fn gpu_temporary_encoder_stall_warns_without_stopping_the_session() {
+        use windows::Win32::Graphics::{
+            Direct3D11::D3D11_TEXTURE2D_DESC,
+            Dxgi::Common::{DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_SAMPLE_DESC},
+        };
+        let gpu = Gpu::create().unwrap();
+        let dir = std::env::temp_dir().join(format!("aditorrec-stall-{}", std::process::id()));
+        let video = VideoParams {
+            width: 256,
+            height: 144,
+            fps: 90,
+            codec: Codec::Hevc,
+            encoder: "hevc_nvenc".into(),
+            bitrate_kbps: 4000,
+            preset: crate::types::EncodePreset::Speed,
+            aspect: EncodeAspect::Native,
+        };
+        let writer =
+            Arc::new(SegmentWriter::open(&gpu, &dir, video, false, mpsc::channel().0).unwrap());
+        let desc = D3D11_TEXTURE2D_DESC {
+            Width: 2,
+            Height: 2,
+            MipLevels: 1,
+            ArraySize: 1,
+            Format: DXGI_FORMAT_B8G8R8A8_UNORM,
+            SampleDesc: DXGI_SAMPLE_DESC {
+                Count: 1,
+                Quality: 0,
+            },
+            ..Default::default()
+        };
+        let mut source = None;
+        // SAFETY: Valid device and a minimal same-device source; no desktop content is captured.
+        unsafe { gpu.device.CreateTexture2D(&desc, None, Some(&mut source)) }.unwrap();
+        // A rejected frame increments input but cannot start the encoder or its static-image filler.
+        writer.push_video(&source.unwrap(), 2, 2, -1);
+        let mut session = test_session(mpsc::channel().1, "encoder-stall");
+        session.writer = Some(writer);
+        session.last_stats = Instant::now() - Duration::from_secs(6);
+        let output = Output::default();
+        session.events = output.sink();
+        session.stats().unwrap();
+        let events = output.events();
+        assert!(events
+            .iter()
+            .any(|event| event["ev"] == "warning" && event["code"] == "encoder_stalled"));
+        assert!(!events.iter().any(|event| event["ev"] == "error"));
+        drop(session);
+        fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]
