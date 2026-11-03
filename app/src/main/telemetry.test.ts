@@ -1,7 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import * as fs from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { TELEMETRY_INSTALL_ID_PATTERN } from '../shared/telemetry'
 import type { ChildDiagnostic } from '../shared/child-diagnostics'
 
-const fake = vi.hoisted(() => ({ switches: new Set<string>(), init: vi.fn(), handle: vi.fn(), send: vi.fn(async () => ({})), captureEvent: vi.fn((_event: any) => 'test-event') }))
+const fake = vi.hoisted(() => ({ dir: '', switches: new Set<string>(), init: vi.fn(), handle: vi.fn(), send: vi.fn(async () => ({})), captureEvent: vi.fn((_event: any) => 'test-event') }))
+vi.mock('../shared/paths', () => ({ appDataDir: () => fake.dir }))
 vi.mock('electron', () => ({ app: { isPackaged: false, getVersion: () => '0.3.0', commandLine: { hasSwitch: (name: string) => fake.switches.has(name) } }, ipcMain: { handle: fake.handle } }))
 vi.mock('@sentry/electron/main', () => ({
   init: fake.init, IPCMode: { Protocol: 2 },
@@ -25,8 +30,133 @@ function diagnostic(overrides: Partial<ChildDiagnostic> = {}): ChildDiagnostic {
   }
 }
 
-beforeEach(() => { vi.resetModules(); vi.clearAllMocks() })
-afterEach(() => { vi.useRealTimers() })
+beforeEach(() => {
+  vi.resetModules()
+  vi.clearAllMocks()
+  fake.dir = fs.mkdtempSync(join(tmpdir(), 'aditor-telemetry-'))
+})
+afterEach(() => {
+  vi.useRealTimers()
+  fs.rmSync(fake.dir, { recursive: true, force: true })
+})
+
+describe('telemetry install ID', () => {
+  it('creates a random ID and reuses it on the next start', async () => {
+    const first = await import('./telemetry')
+    first.initializeTelemetry(true)
+    const file = join(fake.dir, 'telemetry-install-id')
+    const id = fs.readFileSync(file, 'utf8')
+    expect(id).toMatch(TELEMETRY_INSTALL_ID_PATTERN)
+    expect(fs.readdirSync(fake.dir)).toEqual(['telemetry-install-id'])
+    expect(fake.init.mock.calls[0][0].beforeSend({}).user).toEqual({ id, ip_address: '0.0.0.0' })
+    vi.resetModules()
+    const second = await import('./telemetry')
+    second.initializeTelemetry(true)
+    expect(fs.readFileSync(file, 'utf8')).toBe(id)
+    expect(fake.init.mock.calls[1][0].beforeSend({}).user.id).toBe(id)
+  })
+
+  it.each(['invalid', '82eb537b-e1bd-4d94-9a1c-3737c2e5975f\n', '82EB537B-E1BD-4D94-9A1C-3737C2E5975F'])(
+    'replaces invalid stored content: %j', async (content) => {
+      const file = join(fake.dir, 'telemetry-install-id')
+      fs.writeFileSync(file, content)
+      const { initializeTelemetry } = await import('./telemetry')
+      initializeTelemetry(true)
+      const id = fs.readFileSync(file, 'utf8')
+      expect(id).toMatch(TELEMETRY_INSTALL_ID_PATTERN)
+      expect(id).not.toBe(content)
+      expect(fake.init.mock.calls[0][0].beforeSend({}).user.id).toBe(id)
+    }
+  )
+
+  it('creates the app data directory when needed', async () => {
+    const dir = fake.dir
+    fake.dir = join(dir, 'new')
+    try {
+      const { initializeTelemetry } = await import('./telemetry')
+      initializeTelemetry(true)
+      expect(fs.readFileSync(join(fake.dir, 'telemetry-install-id'), 'utf8')).toMatch(TELEMETRY_INSTALL_ID_PATTERN)
+    } finally { fake.dir = dir }
+  })
+
+  it('does not create a file while disabled and deletes an existing file at startup', async () => {
+    const { initializeTelemetry } = await import('./telemetry')
+    const file = join(fake.dir, 'telemetry-install-id')
+    initializeTelemetry(false)
+    expect(fs.existsSync(file)).toBe(false)
+    fs.writeFileSync(file, '82eb537b-e1bd-4d94-9a1c-3737c2e5975f')
+    initializeTelemetry(false)
+    expect(fs.existsSync(file)).toBe(false)
+    expect(fake.init).not.toHaveBeenCalled()
+  })
+
+  it('deletes the file immediately on opt-out and uses a new ID after restart', async () => {
+    const { initializeTelemetry, updateTelemetryConsent } = await import('./telemetry')
+    initializeTelemetry(true)
+    const file = join(fake.dir, 'telemetry-install-id')
+    const id = fs.readFileSync(file, 'utf8')
+    updateTelemetryConsent(false)
+    expect(fs.existsSync(file)).toBe(false)
+    updateTelemetryConsent(true)
+    expect(fs.existsSync(file)).toBe(false)
+    expect(fake.init.mock.calls[0][0].beforeSend({}).user).toEqual({ ip_address: '0.0.0.0' })
+    vi.resetModules()
+    const restarted = await import('./telemetry')
+    restarted.initializeTelemetry(true)
+    expect(fs.readFileSync(file, 'utf8')).not.toBe(id)
+  })
+
+  it.each(['read', 'write'])('keeps reporting without an ID on %s failure', async (operation) => {
+    const file = join(fake.dir, 'telemetry-install-id')
+    if (operation === 'read') fs.mkdirSync(file)
+    else {
+      fs.writeFileSync(file, 'invalid')
+      fs.chmodSync(file, 0o444)
+    }
+    const { initializeTelemetry, reportUserFeedback, reportChildDiagnostic } = await import('./telemetry')
+    try { expect(() => initializeTelemetry(true)).not.toThrow() }
+    finally { if (operation === 'write') fs.chmodSync(file, 0o666) }
+    expect(reportUserFeedback('test')).toBe(true)
+    expect(reportChildDiagnostic(diagnostic())).toBe('test-event')
+    const options = fake.init.mock.calls[0][0]
+    for (const filter of [options.beforeSend, options.beforeSendTransaction]) {
+      expect(filter({ user: { id: '82eb537b-e1bd-4d94-9a1c-3737c2e5975f' } }).user).toEqual({ ip_address: '0.0.0.0' })
+    }
+    expect(fake.captureEvent).toHaveBeenCalledTimes(2)
+  })
+
+  it('ignores deletion failures at startup and opt-out', async () => {
+    const { initializeTelemetry, updateTelemetryConsent } = await import('./telemetry')
+    const file = join(fake.dir, 'telemetry-install-id')
+    fs.mkdirSync(file)
+    expect(() => initializeTelemetry(false)).not.toThrow()
+    expect(fake.init).not.toHaveBeenCalled()
+    fs.rmdirSync(file)
+    initializeTelemetry(true)
+    fs.unlinkSync(file)
+    fs.mkdirSync(file)
+    expect(() => updateTelemetryConsent(false)).not.toThrow()
+    expect(fake.init.mock.calls[0][0].beforeSend({})).toBeNull()
+    updateTelemetryConsent(true)
+    expect(fake.init.mock.calls[0][0].beforeSend({}).user).toEqual({ ip_address: '0.0.0.0' })
+  })
+
+  it('adds the local ID to main, child, user-report and renderer events and transactions', async () => {
+    const { initializeTelemetry, reportChildDiagnostic, reportUserFeedback } = await import('./telemetry')
+    const { sanitizeTelemetryEvent } = await import('../shared/telemetry')
+    initializeTelemetry(true)
+    const id = fs.readFileSync(join(fake.dir, 'telemetry-install-id'), 'utf8')
+    reportChildDiagnostic(diagnostic())
+    reportUserFeedback('test')
+    const options = fake.init.mock.calls[0][0]
+    const rendererEvent = sanitizeTelemetryEvent({ user: { email: 'private@example.com' } })
+    const rendererTransaction = sanitizeTelemetryEvent({ type: 'transaction', user: { id: '82eb537b-e1bd-4d94-9a1c-3737c2e5975f' } })
+    for (const event of [{ message: 'main' }, ...fake.captureEvent.mock.calls.map(([event]) => event), rendererEvent]) {
+      expect(options.beforeSend(event).user).toEqual({ id, ip_address: '0.0.0.0' })
+    }
+    expect(options.beforeSendTransaction(rendererTransaction).user).toEqual({ id, ip_address: '0.0.0.0' })
+  })
+})
 
 describe('manual user report', () => {
   it('sends trimmed, length-capped text as a tagged event only while telemetry is active', async () => {

@@ -3,6 +3,8 @@ import type { Event, StackFrame } from '@sentry/electron/main'
 // Public ingest key, not an auth token. Upload credentials belong only in the build environment.
 export const SENTRY_DSN = 'https://5c57897479340b1a622630935c43a4fb@o4512296943747072.ingest.us.sentry.io/4512296977760256'
 
+export const TELEMETRY_INSTALL_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
+
 /** Matches the 500-character cap redactTelemetryText applies, so nothing is silently cut after the user submits. */
 export const MAX_USER_REPORT_LENGTH = 500
 
@@ -117,7 +119,8 @@ export function sanitizeTelemetryEvent<T extends Event>(event: T): T {
     environment: event.environment,
     sdk: { ...event.sdk, settings: { infer_ip: 'never' } },
     // Explicit sentinel prevents server-side enrichment from the network IP.
-    user: { ip_address: '0.0.0.0' },
+    user: { ip_address: '0.0.0.0',
+      ...(typeof event.user?.id === 'string' && TELEMETRY_INSTALL_ID_PATTERN.test(event.user.id) ? { id: event.user.id } : {}) },
     tags: safeTags(event.tags),
     // Only our own reporters set a fingerprint; it groups repeated reports of one fault into one issue.
     fingerprint: event.fingerprint?.filter((part) => typeof part === 'string').slice(0, 5),

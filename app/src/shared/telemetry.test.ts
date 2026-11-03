@@ -3,6 +3,17 @@ import { redactTelemetryText, sanitizeTelemetryEvent } from './telemetry'
 import { migrateSettings } from '../main/settings'
 
 describe('telemetry privacy boundary', () => {
+  it('keeps only a lowercase UUID v4 install ID with the IP sentinel', () => {
+    const id = '82eb537b-e1bd-4d94-9a1c-3737c2e5975f'
+    const clean = sanitizeTelemetryEvent({ user: { id, email: 'private@example.com', username: 'private', ip_address: '192.0.2.1' } })
+    expect(clean.user).toEqual({ id, ip_address: '0.0.0.0' })
+    expect(clean).toHaveProperty('sdk.settings', { infer_ip: 'never' })
+    for (const invalid of ['account', id.toUpperCase(), id + '\n', id.replace('-4d94-', '-1d94-'), id.replace('-9a1c-', '-7a1c-')]) {
+      expect(sanitizeTelemetryEvent({ user: { id: invalid, email: 'private@example.com', username: 'private' } }).user)
+        .toEqual({ ip_address: '0.0.0.0' })
+    }
+  })
+
   it('preserves fixed probe progress and exit codes without arbitrary stderr data', () => {
     const clean = sanitizeTelemetryEvent({ tags: { component: 'rust-recorder', probe_stage: 'probe_send', probe_encoder: 'av1_nvenc', exit_code: '0xC0E90002', stderr: 'private' } })
     expect(clean.tags).toEqual({ component: 'rust-recorder', probe_stage: 'probe_send', probe_encoder: 'av1_nvenc', exit_code: '0xC0E90002' })

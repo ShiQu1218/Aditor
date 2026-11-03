@@ -204,7 +204,7 @@ export const settingsI18n: Messages['settingsI18n'] = {
     },
     telemetryEnabled: {
       title: 'Share error and performance diagnostics',
-      desc: 'Enabled by default: send filtered app, analysis and recording errors and performance data to Sentry, along with basic device info (OS version, CPU, memory, GPU). You can turn this off immediately. No videos, screenshots or full interaction history. Restart after re-enabling.',
+      desc: 'Enabled by default: send filtered app, analysis and recording errors and performance data to Sentry, along with basic device info (OS version, CPU, memory, GPU). You can turn this off immediately. No videos, screenshots or full interaction history. Restart after re-enabling. A random install ID counts affected installs, is not tied to your identity, and is deleted when diagnostics are turned off.',
       keywords: ['sentry', 'diagnostics', 'privacy']
     },
     report: {
