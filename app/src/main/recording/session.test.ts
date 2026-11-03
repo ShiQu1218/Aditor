@@ -547,10 +547,18 @@ describe('recording service state machine', () => {
     expect(fs.readdirSync(path.join(value.deps.defaultOutputDir, '.sessions'))).toEqual([])
   })
 
-  it('uses only the latest PID when the game restarts during a slow handshake and does not finish the new session twice', async () => {
-    const value = rig('slow-hello')
+  it('starts recording without the full encoder probe that hello runs', async () => {
+    const value = rig()
     value.service.start()
-    await waitFor(() => commands(value, 'hello').length === 1)
+    await waitFor(() => value.service.status().phase === 'recording')
+    expect(commands(value, 'ping')).toHaveLength(1)
+    expect(commands(value, 'hello')).toHaveLength(0)
+  })
+
+  it('uses only the latest PID when the game restarts during a slow handshake and does not finish the new session twice', async () => {
+    const value = rig('slow-ping')
+    value.service.start()
+    await waitFor(() => commands(value, 'ping').length === 1)
     value.pid = null
     const polls = vi.mocked(value.deps.findApexPid!).mock.calls.length
     await waitFor(() => vi.mocked(value.deps.findApexPid!).mock.calls.length >= polls + 3)

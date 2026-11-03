@@ -114,7 +114,7 @@ npm --prefix app run verify:sentry
 新診斷仍不傳送原始 stderr、裝置 ID 或本機路徑，只保留固定階段標記與數值；須使用包含本次修改的新建置重現，舊事件不會補上資料。
 Electron 啟動錄影程序時會設定 `ADITORREC_DIAGNOSTICS=1`，才啟用 stderr 探測標記；直接執行原生程序／CLI 時預設不輸出進度，維持既有 JSON 輸出契約。
 
-- `recorder_timeout`：查看 `probe_stage`、`probe_encoder`。`gpu_enumerate`／`gpu_create` 是顯卡初始化，`probe_open` 是建立硬體編碼器，`probe_copy` 是試拷貝，`probe_send`／`probe_flush` 是 FFmpeg 編碼呼叫，`probe_close` 是釋放資源，`audio_devices` 是音訊列舉。這是最後一個探測階段，不代表呼叫已完成；沒有標記表示尚未進入探測，需查程序載入。hello 整體仍有 30 秒逾時，不嘗試強制中斷驅動執行緒。
+- `recorder_timeout`：查看 `probe_stage`、`probe_encoder`。`gpu_enumerate`／`gpu_create` 是顯卡初始化，`probe_open` 是建立硬體編碼器，`probe_copy` 是試拷貝，`probe_send`／`probe_flush` 是 FFmpeg 編碼呼叫，`probe_close` 是釋放資源，`audio_devices` 是音訊列舉。這是最後一個探測階段，不代表呼叫已完成；沒有標記表示尚未進入探測，需查程序載入。hello 整體仍有 30 秒逾時，不嘗試強制中斷驅動執行緒；hello 只用於設定頁的能力查詢，錄影啟動改用不探測的 ping，由 start 自行探測所需編碼器。
 - 無影格錯誤：訊息含 `stage`、`input`、`encoded`、`dropped`、`queue`、`audio_dropped`、`mux_busy`、`mux_max_ms`。`video_send` 指向 FFmpeg／GPU 編碼路徑，`mux_enqueue` 指向封裝背壓，`audio_encode` 指向音訊處理；`mux_busy=1` 表示封裝尚未返回，`mux_max_ms` 是已完成封裝呼叫的最長時間，不是當下卡住時間。
 - 音訊間隔錯誤：保留五秒記憶體保護，新增 `target_samples`、`written_samples`、`encoded_samples`、`gap_samples`（48 kHz）。從音訊輸入觸發時另含 `pts`（每秒一千萬刻度）、`video_next_slot`、`fps` 與佇列計數，可分辨音訊時間超前影片、開頭尚未寫入，或累積丟棄後的缺口。單筆快照仍無法證明驅動或排程的因果關係。
 - 封裝佇列：保留 256 筆上限，滿載時只讓編碼執行緒最多等待兩秒，擷取端仍以原本上限丟影格；持續滿載才停止，且不再直接歸咎於磁碟。已保留的分段依既有復原流程處理。
