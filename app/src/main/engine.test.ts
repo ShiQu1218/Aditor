@@ -100,6 +100,49 @@ describe('EngineClient', () => {
     }
   })
 
+  it('drops a truncated Windows path line from decode diagnostics', async () => {
+    const onDiagnostic = vi.fn()
+    const laterLine = 'Decoder stopped after invalid input'
+    const stderr_tail = String.raw`C:\Users\Alice\Videos\private match.mp4: Invalid data found when processing input`
+      .padEnd(410 - laterLine.length - 1, 'x') + '\n' + laterLine
+    const reply = { type: 'error', code: 'decode_failed', message: 'ffmpeg decoding failed', stderr_tail }
+    const script = `console.log(JSON.stringify({type:'ready'}));
+      require('readline').createInterface({input:process.stdin}).on('line',line=>{
+        const {id}=JSON.parse(line); console.log(JSON.stringify({...${JSON.stringify(reply)},id}));
+      });`
+    client = new EngineClient({ command: process.execPath, args: ['-e', script], onDiagnostic })
+    await client.start()
+    await expect(client.request('analyze', {}).promise).rejects.toMatchObject({
+      code: 'decode_failed', message: 'ffmpeg decoding failed'
+    })
+    const diagnostic = onDiagnostic.mock.calls[0][0].message
+    expect(diagnostic).toContain(laterLine)
+    expect(diagnostic).not.toContain('Alice')
+    expect(diagnostic).not.toContain('lice')
+    expect(diagnostic).not.toContain('private match.mp4')
+    expect(diagnostic).toBe(`ffmpeg decoding failed; stderr: ${laterLine}`)
+  })
+
+  it.each([undefined, '', 123, 'decoder failure', 'x'.repeat(400), 'prefix'.repeat(100) + 'decoder failure'])(
+    'keeps decode stderr %j in diagnostics only', async (stderr_tail) => {
+      const onDiagnostic = vi.fn()
+      const reply = { type: 'error', code: 'decode_failed', message: 'ffmpeg decoding failed', stderr_tail }
+      const script = `console.log(JSON.stringify({type:'ready'}));
+        require('readline').createInterface({input:process.stdin}).on('line',line=>{
+          const {id}=JSON.parse(line); console.log(JSON.stringify({...${JSON.stringify(reply)},id}));
+        });`
+      client = new EngineClient({ command: process.execPath, args: ['-e', script], onDiagnostic })
+      await client.start()
+      const error = await client.request('analyze', {}).promise.catch((err: unknown) => err)
+      expect(error).toBeInstanceOf(EngineError)
+      expect(error).toMatchObject({ code: 'decode_failed', message: 'ffmpeg decoding failed' })
+      expect(onDiagnostic).toHaveBeenCalledWith(expect.objectContaining({
+        code: 'decode_failed',
+        message: 'ffmpeg decoding failed' + (typeof stderr_tail === 'string' && stderr_tail && stderr_tail.length <= 400 ? `; stderr: ${stderr_tail}` : '')
+      }))
+    }
+  )
+
   it('cancel sends cancel cmd with target id', async () => {
     client = new EngineClient({
       command: process.execPath,

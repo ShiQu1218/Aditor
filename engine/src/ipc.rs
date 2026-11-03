@@ -95,7 +95,13 @@ fn error_kind(e: &anyhow::Error) -> (&'static str, &'static str) {
 }
 fn error(rid: Value, e: anyhow::Error) -> Value {
     let (code, kind) = error_kind(&e);
-    json!({"id":rid,"type":"error","code":code,"message":e.to_string(),"exception":{"type":kind,"frames":[]}})
+    let mut reply = json!({"id":rid,"type":"error","code":code,"message":e.to_string(),"exception":{"type":kind,"frames":[]}});
+    if let Some(decode) = e.downcast_ref::<DecodeError>() {
+        if !decode.stderr_tail.is_empty() {
+            reply["stderr_tail"] = json!(decode.stderr_tail);
+        }
+    }
+    reply
 }
 type Current = Arc<Mutex<Option<(String, Arc<AtomicBool>)>>>;
 struct Output<W>(Mutex<W>);
@@ -257,4 +263,35 @@ pub fn serve<R: BufRead, W: Write + Send + Sync + 'static>(input: R, output: W) 
 }
 pub fn run() -> Result<()> {
     serve(std::io::stdin().lock(), std::io::stdout())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn error_reply_includes_only_nonempty_decode_stderr() {
+        for tail in ["Invalid data found when processing input", ""] {
+            let reply = error(
+                json!("1"),
+                DecodeError {
+                    message: "ffmpeg decoding failed".into(),
+                    stderr_tail: tail.into(),
+                }
+                .into(),
+            );
+            let mut expected = json!({"id":"1","type":"error","code":"decode_failed","message":"ffmpeg decoding failed","exception":{"type":"DecodeError","frames":[]}});
+            if !tail.is_empty() {
+                expected["stderr_tail"] = json!(tail);
+            }
+            assert_eq!(reply, expected);
+        }
+        assert_eq!(
+            error(json!("2"), bad("Invalid arguments")),
+            json!({
+                "id":"2","type":"error","code":"bad_request","message":"Invalid arguments",
+                "exception":{"type":"BadRequest","frames":[]}
+            })
+        );
+    }
 }

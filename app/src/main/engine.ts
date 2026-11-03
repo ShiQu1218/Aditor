@@ -186,7 +186,15 @@ export class EngineClient extends EventEmitter {
       this.pending.delete(id)
       req.resolve(msg.data)
     } else if (msg.type === 'error') {
-      emitChildDiagnostic(this.opts.onDiagnostic, { component: 'rust-engine', code: String(msg.code || 'internal'), message: String(msg.message || 'Unknown engine error'), exception: msg.exception })
+      let stderr = typeof msg.stderr_tail === 'string' ? msg.stderr_tail : ''
+      if (stderr.length > 400) {
+        stderr = stderr.slice(-400)
+        const newline = stderr.indexOf('\n')
+        stderr = newline < 0 ? '' : stderr.slice(newline + 1)
+      }
+      const message = String(msg.message || 'Unknown engine error') +
+        (stderr ? `; stderr: ${stderr}` : '')
+      emitChildDiagnostic(this.opts.onDiagnostic, { component: 'rust-engine', code: String(msg.code || 'internal'), message, exception: msg.exception })
       this.pending.delete(id)
       req.reject(new EngineError(String(msg.code || 'internal'), String(msg.message || 'unknown error')))
     }

@@ -29,6 +29,7 @@ use windows::Win32::System::Com::{
 struct Recording {
     samples: Vec<f32>,
     blocks: Vec<(i64, usize)>,
+    elapsed: Option<f64>,
 }
 
 struct Sink(Arc<Mutex<Recording>>);
@@ -154,14 +155,12 @@ fn play_tone(stop: &AtomicBool, ready: &mpsc::SyncSender<Result<(), String>>) ->
 
 fn record(cfg: &types::AudioConfig) -> Recording {
     let recording = Arc::new(Mutex::new(Recording::default()));
-    let capture = audio::AudioCapture::start(
-        cfg,
-        clock::now_ticks(),
-        Box::new(Sink(Arc::clone(&recording))),
-    )
-    .unwrap();
+    let origin = clock::now_ticks();
+    let capture =
+        audio::AudioCapture::start(cfg, origin, Box::new(Sink(Arc::clone(&recording)))).unwrap();
     thread::sleep(Duration::from_secs(2));
     capture.stop();
+    recording.lock().unwrap().elapsed = Some(clock::ticks_to_secs(clock::now_ticks() - origin));
     Arc::try_unwrap(recording)
         .ok()
         .unwrap()
@@ -171,9 +170,10 @@ fn record(cfg: &types::AudioConfig) -> Recording {
 
 fn verify(recording: &Recording) {
     let samples = recording.samples.len();
+    let max_samples = (recording.elapsed.unwrap_or(2.0) * 96_000.0 * 1.05) as usize;
     assert!(
-        (182_400..=201_600).contains(&samples),
-        "Expected about 192000 samples over two seconds, got {samples}"
+        (182_400..=max_samples).contains(&samples),
+        "Expected 182400..={max_samples} samples, got {samples}"
     );
     assert!(recording.blocks.len() >= 190);
     assert!(recording

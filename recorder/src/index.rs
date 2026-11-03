@@ -103,7 +103,7 @@ impl IndexWriter {
 
 /// Ignore an incomplete final line that was never published; report other JSON and I/O errors.
 pub fn read_index(path: &Path) -> Result<Vec<IndexLine>> {
-    let file = File::open(path).context("Failed to open recording index")?;
+    let file = File::open(path).context("Failed to read back recording index")?;
     let mut reader = BufReader::new(file);
     let mut entries = Vec::new();
     let mut line = Vec::new();
@@ -366,6 +366,22 @@ mod tests {
         let mut writer = IndexWriter::create(&dir.0).unwrap();
         writer.append(&segment(2), UNIX_EPOCH).unwrap();
         assert_eq!(read_index(&path).unwrap().len(), 2);
+    }
+
+    #[test]
+    fn create_and_read_index_failures_have_distinct_messages() {
+        let dir = TestDir::new();
+        assert_eq!(
+            read_index(&dir.0.join("index.jsonl"))
+                .unwrap_err()
+                .to_string(),
+            "Failed to read back recording index"
+        );
+        fs::create_dir(dir.0.join("index.jsonl")).unwrap();
+        assert_eq!(
+            IndexWriter::create(&dir.0).err().unwrap().to_string(),
+            "Failed to open recording index"
+        );
     }
 
     #[test]
