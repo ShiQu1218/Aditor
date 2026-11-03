@@ -242,6 +242,22 @@ describe('child diagnostics', () => {
     expect(events[1].extra.detail).toContain('Audio input pts=72398541')
   })
 
+  it('keeps decode titles and fingerprints stable when stderr is appended', async () => {
+    const { initializeTelemetry, reportChildDiagnostic, stableDiagnostic } = await import('./telemetry')
+    initializeTelemetry(true)
+    const message = 'ffmpeg decoding failed; stderr: Cannot open C:\\Users\\Alice\\private.mp4'
+    expect(stableDiagnostic(message)).toEqual(stableDiagnostic('ffmpeg decoding failed'))
+    expect(reportChildDiagnostic(diagnostic({ code: 'decode_failed', message,
+      exception: { type: 'DecodeError', frames: [] } }))).toBe('test-event')
+    const event = fake.captureEvent.mock.calls[0][0]
+    expect(event.fingerprint).toEqual(['rust-engine', 'decode_failed', 'ffmpeg decoding failed', 'DecodeError'])
+    expect(event.exception.values[0].value).toBe('ffmpeg decoding failed')
+    expect(event.extra.detail).toContain('; stderr: Cannot open ')
+    expect(event.extra.detail).not.toContain('Alice')
+    expect(reportChildDiagnostic(diagnostic({ code: 'decode_failed', message: 'ffmpeg decoding failed',
+      exception: { type: 'DecodeError', frames: [] } }))).toBeUndefined()
+  })
+
   it('removes counters and stderr from unknown messages but keeps the exit code', async () => {
     const { stableDiagnostic } = await import('./telemetry')
     expect(stableDiagnostic("Engine exited unexpectedly (exit code 1: engine\\x.py line 12 'oops')").title).toBe('Engine exited unexpectedly (exit code 1)')
