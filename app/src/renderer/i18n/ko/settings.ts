@@ -205,7 +205,7 @@ export const settingsI18n: Messages['settingsI18n'] = {
     },
     telemetryEnabled: {
       title: '오류 및 성능 진단 공유',
-      desc: '기본적으로 필터링된 앱, 분석, 녹화 오류 및 성능 데이터를 기본 기기 정보(OS 버전, CPU, 메모리, GPU)와 함께 Sentry로 전송합니다. 언제든지 끌 수 있습니다. 동영상, 스크린샷, 전체 작업 기록은 포함하지 않습니다. 다시 켠 후에는 재시작하세요.',
+      desc: '기본적으로 필터링된 앱, 분석, 녹화 오류 및 성능 데이터를 기본 기기 정보(OS 버전, CPU, 메모리, GPU)와 함께 Sentry로 전송합니다. 언제든지 끌 수 있습니다. 동영상, 스크린샷, 전체 작업 기록은 포함하지 않습니다. 다시 켠 후에는 재시작하세요. 영향을 받은 설치 수를 집계하기 위해 신원과 연결되지 않는 무작위 설치 ID를 포함하며, 진단을 끄면 삭제합니다.',
       keywords: ['sentry', 'diagnostics', 'privacy']
     },
     report: {

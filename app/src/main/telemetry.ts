@@ -1,11 +1,37 @@
 import { app, ipcMain } from 'electron'
+import { randomUUID } from 'node:crypto'
+import { mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { appDataDir } from '../shared/paths'
 import * as Sentry from '@sentry/electron/main'
-import { MAX_USER_REPORT_LENGTH, SENTRY_DSN, sanitizeTelemetryEvent } from '../shared/telemetry'
+import { MAX_USER_REPORT_LENGTH, SENTRY_DSN, TELEMETRY_INSTALL_ID_PATTERN, sanitizeTelemetryEvent } from '../shared/telemetry'
 import { redactTelemetryText } from '../shared/telemetry'
 import { RECORDER_WARNING_CODES, type ChildDiagnostic } from '../shared/child-diagnostics'
 
 let allowed = false
 let started = false
+let installId: string | undefined
+let installIdFile: string | undefined
+
+function loadInstallId(file: string): string | undefined {
+  try {
+    try {
+      const id = readFileSync(file, 'utf8')
+      if (TELEMETRY_INSTALL_ID_PATTERN.test(id)) return id
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') return undefined
+    }
+    const id = randomUUID()
+    mkdirSync(dirname(file), { recursive: true })
+    writeFileSync(file, id, 'utf8')
+    return id
+  } catch { return undefined }
+}
+
+function sanitizeMainEvent<T extends Sentry.Event>(event: T): T | null {
+  // Renderer events have their own user object; add the local ID at the final privacy boundary.
+  return allowed ? sanitizeTelemetryEvent({ ...event, user: { id: installId } }) : null
+}
 
 /** Suppress the same fault for five minutes without collapsing distinct failures in one component/code. */
 export const CHILD_DIAGNOSTIC_DEDUPE_WINDOW_MS = 5 * 60_000
@@ -129,7 +155,12 @@ export function initializeTelemetry(consent: boolean): void {
   ipcMain.handle('telemetry:enabled', () => started && allowed)
   ipcMain.handle('telemetry:report', (_event, message: unknown) => reportUserFeedback(message))
   ipcMain.handle('telemetry:playbackDesync', (_event, report: unknown) => reportPlaybackDesync(report))
-  if (!consent) return
+  installIdFile = join(appDataDir(), 'telemetry-install-id')
+  if (!consent) {
+    updateTelemetryConsent(false)
+    return
+  }
+  installId = loadInstallId(installIdFile)
   try {
     Sentry.init({
       dsn: SENTRY_DSN,
@@ -150,8 +181,8 @@ export function initializeTelemetry(consent: boolean): void {
       beforeSendMetric: () => null,
       sendClientReports: false,
       beforeBreadcrumb: () => null,
-      beforeSend: (event) => allowed ? sanitizeTelemetryEvent(event) : null,
-      beforeSendTransaction: (event) => allowed ? sanitizeTelemetryEvent(event) as typeof event : null,
+      beforeSend: sanitizeMainEvent,
+      beforeSendTransaction: sanitizeMainEvent,
       // Memory-only transport: no saved events to upload after consent is withdrawn.
       transport: (options) => {
         const transport = Sentry.makeElectronTransport(options)
@@ -169,7 +200,13 @@ export function initializeTelemetry(consent: boolean): void {
 }
 
 /** Disabling takes effect immediately; enabling requires a restart to install startup hooks safely. */
-export function updateTelemetryConsent(consent: boolean): void { allowed = consent && started }
+export function updateTelemetryConsent(consent: boolean): void {
+  allowed = consent && started
+  if (!consent) {
+    installId = undefined
+    try { if (installIdFile) unlinkSync(installIdFile) } catch { /* Deletion must not interrupt opt-out. */ }
+  }
+}
 
 /** Explicit user action: send free text through the same sanitizer and device context as automatic errors. */
 export function reportUserFeedback(message: unknown): boolean {

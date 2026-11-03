@@ -205,7 +205,7 @@ export const settingsI18n: Messages['settingsI18n'] = {
     },
     telemetryEnabled: {
       title: '分享错误与性能诊断',
-      desc: '默认将过滤后的应用、分析与录制错误及性能数据发送至 Sentry，并附带基本设备信息（操作系统版本、CPU、内存、GPU），可随时关闭。不含视频、截图与完整操作记录。重新启用后请重启。',
+      desc: '默认将过滤后的应用、分析与录制错误及性能数据发送至 Sentry，并附带基本设备信息（操作系统版本、CPU、内存、GPU），可随时关闭。不含视频、截图与完整操作记录。重新启用后请重启。附带与个人身份无关的随机安装 ID，用于统计受影响的安装数量，关闭诊断时即删除。',
       keywords: ['sentry', 'diagnostics', 'privacy']
     },
     report: {
