@@ -91,6 +91,12 @@ export class AditorrecClient extends EventEmitter {
     return { version: reply.version, encoders: reply.encoders, gpus, audio }
   }
 
+  /** Launch-and-answer check for recording startup: hello trial-encodes on every GPU while the game holds it, and start probes what it needs itself. */
+  async ping(): Promise<void> {
+    if (!this.proc) this.launch()
+    await this.request('ping')
+  }
+
   private launch(): void {
     let proc: ChildProcessWithoutNullStreams
     try {

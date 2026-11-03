@@ -8,6 +8,7 @@ let sessionDir
 readline.createInterface({ input: process.stdin }).on('line', (line) => {
   const req = JSON.parse(line)
   if (process.env.FAKE_RECORDER_TRACE) fs.appendFileSync(process.env.FAKE_RECORDER_TRACE, line + '\n')
+  if (req.cmd === 'ping' && mode === 'slow-ping') return setTimeout(() => send({ id: req.id, ok: true }), 200)
   if (req.cmd === 'hello') {
     if (mode === 'probe-exit') {
       process.stderr.write('private device name\nADITORREC_DIAG probe_stage=probe_')
@@ -31,7 +32,6 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
     const hello = (reported = gpus) => send({ id: req.id, ok: true, version: '0.1.0', encoders: ['hevc_nvenc', 'h264_nvenc', 'av1_qsv'],
       ...(reported === null ? {} : { gpus: reported }),
       audio: { render: [{ id: 'default', name: '系統聲音', default: true }], capture: [] } })
-    if (mode === 'slow-hello') return setTimeout(hello, 200)
     if (mode === 'hello-legacy') return hello(null)
     if (mode === 'hello-bad-gpus') return hello([{ id: '10de:2684', name: 'NVIDIA GeForce RTX 5080', vendor: 'nvidia' }])
     return hello()
