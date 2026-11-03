@@ -85,6 +85,11 @@ test('Esc during a timeline drag cancels the drag and does not leave project mod
   await page.keyboard.press('Enter')
   await expect(page.locator('.mode-pill.is-project')).toBeVisible()
 
+  // Entering project mode seeks to the clip and then plays; a pause before that play does not stick.
+  await expect.poll(() => page.evaluate(() => {
+    const video = document.querySelector('video') as HTMLVideoElement
+    return video.currentTime > 0 && !video.paused
+  })).toBe(true)
   await page.evaluate(() => (document.querySelector('video') as HTMLVideoElement).pause())
   const before = await videoTime(page)
   const box = (await page.locator('.tl-wrap').boundingBox())!
