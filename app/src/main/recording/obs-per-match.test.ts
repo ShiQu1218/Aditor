@@ -117,12 +117,16 @@ it('stops and adds the final match when recording is stopped manually mid-match'
 })
 it.each([false, true])('Use the configured fallback when connection fails at match start: %s', async (fallback) => {
   const r = await rig()
+  r.deps.onDiagnostic = vi.fn()
   r.settings.obsFallbackBuiltin = fallback
   r.server.disconnect()
   r.settings.obsPort = 1
   r.event('match_start')
   await waitFor(() => fallback ? r.service.status().backend === 'builtin' : r.service.status().detectionOnly === true)
   expect(r.deps.notify).toHaveBeenCalled()
+  expect(r.deps.onDiagnostic).toHaveBeenCalledWith(expect.objectContaining({
+    component: 'recording-service', code: 'obs_match_failed', message: 'OBS match recording failed'
+  }))
 })
 it('recovers a per-match session that was not added to the library after stop and preserves the original file', async () => {
   const r = await rig()

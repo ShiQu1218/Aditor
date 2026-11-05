@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { TELEMETRY_INSTALL_ID_PATTERN } from '../shared/telemetry'
 import type { ChildDiagnostic } from '../shared/child-diagnostics'
+import { RECORDING_SERVICE_ERRORS } from '../shared/child-diagnostics'
 
 const fake = vi.hoisted(() => ({ dir: '', switches: new Set<string>(), init: vi.fn(), handle: vi.fn(), send: vi.fn(async () => ({})), captureEvent: vi.fn((_event: any) => 'test-event') }))
 vi.mock('../shared/paths', () => ({ appDataDir: () => fake.dir }))
@@ -263,6 +264,20 @@ describe('telemetry consent', () => {
 })
 
 describe('child diagnostics', () => {
+  it.each(Object.entries(RECORDING_SERVICE_ERRORS))('reports service failure %s as a Node event with consent and dedupe', async (code, message) => {
+    const { initializeTelemetry, reportChildDiagnostic, updateTelemetryConsent } = await import('./telemetry')
+    initializeTelemetry(true)
+    const failure: ChildDiagnostic = { component: 'recording-service', code, message,
+      tags: { error_code: 'ETIMEDOUT', signal: 'SIGTERM', killed: 'true' } }
+    expect(reportChildDiagnostic(failure)).toBe('test-event')
+    expect(fake.captureEvent.mock.calls[0][0]).toMatchObject({ platform: 'node', level: 'error',
+      exception: { values: [{ type: `recording-service:${code}`, value: message, mechanism: { type: 'generic', handled: true } }] } })
+    expect(reportChildDiagnostic(failure)).toBeUndefined()
+    expect(reportChildDiagnostic({ ...failure, code: 'disk_full' })).toBeUndefined()
+    updateTelemetryConsent(false)
+    expect(reportChildDiagnostic({ ...failure, message: 'different failure' })).toBeUndefined()
+    expect(fake.captureEvent).toHaveBeenCalledOnce()
+  })
   it.each(['audio_device_missing', 'audio_source_lost', 'audio_capture_stalled', 'game_audio_unavailable', 'encoder_stalled'])(
     'reports %s as a warning with privacy filtering, dedupe and consent', async (code) => {
       const { initializeTelemetry, reportChildDiagnostic, updateTelemetryConsent } = await import('./telemetry')
