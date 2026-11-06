@@ -723,6 +723,13 @@ impl CallbackState {
     }
 }
 
+fn wait_for_check(stopped: &Receiver<()>, deadline: Instant) -> bool {
+    matches!(
+        stopped.recv_timeout(deadline.saturating_duration_since(Instant::now())),
+        Err(mpsc::RecvTimeoutError::Timeout)
+    )
+}
+
 fn run(
     gpu: Gpu,
     opts: CaptureOptions,
@@ -765,9 +772,8 @@ fn run(
     let _ = ready.send(Ok(()));
     let mut next_check = Instant::now() + Duration::from_secs(1);
     loop {
-        match stopped.recv_timeout(Duration::from_millis(100)) {
-            Ok(()) | Err(mpsc::RecvTimeoutError::Disconnected) => break,
-            Err(mpsc::RecvTimeoutError::Timeout) => {}
+        if !wait_for_check(&stopped, next_check) {
+            break;
         }
         if Instant::now() < next_check {
             continue;
@@ -871,6 +877,46 @@ fn run(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn management_wait_stops_on_message_and_disconnect() {
+        let (stop, stopped) = mpsc::channel();
+        stop.send(()).unwrap();
+        assert!(!wait_for_check(
+            &stopped,
+            Instant::now() + Duration::from_secs(1)
+        ));
+        drop(stop);
+        assert!(!wait_for_check(
+            &stopped,
+            Instant::now() + Duration::from_secs(1)
+        ));
+    }
+
+    #[test]
+    fn measure_management_wakeups() {
+        if std::env::var_os("ADITORREC_MEASURE_WAKEUPS").is_none() {
+            return;
+        }
+        let (_stop, stopped) = mpsc::channel();
+        let start = Instant::now();
+        let mut next_check = start + Duration::from_secs(1);
+        let mut iterations = 0;
+        let mut checks = 0;
+        while checks < 2 {
+            assert!(wait_for_check(&stopped, next_check));
+            iterations += 1;
+            if Instant::now() >= next_check {
+                checks += 1;
+                next_check = Instant::now() + Duration::from_secs(1);
+            }
+        }
+        assert_eq!(checks, 2);
+        println!(
+            "management iterations_per_sec={:.3} checks={checks}",
+            iterations as f64 / start.elapsed().as_secs_f64()
+        );
+    }
 
     #[test]
     fn missing_frames_trigger_recovery_after_three_seconds() {
