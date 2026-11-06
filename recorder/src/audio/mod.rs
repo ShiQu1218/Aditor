@@ -41,6 +41,13 @@ use mix::{
 };
 
 const PACKET_CAPACITY: usize = 32;
+const MIX_PERIOD: Duration =
+    Duration::from_nanos(BLOCK_FRAMES as u64 * 1_000_000_000 / AUDIO_RATE as u64);
+
+#[cfg(test)]
+thread_local! {
+    static MIX_ITERATIONS: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+}
 
 /// Called on the audio thread; must not block. `interleaved` is 48 kHz stereo f32; `pts` is the first sample tick.
 pub trait AudioSink: Send {
@@ -762,6 +769,8 @@ fn mix_loop(
     let mut system_audio = Timeline::new(cursor);
     let mut mic_audio = Timeline::new(cursor);
     loop {
+        #[cfg(test)]
+        MIX_ITERATIONS.set(MIX_ITERATIONS.get() + 1);
         let system_status = system
             .as_mut()
             .map(|source| source.drain(&mut system_audio, origin));
@@ -821,13 +830,46 @@ fn mix_loop(
         if finished {
             break;
         }
-        thread::sleep(Duration::from_millis(2));
+        thread::sleep(MIX_PERIOD);
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn measure_mixer_wakeups() {
+        if std::env::var_os("ADITORREC_MEASURE_WAKEUPS").is_none() {
+            return;
+        }
+        let stop = AtomicBool::new(false);
+        let blocks = Arc::new(Mutex::new(Vec::new()));
+        let (warnings, _observed) = mpsc::sync_channel(32);
+        let start = Instant::now();
+        MIX_ITERATIONS.set(0);
+        thread::scope(|scope| {
+            scope.spawn(|| {
+                thread::sleep(Duration::from_secs(2));
+                stop.store(true, Ordering::Release);
+            });
+            mix_loop(
+                None,
+                None,
+                now_ticks(),
+                &AudioConfig::default(),
+                &stop,
+                Box::new(Collect(blocks.clone())),
+                warnings,
+            );
+        });
+        assert!(blocks.lock().unwrap().len() >= 190);
+        println!(
+            "mixer iterations_per_sec={:.3} blocks={}",
+            MIX_ITERATIONS.get() as f64 / start.elapsed().as_secs_f64(),
+            blocks.lock().unwrap().len()
+        );
+    }
     use std::sync::Mutex;
 
     #[test]
