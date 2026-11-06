@@ -126,11 +126,12 @@ function VideoCardView({ entry, onOpen, onToggleFavorite, onRemove, onRetry, onS
   // On open, move focus to the first option; on close, return focus to the ⋯ trigger if focus was inside the menu.
   useEffect(() => {
     if (!menuOpen) return
+    const trigger = moreRef.current
     const first = menuRef.current?.querySelector<HTMLElement>('[role="menuitem"]')
     first?.focus()
     menuHadFocus.current = first !== undefined && first !== null
     return () => {
-      if (menuHadFocus.current) moreRef.current?.focus()
+      if (menuHadFocus.current) trigger?.focus()
       menuHadFocus.current = false
     }
   }, [menuOpen])

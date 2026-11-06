@@ -67,7 +67,7 @@ export function useStudioProjectTrack({
     if (prevItemCount.current === 0 && n > 0) setSelProjId(project.items[0].id)
     else if (selProjId !== null && !project.items.some((i) => i.id === selProjId)) setSelProjId(null)
     prevItemCount.current = n
-  }, [project.items, selProjId])
+  }, [project.items, selProjId, setSelProjId])
 
   /** Handle/step adjustments: clamp to video duration for the same source; other sources have no upper bound because their durations are unknown. */
   const trimProjectItem = useCallback(
@@ -76,7 +76,7 @@ export function useStudioProjectTrack({
       const sameVideo = item ? normPath(item.source) === normPath(videoPath) : true
       apply(trimItem(projectRef.current, id, edge, t, sameVideo ? duration : undefined))
     },
-    [apply, videoPath, duration]
+    [projectRef, videoPath, apply, duration]
   )
 
   /** Dragging updates only the display draft; commit one undoable edit through the existing API at the end. */
@@ -91,20 +91,20 @@ export function useStudioProjectTrack({
         if (trimmed.start !== item.start || trimmed.end !== item.end) trimProjectItem(id, edge, t)
       }
     }
-  }, [duration, trimProjectItem])
+  }, [duration, projectRef, setSourceTrim, trimProjectItem])
 
   const moveProjectItem = useCallback(
     (id: string, toIndex: number) => {
       apply(moveItem(projectRef.current, id, toIndex))
     },
-    [apply]
+    [apply, projectRef]
   )
 
   const renameProject = useCallback(
     (name: string) => {
       apply({ ...projectRef.current, name })
     },
-    [apply]
+    [apply, projectRef]
   )
 
   /** Duplicate the selected clip (Ctrl+D or track head) and select the copy placed after the original. */
@@ -117,7 +117,7 @@ export function useStudioProjectTrack({
     apply(next)
     const clone = next.items.find((i) => !before.has(i.id))
     if (clone) setSelProjId(clone.id)
-  }, [selProjId, apply])
+  }, [selProjId, projectRef, apply, setSelProjId])
 
   /** Restore only this deletion so the notification cannot undo later edits or change another project. */
   const deleteSelectedItem = useCallback(() => {
@@ -142,7 +142,7 @@ export function useStudioProjectTrack({
         apply({ ...current, items: restored })
       } }
     })
-  }, [selProjId, apply, toast, projectId, projectRef, mountedRef])
+  }, [selProjId, projectRef, apply, setSelProjId, toast, mountedRef, projectId])
 
   /** ←/→ moves the selected clip; when none is selected, select the first/last clip. */
   const selectProjectItem = useCallback(
@@ -153,7 +153,7 @@ export function useStudioProjectTrack({
       const next = at < 0 ? (dir === 1 ? 0 : items.length - 1) : Math.max(0, Math.min(items.length - 1, at + dir))
       setSelProjId(items[next].id)
     },
-    [selProjId]
+    [projectRef, selProjId, setSelProjId]
   )
 
   /** Alt+←/→ moves the selected clip one position forward or backward. */
@@ -167,21 +167,21 @@ export function useStudioProjectTrack({
       if (at < 0 || to < 0 || to >= items.length) return
       apply(moveItem(projectRef.current, id, to))
     },
-    [selProjId, apply]
+    [selProjId, projectRef, apply]
   )
 
   /** Enter plays the selected clip. */
   const playSelectedItem = useCallback(() => {
     const item = selProjId ? projectRef.current.items.find((i) => i.id === selProjId) : undefined
     if (item) playProjectItem(item)
-  }, [selProjId, playProjectItem])
+  }, [selProjId, projectRef, playProjectItem])
 
   /** Collapse/expand the project track and save a boolean to settings.projectTrackCollapsed, overriding 'auto'. */
   const toggleProjCollapsed = useCallback(() => {
     const next = !projCollapsed
     void window.api?.settings?.set?.({ projectTrackCollapsed: next })
     setSettings((prev) => (prev ? { ...prev, projectTrackCollapsed: next } : prev))
-  }, [projCollapsed])
+  }, [projCollapsed, setSettings])
 
   /** The session synchronously saves the old project before creating a new one; keep current content if saving fails. */
   const handleNewProjectConfirmed = useCallback(
@@ -202,7 +202,7 @@ export function useStudioProjectTrack({
       }
       toast({ message: i18n.studio.toast.newProject })
     },
-    [newProject, projectId, toast]
+    [newProject, projectId, setSelProjId, toast]
   )
 
   /** Switch to a stored project from the manager dialog. */
@@ -217,7 +217,7 @@ export function useStudioProjectTrack({
       toast({ message: i18n.studio.toast.projectOpened })
       return true
     },
-    [openProject, toast]
+    [openProject, setSelProjId, toast]
   )
 
   /** Add all external videos to the project in one undoable action; first play the first new clip whose duration was obtained. */
@@ -248,7 +248,7 @@ export function useStudioProjectTrack({
         importingRef.current = false
       }
     })()
-  }, [toast, exportCtl, apply, playProjectItem, projectId])
+  }, [exportCtl, mountedRef, projectId, switchingSourceRef, toast, projectRef, apply, playProjectItem])
 
   /** Add from source: add the first pending suggestion (mock behavior); show a Toast when none exists. */
   const addFirstSuggestion = useCallback(() => {

@@ -86,7 +86,7 @@ export function useStudioSourcePlayback({
       return
     }
     pendingSeekRef.current = { t, play }
-  }, [])
+  }, [videoRef])
 
   const handleLoadedMetadata = useCallback((): void => {
     const el = videoRef.current
@@ -99,7 +99,7 @@ export function useStudioSourcePlayback({
       el.currentTime = p.t
       if (p.play) void el.play().catch(() => {})
     }
-  }, [])
+  }, [videoRef])
 
   // On file switch, invalidate the old loaded marker; when the proxy is ready, preserve source/project-preview position and playback state.
   const prevSrcRef = useRef(videoSrc)
@@ -110,7 +110,7 @@ export function useStudioSourcePlayback({
     if (!pendingSeekRef.current) {
       pendingSeekRef.current = { t: currentTimeRef.current, play: isPlaying }
     }
-  }, [videoSrc])
+  }, [isPlaying, videoSrc])
 
   /** Current source playhead time (use the saved time while switching files). */
   const sourcePlayTime = useCallback((): number => {
@@ -124,7 +124,7 @@ export function useStudioSourcePlayback({
       return currentTimeRef.current
     }
     return el.currentTime
-  }, [])
+  }, [videoRef])
 
   // Throttle keyboard-driven playhead/zoom changes and announce them through polite aria-live.
   const announcerRef = useRef<ReturnType<typeof createAnnouncer> | null>(null)
@@ -132,7 +132,7 @@ export function useStudioSourcePlayback({
     const a = createAnnouncer(setLive)
     announcerRef.current = a
     return () => a.dispose()
-  }, [])
+  }, [setLive])
   const announce = useCallback((msg: string): void => announcerRef.current?.announce(msg), [])
 
   const togglePlay = useCallback(() => {
@@ -140,7 +140,7 @@ export function useStudioSourcePlayback({
     if (!el) return
     if (el.paused) void el.play().catch(() => {})
     else el.pause()
-  }, [])
+  }, [videoRef])
 
   const cycleSpeed = useCallback(() => {
     const speeds = [1.0, 0.5, 0.25, 2.0]
@@ -149,7 +149,7 @@ export function useStudioSourcePlayback({
       if (videoRef.current) videoRef.current.playbackRate = next
       return next
     })
-  }, [])
+  }, [setSpeed, videoRef])
 
   /** For any source seek (timeline, event, highlight preview, or arrow keys), return to source mode first and apply the time after switching files. */
   const seekTo = useCallback(
@@ -160,7 +160,7 @@ export function useStudioSourcePlayback({
       currentTimeRef.current = clamped
       setCurrentTime(clamped)
     },
-    [requestSeek]
+    [dispatchMode, requestSeek, setCurrentTime]
   )
 
   /** Pause before dragging; resume the original playback state on release, or restore the original project preview on cancel. */
@@ -168,7 +168,7 @@ export function useStudioSourcePlayback({
     const el = videoRef.current
     scrubSessionRef.current = { item: previewRef.current.item, time: el?.currentTime ?? 0, playing: !!el && !el.paused }
     el?.pause()
-  }, [])
+  }, [previewRef, videoRef])
   const endScrub = useCallback((cancelled: boolean): void => {
     const session = scrubSessionRef.current
     scrubSessionRef.current = null
@@ -182,7 +182,7 @@ export function useStudioSourcePlayback({
       previewRestoreRef.current = { id: session.item.id, time: session.time, playing: session.playing }
       dispatchMode({ type: 'playItem', item: session.item })
     } else requestSeek(currentTimeRef.current, sourceSrcRef.current, session.playing)
-  }, [requestSeek])
+  }, [dispatchMode, projectRef, requestSeek])
 
   /** Blade hover changes only the preview frame; the source playhead and saved time stay in place. */
   const hoverSeek = useCallback((t: number | null): void => {
@@ -202,7 +202,7 @@ export function useStudioSourcePlayback({
       el?.pause()
     }
     requestSeek(t, sourceSrcRef.current, false)
-  }, [requestSeek, sourcePlayTime])
+  }, [requestSeek, setCurrentTime, sourcePlayTime, videoRef])
 
   /** Return to source (Esc or banner button) at the current clip's source time so editing can continue there. */
   const backToSource = useCallback(() => {
@@ -210,7 +210,7 @@ export function useStudioSourcePlayback({
     dispatchMode({ type: 'backToSource' })
     videoRef.current?.pause()
     requestSeek(currentTimeRef.current, sourceSrcRef.current, false)
-  }, [requestSeek])
+  }, [dispatchMode, requestSeek, videoRef])
 
   // If the previewed clip no longer exists (for example, Undo removed it), return to source mode.
   useEffect(() => {

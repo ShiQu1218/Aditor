@@ -56,7 +56,7 @@ export function useStudioExport({
     return () => {
       cancelled = true
     }
-  }, [exportOpen, exportState.phase, project, missingItemIds, doc, videoPath])
+  }, [exportOpen, exportState.phase, project, missingItemIds, doc, videoPath, setExportBase])
 
   // If export finishes while the drawer is minimized, show a Toast with a View action.
   const prevPhaseRef = useRef(exportState.phase)
@@ -69,7 +69,7 @@ export function useStudioExport({
       message: exportState.phase === 'failed' ? t.toastFailed : exportState.result?.cancelled ? t.toastCancelled : t.toastDone,
       action: { label: t.view, run: () => setExportOpen(true) }
     })
-  }, [exportState.phase, exportState.result, toast])
+  }, [exportOpenRef, exportState.phase, exportState.result, setExportOpen, toast])
 
   // Development only: ?drawer=… loads fake IPC to show drawer states directly for screenshots; dynamically imported and excluded from production bundles.
   const drawerFixtureDone = useRef(false)

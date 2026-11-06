@@ -69,21 +69,21 @@ export function useStudioSuggestions({
         console.error('Failed to place AI suggestions:', err)
       }
     })()
-  }, [settings, state.doc, analysisGen, duration])
+  }, [settings, state.doc, analysisGen, duration, dispatch])
 
   // Ensure a card is active when the highlights tab opens (the first roving-tabindex stop).
   useEffect(() => {
     setActiveClipId((prev) =>
       prev && shownClips.some((c) => c.id === prev) ? prev : nextSuggestion(shownClips, null, 1)
     )
-  }, [shownClips])
+  }, [setActiveClipId, shownClips])
 
   // When the playhead enters a highlight's range, make that card active so the sidebar points at it;
   // react only to entering a new range so manual card selection outside highlights is left alone.
   const clipUnderPlayhead = useMemo(() => clipAt(shownClips, currentTime), [shownClips, currentTime])
   useEffect(() => {
     if (clipUnderPlayhead) setActiveClipId(clipUnderPlayhead)
-  }, [clipUnderPlayhead])
+  }, [clipUnderPlayhead, setActiveClipId])
 
   /** Apply popover results: replace only suggested AI clips (keep added, skipped, and manual clips) and write to cache. */
   const handleApplyAutoClip = useCallback(
@@ -91,7 +91,7 @@ export function useStudioSuggestions({
       suggestSeq.current++ // Pending automatic suggestions must not overwrite the result the user just applied.
       dispatch({ type: 'applyClips', clips: applyAutoClip(clipsRef.current, clips) })
     },
-    []
+    [dispatch]
   )
 
   return { handleApplyAutoClip }

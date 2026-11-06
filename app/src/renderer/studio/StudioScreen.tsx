@@ -273,7 +273,7 @@ export function StudioScreen({ videoPath, onBack, onRegisterLeaveGuard, onVideoR
   /* ---------------- Status bar (engine errors and proxies) ---------------- */
 
   const { shownNotice, requestBack, handleNoticeAction } = useStudioNotices({
-    videoPath, reloadKey, duration, docAnalysis: state.doc.analysis, videoMissing, setVideoMissing, playability, proxyState,
+    videoPath, reloadKey, duration, videoMissing, setVideoMissing, playability, proxyState,
     setProxyState, setProxyPath, proxySuggest: cfg.proxySuggest, loadError, setLoadError, setReloadKey, removalPending,
     canLeaveStudio, onBack, toast
   })

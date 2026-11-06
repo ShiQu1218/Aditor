@@ -109,7 +109,7 @@ export function useStudioPlayback({
     videoRef.current?.pause()
     loadedSrcRef.current = null
     onOpenVideo(path, request)
-  }, [videoPath, exportCtl, toast, onOpenVideo])
+  }, [removalPending, switchingSourceRef, videoPath, exportCtl, stateRef, cacheSaver, videoRef, loadedSrcRef, onOpenVideo, toast])
 
   /** Play directly within the same source; for another source, save synchronously before opening the requested clip. */
   const playProjectItem = useCallback((item: ProjectItem): void => {
@@ -130,7 +130,7 @@ export function useStudioPlayback({
       setPreviewTime(item.start)
       requestSeek(item.start, sourceSrcRef.current, true)
     } else dispatchMode({ type: 'playItem', item })
-  }, [videoPath, toast, openSource, requestSeek])
+  }, [switchingSourceRef, videoPath, setSelProjId, previewRef, dispatchMode, toast, openSource, speedRef, currentTimeRef, setCurrentTime, setPreviewTime, requestSeek, sourceSrcRef])
 
   const consumedRequest = useRef(false)
   useEffect(() => {
@@ -155,7 +155,7 @@ export function useStudioPlayback({
       videoRef.current?.pause()
       if (r.kind === 'allMissing') toast({ message: i18n.studio.track.restMissingToast })
     },
-    [toast, playProjectItem]
+    [projectRef, videoRef, toast, playProjectItem]
   )
 
   /** When playback time t reaches the clip end, switch to the next clip (possibly in another video). */
@@ -165,20 +165,20 @@ export function useStudioPlayback({
       if (step.kind === 'continue') return
       advanceFrom(item)
     },
-    [advanceFrom]
+    [advanceFrom, projectRef]
   )
 
   const handlePlayingChange = useCallback((playing: boolean): void => {
     if (playing && !switchingSourceRef.current) advancedForRef.current = null // User resumed playback; allow pausing or advancing again at the clip end.
     setIsPlaying(playing)
-  }, [])
+  }, [setIsPlaying, switchingSourceRef])
 
   /** Handle the actual <video> end so playback can continue when a clip extends past the video duration. */
   const handleVideoEnded = useCallback((): void => {
     if (hoverPreviewRef.current) return
     const item = previewRef.current.item
     if (item && loadedSrcRef.current === videoSrcRef.current) advanceFrom(item)
-  }, [advanceFrom])
+  }, [advanceFrom, hoverPreviewRef, loadedSrcRef, previewRef, videoSrcRef])
 
   /** On load failure, invalidate pending seeks and the loaded marker, and clear the playing flag. */
   const handleVideoError = useCallback((): void => {
@@ -189,7 +189,7 @@ export function useStudioPlayback({
     if (previewRef.current.item) toast({ message: i18n.studio.track.missingToast })
     // A source-mode video load failure means the video is missing or unplayable; show a notice with Relink/Back to Library actions.
     else setVideoMissing(true)
-  }, [toast])
+  }, [loadedSrcRef, pendingSeekRef, previewRef, setIsPlaying, setVideoMissing, toast])
 
   // Project preview keeps the source playhead in sync and advances through clips; ignore stale events from the old video while switching sources.
   const handleTimeUpdate = useCallback((t: number) => {
@@ -208,7 +208,7 @@ export function useStudioPlayback({
     setPreviewTime(t)
     if (!item) return
     advanceIfEnded(item, t)
-  }, [advanceIfEnded])
+  }, [advanceIfEnded, currentTimeRef, hoverPreviewRef, loadedSrcRef, pendingSeekRef, previewRef, setCurrentTime, setPreviewTime, sourceSrcRef, switchingSourceRef, videoSrcRef])
 
   // On entering or switching preview clips, load the video, seek to the clip start, and play (spec §3.5).
   useEffect(() => {
@@ -255,7 +255,7 @@ export function useStudioPlayback({
     }
     const timer = window.setInterval(check, 100)
     return () => window.clearInterval(timer)
-  }, [previewItem, advanceFrom, isPlaying])
+  }, [previewItem, advanceFrom, isPlaying, videoRef, loadedSrcRef, videoSrcRef, pendingSeekRef])
 
   return {
     openSource,

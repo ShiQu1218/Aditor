@@ -76,6 +76,7 @@ afterEach(() => {
       // Windows file lock.
     }
   }
+  vi.useRealTimers()
 })
 
 /** Fake watcher: records close calls and can trigger ready manually (simulates a slow startup). */
@@ -244,6 +245,68 @@ describe('missing / deleted folders', () => {
     expect(made[1].close).not.toHaveBeenCalled()
     expect(wm.missing()).toEqual([])
   }, 20000)
+})
+
+describe('watcher failure recovery', () => {
+  test.each([false, true])('retries errors after ready=%s without losing folders or reviving the failed watcher', async (ready) => {
+    vi.useFakeTimers()
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const rig = makeRig()
+    const { factory, made } = fakeFactory()
+    const wm = manager(rig, { createWatcher: factory, retryMs: 30000 })
+    wm.start()
+    const pending = wm.add(rig.watchDir)
+    if (ready) made[0].emitter.emit('ready')
+    made[0].emitter.emit('error', new Error('EPERM'))
+    await pending
+    expect(made[0].close).toHaveBeenCalledTimes(1)
+    expect(wm.activeDirs()).toEqual([])
+    expect(wm.list()).toEqual([rig.watchDir])
+
+    await vi.advanceTimersByTimeAsync(30000)
+    expect(made).toHaveLength(2)
+    made[1].emitter.emit('ready')
+    made[0].emitter.emit('ready')
+    made[0].emitter.emit('error', new Error('Late error'))
+    expect(made[1].close).not.toHaveBeenCalled()
+    expect(wm.activeDirs()).toEqual([rig.watchDir])
+    const video = path.join(rig.watchDir, 'recovered.mp4')
+    made[1].onAdd([video])
+    expect(rig.imports.map((entry) => entry.path)).toEqual([video])
+  })
+
+  test('a ready timeout closes the pending watcher and allows the next retry', async () => {
+    vi.useFakeTimers()
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const rig = makeRig()
+    const { factory, made } = fakeFactory()
+    const wm = manager(rig, { createWatcher: factory, retryMs: 30000 })
+    wm.start()
+    const pending = wm.add(rig.watchDir)
+    await vi.advanceTimersByTimeAsync(10000)
+    await pending
+    expect(made[0].close).toHaveBeenCalledTimes(1)
+    expect(wm.activeDirs()).toEqual([])
+    await vi.advanceTimersByTimeAsync(20000)
+    expect(made).toHaveLength(2)
+    made[1].emitter.emit('ready')
+    expect(wm.activeDirs()).toEqual([rig.watchDir])
+  })
+
+  test('a synchronous startup failure is retried without throwing from start', async () => {
+    vi.useFakeTimers()
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const rig = makeRig()
+    rig.settings.set({ watchFolders: [rig.watchDir] })
+    const { factory, made } = fakeFactory()
+    const createWatcher = vi.fn<WatcherFactory>().mockImplementationOnce(() => { throw new Error('EPERM') }).mockImplementation(factory)
+    const wm = manager(rig, { createWatcher, retryMs: 30000 })
+    expect(() => wm.start()).not.toThrow()
+    expect(wm.activeDirs()).toEqual([])
+    await vi.advanceTimersByTimeAsync(30000)
+    made[0].emitter.emit('ready')
+    expect(wm.activeDirs()).toEqual([rig.watchDir])
+  })
 })
 
 describe('stable-size window (lower bound)', () => {

@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useState, type Dispatch, type MutableRefObject, type SetStateAction } from 'react'
-import type { CacheDoc } from '../../shared/types'
 import type { PlayabilityResult } from '../media/playability'
 import { i18n } from '../i18n'
 import type { useToast } from '../shell/ToastHost'
@@ -12,7 +11,6 @@ interface StudioNoticesOptions {
   videoPath: string
   reloadKey: number
   duration: number
-  docAnalysis: CacheDoc['analysis']
   videoMissing: boolean
   setVideoMissing: (missing: boolean) => void
   playability: PlayabilityResult
@@ -34,7 +32,6 @@ export function useStudioNotices({
   videoPath,
   reloadKey,
   duration,
-  docAnalysis,
   videoMissing,
   setVideoMissing,
   playability,
@@ -57,8 +54,7 @@ export function useStudioNotices({
   const [proxyPct, setProxyPct] = useState<number | null>(null)
   const [proxyDismissed, setProxyDismissed] = useState(false)
 
-  useEffect(() => setVideoMissing(false), [videoPath, reloadKey])
-  // docAnalysis is kept as a recompute trigger even though the notice no longer reads it.
+  useEffect(() => setVideoMissing(false), [videoPath, reloadKey, setVideoMissing])
   const notice: StudioNotice | null = useMemo(() => {
     const base = studioNotice({
       analysis: 'done',
@@ -69,7 +65,7 @@ export function useStudioNotices({
     })
     if (proxyDismissed && base?.id === 'proxy-suggest') return null
     return base
-  }, [playability, proxyState, proxyDismissed, proxySuggest, docAnalysis, videoMissing])
+  }, [playability, proxyState, proxyDismissed, proxySuggest, videoMissing])
 
   const busyNotice: StudioNotice | null = useMemo(
     () => (proxyState === 'generating' ? proxyBusyNotice(proxyPct) : null),
@@ -100,13 +96,13 @@ export function useStudioNotices({
       console.error('Failed to generate proxy:', err)
       setProxyState('none')
     }
-  }, [videoPath, duration])
+  }, [setProxyState, videoPath, duration, setProxyPath])
 
   /** Return to the library; while export is running, stay in the studio and show a Toast instead. */
   const requestBack = useCallback((): void => {
     if (removalPending.current || !canLeaveStudio()) return
     onBack()
-  }, [canLeaveStudio, onBack])
+  }, [canLeaveStudio, onBack, removalPending])
 
   const handleNoticeAction = useCallback(
     (a: NoticeAction): void => {
@@ -128,7 +124,7 @@ export function useStudioNotices({
         requestBack()
       }
     },
-    [loadError, handleGenerateProxy, toast, requestBack]
+    [setLoadError, setReloadKey, loadError?.message, toast, handleGenerateProxy, requestBack]
   )
 
   return { shownNotice, requestBack, handleNoticeAction }

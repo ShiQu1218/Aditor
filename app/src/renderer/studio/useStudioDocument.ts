@@ -226,7 +226,7 @@ export function useStudioDocument({
     }
     if (stateRef.current.dirty && !cacheSaver.current!.flushSync()) return false
     return true
-  }, [exportCtl, toast])
+  }, [exportCtl, stateRef, toast])
 
   useEffect(() => onRegisterLeaveGuard?.(canLeaveStudio), [canLeaveStudio, onRegisterLeaveGuard])
 
@@ -267,7 +267,7 @@ export function useStudioDocument({
     const off = window.api?.library?.onUpdated?.(() => { void refresh() })
     void refresh()
     return () => { cancelled = true; off?.() }
-  }, [loaded, state.doc.analysis.status, videoPath, toast])
+  }, [loaded, state.doc.analysis.status, videoPath, toast, stateRef, dispatch, setAnalysisGen])
 
   return { cacheSaver, canLeaveStudio, queued }
 }
