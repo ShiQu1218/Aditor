@@ -41,17 +41,21 @@ pub fn white_mask(im: &Image<u8>, white: &Value) -> Result<Image<u8>> {
     if im.data.is_empty() {
         return Ok(mask(im, vec![]));
     }
-    let hsv = cv::hsv(im)?;
+    anyhow::ensure!(im.channels == 3, "BGR requires three channels");
+    let sdiv_table = &*cv::HSV_SDIV;
     let v_min = white["v_min"].as_f64().unwrap();
     let s_max = white["s_max"].as_f64().unwrap();
     Ok(mask(
         im,
-        hsv.data
+        im.data
             .as_chunks::<3>()
             .0
             .iter()
             .map(|p| {
-                if p[2] as f64 >= v_min && p[1] as f64 <= s_max {
+                let v = p[0].max(p[1]).max(p[2]);
+                let diff = v - p[0].min(p[1]).min(p[2]);
+                let s = ((diff as i32 * sdiv_table[v as usize] + 2048) >> 12) as u8;
+                if v as f64 >= v_min && s as f64 <= s_max {
                     255
                 } else {
                     0
@@ -348,5 +352,86 @@ pub(crate) fn best_result(r: Image<f32>) -> Result<(f64, i32, i32)> {
             (best.1 % r.width) as i32,
             (best.1 / r.width) as i32,
         ))
+    }
+}
+
+#[cfg(test)]
+fn white_mask_reference(im: &Image<u8>, white: &Value) -> Result<Image<u8>> {
+    if im.data.is_empty() {
+        return Ok(mask(im, vec![]));
+    }
+    let hsv = cv::hsv_reference(im)?;
+    let v_min = white["v_min"].as_f64().unwrap();
+    let s_max = white["s_max"].as_f64().unwrap();
+    Ok(mask(
+        im,
+        hsv.data
+            .as_chunks::<3>()
+            .0
+            .iter()
+            .map(|p| {
+                if p[2] as f64 >= v_min && p[1] as f64 <= s_max {
+                    255
+                } else {
+                    0
+                }
+            })
+            .collect(),
+    ))
+}
+
+#[cfg(test)]
+mod color_tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn white_mask_matches_reference() {
+        let src = cv::color_test_image();
+        for v_min in [-1., 0., 0.5, 22., 22.5, 200., 200.5, 255., 256.] {
+            for s_max in [-1., 0., 0.5, 60., 60.5, 127., 127.5, 128., 255., 256.] {
+                let white = json!({"v_min": v_min, "s_max": s_max});
+                assert_eq!(
+                    white_mask(&src, &white).unwrap(),
+                    white_mask_reference(&src, &white).unwrap(),
+                    "{white}"
+                );
+            }
+        }
+        let boundary = Image::new(1, 1, 3, vec![11, 11, 22]).unwrap();
+        assert_eq!(
+            white_mask(&boundary, &json!({"v_min": 22, "s_max": 127}))
+                .unwrap()
+                .data,
+            [255]
+        );
+        for channels in [0, 1, 3, 4] {
+            for data in [vec![], vec![11], vec![11, 11], vec![11, 11, 22, 99]] {
+                let src = Image {
+                    width: 0,
+                    height: 1,
+                    channels,
+                    data,
+                };
+                let white = json!({"v_min": 22, "s_max": 127});
+                match (white_mask(&src, &white), white_mask_reference(&src, &white)) {
+                    (Ok(actual), Ok(expected)) => assert_eq!(actual, expected),
+                    (Err(actual), Err(expected)) => {
+                        assert_eq!(actual.to_string(), expected.to_string())
+                    }
+                    results => panic!("Mismatched results: {results:?}"),
+                }
+            }
+        }
+        let empty = Image {
+            width: 0,
+            height: 0,
+            channels: 0,
+            data: vec![],
+        };
+        assert_eq!(
+            white_mask(&empty, &Value::Null).unwrap(),
+            white_mask_reference(&empty, &Value::Null).unwrap()
+        );
     }
 }
