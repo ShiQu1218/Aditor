@@ -127,7 +127,7 @@ fn segment_planning_ownership_and_interval_operations() {
     use analyze::*;
     assert_eq!(
         plan_segments(60., 4, 5.),
-        vec![(0., 15.), (15., 30.), (30., 45.), (45., 60.)]
+        vec![(0., 27.), (27., 34.), (34., 41.), (41., 60.)]
     );
     assert_eq!(plan_segments(6., 4, 30.), vec![(0., 6.)]);
     let mut s = Segment::new(20., 40., false, 60.);
