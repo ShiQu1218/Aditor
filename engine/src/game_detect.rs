@@ -181,7 +181,7 @@ pub fn grab_both(
         match out {
             Ok(Some(mut buf)) => {
                 let mut gray = Vec::with_capacity(640 * 360);
-                for row in buf[GAME_BYTES..].chunks_exact(1920 * 3) {
+                for row in buf[GAME_BYTES..].as_chunks::<{ 1920 * 3 }>().0 {
                     gray.extend(row[..640 * 3].iter().step_by(3).copied());
                 }
                 buf.truncate(GAME_BYTES);
