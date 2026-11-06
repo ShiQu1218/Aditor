@@ -18,14 +18,41 @@ export function parseGameProcess(output: string): GameProcess | null {
   return null
 }
 
-export function findGameProcess(): Promise<GameProcess | null> {
-  return new Promise((resolve, reject) => {
-    execFile('tasklist', ['/FO', 'CSV', '/NH'],
+export async function findGameProcess(): Promise<GameProcess | null> {
+  const matches = await Promise.all(GAME_IDS.map((game) => new Promise<GameProcess | null>((resolve, reject) => {
+    execFile('tasklist', ['/FO', 'CSV', '/NH', '/FI', `IMAGENAME eq ${GAMES[game].tasklistImageFilter}`],
       { windowsHide: true, timeout: 10000, maxBuffer: 4 * 1024 * 1024 }, (error, stdout) => {
         if (error) reject(error)
         else resolve(parseGameProcess(stdout))
       })
-  })
+  })))
+  // Cross-game priority is now GAME_IDS order instead of tasklist listing order.
+  return matches.find((match) => match !== null) ?? null
+}
+
+// Recheck image names every 10 polls (normally 30 seconds) to bound stale detection after PID reuse.
+export const GAME_PROCESS_RECHECK_POLLS = 10
+
+export function createGameProcessFinder(find = findGameProcess): () => Promise<GameProcess | null> {
+  let known: GameProcess | null = null
+  let polls = 0
+  return async () => {
+    if (known && ++polls < GAME_PROCESS_RECHECK_POLLS) {
+      try {
+        process.kill(known.pid, 0)
+        return known
+      } catch (error) {
+        const code = (error as NodeJS.ErrnoException).code
+        if (code === 'EPERM') return known
+        if (code !== 'ESRCH') throw error
+      }
+    }
+    // Keep retrying enumeration after a failed recheck, even if the old PID is alive.
+    polls = GAME_PROCESS_RECHECK_POLLS
+    known = await find()
+    polls = 0
+    return known
+  }
 }
 
 export function sameProcess(a: GameProcess | null, b: GameProcess | null): boolean {

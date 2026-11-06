@@ -7,7 +7,7 @@ import {
   type LiveState, type LiveUpdate, type RecordingBackend, type RecordingMode, type RecordingService, type RecordingStatus, type RecorderCapabilities, type ObsTestResult
 } from '../../shared/recording'
 import { isSafeLocalDirPath } from '../safe-path'
-import { GameWatcher, findGameProcess, sameProcess, type GameProcess } from './game-watcher'
+import { GameWatcher, createGameProcessFinder, findGameProcess, sameProcess, type GameProcess } from './game-watcher'
 import { ValorantClient, type PresenceEvent } from './valorant-client'
 import { DEFAULT_GAME, GAMES, gameProfileDir, gameSceneDir, type GameId } from '../../shared/games'
 import { AditorrecClient, RecorderError, type RecorderEvent } from './aditorrec-client'
@@ -128,6 +128,7 @@ export class RecordingSessionService implements RecordingService {
   private state: RecordingStatus = { ...IDLE_RECORDING_STATUS }
   private events = new EventEmitter()
   private watcher: GameWatcher<GameProcess>
+  private pollGame = createGameProcessFinder()
   private running = false
   private gamePid: number | null = null
   /** Game of gamePid; keeps the last game after it exits. */
@@ -162,7 +163,7 @@ export class RecordingSessionService implements RecordingService {
   private storageChecked = new Set<string>()
 
   constructor(private deps: RecordingDeps) {
-    this.watcher = new GameWatcher<GameProcess>(() => this.findGame(), deps.pollMs ?? 3000,
+    this.watcher = new GameWatcher<GameProcess>(() => this.findGame(this.pollGame), deps.pollMs ?? 3000,
       (found) => {
         this.pollWarning = false
         this.pollFailures = 0
@@ -199,12 +200,12 @@ export class RecordingSessionService implements RecordingService {
       }, sameProcess)
   }
 
-  private async findGame(): Promise<GameProcess | null> {
+  private async findGame(find = findGameProcess): Promise<GameProcess | null> {
     const { findGame, findApexPid } = this.deps
     try {
       if (findGame) return await findGame()
       if (findApexPid) { const pid = await findApexPid(); return pid ? { game: 'apex', pid } : null }
-      return await findGameProcess()
+      return await find()
     } catch (error) {
       this.reportFailure('game_query_failed', error)
       throw error
@@ -219,6 +220,7 @@ export class RecordingSessionService implements RecordingService {
     if (this.running) return
     this.running = true
     this.firstPoll = true
+    this.pollGame = createGameProcessFinder()
     this.recovery = this.serialize(() => recoverSessions(this.deps,
       (paths) => this.finalized(paths),
       (error) => {
