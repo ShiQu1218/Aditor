@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 pub const RESUME_BACK: f64 = 12.;
 pub const SEGMENT_PREROLL: f64 = 20.;
 pub const SEGMENT_POSTROLL: f64 = 12.;
+const SEGMENT_GRID: f64 = 0.25;
 
 pub fn plan_segments(duration: f64, jobs: usize, min_len: f64) -> Vec<(f64, f64)> {
     let n = jobs
@@ -14,7 +15,40 @@ pub fn plan_segments(duration: f64, jobs: usize, min_len: f64) -> Vec<(f64, f64)
         })
         .max(1);
     let mut bounds = vec![0.];
-    bounds.extend((1..n).map(|i| (duration * i as f64 / n as f64 / 0.25).round_ties_even() * 0.25));
+    if n > 1 {
+        if duration > SEGMENT_PREROLL + SEGMENT_POSTROLL {
+            // Each inner boundary adds one preroll and one postroll to the
+            // decoded work, so the decoded spans add up to the file length
+            // plus (n - 1) * (preroll + postroll). Spread that budget over
+            // the first n - 1 spans on the boundary grid; the last span
+            // takes the remainder.
+            let total = duration + (n - 1) as f64 * (SEGMENT_PREROLL + SEGMENT_POSTROLL);
+            let base = (total / (n as f64 * SEGMENT_GRID)).floor() * SEGMENT_GRID;
+            let extra =
+                (((total - base * n as f64).max(0.) / SEGMENT_GRID).floor() as usize).min(n - 1);
+            let mut at = 0.;
+            for i in 0..n - 1 {
+                at += base + if i < extra { SEGMENT_GRID } else { 0. }
+                    - if i == 0 {
+                        SEGMENT_POSTROLL
+                    } else {
+                        SEGMENT_PREROLL + SEGMENT_POSTROLL
+                    };
+                bounds.push(at);
+            }
+        } else {
+            // The file is not longer than the overlap: every segment decodes
+            // the whole file when all boundaries stay inside this grid window.
+            let lo = ((duration - SEGMENT_POSTROLL).max(0.) / SEGMENT_GRID).ceil() * SEGMENT_GRID;
+            let hi = (duration.min(SEGMENT_PREROLL) / SEGMENT_GRID).floor() * SEGMENT_GRID;
+            for i in 1..n {
+                bounds.push(
+                    ((lo + (hi - lo) * i as f64 / n as f64) / SEGMENT_GRID).round_ties_even()
+                        * SEGMENT_GRID,
+                );
+            }
+        }
+    }
     bounds.push(duration);
     bounds.windows(2).map(|w| (w[0], w[1])).collect()
 }
@@ -147,4 +181,125 @@ pub fn merge_intervals(mut items: Vec<SpecInterval>) -> Vec<SpecInterval> {
         }
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn planner_preserves_count_grid_and_coverage() {
+        for (duration, min_len, limit) in [
+            (0., 5., 1),
+            (0.1, 0., 8),
+            (6., 30., 1),
+            (29.9, 5., 5),
+            (30., 30., 1),
+            (32.1, 5., 6),
+            (59.9, 30., 1),
+            (60., 30., 2),
+            (112.16, 0., 8),
+            (226.1, 30., 7),
+            (226., 0., 8),
+        ] {
+            for jobs in 1..=8 {
+                let plan = plan_segments(duration, jobs, min_len);
+                assert_eq!(plan.len(), jobs.min(limit).max(1));
+                assert_eq!(plan[0].0, 0.);
+                assert_eq!(plan.last().unwrap().1, duration);
+                for (i, &(start, end)) in plan.iter().enumerate() {
+                    assert!(start >= 0. && start <= end && end <= duration);
+                    assert_eq!(start % 0.25, 0.);
+                    if i > 0 {
+                        assert_eq!(plan[i - 1].1, start);
+                    }
+                }
+            }
+        }
+    }
+
+    fn decode_stats(plan: &[(f64, f64)], duration: f64) -> (f64, f64) {
+        let lengths: Vec<_> = plan
+            .iter()
+            .enumerate()
+            .map(|(i, &(a, b))| {
+                let s = Segment::new(a, b, i + 1 == plan.len(), duration);
+                s.target() - s.resume_plan().1
+            })
+            .collect();
+        let shortest = lengths.iter().copied().fold(f64::INFINITY, f64::min);
+        let longest = lengths.iter().copied().fold(0., f64::max);
+        (longest, longest - shortest)
+    }
+
+    #[test]
+    fn planner_balances_clamped_decode_lengths() {
+        for duration in [
+            0.1, 6., 12., 12.1, 20., 29.9, 30., 31.8, 32., 32.1, 34., 50.5, 60., 112.16, 226.,
+            226.083008, 226.1,
+        ] {
+            for jobs in 1..=8 {
+                for min_len in [0., 5., 30.] {
+                    let plan = plan_segments(duration, jobs, min_len);
+                    let (longest, spread) = decode_stats(&plan, duration);
+                    let limit = if duration <= SEGMENT_PREROLL + SEGMENT_POSTROLL {
+                        0.
+                    } else {
+                        SEGMENT_GRID
+                    };
+                    assert!(
+                        spread <= limit + 1e-9,
+                        "duration={duration}, jobs={jobs}, min_len={min_len}: spread={spread}, plan={plan:?}"
+                    );
+                    for i in 1..plan.len() {
+                        for step in [-SEGMENT_GRID, SEGMENT_GRID] {
+                            let cand = plan[i].0 + step;
+                            if cand >= plan[i - 1].0 && cand <= plan[i].1 {
+                                let mut alt = plan.clone();
+                                alt[i - 1].1 = cand;
+                                alt[i].0 = cand;
+                                let (alt_longest, alt_spread) = decode_stats(&alt, duration);
+                                assert!(
+                                    alt_longest >= longest - 1e-9
+                                        && (alt_longest > longest + 1e-9
+                                            || alt_spread >= spread - 1e-9),
+                                    "non-optimal at duration={duration}, jobs={jobs}, min_len={min_len}: {plan:?} vs {alt:?}"
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(
+            plan_segments(226., 4, 30.),
+            vec![(0., 68.5), (68.5, 117.), (117., 165.5), (165.5, 226.)]
+        );
+        assert_eq!(
+            plan_segments(34., 3, 5.),
+            vec![(0., 20.75), (20.75, 21.5), (21.5, 34.)]
+        );
+    }
+
+    #[test]
+    fn legacy_checkpoint_keeps_bounds_progress_and_resume_ownership() {
+        let raw = json!([
+            {"start":0.,"end":56.5,"progress_t":68.5},
+            {"start":56.5,"end":113.,"progress_t":90.},
+            {"start":113.,"end":169.5,"progress_t":113.},
+            {"start":169.5,"end":226.,"progress_t":190.}
+        ]);
+        let mut segs = restore(&raw, 226.).unwrap();
+        assert_eq!(serde_json::to_value(&segs).unwrap(), raw);
+        assert!(segs[0].done());
+        assert_eq!(segs[1].resume_plan(), (78., 58.));
+        assert_eq!(segs[2].resume_plan(), (113., 93.));
+        assert_eq!(segs[3].resume_plan(), (178., 158.));
+        for s in &mut segs {
+            s.own_from = if s.done() { s.end } else { s.resume_plan().0 };
+            assert_eq!(s.owns(s.own_from), !s.done() || s.last);
+            assert_eq!(s.owns(s.end), s.last);
+        }
+    }
 }
