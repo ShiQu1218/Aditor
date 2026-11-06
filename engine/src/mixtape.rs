@@ -6,7 +6,7 @@ use crate::{
 };
 use anyhow::Result;
 pub fn text_match(ink: &Image<f32>, template: &Image<f32>) -> Result<(f64, i32, i32)> {
-    TextMatcher::new(ink).best(template)
+    TextMatcher::new(ink).best(template, None)
 }
 struct TextMatcher<'a> {
     ink: &'a Image<f32>,
@@ -31,12 +31,19 @@ impl<'a> TextMatcher<'a> {
         }
         Self { ink, sums, squares }
     }
-    fn best(&self, template: &Image<f32>) -> Result<(f64, i32, i32)> {
+    fn best(
+        &self,
+        template: &Image<f32>,
+        prepared: Option<&cv::PreparedTemplate>,
+    ) -> Result<(f64, i32, i32)> {
         let ink = self.ink;
         if ink.width < template.width || ink.height < template.height {
             return Ok((0., 0, 0));
         }
-        let mut r = cv::match_template(ink, template, None)?;
+        let mut r = match prepared {
+            Some(prepared) => cv::match_prepared(ink, template, prepared)?,
+            None => cv::match_template(ink, template, None)?,
+        };
         let stride = ink.width + 1;
         let (sums, squares) = (&self.sums, &self.squares);
         let n = (template.width * template.height) as f64;
@@ -68,11 +75,12 @@ impl<'a> TextMatcher<'a> {
     }
 }
 /// (kind, keyword ink, whether the victim name precedes the keyword, as in Japanese `NAMEを撃破`).
-type Keyword = (String, Image<f32>, bool);
+type Keyword = (String, Image<f32>, bool, cv::PreparedTemplate);
 pub struct MixtapeDetector {
     profile: Profile,
     templates: Vec<Keyword>,
     pub(crate) speakers: Vec<Image<f32>>,
+    prepared_speakers: Vec<cv::PreparedTemplate>,
 }
 fn unit(im: &Image<u8>) -> Image<f32> {
     let mut out = im.float();
@@ -118,17 +126,16 @@ impl MixtapeDetector {
         ] {
             if let Ok(t) = cv::read_png(&profile.dir.join(format!("{name}.png")), true) {
                 for s in [0.9, 0.95, 1., 1.05, 1.1] {
-                    templates.push((
-                        kind.into(),
-                        unit(&cv::resize_factor(&t, s, s, Interpolation::Linear)?),
-                        name_first,
-                    ));
+                    let tpl = unit(&cv::resize_factor(&t, s, s, Interpolation::Linear)?);
+                    let prepared = cv::PreparedTemplate::new(&tpl);
+                    templates.push((kind.into(), tpl, name_first, prepared));
                 }
             }
         }
         Ok(Self {
             profile: profile.clone(),
             templates,
+            prepared_speakers: speakers.iter().map(cv::PreparedTemplate::new).collect(),
             speakers,
         })
     }
@@ -151,7 +158,7 @@ impl MixtapeDetector {
         let mut best: Option<(f64, i32, i32, &Keyword)> = None;
         let matcher = TextMatcher::new(&ink);
         for template in &self.templates {
-            let (score, x, y) = matcher.best(&template.1)?;
+            let (score, x, y) = matcher.best(&template.1, Some(&template.3))?;
             if score >= 0.80
                 && best.as_ref().is_none_or(|b| {
                     (template.0 == "assist_elim", score) > (b.3 .0 == "assist_elim", b.0)
@@ -160,7 +167,7 @@ impl MixtapeDetector {
                 best = Some((score, x, y, template));
             }
         }
-        let Some((score, x, y, (kind, tpl, name_first))) = best else {
+        let Some((score, x, y, (kind, tpl, name_first, _))) = best else {
             return Ok(None);
         };
         let name_first = *name_first;
@@ -277,8 +284,10 @@ impl MixtapeDetector {
         }
         let mut limit = hud.width;
         for hm in &masks {
-            for speaker in &self.speakers {
-                let (score, x, _) = text_match(&hm.float(), speaker)?;
+            let hm_float = hm.float();
+            let matcher = TextMatcher::new(&hm_float);
+            for (i, speaker) in self.speakers.iter().enumerate() {
+                let (score, x, _) = matcher.best(speaker, self.prepared_speakers.get(i))?;
                 let tail = crop(
                     hm,
                     x + speaker.width as i32,
@@ -392,7 +401,14 @@ mod tests {
         let matcher = TextMatcher::new(&ink);
         for (x, y, w, h) in [(11, 8, 7, 5), (22, 3, 9, 7)] {
             let template = ink.crop(x, y, w, h).unwrap();
-            let (score, actual_x, actual_y) = matcher.best(&template).unwrap();
+            let result = matcher.best(&template, None).unwrap();
+            assert_eq!(
+                matcher
+                    .best(&template, Some(&cv::PreparedTemplate::new(&template)))
+                    .unwrap(),
+                result
+            );
+            let (score, actual_x, actual_y) = result;
             assert!((score - 1.).abs() < 1e-6);
             assert_eq!((actual_x, actual_y), (x as i32, y as i32));
         }
@@ -407,7 +423,7 @@ mod tests {
         let detector = MixtapeDetector::new(&p).unwrap();
         for level in [0., 0.001, 0.5, 1.] {
             let ink = Image::new(800, 60, 1, vec![level; 800 * 60]).unwrap();
-            for (_, template, _) in &detector.templates {
+            for (_, template, _, _) in &detector.templates {
                 assert_eq!(text_match(&ink, template).unwrap().0, 0.);
             }
         }

@@ -1,4 +1,4 @@
-use super::{crop, keyword_ink, match_best, read_name_sig, white_mask, Keywords};
+use super::{best_result, crop, keyword_ink, read_name_sig, white_mask, Keywords};
 use crate::{
     cv::{self, Image},
     icon_detect::{IconDetector, IconFrame, IconParams},
@@ -23,13 +23,17 @@ pub enum Prepared {
     Ready(FrameResult),
     Pending(Pending),
 }
+type SpecRule = (
+    serde_json::Value,
+    Vec<(Image<u8>, cv::PreparedTemplate, f64)>,
+);
 pub struct Detector {
     pub profile: Profile,
     pub icon_scale: f64,
     pub icons: IconDetector,
     pub keywords: Option<Keywords>,
     pub(crate) mixtape: MixtapeDetector,
-    spec: Vec<(serde_json::Value, Image<u8>, f64)>,
+    spec: Vec<SpecRule>,
 }
 fn empty(spectating: bool, hint: Option<&str>) -> FrameResult {
     FrameResult {
@@ -51,17 +55,16 @@ impl Detector {
     ) -> Result<Self> {
         let icons = IconDetector::new(&profile.dir, &[scale], params, false)?;
         let mixtape = MixtapeDetector::new(profile)?;
-        let spec = profile
-            .spectating
-            .iter()
-            .map(|s| {
-                Ok((
-                    s.white.clone(),
-                    cv::read_png(&profile.dir.join(&s.file), true)?,
-                    s.threshold,
-                ))
-            })
-            .collect::<Result<_>>()?;
+        let mut spec: Vec<SpecRule> = Vec::new();
+        for s in &profile.spectating {
+            let tpl = cv::read_png(&profile.dir.join(&s.file), true)?;
+            let prepared = cv::PreparedTemplate::new(&tpl);
+            if let Some((_, group)) = spec.iter_mut().find(|(w, _)| *w == s.white) {
+                group.push((tpl, prepared, s.threshold));
+            } else {
+                spec.push((s.white.clone(), vec![(tpl, prepared, s.threshold)]));
+            }
+        }
         let mut det = Self {
             profile: profile.clone(),
             icon_scale: scale,
@@ -93,7 +96,7 @@ impl Detector {
         if spec.data.is_empty() {
             return Ok(false);
         }
-        for (white, tpl, thr) in &self.spec {
+        for (white, templates) in &self.spec {
             let m = white_mask(&spec, white)?;
             let coords: Vec<_> = m
                 .data
@@ -109,8 +112,16 @@ impl Detector {
             let y0 = coords.iter().map(|p| p.1).min().unwrap().saturating_sub(8);
             let x1 = (coords.iter().map(|p| p.0).max().unwrap() + 9).min(m.width);
             let y1 = (coords.iter().map(|p| p.1).max().unwrap() + 9).min(m.height);
-            if match_best(&crop(&m, x0 as i32, y0 as i32, x1 as i32, y1 as i32), tpl)?.0 >= *thr {
-                return Ok(true);
+            let cropped = crop(&m, x0 as i32, y0 as i32, x1 as i32, y1 as i32);
+            for (tpl, prepared, thr) in templates {
+                let score = if cropped.width < tpl.width || cropped.height < tpl.height {
+                    0.
+                } else {
+                    best_result(cv::match_prepared(&cropped, tpl, prepared)?)?.0
+                };
+                if score >= *thr {
+                    return Ok(true);
+                }
             }
         }
         Ok(false)
@@ -160,13 +171,12 @@ impl Detector {
             _ if f.chev >= self.icons.p.chev_min && f.plus >= self.icons.p.plus_min => {
                 Prepared::Ready(empty(spectating, Some("cont")))
             }
-            _ => Prepared::Ready(
-                if let Some(plain) = self.mixtape.detect(b, spec)?.filter(|_| !spectating) {
-                    plain
-                } else {
-                    empty(spectating, None)
-                },
-            ),
+            _ if spectating => Prepared::Ready(empty(true, None)),
+            _ => Prepared::Ready(if let Some(plain) = self.mixtape.detect(b, spec)? {
+                plain
+            } else {
+                empty(spectating, None)
+            }),
         };
         Ok((r, f))
     }
