@@ -17,6 +17,63 @@ afterEach(() => {
 })
 
 describe('Library durability (I3)', () => {
+  it('reports unchanged patches without saving, fsyncing, or scheduling progress writes', () => {
+    vi.useFakeTimers()
+    const lib = new Library(file)
+    const video = 'D:/Videos/a.mp4'
+    lib.add([video])
+    lib.update(video, { counts: { knock: 2, assist: 1 }, hl: 3 })
+    const save = vi.spyOn(lib, 'save')
+    const sync = vi.spyOn(fs, 'fsyncSync')
+    expect(lib.update(video, { counts: { assist: 1, knock: 2 }, hl: 3 })).toBe(false)
+    expect(lib.update(video, { status: 'pending', progress: 0 })).toBe(false)
+    expect(lib.update(video, { error: undefined })).toBe(false)
+    expect(lib.update(video, {})).toBe(false)
+    expect(lib.update('D:/Videos/missing.mp4', { hl: 3 })).toBe(false)
+    vi.advanceTimersByTime(2100)
+    expect(lib.flush()).toBe(true)
+    expect(save).not.toHaveBeenCalled()
+    expect(sync).not.toHaveBeenCalled()
+  })
+
+  it('saves and fsyncs changed nested values and clears optional values immediately', () => {
+    const lib = new Library(file)
+    const video = 'D:/Videos/a.mp4'
+    lib.add([video])
+    lib.update(video, { counts: { knock: 2, assist: 1 }, hl: 3 })
+    const sync = vi.spyOn(fs, 'fsyncSync')
+    expect(lib.update(video, { counts: { knock: 2, assist: 0 }, hl: undefined })).toBe(true)
+    expect(sync).toHaveBeenCalledTimes(1)
+    expect(new Library(file).get(video)).toMatchObject({ counts: { knock: 2, assist: 0 } })
+    expect(new Library(file).get(video)?.hl).toBeUndefined()
+  })
+
+  it('leaves pending progress scheduled when an unchanged patch is skipped', () => {
+    vi.useFakeTimers()
+    const lib = new Library(file)
+    const video = 'D:/Videos/a.mp4'
+    lib.add([video])
+    const sync = vi.spyOn(fs, 'fsyncSync')
+    expect(lib.update(video, { progress: 0.5 })).toBe(true)
+    vi.advanceTimersByTime(1000)
+    expect(lib.update(video, { progress: 0.5 })).toBe(false)
+    vi.advanceTimersByTime(1000)
+    expect(sync).toHaveBeenCalledTimes(1)
+    expect(new Library(file).get(video)?.progress).toBe(0.5)
+  })
+
+  it('keeps failed changed updates dirty when an unchanged retry is skipped', () => {
+    const lib = new Library(file)
+    const video = 'D:/Videos/a.mp4'
+    lib.add([video])
+    vi.spyOn(fs, 'renameSync').mockImplementationOnce(() => { throw new Error('disk full') })
+    expect(lib.update(video, { hl: 3 })).toBe(true)
+    expect(lib.update(video, { hl: 3 })).toBe(false)
+    expect(new Library(file).get(video)?.hl).toBeUndefined()
+    expect(lib.flush()).toBe(true)
+    expect(new Library(file).get(video)?.hl).toBe(3)
+  })
+
   it('keeps sources when persisting removal intent fails, including ENOENT and bulk removal', () => {
     const video = path.join(dir, 'recorded.mp4')
     fs.writeFileSync(video, 'keep')

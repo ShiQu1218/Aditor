@@ -129,10 +129,10 @@ export function registerIpcHandlers(
   /** The user says which game a video shows (after recognition failed, or to correct it); analyze it as that game. */
   ipcMain.handle('library:setGame', (_, videoPath: unknown, game: unknown) => {
     if (typeof videoPath !== 'string' || !isGameId(game) || !library.get(videoPath)) return false
-    library.update(videoPath, { game, status: 'pending', progress: 0, error: undefined, errorCode: undefined })
+    const changed = library.update(videoPath, { game, status: 'pending', progress: 0, error: undefined, errorCode: undefined })
     requireLibrarySaved()
     queue.enqueue(videoPath)
-    broadcastUpdated()
+    if (changed) broadcastUpdated()
     return true
   })
 
@@ -248,11 +248,12 @@ export function registerIpcHandlers(
         return null
       }
       // Discard this result if a newer cache:save occurred during computation (or the entry is no longer done/has been reanalyzed).
+      let changed = false
       const committed = hlGuard.commitIfCurrent(key, startedRev, () => {
-        if (find()?.status === 'done') library.update(videoPath, { hl: count })
+        if (find()?.status === 'done') changed = library.update(videoPath, { hl: count })
       })
       if (!committed) return find()?.hl ?? null
-      broadcastUpdated()
+      if (changed) broadcastUpdated()
       return count
     })
   })
@@ -322,8 +323,7 @@ export function registerIpcHandlers(
     const videoPath = doc.video?.path
     if (ok && videoPath) {
       hlGuard.bump(normalizePath(videoPath))
-      library.update(videoPath, { hl: hlForSavedDoc(plan.doc) })
-      broadcastUpdated()
+      if (library.update(videoPath, { hl: hlForSavedDoc(plan.doc) })) broadcastUpdated()
     }
     return ok
   }
