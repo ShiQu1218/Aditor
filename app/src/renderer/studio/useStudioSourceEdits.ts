@@ -78,7 +78,7 @@ export function useStudioSourceEdits({
         }
         fn(...a)
       },
-    [toast, projectId, mountedRef]
+    [mountedRef, projectId, modeRef, toast]
   )
 
   /** Split (Ctrl+Q or track-head scissors in project mode): the playhead must be within the current clip, with a ±0.5-second boundary. */
@@ -101,20 +101,20 @@ export function useStudioSourceEdits({
       setSelProjId(second.id)
       dispatchMode({ type: 'playItem', item: second })
     }
-  }, [mode.mode, currentTime, apply, toast])
+  }, [previewRef, videoRef, currentTime, mode.mode, projectRef, apply, toast, setSelProjId, dispatchMode])
 
   /** Blade mode (transport button or B): return to source at the current frame before enabling in project preview; append split clips to the project. */
   const toggleBlade = useCallback(() => {
     const wasProject = modeRef.current.mode === 'project'
     backToSource()
     setBladeMode((enabled) => wasProject || !enabled)
-  }, [backToSource])
+  }, [backToSource, modeRef, setBladeMode])
 
   /** Ctrl+Q toggles blade mode in source view and splits at the playhead in project preview. */
   const handleQuickOrSplit = useCallback(() => {
     if (modeRef.current.mode === 'project') splitProjectAtPlayhead()
     else toggleBlade()
-  }, [splitProjectAtPlayhead, toggleBlade])
+  }, [modeRef, splitProjectAtPlayhead, toggleBlade])
 
   const createBladeClip = useCallback((start: number, end: number): void => {
     const clip: Clip = { id: `c_${crypto.randomUUID()}`, start, end, origin: 'manual', event_ids: [], status: 'accepted' }
@@ -132,11 +132,11 @@ export function useStudioSourceEdits({
         })
       }
     })
-  }, [videoPath, apply, toast, guarded])
+  }, [videoPath, projectRef, dispatch, apply, toast, guarded])
 
   useEffect(() => {
     if (mode.mode !== 'source') setBladeMode(false)
-  }, [mode.mode])
+  }, [mode.mode, setBladeMode])
   /** Blade mode works only in source view; this also applies to the render before the effect clears the state. */
   const bladeActive = bladeMode && mode.mode === 'source'
 
@@ -145,7 +145,7 @@ export function useStudioSourceEdits({
     (fromId: string) => {
       setActiveClipId(nextSuggestion(shownClips, fromId, 1))
     },
-    [shownClips]
+    [setActiveClipId, shownClips]
   )
 
   /** Preview a clip: leave project mode and jump to its start (seekTo returns to source and applies the time after any source switch). */
@@ -182,7 +182,7 @@ export function useStudioSourceEdits({
       }
       advanceActive(clip.id)
     },
-    [videoPath, apply, toast, advanceActive, guarded]
+    [videoPath, projectRef, apply, dispatch, advanceActive, toast, guarded]
   )
 
   /** Skip a suggestion (card/Delete): mark it skipped; Toast Undo returns it to suggested. */
@@ -195,13 +195,13 @@ export function useStudioSourceEdits({
       })
       advanceActive(clip.id)
     },
-    [toast, advanceActive, guarded]
+    [dispatch, toast, guarded, advanceActive]
   )
 
   /** Unskip and return to suggested without showing a Toast. */
   const restoreClip = useCallback((clip: Clip) => {
     dispatch({ type: 'restoreClip', id: clip.id })
-  }, [])
+  }, [dispatch])
 
   /** Remove from the project: AI clips return to suggested and manual clips are removed from the list; Toast Undo reverses both changes. */
   const removeFromProject = useCallback(
@@ -222,7 +222,7 @@ export function useStudioSourceEdits({
         }
       })
     },
-    [videoPath, apply, toast, guarded]
+    [videoPath, projectRef, apply, dispatch, toast, guarded]
   )
 
   /** Add all (Ctrl+E or footer): use idempotent planAddAll so repeated calls do not duplicate clips; show one Toast Undo action. */
@@ -244,7 +244,7 @@ export function useStudioSourceEdits({
         })
       }
     })
-  }, [shownClips, videoPath, apply, toast, guarded])
+  }, [shownClips, videoPath, projectRef, dispatch, apply, toast, guarded])
 
   /** Add suggestion (Enter): handle only the currently active suggestion. */
   const handleAcceptSuggestion = useCallback(() => {

@@ -276,9 +276,14 @@ export class WatchManager extends EventEmitter {
       this.warnOnce(key, `[Watch] ${(err as Error).message}（保留清單並標記缺失，之後安靜重試）`)
       return Promise.resolve()
     }
-    const entry = this.activate(key, valid)
-    this.activating.set(key, entry)
-    return entry.promise
+    try {
+      const entry = this.activate(key, valid)
+      this.activating.set(key, entry)
+      return entry.promise
+    } catch (err) {
+      this.warnOnce(key, `[Watch] 監看錯誤（${dir}）：${String(err)}`)
+      return Promise.resolve()
+    }
   }
 
   private activate(key: string, dir: string): Activating {
@@ -288,16 +293,13 @@ export class WatchManager extends EventEmitter {
       stabilityMs: this.opts.stabilityMs ?? DEFAULT_STABILITY_MS,
       pollMs: this.opts.pollMs ?? DEFAULT_POLL_MS
     })
-    watcher.on('error', (err) => {
-      console.warn(`[Watch] 監看錯誤（${dir}）：`, err)
-    })
     let settled = false
     let resolveFn!: () => void
     const promise = new Promise<void>((resolve) => {
       resolveFn = resolve
     })
-    // Safety net: do not leave the caller (IPC) blocked if ready never fires.
-    const timer = setTimeout(() => finish(), 10000)
+    // A watcher that never becomes ready must be closed so the retry timer can replace it.
+    const timer = setTimeout(() => fail(new Error('Watcher did not become ready within 10 seconds')), 10000)
     const entry: Activating = {
       promise,
       cancel: () => {
@@ -309,6 +311,13 @@ export class WatchManager extends EventEmitter {
         void watcher.close()
         resolveFn()
       }
+    }
+    const fail = (err: unknown): void => {
+      // An error from an old watcher must not close its replacement.
+      if (this.activating.get(key) !== entry && this.watchers.get(key)?.watcher !== watcher) return
+      this.warnOnce(key, `[Watch] 監看錯誤（${dir}）：${String(err)}`)
+      this.deactivate(key)
+      this.emit('update')
     }
     const finish = (): void => {
       if (settled) {
@@ -331,6 +340,7 @@ export class WatchManager extends EventEmitter {
       }
       resolveFn()
     }
+    watcher.on('error', fail)
     watcher.once('ready', finish)
     return entry
   }
