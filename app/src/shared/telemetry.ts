@@ -75,11 +75,14 @@ function safeHardwareContexts(contexts: Event['contexts']): Record<string, Recor
   return out
 }
 
-const SAFE_COMPONENTS = new Set(['rust-engine', 'rust-live', 'rust-recorder', 'user-report', 'preview-playback'])
+const SAFE_COMPONENTS = new Set(['rust-engine', 'rust-live', 'rust-recorder', 'recording-service', 'user-report', 'preview-playback'])
 // Extra tags are kept only when their value has a fixed, non-identifying shape.
 const SAFE_TAG_VALUES: Record<string, RegExp> = {
   spawn_errno: /^[A-Z0-9_]{1,16}$/,
   spawn_syscall: /^spawn$/,
+  error_code: /^(?:[A-Z][A-Z0-9_]{0,31}|-?\d{1,10})$/,
+  signal: /^SIG[A-Z]{1,12}$/,
+  killed: /^(?:true|false)$/,
   electron: /^\d+(?:\.\d+){2}$/,
   decode: /^(?:auto|software)$/,
   // Recorder pipeline stage named in a diagnostic (see stableDiagnosticMessage in main/telemetry.ts).

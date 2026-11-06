@@ -6,6 +6,7 @@ import { EventEmitter } from 'events'
 import { createRecordingService, type RecordingDeps } from './index'
 import { readFrames } from './session'
 import { LiveSession } from './live-session'
+import { ObsRecording } from './obs-session'
 import type { RecordingService, RecordingSettings } from '../../shared/recording'
 import * as disk from './disk'
 import { copySegments, createSegments, fakeCommand, ffmpeg, makeDeps, sessionDir, tempRoot, waitFor } from './test-support'
@@ -50,6 +51,7 @@ afterEach(async () => {
 describe('recording service state machine', () => {
   it('reports failed live persistence and preserves the session instead of leaving shutdown stuck', async () => {
     const value = rig()
+    value.deps.onDiagnostic = vi.fn()
     value.settings.autoRecord = false
     value.service.start()
     expect(await value.service.startManual()).toBe(true)
@@ -58,10 +60,45 @@ describe('recording service state machine', () => {
     vi.spyOn(LiveSession.prototype, 'flush').mockRejectedValue(new Error('live file busy'))
     await expect(value.service.stopManual()).resolves.toBeUndefined()
     expect(value.service.status().error?.code).toBe('finalize_failed')
+    expect(value.deps.onDiagnostic).toHaveBeenCalledExactlyOnceWith({
+      component: 'recording-service', code: 'finalize_failed', message: 'Recording finalization failed', tags: {}
+    })
     expect(JSON.parse(fs.readFileSync(path.join(start.session_dir, 'recording.json'), 'utf8')).livePending).toBe(true)
     expect(fs.existsSync(start.session_dir)).toBe(true)
     expect(fs.existsSync(path.join(start.session_dir, 'live-complete.json'))).toBe(false)
     expect(value.deps.addToLibrary).not.toHaveBeenCalled()
+  })
+  it('reports polling and manual game query failures without forwarding command output or changing the rejection', async () => {
+    const value = rig()
+    value.settings.autoRecord = false
+    const error = Object.assign(new Error('tasklist: private-process.exe token=private'), {
+      code: 'ETIMEDOUT', signal: 'SIGTERM', killed: true, stdout: 'private-process.exe'
+    })
+    value.deps.findGame = vi.fn().mockRejectedValue(error)
+    const report = vi.fn()
+    value.deps.onDiagnostic = report
+    value.service.start()
+    await waitFor(() => report.mock.calls.length > 0)
+    expect(report).toHaveBeenCalledWith({ component: 'recording-service', code: 'game_query_failed',
+      message: 'Game process query failed', tags: { error_code: 'ETIMEDOUT', signal: 'SIGTERM', killed: 'true' } })
+    expect(JSON.stringify(report.mock.calls)).not.toContain('private')
+    report.mockClear()
+    report.mockImplementation(() => { throw new Error('diagnostic handler failed') })
+    await expect(value.service.startManual()).rejects.toBe(error)
+    expect(report).toHaveBeenCalled()
+  })
+  it('reports OBS startup failure without exposing the password or blocking the built-in fallback', async () => {
+    const value = rig()
+    value.settings.autoRecord = false
+    value.settings.backend = 'obs'
+    value.settings.obsFallbackBuiltin = true
+    value.deps.onDiagnostic = vi.fn()
+    vi.spyOn(ObsRecording.prototype, 'start').mockRejectedValue(Object.assign(new Error('password=private'), { code: 4009 }))
+    value.service.start()
+    expect(await value.service.startManual()).toBe(true)
+    expect(value.deps.onDiagnostic).toHaveBeenCalledExactlyOnceWith({ component: 'recording-service', code: 'obs_start_failed',
+      message: 'OBS recording start failed', tags: { error_code: '4009' } })
+    expect(value.service.status().backend).toBe('builtin')
   })
   it.each([['cloud', '雲端同步'], ['network', '網路磁碟']] as const)('warns once per output folder when recording to %s storage', async (kind, text) => {
     const value = rig()
@@ -445,6 +482,7 @@ describe('recording service state machine', () => {
   it.each(['audio-device-invalidated', 'audio-device-missing'])('warns about an unavailable audio device without repeatedly starting: %s', async (mode) => {
     vi.useFakeTimers()
     const value = rig(mode)
+    value.deps.onDiagnostic = vi.fn()
     value.service.start()
     await waitFor(() => value.service.status().error?.code === 'audio_failed')
     expect(value.service.status().error?.message).toContain('重新選擇系統聲音裝置或麥克風裝置')
@@ -453,6 +491,8 @@ describe('recording service state machine', () => {
     expect(value.service.status().error?.code).toBe('audio_failed')
     expect(await value.service.startManual()).toBe(false)
     expect(commands(value, 'start')).toHaveLength(2)
+    expect(value.deps.onDiagnostic).toHaveBeenCalledWith(expect.objectContaining({ component: 'rust-recorder', code: 'audio_failed' }))
+    expect(vi.mocked(value.deps.onDiagnostic).mock.calls.some(([report]) => report.component === 'recording-service')).toBe(false)
   })
 
   it('keeps recording with a warning when the default audio device is missing', async () => {

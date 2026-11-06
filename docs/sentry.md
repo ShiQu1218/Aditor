@@ -6,6 +6,8 @@
 以及 Rust 離線分析、即時偵測與錄影子程序的錯誤。
 所有網路回報集中於 Electron；子程序不另裝 Sentry SDK，也不保存權杖。
 
+錄影服務另以 `recording-service`（Node）回報遊戲程序偵測、錄影準備、OBS 啟動／逐局處理／入庫、剪檔、收尾與啟動補收尾的受控錯誤，沿用診斷同意、去重與流量上限。事件只保留固定分類與經白名單驗證的 `error_code`、`signal`、`killed`，不傳送捕捉到的原始錯誤訊息、程序清單或 OBS 憑證。底層已回報的 RecorderError 不另作錄影準備故障上傳。
+
 Rust 引擎例外保留 type 與空 frames 陣列；不提供來源堆疊。元件識別為 `rust-engine`（離線分析）、`rust-live`（即時偵測）與 `rust-recorder`（錄影），platform 皆為 `native`；改名前的 `python-engine`／`python-live` 舊 issue 不會與新事件合併。
 錄影端會回報擷取／編碼／音訊失敗、通訊異常與非預期退出；目前不擷取 Rust 原生崩潰的記憶體傾印或完整原生堆疊。
 

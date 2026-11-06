@@ -1,4 +1,15 @@
-export type DiagnosticComponent = 'rust-engine' | 'rust-live' | 'rust-recorder'
+export type DiagnosticComponent = 'rust-engine' | 'rust-live' | 'rust-recorder' | 'recording-service'
+
+export const RECORDING_SERVICE_ERRORS = {
+  game_query_failed: 'Game process query failed',
+  recording_start_failed: 'Recording setup failed',
+  obs_start_failed: 'OBS recording start failed',
+  obs_match_failed: 'OBS match recording failed',
+  obs_import_failed: 'OBS match import failed',
+  clip_failed: 'Match clipping failed',
+  finalize_failed: 'Recording finalization failed',
+  recovery_failed: 'Recording recovery failed'
+} as const
 
 export const RECORDER_WARNING_CODES = new Set([
   'audio_device_missing', 'audio_source_lost', 'audio_capture_stalled', 'game_audio_unavailable', 'encoder_stalled'

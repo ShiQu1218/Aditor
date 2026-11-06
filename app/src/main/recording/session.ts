@@ -24,6 +24,7 @@ import { resolveCaptureMethod } from './capture-method'
 import type { RecordingDeps, RecordingNoticeKind } from './index'
 import { tr } from '../../shared/locale'
 import { recordOutputRemoval } from './removed-output'
+import { emitChildDiagnostic, RECORDING_SERVICE_ERRORS } from '../../shared/child-diagnostics'
 
 /** Marker aditorrec puts in no_hw_encoder messages when the NVIDIA driver is too old (IPC contract with recorder/src/encode/mod.rs). */
 const NVIDIA_DRIVER_OUTDATED = 'nvidia_driver_outdated'
@@ -198,11 +199,16 @@ export class RecordingSessionService implements RecordingService {
       }, sameProcess)
   }
 
-  private get findGame(): () => Promise<GameProcess | null> {
+  private async findGame(): Promise<GameProcess | null> {
     const { findGame, findApexPid } = this.deps
-    if (findGame) return findGame
-    if (findApexPid) return async () => { const pid = await findApexPid(); return pid ? { game: 'apex', pid } : null }
-    return findGameProcess
+    try {
+      if (findGame) return await findGame()
+      if (findApexPid) { const pid = await findApexPid(); return pid ? { game: 'apex', pid } : null }
+      return await findGameProcess()
+    } catch (error) {
+      this.reportFailure('game_query_failed', error)
+      throw error
+    }
   }
 
   private current(): GameProcess | null {
@@ -215,7 +221,10 @@ export class RecordingSessionService implements RecordingService {
     this.firstPoll = true
     this.recovery = this.serialize(() => recoverSessions(this.deps,
       (paths) => this.finalized(paths),
-      (error) => this.fail('recovery_failed', tr('錄影補收尾失敗：{error}', { error: String(error) })),
+      (error) => {
+        this.reportFailure('recovery_failed', error)
+        this.fail('recovery_failed', tr('錄影補收尾失敗：{error}', { error: String(error) }))
+      },
       () => !this.running))
     this.watcher.start()
   }
@@ -383,6 +392,7 @@ export class RecordingSessionService implements RecordingService {
             try { await session.obs!.startMatch(index, ev === 'match_start'); this.update({ obsRecording: true }) }
             catch (error) {
               session.obsFailed = true
+              this.reportFailure('obs_match_failed', error)
               this.notice('warning', tr('OBS 無法開始逐局錄影：{error}', { error: String(error) }))
               // Recreate the capture session so the built-in encoder starts on a new timeline.
               const fallback = this.deps.getSettings().obsFallbackBuiltin
@@ -540,6 +550,7 @@ export class RecordingSessionService implements RecordingService {
             }
           })
         } catch (error) {
+          this.reportFailure('obs_start_failed', error)
           await current.obs?.close()
           current.obs = null
           this.notice('warning', tr('{message}；{fallback}', { message: (error as Error).message, fallback: settings.obsFallbackBuiltin ? tr('本次改用內建錄影器') : tr('本次僅執行即時偵測') }))
@@ -592,6 +603,8 @@ export class RecordingSessionService implements RecordingService {
         return false
       }
       const audioUnavailable = unavailableAudioDevice(code, error)
+      // RecorderError failures are already reported by the recorder client or are expected user/environment conditions.
+      if (!(error instanceof RecorderError)) this.reportFailure('recording_start_failed', error)
       this.fail(code, audioUnavailable ? audioDeviceHint(error) : driverHint(code, error) ?? tr('無法開始錄影：{error}', { error: String(error) }))
       if (audioUnavailable || code === 'no_hw_encoder' || code === 'disk_full' || code === 'profile_invalid' || code === 'output_invalid') this.blocked = true
       else this.scheduleRestart()
@@ -660,6 +673,7 @@ export class RecordingSessionService implements RecordingService {
     if (session.cutting) return
     session.cutting = true
     const onError = (error: unknown): void => {
+      this.reportFailure('clip_failed', error)
       this.notice('error', tr('逐局剪檔失敗，錄影繼續，收尾時將重試：{error}', { error: String(error) }))
     }
     session.cuts = (async () => {
@@ -676,6 +690,7 @@ export class RecordingSessionService implements RecordingService {
 
   private queueObs(session: ActiveSession, action: () => Promise<void>): void {
     session.obsWork = session.obsWork.then(action).catch((error) => {
+      this.reportFailure('obs_match_failed', error)
       this.notice('error', tr('OBS 逐局錄影處理失敗，已保留工作：{error}', { error: String(error) }))
     })
   }
@@ -698,7 +713,10 @@ export class RecordingSessionService implements RecordingService {
     session.cuts = session.cuts.then(async () => {
       const paths = await finalizeObsMatches(session.dir, this.deps, config, obs.matches, false, () => obs.save(), obs.meta)
       if (paths.length) this.finalized(paths)
-    }).catch((error) => this.notice('error', tr('OBS 逐局影片入庫失敗，收尾時將重試：{error}', { error: String(error) })))
+    }).catch((error) => {
+      this.reportFailure('obs_import_failed', error)
+      this.notice('error', tr('OBS 逐局影片入庫失敗，收尾時將重試：{error}', { error: String(error) }))
+    })
   }
 
   private hookUnavailableReason(code: string, error: unknown): string | null {
@@ -840,6 +858,7 @@ export class RecordingSessionService implements RecordingService {
       return true
     } catch (error) {
       // Disconnect OBS and stop recordings started by this app even if event writing or clipping fails.
+      this.reportFailure('finalize_failed', error)
       try { await session.obs?.stop(); await session.obs?.close() }
       catch { this.notice('warning', tr('OBS 收尾連線未完成，請在 OBS 確認錄影狀態')) }
       this.active = null
@@ -856,7 +875,10 @@ export class RecordingSessionService implements RecordingService {
       const paths = await finalizeSession(session.dir, this.deps)
       this.events.emit('live', { sessionId: session.id, finalized: [...paths] } satisfies LiveUpdate)
       if (paths.length) this.finalized(paths)
-    } catch (error) { this.notice('error', tr('OBS 錄影收尾失敗，已保留工作供下次重試：{error}', { error: String(error) })) }
+    } catch (error) {
+      this.reportFailure('finalize_failed', error)
+      this.notice('error', tr('OBS 錄影收尾失敗，已保留工作供下次重試：{error}', { error: String(error) }))
+    }
   }
 
   private recordEvent(session: ActiveSession, event: RecorderEvent): void {
@@ -884,6 +906,18 @@ export class RecordingSessionService implements RecordingService {
   }
 
   private idle(): void { this.update({ ...IDLE_RECORDING_STATUS, paused: this.state.paused }) }
+  private reportFailure(code: keyof typeof RECORDING_SERVICE_ERRORS, error: unknown): void {
+    // Never upload command output, OBS credentials or filenames embedded in caught errors.
+    const detail = error && typeof error === 'object' ? error as { code?: unknown; signal?: unknown; killed?: unknown } : {}
+    emitChildDiagnostic(this.deps.onDiagnostic, {
+      component: 'recording-service', code, message: RECORDING_SERVICE_ERRORS[code],
+      tags: {
+        ...(typeof detail.code === 'string' || typeof detail.code === 'number' ? { error_code: String(detail.code) } : {}),
+        ...(typeof detail.signal === 'string' ? { signal: detail.signal } : {}),
+        ...(typeof detail.killed === 'boolean' ? { killed: String(detail.killed) } : {})
+      }
+    })
+  }
   private fail(code: string, message: string): void {
     this.update({ phase: 'error', error: { code, message } })
     this.notice('error', message)
