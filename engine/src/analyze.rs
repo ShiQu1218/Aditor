@@ -151,6 +151,11 @@ pub fn analyze(path: &str, profile: &Profile, opts: AnalyzeOptions<'_>) -> Resul
             opts.beside,
         ))
     };
+    let explicit = opts
+        .layout
+        .or_else(|| (!profile.layout.identity()).then_some(profile.layout));
+    let (mut layout, mut source) = aspect::resolve_layout(explicit, &info);
+    let mut detected_aspect = None;
     let scene = profile.dir.parent().unwrap_or(Path::new("")).join("scene");
     let scene = scene.is_dir().then_some(scene.as_path());
     let game = if opts.game.is_some_and(|s| !s.is_empty()) || info.game.is_some() {
@@ -160,6 +165,16 @@ pub fn analyze(path: &str, profile: &Profile, opts: AnalyzeOptions<'_>) -> Resul
             && (d["video"]["mtime"].as_f64().unwrap_or(-1.) - info.mtime).abs() < 1e-6
     }) {
         d["game"].as_str().unwrap_or("apex").to_owned()
+    } else if layout.is_none() {
+        let (g, a) = crate::game_detect::detect_game_and_aspect(
+            path,
+            &info,
+            scene,
+            opts.hwaccel,
+            opts.cancel,
+        )?;
+        detected_aspect = a;
+        g
     } else {
         crate::game_detect::detect(path, &info, scene, opts.hwaccel, opts.cancel)?
     };
@@ -173,10 +188,6 @@ pub fn analyze(path: &str, profile: &Profile, opts: AnalyzeOptions<'_>) -> Resul
         .with_layout(layout.unwrap_or_default());
         return crate::valorant::analyze_valorant(path, &info, &p, opts, source);
     }
-    let explicit = opts
-        .layout
-        .or_else(|| (!profile.layout.identity()).then_some(profile.layout));
-    let (mut layout, mut source) = aspect::resolve_layout(explicit, &info);
     let mut p = profile.with_layout(layout.unwrap_or_default());
     let (cp, old) = cache::prepare_cache(path, opts.cache_dir, opts.beside);
     let squash = layout.map(|l| l.squash);
@@ -185,7 +196,10 @@ pub fn analyze(path: &str, profile: &Profile, opts: AnalyzeOptions<'_>) -> Resul
     {
         let mut doc = old.clone().unwrap();
         if layout.is_none() && doc["analysis"].get("aspect_source").is_none() {
-            let d = aspect::detect_aspect(path, &info, scene, opts.hwaccel, opts.cancel)?;
+            let d = match detected_aspect.take() {
+                Some(res) => res?,
+                None => aspect::detect_aspect(path, &info, scene, opts.hwaccel, opts.cancel)?,
+            };
             if calibrate::stopped(opts.cancel) {
                 return Err(Cancelled.into());
             }
@@ -251,7 +265,10 @@ pub fn analyze(path: &str, profile: &Profile, opts: AnalyzeOptions<'_>) -> Resul
     if scale.is_none() || keywords.is_none() {
         let calibrated = (|| -> Result<f64> {
             if layout.is_none() {
-                let d = aspect::detect_aspect(path, &info, scene, opts.hwaccel, opts.cancel)?;
+                let d = match detected_aspect.take() {
+                    Some(res) => res?,
+                    None => aspect::detect_aspect(path, &info, scene, opts.hwaccel, opts.cancel)?,
+                };
                 source = if d.found { "detected" } else { "default" };
                 p = p.with_layout(d.layout);
             }

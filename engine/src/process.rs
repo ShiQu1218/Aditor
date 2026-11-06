@@ -142,6 +142,39 @@ pub fn read_exact(
     read()
 }
 
+pub fn read_frame(
+    cmd: &mut Command,
+    len: usize,
+    timeout: Duration,
+    cancel: Option<&AtomicBool>,
+) -> Result<Option<Vec<u8>>> {
+    if cancel.is_some_and(|c| c.load(Ordering::Relaxed)) {
+        return Err(crate::errors::Cancelled.into());
+    }
+    let mut child = spawn(
+        cmd.stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null()),
+    )?;
+    let mut stdout = child.stdout.take().unwrap();
+    let mut buf = vec![0; len];
+    let start = Instant::now();
+    let result = read_exact(&mut stdout, &mut buf, &|| {
+        cancel.is_some_and(|c| c.load(Ordering::Relaxed)) || start.elapsed() >= timeout
+    });
+    drop(stdout);
+    drop(child);
+    if cancel.is_some_and(|c| c.load(Ordering::Relaxed)) {
+        return Err(crate::errors::Cancelled.into());
+    }
+    match result {
+        Ok(()) => Ok(Some(buf)),
+        Err(_) if start.elapsed() >= timeout => Err(anyhow::anyhow!("timed out")),
+        Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => Ok(None),
+        Err(e) => Err(e.into()),
+    }
+}
+
 pub fn output(cmd: &mut Command, timeout: Duration, cancel: Option<&AtomicBool>) -> Result<Output> {
     if cancel.is_some_and(|c| c.load(Ordering::Relaxed)) {
         return Err(crate::errors::Cancelled.into());
@@ -249,6 +282,21 @@ mod tests {
         timer.join().unwrap();
         assert!(error.is::<crate::errors::Cancelled>());
         assert!(start.elapsed() < Duration::from_secs(3));
+    }
+    #[test]
+    fn read_frame_reads_exact_length_and_returns_none_on_short_eof() {
+        let mut full = shell("$out=[Console]::OpenStandardOutput(); $out.Write([byte[]]::new(4096),0,4096); Start-Sleep -Seconds 10");
+        let start = Instant::now();
+        let buf = read_frame(&mut full, 4096, Duration::from_secs(5), None)
+            .unwrap()
+            .unwrap();
+        assert_eq!(buf.len(), 4096);
+        assert!(start.elapsed() < Duration::from_secs(3));
+
+        let mut short = shell("[Console]::Write('abc')");
+        assert!(read_frame(&mut short, 16, Duration::from_secs(5), None)
+            .unwrap()
+            .is_none());
     }
 }
 

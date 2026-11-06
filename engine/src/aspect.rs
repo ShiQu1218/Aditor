@@ -87,6 +87,12 @@ fn choose_layout_results(
     scene_dir: Option<&Path>,
 ) -> Result<Detection> {
     let matcher = SceneMatcher::new(scene_dir)?;
+    choose_layout_with_matcher(frames, &matcher)
+}
+pub(crate) fn choose_layout_with_matcher(
+    frames: impl IntoIterator<Item = Result<Image<u8>>>,
+    matcher: &SceneMatcher,
+) -> Result<Detection> {
     let mut stats: AspectStats = layout::SUPPORTED_ASPECTS
         .iter()
         .map(|(n, _)| (n.to_string(), (0, 0.)))
@@ -147,7 +153,7 @@ pub fn grab(
     } else {
         &[false][..]
     } {
-        let out = process::output(
+        let out = process::read_frame(
             Command::new(ffbin::ffmpeg()?)
                 .args(["-v", "error", "-nostdin"])
                 .args(build_input_args(None, *hw, t))
@@ -171,13 +177,12 @@ pub fn grab(
                     "rawvideo",
                     "pipe:1",
                 ]),
+            640 * 360,
             Duration::from_secs(60),
             cancel,
         );
         match out {
-            Ok(out) if out.status.success() && out.stdout.len() == 640 * 360 => {
-                return Ok(Some(Image::new(640, 360, 1, out.stdout)?))
-            }
+            Ok(Some(buf)) => return Ok(Some(Image::new(640, 360, 1, buf)?)),
             Err(e) if e.is::<crate::errors::Cancelled>() => return Err(e),
             Err(e) if e.to_string() != "timed out" => return Err(e),
             _ => {}
@@ -185,7 +190,7 @@ pub fn grab(
     }
     Ok(None)
 }
-const SAMPLE_DECODERS: usize = 4;
+pub(crate) const SAMPLE_DECODERS: usize = 4;
 /// Grab `samples` evenly spaced frames with up to four decoders in flight and hand them to
 /// `consume` in sample order. A replacement decode starts before each frame is yielded, so the
 /// consumer's per-frame work overlaps with decoding instead of waiting at batch boundaries.
