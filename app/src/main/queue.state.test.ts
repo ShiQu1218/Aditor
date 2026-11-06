@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
@@ -61,6 +61,29 @@ describe('AnalysisQueue real queue state', () => {
   })
 
   const mkQueue = (engine: EngineClient): AnalysisQueue => new AnalysisQueue(engine, lib, { profileDir: '/p', cacheDir })
+
+  it('notifies queue changes but skips repeated progress values and redundant pending saves', async () => {
+    const { engine, pending } = manualEngine()
+    lib.add([V1, V2])
+    const q = new AnalysisQueue(engine, lib, { profileDir: '/p', cacheDir, gameRunning: true })
+    const update = vi.fn()
+    const save = vi.spyOn(lib, 'save')
+    q.on('update', update)
+    q.enqueue(V1)
+    q.enqueue(V2)
+    expect(update).toHaveBeenCalledTimes(2)
+    expect(save).not.toHaveBeenCalled()
+    q.setGameRunning(false)
+    update.mockClear()
+    pending[0].onProgress!({ t: 0, duration: 10 })
+    expect(update).not.toHaveBeenCalled()
+    pending[0].onProgress!({ t: 5, duration: 10 })
+    pending[0].onProgress!({ t: 5, duration: 10 })
+    expect(update).toHaveBeenCalledTimes(1)
+    q.cancel(V2)
+    q.cancel(V1)
+    await tick()
+  })
 
   it('snapshot() exposes the truly queued set: imported-but-not-enqueued items are NOT queued', async () => {
     const { engine, pending } = manualEngine()

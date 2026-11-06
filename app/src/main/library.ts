@@ -1,5 +1,6 @@
 import fs from 'fs'
 import path from 'path'
+import { isDeepStrictEqual } from 'util'
 import chokidar, { FSWatcher } from 'chokidar'
 import { EventType, type EventCounts } from '../shared/types'
 import type { GameId } from '../shared/games'
@@ -288,15 +289,18 @@ export class Library {
     return false
   }
 
-  update(videoPath: string, patch: Partial<LibraryEntry>): void {
+  /** Return whether the patch changed the entry; persistence failures remain dirty for flush(). */
+  update(videoPath: string, patch: Partial<LibraryEntry>): boolean {
     const norm = normalizePath(videoPath)
     const entry = this.entries.find((e) => normalizePath(e.path) === norm)
-    if (entry) {
+    const keys = Object.keys(patch) as (keyof LibraryEntry)[]
+    if (entry && keys.some((key) => !isDeepStrictEqual(entry[key], patch[key]))) {
       Object.assign(entry, patch)
-      const keys = Object.keys(patch)
       if (keys.length > 0 && keys.every((k) => k === 'progress')) this.scheduleSave()
       else this.save()
+      return true
     }
+    return false
   }
 
   search(q: string, filter?: { favorite?: boolean; hasEvents?: EventType[] }): LibraryEntry[] {

@@ -205,8 +205,7 @@ export class AnalysisQueue extends EventEmitter {
             return
           }
           const ratio = progress.duration > 0 ? progress.t / progress.duration : 0
-          this.library.update(videoPath, { progress: Math.min(1, Math.max(0, ratio)) })
-          this.emit('update')
+          if (this.library.update(videoPath, { progress: Math.min(1, Math.max(0, ratio)) })) this.emit('update')
         }
       )
 

@@ -5,8 +5,9 @@ import path from 'path'
 
 type Fn = (...a: any[]) => any
 const handlers = new Map<string, Fn>()
+const listeners = new Map<string, Fn>()
 vi.mock('electron', () => ({
-  ipcMain: { handle: (ch: string, fn: Fn) => void handlers.set(ch, fn), on: () => {}, removeHandler: () => {} },
+  ipcMain: { handle: (ch: string, fn: Fn) => void handlers.set(ch, fn), on: (ch: string, fn: Fn) => void listeners.set(ch, fn), removeHandler: () => {} },
   dialog: {},
   BrowserWindow: { fromWebContents: () => null, getAllWindows: () => [] },
   app: { getPath: () => os.tmpdir(), isPackaged: false, getVersion: () => '0' },
@@ -15,6 +16,7 @@ vi.mock('electron', () => ({
 }))
 
 import { registerIpcHandlers } from './ipc-handlers'
+import { Library } from './library'
 import { SettingsStore } from './settings'
 import { cacheFilePath } from './cache-io'
 import { cacheDir } from '../shared/paths'
@@ -28,13 +30,86 @@ describe('cache:loadByVideo reads according to cacheLocation', () => {
   let oldAppData: string | undefined
   beforeEach(() => {
     handlers.clear()
+    listeners.clear()
     dir = fs.mkdtempSync(path.join(os.tmpdir(), 'aditor-cw-'))
     oldAppData = process.env.APPDATA
     process.env.APPDATA = path.join(dir, 'appdata')
   })
   afterEach(() => {
+    vi.restoreAllMocks()
+    vi.useRealTimers()
     process.env.APPDATA = oldAppData
     fs.rmSync(dir, { recursive: true, force: true })
+  })
+
+  test.each(['cache:save', 'cache:saveSync'])('%s broadcasts only when the highlight count changes', async (channel) => {
+    vi.useFakeTimers()
+    const video = path.join(dir, 'save.mp4')
+    const library = new Library(path.join(dir, 'library.json'))
+    library.add([video])
+    library.update(video, { hl: 0 })
+    const send = vi.fn()
+    const queue = { on: () => {}, payload: () => ({}) } as any
+    registerIpcHandlers(library, queue, () => [{ isDestroyed: () => false, webContents: { send } }] as any)
+    const save = async (clips: unknown[], events: unknown[] = []) => {
+      const event = { returnValue: undefined }
+      const doc = { video: { path: video }, events, clips }
+      if (channel === 'cache:save') return handlers.get(channel)!(event, doc)
+      listeners.get(channel)!(event, doc)
+      return event.returnValue
+    }
+    const sync = vi.spyOn(fs, 'fsyncSync')
+    const rename = vi.spyOn(fs, 'renameSync')
+    expect(await save([])).toBe(true)
+    vi.advanceTimersByTime(1000)
+    expect(send).not.toHaveBeenCalled()
+    const clips = [{ id: 'a', start: 0, end: 1, origin: 'ai', status: 'suggested', event_ids: [] }]
+    expect(await save(clips)).toBe(true)
+    expect(send).toHaveBeenCalledTimes(1)
+    expect(library.get(video)?.hl).toBe(1)
+    const syncs = sync.mock.calls.length
+    const renames = rename.mock.calls.length
+    const events = [{ id: 'manual', t: 5, source: 'manual', type: 'knock' }]
+    expect(await save(clips, events)).toBe(true)
+    vi.advanceTimersByTime(1000)
+    expect(send).toHaveBeenCalledTimes(1)
+    expect(sync).toHaveBeenCalledTimes(syncs)
+    expect(rename).toHaveBeenCalledTimes(renames + 1)
+    expect(JSON.parse(fs.readFileSync(cacheFilePath(video, cacheDir()), 'utf-8')).events).toEqual(events)
+  })
+
+  test.each(['changed', 'unchanged', 'reanalyzing', 'removed'])('computeHl broadcasts only for a changed entry: %s', async (state) => {
+    vi.useFakeTimers()
+    const video = path.join(dir, 'compute.mp4')
+    const library = new Library(path.join(dir, 'library.json'))
+    library.add([video])
+    library.update(video, { status: 'done' })
+    const dest = cacheFilePath(video, cacheDir())
+    fs.mkdirSync(path.dirname(dest), { recursive: true })
+    fs.writeFileSync(dest, JSON.stringify({ video: { duration: 10 }, analysis: { status: 'done' }, events: [], clips: [] }))
+    let resolve!: (result: { clips: unknown[] }) => void
+    const promise = new Promise<{ clips: unknown[] }>((done) => { resolve = done })
+    const engine = { request: vi.fn(() => ({ promise })) } as any
+    const send = vi.fn()
+    const queue = { on: () => {}, payload: () => ({}) } as any
+    registerIpcHandlers(library, queue, () => [{ isDestroyed: () => false, webContents: { send } }] as any, engine)
+    const result = handlers.get('library:computeHl')!({}, video)
+    await Promise.resolve()
+    expect(engine.request).toHaveBeenCalledTimes(1)
+    if (state === 'unchanged') library.update(video, { hl: 0 })
+    if (state === 'reanalyzing') library.update(video, { status: 'analyzing' })
+    if (state === 'removed') library.remove(video)
+    const save = vi.spyOn(library, 'save')
+    resolve({ clips: [] })
+    expect(await result).toBe(0)
+    vi.advanceTimersByTime(1000)
+    expect(send).toHaveBeenCalledTimes(state === 'changed' ? 1 : 0)
+    expect(save).toHaveBeenCalledTimes(state === 'changed' ? 1 : 0)
+    if (state === 'changed' || state === 'unchanged') {
+      expect(await handlers.get('library:computeHl')!({}, video)).toBe(0)
+      vi.advanceTimersByTime(1000)
+      expect(send).toHaveBeenCalledTimes(state === 'changed' ? 1 : 0)
+    }
   })
 
   test('appdata and besideVideo read their own files; the old cache at the other location remains readable after switching', async () => {
