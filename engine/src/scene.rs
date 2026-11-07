@@ -102,7 +102,8 @@ impl SceneMatcher {
         if kind == "other" && score("ready_border")? >= 0.7 && score("mode_border")? >= 0.7 {
             kind = "lobby";
         }
-        if kind == "other" {
+        // Map geometry can match loading borders; a visible minimap and health HUD rule out loading.
+        if kind != "lobby" {
             let mut minimap = score("minimap_border")?;
             if minimap < 0.6 {
                 minimap = score("ranked_minimap")?;

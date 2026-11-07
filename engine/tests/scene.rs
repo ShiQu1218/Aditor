@@ -17,6 +17,14 @@ fn all_scene_fixtures_match_full_and_lazy_python_scores() {
             let expected = &c[if full { "full" } else { "fast" }];
             let mut actual = json!(out);
             let mut expected = expected.clone();
+            // Loading candidates now also check for a contradictory HUD; use frozen full scores for these extra checks.
+            if !full {
+                for key in out.scores.keys() {
+                    if expected["scores"].get(key).is_none() {
+                        expected["scores"][key] = c["full"]["scores"][key].clone();
+                    }
+                }
+            }
             // The new objective variant may raise scores; frozen scenes must keep their classification.
             if let Some(score) = expected["scores"]
                 .get("control_objectives")
@@ -69,6 +77,28 @@ fn resolutions_blank_validation_and_color() {
         assert!(det.classify_frame(&f, Layout::default(), false).is_err());
     }
 }
+
+#[test]
+fn loading_border_false_positives_cannot_split_a_visible_match() {
+    let det = SceneMatcher::new(None).unwrap();
+    let image = parity::screen("ranked_20261107_0815.png");
+    for full in [true, false] {
+        let scene = det.classify_frame(&image, Layout::default(), full).unwrap();
+        assert!(scene.scores["ranked_chevron"] >= 0.75);
+        assert!(scene.scores["wildcard_footer"] >= 0.75);
+        assert_eq!(scene.kind, "in_match_hud");
+        let mut tracker = aditor::matches::MatchTracker::new(1.).unwrap();
+        tracker.feed(0., &scene).unwrap();
+        // Even persistent map geometry must not end a match whose HUD remains visible.
+        for t in 1..=10 {
+            assert!(tracker.feed(f64::from(t), &scene).unwrap().is_empty());
+        }
+        tracker.finish(11.).unwrap();
+        assert_eq!(json!(tracker.matches), json!([{ "start": 0., "end": 11. }]));
+        assert!(tracker.events.iter().all(|e| e.reason != "next_match"));
+    }
+}
+
 #[test]
 fn masks_stretched_scenes_and_whole_frame_blank() {
     let det = SceneMatcher::new(None).unwrap();
