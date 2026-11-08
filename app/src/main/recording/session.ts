@@ -910,11 +910,13 @@ export class RecordingSessionService implements RecordingService {
   private idle(): void { this.update({ ...IDLE_RECORDING_STATUS, paused: this.state.paused }) }
   private reportFailure(code: keyof typeof RECORDING_SERVICE_ERRORS, error: unknown): void {
     // Never upload command output, OBS credentials or filenames embedded in caught errors.
-    const detail = error && typeof error === 'object' ? error as { code?: unknown; signal?: unknown; killed?: unknown } : {}
+    const detail = error && typeof error === 'object' ? error as { code?: unknown; signal?: unknown; killed?: unknown; syscall?: unknown } : {}
     emitChildDiagnostic(this.deps.onDiagnostic, {
       component: 'recording-service', code, message: RECORDING_SERVICE_ERRORS[code],
       tags: {
         ...(typeof detail.code === 'string' || typeof detail.code === 'number' ? { error_code: String(detail.code) } : {}),
+        // The syscall name (lstat, open, ...) says which file operation failed; the path stays out of telemetry.
+        ...(typeof detail.syscall === 'string' && /^[a-z_]{1,24}$/i.test(detail.syscall) ? { syscall: detail.syscall } : {}),
         ...(typeof detail.signal === 'string' ? { signal: detail.signal } : {}),
         ...(typeof detail.killed === 'boolean' ? { killed: String(detail.killed) } : {})
       }

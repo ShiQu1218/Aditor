@@ -12,7 +12,7 @@ afterEach(() => {
 describe('Filtered game process queries', () => {
   beforeEach(() => { tasklist.mockReset() })
 
-  it('queries every game with its image filter and preserves execution limits', async () => {
+  it('queries games one at a time with their image filters and preserves execution limits', async () => {
     tasklist.mockImplementation((_file, _args, _options, callback) => callback(null, ''))
     await expect(findGameProcess()).resolves.toBeNull()
     const options = { windowsHide: true, timeout: 10000, maxBuffer: 4 * 1024 * 1024 }
@@ -22,11 +22,19 @@ describe('Filtered game process queries', () => {
     ])
   })
 
-  it('returns the first GAME_IDS match even when later games finish first', async () => {
+  it('never runs two tasklist processes at once', async () => {
     const pending = findGameProcess()
+    expect(tasklist).toHaveBeenCalledTimes(1)
+    tasklist.mock.calls[0][3](null, '')
+    await vi.waitFor(() => expect(tasklist).toHaveBeenCalledTimes(2))
     tasklist.mock.calls[1][3](null, '"VALORANT-Win64-Shipping.exe","456"')
-    tasklist.mock.calls[0][3](null, '"r5apex_launcher.exe","55"\n"r5apex_dx12.exe","123"')
-    await expect(pending).resolves.toEqual({ game: 'apex', pid: 123 })
+    await expect(pending).resolves.toEqual({ game: 'valorant', pid: 456 })
+  })
+
+  it('stops after the first matching game', async () => {
+    tasklist.mockImplementation((_file, _args, _options, callback) => callback(null, '"r5apex_dx12.exe","123"'))
+    await expect(findGameProcess()).resolves.toEqual({ game: 'apex', pid: 123 })
+    expect(tasklist).toHaveBeenCalledTimes(1)
   })
 
   it('ignores localized no-match output and validates wildcard results with the process regex', async () => {
@@ -36,13 +44,12 @@ describe('Filtered game process queries', () => {
     await expect(findGameProcess()).resolves.toEqual({ game: 'valorant', pid: 456 })
   })
 
-  it.each([0, 1])('rejects when query %s fails even if the other game matches', async (failedIndex) => {
+  it('rejects when a query fails, so a failed query is never read as "no game"', async () => {
     const error = new Error('tasklist failed')
-    const pending = findGameProcess()
-    const rejected = expect(pending).rejects.toBe(error)
-    tasklist.mock.calls[0][3](failedIndex === 0 ? error : null, '"r5apex.exe","123"')
-    tasklist.mock.calls[1][3](failedIndex === 1 ? error : null, '"VALORANT-Win64-Shipping.exe","456"')
-    await rejected
+    tasklist
+      .mockImplementationOnce((_file, _args, _options, callback) => callback(null, ''))
+      .mockImplementationOnce((_file, _args, _options, callback) => callback(error, ''))
+    await expect(findGameProcess()).rejects.toBe(error)
   })
 })
 

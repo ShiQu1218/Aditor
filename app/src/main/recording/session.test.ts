@@ -83,6 +83,14 @@ describe('recording service state machine', () => {
       message: 'Game process query failed', tags: { error_code: 'ETIMEDOUT', signal: 'SIGTERM', killed: 'true' } })
     expect(JSON.stringify(report.mock.calls)).not.toContain('private')
     report.mockClear()
+    value.deps.findGame = vi.fn().mockRejectedValue(Object.assign(new Error("ENOENT: no such file, lstat 'C:/Users/private/x'"),
+      { code: 'ENOENT', syscall: 'lstat', path: 'C:/Users/private/x' }))
+    await expect(value.service.startManual()).rejects.toThrow()
+    expect(report).toHaveBeenCalledWith({ component: 'recording-service', code: 'game_query_failed',
+      message: 'Game process query failed', tags: { error_code: 'ENOENT', syscall: 'lstat' } })
+    expect(JSON.stringify(report.mock.calls)).not.toContain('private')
+    report.mockClear()
+    value.deps.findGame = vi.fn().mockRejectedValue(error)
     report.mockImplementation(() => { throw new Error('diagnostic handler failed') })
     await expect(value.service.startManual()).rejects.toBe(error)
     expect(report).toHaveBeenCalled()
