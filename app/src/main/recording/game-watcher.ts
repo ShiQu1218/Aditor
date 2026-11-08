@@ -18,16 +18,26 @@ export function parseGameProcess(output: string): GameProcess | null {
   return null
 }
 
-export async function findGameProcess(): Promise<GameProcess | null> {
-  const matches = await Promise.all(GAME_IDS.map((game) => new Promise<GameProcess | null>((resolve, reject) => {
+function queryGame(game: GameId): Promise<GameProcess | null> {
+  return new Promise((resolve, reject) => {
     execFile('tasklist', ['/FO', 'CSV', '/NH', '/FI', `IMAGENAME eq ${GAMES[game].tasklistImageFilter}`],
       { windowsHide: true, timeout: 10000, maxBuffer: 4 * 1024 * 1024 }, (error, stdout) => {
         if (error) reject(error)
         else resolve(parseGameProcess(stdout))
       })
-  })))
-  // Cross-game priority is now GAME_IDS order instead of tasklist listing order.
-  return matches.find((match) => match !== null) ?? null
+  })
+}
+
+/**
+ * One `tasklist` at a time, in GAME_IDS priority order. Spawning one per game concurrently made
+ * tasklist fail with 0xC0000142 (DLL initialization failed) on several machines since v0.4.5.
+ */
+export async function findGameProcess(): Promise<GameProcess | null> {
+  for (const game of GAME_IDS) {
+    const match = await queryGame(game)
+    if (match) return match
+  }
+  return null
 }
 
 // Recheck image names every 10 polls (normally 30 seconds) to bound stale detection after PID reuse.
