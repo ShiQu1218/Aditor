@@ -2,7 +2,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest
 import fs from 'fs'
 import path from 'path'
 import { spawnSync } from 'child_process'
-import { finalizeSession, publishRecordingPart, readIndex, resumeMatchPart } from './finalize'
+import { finalizeSession, publishRecordingPart, readIndex, resumeMatchPart, writeJson } from './finalize'
 import { recoverSessions } from './recovery'
 import { RecordingSessionService } from './session'
 import { copySegments, createSegments, ffmpeg, makeDeps, sessionDir, tempRoot } from './test-support'
@@ -10,6 +10,34 @@ import { copySegments, createSegments, ffmpeg, makeDeps, sessionDir, tempRoot } 
 const roots: string[] = []
 function root(): string { const value = tempRoot(); roots.push(value); return value }
 afterEach(() => { for (const value of roots.splice(0)) fs.rmSync(value, { recursive: true, force: true }) })
+
+describe('writeJson', () => {
+  afterEach(() => vi.restoreAllMocks())
+
+  it('retries the replace while another process briefly locks the target', async () => {
+    const file = path.join(root(), 'matches.json')
+    fs.writeFileSync(file, '{"old":true}')
+    const rename = fs.promises.rename
+    const spy = vi.spyOn(fs.promises, 'rename')
+      .mockRejectedValueOnce(Object.assign(new Error('EPERM: operation not permitted'), { code: 'EPERM' }))
+      .mockRejectedValueOnce(Object.assign(new Error('EBUSY: resource busy'), { code: 'EBUSY' }))
+      .mockImplementation(rename)
+    await writeJson(file, { cuts: [] })
+    expect(spy).toHaveBeenCalledTimes(3)
+    expect(JSON.parse(fs.readFileSync(file, 'utf8'))).toEqual({ cuts: [] })
+  })
+
+  it('does not retry other errors and gives up on a lock that persists', async () => {
+    const file = path.join(root(), 'matches.json')
+    const missing = vi.spyOn(fs.promises, 'rename').mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }))
+    await expect(writeJson(file, {})).rejects.toMatchObject({ code: 'ENOENT' })
+    expect(missing).toHaveBeenCalledTimes(1)
+    missing.mockRejectedValue(Object.assign(new Error('EPERM'), { code: 'EPERM' }))
+    missing.mockClear()
+    await expect(writeJson(file, {})).rejects.toMatchObject({ code: 'EPERM' })
+    expect(missing).toHaveBeenCalledTimes(6)
+  })
+})
 
 describe('recording index and safety boundaries', () => {
   it('ignores an incomplete trailing line and fails on a malformed complete line or decreasing sequence number', async () => {

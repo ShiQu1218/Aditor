@@ -40,7 +40,21 @@ export async function writeJson(file: string, value: unknown): Promise<void> {
     await handle.writeFile(JSON.stringify(value), 'utf8')
     await handle.sync()
   } finally { await handle.close() }
-  await fs.promises.rename(temp, file)
+  await renameWithRetry(temp, file)
+}
+
+const LOCK_CODES = ['EPERM', 'EACCES', 'EBUSY']
+const RENAME_RETRY_DELAYS_MS = [50, 100, 200, 400, 800]
+
+/** Windows denies replacing a file another process (antivirus, indexer, sync client) has open; such locks clear within a moment. */
+async function renameWithRetry(from: string, to: string): Promise<void> {
+  for (let attempt = 0; ; attempt++) {
+    try { return await fs.promises.rename(from, to) }
+    catch (error) {
+      if (attempt >= RENAME_RETRY_DELAYS_MS.length || !LOCK_CODES.includes((error as NodeJS.ErrnoException).code ?? '')) throw error
+      await new Promise((resolve) => setTimeout(resolve, RENAME_RETRY_DELAYS_MS[attempt]))
+    }
+  }
 }
 
 /** Delete only direct children of .sessions; reject junctions and symbolic links. */
