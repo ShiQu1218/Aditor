@@ -116,6 +116,22 @@ describe('per-match segment ranges', () => {
 })
 
 describe('per-match clipping and recovery', () => {
+  it.each(['session', 'match'])('cuts a %s output again from kept segments when it was deleted outside the app', async (mode) => {
+    const r = rig()
+    const config = read(path.join(r.dir, 'recording.json'))
+    fs.writeFileSync(path.join(r.dir, 'recording.json'), JSON.stringify({ ...config, mode }))
+    r.deps.addToLibrary = vi.fn(() => { throw new Error('library busy') })
+    await expect(finalizeSession(r.dir, r.deps)).rejects.toThrow('library busy')
+    const marker = read(path.join(r.dir, mode === 'session' ? 'finalized.json' : 'matches.json'))
+    const output: string = mode === 'session' ? marker.outputPath : marker.cuts[0].outputPath
+    fs.unlinkSync(output)
+    r.deps.addToLibrary = vi.fn()
+    const outputs = await finalizeSession(r.dir, r.deps)
+    expect(outputs).toContain(output)
+    expect(fs.existsSync(output)).toBe(true)
+    expect(fs.existsSync(r.dir)).toBe(false)
+  })
+
   it.each(['session', 'match'])('preserves footage when a competing output appears after the %s marker is written', async (mode) => {
     const r = rig()
     const config = read(path.join(r.dir, 'recording.json'))

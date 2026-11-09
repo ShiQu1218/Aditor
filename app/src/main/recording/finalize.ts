@@ -170,6 +170,19 @@ function outputInDir(outputPath: string, outputDir: string): boolean {
     path.extname(outputPath).toLowerCase() === '.mp4' && !outputPath.endsWith('.part.mp4')
 }
 
+async function isMissing(file: string): Promise<boolean> {
+  try { await fs.promises.lstat(file); return false }
+  catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return true
+    throw error
+  }
+}
+
+/** An output deleted outside the app (Explorer, antivirus) is cut again from the kept segments instead of failing every recovery. */
+async function outputLostWithSegments(dir: string, output: string, entries: readonly IndexEntry[]): Promise<boolean> {
+  return !outputWasRemoved(dir, output) && await isMissing(output) && (await presentEntries(dir, entries)).present.length > 0
+}
+
 async function validateCut(cut: MatchCut, outputDir: string): Promise<void> {
   if (!outputInDir(cut.outputPath, outputDir) || !(await fs.promises.lstat(cut.outputPath)).isFile()) {
     throw new Error(tr('逐局影片路徑無效或檔案遺失'))
@@ -362,6 +375,11 @@ export async function cutMatches(dir: string, deps: RecordingDeps, options: Matc
     if (!finishing && (options.failed?.has(cut.index) ||
         (cut.liveCached && (config.postAnalysis !== 'perMatch' || cut.analysisQueued)))) continue
     const range = entries.filter((entry) => entry.seq >= cut.firstSeq && entry.seq <= cut.lastSeq)
+    if (await outputLostWithSegments(dir, cut.outputPath, range)) {
+      // Dropping the cut lets the loop below cut this match again.
+      await dropStaleCut(dir, marker, cut.outputPath)
+      continue
+    }
     try { await completeCut(dir, deps, config, marker, cut, range, finishing, trusted) }
     catch (error) { cutError(cut.index, error, options) }
   }
@@ -483,6 +501,9 @@ export async function finalizeSession(dir: string, deps: RecordingDeps): Promise
     const stale = await resumeMatchPart(dir, { cuts: [marker] })
     if (stale === marker.outputPath) {
       // The reserved part was deleted before publication: drop the marker and finalize again from the segments below.
+      await fs.promises.unlink(markerPath)
+      marker = null
+    } else if (await outputLostWithSegments(dir, marker.outputPath, await readIndex(dir))) {
       await fs.promises.unlink(markerPath)
       marker = null
     }
