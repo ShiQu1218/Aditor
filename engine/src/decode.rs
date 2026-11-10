@@ -121,6 +121,8 @@ pub struct FrameStream {
     plans: VecDeque<(bool, &'static str)>,
     k: usize,
     attempt_start: usize,
+    /// Exit code of the last attempt that failed before producing a frame, so the final error is not codeless.
+    last_exit: Option<i32>,
     closed: bool,
     capture: Option<(crate::layout::Rect, crate::layout::Rect)>,
     stacked: Image<u8>,
@@ -148,6 +150,7 @@ impl FrameStream {
             plans,
             k: 0,
             attempt_start: 0,
+            last_exit: None,
             closed: false,
             capture: None,
             stacked: Image {
@@ -305,7 +308,7 @@ impl FrameStream {
                     }
                 };
                 let Some((hw, format)) = plan else {
-                    let e = self.error("ffmpeg decoding failed");
+                    let e = self.error(exhausted_message(self.last_exit));
                     self.close();
                     return Some(Err(e));
                 };
@@ -373,9 +376,17 @@ impl FrameStream {
                     self.close();
                     return Some(Err(e));
                 }
-                _ => {}
+                Ok(s) => self.last_exit = s.code(),
             }
         }
+    }
+}
+
+fn exhausted_message(last_exit: Option<i32>) -> String {
+    match last_exit {
+        // Windows NTSTATUS codes (e.g. 0xC0000142) read better in hex.
+        Some(code) => format!("ffmpeg decoding failed (exit code {code}, 0x{code:08X})"),
+        None => "ffmpeg decoding failed".into(),
     }
 }
 impl Drop for FrameStream {

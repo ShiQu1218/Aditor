@@ -5,6 +5,14 @@ fn profile() -> Profile {
         .unwrap()
 }
 #[test]
+fn exhausted_plans_report_the_last_exit_code() {
+    assert_eq!(
+        exhausted_message(Some(0xC0000142u32 as i32)),
+        "ffmpeg decoding failed (exit code -1073741502, 0xC0000142)"
+    );
+    assert_eq!(exhausted_message(None), "ffmpeg decoding failed");
+}
+#[test]
 fn stacked_buffer_is_reused_without_changing_or_overwriting_outputs() {
     for aspect in ["16:9", "16:10", "4:3", "5:4"] {
         let p = profile().with_layout(crate::layout::parse_aspect(aspect).unwrap());
