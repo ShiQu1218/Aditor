@@ -730,6 +730,14 @@ fn wait_for_check(stopped: &Receiver<()>, deadline: Instant) -> bool {
     )
 }
 
+fn wgc_start_error(error: anyhow::Error, window_still_valid: bool) -> anyhow::Error {
+    error.context(if window_still_valid {
+        "capture_failed: Failed to create WGC capture"
+    } else {
+        "window_not_found: Game window disappeared while creating WGC capture"
+    })
+}
+
 fn run(
     gpu: Gpu,
     opts: CaptureOptions,
@@ -764,7 +772,7 @@ fn run(
     }));
     let mut active = Some(
         ActiveCapture::new(hwnd, false, false, &opts, &shared)
-            .context("capture_failed: Failed to create WGC capture")?,
+            .map_err(|error| wgc_start_error(error, window_matches(hwnd, opts.pid)))?,
     );
     if let Some(capture) = &active {
         capture.announce(&notices);
@@ -877,6 +885,15 @@ fn run(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn wgc_start_classifies_window_loss() {
+        for (valid, code) in [(true, "capture_failed:"), (false, "window_not_found:")] {
+            let error = wgc_start_error(anyhow::anyhow!("Invalid parameter (0x80070057)"), valid);
+            assert!(error.to_string().starts_with(code));
+            assert!(format!("{error:#}").contains("0x80070057"));
+        }
+    }
 
     #[test]
     fn management_wait_stops_on_message_and_disconnect() {
