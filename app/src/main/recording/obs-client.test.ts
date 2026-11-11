@@ -19,7 +19,10 @@ describe('OBS WebSocket v5', () => {
     const server = await fakeObs({ password: '正確密碼' }); cleanup.push(server.close)
     const client = new ObsClient(100); cleanup.push(() => client.close())
     await expect(client.connect('127.0.0.1', server.port, '不可洩漏')).rejects.toThrow('驗證')
+    await expect(client.connect('127.0.0.1', server.port, '不可洩漏')).rejects.toMatchObject({ code: 4009 })
     await expect(client.connect('127.0.0.1', 1)).rejects.toThrow('OBS')
+    // The close code survives for failure reports.
+    await expect(client.connect('127.0.0.1', 1)).rejects.toMatchObject({ code: expect.any(Number) })
   })
   it.each(['hello', 'request'] as const)('Connection or command times out when the server does not respond: %s', async (stall) => {
     const server = await fakeObs({ stall }); cleanup.push(server.close)
