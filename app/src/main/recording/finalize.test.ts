@@ -71,6 +71,15 @@ describe('recording index and safety boundaries', () => {
     expect(fs.readFileSync(segment, 'utf8')).toBe('recoverable footage')
   })
 
+  it('removes a session whose recorder stopped before the first frame, leaving only an empty segment file', async () => {
+    const base = root(); const dir = sessionDir(base); const deps = makeDeps(base)
+    fs.writeFileSync(path.join(dir, 'index.jsonl'), '')
+    fs.writeFileSync(path.join(dir, 'init.mp4'), 'header')
+    fs.writeFileSync(path.join(dir, 'seg_000001.m4s'), '')
+    expect(await finalizeSession(dir, deps)).toEqual([])
+    expect(fs.existsSync(dir)).toBe(false)
+  })
+
   it.each([false, true])('does not overwrite a competing output during publication (copy fallback: %s)', async (fallback) => {
     const dir = sessionDir(root()); const part = path.join(dir, 'test.part.mp4'); const output = path.join(dir, 'test.mp4')
     fs.writeFileSync(part, 'recording')
