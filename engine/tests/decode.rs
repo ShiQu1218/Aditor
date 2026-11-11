@@ -149,7 +149,11 @@ fn bad_file_errors_include_bounded_stderr() {
         },
     );
     let e = stream.next().unwrap().unwrap_err();
-    assert_eq!(e.message, "ffmpeg decoding failed");
+    assert!(
+        e.message.starts_with("ffmpeg decoding failed (exit code "),
+        "{}",
+        e.message
+    );
     assert!(!e.stderr_tail.is_empty());
     assert!(e.stderr_tail.len() <= STDERR_LIMIT);
     assert!(stream.next().is_none());

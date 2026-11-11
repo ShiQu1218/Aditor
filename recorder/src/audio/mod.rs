@@ -86,6 +86,15 @@ pub struct AudioWarning {
 
 fn source_lost_warning(mic: bool, error: &anyhow::Error) -> AudioWarning {
     let source = if mic { "Microphone" } else { "System audio" };
+    // An unplugged or renamed device is not a capture crash; keep the retry, but report it as missing.
+    if format!("{error:#}").contains("audio_device_missing:") {
+        return AudioWarning {
+            code: "audio_device_missing",
+            message: format!(
+                "{source} device was not found; recording will continue with silence for that source and retry the selected device: {error:#}"
+            ),
+        };
+    }
     AudioWarning {
         code: "audio_source_lost",
         message: format!(
@@ -430,8 +439,14 @@ impl EndpointStream {
             }
         }
         .map_err(|error| {
-            if id == "default" && error.code().0 == 0x80070490u32 as i32 {
-                anyhow::anyhow!("audio_device_missing: No default audio device")
+            // GetDevice reports an unknown ID as ELEMENT_NOT_FOUND, or E_INVALIDARG when the stored ID is malformed.
+            let code = error.code().0 as u32;
+            if code == 0x80070490 || (id != "default" && code == 0x80070057) {
+                if id == "default" {
+                    anyhow::anyhow!("audio_device_missing: No default audio device")
+                } else {
+                    anyhow::anyhow!("audio_device_missing: Specified audio device not found: {error}")
+                }
             } else {
                 anyhow::anyhow!("Specified audio device not found: {error}")
             }
@@ -986,6 +1001,7 @@ mod tests {
             AudioCapture::start(&cfg, now_ticks(), Box::new(Collect(blocks.clone()))).unwrap();
         let warnings = capture.drain_warnings();
         assert_eq!(warnings.len(), 1);
+        assert_eq!(warnings[0].code, "audio_device_missing");
         assert!(warnings[0].message.contains("Microphone"));
         thread::sleep(Duration::from_millis(250));
         capture.stop();
@@ -1256,6 +1272,8 @@ mod tests {
         assert!(source_lost_warning(true, &error)
             .message
             .contains("Microphone"));
+        let missing = anyhow::anyhow!("audio_device_missing: Specified audio device not found");
+        assert_eq!(source_lost_warning(true, &missing).code, "audio_device_missing");
     }
 
     struct Collect(Arc<Mutex<Vec<Vec<f32>>>>);
