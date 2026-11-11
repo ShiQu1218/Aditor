@@ -13,10 +13,6 @@ mod session;
 mod shm;
 mod types;
 
-unsafe extern "C" {
-    fn av_log_set_level(level: i32);
-}
-
 fn main() {
     if let Err(error) = encode::check_version() {
         eprintln!("internal: {error:#}");
@@ -30,9 +26,8 @@ fn main() {
         if let Err(error) = SetPriorityClass(GetCurrentProcess(), BELOW_NORMAL_PRIORITY_CLASS) {
             eprintln!("Failed to set recorder process priority: {error}");
         }
-        // libavutil/log.h: AV_LOG_QUIET = -8; errors are reported through each module's Result.
-        av_log_set_level(-8);
     }
+    encode::init_logging();
     let events = ipc::EventSink::new(Box::new(std::io::stdout()));
     let mut backend = session::Recorder;
     ipc::run(std::io::stdin().lock(), events, &mut backend);

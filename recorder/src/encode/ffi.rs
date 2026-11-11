@@ -38,6 +38,26 @@ pub const AV_SAMPLE_FMT_S64P: AVSampleFormat = 11;
 pub const AV_SAMPLE_FMT_NB: AVSampleFormat = 12;
 pub type AVSampleFormat = ::std::os::raw::c_int;
 unsafe extern "C" {
+    pub fn av_log_set_level(level: i32);
+    pub fn av_log_set_callback(
+        callback: Option<
+            unsafe extern "C" fn(
+                *mut ::std::ffi::c_void,
+                i32,
+                *const ::std::ffi::c_char,
+                *mut ::std::ffi::c_void,
+            ),
+        >,
+    );
+    pub fn av_log_format_line2(
+        ptr: *mut ::std::ffi::c_void,
+        level: i32,
+        fmt: *const ::std::ffi::c_char,
+        vl: *mut ::std::ffi::c_void,
+        line: *mut ::std::ffi::c_char,
+        line_size: i32,
+        print_prefix: *mut i32,
+    ) -> i32;
     pub fn avutil_version() -> ::std::os::raw::c_uint;
 }
 pub const AVMEDIA_TYPE_UNKNOWN: AVMediaType = -1;

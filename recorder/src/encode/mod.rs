@@ -8,6 +8,7 @@ mod aac;
 pub mod ffi;
 mod ffmpeg;
 mod hardware;
+mod log;
 mod mux;
 mod nvenc;
 
@@ -33,6 +34,7 @@ use crate::types::{Codec, EncodeAspect, EncodePreset};
 pub(crate) use ffmpeg::check_version;
 use ffmpeg::{Encoder, Frame};
 use hardware::{Copier, Hardware};
+pub(crate) use log::init_logging;
 
 /// Hardware encoders in automatic selection order; the IPC protocol reports unions in this order.
 pub(crate) const ENCODERS: [&str; 9] = [
