@@ -26,7 +26,10 @@ export class ObsClient extends EventEmitter {
       this.connected = true
     } catch (error) {
       await this.close()
-      throw new Error((error as { code?: number }).code === 4009 ? tr('OBS 密碼驗證失敗，請檢查密碼') : tr('無法連線 OBS，請確認 WebSocket 伺服器與主機、連接埠設定'))
+      const code = (error as { code?: unknown }).code
+      // Keep the WebSocket close code (4009 auth, 1006 unreachable, ...) so failure reports can tell the causes apart.
+      throw Object.assign(new Error(code === 4009 ? tr('OBS 密碼驗證失敗，請檢查密碼') : tr('無法連線 OBS，請確認 WebSocket 伺服器與主機、連接埠設定')),
+        typeof code === 'number' ? { code } : {})
     }
   }
 

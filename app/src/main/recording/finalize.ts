@@ -525,7 +525,9 @@ export async function finalizeSession(dir: string, deps: RecordingDeps): Promise
   if (!marker) {
     const entries = await readIndex(dir)
     if (entries.length === 0) {
-      if ((await fs.promises.readdir(dir)).some((name) => /^seg_\d+\.m4s$/i.test(name))) {
+      // The recorder opens seg_000001.m4s before the first frame; an empty file left by a capture that never started holds no footage.
+      const unindexed = (await fs.promises.readdir(dir)).filter((name) => /^seg_\d+\.m4s$/i.test(name))
+      if ((await Promise.all(unindexed.map((name) => fs.promises.lstat(path.join(dir, name))))).some((stat) => stat.size > 0)) {
         throw new Error(tr('錄影索引遺失或不完整，但仍有錄影片段，已保留工作'))
       }
       await fs.promises.rm(dir, { recursive: true })
