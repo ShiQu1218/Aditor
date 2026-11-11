@@ -775,7 +775,7 @@ fn invalid_audio_config_releases_resources_and_missing_device_eof_flushes_tail()
     process.send(missing);
     process.until(|v| v["ev"] == "started");
     assert_eq!(process.reply(2)["ok"], true);
-    assert!(process.seen.iter().any(|v| v["ev"] == "warning" && v["code"] == "audio_source_lost"));
+    assert!(process.seen.iter().any(|v| v["ev"] == "warning" && v["code"] == "audio_device_missing"));
     thread::sleep(Duration::from_secs(2));
     process.exit();
     verify_recording(&dir, &process, 2.0);
