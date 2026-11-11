@@ -72,6 +72,7 @@ interface ActiveSession {
   cutting: boolean
   failedCuts: Set<number>
   backend: RecordingBackend
+  capture: 'wgc' | 'dda' | 'hook'
   obs: ObsRecording | null
   obsFailed?: boolean
   obsEndAt?: number
@@ -153,6 +154,7 @@ export class RecordingSessionService implements RecordingService {
   private obsStoppedAt = 0
   private builtinFallbackPid: number | null = null
   private hookFallbackPid: number | null = null
+  private ddaFallbackPid: number | null = null
   /** Time when the current PID was first confirmed. */
   private pidSeenAt = 0
   /** True until the first successful poll after start; a game already running then is past its startup phase. */
@@ -174,6 +176,7 @@ export class RecordingSessionService implements RecordingService {
           this.manualStopped = false
           this.builtinFallbackPid = null
           this.hookFallbackPid = null
+          this.ddaFallbackPid = null
           this.blocked = false
           this.cancelRetry()
           this.pidSeenAt = this.firstPoll ? -Infinity : Date.now()
@@ -258,6 +261,7 @@ export class RecordingSessionService implements RecordingService {
       if (!sameProcess(found, this.current())) {
         this.builtinFallbackPid = null
         this.hookFallbackPid = null
+        this.ddaFallbackPid = null
       }
       this.gamePid = pid
       this.game = found.game
@@ -470,8 +474,9 @@ export class RecordingSessionService implements RecordingService {
   private async begin(pid: number, builtin = false): Promise<boolean> {
     const settings = { ...this.deps.getSettings() }
     if (builtin || this.builtinFallbackPid === pid) settings.backend = 'builtin'
-    const capture = settings.backend === 'obs' || (settings.captureMethod === 'hook' && (this.hookFallbackPid === pid || !this.deps.obsHookDir))
+    let capture = settings.backend === 'obs' || (settings.captureMethod === 'hook' && (this.hookFallbackPid === pid || !this.deps.obsHookDir))
       ? 'dda' : resolveCaptureMethod(settings.captureMethod, this.deps.borderlessCapture)
+    if (capture === 'dda' && this.ddaFallbackPid === pid) capture = 'wgc'
     const game = this.game
     // Valorant's match boundaries come from the Riot Client; Apex detection finds its own.
     const gameClient = game === 'valorant' ? (this.deps.createValorantClient ?? (() => new ValorantClient()))() : undefined
@@ -515,7 +520,7 @@ export class RecordingSessionService implements RecordingService {
       const client = new AditorrecClient(this.deps.recorderCommand, this.deps.onDiagnostic)
       const live = this.createLive(id, dir, gameAspect, game)
       session = { pid, game, id, dir, outputDir, client, ending: false, warned: false, writes: Promise.resolve(), sequences: new Set(), live,
-        mode: settings.mode, cuts: Promise.resolve(), cutPending: false, cutting: false, failedCuts: new Set(), backend: settings.backend, obs: null, obsWork: Promise.resolve(), captured: false,
+        mode: settings.mode, cuts: Promise.resolve(), cutPending: false, cutting: false, failedCuts: new Set(), backend: settings.backend, capture, obs: null, obsWork: Promise.resolve(), captured: false,
         ...(clientReachable && gameClient ? { gameClient } : {}) }
       if (clientReachable && gameClient) {
         gameClient.on('event', (ev: PresenceEvent) => {
@@ -595,6 +600,12 @@ export class RecordingSessionService implements RecordingService {
         this.hookFallbackPid = pid
         this.log(`hook fallback pid=${pid} reason=${hookReason}`)
         this.notice('warning', tr('Hook擷取無法使用，本次改用螢幕擷取（DDA）：{reason}', { reason: hookReason }))
+        return this.begin(pid, builtin)
+      }
+      if (capture === 'dda' && code === 'capture_failed' && String(error).includes('0x887A0004') && this.ddaFallbackPid !== pid && this.gamePid === pid) {
+        this.ddaFallbackPid = pid
+        this.log(`dda fallback pid=${pid}`)
+        this.notice('warning', tr('螢幕擷取（DDA）無法在此系統使用，本次改用視窗擷取（WGC）'))
         return this.begin(pid, builtin)
       }
       if (windowNotFound(error)) {
@@ -745,6 +756,15 @@ export class RecordingSessionService implements RecordingService {
       this.hookFallbackPid = session.pid
       this.log(`hook fallback pid=${session.pid} reason=${hookReason}`)
       this.notice('warning', tr('Hook擷取無法使用，本次改用螢幕擷取（DDA）：{reason}', { reason: hookReason }))
+      if (this.gamePid === session.pid && !this.state.paused && !this.manualStopped) {
+        await this.begin(session.pid)
+      }
+      return
+    }
+    if (session.capture === 'dda' && code === 'capture_failed' && error.message.includes('0x887A0004') && this.ddaFallbackPid !== session.pid) {
+      this.ddaFallbackPid = session.pid
+      this.log(`dda fallback pid=${session.pid}`)
+      this.notice('warning', tr('螢幕擷取（DDA）無法在此系統使用，本次改用視窗擷取（WGC）'))
       if (this.gamePid === session.pid && !this.state.paused && !this.manualStopped) {
         await this.begin(session.pid)
       }
