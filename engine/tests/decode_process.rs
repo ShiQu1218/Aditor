@@ -45,7 +45,10 @@ fn child(test: &str, fail_software: bool) {
     );
     if fail_software {
         let error = fs.next().unwrap().unwrap_err();
-        assert_eq!(error.message, "ffmpeg decoding failed");
+        assert_eq!(
+            error.message,
+            "ffmpeg decoding failed (exit code 1, 0x00000001)"
+        );
         assert_eq!(error.stderr_tail.len(), STDERR_LIMIT);
         assert!(error.stderr_tail.bytes().all(|b| b == b'x'));
         assert!(fs.next().is_none());
