@@ -90,6 +90,16 @@ pub(super) fn check(code: i32, action: &str) -> Result<()> {
     Ok(())
 }
 
+fn check_encoding(code: i32, action: &str) -> Result<()> {
+    check(code, action).map_err(|error| {
+        if let Some(message) = super::log::take_error() {
+            FfmpegError::new(code, format!("{error} [ffmpeg: {message}]")).into()
+        } else {
+            error
+        }
+    })
+}
+
 pub(super) struct Buffer(pub *mut AVBufferRef);
 impl Buffer {
     pub fn owned(raw: *mut AVBufferRef) -> Result<Self> {
@@ -214,18 +224,20 @@ impl Encoder {
         let frame = mapped.as_ref().or(frame);
         // SAFETY: The encoder and optional frame are valid; an empty frame signals end of input.
         unsafe {
-            check(
+            super::log::take_error();
+            check_encoding(
                 avcodec_send_frame(self.0, frame.map_or(ptr::null(), |f| f.0)),
                 "Send encoded frame",
             )?;
             let mut packets = Vec::new();
             loop {
                 let packet = Packet::new()?;
+                super::log::take_error();
                 let code = avcodec_receive_packet(self.0, packet.0);
                 if code == AGAIN || code == EOF {
                     break;
                 }
-                check(code, "Receive encoded packet")?;
+                check_encoding(code, "Receive encoded packet")?;
                 packets.push(packet);
             }
             Ok(packets)

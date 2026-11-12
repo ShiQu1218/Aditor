@@ -294,6 +294,25 @@ describe('recording service state machine', () => {
     expect(afterNewPid[4]).toMatchObject({ pid: 5678, capture: 'dda' })
   })
 
+  it.each(['dda-unsupported', 'async-dda-unsupported'])('falls back from DDA to WGC once per PID on %s', async (mode) => {
+    const value = rig(mode)
+    value.settings.captureMethod = 'auto'
+    value.deps.borderlessCapture = false
+    value.service.start()
+    await waitFor(() => commands(value, 'start').length === 2 && value.service.status().phase === 'recording')
+    expect(commands(value, 'start').map((start) => start.capture)).toEqual(['dda', 'wgc'])
+    expect(vi.mocked(value.deps.notify).mock.calls.filter(([kind]) => kind === 'warning')).toEqual([
+      ['warning', '螢幕擷取（DDA）無法在此系統使用，本次改用視窗擷取（WGC）']
+    ])
+    await value.service.stopManual()
+    expect(await value.service.startManual()).toBe(true)
+    expect(commands(value, 'start').map((start) => start.capture)).toEqual(['dda', 'wgc', 'wgc'])
+    expect(value.settings.captureMethod).toBe('auto')
+    value.pid = 5678
+    await waitFor(() => commands(value, 'start').length === 5 && value.service.status().phase === 'recording')
+    expect(commands(value, 'start').slice(3).map((start) => [start.pid, start.capture])).toEqual([[5678, 'dda'], [5678, 'wgc']])
+  })
+
   it('uses the current setting when restarting recording for the same PID after switching from hook to WGC', async () => {
     const value = rig('hook-unavailable')
     value.settings.captureMethod = 'hook'

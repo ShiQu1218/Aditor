@@ -41,6 +41,9 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
     if (mode === 'audio-device-invalidated') return send({ id: req.id, ok: false, code: 'audio_failed', message: 'audio_failed: Failed to activate audio device: The audio device has been invalidated. (0x88890004)' })
     if (mode === 'audio-device-missing') return send({ id: req.id, ok: false, code: 'audio_failed', message: 'audio_failed: Specified audio device not found: The system cannot find the file specified. (0x80070002)' })
     if (mode === 'no-hw-nvidia') return send({ id: req.id, ok: false, code: 'no_hw_encoder', message: 'no_hw_encoder: nvidia_driver_outdated: The NVIDIA driver supports NVENC API 12.2 but 13.0 is required; update the NVIDIA driver to 570.0 or newer and try again (GPUs whose newest driver is older cannot use NVENC); hevc_nvenc: Open encoder failed: Function not implemented (-40)' })
+    if (mode === 'dda-unsupported' && req.capture === 'dda') {
+      return send({ id: req.id, ok: false, code: 'capture_failed', message: 'Failed to create Desktop Duplication: unsupported (0x887A0004)' })
+    }
     if (mode === 'hook-unavailable' && req.capture === 'hook') {
       return send({ id: req.id, ok: false, code: 'hook_unavailable', message: 'hook_unavailable: 注入逾時' })
     }
@@ -100,6 +103,10 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
     if (mode === 'async-window-lost') setTimeout(() => {
       fs.writeFileSync(process.env.FAKE_WINDOW_GONE, '')
       send({ ev: 'error', code: windowErrorCode, message: 'window_not_found: Game capture window disappeared; restart capture on the current game window' })
+      send({ ev: 'stopped', reason: 'error' })
+    }, 30)
+    if (mode === 'async-dda-unsupported' && req.capture === 'dda') setTimeout(() => {
+      send({ ev: 'error', code: 'capture_failed', message: 'Failed to create Desktop Duplication: unsupported (0x887A0004)' })
       send({ ev: 'stopped', reason: 'error' })
     }, 30)
     if (mode === 'async-hook-unavailable' && req.capture === 'hook') setTimeout(() => {
