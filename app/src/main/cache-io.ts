@@ -1,6 +1,8 @@
 import fs from 'fs'
 import path from 'path'
 import crypto from 'crypto'
+import { normalizePath } from './library'
+import { writeFileAtomicSync } from './atomic-write'
 
 /** Read cache JSON; return null when missing or corrupt. Return contents as-is (including Clip.status); renderer's normalizeClips handles migration. */
 export function loadCacheDoc(cachePath: string): unknown | null {
@@ -14,15 +16,11 @@ export function loadCacheDoc(cachePath: string): unknown | null {
   return null
 }
 
-/** Write atomically (tmp + rename). */
+/** Write atomically (tmp + fsync + rename). */
 export function saveCacheDoc(doc: { cache_path: string }): boolean {
   try {
     if (doc && doc.cache_path) {
-      const dest = doc.cache_path
-      fs.mkdirSync(path.dirname(dest), { recursive: true })
-      const tmp = `${dest}.tmp`
-      fs.writeFileSync(tmp, JSON.stringify(doc, null, 2), 'utf-8')
-      fs.renameSync(tmp, dest)
+      writeFileAtomicSync(doc.cache_path, JSON.stringify(doc, null, 2))
       return true
     }
   } catch (err) {
@@ -40,7 +38,7 @@ export function cacheFilePath(videoPath: string, cacheDir: string, beside = fals
     const v = path.parse(videoPath)
     return path.join(v.dir, `${v.base}.aditor.json`)
   }
-  const key = crypto.createHash('sha1').update(path.resolve(videoPath).toLowerCase().replace(/\\/g, '/')).digest('hex')
+  const key = crypto.createHash('sha1').update(normalizePath(videoPath)).digest('hex')
   return path.join(cacheDir, `${key}.json`)
 }
 
@@ -49,10 +47,6 @@ export function legacyCacheFilePath(videoPath: string, cacheDir: string, beside 
   if (!beside) return cacheFilePath(videoPath, cacheDir)
   const v = path.parse(videoPath)
   return path.join(v.dir, `${v.name}.aditor.json`)
-}
-
-function normalizedVideoPath(videoPath: string): string {
-  return path.resolve(videoPath).toLowerCase().replace(/\\/g, '/')
 }
 
 function readCacheObject(cachePath: string): { video?: { path?: unknown } } | null {
@@ -65,7 +59,7 @@ function readCacheObject(cachePath: string): { video?: { path?: unknown } } | nu
 }
 
 function docBelongsToVideo(doc: { video?: { path?: unknown } } | null, videoPath: string): boolean {
-  return typeof doc?.video?.path === 'string' && normalizedVideoPath(doc.video.path) === normalizedVideoPath(videoPath)
+  return typeof doc?.video?.path === 'string' && normalizePath(doc.video.path) === normalizePath(videoPath)
 }
 
 export function cacheBelongsToVideo(cachePath: string, videoPath: string): boolean {

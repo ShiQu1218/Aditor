@@ -1,5 +1,6 @@
 import fs from 'fs'
 import path from 'path'
+import { writeFileAtomicSync } from './atomic-write'
 import {
   DEFAULT_SETTINGS,
   SETTINGS_RANGES,
@@ -236,23 +237,15 @@ function backupCorrupt(file: string): boolean {
 }
 
 /**
- * Atomic write (temporary file + rename): return false on write or `renameSync` failure;
+ * Atomic write (temporary file + fsync + rename): return false on write or `renameSync` failure;
  * preserve the existing file and remove the temporary file.
  */
 export function saveSettings(file: string, s: Settings): boolean {
-  const tmp = `${file}.tmp`
   try {
-    fs.mkdirSync(path.dirname(file), { recursive: true })
-    fs.writeFileSync(tmp, JSON.stringify(s, null, 2), 'utf-8')
-    fs.renameSync(tmp, file)
+    writeFileAtomicSync(file, JSON.stringify(s, null, 2))
     return true
   } catch (err) {
     console.error('Failed to save settings:', err)
-    try {
-      if (fs.existsSync(tmp)) {
-        fs.unlinkSync(tmp)
-      }
-    } catch {}
     return false
   }
 }

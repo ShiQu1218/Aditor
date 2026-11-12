@@ -2,8 +2,10 @@ import fs from 'fs'
 import path from 'path'
 import { isDeepStrictEqual } from 'util'
 import chokidar, { FSWatcher } from 'chokidar'
-import { EventType, type EventCounts } from '../shared/types'
+import type { EventCounts } from '../shared/types'
 import type { GameId } from '../shared/games'
+import { isSafeLocalVideoPath } from './safe-path'
+import { writeFileAtomicSync } from './atomic-write'
 
 export type LibraryStatus = 'pending' | 'analyzing' | 'done' | 'error'
 
@@ -103,24 +105,12 @@ export class Library {
     }
     this.dirty = true
     if (this.saveBlocked) return false
-    const tmp = `${this.file}.tmp`
     try {
-      fs.mkdirSync(path.dirname(this.file), { recursive: true })
-      const fd = fs.openSync(tmp, 'w')
-      try {
-        fs.writeFileSync(fd, JSON.stringify(this.entries, null, 2), 'utf-8')
-        fs.fsyncSync(fd)
-      } finally {
-        fs.closeSync(fd)
-      }
-      fs.renameSync(tmp, this.file)
+      writeFileAtomicSync(this.file, JSON.stringify(this.entries, null, 2))
       this.dirty = false
       return true
     } catch (err) {
       console.error('Failed to save library:', err)
-      try {
-        fs.rmSync(tmp, { force: true })
-      } catch {}
       return false
     }
   }
@@ -177,6 +167,7 @@ export class Library {
     let changed = false
 
     for (const p of paths) {
+      if (!isSafeLocalVideoPath(p)) continue
       const ext = path.extname(p).toLowerCase()
       if (!SUPPORTED_EXTS.has(ext)) {
         continue
@@ -301,32 +292,6 @@ export class Library {
       return true
     }
     return false
-  }
-
-  search(q: string, filter?: { favorite?: boolean; hasEvents?: EventType[] }): LibraryEntry[] {
-    const needle = q.trim().toLowerCase()
-    return this.entries.filter((e) => {
-      if (needle) {
-        const base = path.basename(e.path).toLowerCase()
-        if (!base.includes(needle)) {
-          return false
-        }
-      }
-      if (filter?.favorite && !e.favorite) {
-        return false
-      }
-      if (filter?.hasEvents && filter.hasEvents.length > 0) {
-        const counts = e.counts || { knock: 0, assist: 0 }
-        const hasKnock = filter.hasEvents.includes('knock') && counts.knock > 0
-        const hasAssist =
-          (filter.hasEvents.includes('assist_knock') || filter.hasEvents.includes('assist_elim')) &&
-          counts.assist > 0
-        if (!hasKnock && !hasAssist) {
-          return false
-        }
-      }
-      return true
-    })
   }
 }
 

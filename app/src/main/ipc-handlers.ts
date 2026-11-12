@@ -1,7 +1,8 @@
 import { ipcMain, dialog, BrowserWindow, app, shell, safeStorage } from 'electron'
 import fs from 'fs'
 import path from 'path'
-import { Library, normalizePath } from './library'
+import { Library, normalizePath, SUPPORTED_EXTS, type LibraryEntry } from './library'
+import { proxyPath } from './proxy'
 import { AnalysisQueue } from './queue'
 import { EngineClient } from './engine'
 import { detectEncoders } from './export/encoders'
@@ -18,7 +19,7 @@ import { planCacheSave, requireVideoPath, sanitizeRemoveOptions } from './ipc-gu
 import { gameOf, isGameId } from '../shared/games'
 import { DEFAULT_SETTINGS } from '../shared/settings'
 import { currentE2EConfig } from './e2e'
-import { cacheDir, engineCommand, ffmpegExecutable, noticesFile, sceneDir } from '../shared/paths'
+import { cacheDir, engineCommand, ffmpegExecutable, noticesFile, proxyDir, sceneDir } from '../shared/paths'
 import { engineMatches, roundMatches, splitMatches, type DetectMatches } from './split-matches'
 import { computeHlCount, createHlGuard, createSerialQueue, hlForSavedDoc } from './hl'
 import { createThrottle } from '../shared/throttle'
@@ -34,7 +35,21 @@ const dialogText = (): ReturnType<typeof catalogFor>['i18n']['dialog'] => catalo
 /** Minimum interval between `library:updated` broadcasts. */
 export const LIBRARY_UPDATE_INTERVAL_MS = 500
 
-const VIDEO_EXTS = new Set(['.mp4', '.mkv', '.mov', '.webm'])
+function removeMediaCaches(entry: LibraryEntry): void {
+  const proxy = proxyPath(entry.path)
+  const files = [proxy, `${proxy}.source`]
+  if (entry.thumb) {
+    const relative = path.relative(path.resolve(proxyDir()), path.resolve(entry.thumb))
+    if (relative && relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative)) files.push(entry.thumb)
+  }
+  for (const file of files) {
+    try {
+      fs.rmSync(file, { force: true })
+    } catch (error) {
+      console.error('Failed to remove media cache:', file, error)
+    }
+  }
+}
 
 function findVideosInDir(dir: string): string[] {
   const results: string[] = []
@@ -46,7 +61,7 @@ function findVideosInDir(dir: string): string[] {
         results.push(...findVideosInDir(full))
       } else if (item.isFile()) {
         const ext = path.extname(item.name).toLowerCase()
-        if (VIDEO_EXTS.has(ext)) {
+        if (SUPPORTED_EXTS.has(ext)) {
           results.push(full)
         }
       }
@@ -109,7 +124,9 @@ export function registerIpcHandlers(
   })
 
   ipcMain.handle('library:remove', async (_, videoPath: string, options?: unknown) => {
+    const entry = library.get(videoPath)
     const res = await queue.withStoppedAnalysis([videoPath], () => library.remove(videoPath, sanitizeRemoveOptions(options)))
+    if (res && entry) removeMediaCaches(entry)
     requireLibrarySaved()
     broadcastUpdated()
     return res
@@ -120,7 +137,12 @@ export function registerIpcHandlers(
     if (!Array.isArray(paths) || !paths.every((p): p is string => typeof p === 'string')) {
       return { removed: [], failed: [] }
     }
+    const entries = new Map(paths.map((p) => [normalizePath(p), library.get(p)]))
     const res = await queue.withStoppedAnalysis(paths, () => library.removeMany(paths, sanitizeRemoveOptions(options)))
+    for (const removed of res.removed) {
+      const entry = entries.get(normalizePath(removed))
+      if (entry) removeMediaCaches(entry)
+    }
     requireLibrarySaved()
     broadcastUpdated()
     return res
@@ -162,7 +184,7 @@ export function registerIpcHandlers(
     try {
       const res = await done
       if (res.ok) {
-        library.add(res.files, 'external', 'apex')
+        library.add(res.files, 'external', gameOf(entry.game))
         for (const file of res.files) queue.enqueue(file, true)
         broadcastUpdated()
       }
@@ -184,7 +206,7 @@ export function registerIpcHandlers(
     const res = await dialog.showOpenDialog(win || undefined as unknown as BrowserWindow, {
       title: dialogText().selectFilesTitle,
       properties: ['openFile', 'multiSelections'],
-      filters: [{ name: dialogText().videoFilter, extensions: ['mp4', 'mkv', 'mov', 'webm'] }]
+      filters: [{ name: dialogText().videoFilter, extensions: [...SUPPORTED_EXTS].map((e) => e.slice(1)) }]
     })
     if (!res.canceled && res.filePaths.length > 0) {
       const added = library.add(res.filePaths)

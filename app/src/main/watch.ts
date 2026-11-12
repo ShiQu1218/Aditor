@@ -6,6 +6,7 @@ import { Library, SUPPORTED_EXTS, watchFolder } from './library'
 import type { AnalysisQueue } from './queue'
 import type { SettingsStore } from './settings'
 import { tr } from '../shared/locale'
+import { isSafeLocalDirPath } from './safe-path'
 
 /** Default milliseconds the file size must remain stable and polling interval (used when WatchManagerOptions does not specify them). */
 export const DEFAULT_STABILITY_MS = 2000
@@ -51,6 +52,9 @@ export class WatchDirError extends Error {
 export function validateWatchDir(dir: unknown): string {
   if (typeof dir !== 'string' || !path.isAbsolute(dir)) {
     throw new WatchDirError('relative', tr('監看資料夾必須是絕對路徑：{dir}', { dir: String(dir) }))
+  }
+  if (!isSafeLocalDirPath(dir)) {
+    throw new WatchDirError('relative', tr('監看資料夾必須是本機磁碟路徑（不支援網路路徑）：{dir}', { dir: String(dir) }))
   }
   const resolved = path.resolve(dir)
   let stat: fs.Stats

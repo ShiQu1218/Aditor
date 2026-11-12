@@ -73,7 +73,7 @@ describe('cache:loadByVideo reads according to cacheLocation', () => {
     expect(await save(clips, events)).toBe(true)
     vi.advanceTimersByTime(1000)
     expect(send).toHaveBeenCalledTimes(1)
-    expect(sync).toHaveBeenCalledTimes(syncs)
+    expect(sync).toHaveBeenCalledTimes(syncs + 1)
     expect(rename).toHaveBeenCalledTimes(renames + 1)
     expect(JSON.parse(fs.readFileSync(cacheFilePath(video, cacheDir()), 'utf-8')).events).toEqual(events)
   })

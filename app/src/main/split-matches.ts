@@ -107,7 +107,7 @@ export function partialPath(output: string): string {
 export function cutArgs(video: string, match: MatchRange, output: string): string[] {
   return ['-hide_banner', '-loglevel', 'error', '-y', '-ss', String(match.start), '-i', video,
     '-t', String(match.end - match.start), '-map', '0:v', '-map', '0:a?', '-c', 'copy',
-    '-avoid_negative_ts', 'make_zero', output]
+    '-avoid_negative_ts', 'make_zero', '-movflags', 'use_metadata_tags', output]
 }
 
 /** Remove files this run owns; a file that cannot be removed is logged, never ignored silently. */
