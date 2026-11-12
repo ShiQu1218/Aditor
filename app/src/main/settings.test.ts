@@ -100,13 +100,13 @@ describe('settings store', () => {
     expect(loadSettings(file)).toMatchObject({ telemetryEnabled: true, recording: { autoRecord: true } })
   })
 
-  it.each(['copyFileSync', 'writeSync', 'renameSync'] as const)(
+  it.each(['copyFileSync', 'writeFileSync', 'renameSync'] as const)(
     'failed corrupt-settings recovery (%s) preserves the original, blocks writes, and retries safely', (operation) => {
       const damaged = '{"telemetryEnabled":false,"recording":{"autoRecord":false},'
       fs.writeFileSync(file, damaged, 'utf-8')
       vi.spyOn(console, 'error').mockImplementation(() => {})
       const failure = vi.spyOn(fs, operation).mockImplementation(() => {
-        throw Object.assign(new Error('Recovery failed'), { code: operation === 'writeSync' ? 'ENOSPC' : 'EBUSY' })
+        throw Object.assign(new Error('Recovery failed'), { code: operation === 'writeFileSync' ? 'ENOSPC' : 'EBUSY' })
       })
       const privateDefaults = { telemetryEnabled: false, recording: { autoRecord: false } }
 
@@ -307,7 +307,7 @@ describe('settings store', () => {
   it('set reports persisted:true on success and persisted:false when the write fails', () => {
     const store = new SettingsStore(file)
     expect(store.set({ before: 7 }).persisted).toBe(true)
-    vi.spyOn(fs, 'writeSync').mockImplementation(() => {
+    vi.spyOn(fs, 'writeFileSync').mockImplementation(() => {
       throw new Error('ENOSPC: no space left')
     })
     const r = store.set({ before: 9 })

@@ -35,6 +35,21 @@ describe('writeFileAtomicSync', () => {
     expect(order).toEqual(['sync', 'rename'])
   })
 
+  it('writes the full content through writeFileSync on the temporary fd', () => {
+    const file = path.join(dir, 'data.json')
+    const text = '{"name":"café ☕","description":"longer than eight bytes"}'
+    const open = vi.spyOn(fs, 'openSync')
+    // This Node version bypasses the public writeSync for writeFileSync.
+    const write = vi.spyOn(fs, 'writeFileSync')
+
+    writeFileAtomicSync(file, text)
+
+    expect(open).toHaveBeenCalledWith(`${file}.tmp`, 'w')
+    expect(write).toHaveBeenCalledExactlyOnceWith(open.mock.results[0].value, text, 'utf-8')
+    expect(fs.readFileSync(file, 'utf-8')).toBe(text)
+    expect(fs.existsSync(`${file}.tmp`)).toBe(false)
+  })
+
   it('removes the temporary file and throws when renaming fails', () => {
     const file = path.join(dir, 'existing-directory')
     fs.mkdirSync(file)

@@ -8,7 +8,7 @@ export function writeFileAtomicSync(file: string, text: string): void {
     fs.mkdirSync(path.dirname(file), { recursive: true })
     const fd = fs.openSync(tmp, 'w')
     try {
-      fs.writeSync(fd, text, null, 'utf-8')
+      fs.writeFileSync(fd, text, 'utf-8')
       fs.fsyncSync(fd)
     } finally {
       fs.closeSync(fd)
