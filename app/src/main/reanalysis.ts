@@ -2,7 +2,8 @@ import { mergeSavedEvents } from '../shared/events'
 import { mergeOnReanalyze } from '../shared/clips'
 import type { CacheDoc, Clip, EngineEvent } from '../shared/types'
 import fs from 'fs'
-import path from 'path'
+import { normalizePath } from './library'
+import { writeFileAtomicSync } from './atomic-write'
 import { cacheBelongsToVideo, cacheFilePath, legacyCacheFilePath, loadCacheDoc, resolveCacheFile, saveCacheDoc } from './cache-io'
 import { tr } from '../shared/locale'
 
@@ -46,23 +47,11 @@ function readLegacyBackup(videoPath: string, cacheDir: string, currentPath: stri
 /** Atomically write a backup (tmp + fsync + rename); log failures and return false. */
 function writeReanalysisBackup(cachePath: string, events: EngineEvent[], clips: Clip[], document?: CacheDoc): boolean {
   const dest = clipsBackupPath(cachePath)
-  const tmp = `${dest}.tmp`
   try {
-    fs.mkdirSync(path.dirname(dest), { recursive: true })
-    const fd = fs.openSync(tmp, 'w')
-    try {
-      fs.writeSync(fd, JSON.stringify(document ? { version: 3, document } : { version: 2, events, clips }), null, 'utf-8')
-      fs.fsyncSync(fd)
-    } finally {
-      fs.closeSync(fd)
-    }
-    fs.renameSync(tmp, dest)
+    writeFileAtomicSync(dest, JSON.stringify(document ? { version: 3, document } : { version: 2, events, clips }))
     return true
   } catch (err) {
     console.error('[Reanalysis] failed to write clips backup:', err)
-    try {
-      fs.unlinkSync(tmp)
-    } catch {}
     return false
   }
 }
@@ -77,7 +66,7 @@ function editedBackup(videoPath: string, cacheDir: string, beside: boolean): { p
   let newest: { path: string; backup: ReanalysisBackup; time: number } | null = null
   for (const candidate of new Set(candidates)) {
     const backup = readReanalysisBackup(candidate)
-    if (!backup?.document || path.resolve(backup.document.video.path).toLowerCase() !== path.resolve(videoPath).toLowerCase()) continue
+    if (!backup?.document || normalizePath(backup.document.video.path) !== normalizePath(videoPath)) continue
     const time = fs.statSync(clipsBackupPath(candidate)).mtimeMs
     if (!newest || time > newest.time) newest = { path: candidate, backup, time }
   }
@@ -226,7 +215,7 @@ export function preserveClipsAfterReanalysis(
     for (const backupPath of new Set([cachePath, prior?.backupPath, prior?.sourceBackupPath, editing?.path])) if (backupPath) deleteClipsBackup(backupPath)
     for (const candidate of [cacheFilePath(videoPath, cacheDir, !beside), legacyCacheFilePath(videoPath, cacheDir, true)]) {
       const edited = readReanalysisBackup(candidate)?.document
-      if (edited && path.resolve(edited.video.path).toLowerCase() === path.resolve(videoPath).toLowerCase()) deleteClipsBackup(candidate)
+      if (edited && normalizePath(edited.video.path) === normalizePath(videoPath)) deleteClipsBackup(candidate)
     }
   }
   return ok

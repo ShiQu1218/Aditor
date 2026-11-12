@@ -133,6 +133,7 @@ describe('cutArgs', () => {
     expect(args.slice(args.indexOf('-ss'), args.indexOf('-ss') + 2)).toEqual(['-ss', '12.5'])
     expect(args.slice(args.indexOf('-t'), args.indexOf('-t') + 2)).toEqual(['-t', '60'])
     expect(args).toContain('copy')
+    expect(args.slice(-3)).toEqual(['-movflags', 'use_metadata_tags', 'out.mp4'])
     expect(args.at(-1)).toBe('out.mp4')
   })
 })

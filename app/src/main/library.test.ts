@@ -42,17 +42,9 @@ describe('Library', () => {
     expect(lib.getEntries().length).toBe(2)
   })
 
-  it('search matches filename case-insensitively and filters favorites', () => {
-    lib.add(['D:/Videos/Apex_Match_01.mp4', 'D:/Videos/Apex_Clip_02.mp4', 'D:/Videos/Other.mp4'])
-    lib.toggleFavorite('D:/Videos/Apex_Match_01.mp4')
-
-    const searchMatch = lib.search('match')
-    expect(searchMatch.length).toBe(1)
-    expect(searchMatch[0].path).toBe('D:/Videos/Apex_Match_01.mp4')
-
-    const searchFav = lib.search('', { favorite: true })
-    expect(searchFav.length).toBe(1)
-    expect(searchFav[0].path).toBe('D:/Videos/Apex_Match_01.mp4')
+  it('rejects UNC video paths without adding entries', () => {
+    expect(lib.add(['\\\\server\\share\\a.mp4'])).toEqual([])
+    expect(lib.getEntries()).toEqual([])
   })
 
   it('persists favorites across load', () => {

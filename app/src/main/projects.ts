@@ -2,6 +2,7 @@ import fs from 'fs'
 import path from 'path'
 import { ProjectItem, projectShapeError } from '../renderer/editor/project'
 import { tr } from '../shared/locale'
+import { writeFileAtomicSync } from './atomic-write'
 
 /** Project on disk: renderer Project plus file id. */
 export interface StoredProject {
@@ -69,30 +70,15 @@ export class ProjectStore {
 
   /** Synchronous write (also used by the window-close flushSync path). */
   saveSync(p: StoredProject): void {
-    let tmp = ''
     try {
       if (!p || typeof p !== 'object') throw new Error(tr('專案資料無效'))
       const file = this.filePath(p.id)
       const shape = projectShapeError(p)
       if (shape) throw new Error(tr('專案資料無效：{message}', { message: shape.message }))
-      tmp = `${file}.tmp`
-      fs.mkdirSync(this.dir, { recursive: true })
-      const fd = fs.openSync(tmp, 'w')
-      try {
-        fs.writeSync(fd, JSON.stringify(p, null, 2), null, 'utf-8')
-        fs.fsyncSync(fd)
-      } finally {
-        fs.closeSync(fd)
-      }
-      fs.renameSync(tmp, file)
+      writeFileAtomicSync(file, JSON.stringify(p, null, 2))
       this.clearError()
     } catch (err) {
       this.setError('save', tr('儲存專案失敗：{message}', { message: (err as Error).message }))
-      if (tmp) {
-        try {
-          fs.unlinkSync(tmp)
-        } catch {}
-      }
       throw err
     }
   }

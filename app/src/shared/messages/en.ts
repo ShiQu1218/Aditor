@@ -76,6 +76,7 @@ const messages: MessageTable = {
   '暫停自動錄影': 'Pause auto-recording',
   '結束': 'Quit',
   '監看資料夾必須是絕對路徑：{dir}': 'The watch folder must be an absolute path: {dir}',
+  '監看資料夾必須是本機磁碟路徑（不支援網路路徑）：{dir}': 'The watch folder must be a local drive path (network paths are not supported): {dir}',
   '資料夾不存在：{resolved}': 'Folder does not exist: {resolved}',
   '路徑不是資料夾：{resolved}': 'Path is not a folder: {resolved}',
   '不到 1 分': 'Less than 1 min',

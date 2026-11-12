@@ -103,6 +103,27 @@ const req = (over: Record<string, unknown> = {}) => ({
 })
 
 describe('IPC wiring (fake ipcMain/webContents)', () => {
+  it('removes stale segments only directly inside the output subdirectory and preserves sources', async () => {
+    const output = path.join(outDir, 'Clips')
+    fs.mkdirSync(output)
+    const stale = ['.aditor-seg-abc123-1.mov', '.ADITOR-SEG-DEF456-2.MP4']
+    const kept = ['keep.mp4', '.aditor-seg-invalid.mp4', 'x.partial.mp4', 'x.uuid.PARTIAL.MP4', '.aditor-seg-abc123-2.mp4']
+    for (const file of [...stale, ...kept]) fs.writeFileSync(path.join(output, file), 'video')
+    const nested = path.join(output, 'nested.partial.mp4')
+    fs.mkdirSync(nested)
+    fs.writeFileSync(path.join(nested, 'x.partial.mp4'), 'nested')
+    const outside = path.join(outDir, 'x.partial.mp4')
+    fs.writeFileSync(outside, 'outside')
+    source = path.join(output, '.aditor-seg-abc123-2.mp4')
+    const { invoke, sender } = setup()
+    expect(await invoke('export:start', sender, req())).toMatchObject({ ok: true })
+    expect(fs.readFileSync(source, 'utf-8')).toBe('video')
+    for (const file of stale) expect(fs.existsSync(path.join(output, file))).toBe(false)
+    for (const file of kept) expect(fs.existsSync(path.join(output, file))).toBe(true)
+    expect(fs.existsSync(path.join(nested, 'x.partial.mp4'))).toBe(true)
+    expect(fs.existsSync(outside)).toBe(true)
+  })
+
   it('registers export:start / export:cancel / export:diskSpace', () => {
     const { handlers } = setup()
     for (const ch of ['export:start', 'export:cancel', 'export:diskSpace']) expect(handlers.has(ch)).toBe(true)

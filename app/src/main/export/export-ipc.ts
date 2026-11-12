@@ -10,6 +10,7 @@ import { AudioProbe, createAudioProbe, createCutLookup, createMediaEndProbe, Cut
 import { runExport, RunExportOptions, RunProgress } from './run'
 import { isSafeLocalDirPath, isSafeLocalVideoPath, fileExistsSafe } from '../safe-path'
 import { estimateOutputBytes } from '../../shared/exportEstimate'
+import { normalizePath } from '../library'
 import { tr } from '../../shared/locale'
 import { exportSubDirName } from '../../shared/storage'
 
@@ -132,6 +133,25 @@ export type ExportStartResult =
   | { ok: false; cancelled: true; outputs: string[]; notices: string[] }
   | { ok: false; cancelled?: false; code?: 'busy'; error: string; outputs: string[]; notices?: string[] }
 
+async function removeStaleSegments(dir: string, sources: string[]): Promise<void> {
+  const sourcePaths = new Set(sources.map(normalizePath))
+  try {
+    const files = await fs.promises.readdir(dir, { withFileTypes: true })
+    for (const file of files) {
+      if (!file.isFile() || !/^\.aditor-seg-[a-z0-9]+-\d+\.(mp4|mov)$/i.test(file.name)) continue
+      const target = path.join(dir, file.name)
+      if (sourcePaths.has(normalizePath(target))) continue
+      try {
+        await fs.promises.rm(target)
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code !== 'ENOENT') console.error('Failed to remove stale export segment:', target, err)
+      }
+    }
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') console.error('Failed to read stale export segments:', dir, err)
+  }
+}
+
 export function createExportService(deps: ExportServiceDeps = {}) {
   /** Allow one export at a time; set this before any await so two starts in the same tick cannot both pass the check. */
   let current: { ac: AbortController; done: Promise<unknown> } | null = null
@@ -147,6 +167,7 @@ export function createExportService(deps: ExportServiceDeps = {}) {
     sender.once?.('destroyed', onDestroyed)
     try {
       const req = await validateExportRequest(raw)
+      await removeStaleSegments(req.outputDir, req.items.map((item) => item.source))
       if (ac.signal.aborted) return { ok: false, cancelled: true, outputs: [], notices: [] }
 
       const probes = new Map<string, StreamProbe>()

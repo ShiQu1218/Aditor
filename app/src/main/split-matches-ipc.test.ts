@@ -34,6 +34,7 @@ describe('library:splitMatches', () => {
   beforeEach(() => {
     handlers.clear()
     split.mockReset()
+    loadCache.mockReset()
     dir = fs.mkdtempSync(path.join(os.tmpdir(), 'aditor-split-ipc-'))
     library = new Library(path.join(dir, 'library.json'))
     enqueue = vi.fn()
@@ -85,6 +86,15 @@ describe('library:splitMatches', () => {
     expect(await invoke(source)).toEqual({ ok: true, files: parts })
     expect(library.get(parts[0])?.game).toBe('apex')
     expect(enqueue.mock.calls).toEqual([[parts[0], true], [parts[1], true]])
+  })
+
+  test('imports every VALORANT split part with the source game', async () => {
+    const source = entry('valorant.mp4', 'done', 'valorant')
+    const parts = [path.join(dir, 'valorant_match01.mp4'), path.join(dir, 'valorant_match02.mp4')]
+    split.mockResolvedValue({ ok: true, files: parts })
+    expect(await invoke(source)).toEqual({ ok: true, files: parts })
+    for (const part of parts) expect(library.get(part)?.game).toBe('valorant')
+    expect(enqueue.mock.calls).toEqual(parts.map((part) => [part, true]))
   })
 
   test('splits legacy entries without a game with the Apex engine scan', async () => {

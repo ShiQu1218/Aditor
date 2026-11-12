@@ -3,7 +3,7 @@ import fs from 'fs'
 import os from 'os'
 import path from 'path'
 import { Library } from './library'
-import { WatchManager } from './watch'
+import { validateWatchDir, WatchManager } from './watch'
 import { SettingsStore } from './settings'
 import type { AnalysisQueue } from './queue'
 
@@ -78,6 +78,16 @@ async function waitFor(cond: () => boolean, timeoutMs = 10000): Promise<void> {
 }
 
 describe('WatchManager', () => {
+  test('rejects UNC watch directories before accessing the filesystem', () => {
+    const stat = vi.spyOn(fs, 'statSync')
+    try {
+      expect(() => validateWatchDir('\\\\server\\share\\videos')).toThrow(expect.objectContaining({ code: 'relative' }))
+      expect(stat).not.toHaveBeenCalled()
+    } finally {
+      stat.mockRestore()
+    }
+  })
+
   test('add() validates the path: absolute, exists, is a directory', async () => {
     const rig = makeRig()
 

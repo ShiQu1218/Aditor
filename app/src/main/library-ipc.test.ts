@@ -18,6 +18,8 @@ vi.mock('electron', () => ({
 
 import { registerIpcHandlers } from './ipc-handlers'
 import { Library } from './library'
+import { proxyPath } from './proxy'
+import { proxyDir } from '../shared/paths'
 
 describe('library:remove / library:removeMany (source file option)', () => {
   let dir: string
@@ -68,6 +70,35 @@ describe('library:remove / library:removeMany (source file option)', () => {
     expect(fs.existsSync(file)).toBe(false)
   })
 
+  test.each(['library:remove', 'library:removeMany'])('%s removes media caches and preserves outside thumbnails and edits', async (channel) => {
+    const appData = process.env.APPDATA
+    process.env.APPDATA = dir
+    try {
+      const first = imported('cached.mp4')
+      const second = imported('outside.mp4')
+      const proxy = proxyPath(first)
+      const thumb = path.join(proxyDir(), 'thumbs', 'cached.jpg')
+      const outside = path.join(dir, 'outside.jpg')
+      const edits = path.join(dir, 'cached.aditor.json')
+      fs.mkdirSync(path.dirname(thumb), { recursive: true })
+      for (const file of [proxy, `${proxy}.source`, thumb, outside, edits]) fs.writeFileSync(file, 'keep or remove')
+      library.update(first, { thumb })
+      library.update(second, { thumb: outside })
+
+      if (channel === 'library:remove') {
+        expect(await handlers.get(channel)!({}, first)).toBe(true)
+        expect(await handlers.get(channel)!({}, second)).toBe(true)
+      } else {
+        expect(await handlers.get(channel)!({}, [first, second])).toEqual({ removed: [first, second], failed: [] })
+      }
+      for (const file of [proxy, `${proxy}.source`, thumb]) expect(fs.existsSync(file)).toBe(false)
+      for (const file of [outside, edits, first, second]) expect(fs.existsSync(file)).toBe(true)
+    } finally {
+      if (appData === undefined) delete process.env.APPDATA
+      else process.env.APPDATA = appData
+    }
+  })
+
   test('keeps the source file without options or with an invalid option', async () => {
     const noOptions = imported('b.mp4')
     expect(await handlers.get('library:remove')!({}, noOptions)).toBe(true)
@@ -80,6 +111,20 @@ describe('library:remove / library:removeMany (source file option)', () => {
     const notAnObject = imported('d.mp4')
     expect(await handlers.get('library:remove')!({}, notAnObject, null)).toBe(true)
     expect(fs.existsSync(notAnObject)).toBe(true)
+  })
+
+  test.each(['library:remove', 'library:removeMany'])('%s succeeds when cache deletion fails', async (channel) => {
+    const file = imported('locked-cache.mp4')
+    const remove = vi.spyOn(fs, 'rmSync').mockImplementation(() => { throw new Error('cache is busy') })
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const result = await handlers.get(channel)!({}, channel === 'library:remove' ? file : [file])
+      expect(result).toEqual(channel === 'library:remove' ? true : { removed: [file], failed: [] })
+      expect(library.get(file)).toBeUndefined()
+      expect(log).toHaveBeenCalledWith('Failed to remove media cache:', expect.any(String), expect.any(Error))
+    } finally {
+      remove.mockRestore()
+    }
   })
 
   test('removeMany forwards the option and ignores invalid arguments', async () => {
