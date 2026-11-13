@@ -106,7 +106,8 @@ it('starts on hud_resume without a countdown and stops immediately when lobby ro
   r.active.obs.meta.captureStartedAt = Date.now() - 60000
   r.event('match_end', 30)
   await waitFor(() => r.server.calls.includes('StopRecord'))
-  expect(r.service.status().obsRecording).toBe(false)
+  // The service clears obsRecording only after OBS answers StopRecord, so wait for the status, not the request.
+  await waitFor(() => r.service.status().obsRecording === false)
 })
 it('stops and adds the final match when recording is stopped manually mid-match', async () => {
   const r = await rig()

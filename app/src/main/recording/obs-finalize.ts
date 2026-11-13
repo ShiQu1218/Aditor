@@ -5,7 +5,7 @@ import type { RecordingDeps } from './index'
 import type { ObsMatch, ObsMetadata } from './obs-session'
 import { ALLOWED_VIDEO_EXTS, isSafeLocalDirPath } from '../safe-path'
 import { addRecorded, MATCH_POST_PAD_SEC, MATCH_PRE_PAD_SEC, inOutputDir, liveMatches, outputBase, readOptional, reserveOutput,
-  resumeMatchPart, publishRecordingPart, writeJson, gameMetadataArgs, type SessionSnapshot } from './finalize'
+  resumeMatchPart, publishRecordingPart, removeSessionDir, writeJson, gameMetadataArgs, type SessionSnapshot } from './finalize'
 import { isTrusted, writeLiveCache, type LiveCacheRange, type LiveFile } from './live-cache'
 import { createCutLookup, createMediaEndProbe } from '../export/keyframe'
 import { ObsClient } from './obs-client'
@@ -108,13 +108,13 @@ export async function finalizeObsSession(dir: string, deps: RecordingDeps, confi
       // A file deleted from an accessible folder never comes back; do not keep retrying it on every startup.
       if (await permanentlyDeleted(meta.outputPath)) {
         deps.notify('warning', tr('OBS 影片已不存在，已移除這次錄影的收尾工作'))
-        await fs.promises.rm(dir, { recursive: true })
+        await removeSessionDir(dir)
         return []
       }
       throw new Error(tr('OBS 影片暫時無法讀取，已保留工作供下次補收尾'))
     }
     deps.notify('warning', tr('OBS 影片不是可讀取的本機檔案，未加入媒體庫；請在 OBS 主機確認並手動匯入'))
-    await fs.promises.rm(dir, { recursive: true })
+    await removeSessionDir(dir)
     return []
   }
   if (![meta.recordStartedAt, meta.captureStartedAt].every(Number.isFinite)) throw new Error(tr('OBS 時間對齊資料無效'))
@@ -199,7 +199,7 @@ export async function finalizeObsSession(dir: string, deps: RecordingDeps, confi
     }
   }
   const outputs = marker.cuts.filter((cut) => !outputWasRemoved(dir, cut.outputPath)).map((cut) => cut.outputPath)
-  await fs.promises.rm(dir, { recursive: true })
+  await removeSessionDir(dir)
   return outputs
 }
 
@@ -275,6 +275,6 @@ export async function finalizeObsMatches(dir: string, deps: RecordingDeps, confi
       deps.enqueueAnalysis(file); match.analysisQueued = true; await persist()
     }
   }
-  if (finishing) await fs.promises.rm(dir, { recursive: true })
+  if (finishing) await removeSessionDir(dir)
   return outputs
 }

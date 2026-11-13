@@ -18,7 +18,21 @@ export function parseGameProcess(output: string): GameProcess | null {
   return null
 }
 
-function queryGame(game: GameId): Promise<GameProcess | null> {
+// STATUS_DLL_INIT_FAILED: tasklist could not start; seen on idle or low-memory machines even with one query at a time.
+const DLL_INIT_FAILED = 0xC0000142
+const DLL_INIT_RETRY_MS = 500
+
+async function queryGame(game: GameId): Promise<GameProcess | null> {
+  try {
+    return await runTasklist(game)
+  } catch (error) {
+    if ((error as { code?: unknown }).code !== DLL_INIT_FAILED) throw error
+    await new Promise((resolve) => setTimeout(resolve, DLL_INIT_RETRY_MS))
+    return runTasklist(game)
+  }
+}
+
+function runTasklist(game: GameId): Promise<GameProcess | null> {
   return new Promise((resolve, reject) => {
     execFile('tasklist', ['/FO', 'CSV', '/NH', '/FI', `IMAGENAME eq ${GAMES[game].tasklistImageFilter}`],
       { windowsHide: true, timeout: 10000, maxBuffer: 4 * 1024 * 1024 }, (error, stdout) => {
