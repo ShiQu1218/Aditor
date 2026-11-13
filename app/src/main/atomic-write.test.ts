@@ -86,6 +86,18 @@ describe('writeFileAtomicSync lock retry', () => {
     expect(fs.existsSync(`${file}.tmp`)).toBe(false)
   })
 
+  it.each(['EBUSY', 'EACCES'])('gives up after three retries on a %s lock that does not clear', (code) => {
+    const file = path.join(dir, 'library.json')
+    fs.writeFileSync(file, 'old')
+    const rename = vi.spyOn(fs, 'renameSync').mockImplementation(() => {
+      throw Object.assign(new Error(`${code}: resource busy or locked, rename`), { code })
+    })
+    expect(() => writeFileAtomicSync(file, 'new')).toThrow(code)
+    expect(rename).toHaveBeenCalledTimes(4)
+    expect(fs.readFileSync(file, 'utf-8')).toBe('old')
+    expect(fs.existsSync(`${file}.tmp`)).toBe(false)
+  })
+
   it('does not retry errors other than file locks', () => {
     const file = path.join(dir, 'library.json')
     const rename = vi.spyOn(fs, 'renameSync').mockImplementation(() => {
