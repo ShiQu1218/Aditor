@@ -2,7 +2,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest
 import fs from 'fs'
 import path from 'path'
 import { spawnSync } from 'child_process'
-import { finalizeSession, publishRecordingPart, readIndex, resumeMatchPart, writeJson } from './finalize'
+import { finalizeSession, publishRecordingPart, readIndex, removeSessionDir, resumeMatchPart, writeJson } from './finalize'
 import { recoverSessions } from './recovery'
 import { RecordingSessionService } from './session'
 import { copySegments, createSegments, ffmpeg, makeDeps, sessionDir, tempRoot } from './test-support'
@@ -391,5 +391,17 @@ describe.skipIf(!ffmpeg)('finalization with real ffmpeg streams', () => {
       expect(fs.readdirSync(path.dirname(output)).filter((entry) => entry.endsWith('.mp4'))).toEqual([path.basename(output)])
       expect(fs.existsSync(dir)).toBe(false)
     } finally { spy.mockRestore() }
+  })
+})
+
+describe('Session directory removal', () => {
+  afterEach(() => { vi.restoreAllMocks() })
+
+  it('retries removal while Windows still holds a file in the work directory (ENOTEMPTY/EBUSY/EPERM)', async () => {
+    const rm = vi.spyOn(fs.promises, 'rm').mockResolvedValue(undefined)
+    await removeSessionDir('C:/sessions/.sessions/x')
+    expect(rm).toHaveBeenCalledExactlyOnceWith('C:/sessions/.sessions/x',
+      expect.objectContaining({ recursive: true, maxRetries: expect.any(Number), retryDelay: expect.any(Number) }))
+    expect(rm.mock.calls[0][1]).not.toHaveProperty('force')
   })
 })

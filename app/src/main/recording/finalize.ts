@@ -57,6 +57,14 @@ async function renameWithRetry(from: string, to: string): Promise<void> {
   }
 }
 
+/**
+ * Remove a finished work directory. Right after the recorder or FFmpeg exits, antivirus and indexers can still hold
+ * a segment open, so Windows reports ENOTEMPTY/EBUSY/EPERM; Node retries those with linear backoff (~3 s in total).
+ */
+export function removeSessionDir(dir: string): Promise<void> {
+  return fs.promises.rm(dir, { recursive: true, maxRetries: 5, retryDelay: 200 })
+}
+
 /** Delete only direct children of .sessions; reject junctions and symbolic links. */
 export async function validateSessionDir(dir: string): Promise<string> {
   const resolved = path.resolve(dir)
@@ -530,7 +538,7 @@ export async function finalizeSession(dir: string, deps: RecordingDeps): Promise
       if ((await Promise.all(unindexed.map((name) => fs.promises.lstat(path.join(dir, name))))).some((stat) => stat.size > 0)) {
         throw new Error(tr('錄影索引遺失或不完整，但仍有錄影片段，已保留工作'))
       }
-      await fs.promises.rm(dir, { recursive: true })
+      await removeSessionDir(dir)
       return []
     }
     const config = await snapshot(dir, deps.getSettings().postAnalysis)
@@ -544,12 +552,12 @@ export async function finalizeSession(dir: string, deps: RecordingDeps): Promise
         if (!matches?.cuts.length && !detected.every((_, index) => matches?.skipped?.includes(index))) {
           throw new Error(tr('對局沒有可剪出的片段，已保留工作'))
         }
-        await fs.promises.rm(dir, { recursive: true })
+        await removeSessionDir(dir)
         return outputs
       }
       // Only a healthy completion proves that no-match footage was lobby-only; pruning alone can precede an engine failure.
       if (Array.isArray(live?.matches) && await readOptional(path.join(dir, LIVE_COMPLETE_FILE))) {
-        await fs.promises.rm(dir, { recursive: true })
+        await removeSessionDir(dir)
         return []
       }
     }
@@ -584,7 +592,7 @@ export async function finalizeSession(dir: string, deps: RecordingDeps): Promise
   }
   // The user deleted the finished output from the library; keeping the session would fail on it at every recovery.
   if (outputWasRemoved(dir, marker.outputPath)) {
-    await fs.promises.rm(dir, { recursive: true })
+    await removeSessionDir(dir)
     return []
   }
   if (!inOutputDir(marker.outputPath, outputDir) ||
@@ -617,6 +625,6 @@ export async function finalizeSession(dir: string, deps: RecordingDeps): Promise
     marker.analysisQueued = true
     await writeJson(markerPath, marker)
   }
-  await fs.promises.rm(dir, { recursive: true })
+  await removeSessionDir(dir)
   return [marker.outputPath]
 }
