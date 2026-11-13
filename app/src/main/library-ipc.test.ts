@@ -16,7 +16,7 @@ vi.mock('electron', () => ({
   safeStorage: { isEncryptionAvailable: () => false }
 }))
 
-import { registerIpcHandlers } from './ipc-handlers'
+import { findVideosInDir, registerIpcHandlers } from './ipc-handlers'
 import { Library } from './library'
 import { proxyPath } from './proxy'
 import { proxyDir } from '../shared/paths'
@@ -156,5 +156,24 @@ describe('library:remove / library:removeMany (source file option)', () => {
     const file = imported('g.mp4')
     await handlers.get('queue:enqueue')!({}, file, true)
     expect(queue.enqueue).toHaveBeenCalledWith(file, true)
+  })
+})
+
+describe('findVideosInDir (Import folder)', () => {
+  test('skips recorder work folders and unfinished outputs like the folder watcher', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'aditor-import-dir-'))
+    try {
+      const session = path.join(dir, '.sessions', '20261113-120000-abcd')
+      const day = path.join(dir, '2026-11-13')
+      fs.mkdirSync(session, { recursive: true })
+      fs.mkdirSync(day)
+      for (const file of [path.join(session, 'init.mp4'), path.join(day, 'Apex_2026-11-13_12-00.part.mp4'),
+        path.join(dir, 'clip_match01.partial.mkv'), path.join(dir, 'notes.txt'), path.join(day, 'Apex_2026-11-13_12-00.mp4')]) {
+        fs.writeFileSync(file, 'x')
+      }
+      expect(findVideosInDir(dir)).toEqual([path.join(day, 'Apex_2026-11-13_12-00.mp4')])
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true })
+    }
   })
 })

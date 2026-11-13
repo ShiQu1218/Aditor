@@ -1,6 +1,5 @@
 import path from 'path'
 import { ProjectItem } from '../../renderer/editor/project'
-import { estimateOutputBytes as estimateBytes } from '../../shared/exportEstimate'
 import { concatCompatible, StreamProbe } from '../../shared/exportCompat'
 import type { CopyCut } from './keyframe'
 import { sourceSpec, concatRenderSpec, videoEncodeArgs, type VideoSpec } from './encodeQuality'
@@ -32,15 +31,6 @@ export function escapeConcatPath(filePath: string): string {
   const normalized = filePath.replace(/\\/g, '/')
   const escaped = normalized.replace(/'/g, "'\\''")
   return `'${escaped}'`
-}
-
-export function estimateOutputBytes(
-  items: ProjectItem[],
-  quality: 'copy' | 'precise',
-  probes?: Map<string, StreamProbe>,
-  mode: 'concat' | 'separate' = 'concat'
-): number {
-  return estimateBytes({ items }, quality, probes, mode)
 }
 
 export interface BuildJobsOptions {

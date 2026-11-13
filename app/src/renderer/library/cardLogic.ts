@@ -7,9 +7,7 @@ export function fileName(path: string): string {
   return path.split(/[/\\]/).pop() || path
 }
 
-export function thumbnailUrl(path: string): string {
-  return `file://${encodeURI(path.replace(/\\/g, '/')).replace(/#/g, '%23').replace(/\?/g, '%3F')}`
-}
+export { fileUrl as thumbnailUrl } from '../studio/seekPlan'
 
 /** Distinguish pending items that are not queued from items actually waiting for analysis. */
 export function cardStatusText(entry: Pick<LibraryEntry, 'status'>, queueState: QueueItemState): string {

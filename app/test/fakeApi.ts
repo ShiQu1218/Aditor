@@ -32,10 +32,7 @@ export function createFakeApi(opts: FakeApiOptions = {}) {
     engine: {
       probe: vi.fn(async () => null),
       analyze: vi.fn(async () => null),
-      cancel: vi.fn(async () => true),
-      derive: vi.fn(async (a: { events: unknown[] }) => ({ events: a.events })),
-      autoclip: vi.fn(async () => ({ clips: [] })),
-      onProgress: sub('engine:progress')
+      autoclip: vi.fn(async () => ({ clips: [] }))
     },
     library: {
       getEntries: vi.fn(async () => entries),

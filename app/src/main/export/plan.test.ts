@@ -8,9 +8,9 @@ import {
   StreamProbe,
   copyCutArgs,
   concatList,
-  resolveQuality,
-  estimateOutputBytes
+  resolveQuality
 } from './plan'
+import { estimateOutputBytes } from '../../shared/exportEstimate'
 import { ProjectItem } from '../../renderer/editor/project'
 
 describe('export plan', () => {
@@ -80,7 +80,7 @@ describe('export plan', () => {
         const peak = Number(job.args[job.args.indexOf('-maxrate') + 1].replace('k', ''))
         return sum + (sampleItems[i].end - sampleItems[i].start) * (peak + 192) * 1000 / 8
       }, 0)
-      expect(estimateOutputBytes(sampleItems, 'precise', probes, mode)).toBe(Math.ceil(expected))
+      expect(estimateOutputBytes({ items: sampleItems }, 'precise', probes, mode)).toBe(Math.ceil(expected))
     }
   })
 
