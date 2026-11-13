@@ -12,7 +12,7 @@ import { registerIpcHandlers } from './ipc-handlers'
 import { createCloseGate } from './project-ipc'
 import { currentE2EConfig } from './e2e'
 import { applyWindowSecurity } from './window-security'
-import { sanitizeAnalyzeArgs, sanitizeAutoclipArgs, sanitizeDeriveArgs, sanitizeProbeArgs } from './ipc-guards'
+import { sanitizeAnalyzeArgs, sanitizeAutoclipArgs, sanitizeProbeArgs } from './ipc-guards'
 import { aditorrecCommand, appDataDir, cacheDir, chromiumUserDataDir, engineCommand, ffmpegExecutable, liveEngineCommand, obsHookDir, profileDir, sceneDir } from '../shared/paths'
 import { cacheFilePath } from './cache-io'
 import { generateThumbnail, cancelAllThumbnails } from './thumbnail'
@@ -300,15 +300,6 @@ async function initEngineAndServices(): Promise<void> {
     const { path, force } = sanitizeAnalyzeArgs(args)
     queue!.enqueue(path, force)
     return null
-  })
-
-  ipcMain.handle('engine:cancel', async (_, targetId: string) => {
-    engineClient?.cancel(targetId)
-    return { cancelled: true }
-  })
-
-  ipcMain.handle('engine:derive', async (_, args: unknown) => {
-    return engineClient?.request('derive', { ...sanitizeDeriveArgs(args), profile_dir: templateProfileDir }).promise
   })
 
   ipcMain.handle('engine:autoclip', async (_, args: unknown) => {

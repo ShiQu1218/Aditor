@@ -1,7 +1,7 @@
 import { ipcMain, dialog, BrowserWindow, app, shell, safeStorage } from 'electron'
 import fs from 'fs'
 import path from 'path'
-import { Library, normalizePath, SUPPORTED_EXTS, type LibraryEntry } from './library'
+import { isImportableVideo, Library, normalizePath, SUPPORTED_EXTS, type LibraryEntry } from './library'
 import { proxyPath } from './proxy'
 import { AnalysisQueue } from './queue'
 import { EngineClient } from './engine'
@@ -51,7 +51,7 @@ function removeMediaCaches(entry: LibraryEntry): void {
   }
 }
 
-function findVideosInDir(dir: string): string[] {
+export function findVideosInDir(dir: string): string[] {
   const results: string[] = []
   try {
     const list = fs.readdirSync(dir, { withFileTypes: true })
@@ -59,11 +59,8 @@ function findVideosInDir(dir: string): string[] {
       const full = path.join(dir, item.name)
       if (item.isDirectory()) {
         results.push(...findVideosInDir(full))
-      } else if (item.isFile()) {
-        const ext = path.extname(item.name).toLowerCase()
-        if (SUPPORTED_EXTS.has(ext)) {
-          results.push(full)
-        }
+      } else if (item.isFile() && isImportableVideo(full)) {
+        results.push(full)
       }
     }
   } catch {}
@@ -137,7 +134,7 @@ export function registerIpcHandlers(
     if (!Array.isArray(paths) || !paths.every((p): p is string => typeof p === 'string')) {
       return { removed: [], failed: [] }
     }
-    const entries = new Map(paths.map((p) => [normalizePath(p), library.get(p)]))
+    const entries = new Map(library.getEntries().map((entry) => [normalizePath(entry.path), entry]))
     const res = await queue.withStoppedAnalysis(paths, () => library.removeMany(paths, sanitizeRemoveOptions(options)))
     for (const removed of res.removed) {
       const entry = entries.get(normalizePath(removed))

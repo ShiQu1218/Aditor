@@ -138,7 +138,8 @@ async function removeStaleSegments(dir: string, sources: string[]): Promise<void
   try {
     const files = await fs.promises.readdir(dir, { withFileTypes: true })
     for (const file of files) {
-      if (!file.isFile() || !/^\.aditor-seg-[a-z0-9]+-\d+\.(mp4|mov)$/i.test(file.name)) continue
+      // Includes the `.partial` (and `.<uuid>.partial`) file an interrupted segment job leaves behind.
+      if (!file.isFile() || !/^\.aditor-seg-[a-z0-9]+-\d+(?:(?:\.[0-9a-f-]{36})?\.partial)?\.(mp4|mov)$/i.test(file.name)) continue
       const target = path.join(dir, file.name)
       if (sourcePaths.has(normalizePath(target))) continue
       try {

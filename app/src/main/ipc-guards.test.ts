@@ -6,7 +6,6 @@ import {
   requireVideoPath,
   sanitizeAnalyzeArgs,
   sanitizeProbeArgs,
-  sanitizeDeriveArgs,
   sanitizeAutoclipArgs,
   sanitizeRemoveOptions,
   planCacheSave
@@ -32,10 +31,6 @@ describe('engine argument sanitizing (I1 / Minor 13)', () => {
   })
   it('probe returns a path-only arg object', () => {
     expect(sanitizeProbeArgs('D:\\v\\a.mp4')).toEqual({ path: 'D:\\v\\a.mp4' })
-  })
-  it('derive cannot override profile_dir', () => {
-    const r = sanitizeDeriveArgs({ events: [], spectating: [], profile: 'zh-TW', profile_dir: 'C:\\evil' })
-    expect(r).toEqual({ events: [], spectating: [] })
   })
   it('autoclip passes only events/params/duration', () => {
     expect(sanitizeAutoclipArgs({ events: [], params: {}, duration: 3, extra: 1 })).toEqual({ events: [], params: {}, duration: 3 })

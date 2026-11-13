@@ -43,6 +43,13 @@ export interface RemoveOptions {
 
 export const SUPPORTED_EXTS = new Set(['.mp4', '.mkv', '.mov', '.webm'])
 
+/** Folder imports and watchers skip recorder work folders and unfinished `.part`/`.partial` outputs. */
+export function isImportableVideo(p: string): boolean {
+  return !p.split(/[\\/]/).some((part) => part.toLowerCase() === '.sessions') &&
+    !/\.(?:part|partial)\.[^.\/]+$/i.test(p) &&
+    SUPPORTED_EXTS.has(path.extname(p).toLowerCase())
+}
+
 export function normalizePath(p: string): string {
   return path.resolve(p).toLowerCase().replace(/\\/g, '/')
 }
@@ -162,7 +169,8 @@ export class Library {
   }
 
   add(paths: string[], source: 'recording' | 'external' = 'external', game?: GameId): LibraryEntry[] {
-    const existing = new Set(this.entries.map((e) => normalizePath(e.path)))
+    // One normalized lookup: get() per path is O(n) each, which froze re-imports of large libraries.
+    const existing = new Map(this.entries.map((e) => [normalizePath(e.path), e]))
     const added: LibraryEntry[] = []
     let changed = false
 
@@ -173,9 +181,9 @@ export class Library {
         continue
       }
       const norm = normalizePath(p)
-      if (existing.has(norm)) {
+      const entry = existing.get(norm)
+      if (entry) {
         // A folder watcher may have imported the recording before finalization finishes.
-        const entry = this.get(p)!
         if (source === 'recording' && entry.source !== 'recording') {
           entry.source = source
           changed = true
@@ -186,8 +194,7 @@ export class Library {
         }
         continue
       }
-      existing.add(norm)
-      const entry: LibraryEntry = {
+      const created: LibraryEntry = {
         path: p,
         source,
         addedAt: Date.now(),
@@ -196,8 +203,9 @@ export class Library {
         progress: 0,
         ...(game ? { game } : {})
       }
-      this.entries.push(entry)
-      added.push(entry)
+      existing.set(norm, created)
+      this.entries.push(created)
+      added.push(created)
     }
 
     if (added.length > 0 || changed || this.dirty) {
@@ -241,8 +249,9 @@ export class Library {
     const removed: string[] = []
     const failed: string[] = []
     const removedNorms = new Set<string>()
+    const byPath = new Map(this.entries.map((e) => [normalizePath(e.path), e]))
     for (const videoPath of paths) {
-      const entry = this.get(videoPath)
+      const entry = byPath.get(normalizePath(videoPath))
       if (!entry) continue // Already gone (e.g. removed elsewhere): nothing to remove, not a failure.
       const norm = normalizePath(entry.path)
       if (removedNorms.has(norm)) continue // Duplicate path in the same request.

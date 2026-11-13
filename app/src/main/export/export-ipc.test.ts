@@ -106,7 +106,7 @@ describe('IPC wiring (fake ipcMain/webContents)', () => {
   it('removes stale segments only directly inside the output subdirectory and preserves sources', async () => {
     const output = path.join(outDir, 'Clips')
     fs.mkdirSync(output)
-    const stale = ['.aditor-seg-abc123-1.mov', '.ADITOR-SEG-DEF456-2.MP4']
+    const stale = ['.aditor-seg-abc123-1.mov', '.ADITOR-SEG-DEF456-2.MP4', '.aditor-seg-abc123-3.partial.mov', '.aditor-seg-abc123-4.0f8fad5b-d9cb-469f-a165-70867728950e.partial.mp4']
     const kept = ['keep.mp4', '.aditor-seg-invalid.mp4', 'x.partial.mp4', 'x.uuid.PARTIAL.MP4', '.aditor-seg-abc123-2.mp4']
     for (const file of [...stale, ...kept]) fs.writeFileSync(path.join(output, file), 'video')
     const nested = path.join(output, 'nested.partial.mp4')

@@ -58,3 +58,53 @@ describe('writeFileAtomicSync', () => {
     expect(fs.statSync(file).isDirectory()).toBe(true)
   })
 })
+
+describe('writeFileAtomicSync lock retry', () => {
+  let dir: string
+
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'aditor-atomic-lock-'))
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+    fs.rmSync(dir, { recursive: true, force: true })
+  })
+
+  it('retries a rename blocked by a transient Windows lock', () => {
+    const file = path.join(dir, 'library.json')
+    fs.writeFileSync(file, 'old')
+    const rename = fs.renameSync
+    let calls = 0
+    vi.spyOn(fs, 'renameSync').mockImplementation((from, to) => {
+      if (++calls === 1) throw Object.assign(new Error('EPERM: operation not permitted, rename'), { code: 'EPERM' })
+      rename(from, to)
+    })
+    writeFileAtomicSync(file, 'new')
+    expect(calls).toBe(2)
+    expect(fs.readFileSync(file, 'utf-8')).toBe('new')
+    expect(fs.existsSync(`${file}.tmp`)).toBe(false)
+  })
+
+  it.each(['EBUSY', 'EACCES'])('gives up after three retries on a %s lock that does not clear', (code) => {
+    const file = path.join(dir, 'library.json')
+    fs.writeFileSync(file, 'old')
+    const rename = vi.spyOn(fs, 'renameSync').mockImplementation(() => {
+      throw Object.assign(new Error(`${code}: resource busy or locked, rename`), { code })
+    })
+    expect(() => writeFileAtomicSync(file, 'new')).toThrow(code)
+    expect(rename).toHaveBeenCalledTimes(4)
+    expect(fs.readFileSync(file, 'utf-8')).toBe('old')
+    expect(fs.existsSync(`${file}.tmp`)).toBe(false)
+  })
+
+  it('does not retry errors other than file locks', () => {
+    const file = path.join(dir, 'library.json')
+    const rename = vi.spyOn(fs, 'renameSync').mockImplementation(() => {
+      throw Object.assign(new Error('ENOSPC: no space left on device'), { code: 'ENOSPC' })
+    })
+    expect(() => writeFileAtomicSync(file, 'new')).toThrow('ENOSPC')
+    expect(rename).toHaveBeenCalledOnce()
+    expect(fs.existsSync(`${file}.tmp`)).toBe(false)
+  })
+})

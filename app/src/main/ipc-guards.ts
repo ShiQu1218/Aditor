@@ -21,12 +21,6 @@ export function sanitizeAnalyzeArgs(raw: unknown): { path: string; force?: boole
   return out
 }
 
-export function sanitizeDeriveArgs(raw: unknown): Record<string, unknown> {
-  const r = (raw ?? {}) as Record<string, unknown>
-  const out: Record<string, unknown> = { events: r.events, spectating: r.spectating }
-  return out
-}
-
 export function sanitizeAutoclipArgs(raw: unknown): Record<string, unknown> {
   const r = (raw ?? {}) as Record<string, unknown>
   return { events: r.events, params: r.params, duration: r.duration }

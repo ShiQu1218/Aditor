@@ -2,7 +2,7 @@ import { EventEmitter } from 'events'
 import fs from 'fs'
 import path from 'path'
 import type { FSWatcher } from 'chokidar'
-import { Library, SUPPORTED_EXTS, watchFolder } from './library'
+import { Library, isImportableVideo, watchFolder } from './library'
 import type { AnalysisQueue } from './queue'
 import type { SettingsStore } from './settings'
 import { tr } from '../shared/locale'
@@ -364,10 +364,7 @@ export class WatchManager extends EventEmitter {
 
   /** New file (after it stabilizes): import only supported extensions and enqueue when autoAnalyze is enabled. */
   private handleNewFiles(paths: string[]): void {
-    const files = paths.filter((p) =>
-      !p.split(/[\\/]/).some((part) => part.toLowerCase() === '.sessions') &&
-      !/\.(?:part|partial)\.[^.\/]+$/i.test(p) &&
-      SUPPORTED_EXTS.has(path.extname(p).toLowerCase()))
+    const files = paths.filter(isImportableVideo)
     if (files.length === 0) {
       return
     }
