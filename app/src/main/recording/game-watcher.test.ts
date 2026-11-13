@@ -51,6 +51,26 @@ describe('Filtered game process queries', () => {
       .mockImplementationOnce((_file, _args, _options, callback) => callback(error, ''))
     await expect(findGameProcess()).rejects.toBe(error)
   })
+
+  it('retries a query once when tasklist fails to initialize (0xC0000142), and rejects if it fails again', async () => {
+    vi.useFakeTimers()
+    const dllInit = Object.assign(new Error('Command failed: tasklist'), { code: 0xC0000142 })
+    tasklist
+      .mockImplementationOnce((_file, _args, _options, callback) => callback(dllInit, ''))
+      .mockImplementationOnce((_file, _args, _options, callback) => callback(null, '"r5apex.exe","77"'))
+    const found = findGameProcess()
+    await vi.runAllTimersAsync()
+    await expect(found).resolves.toEqual({ game: 'apex', pid: 77 })
+    expect(tasklist).toHaveBeenCalledTimes(2)
+
+    tasklist.mockReset()
+    tasklist.mockImplementation((_file, _args, _options, callback) => callback(dllInit, ''))
+    const failed = findGameProcess()
+    const assertion = expect(failed).rejects.toBe(dllInit)
+    await vi.runAllTimersAsync()
+    await assertion
+    expect(tasklist).toHaveBeenCalledTimes(2)
+  })
 })
 
 describe('Cached game process detection', () => {
