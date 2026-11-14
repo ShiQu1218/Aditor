@@ -18,16 +18,21 @@ export function parseGameProcess(output: string): GameProcess | null {
   return null
 }
 
-// STATUS_DLL_INIT_FAILED: tasklist could not start; seen on idle or low-memory machines even with one query at a time.
-const DLL_INIT_FAILED = 0xC0000142
-const DLL_INIT_RETRY_MS = 500
+// Exit codes of a tasklist that never ran its query; one retry usually succeeds.
+const TRANSIENT_EXIT_CODES = new Set<unknown>([
+  // STATUS_DLL_INIT_FAILED: tasklist could not start; seen on idle or low-memory machines even with one query at a time.
+  0xC0000142,
+  // DBG_TERMINATE_PROCESS: tasklist was terminated from outside, likely by session end or security software; seen in v0.4.6.
+  0x40010004
+])
+const TRANSIENT_RETRY_MS = 500
 
 async function queryGame(game: GameId): Promise<GameProcess | null> {
   try {
     return await runTasklist(game)
   } catch (error) {
-    if ((error as { code?: unknown }).code !== DLL_INIT_FAILED) throw error
-    await new Promise((resolve) => setTimeout(resolve, DLL_INIT_RETRY_MS))
+    if (!TRANSIENT_EXIT_CODES.has((error as { code?: unknown }).code)) throw error
+    await new Promise((resolve) => setTimeout(resolve, TRANSIENT_RETRY_MS))
     return runTasklist(game)
   }
 }

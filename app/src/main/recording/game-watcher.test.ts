@@ -52,9 +52,9 @@ describe('Filtered game process queries', () => {
     await expect(findGameProcess()).rejects.toBe(error)
   })
 
-  it('retries a query once when tasklist fails to initialize (0xC0000142), and rejects if it fails again', async () => {
+  it.each([0xC0000142, 0x40010004])('retries a query once when tasklist exits with transient code %i, and rejects if it fails again', async (code) => {
     vi.useFakeTimers()
-    const dllInit = Object.assign(new Error('Command failed: tasklist'), { code: 0xC0000142 })
+    const dllInit = Object.assign(new Error('Command failed: tasklist'), { code })
     tasklist
       .mockImplementationOnce((_file, _args, _options, callback) => callback(dllInit, ''))
       .mockImplementationOnce((_file, _args, _options, callback) => callback(null, '"r5apex.exe","77"'))
