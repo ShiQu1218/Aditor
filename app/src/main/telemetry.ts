@@ -65,8 +65,13 @@ const KNOWN_FAULTS: ReadonlyArray<readonly [RegExp, string, string]> = [
   [/queue remained full|muxer queue is full/i, 'muxer_queue_full', 'Muxer queue remained full']
 ]
 
-/** Process exits caused by someone else ending it (Task Manager, debugger, Ctrl+C/console close), not by a fault in our code. */
-const EXTERNAL_TERMINATION_EXIT_CODES = new Set([0x40010004, 0xC000013A])
+/**
+ * Process exits caused by someone else ending it (Task Manager, debugger, Ctrl+C/console close), not by a fault in our code.
+ * 0xC000026B (STATUS_DLL_INIT_FAILED_LOGOFF): a child started while Windows was signing out or shutting down.
+ */
+const EXTERNAL_TERMINATION_EXIT_CODES = new Set([0x40010004, 0xC000013A, 0xC000026B])
+/** Diagnostics that carry a child process exit code; decode_failed carries ffmpeg's. */
+const PROCESS_EXIT_DIAGNOSTICS = new Set(['engine_crashed', 'recorder_crashed', 'decode_failed'])
 
 export interface StableDiagnostic {
   /** Grouping key: stable across counters, addresses, paths, stderr text and UI language. */
@@ -101,7 +106,7 @@ function diagnosticExitCode(diagnostic: ChildDiagnostic): number | undefined {
 }
 
 export function isExternalTermination(diagnostic: ChildDiagnostic): boolean {
-  if (diagnostic.code !== 'engine_crashed' && diagnostic.code !== 'recorder_crashed') return false
+  if (!PROCESS_EXIT_DIAGNOSTICS.has(diagnostic.code)) return false
   const exitCode = diagnosticExitCode(diagnostic)
   return exitCode !== undefined && EXTERNAL_TERMINATION_EXIT_CODES.has(exitCode)
 }

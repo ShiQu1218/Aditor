@@ -418,7 +418,11 @@ describe('child diagnostics', () => {
     expect(reportChildDiagnostic(diagnostic({ code: 'engine_crashed', exception: undefined, message: 'Analysis engine exited unexpectedly (exit code 3221225786: x)' }))).toBeUndefined()
     expect(reportChildDiagnostic(diagnostic({ component: 'rust-recorder', code: 'recorder_crashed', exception: undefined,
       message: 'Recorder process exited unexpectedly', tags: { exit_code: '0x40010004' } }))).toBeUndefined()
+    expect(reportChildDiagnostic(diagnostic({ component: 'rust-engine', code: 'decode_failed', exception: undefined,
+      message: 'ffmpeg decoding failed (exit code -1073741205, 0xC000026B)' }))).toBeUndefined()
     expect(fake.captureEvent).not.toHaveBeenCalled()
+    expect(reportChildDiagnostic(diagnostic({ component: 'rust-engine', code: 'decode_failed', exception: undefined,
+      message: 'ffmpeg decoding failed (exit code -1073741502, 0xC0000142)' }))).toBe('test-event')
     expect(reportChildDiagnostic(diagnostic({ code: 'engine_crashed', exception: undefined, message: 'Analysis engine exited unexpectedly (exit code 3221225477)' }))).toBe('test-event')
     expect(reportChildDiagnostic(diagnostic({ component: 'rust-recorder', code: 'recorder_crashed', exception: undefined,
       message: 'Recorder process exited unexpectedly', tags: { exit_code: '0xC0000005' } }))).toBe('test-event')
