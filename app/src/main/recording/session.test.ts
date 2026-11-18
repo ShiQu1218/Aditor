@@ -68,6 +68,24 @@ describe('recording service state machine', () => {
     expect(fs.existsSync(path.join(start.session_dir, 'live-complete.json'))).toBe(false)
     expect(value.deps.addToLibrary).not.toHaveBeenCalled()
   })
+  it('retries transient directory locks when discarding an OBS session whose capture never started', async () => {
+    const value = rig()
+    value.settings.autoRecord = false
+    value.settings.backend = 'obs'
+    vi.spyOn(ObsRecording.prototype, 'start').mockResolvedValue(undefined)
+    vi.spyOn(ObsRecording.prototype, 'stop').mockResolvedValue(true)
+    vi.spyOn(ObsRecording.prototype, 'close').mockResolvedValue(undefined)
+    const rm = vi.spyOn(fs.promises, 'rm')
+    value.service.start()
+    expect(await value.service.startManual()).toBe(true)
+    const [start] = commands(value, 'start')
+    // Simulate capture never having started so finish takes the discard path.
+    ;(value.service as any).active.captured = false
+    await value.service.stopManual()
+    expect(rm).toHaveBeenCalledWith(start.session_dir, expect.objectContaining({ recursive: true, force: true, maxRetries: 5, retryDelay: 200 }))
+    expect(value.service.status().error?.code).not.toBe('finalize_failed')
+    expect(fs.existsSync(start.session_dir)).toBe(false)
+  })
   it('reports polling and manual game query failures without forwarding command output or changing the rejection', async () => {
     const value = rig()
     value.settings.autoRecord = false
