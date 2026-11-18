@@ -742,9 +742,10 @@ describe('recorder small-frame regions', () => {
     await expect(readFrames(dir)).rejects.toThrow()
   })
 
-  it('reports a missing template set for a detected game that has none yet as profile_invalid', async () => {
+  it('reports a missing template set as profile_invalid so recording stops retrying', async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'aditor-frames-'))
     await expect(readFrames(path.join(dir, 'valorant', 'icons'), 'valorant')).rejects.toMatchObject({ code: 'profile_invalid' })
-    await expect(readFrames(path.join(dir, 'icons'), 'apex')).rejects.toMatchObject({ code: 'ENOENT' })
+    // Apex templates ship with the app, so their absence is a damaged install.
+    await expect(readFrames(path.join(dir, 'icons'), 'apex')).rejects.toMatchObject({ code: 'profile_invalid', message: expect.stringContaining('Aditor') })
   })
 })

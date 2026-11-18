@@ -111,6 +111,8 @@ export async function readFrames(profileDir: string, game: GameId = DEFAULT_GAME
     if ((error as NodeJS.ErrnoException).code === 'ENOENT' && game !== DEFAULT_GAME) {
       throw new RecorderError('profile_invalid', tr('尚未支援 {game} 的錄影範本', { game: GAMES[game].displayName }))
     }
+    // Apex templates ship with the app, so a missing file means a damaged install; retrying cannot bring it back.
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') throw new RecorderError('profile_invalid', tr('錄影範本檔案遺失，請重新安裝 Aditor'))
     throw error
   }
   const profile = JSON.parse(text)

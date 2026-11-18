@@ -216,6 +216,7 @@ const messages: MessageTable = {
   '{game} 尚不支援逐局分割，本次整段錄成一個檔': '{game} cannot be split per match yet, so this recording is saved as one file.',
   '無法偵測遊戲程序：{error}': 'Could not detect the game process: {error}',
   '尚未支援 {game} 的錄影範本': 'No recording templates for {game} yet',
+  '錄影範本檔案遺失，請重新安裝 Aditor': 'Recording template files are missing. Reinstall Aditor.',
   '錄影補收尾失敗：{error}': 'Failed to finalize the recording: {error}',
   '錄影工作不存在或已收尾': 'The recording job does not exist or has already been finalized.',
   '第 {index} 局開始': 'Match {index} started',
