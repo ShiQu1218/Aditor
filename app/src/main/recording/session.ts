@@ -849,7 +849,8 @@ export class RecordingSessionService implements RecordingService {
           this.obsStoppedAt = Date.now()
         }
         await session.obs.close()
-        await fs.promises.rm(session.dir, { recursive: true, force: true })
+        // Retry transient ENOTEMPTY/EBUSY/EPERM from antivirus or indexers still holding files after OBS stops.
+        await fs.promises.rm(session.dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
         this.active = null
         this.idle()
         return true
