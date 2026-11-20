@@ -12,6 +12,8 @@ use super::{
 
 // Fills at most five seconds of silence per call; rejects invalid time bases to bound encoded packet accumulation.
 const MAX_SILENCE_SAMPLES: i64 = 5 * 48_000;
+// Timestamp jumps after sleep or suspend are valid; they are filled in 0.5 s batches. Larger values mean a corrupt clock.
+const MAX_PREPARE_GAP_SAMPLES: i64 = 24 * 3600 * 48_000;
 
 pub(super) struct Audio {
     pub encoder: Encoder,
@@ -58,8 +60,8 @@ impl Audio {
     pub fn prepare(&mut self, pts: i64) -> Result<(Vec<Packet>, bool)> {
         let target = ((i128::from(pts) * 48_000 + 5_000_000) / 10_000_000).max(0) as i64;
         ensure!(
-            target.saturating_sub(self.written) <= 60 * 48_000,
-            "Audio timestamp gap exceeds one minute; refusing an invalid recording clock"
+            target.saturating_sub(self.written) <= MAX_PREPARE_GAP_SAMPLES,
+            "Audio timestamp gap exceeds 24 hours; refusing an invalid recording clock"
         );
         let packets = self.advance(target.min(self.written + 24_000))?;
         Ok((packets, self.written >= target))
@@ -197,6 +199,11 @@ mod tests {
         audio.push(&[0.5; 960], 70_000_000).unwrap();
         assert_eq!(audio.written, 7 * 48_000 + 480);
         assert!(audio.prepare(i64::MAX).is_err());
+        // A 24 hour gap is accepted but still only fills one half-second batch per call.
+        let before = audio.written;
+        let (_, ready) = audio.prepare(24 * 3600 * 10_000_000).unwrap();
+        assert!(!ready && audio.written - before <= 24_000);
+        assert!(audio.prepare(25 * 3600 * 10_000_000).is_err());
         audio.finish(71_000_000).unwrap();
     }
 
