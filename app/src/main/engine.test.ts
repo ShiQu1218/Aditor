@@ -229,6 +229,53 @@ describe('EngineClient', () => {
     expect(crashCount).toBe(3)
   })
 
+  it.skipIf(process.platform !== 'win32')('retries once when the first launch fails DLL initialization before ready', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'aditor-engine-dll-retry-'))
+    const script = path.join(dir, 'engine.cjs')
+    const counter = path.join(dir, 'count')
+    const readyAndEcho = `console.log(JSON.stringify({type:'ready',engine_version:'0.1.0'}));` +
+      `require('readline').createInterface({input:process.stdin}).on('line',line=>{` +
+      `const r=JSON.parse(line);console.log(JSON.stringify({id:r.id,type:'result',data:{path:r.args.path}}));});`
+    fs.writeFileSync(script, `const fs=require('fs');const counter=process.argv[2];` +
+      `if(!fs.existsSync(counter)){fs.writeFileSync(counter,'x');process.exit(0xC0000142)}${readyAndEcho}`)
+    try {
+      const onDiagnostic = vi.fn()
+      client = new EngineClient({ command: process.execPath, args: [script, counter], onDiagnostic })
+      let crashed = false
+      client.on('crash', () => { crashed = true })
+
+      // No start(): the request waits on the ready promise across the retry and is sent once the second engine is ready.
+      const result = await client.request<{ path: string }>('probe', { path: 'a.mp4' }).promise
+      expect(result.path).toBe('a.mp4')
+      expect(crashed).toBe(false)
+      expect(onDiagnostic.mock.calls.map(([diagnostic]) => diagnostic.code)).not.toContain('engine_crashed')
+    } finally {
+      await client?.stop()
+      client = null
+      fs.rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it.skipIf(process.platform !== 'win32')('rejects with engine_crashed when DLL initialization fails again on the retry', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'aditor-engine-dll-fail-'))
+    const script = path.join(dir, 'engine.cjs')
+    fs.writeFileSync(script, `process.exit(0xC0000142)`)
+    try {
+      const onDiagnostic = vi.fn()
+      client = new EngineClient({ command: process.execPath, args: [script], onDiagnostic })
+      let crashed = false
+      client.on('crash', () => { crashed = true })
+
+      await expect(client.request('probe', {}).promise).rejects.toMatchObject({ code: 'engine_crashed' })
+      expect(crashed).toBe(true)
+      expect(onDiagnostic.mock.calls.map(([diagnostic]) => diagnostic.code)).toContain('engine_crashed')
+    } finally {
+      await client?.stop()
+      client = null
+      fs.rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
   it('handles chunked and multi-line stdout', async () => {
     client = new EngineClient({
       command: process.execPath,

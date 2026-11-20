@@ -7,6 +7,10 @@ import { emitChildDiagnostic, type ChildDiagnosticHandler } from '../shared/chil
 
 const STDERR_TAIL_CHARS = 1000
 
+/** Windows STATUS_DLL_INIT_FAILED: the loader failed before the engine could run. Usually transient. */
+const TRANSIENT_STARTUP_EXIT_CODE = 0xC0000142
+const STARTUP_RETRY_MS = 500
+
 /** Replace the user's home directory (and any X:\Users\name path) with ~ so error text is safe to show and copy. */
 export function redactHome(text: string): string {
   const home = os.homedir()
@@ -53,6 +57,8 @@ export class EngineClient extends EventEmitter {
   private readyReject: ((err: Error) => void) | null = null
   private readyPromise: Promise<{ engineVersion: string }> | null = null
   private isStopping = false
+  private startupRetryAttempted = false
+  private startupRetryTimer: ReturnType<typeof setTimeout> | null = null
   private crashTimes: number[] = []
   private maxCrashesInWindow = 3
   private crashWindowMs = 60000
@@ -72,73 +78,78 @@ export class EngineClient extends EventEmitter {
       return this.readyPromise
     }
 
+    this.startupRetryAttempted = false
     this.readyPromise = new Promise<{ engineVersion: string }>((resolve, reject) => {
       this.readyResolve = resolve
       this.readyReject = reject
-
-      const failed = (err: unknown): void => {
-        const failure = spawnFailure(err)
-        emitChildDiagnostic(this.opts.onDiagnostic, { component: 'rust-engine', code: 'engine_spawn', message: failure.report, tags: failure.tags })
-        this.readyReject?.(new EngineError('engine_spawn', failure.message))
-        this.readyResolve = null
-        this.readyReject = null
-      }
-      try {
-        checkExecutable(this.opts.command)
-        const p = spawn(this.opts.command, this.opts.args, {
-          env: { ...process.env, ...this.opts.env },
-          stdio: ['pipe', 'pipe', 'pipe']
-        })
-        this.proc = p
-        this.stdoutBuf = ''
-        this.stdoutDecoder = new StringDecoder('utf8')
-        this.stderrTail = ''
-
-        // Analysis can start while a game is running (per-match analysis, watched folders). Below-normal lets the game
-        // keep its CPU time; FFmpeg processes spawned by the engine inherit this priority class on Windows.
-        let spawned = false
-        p.once('spawn', () => {
-          spawned = true
-          if (p.pid === undefined) return
-          try {
-            if (this.opts.setPriority) this.opts.setPriority(p.pid)
-            else os.setPriority(p.pid, os.constants.priority.PRIORITY_BELOW_NORMAL)
-          } catch (err) {
-            emitChildDiagnostic(this.opts.onDiagnostic, { component: 'rust-engine', code: 'engine_priority', message: String(err) })
-          }
-        })
-
-        p.stdout?.on('data', (chunk: Buffer) => {
-          this._onData(chunk)
-        })
-
-        p.stderr?.on('data', (chunk: Buffer) => {
-          const msg = chunk.toString('utf-8')
-          // Keep the tail so a crash can report why the engine died (including native engine diagnostics).
-          this.stderrTail = (this.stderrTail + msg).slice(-STDERR_TAIL_CHARS)
-          if (process.env.DEBUG_ENGINE) {
-            console.error('[Engine stderr]', msg)
-          }
-        })
-
-        // A write callback does not consume the stream's error event; close rejects pending requests and restarts.
-        p.stdin?.on('error', () => {
-          if (this.proc === p) p.kill()
-        })
-
-        p.on('error', failed)
-
-        p.on('close', (code) => {
-          this._onClose(code, spawned)
-        })
-      } catch (err) {
-        failed(err)
-      }
+      this._startProcess()
     })
 
     // A synchronous spawn/preflight failure has no close event to clear the cached startup.
     void this.readyPromise.catch(() => { if (!this.proc) this.readyPromise = null })
     return this.readyPromise
+  }
+
+  /** Spawns the child for the pending ready promise, including the one retry after a transient loader failure. */
+  private _startProcess(): void {
+    const failed = (err: unknown): void => {
+      const failure = spawnFailure(err)
+      emitChildDiagnostic(this.opts.onDiagnostic, { component: 'rust-engine', code: 'engine_spawn', message: failure.report, tags: failure.tags })
+      this.readyReject?.(new EngineError('engine_spawn', failure.message))
+      this.readyResolve = null
+      this.readyReject = null
+    }
+    try {
+      checkExecutable(this.opts.command)
+      const p = spawn(this.opts.command, this.opts.args, {
+        env: { ...process.env, ...this.opts.env },
+        stdio: ['pipe', 'pipe', 'pipe']
+      })
+      this.proc = p
+      this.stdoutBuf = ''
+      this.stdoutDecoder = new StringDecoder('utf8')
+      this.stderrTail = ''
+
+      // Analysis can start while a game is running (per-match analysis, watched folders). Below-normal lets the game
+      // keep its CPU time; FFmpeg processes spawned by the engine inherit this priority class on Windows.
+      let spawned = false
+      p.once('spawn', () => {
+        spawned = true
+        if (p.pid === undefined) return
+        try {
+          if (this.opts.setPriority) this.opts.setPriority(p.pid)
+          else os.setPriority(p.pid, os.constants.priority.PRIORITY_BELOW_NORMAL)
+        } catch (err) {
+          emitChildDiagnostic(this.opts.onDiagnostic, { component: 'rust-engine', code: 'engine_priority', message: String(err) })
+        }
+      })
+
+      p.stdout?.on('data', (chunk: Buffer) => {
+        this._onData(chunk)
+      })
+
+      p.stderr?.on('data', (chunk: Buffer) => {
+        const msg = chunk.toString('utf-8')
+        // Keep the tail so a crash can report why the engine died (including native engine diagnostics).
+        this.stderrTail = (this.stderrTail + msg).slice(-STDERR_TAIL_CHARS)
+        if (process.env.DEBUG_ENGINE) {
+          console.error('[Engine stderr]', msg)
+        }
+      })
+
+      // A write callback does not consume the stream's error event; close rejects pending requests and restarts.
+      p.stdin?.on('error', () => {
+        if (this.proc === p) p.kill()
+      })
+
+      p.on('error', failed)
+
+      p.on('close', (code) => {
+        this._onClose(code, spawned)
+      })
+    } catch (err) {
+      failed(err)
+    }
   }
 
   private _onData(chunk: Buffer): void {
@@ -162,6 +173,7 @@ export class EngineClient extends EventEmitter {
 
     if (msg.type === 'ready') {
       this.engineVersion = String(msg.engine_version || '')
+      this.startupRetryAttempted = false
       if (this.readyResolve) {
         this.readyResolve({ engineVersion: this.engineVersion })
         this.readyResolve = null
@@ -211,6 +223,23 @@ export class EngineClient extends EventEmitter {
   }
 
   private _onClose(_code: number | null, spawned: boolean): void {
+    // STATUS_DLL_INIT_FAILED before ready is a transient Windows loader failure, not an engine crash. Retry the
+    // startup once so requests queued behind the ready promise are still sent instead of failing the analysis.
+    if (
+      _code === TRANSIENT_STARTUP_EXIT_CODE &&
+      spawned &&
+      this.readyReject &&
+      !this.isStopping &&
+      !this.startupRetryAttempted
+    ) {
+      this.startupRetryAttempted = true
+      this.proc = null
+      this.stdoutBuf = ''
+      this.stdoutDecoder = new StringDecoder('utf8')
+      this._retryStartup()
+      return
+    }
+
     const reason = this._crashReason(_code)
     this.proc = null
     this.stdoutBuf = ''
@@ -250,6 +279,22 @@ export class EngineClient extends EventEmitter {
       // Auto restart
       this._spawn().catch(() => {})
     }
+  }
+
+  /** Respawns after a transient loader failure, resolving or rejecting the still-pending ready promise. */
+  private _retryStartup(): void {
+    this.startupRetryTimer = setTimeout(() => {
+      this.startupRetryTimer = null
+      if (this.isStopping) {
+        const reject = this.readyReject
+        this.readyResolve = null
+        this.readyReject = null
+        this.readyPromise = null
+        reject?.(new EngineError('engine_stopped', 'Engine was stopped before it was ready'))
+        return
+      }
+      this._startProcess()
+    }, STARTUP_RETRY_MS)
   }
 
   request<T>(
@@ -320,6 +365,16 @@ export class EngineClient extends EventEmitter {
 
   async stop(): Promise<void> {
     this.isStopping = true
+    if (this.startupRetryTimer) {
+      // Do not let a scheduled retry spawn an engine after the app quit; fail the ready promise and its waiters.
+      clearTimeout(this.startupRetryTimer)
+      this.startupRetryTimer = null
+      const reject = this.readyReject
+      this.readyResolve = null
+      this.readyReject = null
+      this.readyPromise = null
+      reject?.(new EngineError('engine_stopped', 'Engine was stopped before it was ready'))
+    }
     if (this.proc) {
       const p = this.proc
       this.proc = null
