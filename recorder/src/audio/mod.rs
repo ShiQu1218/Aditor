@@ -234,6 +234,8 @@ impl AudioCapture {
                     // Retry only the selected ID: another microphone may not have consent.
                     let result = opened.and_then(|stream| {
                         worker_unavailable.store(false, Ordering::Release);
+                        // Stall detection is suppressed while closed, so a later loss must warn again.
+                        warned = false;
                         if let Some(ready) = ready.take() {
                             let _ = ready.send(());
                         }
