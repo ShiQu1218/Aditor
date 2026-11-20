@@ -199,6 +199,9 @@ impl AudioCapture {
         let (ready_tx, ready_rx) = mpsc::sync_channel(1);
         let stop = Arc::clone(&self.stop);
         let warning_tx = self.warning_tx.clone();
+        // The worker already reports open failures, so stall detection waits until the device is open.
+        let unavailable = Arc::new(AtomicBool::new(true));
+        let worker_unavailable = Arc::clone(&unavailable);
         let worker = thread::Builder::new()
             .name(
                 if mic {
@@ -230,12 +233,16 @@ impl AudioCapture {
                     };
                     // Retry only the selected ID: another microphone may not have consent.
                     let result = opened.and_then(|stream| {
+                        worker_unavailable.store(false, Ordering::Release);
+                        // Stall detection is suppressed while closed, so a later loss must warn again.
+                        warned = false;
                         if let Some(ready) = ready.take() {
                             let _ = ready.send(());
                         }
                         stream.run(&packets_tx, &stop, &dropped, generation)
                     });
                     if let Err(error) = &result {
+                        worker_unavailable.store(true, Ordering::Release);
                         if !warned {
                             let _ = warning_tx.try_send(source_lost_warning(mic, error));
                             warned = true;
@@ -265,7 +272,9 @@ impl AudioCapture {
             Ok(()) => {}
         }
         let format = Format::new(AUDIO_RATE, 2, 8, Sample::Float(32), 3)?;
-        Ok(Source::new(format, packets_rx))
+        let mut source = Source::new(format, packets_rx);
+        source.unavailable = unavailable;
+        Ok(source)
     }
 
     fn shutdown(&mut self) {
@@ -673,6 +682,8 @@ struct Source {
     pts_offset: Option<i64>,
     last_packet: Instant,
     stall_warned: bool,
+    /// Set while the capture worker has no open stream; that failure is reported separately.
+    unavailable: Arc<AtomicBool>,
 }
 
 impl Source {
@@ -688,6 +699,7 @@ impl Source {
             pts_offset: None,
             last_packet: Instant::now(),
             stall_warned: false,
+            unavailable: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -706,6 +718,11 @@ impl Source {
     }
 
     fn stalled(&mut self, now: Instant) -> bool {
+        if self.unavailable.load(Ordering::Acquire) {
+            // Measure a stall from when the device opens, not from the failed attempt.
+            self.last_packet = now;
+            return false;
+        }
         if self.stall_warned || now.duration_since(self.last_packet) < Duration::from_secs(5) {
             return false;
         }
@@ -1213,6 +1230,20 @@ mod tests {
         assert_eq!(timeline.take(480), vec![[0.0; 2]; 480]);
         assert!(!source.stalled(source.last_packet + Duration::from_millis(4999)));
         assert!(source.stalled(source.last_packet + Duration::from_secs(5)));
+    }
+
+    #[test]
+    fn unopened_microphone_does_not_report_a_stall_until_it_opens() {
+        let (_sender, packets) = mpsc::sync_channel(PACKET_CAPACITY);
+        let format = Format::new(48_000, 2, 8, Sample::Float(32), 3).unwrap();
+        let mut source = Source::new(format, packets);
+        source.unavailable.store(true, Ordering::Release);
+        let start = source.last_packet;
+        assert!(!source.stalled(start + Duration::from_secs(10)));
+        source.unavailable.store(false, Ordering::Release);
+        let opened = start + Duration::from_secs(10);
+        assert!(!source.stalled(opened + Duration::from_millis(4999)));
+        assert!(source.stalled(opened + Duration::from_secs(5)));
     }
 
     #[test]
