@@ -8,7 +8,7 @@ mod process;
 
 use std::marker::PhantomData;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::mpsc::{self, Receiver, SyncSender, TryRecvError, TrySendError};
+use std::sync::mpsc::{self, Receiver, RecvTimeoutError, SyncSender, TryRecvError, TrySendError};
 use std::sync::Arc;
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
@@ -253,9 +253,17 @@ impl AudioCapture {
             })
             .context("audio_failed: Failed to create audio capture thread")?;
         self.workers.push(worker);
-        ready_rx
-            .recv_timeout(Duration::from_secs(5))
-            .context("audio_failed: Failed to wait for audio device startup")?;
+        match ready_rx.recv_timeout(Duration::from_secs(5)) {
+            // A slow device open must not fail the recording; the worker keeps opening while silence is recorded.
+            Err(RecvTimeoutError::Timeout) => {
+                let error = anyhow::anyhow!("audio device startup still pending after 5 s");
+                let _ = self.warning_tx.try_send(source_lost_warning(mic, &error));
+            }
+            Err(RecvTimeoutError::Disconnected) => {
+                anyhow::bail!("audio_failed: Failed to wait for audio device startup")
+            }
+            Ok(()) => {}
+        }
         let format = Format::new(AUDIO_RATE, 2, 8, Sample::Float(32), 3)?;
         Ok(Source::new(format, packets_rx))
     }
