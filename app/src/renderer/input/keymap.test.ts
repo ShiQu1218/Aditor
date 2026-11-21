@@ -442,4 +442,10 @@ test('targetKindOf: contenteditable and ARIA roles', () => {
     expect(zoneOf(el('DIV', { 'data-zone': 'bogus' }))).toBeNull()
     expect(zoneOf(null)).toBeNull()
   })
+  test('zoneOf returns null for window or document event targets', () => {
+    // Shape of window/document: no tagName and no getAttribute.
+    const windowLike = { parentElement: null } as unknown as ElementLike
+    expect(zoneOf(windowLike)).toBeNull()
+    expect(targetKindOf(windowLike)).toBe('none')
+  })
 })
