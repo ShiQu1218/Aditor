@@ -65,6 +65,8 @@ export function targetKindOf(el: ElementLike | null | undefined): TargetKind {
 /** Find the nearest data-zone by walking up from an element. */
 export function zoneOf(el: ElementLike | null | undefined): Zone {
   for (let cur = el ?? null; cur; cur = cur.parentElement ?? null) {
+    // Event targets can be window or document (keydown with nothing focused), which have no getAttribute.
+    if (typeof cur.getAttribute !== 'function') continue
     const z = cur.getAttribute('data-zone')
     if (z) return ZONES.has(z) ? (z as Zone) : null
   }
