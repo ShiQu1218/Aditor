@@ -241,6 +241,7 @@ pub struct VideoFrames {
     stderr: Arc<Mutex<VecDeque<u8>>>,
     worker: Option<thread::JoinHandle<()>>,
     hw: bool,
+    attempt_start: usize,
 }
 impl VideoFrames {
     pub fn new(path: &str, fps: f64, hwaccel: bool, codec: &str) -> Self {
@@ -260,6 +261,7 @@ impl VideoFrames {
             stderr: Arc::default(),
             worker: None,
             hw: false,
+            attempt_start: 0,
         }
     }
     fn reap(&mut self) {
@@ -315,6 +317,7 @@ impl VideoFrames {
             }));
             self.child = Some(c);
             self.hw = hw;
+            self.attempt_start = self.k;
             return Ok(true);
         }
         Ok(false)
@@ -357,7 +360,13 @@ impl Iterator for VideoFrames {
             let status = self.child.as_mut().unwrap().wait();
             let hw = self.hw;
             self.reap();
-            if status.as_ref().is_ok_and(|s| s.success()) && got == 0 {
+            // A software decode that wrote frames and then exceeded ffmpeg's error rate has ended.
+            let error_rate_end = !hw
+                && self.k > self.attempt_start
+                && status
+                    .as_ref()
+                    .is_ok_and(|s| s.code() == Some(decode::ERROR_RATE_EXCEEDED_EXIT));
+            if (error_rate_end || status.as_ref().is_ok_and(|s| s.success())) && got == 0 {
                 self.plans.clear();
                 return None;
             }

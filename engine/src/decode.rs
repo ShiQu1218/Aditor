@@ -27,6 +27,9 @@ impl fmt::Display for DecodeError {
     }
 }
 impl std::error::Error for DecodeError {}
+/// ffmpeg's exit code once more than 2/3 of the frames failed to decode (FFMPEG_ERROR_RATE_EXCEEDED).
+/// It exits only after writing every decodable frame, so frames already read are complete.
+pub const ERROR_RATE_EXCEEDED_EXIT: i32 = 69;
 pub fn is_gpu_path(codec: Option<&str>, hwaccel: bool) -> bool {
     hwaccel && codec.is_some_and(|c| ["av1", "h264", "hevc", "vp9"].contains(&c))
 }
@@ -360,6 +363,15 @@ impl FrameStream {
             self.reap(false);
             match status {
                 Ok(s) if s.success() => {
+                    self.close();
+                    return None;
+                }
+                // Hardware attempts still retry in software, which may decode what the GPU could not.
+                Ok(s)
+                    if !self.used_hwaccel
+                        && self.k > self.attempt_start
+                        && s.code() == Some(ERROR_RATE_EXCEEDED_EXIT) =>
+                {
                     self.close();
                     return None;
                 }

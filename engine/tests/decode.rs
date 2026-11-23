@@ -135,6 +135,42 @@ fn marks_align_for_offset_vfr_and_resume() {
         assert!((lit[0] - 3.).abs() <= 0.25);
     }
 }
+/// Flips every `step`-th byte past the container header; the trailing moov box stays intact.
+fn corrupt_video(dir: &Path, name: &str, step: usize) -> std::path::PathBuf {
+    let v = make_video(dir, name, 2., VideoOptions::default());
+    let mut bytes = std::fs::read(&v).unwrap();
+    let end = bytes.len() - 4096;
+    for b in bytes[4096..end].iter_mut().step_by(step) {
+        *b ^= 0x55;
+    }
+    std::fs::write(&v, bytes).unwrap();
+    v
+}
+#[test]
+fn decode_error_rate_exit_keeps_frames_but_not_an_undecodable_file() {
+    let d = TempDir::new();
+    // Over 2/3 of these frames fail, so ffmpeg exits 69 after writing the decodable ones.
+    let partly = corrupt_video(&d.0, "partly.mp4", 7);
+    let software = DecodeOptions {
+        hwaccel: false,
+        ..Default::default()
+    };
+    let frames: Vec<_> = FrameStream::new(
+        partly.to_str().unwrap(),
+        common::profile(),
+        software.clone(),
+    )
+    .collect();
+    assert!(!frames.is_empty() && frames.iter().all(Result::is_ok));
+    let scenes: Vec<_> =
+        aditor::matches::VideoFrames::new(partly.to_str().unwrap(), 4., false, "h264").collect();
+    assert!(!scenes.is_empty() && scenes.iter().all(Result::is_ok));
+    // No frame decodes at all: the same exit code must still be reported as a failure.
+    let broken = corrupt_video(&d.0, "broken.mp4", 1);
+    let mut stream = FrameStream::new(broken.to_str().unwrap(), common::profile(), software);
+    let e = stream.next().unwrap().unwrap_err();
+    assert!(e.message.contains("exit code 69"), "{}", e.message);
+}
 #[test]
 fn bad_file_errors_include_bounded_stderr() {
     let d = TempDir::new();
