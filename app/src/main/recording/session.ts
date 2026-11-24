@@ -167,7 +167,7 @@ export class RecordingSessionService implements RecordingService {
   private storageChecked = new Set<string>()
 
   constructor(private deps: RecordingDeps) {
-    this.watcher = new GameWatcher<GameProcess>(() => this.findGame(this.pollGame), deps.pollMs ?? 3000,
+    this.watcher = new GameWatcher<GameProcess>(() => this.findGame(this.pollGame, false), deps.pollMs ?? 3000,
       (found) => {
         this.pollWarning = false
         this.pollFailures = 0
@@ -199,20 +199,23 @@ export class RecordingSessionService implements RecordingService {
         // Startup presence is unknown after a failed first query, so a game found later gets the launch delay.
         this.firstPoll = false
         // Fail open while no game is known, or a persistently failing query would hold analysis forever.
-        if (++this.pollFailures >= POLL_FAILURES_BEFORE_ANALYSIS && this.gamePid === null) this.deps.onGameRunning?.(false)
+        ++this.pollFailures
+        if (this.pollFailures >= POLL_FAILURES_BEFORE_ANALYSIS && this.gamePid === null) this.deps.onGameRunning?.(false)
+        // A lone failed poll (tasklist exiting 0xC0000142 twice in a row) recovers on the next poll; report only a lasting streak, once.
+        if (this.pollFailures === POLL_FAILURES_BEFORE_ANALYSIS) this.reportFailure('game_query_failed', error)
         if (!this.pollWarning) this.notice('error', tr('無法偵測遊戲程序：{error}', { error: String(error) }))
         this.pollWarning = true
       }, sameProcess)
   }
 
-  private async findGame(find = findGameProcess): Promise<GameProcess | null> {
+  private async findGame(find = findGameProcess, report = true): Promise<GameProcess | null> {
     const { findGame, findApexPid } = this.deps
     try {
       if (findGame) return await findGame()
       if (findApexPid) { const pid = await findApexPid(); return pid ? { game: 'apex', pid } : null }
       return await find()
     } catch (error) {
-      this.reportFailure('game_query_failed', error)
+      if (report) this.reportFailure('game_query_failed', error)
       throw error
     }
   }

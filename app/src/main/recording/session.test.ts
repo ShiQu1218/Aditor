@@ -113,6 +113,26 @@ describe('recording service state machine', () => {
     await expect(value.service.startManual()).rejects.toBe(error)
     expect(report).toHaveBeenCalled()
   })
+  it('reports a polling game query failure only once it lasts three polls in a row', async () => {
+    const value = rig()
+    value.settings.autoRecord = false
+    const error = Object.assign(new Error('tasklist failed'), { code: 0xC0000142 })
+    const results: Array<Error | null> = [error, error, null, error, error, error, error, error]
+    const findGame = vi.fn(async () => {
+      const next = results.shift()
+      if (next) throw next
+      return null
+    })
+    value.deps.findGame = findGame
+    const report = vi.fn()
+    value.deps.onDiagnostic = report
+    value.service.start()
+    await waitFor(() => findGame.mock.calls.length >= 3)
+    expect(report).not.toHaveBeenCalled()
+    await waitFor(() => findGame.mock.calls.length >= 8)
+    expect(report).toHaveBeenCalledTimes(1)
+    expect(report).toHaveBeenCalledWith(expect.objectContaining({ code: 'game_query_failed', tags: { error_code: String(0xC0000142) } }))
+  })
   it('reports OBS startup failure without exposing the password or blocking the built-in fallback', async () => {
     const value = rig()
     value.settings.autoRecord = false
