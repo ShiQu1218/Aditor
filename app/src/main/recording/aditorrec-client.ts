@@ -10,6 +10,11 @@ import { emitChildDiagnostic, RECORDER_WARNING_CODES, type ChildDiagnosticHandle
 const MAX_BYTES = 64 * 1024
 /** `hello` may probe several GPUs and legitimately take a few seconds on some machines. */
 export const HELLO_TIMEOUT_MS = 30_000
+/** Windows STATUS_DLL_INIT_FAILED: the loader failed before the recorder ran. Usually transient, as for the engine. */
+const STATUS_DLL_INIT_FAILED = 0xC0000142
+const STARTUP_RETRY_DELAY_MS = 500
+/** Internal, never reported: the first launch hit STATUS_DLL_INIT_FAILED and hello/ping relaunch once. */
+const STARTUP_RETRY_CODE = 'recorder_startup_retry'
 export type RecorderEvent = Record<string, unknown> & { ev: string }
 
 const UPTIME_BUCKETS: ReadonlyArray<readonly [number, string]> = [[10_000, '<10s'], [60_000, '<1m'], [600_000, '<10m'], [3_600_000, '<1h']]
@@ -66,14 +71,16 @@ export class AditorrecClient extends EventEmitter {
   private recordingSince: number | null = null
   /** Whether the current process started; a failed spawn is reported once as recorder_spawn, not again as io or exit errors. */
   private spawned = false
+  /** Whether the recorder has written any message; a loader failure can only precede the first one. */
+  private replied = false
+  private startupRetried = false
 
   constructor(private command: RecorderCommand, private onDiagnostic?: ChildDiagnosticHandler) { super() }
 
   get pid(): number | undefined { return this.proc?.pid }
 
   async hello(): Promise<RecorderCapabilities> {
-    if (!this.proc) this.launch()
-    const reply = await this.request('hello', {}, HELLO_TIMEOUT_MS)
+    const reply = await this.startupRequest('hello', HELLO_TIMEOUT_MS)
     const audio = reply.audio as RecorderCapabilities['audio'] | undefined
     const validDevices = (devices: unknown): boolean => Array.isArray(devices) && devices.every(
       (d) => d && typeof d.id === 'string' && typeof d.name === 'string' && typeof d.default === 'boolean')
@@ -93,8 +100,20 @@ export class AditorrecClient extends EventEmitter {
 
   /** Launch-and-answer check for recording startup: hello trial-encodes on every GPU while the game holds it, and start probes what it needs itself. */
   async ping(): Promise<void> {
-    if (!this.proc) this.launch()
-    await this.request('ping')
+    await this.startupRequest('ping')
+  }
+
+  /** Launch if needed and send the first command, relaunching once when Windows fails to load the recorder. */
+  private async startupRequest(cmd: string, timeoutMs?: number): Promise<Record<string, unknown>> {
+    for (;;) {
+      if (!this.proc) this.launch()
+      try { return await this.request(cmd, {}, timeoutMs) }
+      catch (error) {
+        if (!(error instanceof RecorderError) || error.code !== STARTUP_RETRY_CODE) throw error
+      }
+      await new Promise((resolve) => setTimeout(resolve, STARTUP_RETRY_DELAY_MS))
+      if (this.closing) throw this.error('recorder_closed', tr('錄影程序已停止'))
+    }
   }
 
   private launch(): void {
@@ -114,6 +133,13 @@ export class AditorrecClient extends EventEmitter {
     this.closed = new Promise((resolve) => {
       proc.once('close', (code, signal) => {
         this.proc = null
+        if (code !== null && (code >>> 0) === STATUS_DLL_INIT_FAILED && !this.replied && !this.startupRetried && !this.closing) {
+          // Rejected without a diagnostic: startupRequest relaunches, and a second failure is reported as recorder_crashed.
+          this.startupRetried = true
+          this.rejectAll(new RecorderError(STARTUP_RETRY_CODE, tr('錄影程序已結束（{code}）', { code })))
+          resolve()
+          return
+        }
         const exitCode: Record<string, string> = code === null ? {} : { exit_code: `0x${(code >>> 0).toString(16).toUpperCase().padStart(8, '0')}` }
         const blocked = code !== null && (code >>> 0) === 0xC0E90002
         const hint = blocked ? ' Windows Application Control blocked the recorder or a dependency (0xC0E90002).' : ''
@@ -225,6 +251,7 @@ export class AditorrecClient extends EventEmitter {
       try {
         const msg = JSON.parse(line)
         if (!msg || typeof msg !== 'object' || Array.isArray(msg)) throw new Error()
+        this.replied = true
         if (typeof msg.id === 'number') {
           this.settle(msg.id, msg.ok === true ? msg : this.error(
             typeof msg.code === 'string' ? msg.code : 'bad_reply',

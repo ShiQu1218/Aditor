@@ -4,6 +4,12 @@ const readline = require('readline')
 const mode = process.env.FAKE_RECORDER_MODE || 'normal'
 const windowErrorCode = process.env.FAKE_WINDOW_ERROR_CODE || 'window_not_found'
 const send = (value) => process.stdout.write(JSON.stringify(value) + '\n')
+// STATUS_DLL_INIT_FAILED before reading stdin: 'dll-init' fails every launch, 'dll-init-once' only the first (marker file).
+if (mode === 'dll-init') process.exit(0xC0000142)
+if (mode === 'dll-init-once' && !fs.existsSync(process.env.FAKE_RECORDER_MARKER)) {
+  fs.writeFileSync(process.env.FAKE_RECORDER_MARKER, '')
+  process.exit(0xC0000142)
+}
 let sessionDir
 readline.createInterface({ input: process.stdin }).on('line', (line) => {
   const req = JSON.parse(line)
