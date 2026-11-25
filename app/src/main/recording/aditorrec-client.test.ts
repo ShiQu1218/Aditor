@@ -100,6 +100,22 @@ describe('aditorrec JSON-lines client', () => {
     await expect(value.hello()).rejects.toMatchObject({ code: 'recorder_crashed', message: expect.stringContaining('Windows Application Control') })
     expect(onDiagnostic).toHaveBeenCalledWith(expect.objectContaining({ tags: { phase: 'startup', exit_code: '0xC0E90002' } }))
   })
+  it.skipIf(process.platform !== 'win32')('relaunches once without a report when Windows fails to load the recorder', async () => {
+    const root = tempRoot(); roots.push(root)
+    const onDiagnostic = vi.fn()
+    const value = new AditorrecClient(fakeCommand('dll-init-once', { FAKE_RECORDER_MARKER: path.join(root, 'launched') }), onDiagnostic)
+    clients.push(value)
+    await expect(value.hello()).resolves.toMatchObject({ version: '0.1.0' })
+    expect(onDiagnostic).not.toHaveBeenCalled()
+  })
+  it.skipIf(process.platform !== 'win32')('reports the second loader failure as a crash', async () => {
+    const onDiagnostic = vi.fn()
+    const value = new AditorrecClient(fakeCommand('dll-init'), onDiagnostic)
+    clients.push(value)
+    await expect(value.ping()).rejects.toMatchObject({ code: 'recorder_crashed' })
+    expect(onDiagnostic).toHaveBeenCalledTimes(1)
+    expect(onDiagnostic).toHaveBeenCalledWith(expect.objectContaining({ code: 'recorder_crashed', tags: { phase: 'startup', exit_code: '0xC0000142' } }))
+  })
   it('reports abnormal exits without forwarding stderr logs to monitoring', async () => {
     const onDiagnostic = vi.fn()
     const value = new AditorrecClient(fakeCommand('stderr-exit'), onDiagnostic)
