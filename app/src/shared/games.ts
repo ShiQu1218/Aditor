@@ -9,6 +9,8 @@ export interface GameDescriptor {
   /** Matches the image name column of `tasklist /FO CSV` (without quotes). */
   process: RegExp
   tasklistImageFilter: string
+  /** Case-insensitive image name prefix passed to the recorder `processes` query. */
+  imagePrefix: string
   /** Recording file name prefix, e.g. `Apex_2026-10-20_21-08.mp4`. */
   filePrefix: string
   /** Template folder under `templates/`; Apex keeps the original top-level `icons`/`scene` layout. */
@@ -16,8 +18,8 @@ export interface GameDescriptor {
 }
 
 export const GAMES: Record<GameId, GameDescriptor> = {
-  apex: { id: 'apex', displayName: 'Apex Legends', process: /^r5apex(?:_dx12)?\.exe$/i, tasklistImageFilter: 'r5apex*', filePrefix: 'Apex', templateDir: '' },
-  valorant: { id: 'valorant', displayName: 'VALORANT', process: /^VALORANT-Win64-Shipping\.exe$/i, tasklistImageFilter: 'VALORANT-Win64-Shipping.exe', filePrefix: 'Valorant', templateDir: 'valorant' }
+  apex: { id: 'apex', displayName: 'Apex Legends', process: /^r5apex(?:_dx12)?\.exe$/i, tasklistImageFilter: 'r5apex*', imagePrefix: 'r5apex', filePrefix: 'Apex', templateDir: '' },
+  valorant: { id: 'valorant', displayName: 'VALORANT', process: /^VALORANT-Win64-Shipping\.exe$/i, tasklistImageFilter: 'VALORANT-Win64-Shipping.exe', imagePrefix: 'VALORANT-Win64-Shipping', filePrefix: 'Valorant', templateDir: 'valorant' }
 }
 
 export const GAME_IDS = Object.keys(GAMES) as GameId[]

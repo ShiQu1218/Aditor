@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import fs from 'fs'
 import path from 'path'
-import { AditorrecClient, HELLO_TIMEOUT_MS, RecorderError, recorderTags } from './aditorrec-client'
+import { AditorrecClient, HELLO_TIMEOUT_MS, PROCESSES_TIMEOUT_MS, RecorderError, recorderTags } from './aditorrec-client'
+import { createRecorderGameQuery } from './game-watcher'
 import { fakeCommand, tempRoot } from './test-support'
 import { LOCALES, setActiveLocale, tr } from '../../shared/locale'
 
@@ -199,5 +200,188 @@ describe('aditorrec JSON-lines client', () => {
     await new Promise((resolve) => setTimeout(resolve, 50))
     // The stdin EPIPE and the exit that follow a failed spawn are the same failure, not separate reports.
     expect(onDiagnostic.mock.calls.map(([diagnostic]) => diagnostic.code)).toEqual(['recorder_spawn'])
+  })
+
+  it('lists matching processes, handles invalid replies, times out, and relaunches once on loader failure', async () => {
+    const root = tempRoot(); roots.push(root)
+    const okClient = new AditorrecClient(fakeCommand('normal', {
+      FAKE_RECORDER_PROCESSES: JSON.stringify([
+        { name: 'r5apex_dx12.exe', pid: 101 },
+        { name: 'other.exe', pid: 202 },
+        { name: 'VALORANT-Win64-Shipping.exe', pid: 303 }
+      ])
+    }))
+    clients.push(okClient)
+    await expect(okClient.processes(['r5apex', 'VALORANT-Win64-Shipping'])).resolves.toEqual([
+      { name: 'r5apex_dx12.exe', pid: 101 },
+      { name: 'VALORANT-Win64-Shipping.exe', pid: 303 }
+    ])
+
+    await expect(client('processes-bad-reply').processes(['r5apex'])).rejects.toMatchObject({ code: 'bad_reply' })
+
+    const onDiagnostic = vi.fn()
+    const retryClient = new AditorrecClient(fakeCommand('dll-init-once', {
+      FAKE_RECORDER_MARKER: path.join(root, 'launched'),
+      FAKE_RECORDER_PROCESSES: JSON.stringify([{ name: 'r5apex.exe', pid: 77 }])
+    }), onDiagnostic)
+    clients.push(retryClient)
+    await expect(retryClient.processes(['r5apex'])).resolves.toEqual([{ name: 'r5apex.exe', pid: 77 }])
+    expect(onDiagnostic).not.toHaveBeenCalled()
+
+    vi.useFakeTimers()
+    const timeoutClient = client('processes-timeout')
+    const result = timeoutClient.processes(['r5apex']).catch((error) => error)
+    await vi.advanceTimersByTimeAsync(PROCESSES_TIMEOUT_MS)
+    expect(await result).toMatchObject({ code: 'recorder_timeout' })
+  })
+})
+
+describe('createRecorderGameQuery', () => {
+  it('reuses one recorder process across find calls, respects game priority, and closes the process on close()', async () => {
+    const root = tempRoot(); roots.push(root)
+    const trace = path.join(root, 'trace.jsonl')
+    const spawned: AditorrecClient[] = []
+    const fallback = vi.fn(async () => null)
+    const query = createRecorderGameQuery(() => {
+      const c = new AditorrecClient(fakeCommand('normal', {
+        FAKE_RECORDER_TRACE: trace,
+        FAKE_RECORDER_PROCESSES: JSON.stringify([
+          { name: 'VALORANT-Win64-Shipping.exe', pid: 8 },
+          { name: 'r5apex_launcher.exe', pid: 55 },
+          { name: 'r5apex_dx12.exe', pid: 9 }
+        ])
+      }))
+      spawned.push(c)
+      clients.push(c)
+      return c
+    }, fallback)
+
+    await expect(query.find()).resolves.toEqual({ game: 'apex', pid: 9 })
+    const firstPid = spawned[0].pid
+    expect(firstPid).toBeTypeOf('number')
+    await expect(query.find()).resolves.toEqual({ game: 'apex', pid: 9 })
+    await expect(query.find()).resolves.toEqual({ game: 'apex', pid: 9 })
+    expect(spawned).toHaveLength(1)
+    expect(spawned[0].pid).toBe(firstPid)
+    expect(fallback).not.toHaveBeenCalled()
+    expect(fs.readFileSync(trace, 'utf8').trim().split('\n').map((line) => JSON.parse(line).id)).toEqual([1, 2, 3])
+
+    await query.close()
+    expect(spawned[0].pid).toBeUndefined()
+    expect(() => process.kill(firstPid!, 0)).toThrow()
+
+    await expect(query.find()).resolves.toEqual({ game: 'apex', pid: 9 })
+    expect(spawned).toHaveLength(2)
+    await query.close()
+  })
+
+  it('ignores non-matching prefixes and falls back to valorant when apex is absent', async () => {
+    const query = createRecorderGameQuery(() => {
+      const c = new AditorrecClient(fakeCommand('normal', {
+        FAKE_RECORDER_PROCESSES: JSON.stringify([
+          { name: 'r5apex_launcher.exe', pid: 55 },
+          { name: 'VALORANT-Win64-Shipping.exe', pid: 456 }
+        ])
+      }))
+      clients.push(c)
+      return c
+    }, async () => null)
+
+    await expect(query.find()).resolves.toEqual({ game: 'valorant', pid: 456 })
+    await query.close()
+  })
+
+  it('falls back on client error, stops using the client after 3 consecutive failures, and resets on success or close()', async () => {
+    let mode = 'processes-error'
+    let makeCalls = 0
+    const created: AditorrecClient[] = []
+    const fallback = vi.fn(async () => ({ game: 'apex' as const, pid: 777 }))
+    const query = createRecorderGameQuery(() => {
+      makeCalls++
+      const c = new AditorrecClient(fakeCommand(mode, {
+        FAKE_RECORDER_PROCESSES: JSON.stringify([{ name: 'r5apex.exe', pid: 888 }])
+      }))
+      created.push(c)
+      clients.push(c)
+      return c
+    }, fallback)
+
+    // Two failures followed by a client success resets the consecutive failure counter.
+    await expect(query.find()).resolves.toEqual({ game: 'apex', pid: 777 })
+    expect(created[0].pid).toBeUndefined()
+    await expect(query.find()).resolves.toEqual({ game: 'apex', pid: 777 })
+    mode = 'normal'
+    await expect(query.find()).resolves.toEqual({ game: 'apex', pid: 888 })
+    expect(makeCalls).toBe(3)
+
+    // Three consecutive failures stop creating clients and route directly to the fallback.
+    await created[2].close()
+    mode = 'processes-error'
+    await expect(query.find()).resolves.toEqual({ game: 'apex', pid: 777 })
+    await expect(query.find()).resolves.toEqual({ game: 'apex', pid: 777 })
+    await expect(query.find()).resolves.toEqual({ game: 'apex', pid: 777 })
+    expect(makeCalls).toBe(5)
+    await expect(query.find()).resolves.toEqual({ game: 'apex', pid: 777 })
+    await expect(query.find()).resolves.toEqual({ game: 'apex', pid: 777 })
+    expect(makeCalls).toBe(5)
+    expect(fallback).toHaveBeenCalledTimes(7)
+
+    // close() resets the failure limit so the next find() tries the recorder again.
+    mode = 'normal'
+    await query.close()
+    await expect(query.find()).resolves.toEqual({ game: 'apex', pid: 888 })
+    expect(makeCalls).toBe(6)
+    await query.close()
+  })
+
+  it('shares one query between concurrent find calls, so a failure runs the fallback once', async () => {
+    let makeCalls = 0
+    const fallback = vi.fn(async () => null)
+    const query = createRecorderGameQuery(() => {
+      makeCalls++
+      const c = new AditorrecClient(fakeCommand('processes-error'))
+      clients.push(c)
+      return c
+    }, fallback)
+
+    await expect(Promise.all([query.find(), query.find()])).resolves.toEqual([null, null])
+    expect(makeCalls).toBe(1)
+    expect(fallback).toHaveBeenCalledTimes(1)
+    await query.close()
+  })
+
+  it('resolves an in-flight find to null without the fallback when close() runs during the query', async () => {
+    const fallback = vi.fn(async () => ({ game: 'apex' as const, pid: 1 }))
+    const query = createRecorderGameQuery(() => {
+      const c = new AditorrecClient(fakeCommand('processes-timeout'))
+      clients.push(c)
+      return c
+    }, fallback)
+
+    const pending = query.find()
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    await query.close()
+    await expect(pending).resolves.toBeNull()
+    expect(fallback).not.toHaveBeenCalled()
+  })
+
+  it('replaces a recorder that exits between polls with a new client', async () => {
+    const created: AditorrecClient[] = []
+    const query = createRecorderGameQuery(() => {
+      const c = new AditorrecClient(fakeCommand('normal', {
+        FAKE_RECORDER_PROCESSES: JSON.stringify([{ name: 'r5apex.exe', pid: 321 }])
+      }))
+      created.push(c)
+      clients.push(c)
+      return c
+    }, async () => null)
+
+    await expect(query.find()).resolves.toEqual({ game: 'apex', pid: 321 })
+    const crashed = new Promise((resolve) => created[0].once('crash', resolve))
+    process.kill(created[0].pid!)
+    await crashed
+    await expect(query.find()).resolves.toEqual({ game: 'apex', pid: 321 })
+    expect(created).toHaveLength(2)
+    await query.close()
   })
 })

@@ -144,6 +144,9 @@ pub fn run(mut input: impl BufRead, events: EventSink, backend: &mut dyn Backend
         let result = match request.cmd {
             Command::Hello => Ok(ReplyBody::Hello(backend.hello())),
             Command::Ping => Ok(ReplyBody::Empty {}),
+            Command::Processes(args) => crate::processes::query(&args.prefixes)
+                .map(|processes| ReplyBody::Processes { processes })
+                .map_err(|message| (ErrorCode::Internal, message)),
             Command::Start(_) if recording => Err((ErrorCode::Busy, "A recording is already running".into())),
             Command::Start(args) => backend.start(args, events.clone()).map(|()| {
                 recording = true;
@@ -391,6 +394,35 @@ mod tests {
         assert_eq!(lines[3], json!({"id":3,"ok":true}));
         assert_eq!(lines[4]["code"], "busy");
         assert_eq!(lines.last().unwrap(), &json!({"id":8,"ok":true}));
+    }
+
+    #[test]
+    fn processes_command_dispatches_without_backend_even_while_recording() {
+        let exe = std::env::current_exe().unwrap();
+        let stem = exe.file_stem().unwrap().to_str().unwrap().to_string();
+        let mut backend = FakeBackend::default();
+        let lines = run_commands(
+            &[
+                json!({"id":1,"cmd":"processes","prefixes":[&stem]}),
+                start(2),
+                json!({"id":3,"cmd":"processes","prefixes":[&stem]}),
+                json!({"id":4,"cmd":"stop"}),
+            ],
+            &mut backend,
+        );
+        assert_eq!(backend.hello_calls, 0);
+        assert_eq!(backend.starts.len(), 1);
+        let pid = std::process::id();
+        for reply in [&lines[0], &lines[3]] {
+            assert_eq!(reply["ok"], true);
+            assert!(reply["processes"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|p| p["pid"] == pid));
+        }
+        assert_eq!(lines[0]["id"], 1);
+        assert_eq!(lines[3]["id"], 3);
     }
 
     #[test]
