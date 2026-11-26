@@ -81,6 +81,8 @@ const SAFE_TAG_VALUES: Record<string, RegExp> = {
   spawn_errno: /^[A-Z0-9_]{1,16}$/,
   spawn_syscall: /^spawn$/,
   error_code: /^(?:[A-Z][A-Z0-9_]{0,31}|-?\d{1,10})$/,
+  // Node file operation name (lstat, open, ...) from recording-service failures; never the path.
+  syscall: /^[a-z_]{1,24}$/i,
   signal: /^SIG[A-Z]{1,12}$/,
   killed: /^(?:true|false)$/,
   electron: /^\d+(?:\.\d+){2}$/,
