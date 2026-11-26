@@ -161,7 +161,8 @@ export function initializeTelemetry(consent: boolean): void {
   ipcMain.handle('telemetry:report', (_event, message: unknown) => reportUserFeedback(message))
   ipcMain.handle('telemetry:playbackDesync', (_event, report: unknown) => reportPlaybackDesync(report))
   installIdFile = join(appDataDir(), 'telemetry-install-id')
-  if (!consent) {
+  // No DSN (fork or local build): behave as if consent were withheld so the renderer sees telemetry off.
+  if (!consent || !SENTRY_DSN) {
     updateTelemetryConsent(false)
     return
   }

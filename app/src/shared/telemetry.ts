@@ -1,7 +1,8 @@
 import type { Event, StackFrame } from '@sentry/electron/main'
 
-// Public ingest key, not an auth token. Upload credentials belong only in the build environment.
-export const SENTRY_DSN = 'https://5c57897479340b1a622630935c43a4fb@o4512296943747072.ingest.us.sentry.io/4512296977760256'
+// Injected into the main bundle from ADITOR_SENTRY_DSN at build time; forks and local builds get '' and never report.
+declare const __SENTRY_DSN__: string | undefined
+export const SENTRY_DSN = typeof __SENTRY_DSN__ === 'string' ? __SENTRY_DSN__ : ''
 
 export const TELEMETRY_INSTALL_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
 

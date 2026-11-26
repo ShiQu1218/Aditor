@@ -1,5 +1,6 @@
 // Deliberately sends one development error and trace through the real application's initialization.
 // Uses a fresh profile, fake analysis engine, and disables recording and updates.
+// The app must be built with ADITOR_SENTRY_DSN set; without it telemetry never starts.
 const { _electron } = require('@playwright/test')
 const fs = require('fs')
 const path = require('path')

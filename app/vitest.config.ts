@@ -4,6 +4,8 @@ import react from '@vitejs/plugin-react'
 
 export default defineConfig({
   plugins: [react()],
+  // Placeholder so telemetry tests see a configured DSN; release builds inject the real one.
+  define: { __SENTRY_DSN__: JSON.stringify('https://public@example.ingest.sentry.io/1') },
   resolve: {
     alias: {
       '@shared': resolve(__dirname, 'src/shared'),

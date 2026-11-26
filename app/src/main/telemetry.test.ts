@@ -91,6 +91,18 @@ describe('telemetry install ID', () => {
     expect(fake.init).not.toHaveBeenCalled()
   })
 
+  it('stays off without a build-time DSN even when the user consented', async () => {
+    vi.doMock('../shared/telemetry', async (importOriginal) => ({ ...await importOriginal<object>(), SENTRY_DSN: '' }))
+    try {
+      const { initializeTelemetry } = await import('./telemetry')
+      initializeTelemetry(true)
+      expect(fake.init).not.toHaveBeenCalled()
+      expect(fs.existsSync(join(fake.dir, 'telemetry-install-id'))).toBe(false)
+      const enabled = fake.handle.mock.calls.find(([channel]) => channel === 'telemetry:enabled')?.[1]
+      expect(enabled()).toBe(false)
+    } finally { vi.doUnmock('../shared/telemetry') }
+  })
+
   it('deletes the file immediately on opt-out and uses a new ID after restart', async () => {
     const { initializeTelemetry, updateTelemetryConsent } = await import('./telemetry')
     initializeTelemetry(true)
