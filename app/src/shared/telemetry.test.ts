@@ -21,6 +21,10 @@ describe('telemetry privacy boundary', () => {
     expect(JSON.stringify(clean)).not.toContain('private')
     expect(sanitizeTelemetryEvent({ tags: { component: 'recording-service', error_code: 'C:/private', signal: 'private', killed: 'private' } }).tags)
       .toEqual({ component: 'recording-service' })
+    expect(sanitizeTelemetryEvent({ tags: { component: 'recording-service', error_code: 'ENOENT', syscall: 'lstat' } }).tags)
+      .toEqual({ component: 'recording-service', error_code: 'ENOENT', syscall: 'lstat' })
+    expect(sanitizeTelemetryEvent({ tags: { component: 'recording-service', syscall: "lstat 'C:/private'" } }).tags)
+      .toEqual({ component: 'recording-service' })
   })
   it('preserves fixed probe progress and exit codes without arbitrary stderr data', () => {
     const clean = sanitizeTelemetryEvent({ tags: { component: 'rust-recorder', probe_stage: 'probe_send', probe_encoder: 'av1_nvenc', exit_code: '0xC0E90002', stderr: 'private' } })
