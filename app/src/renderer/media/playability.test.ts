@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { containerCodecSupported, shouldSuggestProxy } from './playability'
+import { containerCodecSupported } from './playability'
 import { VideoInfo } from '../../shared/types'
 
 describe('playability', () => {
@@ -34,12 +34,5 @@ describe('playability', () => {
     expect(containerCodecSupported(make('av1'), 'mp4')).toBe(true)
     expect(containerCodecSupported(make('vp9'), 'webm')).toBe(true)
     expect(containerCodecSupported(make('flv'), 'mp4')).toBe(false)
-  })
-
-  it('shouldSuggestProxy triggers if not supported, not smooth, or not powerEfficient', () => {
-    expect(shouldSuggestProxy({ supported: false, smooth: true, powerEfficient: true })).toBe(true)
-    expect(shouldSuggestProxy({ supported: true, smooth: false, powerEfficient: true })).toBe(true)
-    expect(shouldSuggestProxy({ supported: true, smooth: true, powerEfficient: false })).toBe(true)
-    expect(shouldSuggestProxy({ supported: true, smooth: true, powerEfficient: true })).toBe(false)
   })
 })

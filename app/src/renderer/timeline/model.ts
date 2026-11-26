@@ -137,27 +137,6 @@ export function heatmap(events: EngineEvent[], duration: number, bins: number): 
   return counts
 }
 
-export function hitTestEvent(
-  events: EngineEvent[],
-  x: number,
-  view: View,
-  tolPx = 6
-): EngineEvent | null {
-  let nearest: EngineEvent | null = null
-  let minDist = Infinity
-
-  for (let i = 0; i < events.length; i++) {
-    const e = events[i]
-    const evX = timeToX(e.t, view)
-    const dist = Math.abs(evX - x)
-    if (dist <= tolPx && dist < minDist) {
-      minDist = dist
-      nearest = e
-    }
-  }
-  return nearest
-}
-
 export function nextEvent(
   events: EngineEvent[],
   t: number,

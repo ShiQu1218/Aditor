@@ -165,6 +165,11 @@ export function initializeTelemetry(consent: boolean): void {
     updateTelemetryConsent(false)
     return
   }
+  // No DSN (fork or local build): stay off for this process but keep the install ID, which a release sharing app data may own.
+  if (!SENTRY_DSN) {
+    allowed = false
+    return
+  }
   installId = loadInstallId(installIdFile)
   try {
     Sentry.init({

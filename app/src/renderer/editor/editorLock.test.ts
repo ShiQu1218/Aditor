@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from 'vitest'
-import { applyInert, isEditorLocked, setEditorLocked, subscribeEditorLock, LOCK_SELECTOR } from './editorLock'
+import { applyInert, isEditorLocked, setEditorLocked, LOCK_SELECTOR } from './editorLock'
 
 function fakeEl() {
   const attrs = new Map<string, string>()
@@ -23,16 +23,11 @@ describe('editor lock', () => {
     expect(els.every((e) => !e.attrs.has('inert') && !e.attrs.has('aria-disabled'))).toBe(true)
   })
 
-  test('store flag + subscribers', () => {
-    let n = 0
-    const off = subscribeEditorLock(() => n++)
+  test('store flag', () => {
     expect(isEditorLocked()).toBe(false)
     setEditorLocked(true)
     expect(isEditorLocked()).toBe(true)
-    setEditorLocked(true) // Repeating the same value does not notify.
-    expect(n).toBe(1)
-    off()
     setEditorLocked(false)
-    expect(n).toBe(1)
+    expect(isEditorLocked()).toBe(false)
   })
 })

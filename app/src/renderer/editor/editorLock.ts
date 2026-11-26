@@ -5,23 +5,13 @@
 export const LOCK_SELECTOR = '[data-editor-lock]'
 
 let locked = false
-const listeners = new Set<() => void>()
 
 export function isEditorLocked(): boolean {
   return locked
 }
 
 export function setEditorLocked(v: boolean): void {
-  if (locked === v) return
   locked = v
-  for (const l of [...listeners]) l()
-}
-
-export function subscribeEditorLock(fn: () => void): () => void {
-  listeners.add(fn)
-  return () => {
-    listeners.delete(fn)
-  }
 }
 
 interface InertTarget {

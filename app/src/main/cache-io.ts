@@ -30,7 +30,7 @@ export function saveCacheDoc(doc: { cache_path: string }): boolean {
 }
 
 /**
- * Uses the same rule as the engine's `cache_path(video, cache_dir, beside)` in cache.py:
+ * Uses the same rule as the engine's `cache_path(video, cache_dir, beside)` in engine/src/cache.rs:
  * beside ⇒ `<video directory>/<filename>.aditor.json`; otherwise, use the lowercase, slash-normalized abspath's SHA-1 in the cache directory.
  */
 export function cacheFilePath(videoPath: string, cacheDir: string, beside = false): string {

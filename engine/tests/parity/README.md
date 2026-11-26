@@ -12,15 +12,16 @@ game resolution, aspect selection, and aspect detection on the existing scene at
 ## Frozen oracle
 
 The Python oracle was removed in the Phase D commit (this change). The last
-Python-engine commit is `c30dddf`; the Phase A-C reference exporters are archived
-in `tools/archive/parity/`. Normal Cargo tests replay the checked-in JSON/PNG/video
-data without Python. `phase_c/live_{game}_{stop}.json` freezes Python's complete
+Python-engine commit is `c30dddf`; the Phase A-C reference exporters were removed
+from the tree and live in git history at `tools/archive/parity/` (commit `d71bc22`).
+Normal Cargo tests replay the checked-in JSON/PNG/video data without Python.
+`phase_c/live_{game}_{stop}.json` freezes Python's complete
 live streams before removal; only `cpu_ms_per_frame` is ignored in comparison.
 `phase_c/performance.json` holds the original three-run Python CPU baseline.
 
 To regenerate, use a separate checkout from git history containing the Python
-engine (`c30dddf`) and restore the Phase A-C exporters from this change's parent
-history (or copy the archived files back to their original `tools/` locations).
+engine (`c30dddf`) and copy the Phase A-C exporters from `tools/archive/parity/` at
+commit `d71bc22` back to their original `tools/` locations.
 Set `PYTHONPATH` to that checkout's `engine`, install the recorded NumPy/OpenCV
 versions, set `ADITOR_FFMPEG` / `ADITOR_FFPROBE`, then run `tools/dump_parity.py`
 with `--phase-b`, `--analyze`, `--phase-c`, or `--phase-c-audit` as needed. Generate

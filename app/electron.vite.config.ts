@@ -28,6 +28,8 @@ export default defineConfig({
   main: {
     build: { sourcemap: 'hidden', externalizeDeps: { exclude: SENTRY_BUNDLED } },
     plugins: [...sentryPlugins('main')],
+    // Only official release builds set this; without it telemetry stays off.
+    define: { __SENTRY_DSN__: JSON.stringify(process.env.ADITOR_SENTRY_DSN ?? '') },
     resolve: {
       alias: {
         '@shared': resolve('src/shared')

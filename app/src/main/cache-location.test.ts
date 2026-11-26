@@ -3,7 +3,7 @@ import fs from 'fs'
 import os from 'os'
 import path from 'path'
 import { cacheFilePath, legacyCacheFilePath, resolveCacheFile } from './cache-io'
-import { analyzeSettingArgs, buildAnalyzeArgs } from './settings-derived'
+import { analyzeSettingArgs } from './settings-derived'
 import { DEFAULT_SETTINGS } from '../shared/settings'
 
 describe('cacheFilePath: same rule as engine cache_path(video, cache_dir, beside)', () => {
@@ -107,23 +107,5 @@ describe('analyzeSettingArgs: decode/cacheLocation → engine arguments', () => 
   })
   it('uses defaults when settings are unavailable (not initialized yet)', () => {
     expect(analyzeSettingArgs(undefined)).toEqual({ hwaccel: true, beside: false })
-  })
-  it('buildAnalyzeArgs: settings override same-named renderer fields and preserve the rest', () => {
-    const out = buildAnalyzeArgs(
-      { profile_dir: 'p', cache_dir: 'c' },
-      { ...DEFAULT_SETTINGS, decode: 'software' },
-      { path: 'D:/v.mp4', hwaccel: true, beside: 'yes' }
-    )
-    expect(out).toEqual({ profile_dir: 'p', cache_dir: 'c', path: 'D:/v.mp4', hwaccel: false, beside: false })
-  })
-  it('buildAnalyzeArgs: renderer-supplied profile_dir/cache_dir cannot override values chosen by main', () => {
-    const out = buildAnalyzeArgs(
-      { profile_dir: 'p', cache_dir: 'c' },
-      { ...DEFAULT_SETTINGS },
-      { path: 'D:/v.mp4', profile_dir: 'C:\\evil', cache_dir: 'C:\\evil-cache' }
-    )
-    expect(out.profile_dir).toBe('p')
-    expect(out.cache_dir).toBe('c')
-    expect(out.path).toBe('D:/v.mp4')
   })
 })

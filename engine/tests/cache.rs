@@ -204,6 +204,11 @@ fn cache_file_names_match_python_for_existing_user_caches() {
             "D:/A/./B.mp4",
             "31a8cc24ec8f3fbdb7ec13332a6c32e881da5de6.json",
         ),
+        // Shared with app/src/main/cache.roundtrip.test.ts so the TS and Rust normalizers stay in step.
+        (
+            "D:/\u{5f71}\u{7247}/\u{c4} b.mp4",
+            "551cf16d46ffeec962f411992e5f0633bba03bf4.json",
+        ),
     ] {
         let path = cache::cache_path(video, std::path::Path::new("."), false);
         assert_eq!(path.file_name().unwrap(), name, "{video}");

@@ -6,7 +6,6 @@ import {
   zoom,
   pan,
   heatmap,
-  hitTestEvent,
   nextEvent,
   DETAIL_SPAN,
   TimelineZoom,
@@ -75,7 +74,7 @@ describe('Timeline Model', () => {
     expect(map[0]).toBe(0)
   })
 
-  it('heatmap/hitTest fast on 2000 events over 6000s', () => {
+  it('heatmap fast on 2000 events over 6000s', () => {
     const events: EngineEvent[] = []
     for (let i = 0; i < 2000; i++) {
       events.push({
@@ -96,13 +95,6 @@ describe('Timeline Model', () => {
     heatmap(events, 6000, 100)
     const tHeatmap = performance.now() - t0
     expect(tHeatmap).toBeLessThan(15) // comfortably < 5-15ms
-
-    const view: View = { duration: 6000, start: 1000, span: 1000, width: 1200 }
-    const t1 = performance.now()
-    const hit = hitTestEvent(events, 500, view, 10)
-    const tHit = performance.now() - t1
-    expect(tHit).toBeLessThan(15)
-    expect(hit).toBeDefined()
   })
 
   it('nextEvent respects type filter and direction', () => {
