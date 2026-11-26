@@ -16,6 +16,7 @@ import { initMimeType } from './mp4-codec'
 import { LIVE_COMPLETE_FILE, writeJson } from './finalize'
 import type { RecorderCommand } from './index'
 import { tr } from '../../shared/locale'
+import { recordingError } from './errors'
 import { emitChildDiagnostic, type ChildDiagnosticHandler } from '../../shared/child-diagnostics'
 import { checkExecutable, spawnFailure } from '../child-spawn'
 
@@ -52,10 +53,10 @@ export function countKills(events: LiveEvent[], matches: LiveMatch[]): number {
 
 async function readConfined(dir: string, name: string, limit: number): Promise<Uint8Array> {
   const file = path.join(dir, name)
-  if (path.dirname(file) !== dir) throw new Error(tr('錄影檔案路徑無效'))
+  if (path.dirname(file) !== dir) throw recordingError('LIVE_FILE_PATH_INVALID', tr('錄影檔案路徑無效'))
   const stat = await fs.promises.lstat(file)
-  if (!stat.isFile() || stat.isSymbolicLink()) throw new Error(tr('錄影檔案不是一般檔案'))
-  if (stat.size > limit) throw new Error(tr('錄影檔案過大'))
+  if (!stat.isFile() || stat.isSymbolicLink()) throw recordingError('LIVE_FILE_NOT_FILE', tr('錄影檔案不是一般檔案'))
+  if (stat.size > limit) throw recordingError('LIVE_FILE_TOO_LARGE', tr('錄影檔案過大'))
   return new Uint8Array(await fs.promises.readFile(file))
 }
 

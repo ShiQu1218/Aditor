@@ -12,6 +12,7 @@ import { ObsClient } from './obs-client'
 import { copyCutArgs } from '../export/plan'
 import type { ProjectItem } from '../../renderer/editor/project'
 import { tr } from '../../shared/locale'
+import { recordingError } from './errors'
 import { outputWasRemoved } from './removed-output'
 
 interface ObsOutput extends LiveCacheRange {
@@ -86,7 +87,7 @@ async function settledProbe<T extends { duration?: number | null }>(file: string
     if (ready && size === lastSize) return last!
     if (waited >= OBS_FILE_SETTLE_TOTAL_MS) {
       if (ready) return last!
-      throw new Error(tr('無法取得 OBS 影片長度（OBS 可能仍在寫入），已保留工作供下次補收尾'))
+      throw recordingError('OBS_DURATION_UNSTABLE', tr('無法取得 OBS 影片長度（OBS 可能仍在寫入），已保留工作供下次補收尾'))
     }
     lastSize = size
     await new Promise((resolve) => setTimeout(resolve, stepMs))
@@ -111,32 +112,32 @@ export async function finalizeObsSession(dir: string, deps: RecordingDeps, confi
         await removeFinishedSessionDir(dir, deps)
         return []
       }
-      throw new Error(tr('OBS 影片暫時無法讀取，已保留工作供下次補收尾'))
+      throw recordingError('OBS_OUTPUT_UNREADABLE', tr('OBS 影片暫時無法讀取，已保留工作供下次補收尾'))
     }
     deps.notify('warning', tr('OBS 影片不是可讀取的本機檔案，未加入媒體庫；請在 OBS 主機確認並手動匯入'))
     await removeFinishedSessionDir(dir, deps)
     return []
   }
-  if (![meta.recordStartedAt, meta.captureStartedAt].every(Number.isFinite)) throw new Error(tr('OBS 時間對齊資料無效'))
+  if (![meta.recordStartedAt, meta.captureStartedAt].every(Number.isFinite)) throw recordingError('OBS_TIMING_INVALID', tr('OBS 時間對齊資料無效'))
   const source = await fs.promises.realpath(meta.outputPath)
   const relative = path.relative(await fs.promises.realpath(dir), source)
-  if (!relative.startsWith('..') && !path.isAbsolute(relative)) throw new Error(tr('OBS 原檔位於錄影工作目錄內，已保留原檔與工作目錄'))
+  if (!relative.startsWith('..') && !path.isAbsolute(relative)) throw recordingError('OBS_OUTPUT_IN_SESSION_DIR', tr('OBS 原檔位於錄影工作目錄內，已保留原檔與工作目錄'))
   const probe = createMediaEndProbe(ffprobePath(deps.ffmpegPath))
   const info = await settledProbe(meta.outputPath, async () => deps.probeVideo
     ? await deps.probeVideo(meta.outputPath!) : { duration: await probe(meta.outputPath!) }, deps.obsFileSettleMs ?? OBS_FILE_SETTLE_STEP_MS)
   const { duration, ...video } = info
-  if (!duration) throw new Error(tr('無法取得 OBS 影片長度，已保留工作供下次補收尾'))
+  if (!duration) throw recordingError('OBS_DURATION_MISSING', tr('無法取得 OBS 影片長度，已保留工作供下次補收尾'))
   const offset = (meta.recordStartedAt - meta.captureStartedAt) / 1000
   const live = await readOptional<LiveFile>(path.join(dir, 'live.json'))
   const matches = liveMatches(live)
   const markerFile = path.join(dir, config.mode === 'match' && matches.length ? 'matches.json' : 'obs-finalized.json')
   const marker = await readOptional<{ cuts: ObsOutput[] }>(markerFile) ?? { cuts: [] }
-  if (!Array.isArray(marker.cuts)) throw new Error(tr('OBS 收尾紀錄無效'))
+  if (!Array.isArray(marker.cuts)) throw recordingError('OBS_MARKER_INVALID', tr('OBS 收尾紀錄無效'))
   const outputDir = path.dirname(path.dirname(dir))
   if (config.mode === 'match' && matches.length) {
     const pending = await readOptional<{ part: string; output: string }>(path.join(dir, 'match-part.json'))
     if (pending && [pending.part, pending.output].some((file) => path.resolve(file).toLowerCase() === source.toLowerCase())) {
-      throw new Error(tr('逐局暫存紀錄與 OBS 原檔重疊，已保留原檔'))
+      throw recordingError('OBS_MATCH_PART_OVERLAP', tr('逐局暫存紀錄與 OBS 原檔重疊，已保留原檔'))
     }
     const stale = await resumeMatchPart(dir, marker)
     if (stale) {
@@ -154,10 +155,10 @@ export async function finalizeObsSession(dir: string, deps: RecordingDeps, confi
       try {
         await writeJson(path.join(dir, 'match-part.json'), { output, part })
         const actualStart = await copyMatch(deps.ffmpegPath, meta.outputPath, part, start, end, config)
-        if (fs.existsSync(output)) throw new Error(tr('逐局輸出路徑已存在'))
+        if (fs.existsSync(output)) throw recordingError('MATCH_OUTPUT_EXISTS', tr('逐局輸出路徑已存在'))
         // Limit the cache to the actual duration; stream-copy cuts land on a nearby keyframe.
         const cutDuration = await probe(part)
-        if (!cutDuration) throw new Error(tr('無法取得逐局影片長度'))
+        if (!cutDuration) throw recordingError('MATCH_DURATION_MISSING', tr('無法取得逐局影片長度'))
         marker.cuts.push({ index, outputPath: output, offset: offset + actualStart, duration: cutDuration, ...video,
           analysisQueued: false, liveCached: false, liveTrusted: false })
         await writeJson(markerFile, marker)
@@ -182,7 +183,7 @@ export async function finalizeObsSession(dir: string, deps: RecordingDeps, confi
   for (const cut of marker.cuts) {
     if (outputWasRemoved(dir, cut.outputPath)) continue
     const original = cut.outputPath === meta.outputPath
-    if ((!original && !inOutputDir(cut.outputPath, outputDir)) || !await localFile(cut.outputPath)) throw new Error(tr('OBS 收尾影片路徑無效'))
+    if ((!original && !inOutputDir(cut.outputPath, outputDir)) || !await localFile(cut.outputPath)) throw recordingError('OBS_CUT_PATH_INVALID', tr('OBS 收尾影片路徑無效'))
     addRecorded(deps, [cut.outputPath], config.game)
     if (!cut.liveCached) {
       try {
@@ -209,10 +210,10 @@ export class ObsRecoveryPending extends Error {}
 export async function finalizeObsMatches(dir: string, deps: RecordingDeps, config: SessionSnapshot,
   matches: ObsMatch[], finishing: boolean, save?: () => Promise<void>, metadata?: ObsMetadata): Promise<string[]> {
   if (!Array.isArray(matches) || matches.some((match) => !match || !Number.isSafeInteger(match.index) || !Number.isFinite(match.recordStartedAt))) {
-    throw new Error(tr('OBS 逐局錄影紀錄無效'))
+    throw recordingError('OBS_MATCHES_INVALID', tr('OBS 逐局錄影紀錄無效'))
   }
   const meta = metadata ?? await readOptional<ObsMetadata>(path.join(dir, 'obs.json'))
-  if (!meta || !Number.isFinite(meta.captureStartedAt)) throw new Error(tr('OBS 擷取起點無效'))
+  if (!meta || !Number.isFinite(meta.captureStartedAt)) throw recordingError('OBS_CAPTURE_START_INVALID', tr('OBS 擷取起點無效'))
   const persist = (): Promise<void> => save ? save() : writeJson(path.join(dir, 'obs-matches.json'), matches)
   for (const match of matches) {
     if (match.stopped || !finishing) continue
@@ -224,11 +225,11 @@ export async function finalizeObsMatches(dir: string, deps: RecordingDeps, confi
       // OBS v5 status has no path; compare the current recording duration with the start time to avoid stopping a user-started recording.
       if (status.outputActive) {
         if (!Number.isFinite(status.outputDuration) || Math.abs(Date.now() - status.outputDuration - match.recordStartedAt) > 3000) {
-          throw new Error(tr('無法確認 OBS 錄影歸屬，請在 OBS 確認並停止錄影'))
+          throw recordingError('OBS_OWNERSHIP_UNKNOWN', tr('無法確認 OBS 錄影歸屬，請在 OBS 確認並停止錄影'))
         }
         match.outputPath = await client.stop()
       }
-      if (!match.outputPath && !match.cancelled && match.confirmed !== false) throw new Error(tr('OBS 停止路徑遺失，請手動匯入並確認錄影'))
+      if (!match.outputPath && !match.cancelled && match.confirmed !== false) throw recordingError('OBS_STOP_PATH_MISSING', tr('OBS 停止路徑遺失，請手動匯入並確認錄影'))
       match.stopped = true
       await persist()
     } catch (error) {
@@ -246,16 +247,16 @@ export async function finalizeObsMatches(dir: string, deps: RecordingDeps, confi
     }
     if (match.cancelled) continue
     if (!match.stopped && !finishing) continue
-    if (!match.stopped || !match.outputPath) throw new Error(tr('OBS 逐局影片尚未完成'))
+    if (!match.stopped || !match.outputPath) throw recordingError('OBS_MATCH_INCOMPLETE', tr('OBS 逐局影片尚未完成'))
     const file = match.outputPath
     if (outputWasRemoved(dir, file)) continue
-    if (!await localFile(file)) throw new Error(tr('OBS 逐局影片不是可讀取的本機檔案'))
+    if (!await localFile(file)) throw recordingError('OBS_MATCH_NOT_LOCAL', tr('OBS 逐局影片不是可讀取的本機檔案'))
     const relative = path.relative(await fs.promises.realpath(dir), await fs.promises.realpath(file))
-    if (!relative.startsWith('..') && !path.isAbsolute(relative)) throw new Error(tr('OBS 原檔位於錄影工作目錄內'))
+    if (!relative.startsWith('..') && !path.isAbsolute(relative)) throw recordingError('OBS_MATCH_IN_SESSION_DIR', tr('OBS 原檔位於錄影工作目錄內'))
     if (!match.added || !match.liveCached || (trusted && !match.liveTrusted)) {
       const info = await settledProbe(file, async () => deps.probeVideo
         ? deps.probeVideo(file) : { duration: await createMediaEndProbe(ffprobePath(deps.ffmpegPath))(file) }, deps.obsFileSettleMs ?? OBS_FILE_SETTLE_STEP_MS)
-      if (!info.duration) throw new Error(tr('無法取得 OBS 影片長度'))
+      if (!info.duration) throw recordingError('OBS_MATCH_DURATION_MISSING', tr('無法取得 OBS 影片長度'))
       if (!match.added) {
         addRecorded(deps, [file], config.game)
         match.added = true

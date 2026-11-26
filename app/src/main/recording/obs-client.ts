@@ -1,6 +1,7 @@
 import { OBSWebSocket } from 'obs-websocket-js'
 import { EventEmitter } from 'events'
 import { tr } from '../../shared/locale'
+import { recordingError } from './errors'
 
 /** Minimal OBS v5 client: every wait has a timeout, and errors never include the password or server response text. */
 export class ObsClient extends EventEmitter {
@@ -44,7 +45,7 @@ export class ObsClient extends EventEmitter {
 
   private async call<T>(request: Promise<T>): Promise<T> {
     try { return await this.deadline(request) }
-    catch { throw new Error(tr('OBS 指令失敗或回應逾時，請檢查 OBS 連線')) }
+    catch { throw recordingError('OBS_REQUEST_FAILED', tr('OBS 指令失敗或回應逾時，請檢查 OBS 連線')) }
   }
 
   async version(): Promise<{ obsVersion: string; obsWebSocketVersion: string }> {

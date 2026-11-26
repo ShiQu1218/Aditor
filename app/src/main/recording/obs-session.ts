@@ -5,6 +5,7 @@ import type { RecordingSettings } from '../../shared/recording'
 import { writeJson } from './finalize'
 import { ObsClient } from './obs-client'
 import { tr } from '../../shared/locale'
+import { recordingError } from './errors'
 
 const OBS_STOP_POLL_MS = 100
 /** Maximum time to wait for the previous OBS recording to stop before starting a per-match recording. */
@@ -89,7 +90,7 @@ export class ObsRecording extends EventEmitter {
     }
     this.meta.adopted = status.outputActive
     if (status.outputActive) {
-      if (!Number.isFinite(status.outputDuration) || status.outputDuration < 0) throw new Error(tr('OBS 錄影時間回覆無效'))
+      if (!Number.isFinite(status.outputDuration) || status.outputDuration < 0) throw recordingError('OBS_DURATION_REPLY_INVALID', tr('OBS 錄影時間回覆無效'))
       this.meta.recordStartedAt = Date.now() - status.outputDuration
     } else if (this.settings.mode !== 'match') { this.meta.recordStartedAt = Date.now(); await this.client.start() }
     else this.stopped = true
@@ -100,7 +101,7 @@ export class ObsRecording extends EventEmitter {
 
   async startMatch(index: number, confirmed = true): Promise<void> {
     if (!this.perMatch) return
-    if (this.matches.at(-1)?.stopped === false) throw new Error(tr('上一局 OBS 錄影尚未完成，已保留工作'))
+    if (this.matches.at(-1)?.stopped === false) throw recordingError('OBS_PREVIOUS_MATCH_ACTIVE', tr('上一局 OBS 錄影尚未完成，已保留工作'))
     if (!this.client.connected) await this.connect()
     // When matches are queued back to back, OBS may still be writing the previous file and report active after StopRecord; wait for it to stop.
     const waitUntil = Date.now() + OBS_MATCH_RESTART_WAIT_MS
@@ -109,7 +110,7 @@ export class ObsRecording extends EventEmitter {
       await new Promise((resolve) => setTimeout(resolve, OBS_STOP_POLL_MS))
       status = await this.client.status()
     }
-    if (status.outputActive) throw new Error(tr('OBS 已有其他錄影，無法開始逐局錄影'))
+    if (status.outputActive) throw recordingError('OBS_ALREADY_RECORDING', tr('OBS 已有其他錄影，無法開始逐局錄影'))
     this.stopping = false
     this.stopped = false
     delete this.meta.outputPath

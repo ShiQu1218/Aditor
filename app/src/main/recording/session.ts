@@ -23,6 +23,7 @@ import { ObsRecording } from './obs-session'
 import { resolveCaptureMethod } from './capture-method'
 import type { RecordingDeps, RecordingNoticeKind } from './index'
 import { tr } from '../../shared/locale'
+import { recordingError } from './errors'
 import { recordOutputRemoval } from './removed-output'
 import { emitChildDiagnostic, RECORDING_SERVICE_ERRORS } from '../../shared/child-diagnostics'
 
@@ -368,7 +369,7 @@ export class RecordingSessionService implements RecordingService {
 
   /** Allow only the current recording session, including finalization while its directory still exists. */
   private liveFor(sessionId: string): LiveSession {
-    if (!this.active || this.active.id !== sessionId) throw new Error(tr('錄影工作不存在或已收尾'))
+    if (!this.active || this.active.id !== sessionId) throw recordingError('SESSION_NOT_ACTIVE', tr('錄影工作不存在或已收尾'))
     return this.active.live
   }
 
@@ -722,7 +723,7 @@ export class RecordingSessionService implements RecordingService {
     if (!obs?.perMatch || !obs.recording) return
     const current = obs.matches.at(-1)
     if (current?.confirmed === false) { current.cancelled = true; await obs.save() }
-    if (!await obs.stop()) throw new Error(tr('OBS 尚未停止錄影'))
+    if (!await obs.stop()) throw recordingError('OBS_NOT_STOPPED', tr('OBS 尚未停止錄影'))
     this.update({ obsRecording: false })
     await this.completeObsMatches(session)
   }
@@ -852,7 +853,7 @@ export class RecordingSessionService implements RecordingService {
         // Capture never started (for example, the game was closing), so there are no aligned detection results.
         // Leave reused recordings alone; stop recordings started by this app without adding an almost-empty OBS file to the library.
         if (!session.obs.meta.adopted) {
-          if (!await session.obs.stop()) throw new Error(tr('OBS 錄影尚未停止，已保留工作'))
+          if (!await session.obs.stop()) throw recordingError('OBS_STOP_PENDING', tr('OBS 錄影尚未停止，已保留工作'))
           this.obsStoppedAt = Date.now()
         }
         await session.obs.close()
@@ -873,7 +874,7 @@ export class RecordingSessionService implements RecordingService {
       if (session.obs) {
         const ready = await session.obs.stop()
         if (!session.obs.meta.adopted) this.obsStoppedAt = Date.now()
-        if (!ready && session.obs.perMatch) throw new Error(tr('OBS 逐局錄影尚未停止，已保留工作'))
+        if (!ready && session.obs.perMatch) throw recordingError('OBS_MATCH_NOT_STOPPED', tr('OBS 逐局錄影尚未停止，已保留工作'))
         if (!ready) {
           this.pendingObs.set(session.id, session)
           this.active = null

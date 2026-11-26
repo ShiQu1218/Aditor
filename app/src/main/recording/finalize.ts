@@ -9,6 +9,7 @@ import type { RecordingDeps } from './index'
 import { isTrusted, writeLiveCache, type LiveFile } from './live-cache'
 import { finalizeObsSession } from './obs-finalize'
 import { tr } from '../../shared/locale'
+import { recordingError } from './errors'
 import { DAY_FOLDER_PATTERN, dayFolderName } from '../../shared/storage'
 import { DEFAULT_GAME, GAMES, gameOf, type GameId } from '../../shared/games'
 import { outputWasRemoved } from './removed-output'
@@ -101,7 +102,7 @@ export async function validateSessionDir(dir: string): Promise<string> {
       (await fs.promises.lstat(parent)).isSymbolicLink() ||
       (await fs.promises.lstat(resolved)).isSymbolicLink() ||
       !(await fs.promises.stat(resolved)).isDirectory()) {
-    throw new Error(tr('錄影工作目錄無效：{resolved}', { resolved }))
+    throw recordingError('SESSION_DIR_INVALID', tr('錄影工作目錄無效：{resolved}', { resolved }))
   }
   return resolved
 }
@@ -121,11 +122,11 @@ export async function readIndex(dir: string): Promise<IndexEntry[]> {
     try { entry = JSON.parse(lines[i]) }
     catch (error) {
       if (i === lines.length - 1) break
-      throw new Error(tr('錄影索引第 {line} 行無效：{error}', { line: i + 1, error: String(error) }))
+      throw recordingError('INDEX_LINE_INVALID', tr('錄影索引第 {line} 行無效：{error}', { line: i + 1, error: String(error) }))
     }
     if (!entry || !Number.isSafeInteger(entry.seq) || entry.seq <= (entries.at(-1)?.seq ?? 0) ||
         !Number.isFinite(entry.pts) || entry.pts < 0 || !Number.isFinite(entry.dur) || entry.dur <= 0) {
-      throw new Error(tr('錄影索引第 {line} 行的序號或時間無效', { line: i + 1 }))
+      throw recordingError('INDEX_ENTRY_INVALID', tr('錄影索引第 {line} 行的序號或時間無效', { line: i + 1 }))
     }
     entries.push(entry)
   }
@@ -136,7 +137,7 @@ async function snapshot(dir: string, fallback: PostRecordAnalysis): Promise<Sess
   try {
     const value = JSON.parse(await fs.promises.readFile(path.join(dir, 'recording.json'), 'utf8'))
     if (!Number.isFinite(value.startedAt) || !['none', 'afterExit', 'perMatch'].includes(value.postAnalysis)) {
-      throw new Error(tr('錄影設定快照無效'))
+      throw recordingError('SNAPSHOT_INVALID', tr('錄影設定快照無效'))
     }
     return { ...value, mode: value.mode === 'match' ? 'match' : 'session', game: gameOf(value.game) }
   } catch (error) {
@@ -144,7 +145,7 @@ async function snapshot(dir: string, fallback: PostRecordAnalysis): Promise<Sess
   }
   const meta = JSON.parse(await fs.promises.readFile(path.join(dir, 'session.json'), 'utf8'))
   const startedAt = Date.parse(meta.started_at)
-  if (!Number.isFinite(startedAt)) throw new Error(tr('錄影開始時間無效'))
+  if (!Number.isFinite(startedAt)) throw recordingError('START_TIME_INVALID', tr('錄影開始時間無效'))
   return { startedAt, postAnalysis: fallback, mode: 'session' }
 }
 
@@ -231,7 +232,7 @@ async function outputLostWithSegments(dir: string, output: string, entries: read
 
 async function validateCut(cut: MatchCut, outputDir: string): Promise<void> {
   if (!outputInDir(cut.outputPath, outputDir) || !(await fs.promises.lstat(cut.outputPath)).isFile()) {
-    throw new Error(tr('逐局影片路徑無效或檔案遺失'))
+    throw recordingError('MATCH_OUTPUT_INVALID', tr('逐局影片路徑無效或檔案遺失'))
   }
 }
 
@@ -245,7 +246,7 @@ export async function resumeMatchPart(dir: string, marker: { cuts: { outputPath:
   const pending = await readOptional<{ output: string; part: string }>(file)
   if (!pending) return null
   if (!outputInDir(pending.output, path.dirname(path.dirname(dir))) || pending.part !== pending.output.slice(0, -4) + '.part.mp4') {
-    throw new Error(tr('逐局暫存影片路徑無效'))
+    throw recordingError('MATCH_PART_PATH_INVALID', tr('逐局暫存影片路徑無效'))
   }
   if (marker.cuts.some((cut) => cut.outputPath === pending.output)) {
     let stat: fs.Stats | null = null
@@ -262,13 +263,13 @@ export async function resumeMatchPart(dir: string, marker: { cuts: { outputPath:
       // Keep the reservation until the caller has persisted removal of the stale marker.
       return pending.output
     }
-    if (!stat.isFile() || stat.isSymbolicLink()) throw new Error(tr('逐局暫存影片不是一般檔案'))
+    if (!stat.isFile() || stat.isSymbolicLink()) throw recordingError('MATCH_PART_NOT_FILE', tr('逐局暫存影片不是一般檔案'))
     if (fs.existsSync(pending.output)) {
       const outputStat = await fs.promises.lstat(pending.output)
       // A completed link/copy may precede a crash; only discard the part when both files contain the same video.
       if (!outputStat.isFile() || outputStat.isSymbolicLink() || outputStat.size !== stat.size ||
           await fileDigest(pending.part) !== await fileDigest(pending.output)) {
-        throw new Error(tr('輸出影片已存在：{output}', { output: pending.output }))
+        throw recordingError('OUTPUT_EXISTS', tr('輸出影片已存在：{output}', { output: pending.output }))
       }
       await fs.promises.unlink(pending.part)
     } else {
@@ -301,10 +302,10 @@ async function remuxMatch(dir: string, deps: RecordingDeps, config: SessionSnaps
     await writeJson(pending, { output, part })
     for (const file of segmentPaths(dir, entries)) {
       const stat = await fs.promises.lstat(file)
-      if (!stat.isFile() || stat.isSymbolicLink()) throw new Error(tr('逐局剪檔缺少有效片段：{file}', { file }))
+      if (!stat.isFile() || stat.isSymbolicLink()) throw recordingError('MATCH_SEGMENT_INVALID', tr('逐局剪檔缺少有效片段：{file}', { file }))
     }
     await remux(deps.ffmpegPath, segmentPaths(dir, entries), part, config)
-    if (fs.existsSync(output)) throw new Error(tr('輸出影片已存在：{output}', { output }))
+    if (fs.existsSync(output)) throw recordingError('OUTPUT_EXISTS', tr('輸出影片已存在：{output}', { output }))
     const cut: MatchCut = { index, ...match, firstSeq: entries[0].seq, lastSeq: entries.at(-1)!.seq,
       outputPath: output, analysisQueued: false, liveCached: false, liveTrusted: false }
     // Persist the marker before publishing so recovery can reuse the temporary file without leaving an unregistered final video.
@@ -342,7 +343,7 @@ async function presentEntries(dir: string, entries: readonly IndexEntry[]): Prom
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') continue
       throw error
     }
-    if (!stat.isFile() || stat.isSymbolicLink()) throw new Error(tr('錄影段落不是一般檔案：{file}', { file }))
+    if (!stat.isFile() || stat.isSymbolicLink()) throw recordingError('SEGMENT_NOT_FILE', tr('錄影段落不是一般檔案：{file}', { file }))
     present.push(entry)
   }
   return { present, missing: entries.length - present.length }
@@ -412,7 +413,7 @@ export async function cutMatches(dir: string, deps: RecordingDeps, options: Matc
   }
   const marker = await readOptional<MatchMarker>(path.join(dir, 'matches.json')) ?? { cuts: [] }
   if (!Array.isArray(marker.cuts) || (marker.skipped !== undefined && !Array.isArray(marker.skipped))) {
-    throw new Error(tr('逐局剪檔紀錄無效'))
+    throw recordingError('MATCH_MARKER_INVALID', tr('逐局剪檔紀錄無效'))
   }
   const stale = await resumeMatchPart(dir, marker)
   if (stale) await dropStaleCut(dir, marker, stale)
@@ -518,7 +519,7 @@ async function remux(ffmpeg: string, files: string[], output: string, config: Se
   async function* chunks(): AsyncGenerator<Buffer> {
     for (const file of files) {
       const stat = await fs.promises.lstat(file)
-      if (!stat.isFile() || stat.isSymbolicLink()) throw new Error(tr('錄影段落不是一般檔案：{file}', { file }))
+      if (!stat.isFile() || stat.isSymbolicLink()) throw recordingError('SEGMENT_NOT_FILE', tr('錄影段落不是一般檔案：{file}', { file }))
       for await (const chunk of fs.createReadStream(file)) yield chunk as Buffer
     }
   }
@@ -526,7 +527,7 @@ async function remux(ffmpeg: string, files: string[], output: string, config: Se
   catch (error) {
     proc.kill()
     await exited.catch(() => {})
-    throw new Error(tr('錄影串接失敗：{stderr}', { stderr: stderr.toString('utf8') || String(error) }))
+    throw recordingError('REMUX_FAILED', tr('錄影串接失敗：{stderr}', { stderr: stderr.toString('utf8') || String(error) }))
   }
 }
 
@@ -566,7 +567,7 @@ export async function finalizeSession(dir: string, deps: RecordingDeps): Promise
       // The recorder opens seg_000001.m4s before the first frame; an empty file left by a capture that never started holds no footage.
       const unindexed = (await fs.promises.readdir(dir)).filter((name) => /^seg_\d+\.m4s$/i.test(name))
       if ((await Promise.all(unindexed.map((name) => fs.promises.lstat(path.join(dir, name))))).some((stat) => stat.size > 0)) {
-        throw new Error(tr('錄影索引遺失或不完整，但仍有錄影片段，已保留工作'))
+        throw recordingError('INDEX_MISSING', tr('錄影索引遺失或不完整，但仍有錄影片段，已保留工作'))
       }
       await removeFinishedSessionDir(dir, deps)
       return []
@@ -580,7 +581,7 @@ export async function finalizeSession(dir: string, deps: RecordingDeps): Promise
       const detected = liveMatches(live)
       if (detected.length) {
         if (!matches?.cuts.length && !detected.every((_, index) => matches?.skipped?.includes(index))) {
-          throw new Error(tr('對局沒有可剪出的片段，已保留工作'))
+          throw recordingError('NO_MATCH_CUTS', tr('對局沒有可剪出的片段，已保留工作'))
         }
         await removeFinishedSessionDir(dir, deps)
         return outputs
@@ -593,7 +594,7 @@ export async function finalizeSession(dir: string, deps: RecordingDeps): Promise
     }
     // Incomplete detection falls through to the available segments below.
     const { present, missing } = await presentEntries(dir, entries)
-    if (!present.length) throw new Error(tr('錄影段落檔案全部遺失，無法輸出影片，已保留工作'))
+    if (!present.length) throw recordingError('SEGMENTS_ALL_MISSING', tr('錄影段落檔案全部遺失，無法輸出影片，已保留工作'))
     // Drop a part left by an attempt that crashed before its marker was written.
     await resumeMatchPart(dir, { cuts: [] })
     const { output, part } = await reserveOutput(outputDir, outputBase(config.startedAt, config.game), config.startedAt)
@@ -604,7 +605,7 @@ export async function finalizeSession(dir: string, deps: RecordingDeps): Promise
       await writeJson(pending, { output, part })
       await remux(deps.ffmpegPath, segmentPaths(dir, present), part, config)
       await fs.promises.access(output).then(() => {
-        throw new Error(tr('輸出影片已存在：{output}', { output }))
+        throw recordingError('OUTPUT_EXISTS', tr('輸出影片已存在：{output}', { output }))
       }, (error: NodeJS.ErrnoException) => { if (error.code !== 'ENOENT') throw error })
       marker = { outputPath: output, postAnalysis: config.postAnalysis, analysisQueued: false }
       await writeJson(markerPath, marker)
@@ -627,10 +628,10 @@ export async function finalizeSession(dir: string, deps: RecordingDeps): Promise
   }
   if (!inOutputDir(marker.outputPath, outputDir) ||
       path.extname(marker.outputPath).toLowerCase() !== '.mp4' ||
-      !(await fs.promises.lstat(marker.outputPath)).isFile()) throw new Error(tr('已收尾的影片路徑無效或檔案遺失'))
+      !(await fs.promises.lstat(marker.outputPath)).isFile()) throw recordingError('FINALIZED_OUTPUT_INVALID', tr('已收尾的影片路徑無效或檔案遺失'))
   // Legacy markers store only the output path; recovery adds the file to the library without re-enqueuing analysis.
   if (marker.postAnalysis === undefined) marker.postAnalysis = 'none'
-  if (!['none', 'afterExit', 'perMatch'].includes(marker.postAnalysis)) throw new Error(tr('已收尾的分析設定無效'))
+  if (!['none', 'afterExit', 'perMatch'].includes(marker.postAnalysis)) throw recordingError('FINALIZED_ANALYSIS_INVALID', tr('已收尾的分析設定無效'))
   // recording.json outlives the marker, so recovery keeps the game even without a live cache.
   addRecorded(deps, [marker.outputPath], gameOf(recording?.game))
   if (!marker.liveCached) {

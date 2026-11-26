@@ -5,6 +5,7 @@ import { ObsRecoveryPending } from './obs-finalize'
 import { finalizeSession } from './finalize'
 import type { RecordingDeps } from './index'
 import { tr } from '../../shared/locale'
+import { recordingError } from './errors'
 
 /** Folders whose `.sessions` startup recovery scans: the output folder, watched folders and the default, deduplicated. */
 export function sessionRoots(deps: RecordingDeps): string[] {
@@ -24,7 +25,7 @@ export async function recoverSessions(
     if (cancelled()) return
     const root = path.join(dir, '.sessions')
     try {
-      if ((await fs.promises.lstat(root)).isSymbolicLink()) throw new Error(tr('不支援連結的錄影工作目錄：{root}', { root }))
+      if ((await fs.promises.lstat(root)).isSymbolicLink()) throw recordingError('SESSION_ROOT_SYMLINK', tr('不支援連結的錄影工作目錄：{root}', { root }))
       const entries = await fs.promises.readdir(root, { withFileTypes: true })
       for (const entry of entries) {
         if (cancelled()) return
