@@ -207,6 +207,8 @@ describe('recording service integration with the live engine', () => {
     let finalLive: Record<string, any> | null = null
     let finalEvents = ''
     rm.mockImplementation(async (target) => {
+      // Files are removed one by one before the directory itself; read the markers on the final directory call.
+      if (path.resolve(String(target)) !== path.resolve(sessionDir)) return
       finalLive = JSON.parse(fs.readFileSync(path.join(String(target), 'live.json'), 'utf8'))
       finalEvents = fs.readFileSync(path.join(String(target), 'events.jsonl'), 'utf8')
     })

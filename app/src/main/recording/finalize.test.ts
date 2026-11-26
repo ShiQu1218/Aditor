@@ -322,6 +322,30 @@ describe.skipIf(!ffmpeg)('finalization with real ffmpeg streams', () => {
     expect(fs.existsSync(dir)).toBe(false)
   })
 
+  it('keeps a published output and the markers when a segment stays locked, and recovery finishes the removal', async () => {
+    const base = root(); const deps = makeDeps(base); deps.ffmpegPath = ffmpeg!
+    deps.addToLibrary = vi.fn()
+    const dir = sessionDir(base); copySegments(segments, dir)
+    const real = fs.promises.rm
+    const rm = vi.spyOn(fs.promises, 'rm').mockImplementation(async (target, options) => {
+      if (path.basename(String(target)) === 'seg_000002.m4s') throw Object.assign(new Error('EBUSY: resource busy'), { code: 'EBUSY' })
+      return real(target, options)
+    })
+    try {
+      const [output] = await finalizeSession(dir, deps)
+      expect(fs.statSync(output).isFile()).toBe(true)
+      expect(deps.addToLibrary).toHaveBeenCalledWith([output])
+      for (const name of ['finalized.json', 'index.jsonl', 'recording.json', 'seg_000002.m4s']) expect(fs.existsSync(path.join(dir, name))).toBe(true)
+      expect(fs.existsSync(path.join(dir, 'seg_000001.m4s'))).toBe(false)
+      rm.mockRestore()
+      const finalized = vi.fn(); const failed = vi.fn()
+      await recoverSessions(deps, finalized, failed)
+      expect(failed).not.toHaveBeenCalled()
+      expect(finalized).toHaveBeenCalledWith([output])
+      expect(fs.existsSync(dir)).toBe(false)
+    } finally { rm.mockRestore() }
+  })
+
   it('retries only the marker after library failure without rerunning ffmpeg, and re-enqueues analysis after analysis failure', async () => {
     const base = root(); const deps = makeDeps(base); deps.ffmpegPath = ffmpeg!
     const dir = sessionDir(base); copySegments(segments, dir)
@@ -397,11 +421,40 @@ describe.skipIf(!ffmpeg)('finalization with real ffmpeg streams', () => {
 describe('Session directory removal', () => {
   afterEach(() => { vi.restoreAllMocks() })
 
-  it('retries removal while Windows still holds a file in the work directory (ENOTEMPTY/EBUSY/EPERM)', async () => {
-    const rm = vi.spyOn(fs.promises, 'rm').mockResolvedValue(undefined)
-    await removeSessionDir('C:/sessions/.sessions/x')
-    expect(rm).toHaveBeenCalledExactlyOnceWith('C:/sessions/.sessions/x',
-      expect.objectContaining({ recursive: true, maxRetries: expect.any(Number), retryDelay: expect.any(Number) }))
-    expect(rm.mock.calls[0][1]).not.toHaveProperty('force')
+  it('removes media before the index and markers, retrying Windows locks, and stops at the first locked file', async () => {
+    const dir = sessionDir(root())
+    for (const name of ['finalized.json', 'index.jsonl', 'live.json', 'init.mp4', 'removed-abc', 'seg_000001.m4s', 'seg_000002.m4s']) {
+      fs.writeFileSync(path.join(dir, name), name)
+    }
+    const real = fs.promises.rm
+    const busy = Object.assign(new Error('EBUSY: resource busy'), { code: 'EBUSY' })
+    const rm = vi.spyOn(fs.promises, 'rm').mockImplementation(async (target, options) => {
+      if (path.basename(String(target)) === 'seg_000002.m4s') throw busy
+      return real(target, options)
+    })
+    await expect(removeSessionDir(dir)).rejects.toBe(busy)
+    expect(fs.readdirSync(dir).sort()).toEqual(['finalized.json', 'index.jsonl', 'live.json', 'recording.json', 'removed-abc', 'seg_000002.m4s'])
+    expect(rm.mock.calls.every(([, options]) => options?.maxRetries && options.retryDelay)).toBe(true)
+
+    rm.mockClear()
+    rm.mockImplementation(real)
+    await removeSessionDir(dir)
+    expect(fs.existsSync(dir)).toBe(false)
+    const order = rm.mock.calls.map(([target]) => path.basename(String(target)))
+    expect(order.slice(0, 3)).toEqual(['seg_000002.m4s', 'index.jsonl', 'recording.json'])
+    expect(order.slice(3, -1).sort()).toEqual(['finalized.json', 'live.json', 'removed-abc'])
+    expect(order.at(-1)).toBe(path.basename(dir))
+  })
+
+  it('startup recovery removes a leftover directory that holds only JSON markers', async () => {
+    const base = root(); const deps = makeDeps(base)
+    const dir = sessionDir(base)
+    fs.writeFileSync(path.join(dir, 'recording.json'), JSON.stringify({ startedAt: Date.now(), postAnalysis: 'none', mode: 'match' }))
+    for (const name of ['live.json', 'matches.json', 'live-complete.json']) fs.writeFileSync(path.join(dir, name), '{}')
+    const finalized = vi.fn(); const failed = vi.fn()
+    await recoverSessions(deps, finalized, failed)
+    expect(failed).not.toHaveBeenCalled()
+    expect(finalized).not.toHaveBeenCalled()
+    expect(fs.existsSync(dir)).toBe(false)
   })
 })

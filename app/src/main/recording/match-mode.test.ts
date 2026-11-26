@@ -458,7 +458,7 @@ describe('per-match clipping and recovery', () => {
     r.saveLive({ ...r.live, quality: { complete: true, hScale: 1.05 } })
     r.deps.addToLibrary = vi.fn()
     const rm = vi.spyOn(fs.promises, 'rm').mockRejectedValueOnce(new Error('保留 marker 供檢查'))
-    await expect(finalizeSession(r.dir, r.deps)).rejects.toThrow('供檢查')
+    await expect(finalizeSession(r.dir, r.deps)).resolves.toEqual([])
     for (const output of outputs) {
       expect(read(r.deps.liveCachePath!(output)).analysis).toMatchObject({ source: 'live', engine_version: '0.3.0', h_scale: 1.05 })
       expect(r.deps.addToLibrary).toHaveBeenCalledWith([output])
@@ -509,7 +509,7 @@ describe('per-match clipping and recovery', () => {
     const outputs = await cutMatches(r.dir, r.deps)
     expect(r.deps.enqueueAnalysis).toHaveBeenCalledTimes(postAnalysis === 'perMatch' ? 2 : 0)
     vi.spyOn(fs.promises, 'rm').mockRejectedValueOnce(new Error('模擬刪除前中斷'))
-    await expect(finalizeSession(r.dir, r.deps)).rejects.toThrow('中斷')
+    await expect(finalizeSession(r.dir, r.deps)).resolves.toEqual([])
     expect(await finalizeSession(r.dir, r.deps)).toEqual([])
     expect(r.deps.enqueueAnalysis).toHaveBeenCalledTimes(2)
     for (const output of outputs) expect(r.deps.enqueueAnalysis).toHaveBeenCalledWith(output)
