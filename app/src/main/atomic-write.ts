@@ -2,6 +2,8 @@ import fs from 'fs'
 import path from 'path'
 
 const LOCK_CODES = ['EPERM', 'EACCES', 'EBUSY']
+/** FAT/exFAT, some network filesystems and cross-volume targets cannot hard link. */
+const NO_LINK_CODES = ['EPERM', 'ENOTSUP', 'EOPNOTSUPP', 'ENOSYS', 'EXDEV']
 /** Windows denies replacing a file that antivirus, the indexer or a sync client has open; such locks clear within a moment. */
 const RENAME_RETRY_DELAYS_MS = [50, 100, 200]
 
@@ -34,5 +36,15 @@ export function writeFileAtomicSync(file: string, text: string): void {
       fs.rmSync(tmp, { force: true })
     } catch {}
     throw error
+  }
+}
+
+/** Publish source at target without replacing an existing file: hard link, else exclusive copy. Rejects with EEXIST. */
+export async function linkOrCopyExclusive(source: string, target: string): Promise<void> {
+  try {
+    await fs.promises.link(source, target)
+  } catch (error) {
+    if (!NO_LINK_CODES.includes((error as NodeJS.ErrnoException).code ?? '')) throw error
+    await fs.promises.copyFile(source, target, fs.constants.COPYFILE_EXCL)
   }
 }

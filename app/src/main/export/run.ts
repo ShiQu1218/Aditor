@@ -6,6 +6,7 @@ import { FfmpegJob } from './plan'
 import { killTree } from './killTree'
 import { appDataDir, codecsDir } from '../../shared/paths'
 import { tr } from '../../shared/locale'
+import { linkOrCopyExclusive } from '../atomic-write'
 
 export interface RunProgress {
   jobIndex: number
@@ -105,13 +106,7 @@ async function publishOutput(partial: string, target: string, intermediate: bool
   for (let n = 1; ; n++) {
     const candidate = n === 1 ? target : `${stem} (${n})${ext}`
     try {
-      try {
-        await fs.promises.link(partial, candidate)
-      } catch (err) {
-        // FAT/exFAT and some network filesystems do not support hard links.
-        if (!['EPERM', 'ENOTSUP', 'EOPNOTSUPP', 'ENOSYS', 'EXDEV'].includes((err as NodeJS.ErrnoException).code ?? '')) throw err
-        await fs.promises.copyFile(partial, candidate, fs.constants.COPYFILE_EXCL)
-      }
+      await linkOrCopyExclusive(partial, candidate)
       return candidate
     } catch (err) {
       if (intermediate || (err as NodeJS.ErrnoException).code !== 'EEXIST') throw err

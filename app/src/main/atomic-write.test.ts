@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
-import { writeFileAtomicSync } from './atomic-write'
+import { linkOrCopyExclusive, writeFileAtomicSync } from './atomic-write'
 
 describe('writeFileAtomicSync', () => {
   let dir: string
@@ -106,5 +106,44 @@ describe('writeFileAtomicSync lock retry', () => {
     expect(() => writeFileAtomicSync(file, 'new')).toThrow('ENOSPC')
     expect(rename).toHaveBeenCalledOnce()
     expect(fs.existsSync(`${file}.tmp`)).toBe(false)
+  })
+})
+
+describe('linkOrCopyExclusive', () => {
+  let dir: string
+
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'aditor-publish-'))
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+    fs.rmSync(dir, { recursive: true, force: true })
+  })
+
+  it('rejects with EEXIST and leaves an existing target untouched', async () => {
+    const source = path.join(dir, 'part')
+    const target = path.join(dir, 'out')
+    fs.writeFileSync(source, 'new')
+    fs.writeFileSync(target, 'old')
+    await expect(linkOrCopyExclusive(source, target)).rejects.toMatchObject({ code: 'EEXIST' })
+    expect(fs.readFileSync(target, 'utf-8')).toBe('old')
+  })
+
+  it('falls back to an exclusive copy when hard links are unsupported', async () => {
+    const source = path.join(dir, 'part')
+    const target = path.join(dir, 'out')
+    fs.writeFileSync(source, 'data')
+    vi.spyOn(fs.promises, 'link').mockRejectedValueOnce(Object.assign(new Error('unsupported'), { code: 'ENOTSUP' }))
+    const copy = vi.spyOn(fs.promises, 'copyFile')
+    await linkOrCopyExclusive(source, target)
+    expect(copy).toHaveBeenCalledWith(source, target, fs.constants.COPYFILE_EXCL)
+    expect(fs.readFileSync(target, 'utf-8')).toBe('data')
+  })
+
+  it('does not copy when linking fails for another reason', async () => {
+    const copy = vi.spyOn(fs.promises, 'copyFile')
+    await expect(linkOrCopyExclusive(path.join(dir, 'missing'), path.join(dir, 'out'))).rejects.toMatchObject({ code: 'ENOENT' })
+    expect(copy).not.toHaveBeenCalled()
   })
 })

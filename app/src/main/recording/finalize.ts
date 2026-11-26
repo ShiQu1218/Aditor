@@ -12,6 +12,7 @@ import { tr } from '../../shared/locale'
 import { DAY_FOLDER_PATTERN, dayFolderName } from '../../shared/storage'
 import { DEFAULT_GAME, GAMES, gameOf, type GameId } from '../../shared/games'
 import { outputWasRemoved } from './removed-output'
+import { linkOrCopyExclusive } from '../atomic-write'
 
 export interface SessionSnapshot {
   startedAt: number
@@ -165,11 +166,7 @@ export async function readOptional<T>(file: string): Promise<T | null> {
 
 /** Publish without replacing a file created after the output name was reserved. */
 export async function publishRecordingPart(part: string, output: string): Promise<void> {
-  try { await fs.promises.link(part, output) }
-  catch (error) {
-    if (!['EPERM', 'ENOTSUP', 'EOPNOTSUPP', 'ENOSYS', 'EXDEV'].includes((error as NodeJS.ErrnoException).code ?? '')) throw error
-    await fs.promises.copyFile(part, output, fs.constants.COPYFILE_EXCL)
-  }
+  await linkOrCopyExclusive(part, output)
   await fs.promises.unlink(part)
 }
 
