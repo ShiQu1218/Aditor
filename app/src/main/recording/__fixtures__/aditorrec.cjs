@@ -42,6 +42,17 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
     if (mode === 'hello-bad-gpus') return hello([{ id: '10de:2684', name: 'NVIDIA GeForce RTX 5080', vendor: 'nvidia' }])
     return hello()
   }
+  if (req.cmd === 'processes') {
+    if (mode === 'processes-timeout') return
+    if (mode === 'processes-error') return send({ id: req.id, ok: false, code: 'internal', message: 'processes failed' })
+    if (mode === 'processes-bad-reply') return send({ id: req.id, ok: true, processes: [{ name: 'r5apex.exe', pid: 0 }] })
+    const list = JSON.parse(process.env.FAKE_RECORDER_PROCESSES || '[]')
+    const prefixes = Array.isArray(req.prefixes) ? req.prefixes : []
+    const processes = list.filter((entry) =>
+      prefixes.some((prefix) => entry.name.toLowerCase().startsWith(String(prefix).toLowerCase()))
+    )
+    return send({ id: req.id, ok: true, processes })
+  }
   if (req.cmd === 'start') {
     if (mode === 'no-hw') return send({ id: req.id, ok: false, code: 'no_hw_encoder', message: '沒有硬體編碼器' })
     if (mode === 'audio-device-invalidated') return send({ id: req.id, ok: false, code: 'audio_failed', message: 'audio_failed: Failed to activate audio device: The audio device has been invalidated. (0x88890004)' })

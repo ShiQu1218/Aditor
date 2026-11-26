@@ -7,7 +7,7 @@ import {
   type LiveState, type LiveUpdate, type RecordingBackend, type RecordingMode, type RecordingService, type RecordingStatus, type RecorderCapabilities, type ObsTestResult
 } from '../../shared/recording'
 import { isSafeLocalDirPath } from '../safe-path'
-import { GameWatcher, createGameProcessFinder, findGameProcess, sameProcess, type GameProcess } from './game-watcher'
+import { GameWatcher, createGameProcessFinder, createRecorderGameQuery, sameProcess, type GameProcess, type GameQuery } from './game-watcher'
 import { ValorantClient, type PresenceEvent } from './valorant-client'
 import { DEFAULT_GAME, GAMES, gameProfileDir, gameSceneDir, type GameId } from '../../shared/games'
 import { AditorrecClient, RecorderError, type RecorderEvent } from './aditorrec-client'
@@ -131,7 +131,8 @@ export class RecordingSessionService implements RecordingService {
   private state: RecordingStatus = { ...IDLE_RECORDING_STATUS }
   private events = new EventEmitter()
   private watcher: GameWatcher<GameProcess>
-  private pollGame = createGameProcessFinder()
+  private readonly gameQuery: GameQuery
+  private pollGame: () => Promise<GameProcess | null>
   private running = false
   private gamePid: number | null = null
   /** Game of gamePid; keeps the last game after it exits. */
@@ -167,6 +168,8 @@ export class RecordingSessionService implements RecordingService {
   private storageChecked = new Set<string>()
 
   constructor(private deps: RecordingDeps) {
+    this.gameQuery = createRecorderGameQuery(() => new AditorrecClient(this.deps.recorderCommand, this.deps.onDiagnostic))
+    this.pollGame = createGameProcessFinder(this.gameQuery.find)
     this.watcher = new GameWatcher<GameProcess>(() => this.findGame(this.pollGame, false), deps.pollMs ?? 3000,
       (found) => {
         this.pollWarning = false
@@ -208,7 +211,7 @@ export class RecordingSessionService implements RecordingService {
       }, sameProcess)
   }
 
-  private async findGame(find = findGameProcess, report = true): Promise<GameProcess | null> {
+  private async findGame(find = this.gameQuery.find, report = true): Promise<GameProcess | null> {
     const { findGame, findApexPid } = this.deps
     try {
       if (findGame) return await findGame()
@@ -228,7 +231,7 @@ export class RecordingSessionService implements RecordingService {
     if (this.running) return
     this.running = true
     this.firstPoll = true
-    this.pollGame = createGameProcessFinder()
+    this.pollGame = createGameProcessFinder(this.gameQuery.find)
     this.recovery = this.serialize(() => recoverSessions(this.deps,
       (paths) => this.finalized(paths),
       (error) => {
@@ -242,6 +245,7 @@ export class RecordingSessionService implements RecordingService {
   async stop(): Promise<void> {
     this.running = false
     this.watcher.stop()
+    await this.gameQuery.close()
     this.cancelRetry()
     this.clearDiskTimer()
     // Allow cancellation during startup handshakes so app shutdown does not wait for the full startup timeout.

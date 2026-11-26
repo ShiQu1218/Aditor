@@ -57,7 +57,7 @@ export interface RecordingDeps {
   enqueueAnalysis: (videoPath: string) => void
   /** Windows notification/tray notice (implemented by task A3; visibility follows its settings). */
   notify: (kind: RecordingNoticeKind, message: string) => void
-  /** Test injection: find a running supported game (defaults to findGameProcess, polled every 3 seconds). */
+  /** Test injection: find a running supported game (defaults to the recorder process query, falling back to tasklist, polled every 3 seconds). */
   findGame?: () => Promise<GameProcess | null>
   /** Test injection kept for older tests: an Apex PID, used when findGame is not given. */
   findApexPid?: () => Promise<number | null>

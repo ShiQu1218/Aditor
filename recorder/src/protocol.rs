@@ -20,8 +20,14 @@ pub struct Request {
 pub enum Command {
     Hello,
     Ping,
+    Processes(ProcessesArgs),
     Start(StartArgs),
     Stop,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct ProcessesArgs {
+    pub prefixes: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -61,7 +67,14 @@ pub struct Reply {
 pub enum ReplyBody {
     Empty {},
     Hello(HelloInfo),
+    Processes { processes: Vec<ProcessInfo> },
     Error { code: ErrorCode, message: String },
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct ProcessInfo {
+    pub name: String,
+    pub pid: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -422,5 +435,28 @@ mod tests {
             body: ReplyBody::Empty {},
         };
         assert_eq!(serde_json::to_string(&ok).unwrap(), r#"{"id":2,"ok":true}"#);
+
+        let Command::Processes(args) =
+            parse_request(r#"{"id":3,"cmd":"processes","prefixes":["r5apex","VALORANT"]}"#)
+                .unwrap()
+                .cmd
+        else {
+            panic!("not processes")
+        };
+        assert_eq!(args.prefixes, vec!["r5apex", "VALORANT"]);
+        let procs = Reply {
+            id: 3,
+            ok: true,
+            body: ReplyBody::Processes {
+                processes: vec![ProcessInfo {
+                    name: "r5apex.exe".into(),
+                    pid: 123,
+                }],
+            },
+        };
+        assert_eq!(
+            serde_json::to_string(&procs).unwrap(),
+            r#"{"id":3,"ok":true,"processes":[{"name":"r5apex.exe","pid":123}]}"#
+        );
     }
 }

@@ -1,9 +1,15 @@
 import { execFile } from 'child_process'
 import { GAMES, GAME_IDS, type GameId } from '../../shared/games'
+import type { AditorrecClient } from './aditorrec-client'
 
 export interface GameProcess {
   game: GameId
   pid: number
+}
+
+export interface GameQuery {
+  find(): Promise<GameProcess | null>
+  close(): Promise<void>
 }
 
 /** Returns the first supported game in `tasklist /FO CSV /NH` output, in listing order. */
@@ -57,6 +63,70 @@ export async function findGameProcess(): Promise<GameProcess | null> {
     if (match) return match
   }
   return null
+}
+
+const GAME_IMAGE_PREFIXES = GAME_IDS.map((id) => GAMES[id].imagePrefix)
+const RECORDER_QUERY_FAILURE_LIMIT = 3
+
+function pickGameProcess(processes: ReadonlyArray<{ name: string; pid: number }>): GameProcess | null {
+  for (const game of GAME_IDS) {
+    const match = processes.find((p) =>
+      GAMES[game].process.test(p.name) && Number.isSafeInteger(p.pid) && p.pid > 0 && p.pid <= 0xffffffff
+    )
+    if (match) return { game, pid: match.pid }
+  }
+  return null
+}
+
+/** Queries running game processes through one long-lived recorder client, falling back to tasklist on failure. */
+export function createRecorderGameQuery(
+  makeClient: () => AditorrecClient,
+  fallback: () => Promise<GameProcess | null> = findGameProcess
+): GameQuery {
+  let client: AditorrecClient | null = null
+  let failures = 0
+  let generation = 0
+  let inflight: Promise<GameProcess | null> | null = null
+
+  const connect = (): AditorrecClient => {
+    if (client) return client
+    const made = makeClient()
+    // A recorder that exits between polls is replaced, so the relaunch starts with fresh client state.
+    made.once('crash', () => { if (client === made) client = null })
+    return (client = made)
+  }
+
+  const query = async (): Promise<GameProcess | null> => {
+    // shortcut: stop querying the recorder after 3 consecutive failures until close(); upgrade if live recorder recovery is added
+    if (failures >= RECORDER_QUERY_FAILURE_LIMIT) return fallback()
+    const gen = generation
+    const active = connect()
+    try {
+      const list = await active.processes(GAME_IMAGE_PREFIXES)
+      if (gen !== generation) return null
+      failures = 0
+      return pickGameProcess(list)
+    } catch {
+      if (client === active) client = null
+      await active.close().catch(() => {})
+      // close() during the query is a shutdown, not a failed query.
+      if (gen !== generation) return null
+      failures++
+      return fallback()
+    }
+  }
+
+  return {
+    // Polls and manual starts share one query, so a failure counts once and tasklist never runs concurrently.
+    find: () => inflight ?? (inflight = query().finally(() => { inflight = null })),
+    async close(): Promise<void> {
+      generation++
+      failures = 0
+      const active = client
+      client = null
+      await active?.close()
+    }
+  }
 }
 
 // Recheck image names every 10 polls (normally 30 seconds) to bound stale detection after PID reuse.

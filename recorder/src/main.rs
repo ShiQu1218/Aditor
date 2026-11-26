@@ -8,6 +8,7 @@ mod encode;
 mod gpu;
 mod index;
 mod ipc;
+mod processes;
 mod protocol;
 mod session;
 mod shm;

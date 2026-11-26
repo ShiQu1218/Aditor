@@ -10,6 +10,7 @@ import { emitChildDiagnostic, RECORDER_WARNING_CODES, type ChildDiagnosticHandle
 const MAX_BYTES = 64 * 1024
 /** `hello` may probe several GPUs and legitimately take a few seconds on some machines. */
 export const HELLO_TIMEOUT_MS = 30_000
+export const PROCESSES_TIMEOUT_MS = 5_000
 /** Windows STATUS_DLL_INIT_FAILED: the loader failed before the recorder ran. Usually transient, as for the engine. */
 const STATUS_DLL_INIT_FAILED = 0xC0000142
 const STARTUP_RETRY_DELAY_MS = 500
@@ -80,7 +81,7 @@ export class AditorrecClient extends EventEmitter {
   get pid(): number | undefined { return this.proc?.pid }
 
   async hello(): Promise<RecorderCapabilities> {
-    const reply = await this.startupRequest('hello', HELLO_TIMEOUT_MS)
+    const reply = await this.startupRequest('hello', {}, HELLO_TIMEOUT_MS)
     const audio = reply.audio as RecorderCapabilities['audio'] | undefined
     const validDevices = (devices: unknown): boolean => Array.isArray(devices) && devices.every(
       (d) => d && typeof d.id === 'string' && typeof d.name === 'string' && typeof d.default === 'boolean')
@@ -98,21 +99,37 @@ export class AditorrecClient extends EventEmitter {
     return { version: reply.version, encoders: reply.encoders, gpus, audio }
   }
 
+  /** Lists running processes matching one of `prefixes` without initializing capture, audio, or encoders. */
+  async processes(prefixes: string[]): Promise<Array<{ name: string; pid: number }>> {
+    const reply = await this.startupRequest('processes', { prefixes }, PROCESSES_TIMEOUT_MS)
+    const list = reply.processes
+    if (!Array.isArray(list) || !list.every((item): item is { name: string; pid: number } =>
+      Boolean(item) && typeof item === 'object' && !Array.isArray(item) &&
+      typeof (item as { name?: unknown }).name === 'string' &&
+      typeof (item as { pid?: unknown }).pid === 'number' &&
+      Number.isSafeInteger((item as { pid: number }).pid) &&
+      (item as { pid: number }).pid > 0
+    )) {
+      throw new RecorderError('bad_reply', 'Recorder process list reply format is invalid')
+    }
+    return list.map((item) => ({ name: item.name, pid: item.pid }))
+  }
+
   /** Launch-and-answer check for recording startup: hello trial-encodes on every GPU while the game holds it, and start probes what it needs itself. */
   async ping(): Promise<void> {
     await this.startupRequest('ping')
   }
 
   /** Launch if needed and send the first command, relaunching once when Windows fails to load the recorder. */
-  private async startupRequest(cmd: string, timeoutMs?: number): Promise<Record<string, unknown>> {
+  private async startupRequest(cmd: string, args: object = {}, timeoutMs?: number): Promise<Record<string, unknown>> {
     for (;;) {
+      if (this.closing) throw this.error('recorder_closed', tr('錄影程序已停止'))
       if (!this.proc) this.launch()
-      try { return await this.request(cmd, {}, timeoutMs) }
+      try { return await this.request(cmd, args, timeoutMs) }
       catch (error) {
         if (!(error instanceof RecorderError) || error.code !== STARTUP_RETRY_CODE) throw error
       }
       await new Promise((resolve) => setTimeout(resolve, STARTUP_RETRY_DELAY_MS))
-      if (this.closing) throw this.error('recorder_closed', tr('錄影程序已停止'))
     }
   }
 

@@ -786,4 +786,28 @@ describe('recorder small-frame regions', () => {
     // Apex templates ship with the app, so their absence is a damaged install.
     await expect(readFrames(path.join(dir, 'icons'), 'apex')).rejects.toMatchObject({ code: 'profile_invalid', message: expect.stringContaining('Aditor') })
   })
+
+  it('uses the recorder game query by default, closes it on stop(), and relaunches on a later start()', async () => {
+    const value = rig()
+    value.settings.autoRecord = false
+    delete value.deps.findApexPid
+    value.deps.recorderCommand = fakeCommand('normal', {
+      FAKE_RECORDER_TRACE: value.trace,
+      FAKE_RECORDER_PROCESSES: JSON.stringify([{ name: 'r5apex.exe', pid: 4242 }])
+    })
+    const onGameRunning = vi.fn()
+    value.deps.onGameRunning = onGameRunning
+    value.service = createRecordingService(value.deps)
+
+    value.service.start()
+    await waitFor(() => onGameRunning.mock.calls.some(([running]) => running === true))
+    expect(commands(value, 'processes').length).toBeGreaterThanOrEqual(1)
+
+    await value.service.stop()
+    const countAfterStop = commands(value, 'processes').length
+    onGameRunning.mockClear()
+
+    value.service.start()
+    await waitFor(() => commands(value, 'processes').length > countAfterStop && onGameRunning.mock.calls.some(([running]) => running === true))
+  })
 })
