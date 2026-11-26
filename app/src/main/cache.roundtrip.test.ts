@@ -33,4 +33,9 @@ describe('cacheFilePath', () => {
     expect(cacheFilePath('D:/v/a.mp4', 'C:/cache')).toBe(expected)
     expect(cacheFilePath('d:\\V\\A.mp4', 'C:/cache')).toBe(expected)
   })
+
+  it.skipIf(process.platform !== 'win32')('shares the CJK + diacritic + space vector with engine/tests/cache.rs [win32 only]', () => {
+    // Same literal as cache_file_names_match_python_for_existing_user_caches; SHA-1 of UTF-8 d:/影片/ä b.mp4.
+    expect(path.basename(cacheFilePath('D:/影片/Ä b.mp4', 'C:/cache'))).toBe('551cf16d46ffeec962f411992e5f0633bba03bf4.json')
+  })
 })
