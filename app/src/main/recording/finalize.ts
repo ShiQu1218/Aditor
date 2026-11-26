@@ -58,20 +58,21 @@ async function renameWithRetry(from: string, to: string): Promise<void> {
 }
 
 const REMOVE_RETRY = { maxRetries: 5, retryDelay: 200 }
+/** Written before a finished removal and deleted last: recovery then only finishes the removal instead of finalizing leftovers. */
+const CLEANUP_FILE = 'cleanup.json'
 /**
  * Media first, then the index, then recording.json, then every other marker (JSON, .tmp, and `removed-*` deletion intents,
- * which must outlive the segments or recovery would cut a deleted match again).
+ * which must outlive the segments or recovery would cut a deleted match again), and the cleanup sentinel last.
  * Without recording.json and index.jsonl, any leftover (native or OBS) reaches the "no segments" removal on recovery.
  */
 const removalRank = (name: string): number =>
-  /\.(?:m4s|mp4)$/i.test(name) ? 0 : name === 'index.jsonl' ? 1 : name === 'recording.json' ? 2 : 3
+  /\.(?:m4s|mp4)$/i.test(name) ? 0 : name === 'index.jsonl' ? 1 : name === 'recording.json' ? 2 : name === CLEANUP_FILE ? 4 : 3
 
 /**
  * Remove a finished work directory. Right after the recorder or FFmpeg exits, antivirus and indexers can still hold
  * a segment open, so Windows reports EBUSY/EPERM; Node retries each file with linear backoff before giving up.
  * Stopping at the first failure keeps every marker while any media remains, so recovery only redoes the removal;
- * once the media is gone, leftover markers lead recovery to the "no segments" removal (or, if finalized.json survives,
- * to re-adding the already published output, which the library deduplicates).
+ * once the media is gone, leftover markers lead recovery to the "no segments" removal.
  */
 export async function removeSessionDir(dir: string): Promise<void> {
   const names = (await fs.promises.readdir(dir)).sort((a, b) => removalRank(a) - removalRank(b))
@@ -81,7 +82,10 @@ export async function removeSessionDir(dir: string): Promise<void> {
 
 /** Removal after the outputs were published (or nothing was recorded) must not fail finalization; startup recovery retries it. */
 export async function removeFinishedSessionDir(dir: string, deps: RecordingDeps): Promise<void> {
-  try { await removeSessionDir(dir) }
+  try {
+    await writeJson(path.join(dir, CLEANUP_FILE), {})
+    await removeSessionDir(dir)
+  }
   catch (error) {
     console.error('[recording] Failed to remove the finished work directory; startup recovery will retry:', error)
     try { deps.log?.(`session cleanup failed: ${dir}: ${String(error)}`) } catch { /* Diagnostic logging must not affect finalization. */ }
@@ -535,6 +539,12 @@ export const LIVE_COMPLETE_FILE = 'live-complete.json'
 /** Persist finalized.json before library/analysis side effects so recovery does not generate the video twice. */
 export async function finalizeSession(dir: string, deps: RecordingDeps): Promise<string[]> {
   dir = await validateSessionDir(dir)
+  // A removal that stopped partway: the outputs were already published, and leftovers may no longer be finalizable.
+  // Existence alone decides: a torn sentinel must not turn into a recovery failure.
+  if (fs.existsSync(path.join(dir, CLEANUP_FILE))) {
+    await removeFinishedSessionDir(dir, deps)
+    return []
+  }
   const recording = await readOptional<{ backend?: unknown; livePending?: unknown; game?: unknown }>(path.join(dir, 'recording.json'))
   if (recording?.backend === 'obs') return finalizeObsSession(dir, deps, await snapshot(dir, deps.getSettings().postAnalysis))
   const outputDir = path.dirname(path.dirname(dir))

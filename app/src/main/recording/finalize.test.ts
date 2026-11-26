@@ -335,13 +335,39 @@ describe.skipIf(!ffmpeg)('finalization with real ffmpeg streams', () => {
       const [output] = await finalizeSession(dir, deps)
       expect(fs.statSync(output).isFile()).toBe(true)
       expect(deps.addToLibrary).toHaveBeenCalledWith([output])
-      for (const name of ['finalized.json', 'index.jsonl', 'recording.json', 'seg_000002.m4s']) expect(fs.existsSync(path.join(dir, name))).toBe(true)
+      for (const name of ['cleanup.json', 'finalized.json', 'index.jsonl', 'recording.json', 'seg_000002.m4s']) expect(fs.existsSync(path.join(dir, name))).toBe(true)
       expect(fs.existsSync(path.join(dir, 'seg_000001.m4s'))).toBe(false)
       rm.mockRestore()
       const finalized = vi.fn(); const failed = vi.fn()
       await recoverSessions(deps, finalized, failed)
       expect(failed).not.toHaveBeenCalled()
-      expect(finalized).toHaveBeenCalledWith([output])
+      // Already published: recovery only finishes the removal, without a second library add or notification.
+      expect(finalized).not.toHaveBeenCalled()
+      expect(deps.addToLibrary).toHaveBeenCalledOnce()
+      expect(fs.existsSync(dir)).toBe(false)
+    } finally { rm.mockRestore() }
+  })
+
+  it('a cleanup that stopped partway is only finished on recovery, even after the user moved the published output away', async () => {
+    const base = root(); const deps = makeDeps(base); deps.ffmpegPath = ffmpeg!
+    deps.addToLibrary = vi.fn()
+    const dir = sessionDir(base); copySegments(segments, dir)
+    const real = fs.promises.rm
+    const rm = vi.spyOn(fs.promises, 'rm').mockImplementation(async (target, options) => {
+      if (path.basename(String(target)) === 'seg_000002.m4s') throw Object.assign(new Error('EBUSY: resource busy'), { code: 'EBUSY' })
+      return real(target, options)
+    })
+    try {
+      const [output] = await finalizeSession(dir, deps)
+      expect(fs.existsSync(path.join(dir, 'init.mp4'))).toBe(false)
+      expect(fs.existsSync(path.join(dir, 'cleanup.json'))).toBe(true)
+      rm.mockRestore()
+      fs.rmSync(output)
+      const finalized = vi.fn(); const failed = vi.fn()
+      await recoverSessions(deps, finalized, failed)
+      expect(failed).not.toHaveBeenCalled()
+      expect(finalized).not.toHaveBeenCalled()
+      expect(deps.addToLibrary).toHaveBeenCalledOnce()
       expect(fs.existsSync(dir)).toBe(false)
     } finally { rm.mockRestore() }
   })
@@ -423,7 +449,7 @@ describe('Session directory removal', () => {
 
   it('removes media before the index and markers, retrying Windows locks, and stops at the first locked file', async () => {
     const dir = sessionDir(root())
-    for (const name of ['finalized.json', 'index.jsonl', 'live.json', 'init.mp4', 'removed-abc', 'seg_000001.m4s', 'seg_000002.m4s']) {
+    for (const name of ['cleanup.json', 'finalized.json', 'index.jsonl', 'live.json', 'init.mp4', 'removed-abc', 'seg_000001.m4s', 'seg_000002.m4s']) {
       fs.writeFileSync(path.join(dir, name), name)
     }
     const real = fs.promises.rm
@@ -433,7 +459,7 @@ describe('Session directory removal', () => {
       return real(target, options)
     })
     await expect(removeSessionDir(dir)).rejects.toBe(busy)
-    expect(fs.readdirSync(dir).sort()).toEqual(['finalized.json', 'index.jsonl', 'live.json', 'recording.json', 'removed-abc', 'seg_000002.m4s'])
+    expect(fs.readdirSync(dir).sort()).toEqual(['cleanup.json', 'finalized.json', 'index.jsonl', 'live.json', 'recording.json', 'removed-abc', 'seg_000002.m4s'])
     expect(rm.mock.calls.every(([, options]) => options?.maxRetries && options.retryDelay)).toBe(true)
 
     rm.mockClear()
@@ -442,8 +468,8 @@ describe('Session directory removal', () => {
     expect(fs.existsSync(dir)).toBe(false)
     const order = rm.mock.calls.map(([target]) => path.basename(String(target)))
     expect(order.slice(0, 3)).toEqual(['seg_000002.m4s', 'index.jsonl', 'recording.json'])
-    expect(order.slice(3, -1).sort()).toEqual(['finalized.json', 'live.json', 'removed-abc'])
-    expect(order.at(-1)).toBe(path.basename(dir))
+    expect(order.slice(3, -2).sort()).toEqual(['finalized.json', 'live.json', 'removed-abc'])
+    expect(order.slice(-2)).toEqual(['cleanup.json', path.basename(dir)])
   })
 
   it('startup recovery removes a leftover directory that holds only JSON markers', async () => {
