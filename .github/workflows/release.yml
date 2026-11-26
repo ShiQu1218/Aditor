@@ -71,8 +71,8 @@ jobs:
         shell: pwsh
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
-          # Public Sentry ingest key, not a secret; only release builds embed it.
-          ADITOR_SENTRY_DSN: https://5c57897479340b1a622630935c43a4fb@o4512296943747072.ingest.us.sentry.io/4512296977760256
+          # Public Sentry ingest key, not a secret; only this repo's releases embed it (forks build without telemetry).
+          ADITOR_SENTRY_DSN: ${{ github.repository == 'ShiQu1218/Aditor' && 'https://5c57897479340b1a622630935c43a4fb@o4512296943747072.ingest.us.sentry.io/4512296977760256' || '' }}
         run: ./scripts/build.ps1
 
       - name: Create draft release
