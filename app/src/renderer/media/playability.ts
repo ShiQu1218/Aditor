@@ -54,7 +54,3 @@ export async function checkSmooth(info: VideoInfo): Promise<PlayabilityResult> {
     powerEfficient: true
   }
 }
-
-export function shouldSuggestProxy(r: PlayabilityResult): boolean {
-  return !r.supported || !r.smooth || !r.powerEfficient
-}
