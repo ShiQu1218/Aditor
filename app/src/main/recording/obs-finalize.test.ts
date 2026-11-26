@@ -2,9 +2,12 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import fs from 'fs'
 import path from 'path'
 import { spawnSync } from 'child_process'
-import { finalizeSession, writeJson } from './finalize'
+import { finalizeSession, writeJson, type SessionSnapshot } from './finalize'
 import { recoverSessions } from './recovery'
 import { recordOutputRemoval } from './removed-output'
+import { finalizeObsMatches, ObsRecoveryPending } from './obs-finalize'
+import { ObsClient } from './obs-client'
+import type { ObsMatch, ObsMetadata } from './obs-session'
 import { DAY_FOLDER_PATTERN } from '../../shared/storage'
 import { createSegments, ffmpeg, makeDeps, sessionDir, tempRoot } from './test-support'
 
@@ -203,5 +206,20 @@ describe.skipIf(!ffmpeg)('OBS finalization and recovery (real ffmpeg)', () => {
     await writeJson(path.join(r.dir, 'obs.json'), { ...meta, outputPath: source })
     await expect(finalizeSession(r.dir, r.deps)).rejects.toThrow('OBS 原檔位於')
     expect(fs.readFileSync(source)).toEqual(r.original)
+  })
+})
+
+describe('OBS per-match finishing failures', () => {
+  it('keeps the stable code on the recovery-pending error', async () => {
+    const root = tempRoot(); roots.push(root)
+    const deps = makeDeps(root); deps.notify = vi.fn()
+    vi.spyOn(ObsClient.prototype, 'connect').mockResolvedValue(undefined)
+    vi.spyOn(ObsClient.prototype, 'status').mockResolvedValue({ outputActive: true, outputDuration: Number.NaN } as never)
+    vi.spyOn(ObsClient.prototype, 'close').mockResolvedValue(undefined)
+    const now = Date.now()
+    const error = await finalizeObsMatches(sessionDir(root), deps, {} as SessionSnapshot, [{ index: 0, recordStartedAt: now } as ObsMatch], true,
+      undefined, { captureStartedAt: now, recordStartedAt: now, adopted: false } as ObsMetadata).catch((e: unknown) => e)
+    expect(error).toBeInstanceOf(ObsRecoveryPending)
+    expect(error).toMatchObject({ code: 'OBS_OWNERSHIP_UNKNOWN' })
   })
 })

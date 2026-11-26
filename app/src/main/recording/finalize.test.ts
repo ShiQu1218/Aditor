@@ -71,6 +71,17 @@ describe('recording index and safety boundaries', () => {
     expect(fs.readFileSync(segment, 'utf8')).toBe('recoverable footage')
   })
 
+  it('tags a match with no recorded segments with its stable code and keeps the session', async () => {
+    const base = root(); const dir = sessionDir(base); const deps = makeDeps(base)
+    fs.writeFileSync(path.join(dir, 'recording.json'), JSON.stringify({ startedAt: Date.now(), postAnalysis: 'none', mode: 'match' }))
+    fs.writeFileSync(path.join(dir, 'live.json'), JSON.stringify({ matches: [{ start: 1000, end: 1010 }] }))
+    fs.writeFileSync(path.join(dir, 'index.jsonl'), '{"seq":1,"pts":0,"dur":2}\n')
+    fs.writeFileSync(path.join(dir, 'init.mp4'), 'header')
+    fs.writeFileSync(path.join(dir, 'seg_000001.m4s'), 'footage')
+    await expect(finalizeSession(dir, deps)).rejects.toMatchObject({ code: 'MATCH_SEGMENTS_MISSING' })
+    expect(fs.existsSync(path.join(dir, 'seg_000001.m4s'))).toBe(true)
+  })
+
   it('removes a session whose recorder stopped before the first frame, leaving only an empty segment file', async () => {
     const base = root(); const dir = sessionDir(base); const deps = makeDeps(base)
     fs.writeFileSync(path.join(dir, 'index.jsonl'), '')
@@ -307,6 +318,14 @@ describe.skipIf(!ffmpeg)('finalization with real ffmpeg streams', () => {
     await expect(finalizeSession(dir, deps)).rejects.toThrow('遺失')
     expect(fs.existsSync(dir)).toBe(true)
     expect(fs.existsSync(path.join(base, 'videos', '2026-10-18'))).toBe(false)
+  })
+
+  it('reports a non-regular init segment with its stable code instead of a concatenation failure', async () => {
+    const base = root(); const deps = makeDeps(base); deps.ffmpegPath = ffmpeg!
+    const dir = sessionDir(base); copySegments(segments, dir)
+    fs.rmSync(path.join(dir, 'init.mp4')); fs.mkdirSync(path.join(dir, 'init.mp4'))
+    await expect(finalizeSession(dir, deps)).rejects.toMatchObject({ code: 'SEGMENT_NOT_FILE' })
+    expect(fs.existsSync(path.join(dir, 'seg_000001.m4s'))).toBe(true)
   })
 
   it('preserves segments after concatenation fails and recovers on startup after repair', async () => {

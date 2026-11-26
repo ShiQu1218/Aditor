@@ -63,7 +63,7 @@ async function copyMatch(ffmpeg: string, source: string, part: string, start: nu
     let stderr = Buffer.alloc(0)
     proc.stderr.on('data', (chunk: Buffer) => { stderr = Buffer.concat([stderr, chunk]).subarray(-65536) })
     proc.once('error', reject)
-    proc.once('close', (code) => code === 0 ? resolve() : reject(new Error(tr('OBS 逐局剪檔失敗（{code}）：{stderr}', { code, stderr: stderr.toString('utf8') }))))
+    proc.once('close', (code) => code === 0 ? resolve() : reject(recordingError('OBS_CUT_FAILED', tr('OBS 逐局剪檔失敗（{code}）：{stderr}', { code, stderr: stderr.toString('utf8') }))))
   })
   return aligned ?? start
 }
@@ -234,7 +234,9 @@ export async function finalizeObsMatches(dir: string, deps: RecordingDeps, confi
       await persist()
     } catch (error) {
       deps.notify('warning', tr('OBS 逐局錄影尚未完成，已保留工作供下次啟動重試'))
-      throw new ObsRecoveryPending(String(error))
+      const code = (error as { code?: unknown } | null)?.code
+      // Keep the stable code so the finalize failure report can still tag it.
+      throw Object.assign(new ObsRecoveryPending(String(error)), typeof code === 'string' || typeof code === 'number' ? { code } : {})
     } finally { await client.close() }
   }
   const live = await readOptional<LiveFile>(path.join(dir, 'live.json'))

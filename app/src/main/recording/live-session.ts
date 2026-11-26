@@ -195,7 +195,7 @@ export class LiveSession extends EventEmitter {
   readInit(): Promise<Uint8Array> { return readConfined(this.options.dir, 'init.mp4', MAX_INIT_BYTES) }
 
   readSegment(seq: number): Promise<Uint8Array> {
-    if (!Number.isSafeInteger(seq) || seq <= 0 || !this.hasSegment(seq)) return Promise.reject(new Error(tr('段落不在錄影索引中')))
+    if (!Number.isSafeInteger(seq) || seq <= 0 || !this.hasSegment(seq)) return Promise.reject(recordingError('SEGMENT_NOT_INDEXED', tr('段落不在錄影索引中')))
     return readConfined(this.options.dir, segmentFile(seq), MAX_SEGMENT_BYTES)
   }
 

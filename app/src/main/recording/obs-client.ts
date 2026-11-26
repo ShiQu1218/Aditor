@@ -38,7 +38,7 @@ export class ObsClient extends EventEmitter {
     let timer!: ReturnType<typeof setTimeout>
     try {
       return await Promise.race([promise, new Promise<never>((_resolve, reject) => {
-        timer = setTimeout(() => reject(new Error(tr('OBS 回應逾時'))), this.timeoutMs)
+        timer = setTimeout(() => reject(recordingError('OBS_TIMEOUT', tr('OBS 回應逾時'))), this.timeoutMs)
       })])
     } finally { clearTimeout(timer) }
   }

@@ -443,7 +443,7 @@ export async function cutMatches(dir: string, deps: RecordingDeps, options: Matc
         await writeJson(path.join(dir, 'matches.json'), marker)
         deps.notify('warning', tr('第 {index} 局的錄影片段檔案全部遺失，已略過此局', { index: index + 1 }))
       } else {
-        cutError(index, new Error(tr('對局範圍沒有錄影片段，已保留工作')), options)
+        cutError(index, recordingError('MATCH_SEGMENTS_MISSING', tr('對局範圍沒有錄影片段，已保留工作')), options)
       }
       continue
     }
@@ -527,6 +527,8 @@ async function remux(ffmpeg: string, files: string[], output: string, config: Se
   catch (error) {
     proc.kill()
     await exited.catch(() => {})
+    // A refused segment is not an ffmpeg failure; keep its own code.
+    if ((error as { code?: unknown } | null)?.code === 'SEGMENT_NOT_FILE') throw error
     throw recordingError('REMUX_FAILED', tr('錄影串接失敗：{stderr}', { stderr: stderr.toString('utf8') || String(error) }))
   }
 }
