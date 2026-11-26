@@ -3,7 +3,7 @@
 Usage:
   python tools/icon_accept.py --out DIR [--jobs 1 4] LAB=video_path ...
 Ground truth (used only for scoring, not parameter tuning):
-  TC/ENG/JP: old text engine after3 events (the <LAB>_j1.json file in ICON_ACCEPT_BASELINE) plus visual corrections in tools/archive/icon_exp/truth_aug.json
+  TC/ENG/JP: old text engine after3 events (the <LAB>_j1.json file in ICON_ACCEPT_BASELINE) plus visual corrections in tools/icon_truth_aug.json
   SC1: visual annotations from the experiment report; SC2: the 3 events visually identified in experiment report §4.6
   H771/H950: no ground truth; show event counts and compare with the old text engine, if <LAB>_j1.json exists in ICON_ACCEPT_BASELINE
 Does not write to the video directory (cache is stored under --out)."""
@@ -36,7 +36,7 @@ def truth(lab: str, base: Path | None) -> list[tuple[float, str]] | None:
         return sorted(SC2)
     if lab in ("TC", "ENG", "JP") and base and (base / f"{lab}_j1.json").exists():
         ev = product(json.loads((base / f"{lab}_j1.json").read_text(encoding="utf-8"))["events"])
-        aug = json.loads((ROOT / "tools" / "archive" / "icon_exp" / "truth_aug.json").read_text(encoding="utf-8"))[lab]
+        aug = json.loads((ROOT / "tools" / "icon_truth_aug.json").read_text(encoding="utf-8"))[lab]
         mv = {o: n for o, n in aug["move"]}
         rt = {t: c for t, c in aug["retype"]}
         return sorted([(mv.get(t, t), rt.get(t, c)) for t, c in ev] + [tuple(x) for x in aug["add"]])

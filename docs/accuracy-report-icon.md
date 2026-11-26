@@ -17,7 +17,7 @@
 
 ## B. 整合驗收（完整引擎，jobs=1 與 jobs=4 事件逐筆相同）
 
-真值（只評分）：test-TC／ENG／JP＝舊文字引擎 after3 事件＋實驗報告的目視修正（`tools/icon_exp/truth_aug.json`）；SC1＝實驗報告的目視標註；SC2＝目視 3 個事件。
+真值（只評分）：test-TC／ENG／JP＝舊文字引擎 after3 事件＋實驗報告的目視修正（`tools/icon_truth_aug.json`）；SC1＝實驗報告的目視標註；SC2＝目視 3 個事件。
 比對：同類型、起點差 ≤ 1.5 秒一對一。腳本 `tools/icon_accept.py`。
 
 | 片 | 真值 K+A | 引擎事件 | 類型正確召回 | 不分類型召回 | 精確度（類型正確／不分類型） | 實驗報告（類型正確召回／不分類型） |

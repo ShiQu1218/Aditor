@@ -31,4 +31,5 @@ repository, independent of the working directory. Subprocess failures propagate.
 - `outplayed_truth.py` reads Outplayed IndexedDB; `check.py` edits plan checkboxes.
   Neither needs an engine import or subprocess.
 
-Archived scripts are unsupported; see [archive/README.md](archive/README.md).
+Retired experiment and parity scripts were removed; they remain in git history under
+`tools/archive/` (for example at commit `d71bc22`).
