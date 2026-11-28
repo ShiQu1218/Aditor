@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import fs from 'fs'
 import path from 'path'
-import { AditorrecClient, HELLO_TIMEOUT_MS, PROCESSES_TIMEOUT_MS, RecorderError, recorderTags } from './aditorrec-client'
+import { AditorrecClient, HELLO_TIMEOUT_MS, LAUNCH_TIMEOUT_MS, PROCESSES_TIMEOUT_MS, RecorderError, recorderTags } from './aditorrec-client'
 import { createRecorderGameQuery } from './game-watcher'
 import { fakeCommand, tempRoot } from './test-support'
 import { LOCALES, setActiveLocale, tr } from '../../shared/locale'
@@ -228,11 +228,23 @@ describe('aditorrec JSON-lines client', () => {
     await expect(retryClient.processes(['r5apex'])).resolves.toEqual([{ name: 'r5apex.exe', pid: 77 }])
     expect(onDiagnostic).not.toHaveBeenCalled()
 
+    // A warm recorder that stops answering times out on the short processes budget.
+    const warmClient = new AditorrecClient(fakeCommand('processes-timeout-after-first'))
+    clients.push(warmClient)
+    await expect(warmClient.processes(['r5apex'])).resolves.toEqual([])
     vi.useFakeTimers()
-    const timeoutClient = client('processes-timeout')
-    const result = timeoutClient.processes(['r5apex']).catch((error) => error)
+    const warm = warmClient.processes(['r5apex']).catch((error) => error)
     await vi.advanceTimersByTimeAsync(PROCESSES_TIMEOUT_MS)
-    expect(await result).toMatchObject({ code: 'recorder_timeout' })
+    expect(await warm).toMatchObject({ code: 'recorder_timeout' })
+
+    // The first command after a launch also waits for process startup, so it gets the launch budget.
+    const coldClient = client('processes-timeout')
+    let settled = false
+    const cold = coldClient.processes(['r5apex']).catch((error) => error).finally(() => { settled = true })
+    await vi.advanceTimersByTimeAsync(PROCESSES_TIMEOUT_MS)
+    expect(settled).toBe(false)
+    await vi.advanceTimersByTimeAsync(LAUNCH_TIMEOUT_MS - PROCESSES_TIMEOUT_MS)
+    expect(await cold).toMatchObject({ code: 'recorder_timeout' })
   })
 })
 

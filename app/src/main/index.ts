@@ -5,7 +5,7 @@ import { EngineClient } from './engine'
 import { Library } from './library'
 import { AnalysisQueue } from './queue'
 import { SettingsStore, loadSettings } from './settings'
-import { initializeTelemetry, updateTelemetryConsent, reportChildDiagnostic } from './telemetry'
+import { initializeTelemetry, updateTelemetryConsent, reportChildDiagnostic, reportStartupFailure } from './telemetry'
 import { WatchManager } from './watch'
 import { ProjectStore } from './projects'
 import { registerIpcHandlers } from './ipc-handlers'
@@ -13,7 +13,7 @@ import { createCloseGate } from './project-ipc'
 import { currentE2EConfig } from './e2e'
 import { applyWindowSecurity } from './window-security'
 import { sanitizeAnalyzeArgs, sanitizeAutoclipArgs, sanitizeProbeArgs } from './ipc-guards'
-import { aditorrecCommand, appDataDir, cacheDir, chromiumUserDataDir, engineCommand, ffmpegExecutable, liveEngineCommand, obsHookDir, profileDir, sceneDir } from '../shared/paths'
+import { aditorrecCommand, appDataDir, cacheDir, chromiumUserDataDir, engineCommand, ffmpegExecutable, liveEngineCommand, obsHookDir, profileDir, sceneDir, videosDir } from '../shared/paths'
 import { cacheFilePath } from './cache-io'
 import { generateThumbnail, cancelAllThumbnails } from './thumbnail'
 import { createRecordingService } from './recording'
@@ -50,6 +50,8 @@ let quitting = false
 /** Currently active interface language (from the `language` setting; `auto` follows the Windows display language). */
 let locale: Locale = 'zh-TW'
 let servicesReady = false
+/** Startup threw: quitting must not be blocked, or the half-initialized app would stay alive without a window. */
+let startupFailed = false
 let openRequested = !process.argv.includes('--hidden')
 /** Maximum time to wait before closing the window when the renderer does not respond to flush. */
 const CLOSE_FLUSH_TIMEOUT_MS = 1500
@@ -217,7 +219,7 @@ async function initEngineAndServices(): Promise<void> {
     getObsPassword: () => obsPassword(settingsStore!.get().recording, safeStorage),
     probeVideo: async (file) => engineClient!.request('probe', sanitizeProbeArgs(file)).promise as Promise<import('../shared/types').VideoInfo>,
     getWatchFolders: () => settingsStore!.get().watchFolders,
-    defaultOutputDir: join(app.getPath('videos'), 'Aditor'),
+    defaultOutputDir: join(videosDir(() => app.getPath('videos')), 'Aditor'),
     recorderCommand: aditorrecCommand(app.isPackaged),
     obsHookDir: obsHookDir(app.isPackaged),
     ffmpegPath: ffmpegExecutable(app.isPackaged),
@@ -312,7 +314,8 @@ async function initEngineAndServices(): Promise<void> {
 // A manual update install uses this same path and only spawns the NSIS installer after this guard finishes.
 const quitGuard = createAppQuitGuard({
   stopRecording: () => recordingService?.stop(),
-  flushLibrary: () => library?.flush(),
+  // After a failed startup, still try to save the library, but never refuse to quit.
+  flushLibrary: () => { const saved = library?.flush(); return startupFailed || saved },
   onQuitBlocked: () => {
     quitting = false
     watchManager?.start()
@@ -347,7 +350,18 @@ if (!app.requestSingleInstanceLock()) {
   initializeTelemetry(startupSettings.telemetryEnabled)
   app.on('second-instance', showMainWindow)
   app.whenReady().then(async () => {
-    await initEngineAndServices()
+    try {
+      await initEngineAndServices()
+    } catch (error) {
+      // A half-initialized app has no window or tray and would linger invisibly, so tell the user and quit.
+      console.error('Startup failed:', error)
+      startupFailed = true
+      syncLocale()
+      await reportStartupFailure(error)
+      dialog.showErrorBox('Aditor', tr('Aditor 無法啟動：{error}', { error: error instanceof Error ? error.message : String(error) }))
+      app.quit()
+      return
+    }
     servicesReady = true
     if (openRequested) showMainWindow()
     if (e2e && process.env.ADITOR_SENTRY_VERIFY === '1') {

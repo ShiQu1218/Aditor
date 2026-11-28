@@ -19,7 +19,7 @@ import { planCacheSave, requireVideoPath, sanitizeRemoveOptions } from './ipc-gu
 import { gameOf, isGameId } from '../shared/games'
 import { DEFAULT_SETTINGS } from '../shared/settings'
 import { currentE2EConfig } from './e2e'
-import { cacheDir, engineCommand, ffmpegExecutable, noticesFile, proxyDir, sceneDir } from '../shared/paths'
+import { cacheDir, engineCommand, ffmpegExecutable, noticesFile, proxyDir, sceneDir, videosDir } from '../shared/paths'
 import { engineMatches, roundMatches, splitMatches, type DetectMatches } from './split-matches'
 import { computeHlCount, createHlGuard, createSerialQueue, hlForSavedDoc } from './hl'
 import { createThrottle } from '../shared/throttle'
@@ -456,7 +456,7 @@ export function registerIpcHandlers(
   registerExportHandlers(ipcMain, exportService)
 
   if (settings) {
-    registerSettingsHandlers(ipcMain, settings, getWindows, safeStorage, () => app.getPath('videos'))
+    registerSettingsHandlers(ipcMain, settings, getWindows, safeStorage, () => videosDir(() => app.getPath('videos')))
   }
 
   // Window close also stops a match split and waits for it to remove its partial files.

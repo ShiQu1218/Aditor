@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import os from 'os'
 import fs from 'fs'
 import path from 'path'
-import { aditorrecCommand, cacheDir, chromiumUserDataDir, engineCommand, liveEngineCommand, sceneDir } from './paths'
+import { aditorrecCommand, cacheDir, chromiumUserDataDir, engineCommand, liveEngineCommand, sceneDir, videosDir } from './paths'
 
 describe('chromiumUserDataDir', () => {
   afterEach(() => vi.unstubAllEnvs())
@@ -118,5 +119,17 @@ describe('obsHookDir', () => {
     expect(obsHookDir(false)).toBe(path.join(root, 'build', 'obs-hook'))
     resources.resourcesPath = path.resolve('installed/resources')
     expect(obsHookDir(true)).toBe(path.join(resources.resourcesPath, 'obs-hook'))
+  })
+})
+
+
+describe('videosDir', () => {
+  it('returns the resolved Videos folder', () => {
+    expect(videosDir(() => path.join('D:', 'Media', 'Videos'))).toBe(path.join('D:', 'Media', 'Videos'))
+  })
+
+  it('falls back to the profile Videos folder when the known folder cannot be resolved', () => {
+    const unresolvable = (): string => { throw new Error("Failed to get 'videos' path") }
+    expect(videosDir(unresolvable)).toBe(path.join(os.homedir(), 'Videos'))
   })
 })
