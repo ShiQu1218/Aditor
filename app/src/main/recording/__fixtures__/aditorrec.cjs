@@ -2,6 +2,7 @@ const fs = require('fs')
 const path = require('path')
 const readline = require('readline')
 const mode = process.env.FAKE_RECORDER_MODE || 'normal'
+let processesAnswered = 0
 const windowErrorCode = process.env.FAKE_WINDOW_ERROR_CODE || 'window_not_found'
 const send = (value) => process.stdout.write(JSON.stringify(value) + '\n')
 // STATUS_DLL_INIT_FAILED before reading stdin: 'dll-init' fails every launch, 'dll-init-once' only the first (marker file).
@@ -44,6 +45,7 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
   }
   if (req.cmd === 'processes') {
     if (mode === 'processes-timeout') return
+    if (mode === 'processes-timeout-after-first' && processesAnswered++ > 0) return
     if (mode === 'processes-error') return send({ id: req.id, ok: false, code: 'internal', message: 'processes failed' })
     if (mode === 'processes-bad-reply') return send({ id: req.id, ok: true, processes: [{ name: 'r5apex.exe', pid: 0 }] })
     const list = JSON.parse(process.env.FAKE_RECORDER_PROCESSES || '[]')

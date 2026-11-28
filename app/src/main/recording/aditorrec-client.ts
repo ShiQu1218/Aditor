@@ -11,6 +11,8 @@ const MAX_BYTES = 64 * 1024
 /** `hello` may probe several GPUs and legitimately take a few seconds on some machines. */
 export const HELLO_TIMEOUT_MS = 30_000
 export const PROCESSES_TIMEOUT_MS = 5_000
+/** Minimum budget for the first command after a launch: it also covers process creation and loading the FFmpeg/D3D DLLs, which can take seconds on a cold, low-end machine. */
+export const LAUNCH_TIMEOUT_MS = 30_000
 /** Windows STATUS_DLL_INIT_FAILED: the loader failed before the recorder ran. Usually transient, as for the engine. */
 const STATUS_DLL_INIT_FAILED = 0xC0000142
 const STARTUP_RETRY_DELAY_MS = 500
@@ -124,8 +126,10 @@ export class AditorrecClient extends EventEmitter {
   private async startupRequest(cmd: string, args: object = {}, timeoutMs?: number): Promise<Record<string, unknown>> {
     for (;;) {
       if (this.closing) throw this.error('recorder_closed', tr('錄影程序已停止'))
-      if (!this.proc) this.launch()
-      try { return await this.request(cmd, args, timeoutMs) }
+      const launching = !this.proc
+      if (launching) this.launch()
+      const budget = launching ? Math.max(timeoutMs ?? LAUNCH_TIMEOUT_MS, LAUNCH_TIMEOUT_MS) : timeoutMs
+      try { return await this.request(cmd, args, budget) }
       catch (error) {
         if (!(error instanceof RecorderError) || error.code !== STARTUP_RETRY_CODE) throw error
       }
