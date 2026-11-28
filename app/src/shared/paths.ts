@@ -7,6 +7,15 @@ export function appDataDir(): string {
   return path.join(base, 'Aditor')
 }
 
+/** `getVideos` is Electron's `app.getPath('videos')`, which throws when Windows cannot resolve the Videos known folder (removed or redirected library). */
+export function videosDir(getVideos: () => string): string {
+  try {
+    return getVideos()
+  } catch {
+    return path.join(os.homedir(), 'Videos')
+  }
+}
+
 export function cacheDir(): string {
   return path.join(appDataDir(), 'cache')
 }

@@ -228,6 +228,16 @@ export function reportUserFeedback(message: unknown): boolean {
   } catch { return false }
 }
 
+const STARTUP_FAILURE_FLUSH_MS = 2_000
+
+/** Startup failures are caught so the user can be told before quitting; report them as the unhandled errors they are and let the event leave first. */
+export async function reportStartupFailure(error: unknown): Promise<void> {
+  if (!allowed || !started) return
+  try {
+    Sentry.captureException(error, { mechanism: { type: 'startup', handled: false } })
+    await Sentry.flush(STARTUP_FAILURE_FLUSH_MS)
+  } catch { /* Reporting must not block telling the user. */ }
+}
 /** A few per session is enough to see the pattern; a stuck player must not flood Sentry. */
 const MAX_DESYNC_REPORTS_PER_SESSION = 3
 let desyncReports = 0

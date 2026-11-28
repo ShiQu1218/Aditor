@@ -6,12 +6,12 @@ import { TELEMETRY_INSTALL_ID_PATTERN } from '../shared/telemetry'
 import type { ChildDiagnostic } from '../shared/child-diagnostics'
 import { RECORDING_SERVICE_ERRORS } from '../shared/child-diagnostics'
 
-const fake = vi.hoisted(() => ({ dir: '', switches: new Set<string>(), init: vi.fn(), handle: vi.fn(), send: vi.fn(async () => ({})), captureEvent: vi.fn((_event: any) => 'test-event') }))
+const fake = vi.hoisted(() => ({ dir: '', switches: new Set<string>(), init: vi.fn(), handle: vi.fn(), send: vi.fn(async () => ({})), captureEvent: vi.fn((_event: any) => 'test-event'), captureException: vi.fn(), flush: vi.fn(async () => true) }))
 vi.mock('../shared/paths', () => ({ appDataDir: () => fake.dir }))
 vi.mock('electron', () => ({ app: { isPackaged: false, getVersion: () => '0.3.0', commandLine: { hasSwitch: (name: string) => fake.switches.has(name) } }, ipcMain: { handle: fake.handle } }))
 vi.mock('@sentry/electron/main', () => ({
   init: fake.init, IPCMode: { Protocol: 2 },
-  captureEvent: fake.captureEvent,
+  captureEvent: fake.captureEvent, captureException: fake.captureException, flush: fake.flush,
   onUncaughtExceptionIntegration: () => ({}), onUnhandledRejectionIntegration: () => ({}),
   normalizePathsIntegration: () => ({}), startupTracingIntegration: () => ({}),
   nodeContextIntegration: () => ({}), gpuContextIntegration: () => ({}),
@@ -139,6 +139,22 @@ describe('telemetry install ID', () => {
       expect(filter({ user: { id: '82eb537b-e1bd-4d94-9a1c-3737c2e5975f' } }).user).toEqual({ ip_address: '0.0.0.0' })
     }
     expect(fake.captureEvent).toHaveBeenCalledTimes(2)
+  })
+
+  it('reports a startup failure as unhandled and flushes it, only with consent', async () => {
+    const { initializeTelemetry, reportStartupFailure } = await import('./telemetry')
+    const error = new Error("Failed to get 'videos' path")
+    initializeTelemetry(false)
+    await reportStartupFailure(error)
+    expect(fake.captureException).not.toHaveBeenCalled()
+
+    vi.resetModules()
+    const enabled = await import('./telemetry')
+    enabled.initializeTelemetry(true)
+    fake.flush.mockRejectedValueOnce(new Error('offline'))
+    await expect(enabled.reportStartupFailure(error)).resolves.toBeUndefined()
+    expect(fake.captureException).toHaveBeenCalledWith(error, { mechanism: { type: 'startup', handled: false } })
+    expect(fake.flush).toHaveBeenCalled()
   })
 
   it('ignores deletion failures at startup and opt-out', async () => {
