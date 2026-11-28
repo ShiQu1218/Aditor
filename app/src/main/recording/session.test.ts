@@ -705,6 +705,17 @@ describe('recording service state machine', () => {
     await waitFor(() => vi.mocked(value.deps.findApexPid!).mock.calls.length >= polls + 3)
     expect(onGameExit).toHaveBeenCalledTimes(1)
   })
+
+  it('tags a recovery refusal with its stable code without uploading the message', async () => {
+    const value = rig()
+    value.deps.onDiagnostic = vi.fn()
+    value.settings.autoRecord = false
+    fs.writeFileSync(path.join(sessionDir(value.root), 'seg_000001.m4s'), 'recoverable footage')
+    value.service.start()
+    await waitFor(() => value.service.status().error?.code === 'recovery_failed')
+    expect(value.deps.onDiagnostic).toHaveBeenCalledExactlyOnceWith({ component: 'recording-service', code: 'recovery_failed',
+      message: 'Recording recovery failed', tags: { error_code: 'INDEX_MISSING' } })
+  })
 })
 
 describe.skipIf(!ffmpeg)('recording service integration with real finalization', () => {
